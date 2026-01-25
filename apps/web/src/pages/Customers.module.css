@@ -1,0 +1,23 @@
+.customers {
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.toolbar {
+  margin-bottom: 1rem;
+}
+
+.search {
+  max-width: 300px;
+}
+
+.empty {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--color-text-secondary);
+}

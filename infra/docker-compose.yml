@@ -1,0 +1,41 @@
+version: "3.8"
+
+services:
+  nats:
+    image: nats:2.10-alpine
+    container_name: sazinka-nats
+    ports:
+      - "4222:4222"   # Client connections
+      - "8222:8222"   # WebSocket (for browser)
+      - "6222:6222"   # Cluster routing (optional)
+    command: ["--config", "/etc/nats/nats-server.conf"]
+    volumes:
+      - ./nats-server.conf:/etc/nats/nats-server.conf:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: sazinka-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: sazinka
+      POSTGRES_PASSWORD: sazinka_dev
+      POSTGRES_DB: sazinka
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sazinka"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

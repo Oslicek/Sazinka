@@ -1,0 +1,90 @@
+[
+  {
+    "id": "d1000001-0000-0000-0000-000000000001",
+    "customerId": "c1000001-0000-0000-0000-000000000001",
+    "deviceType": "gas_boiler",
+    "manufacturer": "Vaillant",
+    "model": "ecoTEC plus",
+    "serialNumber": "VL123456789",
+    "installationDate": "2020-03-15",
+    "revisionIntervalMonths": 12,
+    "notes": "Kondenzační kotel, 24 kW"
+  },
+  {
+    "id": "d1000001-0000-0000-0000-000000000002",
+    "customerId": "c1000001-0000-0000-0000-000000000001",
+    "deviceType": "chimney",
+    "manufacturer": null,
+    "model": null,
+    "serialNumber": null,
+    "installationDate": null,
+    "revisionIntervalMonths": 12,
+    "notes": "Komín pro plynový kotel"
+  },
+  {
+    "id": "d1000001-0000-0000-0000-000000000003",
+    "customerId": "c1000001-0000-0000-0000-000000000002",
+    "deviceType": "gas_boiler",
+    "manufacturer": "Buderus",
+    "model": "Logamax plus GB172",
+    "serialNumber": "BU987654321",
+    "installationDate": "2019-11-20",
+    "revisionIntervalMonths": 12,
+    "notes": null
+  },
+  {
+    "id": "d1000001-0000-0000-0000-000000000004",
+    "customerId": "c1000001-0000-0000-0000-000000000003",
+    "deviceType": "gas_water_heater",
+    "manufacturer": "Junkers",
+    "model": "WR 11-2 P",
+    "serialNumber": "JU456789123",
+    "installationDate": "2018-06-10",
+    "revisionIntervalMonths": 12,
+    "notes": "Průtokový ohřívač"
+  },
+  {
+    "id": "d1000001-0000-0000-0000-000000000005",
+    "customerId": "c1000001-0000-0000-0000-000000000004",
+    "deviceType": "fireplace",
+    "manufacturer": "Romotop",
+    "model": "Angle R/L",
+    "serialNumber": "RM789456123",
+    "installationDate": "2021-09-05",
+    "revisionIntervalMonths": 12,
+    "notes": "Krbová vložka na dřevo"
+  },
+  {
+    "id": "d1000001-0000-0000-0000-000000000006",
+    "customerId": "c1000001-0000-0000-0000-000000000005",
+    "deviceType": "gas_boiler",
+    "manufacturer": "Protherm",
+    "model": "Panther Condens 25 KKO",
+    "serialNumber": "PT321654987",
+    "installationDate": "2022-02-28",
+    "revisionIntervalMonths": 12,
+    "notes": "Nový kotel, záruční servis"
+  },
+  {
+    "id": "d1000001-0000-0000-0000-000000000007",
+    "customerId": "c1000001-0000-0000-0000-000000000006",
+    "deviceType": "gas_stove",
+    "manufacturer": "Mora",
+    "model": "Premium",
+    "serialNumber": "MO159753486",
+    "installationDate": "2017-04-12",
+    "revisionIntervalMonths": 24,
+    "notes": "Plynový sporák, 4 hořáky + trouba"
+  },
+  {
+    "id": "d1000001-0000-0000-0000-000000000008",
+    "customerId": "c1000001-0000-0000-0000-000000000007",
+    "deviceType": "chimney",
+    "manufacturer": null,
+    "model": null,
+    "serialNumber": null,
+    "installationDate": "2015-01-01",
+    "revisionIntervalMonths": 12,
+    "notes": "Starší zděný komín, vyžaduje důkladnou kontrolu"
+  }
+]

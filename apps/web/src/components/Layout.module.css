@@ -1,0 +1,73 @@
+.layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.5rem;
+  height: 56px;
+  background-color: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.logo a {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.nav {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.navLink {
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.navLink:hover {
+  background-color: var(--color-bg-secondary);
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.navLinkActive {
+  background-color: var(--color-primary);
+  color: white;
+}
+
+.navLinkActive:hover {
+  background-color: var(--color-primary-dark);
+  color: white;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.statusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.main {
+  flex: 1;
+  padding: 1.5rem;
+  background-color: var(--color-bg-secondary);
+}

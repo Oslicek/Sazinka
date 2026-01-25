@@ -1,0 +1,79 @@
+[
+  {
+    "id": "r1000001-0000-0000-0000-000000000001",
+    "deviceId": "d1000001-0000-0000-0000-000000000001",
+    "customerId": "c1000001-0000-0000-0000-000000000001",
+    "status": "scheduled",
+    "dueDate": "2026-01-28",
+    "scheduledDate": "2026-01-28",
+    "scheduledTimeStart": "09:00",
+    "scheduledTimeEnd": "10:00",
+    "notes": "Roční revize kotle"
+  },
+  {
+    "id": "r1000001-0000-0000-0000-000000000002",
+    "deviceId": "d1000001-0000-0000-0000-000000000002",
+    "customerId": "c1000001-0000-0000-0000-000000000001",
+    "status": "scheduled",
+    "dueDate": "2026-01-28",
+    "scheduledDate": "2026-01-28",
+    "scheduledTimeStart": "09:00",
+    "scheduledTimeEnd": "10:00",
+    "notes": "Kontrola komína"
+  },
+  {
+    "id": "r1000001-0000-0000-0000-000000000003",
+    "deviceId": "d1000001-0000-0000-0000-000000000003",
+    "customerId": "c1000001-0000-0000-0000-000000000002",
+    "status": "scheduled",
+    "dueDate": "2026-01-28",
+    "scheduledDate": "2026-01-28",
+    "scheduledTimeStart": "10:30",
+    "scheduledTimeEnd": "11:30",
+    "notes": null
+  },
+  {
+    "id": "r1000001-0000-0000-0000-000000000004",
+    "deviceId": "d1000001-0000-0000-0000-000000000004",
+    "customerId": "c1000001-0000-0000-0000-000000000003",
+    "status": "due_soon",
+    "dueDate": "2026-02-10",
+    "scheduledDate": null,
+    "scheduledTimeStart": null,
+    "scheduledTimeEnd": null,
+    "notes": "Zákazník preferuje odpolední čas"
+  },
+  {
+    "id": "r1000001-0000-0000-0000-000000000005",
+    "deviceId": "d1000001-0000-0000-0000-000000000005",
+    "customerId": "c1000001-0000-0000-0000-000000000004",
+    "status": "upcoming",
+    "dueDate": "2026-03-05",
+    "scheduledDate": null,
+    "scheduledTimeStart": null,
+    "scheduledTimeEnd": null,
+    "notes": null
+  },
+  {
+    "id": "r1000001-0000-0000-0000-000000000006",
+    "deviceId": "d1000001-0000-0000-0000-000000000006",
+    "customerId": "c1000001-0000-0000-0000-000000000005",
+    "status": "overdue",
+    "dueDate": "2026-01-15",
+    "scheduledDate": null,
+    "scheduledTimeStart": null,
+    "scheduledTimeEnd": null,
+    "notes": "URGENTNÍ - zákazník nereaguje na výzvy"
+  },
+  {
+    "id": "r1000001-0000-0000-0000-000000000007",
+    "deviceId": "d1000001-0000-0000-0000-000000000008",
+    "customerId": "c1000001-0000-0000-0000-000000000007",
+    "status": "scheduled",
+    "dueDate": "2026-01-28",
+    "scheduledDate": "2026-01-28",
+    "scheduledTimeStart": "14:00",
+    "scheduledTimeEnd": "15:00",
+    "notes": null
+  }
+]
