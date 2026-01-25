@@ -12,8 +12,7 @@ pub async fn create_customer(
     user_id: Uuid,
     req: &CreateCustomerRequest,
 ) -> Result<Customer> {
-    let customer = sqlx::query_as!(
-        Customer,
+    let customer = sqlx::query_as::<_, Customer>(
         r#"
         INSERT INTO customers (
             id, user_id, name, email, phone,
@@ -29,20 +28,20 @@ pub async fn create_customer(
             id, user_id, name, email, phone,
             street, city, postal_code, country,
             lat, lng, notes, created_at, updated_at
-        "#,
-        Uuid::new_v4(),
-        user_id,
-        req.name,
-        req.email,
-        req.phone,
-        req.street,
-        req.city,
-        req.postal_code,
-        req.country.as_deref().unwrap_or("CZ"),
-        req.lat,
-        req.lng,
-        req.notes,
+        "#
     )
+    .bind(Uuid::new_v4())
+    .bind(user_id)
+    .bind(&req.name)
+    .bind(&req.email)
+    .bind(&req.phone)
+    .bind(&req.street)
+    .bind(&req.city)
+    .bind(&req.postal_code)
+    .bind(req.country.as_deref().unwrap_or("CZ"))
+    .bind(req.lat)
+    .bind(req.lng)
+    .bind(&req.notes)
     .fetch_one(pool)
     .await?;
 
@@ -55,8 +54,7 @@ pub async fn get_customer(
     user_id: Uuid,
     customer_id: Uuid,
 ) -> Result<Option<Customer>> {
-    let customer = sqlx::query_as!(
-        Customer,
+    let customer = sqlx::query_as::<_, Customer>(
         r#"
         SELECT
             id, user_id, name, email, phone,
@@ -64,10 +62,10 @@ pub async fn get_customer(
             lat, lng, notes, created_at, updated_at
         FROM customers
         WHERE id = $1 AND user_id = $2
-        "#,
-        customer_id,
-        user_id,
+        "#
     )
+    .bind(customer_id)
+    .bind(user_id)
     .fetch_optional(pool)
     .await?;
 
@@ -81,8 +79,7 @@ pub async fn list_customers(
     limit: i64,
     offset: i64,
 ) -> Result<Vec<Customer>> {
-    let customers = sqlx::query_as!(
-        Customer,
+    let customers = sqlx::query_as::<_, Customer>(
         r#"
         SELECT
             id, user_id, name, email, phone,
@@ -92,11 +89,11 @@ pub async fn list_customers(
         WHERE user_id = $1
         ORDER BY name ASC
         LIMIT $2 OFFSET $3
-        "#,
-        user_id,
-        limit,
-        offset,
+        "#
     )
+    .bind(user_id)
+    .bind(limit)
+    .bind(offset)
     .fetch_all(pool)
     .await?;
 
@@ -110,16 +107,16 @@ pub async fn update_customer_coordinates(
     lat: f64,
     lng: f64,
 ) -> Result<()> {
-    sqlx::query!(
+    sqlx::query(
         r#"
         UPDATE customers
         SET lat = $1, lng = $2, updated_at = NOW()
         WHERE id = $3
-        "#,
-        lat,
-        lng,
-        customer_id,
+        "#
     )
+    .bind(lat)
+    .bind(lng)
+    .bind(customer_id)
     .execute(pool)
     .await?;
 

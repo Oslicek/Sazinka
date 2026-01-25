@@ -1,6 +1,6 @@
 //! Vehicle Routing Problem with Time Windows (VRPTW) solver
 
-use chrono::NaiveTime;
+use chrono::{NaiveTime, Timelike};
 use crate::types::{Coordinates, RouteStop, RouteWarning, TimeWindow};
 use crate::services::geo;
 

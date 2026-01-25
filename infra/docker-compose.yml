@@ -12,7 +12,7 @@ services:
     volumes:
       - ./nats-server.conf:/etc/nats/nats-server.conf:ro
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8222/healthz"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8223/healthz"]
       interval: 5s
       timeout: 3s
       retries: 3

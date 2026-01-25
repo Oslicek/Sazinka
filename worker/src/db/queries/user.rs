@@ -8,8 +8,7 @@ use crate::types::user::User;
 
 /// Get user by ID
 pub async fn get_user(pool: &PgPool, user_id: Uuid) -> Result<Option<User>> {
-    let user = sqlx::query_as!(
-        User,
+    let user = sqlx::query_as::<_, User>(
         r#"
         SELECT
             id, email, password_hash, name, phone,
@@ -21,9 +20,9 @@ pub async fn get_user(pool: &PgPool, user_id: Uuid) -> Result<Option<User>> {
             created_at, updated_at
         FROM users
         WHERE id = $1
-        "#,
-        user_id,
+        "#
     )
+    .bind(user_id)
     .fetch_optional(pool)
     .await?;
 
@@ -32,8 +31,7 @@ pub async fn get_user(pool: &PgPool, user_id: Uuid) -> Result<Option<User>> {
 
 /// Get user by email (for login)
 pub async fn get_user_by_email(pool: &PgPool, email: &str) -> Result<Option<User>> {
-    let user = sqlx::query_as!(
-        User,
+    let user = sqlx::query_as::<_, User>(
         r#"
         SELECT
             id, email, password_hash, name, phone,
@@ -45,9 +43,9 @@ pub async fn get_user_by_email(pool: &PgPool, email: &str) -> Result<Option<User
             created_at, updated_at
         FROM users
         WHERE email = $1
-        "#,
-        email,
+        "#
     )
+    .bind(email)
     .fetch_optional(pool)
     .await?;
 

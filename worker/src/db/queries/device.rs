@@ -12,8 +12,7 @@ pub async fn create_device(
     customer_id: Uuid,
     req: &CreateDeviceRequest,
 ) -> Result<Device> {
-    let device = sqlx::query_as!(
-        Device,
+    let device = sqlx::query_as::<_, Device>(
         r#"
         INSERT INTO devices (
             id, customer_id, device_type, manufacturer, model,
@@ -25,17 +24,17 @@ pub async fn create_device(
             id, customer_id, device_type, manufacturer, model,
             serial_number, installation_date, revision_interval_months,
             notes, created_at
-        "#,
-        Uuid::new_v4(),
-        customer_id,
-        req.device_type,
-        req.manufacturer,
-        req.model,
-        req.serial_number,
-        req.installation_date,
-        req.revision_interval_months,
-        req.notes,
+        "#
     )
+    .bind(Uuid::new_v4())
+    .bind(customer_id)
+    .bind(&req.device_type)
+    .bind(&req.manufacturer)
+    .bind(&req.model)
+    .bind(&req.serial_number)
+    .bind(req.installation_date)
+    .bind(req.revision_interval_months)
+    .bind(&req.notes)
     .fetch_one(pool)
     .await?;
 
@@ -44,8 +43,7 @@ pub async fn create_device(
 
 /// List devices for a customer
 pub async fn list_devices(pool: &PgPool, customer_id: Uuid) -> Result<Vec<Device>> {
-    let devices = sqlx::query_as!(
-        Device,
+    let devices = sqlx::query_as::<_, Device>(
         r#"
         SELECT
             id, customer_id, device_type, manufacturer, model,
@@ -54,9 +52,9 @@ pub async fn list_devices(pool: &PgPool, customer_id: Uuid) -> Result<Vec<Device
         FROM devices
         WHERE customer_id = $1
         ORDER BY created_at DESC
-        "#,
-        customer_id,
+        "#
     )
+    .bind(customer_id)
     .fetch_all(pool)
     .await?;
 

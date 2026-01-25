@@ -38,6 +38,7 @@ dotenvy = "0.15"
 
 # HTTP client (for Nominatim)
 reqwest = { version = "0.12", features = ["json"] }
+urlencoding = "2.1"
 
 [dev-dependencies]
 tokio-test = "0.4"
