@@ -92,6 +92,17 @@ describe('customerService', () => {
         })
       );
     });
+
+    it('should use camelCase userId field for backend compatibility', async () => {
+      mockRequest.mockResolvedValueOnce({ payload: mockCustomerResponse });
+
+      await createCustomer('user-123', validCustomerData, mockDeps);
+
+      const callArgs = mockRequest.mock.calls[0][1];
+      // Verify camelCase is used (not snake_case user_id)
+      expect(callArgs).toHaveProperty('userId', 'user-123');
+      expect(callArgs).not.toHaveProperty('user_id');
+    });
   });
 
   describe('listCustomers', () => {

@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-01-26 (v0.3.1)
+> **Last Updated:** 2026-01-26 (v0.4.0)
 
 ## Overview
 
@@ -471,6 +471,12 @@ pub fn optimize_route(stops: Vec<Stop>, start: Coordinates) -> OptimizedRoute {
 - [x] Geo service (Haversine distance, road coefficient)
 - [x] Nominatim geocoding client
 - [x] Basic page layouts (Dashboard, Customers, Calendar, Planner)
+- [x] **Frontend customer service** (createCustomer, listCustomers, getCustomer)
+- [x] **Form validation logic** with TDD (33 unit tests)
+- [x] **AddCustomerForm component** with real-time validation
+- [x] **Dashboard quick actions** (navigate to customers, planner, calendar)
+- [x] **camelCase serialization** between frontend (TypeScript) and backend (Rust)
+- [x] Vitest test configuration with jsdom and testing-library
 
 **In Progress:**
 - [ ] Full CRUD for all entities
@@ -483,6 +489,12 @@ pub fn optimize_route(stops: Vec<Stop>, start: Coordinates) -> OptimizedRoute {
 - [ ] Route handlers
 - [ ] Email notifications
 - [ ] User authentication
+
+### Serialization Notes
+
+All NATS messages between frontend and backend use **camelCase** for JSON field names:
+- Frontend (TypeScript): `userId`, `postalCode`, `createdAt`
+- Backend (Rust): Uses `#[serde(rename_all = "camelCase")]` on all message and entity structs
 
 ## Development Setup
 

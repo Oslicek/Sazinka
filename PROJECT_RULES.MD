@@ -6,8 +6,9 @@
 1. **Red**: Write a failing test first
 2. **Green**: Write the minimum code to make the test pass
 3. **Refactor**: Clean up the code while keeping tests green
-4. **Commit**: Commit and push the code to GitHub
-5. **Update PROJECT_CONTEXT**: Update PROJECT_CONTEXT file
+4. **Update PROJECT_CONTEXT**: Update PROJECT_CONTEXT file
+5. **Commit**: Commit and push the code to GitHub
+
 
 ### SOLID Principles
 - **S**ingle Responsibility: Each module/function should have one reason to change

@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 /// Customer entity
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct Customer {
     pub id: Uuid,
     pub user_id: Uuid,
@@ -31,6 +32,7 @@ pub struct Customer {
 
 /// Request to create a customer
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateCustomerRequest {
     pub name: String,
     pub email: Option<String>,
@@ -46,6 +48,7 @@ pub struct CreateCustomerRequest {
 
 /// Request to update a customer
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateCustomerRequest {
     pub id: Uuid,
     pub name: Option<String>,
@@ -61,6 +64,7 @@ pub struct UpdateCustomerRequest {
 
 /// Coordinates
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Coordinates {
     pub lat: f64,
     pub lng: f64,

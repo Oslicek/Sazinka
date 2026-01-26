@@ -6,6 +6,7 @@ use chrono::{DateTime, Utc};
 
 /// Generic request wrapper
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Request<T> {
     pub id: Uuid,
     pub timestamp: DateTime<Utc>,
@@ -26,6 +27,7 @@ impl<T> Request<T> {
 
 /// Generic success response wrapper
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SuccessResponse<T> {
     pub id: Uuid,
     pub timestamp: DateTime<Utc>,
@@ -44,6 +46,7 @@ impl<T> SuccessResponse<T> {
 
 /// Error response
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ErrorResponse {
     pub id: Uuid,
     pub timestamp: DateTime<Utc>,
@@ -51,6 +54,7 @@ pub struct ErrorResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ErrorDetail {
     pub code: String,
     pub message: String,
@@ -74,6 +78,7 @@ impl ErrorResponse {
 
 /// List request with pagination
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ListRequest {
     #[serde(default = "default_limit")]
     pub limit: i64,
@@ -89,6 +94,7 @@ fn default_limit() -> i64 {
 
 /// List response with pagination info
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ListResponse<T> {
     pub items: Vec<T>,
     pub total: i64,

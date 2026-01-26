@@ -72,6 +72,7 @@ export function Customers() {
   }, []);
 
   const handleShowForm = useCallback(() => {
+    setError(null);  // Clear any previous error
     setShowForm(true);
   }, []);
 
