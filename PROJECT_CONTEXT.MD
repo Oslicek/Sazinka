@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-01-25 (v0.2.0)
+> **Last Updated:** 2026-01-26 (v0.3.0)
 
 ## Overview
 
@@ -451,26 +451,38 @@ pub fn optimize_route(stops: Vec<Stop>, start: Coordinates) -> OptimizedRoute {
 
 ## Current State
 
-**Phase:** Initial Scaffolding
+**Phase:** Core Development
 
 **Completed:**
 - [x] Project architecture design
 - [x] Technology stack selection
 - [x] Data model design
 - [x] NATS message schema design
+- [x] Monorepo scaffolding (pnpm workspaces + Turborepo)
+- [x] Docker compose for local dev (NATS + PostgreSQL)
+- [x] Rust worker skeleton with handlers structure
+- [x] React frontend skeleton with routing
+- [x] Database migrations (initial schema)
+- [x] Shared TypeScript types package
+- [x] NATS store and connection setup
+- [x] Customer handler (create, list, get)
+- [x] Ping handler for health checks
+- [x] VRPTW route optimization algorithm (basic implementation)
+- [x] Geo service (Haversine distance, road coefficient)
+- [x] Nominatim geocoding client
+- [x] Basic page layouts (Dashboard, Customers, Calendar, Planner)
 
 **In Progress:**
-- [ ] Monorepo scaffolding
-- [ ] Docker compose for local dev
-- [ ] Rust worker skeleton
-- [ ] React frontend skeleton
+- [ ] Full CRUD for all entities
+- [ ] Frontend-backend integration testing
+- [ ] Map component integration
 
 **Pending:**
-- [ ] Database migrations
-- [ ] NATS handlers implementation
-- [ ] Frontend components
-- [ ] Route optimization algorithm
-- [ ] Map integration
+- [ ] Device handlers
+- [ ] Revision handlers  
+- [ ] Route handlers
+- [ ] Email notifications
+- [ ] User authentication
 
 ## Development Setup
 
@@ -483,29 +495,55 @@ winget install OpenJS.NodeJS.LTS
 # pnpm
 npm install -g pnpm
 
-# Rust
+# Rust (with MSVC target)
 winget install Rustlang.Rustup
+rustup default stable-x86_64-pc-windows-msvc
+
+# Visual Studio Build Tools (required for Rust compilation)
+# Install via Visual Studio Installer - select "Desktop development with C++"
 
 # Docker Desktop (for NATS + PostgreSQL)
 winget install Docker.DockerDesktop
+
+# WSL2 (required for Docker on Windows 11 Home)
+wsl --install
+# Restart required after WSL installation
 ```
 
 ### Running Locally
 
 ```powershell
-# Terminal 1: Start infrastructure (NATS + PostgreSQL)
-docker compose -f infra/docker-compose.yml up -d
+# Terminal 1: Install dependencies
+pnpm install
 
-# Terminal 2: Start Rust worker
+# Terminal 2: Start infrastructure (NATS + PostgreSQL)
+pnpm db:up
+# or: docker compose -f infra/docker-compose.yml up -d
+
+# Terminal 3: Start Rust worker (requires VS Developer Command Prompt for MSVC)
 cd worker
 cargo run
 
-# Terminal 3: Start frontend
+# Terminal 4: Start frontend
 cd apps/web
 pnpm dev
 
 # Frontend: http://localhost:5173
 # NATS WebSocket: ws://localhost:8222
+# NATS Native: nats://localhost:4222
+# PostgreSQL: postgres://sazinka:sazinka_dev@localhost:5432/sazinka
+```
+
+### Environment Files
+
+Copy example files and adjust as needed:
+
+```powershell
+# Worker configuration
+Copy-Item worker/.env.example worker/.env
+
+# Web app configuration  
+Copy-Item apps/web/.env.example apps/web/.env
 ```
 
 ### Running Tests

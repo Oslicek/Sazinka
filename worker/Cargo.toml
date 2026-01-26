@@ -8,6 +8,7 @@ description = "Backend worker for Sazinka CRM"
 [dependencies]
 # Async runtime
 tokio = { version = "1.43", features = ["full"] }
+futures = "0.3"
 
 # NATS client
 async-nats = "0.38"
@@ -36,8 +37,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 # Configuration
 dotenvy = "0.15"
 
-# HTTP client (for Nominatim)
-reqwest = { version = "0.12", features = ["json"] }
+# HTTP client (for Nominatim) - using native-tls to avoid ring compilation
+reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls"] }
 urlencoding = "2.1"
 
 [dev-dependencies]
