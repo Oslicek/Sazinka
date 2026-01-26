@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-01-26 (v0.4.0)
+> **Last Updated:** 2026-01-26 (v0.5.0)
 
 ## Overview
 
@@ -417,6 +417,10 @@ pub struct RouteStop {
 | `RouteHandler` | worker/src/handlers/route.rs | Route optimization |
 | `VrptwSolver` | worker/src/services/vrptw.rs | VRPTW algorithm |
 | `GeoService` | worker/src/services/geo.rs | Distance calculations |
+| `Geocoder` | worker/src/services/geocoding.rs | Address → coordinates abstraction |
+| `MockGeocoder` | worker/src/services/geocoding.rs | Deterministic fake geocoder for tests |
+| `RateLimiter` | worker/src/services/geocoding.rs | Rate limiting for API calls |
+| `CircuitBreaker` | worker/src/services/geocoding.rs | Failure protection |
 
 ## Route Optimization Algorithm
 
@@ -449,6 +453,67 @@ pub fn optimize_route(stops: Vec<Stop>, start: Coordinates) -> OptimizedRoute {
 }
 ```
 
+## Geocoding Safety Architecture
+
+> **Status:** Provisional (may change in future)
+
+The geocoding system is designed with multiple safety layers to **never risk getting blocked** by external services like Nominatim.
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    GEOCODER ABSTRACTION                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│   ┌─────────────┐   ┌─────────────────────────────────────┐    │
+│   │ MockGeocoder│   │ RateLimitedNominatimGeocoder        │    │
+│   │ (tests/dev) │   │ (production)                        │    │
+│   │             │   │  ├─ RateLimiter (1.5s interval)     │    │
+│   │ No network  │   │  └─ CircuitBreaker (3 failures)     │    │
+│   └─────────────┘   └─────────────────────────────────────┘    │
+│                                                                 │
+│   Selection via: GEOCODER_BACKEND env variable                  │
+│   - "mock"      → MockGeocoder (deterministic fake coords)      │
+│   - "nominatim" → RateLimitedNominatimGeocoder                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Safety Layers
+
+| Layer | Protection |
+|-------|------------|
+| **Environment variable** | Tests and dev NEVER use production geocoder |
+| **MockGeocoder** | Zero network requests for tests (deterministic) |
+| **RateLimiter** | Max 1 request per 1.5 seconds (Nominatim limit is 1/s) |
+| **CircuitBreaker** | After 3 failures, stops requests for 5 minutes |
+| **Queue for batch** | Sequential processing with enforced delays |
+
+### MockGeocoder
+
+For tests and development - generates **deterministic** coordinates from address hash:
+- Same input always produces same output (reproducible tests)
+- Coordinates are always within Czech Republic bounds (48.5-51.1°N, 12.0-18.9°E)
+- High confidence score (0.95)
+- Zero latency, zero network calls
+
+### Configuration
+
+```bash
+# .env.test / .env.development
+GEOCODER_BACKEND=mock
+
+# .env.production
+GEOCODER_BACKEND=nominatim
+NOMINATIM_RATE_LIMIT_MS=1500
+```
+
+### Future Plans
+
+1. **Phase 1 (current):** MockGeocoder for dev, public Nominatim for production
+2. **Phase 2:** Consider HERE API free tier (250k requests/month) for better accuracy
+3. **Phase 3:** Self-hosted Photon for Czech Republic if scale requires
+
 ## Current State
 
 **Phase:** Core Development
@@ -477,11 +542,13 @@ pub fn optimize_route(stops: Vec<Stop>, start: Coordinates) -> OptimizedRoute {
 - [x] **Dashboard quick actions** (navigate to customers, planner, calendar)
 - [x] **camelCase serialization** between frontend (TypeScript) and backend (Rust)
 - [x] Vitest test configuration with jsdom and testing-library
+- [x] **Geocoding abstraction layer** with safety features (MockGeocoder, RateLimiter, CircuitBreaker)
 
 **In Progress:**
 - [ ] Full CRUD for all entities
 - [ ] Frontend-backend integration testing
 - [ ] Map component integration
+- [ ] Geocoding integration into customer create flow
 
 **Pending:**
 - [ ] Device handlers
