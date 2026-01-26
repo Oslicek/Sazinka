@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-01-26 (v0.3.0)
+> **Last Updated:** 2026-01-26 (v0.3.1)
 
 ## Overview
 
@@ -573,6 +573,7 @@ cargo test
 ## Notes
 
 - Development on Windows 11
+- Docker Desktop uses WSL2 for Linux containers on Windows 11 Home
 - Czech language UI (later)
 - MVP focuses on core CRM + route planning
 - Email notifications deferred to later phase
