@@ -1,4 +1,4 @@
-import { Link, useRouterState } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 import { useNatsStore } from '@/stores/natsStore';
 import styles from './Layout.module.css';
 
@@ -7,7 +7,6 @@ interface LayoutProps {
 }
 
 export function Layout({ children }: LayoutProps) {
-  const { status } = useRouterState();
   const isConnected = useNatsStore((s) => s.isConnected);
 
   return (

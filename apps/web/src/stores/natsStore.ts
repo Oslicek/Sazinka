@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { connect, NatsConnection, JSONCodec, Subscription } from 'nats.ws';
+import { connect, NatsConnection, JSONCodec } from 'nats.ws';
 
 interface NatsState {
   connection: NatsConnection | null;

@@ -1,7 +1,9 @@
+import { useNavigate } from '@tanstack/react-router';
 import { useNatsStore } from '@/stores/natsStore';
 import styles from './Dashboard.module.css';
 
 export function Dashboard() {
+  const navigate = useNavigate();
   const isConnected = useNatsStore((s) => s.isConnected);
   const error = useNatsStore((s) => s.error);
 
@@ -40,9 +42,24 @@ export function Dashboard() {
       <div className="card" style={{ marginTop: '1.5rem' }}>
         <h3>Rychlé akce</h3>
         <div className={styles.actions}>
-          <button className="btn-primary">+ Nový zákazník</button>
-          <button className="btn-secondary">Naplánovat den</button>
-          <button className="btn-secondary">Zobrazit kalendář</button>
+          <button 
+            className="btn-primary"
+            onClick={() => navigate({ to: '/customers', search: { action: 'new' } })}
+          >
+            + Nový zákazník
+          </button>
+          <button 
+            className="btn-secondary"
+            onClick={() => navigate({ to: '/planner' })}
+          >
+            Naplánovat den
+          </button>
+          <button 
+            className="btn-secondary"
+            onClick={() => navigate({ to: '/calendar' })}
+          >
+            Zobrazit kalendář
+          </button>
         </div>
       </div>
     </div>
