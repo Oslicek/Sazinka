@@ -14,3 +14,6 @@ BEGIN
   RETURN 'OK';
 END;
 $$ LANGUAGE plpgsql;
+
+-- Dev test user (created after migrations run, see seed script)
+-- ID: 00000000-0000-0000-0000-000000000001
