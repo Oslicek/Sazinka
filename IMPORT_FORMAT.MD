@@ -1,6 +1,6 @@
-# CSV Import zákazníků – Specifikace (v1.0)
+# CSV Import zákazníků – Specifikace (v1.0.1)
 
-> **Verze:** 1.0  
+> **Verze:** 1.0.1  
 > **Datum:** 2026-01-27
 
 ## Obsah
@@ -64,6 +64,7 @@ Import zákazníků z CSV souboru s těmito vlastnostmi:
 
 - Prázdné pole mezi `;;` = `null`
 - Hodnoty `""`, `-`, `N/A`, `NULL` (case-insensitive) → mapují se na `null`
+- Hodnoty obsahující pouze whitespace (např. `"   "`) → po `trim()` = `null`
 
 ---
 
@@ -135,6 +136,9 @@ Všechny textové hodnoty:
 2. Pokud je vyplněno `contactPerson` → `company`
 3. Jinak → `person`
 
+**Heuristické varování (nemění typ, pouze upozorní):**
+- Pokud `type=person` a `name` obsahuje `s.r.o.`, `a.s.`, `SE`, `GmbH`, `spol.`, `v.o.s.`, `k.s.` → **varování** "Název vypadá jako firma, ale typ je person"
+
 ### 4.3 IČO (Identifikační číslo osoby)
 
 **Formát:** 8 číslic
@@ -149,16 +153,20 @@ Všechny textové hodnoty:
 
 ### 4.4 DIČ (Daňové identifikační číslo)
 
-**Formát:** `CZ` + 8-10 číslic (např. `CZ12345678`)
+**Formát pro CZ:** `CZ` + 8-10 číslic (např. `CZ12345678`)
 
 **Čištění:**
 1. Odstranit mezery
 2. Převést na uppercase
-3. Pokud nezačíná `CZ` a `country=CZ` → doplnit prefix `CZ`
 
-**Validace:**
-- Regex: `^CZ\d{8,10}$` (pro CZ)
-- Pokud nesplňuje → **varování**
+**Validace dle country:**
+
+| Country | Pravidlo |
+|---------|----------|
+| `CZ` | Pokud nezačíná `CZ` → doplnit prefix. Regex: `^CZ\d{8,10}$`. Pokud nesplňuje → **varování** |
+| ostatní | Pouze `trim()` + `uppercase`, formát se nevaliduje (zahraniční DIČ mají různé formáty) |
+
+**Obecně:**
 - Pokud `type=person` a `dic` vyplněno → **varování** "DIČ u fyzické osoby"
 
 ### 4.5 ContactPerson (kontaktní osoba)
@@ -253,6 +261,8 @@ Použití **libphonenumber-js** pro robustní parsing.
 | `phone` | `null` |
 | `phoneRaw` | Původní vstup z CSV |
 
+> **Poznámka:** `phoneRaw` není importovaný sloupec z CSV. Je to interní pole v databázi, kam se ukládá původní hodnota telefonu, pokud normalizace na E.164 selže. Umožňuje pozdější ruční opravu.
+
 ### 5.6 Více telefonů v jednom poli
 
 Pokud `phone` obsahuje `,` nebo `/`:
@@ -295,6 +305,11 @@ Podmínky pro geokódování:
 3. **Phone match** (normalizované E.164) → aktualizovat existujícího
 4. **Žádná shoda** → vytvořit nového zákazníka
 
+> **Poznámka:** Detekce duplicit se provádí na **normalizovaných hodnotách**:
+> - `ico` – doplněné na 8 číslic (např. `123456` → `00123456`)
+> - `email` – lowercase
+> - `phone` – E.164 formát (např. `+420602123456`)
+
 ### 7.2 Pravidla pro aktualizaci (lenient)
 
 - **Nepřepisovat** existující neprázdné hodnoty prázdnými z CSV
@@ -325,7 +340,7 @@ interface ImportReport {
 
 interface ImportIssue {
   rowNumber: number;
-  level: 'warning' | 'error';
+  level: 'warning' | 'error';  // pouze tyto dva typy, info zprávy nejsou v issues
   field: string;
   message: string;
   originalValue?: string;
@@ -449,7 +464,7 @@ sazinka.customer.import.batch   # Batch import zákazníků
 
 ```csv
 type;name;contactPerson;ico;dic;street;city;postalCode;country;phone;email;notes
-person;Jan Novák;;;;;Hlavní 123;Praha;110 00;CZ;602 123 456;jan@example.com;Klíče u sousedů
+person;Jan Novák;;;;Hlavní 123;Praha;110 00;CZ;602 123 456;jan@example.com;Klíče u sousedů
 ```
 
 **Výsledek:**
@@ -470,16 +485,16 @@ company;ABC Trading s.r.o.;Petr Účetní;12345678;CZ12345678;Průmyslová 1;Brn
 - `dic` → `CZ12345678`
 - `phone` → `+420541234567`
 
-### 10.3 Firma bez IČO (odvození typu)
+### 10.3 Název vypadá jako firma, ale chybí IČO
 
 ```csv
 type;name;contactPerson;ico;dic;street;city;postalCode;country;phone;email;notes
-;Malá firma s.r.o.;;;;;Vedlejší 5;Plzeň;301 00;CZ;377123456;;
+;Malá firma s.r.o.;;;;Vedlejší 5;Plzeň;301 00;CZ;377123456;;
 ```
 
 **Výsledek:**
 - `type` → `person` (odvozeno – žádné IČO/DIČ/contactPerson)
-- **varování** "Název obsahuje 's.r.o.' ale typ je person"
+- **varování** "Název vypadá jako firma, ale typ je person"
 
 ### 10.4 Zahraniční zákazník (DE)
 
@@ -523,7 +538,7 @@ person;Test;;;CZ99999999;Ulice;Město;ABC-123;CZ;abc-telefon;spatnyemail;
 
 ```csv
 type;name;contactPerson;ico;dic;street;city;postalCode;country;phone;email;notes
-person;Petr;;;;;Na Hřebenkách 5;Praha;150 00;;777888999;;
+person;Petr;;;;Na Hřebenkách 5;Praha;150 00;;777888999;;
 ```
 
 **Výsledek:**
@@ -551,4 +566,4 @@ type;name;contactPerson;ico;dic;street;city;postalCode;country;phone;email;notes
 
 **Výsledek:**
 - `type` → `company` (odvozeno z IČO)
-- **info** "Typ odvozen z IČO: company"
+- **varování** "Typ odvozen z IČO: company"
