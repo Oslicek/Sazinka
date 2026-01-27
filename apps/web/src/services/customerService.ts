@@ -1,5 +1,6 @@
 import type { 
-  CreateCustomerRequest, 
+  CreateCustomerRequest,
+  UpdateCustomerRequest,
   Customer, 
   GeocodeRequest, 
   GeocodeResponse,
@@ -128,6 +129,50 @@ export async function geocodeAddress(
   }
 
   return response.payload;
+}
+
+/**
+ * Update a customer
+ */
+export async function updateCustomer(
+  userId: string,
+  data: UpdateCustomerRequest,
+  deps: CustomerServiceDeps = getDefaultDeps()
+): Promise<Customer> {
+  const request = createRequest(userId, data);
+
+  const response = await deps.request<typeof request, NatsResponse<Customer>>(
+    'sazinka.customer.update',
+    request
+  );
+
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+
+  return response.payload;
+}
+
+/**
+ * Delete a customer
+ */
+export async function deleteCustomer(
+  userId: string,
+  customerId: string,
+  deps: CustomerServiceDeps = getDefaultDeps()
+): Promise<boolean> {
+  const request = createRequest(userId, { id: customerId });
+
+  const response = await deps.request<typeof request, NatsResponse<{ deleted: boolean }>>(
+    'sazinka.customer.delete',
+    request
+  );
+
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+
+  return response.payload.deleted;
 }
 
 /**

@@ -25,6 +25,8 @@ pub async fn start_handlers(client: Client, pool: PgPool) -> Result<()> {
     let customer_create_sub = client.subscribe("sazinka.customer.create").await?;
     let customer_list_sub = client.subscribe("sazinka.customer.list").await?;
     let customer_get_sub = client.subscribe("sazinka.customer.get").await?;
+    let customer_update_sub = client.subscribe("sazinka.customer.update").await?;
+    let customer_delete_sub = client.subscribe("sazinka.customer.delete").await?;
     let customer_geocode_sub = client.subscribe("sazinka.customer.geocode").await?;
 
     info!("Subscribed to NATS subjects");
@@ -34,13 +36,18 @@ pub async fn start_handlers(client: Client, pool: PgPool) -> Result<()> {
     let client_customer_create = client.clone();
     let client_customer_list = client.clone();
     let client_customer_get = client.clone();
+    let client_customer_update = client.clone();
+    let client_customer_delete = client.clone();
     let client_customer_geocode = client.clone();
     
     let pool_customer_create = pool.clone();
     let pool_customer_list = pool.clone();
     let pool_customer_get = pool.clone();
+    let pool_customer_update = pool.clone();
+    let pool_customer_delete = pool.clone();
     
     let geocoder_create = Arc::clone(&geocoder);
+    let geocoder_update = Arc::clone(&geocoder);
     let geocoder_geocode = Arc::clone(&geocoder);
 
     // Spawn handlers
@@ -58,6 +65,14 @@ pub async fn start_handlers(client: Client, pool: PgPool) -> Result<()> {
 
     let customer_get_handle = tokio::spawn(async move {
         customer::handle_get(client_customer_get, customer_get_sub, pool_customer_get).await
+    });
+
+    let customer_update_handle = tokio::spawn(async move {
+        customer::handle_update(client_customer_update, customer_update_sub, pool_customer_update, geocoder_update).await
+    });
+
+    let customer_delete_handle = tokio::spawn(async move {
+        customer::handle_delete(client_customer_delete, customer_delete_sub, pool_customer_delete).await
     });
 
     let customer_geocode_handle = tokio::spawn(async move {
@@ -79,6 +94,12 @@ pub async fn start_handlers(client: Client, pool: PgPool) -> Result<()> {
         }
         result = customer_get_handle => {
             error!("Customer get handler finished: {:?}", result);
+        }
+        result = customer_update_handle => {
+            error!("Customer update handler finished: {:?}", result);
+        }
+        result = customer_delete_handle => {
+            error!("Customer delete handler finished: {:?}", result);
         }
         result = customer_geocode_handle => {
             error!("Customer geocode handler finished: {:?}", result);

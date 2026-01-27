@@ -23,11 +23,45 @@
   color: var(--primary-color, #2563eb);
 }
 
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
 .title {
   font-size: 1.75rem;
   font-weight: 600;
   color: var(--text-primary, #1a1a1a);
   margin: 0;
+}
+
+.typeBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-radius: 9999px;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.personBadge {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.companyBadge {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.companyInfo p {
+  margin: 0.25rem 0;
+  font-size: 0.9375rem;
+  color: var(--text-primary, #1a1a1a);
 }
 
 .content {
@@ -179,6 +213,7 @@
   padding: 1rem;
   border-radius: 6px;
   text-align: center;
+  margin-bottom: 1rem;
 }
 
 /* Responsive */

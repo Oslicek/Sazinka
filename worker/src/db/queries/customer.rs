@@ -4,7 +4,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 use anyhow::Result;
 
-use crate::types::customer::{Customer, CreateCustomerRequest, CustomerType};
+use crate::types::customer::{Customer, CreateCustomerRequest, UpdateCustomerRequest, CustomerType};
 
 /// Create a new customer
 pub async fn create_customer(
@@ -133,4 +133,81 @@ pub async fn update_customer_coordinates(
     .await?;
 
     Ok(())
+}
+
+/// Update a customer
+pub async fn update_customer(
+    pool: &PgPool,
+    user_id: Uuid,
+    req: &UpdateCustomerRequest,
+) -> Result<Option<Customer>> {
+    let customer = sqlx::query_as::<_, Customer>(
+        r#"
+        UPDATE customers
+        SET
+            customer_type = COALESCE($3, customer_type),
+            name = COALESCE($4, name),
+            contact_person = COALESCE($5, contact_person),
+            ico = COALESCE($6, ico),
+            dic = COALESCE($7, dic),
+            email = COALESCE($8, email),
+            phone = COALESCE($9, phone),
+            phone_raw = COALESCE($10, phone_raw),
+            street = COALESCE($11, street),
+            city = COALESCE($12, city),
+            postal_code = COALESCE($13, postal_code),
+            country = COALESCE($14, country),
+            lat = COALESCE($15, lat),
+            lng = COALESCE($16, lng),
+            notes = COALESCE($17, notes),
+            updated_at = NOW()
+        WHERE id = $1 AND user_id = $2
+        RETURNING
+            id, user_id, customer_type, name, contact_person, ico, dic,
+            email, phone, phone_raw,
+            street, city, postal_code, country,
+            lat, lng, notes, created_at, updated_at
+        "#
+    )
+    .bind(req.id)
+    .bind(user_id)
+    .bind(req.customer_type)
+    .bind(&req.name)
+    .bind(&req.contact_person)
+    .bind(&req.ico)
+    .bind(&req.dic)
+    .bind(&req.email)
+    .bind(&req.phone)
+    .bind(&req.phone_raw)
+    .bind(&req.street)
+    .bind(&req.city)
+    .bind(&req.postal_code)
+    .bind(&req.country)
+    .bind(req.lat)
+    .bind(req.lng)
+    .bind(&req.notes)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(customer)
+}
+
+/// Delete a customer
+pub async fn delete_customer(
+    pool: &PgPool,
+    user_id: Uuid,
+    customer_id: Uuid,
+) -> Result<bool> {
+    let result = sqlx::query(
+        r#"
+        DELETE FROM customers
+        WHERE id = $1 AND user_id = $2
+        "#
+    )
+    .bind(customer_id)
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() > 0)
 }
