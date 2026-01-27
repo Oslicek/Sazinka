@@ -34,6 +34,7 @@ pub async fn start_handlers(client: Client, pool: PgPool) -> Result<()> {
     let customer_update_sub = client.subscribe("sazinka.customer.update").await?;
     let customer_delete_sub = client.subscribe("sazinka.customer.delete").await?;
     let customer_geocode_sub = client.subscribe("sazinka.customer.geocode").await?;
+    let customer_random_sub = client.subscribe("sazinka.customer.random").await?;
     let route_plan_sub = client.subscribe("sazinka.route.plan").await?;
 
     info!("Subscribed to NATS subjects");
@@ -46,6 +47,7 @@ pub async fn start_handlers(client: Client, pool: PgPool) -> Result<()> {
     let client_customer_update = client.clone();
     let client_customer_delete = client.clone();
     let client_customer_geocode = client.clone();
+    let client_customer_random = client.clone();
     let client_route_plan = client.clone();
     
     let pool_customer_create = pool.clone();
@@ -53,6 +55,7 @@ pub async fn start_handlers(client: Client, pool: PgPool) -> Result<()> {
     let pool_customer_get = pool.clone();
     let pool_customer_update = pool.clone();
     let pool_customer_delete = pool.clone();
+    let pool_customer_random = pool.clone();
     let pool_route_plan = pool.clone();
     
     let geocoder_create = Arc::clone(&geocoder);
@@ -90,6 +93,10 @@ pub async fn start_handlers(client: Client, pool: PgPool) -> Result<()> {
         customer::handle_geocode(client_customer_geocode, customer_geocode_sub, geocoder_geocode).await
     });
 
+    let customer_random_handle = tokio::spawn(async move {
+        customer::handle_random(client_customer_random, customer_random_sub, pool_customer_random).await
+    });
+
     let route_plan_handle = tokio::spawn(async move {
         route::handle_plan(client_route_plan, route_plan_sub, pool_route_plan, routing_plan).await
     });
@@ -118,6 +125,9 @@ pub async fn start_handlers(client: Client, pool: PgPool) -> Result<()> {
         }
         result = customer_geocode_handle => {
             error!("Customer geocode handler finished: {:?}", result);
+        }
+        result = customer_random_handle => {
+            error!("Customer random handler finished: {:?}", result);
         }
         result = route_plan_handle => {
             error!("Route plan handler finished: {:?}", result);

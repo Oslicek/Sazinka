@@ -1,11 +1,43 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
+import { useNatsStore } from '../stores/natsStore';
+import { v4 as uuidv4 } from 'uuid';
+import type { Customer } from '@sazinka/shared-types';
+import type { RoutePlanResponse, PlannedRouteStop } from '@sazinka/shared-types';
 import styles from './Planner.module.css';
+
+// Mock user ID for development
+const USER_ID = '00000000-0000-0000-0000-000000000001';
+
+// Default depot location (Prague center)
+const DEFAULT_DEPOT = { lat: 50.0755, lng: 14.4378 };
+
+interface NatsResponse<T> {
+  success: boolean;
+  requestId: string;
+  payload: T;
+  error?: {
+    code: string;
+    message: string;
+  };
+}
 
 export function Planner() {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
+  const markersRef = useRef<maplibregl.Marker[]>([]);
+  
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [stops, setStops] = useState<PlannedRouteStop[]>([]);
+  const [totalDistance, setTotalDistance] = useState(0);
+  const [totalDuration, setTotalDuration] = useState(0);
+  const [optimizationScore, setOptimizationScore] = useState(0);
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
+  const { request, isConnected } = useNatsStore();
+
+  // Initialize map
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
 
@@ -33,17 +65,191 @@ export function Planner() {
           },
         ],
       },
-      center: [14.4378, 50.0755], // Prague
+      center: [DEFAULT_DEPOT.lng, DEFAULT_DEPOT.lat],
       zoom: 11,
     });
 
     map.current.addControl(new maplibregl.NavigationControl(), 'top-right');
+
+    // Add depot marker
+    new maplibregl.Marker({ color: '#22c55e' })
+      .setLngLat([DEFAULT_DEPOT.lng, DEFAULT_DEPOT.lat])
+      .setPopup(new maplibregl.Popup().setHTML('<strong>Depot</strong><br/>Výchozí místo'))
+      .addTo(map.current);
 
     return () => {
       map.current?.remove();
       map.current = null;
     };
   }, []);
+
+  // Clear markers helper
+  const clearMarkers = useCallback(() => {
+    markersRef.current.forEach(marker => marker.remove());
+    markersRef.current = [];
+    
+    // Also remove route line if exists
+    if (map.current?.getLayer('route-line')) {
+      map.current.removeLayer('route-line');
+    }
+    if (map.current?.getSource('route')) {
+      map.current.removeSource('route');
+    }
+  }, []);
+
+  // Add markers for stops
+  const addStopMarkers = useCallback((plannedStops: PlannedRouteStop[]) => {
+    if (!map.current) return;
+
+    clearMarkers();
+
+    plannedStops.forEach((stop, index) => {
+      const marker = new maplibregl.Marker({ 
+        color: '#3b82f6',
+      })
+        .setLngLat([stop.coordinates.lng, stop.coordinates.lat])
+        .setPopup(
+          new maplibregl.Popup().setHTML(`
+            <strong>${index + 1}. ${stop.customerName}</strong><br/>
+            ${stop.address}<br/>
+            <small>ETA: ${stop.eta} | ETD: ${stop.etd}</small>
+          `)
+        )
+        .addTo(map.current!);
+
+      // Add number label
+      const el = marker.getElement();
+      const label = document.createElement('div');
+      label.className = styles.markerLabel;
+      label.textContent = String(index + 1);
+      el.appendChild(label);
+
+      markersRef.current.push(marker);
+    });
+
+    // Draw route line
+    if (plannedStops.length > 0) {
+      const coordinates: [number, number][] = [
+        [DEFAULT_DEPOT.lng, DEFAULT_DEPOT.lat],
+        ...plannedStops.map(s => [s.coordinates.lng, s.coordinates.lat] as [number, number]),
+        [DEFAULT_DEPOT.lng, DEFAULT_DEPOT.lat], // Return to depot
+      ];
+
+      map.current.addSource('route', {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'LineString',
+            coordinates,
+          },
+        },
+      });
+
+      map.current.addLayer({
+        id: 'route-line',
+        type: 'line',
+        source: 'route',
+        layout: {
+          'line-join': 'round',
+          'line-cap': 'round',
+        },
+        paint: {
+          'line-color': '#3b82f6',
+          'line-width': 3,
+          'line-opacity': 0.7,
+        },
+      });
+
+      // Fit map to show all stops
+      const bounds = new maplibregl.LngLatBounds();
+      coordinates.forEach(coord => bounds.extend(coord));
+      map.current.fitBounds(bounds, { padding: 50 });
+    }
+  }, [clearMarkers]);
+
+  // Plan route with random customers
+  const handlePlanRoute = async () => {
+    if (!isConnected) {
+      setError('Není připojeno k serveru');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Step 1: Get random customers
+      const customersResponse = await request<any, NatsResponse<Customer[]>>(
+        'sazinka.customer.random',
+        {
+          id: uuidv4(),
+          userId: USER_ID,
+          payload: { limit: 10 },
+        },
+        30000
+      );
+
+      if (!customersResponse.success) {
+        throw new Error(customersResponse.error?.message || 'Nepodařilo se načíst zákazníky');
+      }
+
+      const customers = customersResponse.payload;
+      
+      if (customers.length === 0) {
+        setError('Žádní zákazníci s platnými souřadnicemi');
+        setIsLoading(false);
+        return;
+      }
+
+      // Step 2: Plan route
+      const customerIds = customers.map((c: Customer) => c.id);
+      
+      const planResponse = await request<any, NatsResponse<RoutePlanResponse>>(
+        'sazinka.route.plan',
+        {
+          id: uuidv4(),
+          userId: USER_ID,
+          payload: {
+            startLocation: DEFAULT_DEPOT,
+            customerIds,
+            date: selectedDate,
+          },
+        },
+        60000 // 60s timeout for route planning
+      );
+
+      if (!planResponse.success) {
+        throw new Error(planResponse.error?.message || 'Nepodařilo se naplánovat trasu');
+      }
+
+      const result = planResponse.payload;
+      
+      setStops(result.stops);
+      setTotalDistance(result.totalDistanceKm);
+      setTotalDuration(result.totalDurationMinutes);
+      setOptimizationScore(result.optimizationScore);
+
+      // Update map
+      addStopMarkers(result.stops);
+
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Neznámá chyba');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Clear route
+  const handleClearRoute = () => {
+    clearMarkers();
+    setStops([]);
+    setTotalDistance(0);
+    setTotalDuration(0);
+    setOptimizationScore(0);
+    setError(null);
+  };
 
   return (
     <div className={styles.planner}>
@@ -52,30 +258,84 @@ export function Planner() {
         
         <div className={styles.dateSelector}>
           <label>Datum</label>
-          <input type="date" defaultValue={new Date().toISOString().split('T')[0]} />
+          <input 
+            type="date" 
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+          />
         </div>
 
         <div className={styles.stops}>
-          <h3>Zastávky (0)</h3>
-          <p className={styles.empty}>
-            Přidejte revize k naplánování
-          </p>
+          <h3>Zastávky ({stops.length})</h3>
+          {stops.length === 0 ? (
+            <p className={styles.empty}>
+              Klikněte na "Naplánovat trasu" pro výběr 10 náhodných zákazníků
+            </p>
+          ) : (
+            <ul className={styles.stopList}>
+              {stops.map((stop, index) => (
+                <li key={stop.customerId} className={styles.stopItem}>
+                  <span className={styles.stopOrder}>{index + 1}</span>
+                  <div className={styles.stopInfo}>
+                    <strong>{stop.customerName}</strong>
+                    <small>{stop.address}</small>
+                    <small className={styles.stopTime}>
+                      {stop.eta} - {stop.etd}
+                    </small>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
+        {error && (
+          <div className={styles.error}>
+            {error}
+          </div>
+        )}
+
         <div className={styles.actions}>
-          <button className="btn-primary w-full">Optimalizovat trasu</button>
+          <button 
+            className="btn-primary w-full"
+            onClick={handlePlanRoute}
+            disabled={isLoading || !isConnected}
+          >
+            {isLoading ? 'Plánování...' : 'Naplánovat trasu'}
+          </button>
+          {stops.length > 0 && (
+            <button 
+              className="btn-secondary w-full"
+              onClick={handleClearRoute}
+              style={{ marginTop: '0.5rem' }}
+            >
+              Vyčistit
+            </button>
+          )}
         </div>
 
         <div className={styles.stats}>
           <div className={styles.stat}>
             <span className={styles.statLabel}>Celková vzdálenost</span>
-            <span className={styles.statValue}>0 km</span>
+            <span className={styles.statValue}>{totalDistance.toFixed(1)} km</span>
           </div>
           <div className={styles.stat}>
             <span className={styles.statLabel}>Odhadovaný čas</span>
-            <span className={styles.statValue}>0 min</span>
+            <span className={styles.statValue}>{totalDuration} min</span>
           </div>
+          {optimizationScore > 0 && (
+            <div className={styles.stat}>
+              <span className={styles.statLabel}>Skóre optimalizace</span>
+              <span className={styles.statValue}>{optimizationScore}%</span>
+            </div>
+          )}
         </div>
+
+        {!isConnected && (
+          <div className={styles.connectionStatus}>
+            ⚠️ Není připojeno k serveru
+          </div>
+        )}
       </div>
 
       <div className={styles.mapWrapper}>

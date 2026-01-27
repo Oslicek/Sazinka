@@ -211,3 +211,30 @@ pub async fn delete_customer(
 
     Ok(result.rows_affected() > 0)
 }
+
+/// Get random customers with coordinates (for route planning)
+pub async fn get_random_customers_with_coords(
+    pool: &PgPool,
+    user_id: Uuid,
+    limit: i64,
+) -> Result<Vec<Customer>> {
+    let customers = sqlx::query_as::<_, Customer>(
+        r#"
+        SELECT
+            id, user_id, customer_type, name, contact_person, ico, dic,
+            email, phone, phone_raw,
+            street, city, postal_code, country,
+            lat, lng, notes, created_at, updated_at
+        FROM customers
+        WHERE user_id = $1 AND lat IS NOT NULL AND lng IS NOT NULL
+        ORDER BY RANDOM()
+        LIMIT $2
+        "#
+    )
+    .bind(user_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(customers)
+}

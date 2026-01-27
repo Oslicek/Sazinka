@@ -423,6 +423,69 @@ pub struct DeleteResponse {
     pub deleted: bool,
 }
 
+/// Request for random customers
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RandomCustomersRequest {
+    pub limit: i64,
+}
+
+/// Handle customer.random messages - get random customers with coordinates
+pub async fn handle_random(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received customer.random message");
+
+        let reply = match msg.reply {
+            Some(ref reply) => reply.clone(),
+            None => {
+                warn!("Message without reply subject");
+                continue;
+            }
+        };
+
+        // Parse request
+        let request: Request<RandomCustomersRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("Failed to parse request: {}", e);
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Check user_id
+        let user_id = match request.user_id {
+            Some(id) => id,
+            None => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Get random customers
+        match queries::customer::get_random_customers_with_coords(&pool, user_id, request.payload.limit).await {
+            Ok(customers) => {
+                let response = SuccessResponse::new(request.id, customers);
+                let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+                debug!("Got {} random customers with coordinates", response.payload.len());
+            }
+            Err(e) => {
+                error!("Failed to get random customers: {}", e);
+                let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Handle customer.delete messages
 pub async fn handle_delete(
     client: Client,
