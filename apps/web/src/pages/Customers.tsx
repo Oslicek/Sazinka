@@ -96,6 +96,7 @@ export function Customers() {
           onSubmit={handleAddCustomer}
           onCancel={handleCancel}
           isSubmitting={isSubmitting}
+          userId={TEMP_USER_ID}
         />
         {error && <div className={styles.error}>{error}</div>}
       </div>

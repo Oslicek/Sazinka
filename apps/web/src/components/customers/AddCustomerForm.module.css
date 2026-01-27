@@ -96,6 +96,10 @@
   margin-top: 0.25rem;
 }
 
+.mapContainer {
+  margin-top: 1rem;
+}
+
 .actions {
   display: flex;
   justify-content: flex-end;
