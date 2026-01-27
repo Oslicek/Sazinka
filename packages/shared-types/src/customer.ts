@@ -47,3 +47,18 @@ export interface Coordinates {
   lat: number;
   lng: number;
 }
+
+// Geocoding types
+
+export interface GeocodeRequest {
+  street: string;
+  city: string;
+  postalCode: string;
+}
+
+export interface GeocodeResponse {
+  coordinates: Coordinates | null;
+  confidence: number | null;
+  displayName: string | null;
+  geocoded: boolean;
+}

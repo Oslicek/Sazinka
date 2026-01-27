@@ -1,4 +1,4 @@
-import type { CreateCustomerRequest, Customer } from '@shared/customer';
+import type { CreateCustomerRequest, Customer, GeocodeRequest, GeocodeResponse } from '@shared/customer';
 import type { ListRequest, ListResponse, SuccessResponse, ErrorResponse } from '@shared/messages';
 import { createRequest } from '@shared/messages';
 import { useNatsStore } from '../stores/natsStore';
@@ -87,6 +87,31 @@ export async function getCustomer(
 
   const response = await deps.request<typeof request, NatsResponse<Customer>>(
     'sazinka.customer.get',
+    request
+  );
+
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+
+  return response.payload;
+}
+
+/**
+ * Geocode an address to coordinates
+ * 
+ * This does not create a customer - it just returns coordinates for the address.
+ * Useful for showing the location on a map before saving.
+ */
+export async function geocodeAddress(
+  userId: string,
+  address: GeocodeRequest,
+  deps: CustomerServiceDeps = getDefaultDeps()
+): Promise<GeocodeResponse> {
+  const request = createRequest(userId, address);
+
+  const response = await deps.request<typeof request, NatsResponse<GeocodeResponse>>(
+    'sazinka.customer.geocode',
     request
   );
 

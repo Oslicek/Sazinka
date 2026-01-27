@@ -221,6 +221,48 @@ mod tests {
         let geocoder = create_geocoder_from_env_for_test("mock");
         assert_eq!(geocoder.name(), "mock");
     }
+
+    // ==========================================================================
+    // RateLimitedNominatimGeocoder Tests
+    // ==========================================================================
+
+    #[test]
+    fn rate_limited_nominatim_geocoder_has_correct_name() {
+        let geocoder = RateLimitedNominatimGeocoder::new();
+        assert_eq!(geocoder.name(), "nominatim");
+    }
+
+    #[test]
+    fn rate_limited_nominatim_geocoder_can_be_created_with_custom_config() {
+        let geocoder = RateLimitedNominatimGeocoder::with_config(
+            "https://custom.nominatim.org",
+            std::time::Duration::from_millis(2000),
+            5,
+            std::time::Duration::from_secs(600),
+        );
+        assert_eq!(geocoder.name(), "nominatim");
+    }
+
+    #[tokio::test]
+    async fn rate_limited_nominatim_geocoder_rejects_when_circuit_breaker_open() {
+        let geocoder = RateLimitedNominatimGeocoder::with_config(
+            "https://nominatim.openstreetmap.org",
+            std::time::Duration::from_millis(100),
+            1, // Open after 1 failure
+            std::time::Duration::from_secs(300),
+        );
+        
+        // Manually trigger circuit breaker by recording failures
+        geocoder.circuit_breaker.record_failure();
+        
+        // Now it should be open
+        assert!(geocoder.circuit_breaker.is_open());
+        
+        // Request should be rejected
+        let result = geocoder.geocode("Test", "Praha", "11000").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("circuit breaker"));
+    }
 }
 
 // ==========================================================================
@@ -380,6 +422,133 @@ impl CircuitBreaker {
 }
 
 // ==========================================================================
+// RateLimitedNominatimGeocoder Implementation
+// ==========================================================================
+
+use crate::services::nominatim::NominatimClient;
+
+/// Default rate limit interval (1.5 seconds - Nominatim allows 1 req/s)
+const DEFAULT_RATE_LIMIT_MS: u64 = 1500;
+
+/// Default circuit breaker threshold (3 failures)
+const DEFAULT_CIRCUIT_BREAKER_THRESHOLD: u32 = 3;
+
+/// Default circuit breaker recovery time (5 minutes)
+const DEFAULT_CIRCUIT_BREAKER_RECOVERY_SECS: u64 = 300;
+
+/// Rate-limited Nominatim geocoder with circuit breaker protection
+/// 
+/// This geocoder wraps the NominatimClient with:
+/// - Rate limiting: enforces minimum interval between requests
+/// - Circuit breaker: stops requests after repeated failures
+pub struct RateLimitedNominatimGeocoder {
+    client: NominatimClient,
+    rate_limiter: RateLimiter,
+    /// Circuit breaker - pub(crate) for testing
+    pub(crate) circuit_breaker: CircuitBreaker,
+}
+
+impl RateLimitedNominatimGeocoder {
+    /// Create a new rate-limited Nominatim geocoder with default settings
+    pub fn new() -> Self {
+        Self::with_config(
+            "https://nominatim.openstreetmap.org",
+            Duration::from_millis(DEFAULT_RATE_LIMIT_MS),
+            DEFAULT_CIRCUIT_BREAKER_THRESHOLD,
+            Duration::from_secs(DEFAULT_CIRCUIT_BREAKER_RECOVERY_SECS),
+        )
+    }
+    
+    /// Create with custom configuration
+    pub fn with_config(
+        base_url: &str,
+        rate_limit_interval: Duration,
+        circuit_breaker_threshold: u32,
+        circuit_breaker_recovery: Duration,
+    ) -> Self {
+        Self {
+            client: NominatimClient::new(base_url),
+            rate_limiter: RateLimiter::new(rate_limit_interval),
+            circuit_breaker: CircuitBreaker::new(circuit_breaker_threshold, circuit_breaker_recovery),
+        }
+    }
+    
+    /// Create from environment variables
+    pub fn from_env() -> Self {
+        let base_url = std::env::var("NOMINATIM_BASE_URL")
+            .unwrap_or_else(|_| "https://nominatim.openstreetmap.org".to_string());
+        
+        let rate_limit_ms = std::env::var("NOMINATIM_RATE_LIMIT_MS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(DEFAULT_RATE_LIMIT_MS);
+        
+        let cb_threshold = std::env::var("NOMINATIM_CB_THRESHOLD")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(DEFAULT_CIRCUIT_BREAKER_THRESHOLD);
+        
+        let cb_recovery_secs = std::env::var("NOMINATIM_CB_RECOVERY_SECS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(DEFAULT_CIRCUIT_BREAKER_RECOVERY_SECS);
+        
+        Self::with_config(
+            &base_url,
+            Duration::from_millis(rate_limit_ms),
+            cb_threshold,
+            Duration::from_secs(cb_recovery_secs),
+        )
+    }
+}
+
+impl Default for RateLimitedNominatimGeocoder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl Geocoder for RateLimitedNominatimGeocoder {
+    async fn geocode(&self, street: &str, city: &str, postal_code: &str) -> Result<Option<GeocodingResult>> {
+        // Check circuit breaker first
+        if self.circuit_breaker.is_open() {
+            tracing::warn!("Circuit breaker is open, rejecting geocoding request");
+            return Err(anyhow::anyhow!("Geocoding service temporarily unavailable (circuit breaker open)"));
+        }
+        
+        // Wait for rate limiter
+        self.rate_limiter.wait().await;
+        
+        // Make the actual request
+        match self.client.geocode(street, city, postal_code).await {
+            Ok(Some(coords)) => {
+                self.circuit_breaker.record_success();
+                Ok(Some(GeocodingResult {
+                    coordinates: coords,
+                    confidence: 0.8, // Nominatim doesn't provide confidence, use default
+                    display_name: format!("{}, {}, {}, Czech Republic", street, postal_code, city),
+                }))
+            }
+            Ok(None) => {
+                // No result found is not a failure
+                self.circuit_breaker.record_success();
+                Ok(None)
+            }
+            Err(e) => {
+                self.circuit_breaker.record_failure();
+                tracing::error!("Geocoding failed: {}", e);
+                Err(e)
+            }
+        }
+    }
+    
+    fn name(&self) -> &'static str {
+        "nominatim"
+    }
+}
+
+// ==========================================================================
 // Factory function
 // ==========================================================================
 
@@ -393,15 +562,25 @@ fn create_geocoder_from_env_for_test(backend: &str) -> Box<dyn Geocoder> {
 }
 
 /// Create geocoder based on GEOCODER_BACKEND environment variable
+/// 
+/// # Environment Variables
+/// 
+/// - `GEOCODER_BACKEND`: "mock" or "nominatim" (default: "mock")
+/// - `NOMINATIM_BASE_URL`: Nominatim API URL (default: public OSM)
+/// - `NOMINATIM_RATE_LIMIT_MS`: Minimum interval between requests (default: 1500)
+/// - `NOMINATIM_CB_THRESHOLD`: Circuit breaker failure threshold (default: 3)
+/// - `NOMINATIM_CB_RECOVERY_SECS`: Circuit breaker recovery time (default: 300)
 pub fn create_geocoder() -> Box<dyn Geocoder> {
     let backend = std::env::var("GEOCODER_BACKEND").unwrap_or_else(|_| "mock".to_string());
     
     match backend.as_str() {
-        "mock" => Box::new(MockGeocoder::new()),
-        "nominatim" => {
-            // Will be implemented next - RateLimitedNominatimGeocoder
-            tracing::warn!("Nominatim geocoder not yet implemented, falling back to mock");
+        "mock" => {
+            tracing::info!("Using MockGeocoder");
             Box::new(MockGeocoder::new())
+        }
+        "nominatim" => {
+            tracing::info!("Using RateLimitedNominatimGeocoder");
+            Box::new(RateLimitedNominatimGeocoder::from_env())
         }
         _ => {
             tracing::warn!("Unknown GEOCODER_BACKEND '{}', using mock", backend);
