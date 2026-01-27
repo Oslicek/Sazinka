@@ -68,3 +68,62 @@ export interface RouteWarning {
   warningType: string;
   message: string;
 }
+
+// Route planning types
+
+export interface Coordinates {
+  lat: number;
+  lng: number;
+}
+
+export interface WorkingHours {
+  start: string; // HH:MM format
+  end: string;   // HH:MM format
+}
+
+export interface RoutePlanRequest {
+  /** Starting location (technician's home/office) */
+  startLocation: Coordinates;
+  /** Customer IDs to visit */
+  customerIds: string[];
+  /** Date for the route (YYYY-MM-DD) */
+  date: string;
+  /** Working hours (optional, defaults to 08:00-17:00) */
+  workingHours?: WorkingHours;
+}
+
+export interface RoutePlanResponse {
+  /** Planned stops in optimal order */
+  stops: PlannedRouteStop[];
+  /** Total distance in kilometers */
+  totalDistanceKm: number;
+  /** Total duration in minutes */
+  totalDurationMinutes: number;
+  /** Optimization score (0-100) */
+  optimizationScore: number;
+  /** Warnings about the route */
+  warnings: RouteWarning[];
+  /** Customer IDs that couldn't be scheduled */
+  unassigned: string[];
+}
+
+export interface PlannedRouteStop {
+  /** Customer ID */
+  customerId: string;
+  /** Customer name */
+  customerName: string;
+  /** Address */
+  address: string;
+  /** Coordinates */
+  coordinates: Coordinates;
+  /** Order in route (1-based) */
+  order: number;
+  /** Estimated time of arrival (HH:MM) */
+  eta: string;
+  /** Estimated time of departure (HH:MM) */
+  etd: string;
+  /** Service duration in minutes */
+  serviceDurationMinutes: number;
+  /** Time window constraint (if any) */
+  timeWindow?: TimeWindow;
+}

@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-01-27 (v0.6.0)
+> **Last Updated:** 2026-01-27 (v0.7.0)
 
 ## Overview
 
@@ -36,6 +36,8 @@
 | Database | PostgreSQL | Data persistence |
 | ORM | SQLx | Compile-time checked queries |
 | Geocoding | Nominatim API | Address → coordinates (public API for MVP) |
+| Routing Engine | Valhalla | Distance/time matrices (self-hosted) |
+| VRP Solver | vrp crate | VRPTW optimization (pure Rust) |
 | **Infrastructure** | | |
 | Frontend Hosting | Cloudflare Pages | Static site hosting |
 | Backend Hosting | VPS (Hetzner) | NATS + Rust worker |
@@ -89,9 +91,9 @@
 │                                 └──────────────────┘                        │
 │                                                                              │
 │   ┌──────────────────┐         ┌──────────────────┐                        │
-│   │ OSRM (future)    │         │ Nominatim        │                        │
+│   │ Valhalla         │         │ Nominatim        │                        │
 │   │ Routing engine   │         │ (future, self-   │                        │
-│   │                  │         │  hosted)         │                        │
+│   │ :8002            │         │  hosted)         │                        │
 │   └──────────────────┘         └──────────────────┘                        │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -514,6 +516,199 @@ NOMINATIM_RATE_LIMIT_MS=1500
 2. **Phase 2:** Consider HERE API free tier (250k requests/month) for better accuracy
 3. **Phase 3:** Self-hosted Photon for Czech Republic if scale requires
 
+## Route Optimization Architecture
+
+> **Status:** Implementation (v0.7.0)
+
+The route optimization system uses a two-component architecture for maximum performance and accuracy:
+
+1. **Valhalla** - Open source routing engine for real road distances and travel times
+2. **vrp crate** - Pure Rust VRPTW solver (inspired by Google OR-Tools)
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              FRONTEND                                        │
+│  React + MapLibre GL JS                                                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│   ┌─────────────────┐                                                       │
+│   │ Planner Page    │  1. Select customers for day                          │
+│   │                 │  2. Set parameters (start, time, windows)             │
+│   │                 │  3. Display optimized route                           │
+│   └────────┬────────┘                                                       │
+│            │ sazinka.route.plan                                             │
+└────────────│────────────────────────────────────────────────────────────────┘
+             │
+             ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           RUST WORKER                                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   ┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐    │
+│   │ Route Handler   │─────▶│ RoutingService  │─────▶│ VrpSolver       │    │
+│   │                 │      │ (Valhalla HTTP) │      │ (vrp crate)     │    │
+│   └─────────────────┘      └────────┬────────┘      └─────────────────┘    │
+│                                     │                                       │
+│                                     │ HTTP                                  │
+│                                     ▼                                       │
+│                            ┌────────────────┐                               │
+│                            │ Valhalla       │                               │
+│                            │ :8002          │                               │
+│                            └────────────────┘                               │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Component Responsibilities
+
+| Component | Responsibility |
+|-----------|----------------|
+| **Valhalla** | Calculate real road distances and travel times between all points (distance/time matrix) |
+| **vrp crate** | Solve VRPTW problem using metaheuristics (guided local search) |
+| **RoutingService** | HTTP client for Valhalla API |
+| **VrpSolver** | Wrapper around vrp crate with our domain types |
+
+### Data Flow
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                        Route Planning Request                             │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                           │
+│  INPUT:                                                                   │
+│  {                                                                        │
+│    "startLocation": { "lat": 50.08, "lng": 14.42 },  // Technician home  │
+│    "customerIds": ["uuid1", "uuid2", ...],           // Max 10-15        │
+│    "date": "2026-01-28",                                                 │
+│    "workingHours": { "start": "08:00", "end": "17:00" }                  │
+│  }                                                                        │
+│                                                                           │
+├──────────────────────────────────────────────────────────────────────────┤
+│  STEP 1: Load customers from DB                                          │
+│  → Get coordinates, time windows, service durations                      │
+│  → Build points array: [depot, customer1, customer2, ...]                │
+│                                                                           │
+├──────────────────────────────────────────────────────────────────────────┤
+│  STEP 2: Valhalla - Get matrices                                         │
+│  POST http://valhalla:8002/sources_to_targets                            │
+│  → distance_matrix[N×N] (meters)                                         │
+│  → time_matrix[N×N] (seconds)                                            │
+│                                                                           │
+├──────────────────────────────────────────────────────────────────────────┤
+│  STEP 3: VRP Solver - Optimize                                           │
+│  vrp crate with guided local search                                      │
+│  → route_order: [3, 1, 4, 2, 0]  // optimal order                        │
+│  → arrival_times: [08:45, 10:15, ...]                                    │
+│  → total_distance: 45.2 km                                               │
+│  → total_duration: 8h                                                    │
+│                                                                           │
+├──────────────────────────────────────────────────────────────────────────┤
+│  STEP 4: Valhalla - Get route geometry (optional)                        │
+│  POST http://valhalla:8002/route                                         │
+│  → GeoJSON LineString for map display                                    │
+│                                                                           │
+├──────────────────────────────────────────────────────────────────────────┤
+│  OUTPUT:                                                                  │
+│  {                                                                        │
+│    "stops": [                                                            │
+│      { "customerId": "uuid3", "order": 1, "eta": "08:45", ... },         │
+│      { "customerId": "uuid1", "order": 2, "eta": "10:15", ... },         │
+│      ...                                                                  │
+│    ],                                                                     │
+│    "totalDistanceKm": 45.2,                                              │
+│    "totalDurationMinutes": 480,                                          │
+│    "geometry": { "type": "LineString", "coordinates": [...] },           │
+│    "optimizationScore": 95,                                              │
+│    "warnings": []                                                         │
+│  }                                                                        │
+│                                                                           │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+### Valhalla Configuration
+
+Self-hosted Valhalla with Czech Republic map data:
+
+```yaml
+# infra/docker-compose.yml
+services:
+  valhalla:
+    image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+    ports:
+      - "8002:8002"
+    environment:
+      - tile_urls=https://download.geofabrik.de/europe/czech-republic-latest.osm.pbf
+      - serve_tiles=True
+      - build_elevation=False
+    deploy:
+      resources:
+        limits:
+          memory: 10G  # ~8GB needed for CZ tiles
+```
+
+**API Endpoints Used:**
+- `POST /sources_to_targets` - Distance/time matrix calculation
+- `POST /route` - Detailed route geometry for map display
+
+### VRP Solver (vrp crate)
+
+Pure Rust implementation inspired by Google OR-Tools:
+
+```toml
+# worker/Cargo.toml
+[dependencies]
+vrp-pragmatic = "1.23"   # High-level JSON API
+vrp-core = "1.23"        # Core solver algorithms
+```
+
+**Features:**
+- VRPTW (Vehicle Routing Problem with Time Windows)
+- Guided local search metaheuristic
+- Hard and soft time window constraints
+- Service duration per stop
+- Single vehicle (tradesperson) model
+
+**Performance:**
+- 10 stops: ~50ms solve time
+- 50 stops: ~500ms solve time
+- Memory: ~10MB per request
+
+### Fallback Strategy
+
+If Valhalla is unavailable, the system falls back to Haversine distance estimation:
+
+```rust
+// Fallback: Haversine × 1.3 coefficient for road distance
+let road_distance = haversine_distance(a, b) * 1.3;
+let travel_time_minutes = road_distance / 40.0 * 60.0;  // 40 km/h average
+```
+
+### Module Structure
+
+```
+worker/src/services/
+├── routing/
+│   ├── mod.rs              # RoutingService (Valhalla client)
+│   ├── valhalla.rs         # Valhalla API types and client
+│   └── mock.rs             # Mock routing for tests
+├── vrp/
+│   ├── mod.rs              # VrpSolver wrapper
+│   ├── problem.rs          # Problem builder (our types → vrp-pragmatic)
+│   ├── solution.rs         # Solution parser (vrp-pragmatic → our types)
+│   └── config.rs           # Solver configuration
+└── geo.rs                  # Haversine (fallback)
+```
+
+### Testing Strategy
+
+| Component | Test Approach |
+|-----------|---------------|
+| RoutingService | Mock HTTP responses, integration tests with real Valhalla |
+| VrpSolver | Unit tests with known optimal solutions |
+| Problem builder | Snapshot tests for JSON generation |
+| Route handler | End-to-end tests with mock services |
+
 ## Current State
 
 **Phase:** Core Development
@@ -549,16 +744,17 @@ NOMINATIM_RATE_LIMIT_MS=1500
 - [x] **Customer list navigation** (clickable cards linking to detail pages)
 - [x] **TanStack Router setup** for customer detail routes (`/customers/:customerId`)
 - [x] **Test coverage** for Customers page (9 tests) and CustomerDetail page (15 tests)
+- [x] **Customer type support** (person/company with IČO, DIČ, contact person)
+- [x] **Customer edit/delete** with confirmation dialog
+- [x] **CSV import** with TDD (80 tests) - parsing, normalization, phone E.164, batch processing
 
 **In Progress:**
-- [ ] Full CRUD for all entities (edit/delete customer)
-- [ ] Frontend-backend integration testing
+- [ ] Route optimization with Valhalla + vrp crate
 - [ ] Device management UI
 
 **Pending:**
 - [ ] Device handlers
 - [ ] Revision handlers  
-- [ ] Route handlers
 - [ ] Email notifications
 - [ ] User authentication
 
@@ -669,10 +865,10 @@ cargo test
 
 ## Future Enhancements
 
-- [ ] Self-hosted OSRM for accurate routing
 - [ ] Self-hosted Nominatim for geocoding
 - [ ] Email notifications with Resend
 - [ ] Mobile-responsive design
 - [ ] Offline support (Service Worker)
 - [ ] Invoicing with ISDOC export
 - [ ] Multi-user teams
+- [ ] Route history and analytics

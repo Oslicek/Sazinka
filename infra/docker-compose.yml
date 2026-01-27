@@ -37,5 +37,34 @@ services:
       retries: 3
     restart: unless-stopped
 
+  # Valhalla routing engine for distance/time matrix calculations
+  # First run will download and build Czech Republic map tiles (~8 GB RAM needed)
+  valhalla:
+    image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+    container_name: sazinka-valhalla
+    ports:
+      - "8002:8002"
+    volumes:
+      - valhalla_tiles:/custom_files
+    environment:
+      # Download Czech Republic OSM data on first run
+      - tile_urls=https://download.geofabrik.de/europe/czech-republic-latest.osm.pbf
+      - serve_tiles=True
+      - build_elevation=False
+      - build_admins=False
+      - build_time_zones=False
+    deploy:
+      resources:
+        limits:
+          memory: 10G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 300s  # First build can take 5+ minutes
+    restart: unless-stopped
+
 volumes:
   postgres_data:
+  valhalla_tiles:
