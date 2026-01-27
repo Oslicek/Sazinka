@@ -1,0 +1,315 @@
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: var(--card-bg, #fff);
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  max-width: 600px;
+  width: 90%;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border-color, #e5e5e5);
+}
+
+.header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary, #1a1a1a);
+}
+
+.closeButton {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.closeButton:hover {
+  color: var(--text-primary, #1a1a1a);
+}
+
+.content {
+  flex: 1;
+  padding: 1.5rem;
+  overflow-y: auto;
+}
+
+.footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border-color, #e5e5e5);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+/* Drop Zone */
+.dropZone {
+  border: 2px dashed var(--border-color, #d1d5db);
+  border-radius: 12px;
+  padding: 3rem 2rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: var(--hover-bg, #f9fafb);
+}
+
+.dropZone:hover,
+.dropZone.dragOver {
+  border-color: var(--primary-color, #2563eb);
+  background: rgba(37, 99, 235, 0.05);
+}
+
+.dropIcon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.dropText {
+  font-size: 1.125rem;
+  font-weight: 500;
+  color: var(--text-primary, #1a1a1a);
+  margin: 0 0 0.5rem 0;
+}
+
+.dropHint {
+  font-size: 0.875rem;
+  color: var(--text-secondary, #666);
+  margin: 0;
+}
+
+.fileInput {
+  display: none;
+}
+
+/* Processing */
+.processing {
+  text-align: center;
+  padding: 2rem;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid var(--border-color, #e5e5e5);
+  border-top-color: var(--primary-color, #2563eb);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 1.5rem;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.processingText {
+  font-size: 1.125rem;
+  font-weight: 500;
+  color: var(--text-primary, #1a1a1a);
+  margin: 0 0 1.5rem 0;
+}
+
+.progressBar {
+  height: 8px;
+  background: var(--border-color, #e5e5e5);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 0.75rem;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--primary-color, #2563eb);
+  transition: width 0.3s ease;
+}
+
+.progressText {
+  font-size: 0.875rem;
+  color: var(--text-secondary, #666);
+  margin: 0;
+}
+
+/* Error */
+.error {
+  text-align: center;
+  padding: 2rem;
+}
+
+.errorIcon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.errorText {
+  font-size: 1rem;
+  color: var(--error-color, #dc2626);
+  margin: 0 0 1.5rem 0;
+}
+
+.retryButton {
+  padding: 0.625rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #fff;
+  background: var(--primary-color, #2563eb);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.retryButton:hover {
+  background: var(--primary-color-hover, #1d4ed8);
+}
+
+/* Complete */
+.complete {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 1rem;
+  padding: 1rem;
+  background: var(--hover-bg, #f9fafb);
+  border-radius: 8px;
+}
+
+.summaryItem {
+  text-align: center;
+}
+
+.summaryLabel {
+  display: block;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary, #666);
+  margin-bottom: 0.25rem;
+}
+
+.summaryValue {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-primary, #1a1a1a);
+}
+
+.summaryValue.success {
+  color: var(--success-color, #16a34a);
+}
+
+.summaryValue.warning {
+  color: var(--warning-color, #ca8a04);
+}
+
+.reportSection h3 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary, #666);
+  margin: 0 0 0.75rem 0;
+}
+
+.reportText {
+  background: var(--hover-bg, #f9fafb);
+  border: 1px solid var(--border-color, #e5e5e5);
+  border-radius: 6px;
+  padding: 1rem;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  max-height: 300px;
+  overflow-y: auto;
+  margin: 0;
+  white-space: pre;
+}
+
+.reportActions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.copyButton,
+.saveButton {
+  flex: 1;
+  padding: 0.625rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.copyButton {
+  color: var(--text-primary, #1a1a1a);
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #d1d5db);
+}
+
+.copyButton:hover {
+  background: var(--hover-bg, #f9fafb);
+}
+
+.saveButton {
+  color: #fff;
+  background: var(--primary-color, #2563eb);
+  border: none;
+}
+
+.saveButton:hover {
+  background: var(--primary-color-hover, #1d4ed8);
+}
+
+.doneButton {
+  padding: 0.625rem 1.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #fff;
+  background: var(--primary-color, #2563eb);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.doneButton:hover {
+  background: var(--primary-color-hover, #1d4ed8);
+}
+
+.helpLink {
+  font-size: 0.875rem;
+  color: var(--text-secondary, #666);
+  text-decoration: none;
+}
+
+.helpLink:hover {
+  color: var(--primary-color, #2563eb);
+  text-decoration: underline;
+}

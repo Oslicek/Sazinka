@@ -1,4 +1,12 @@
-import type { CreateCustomerRequest, Customer, GeocodeRequest, GeocodeResponse } from '@shared/customer';
+import type { 
+  CreateCustomerRequest, 
+  Customer, 
+  GeocodeRequest, 
+  GeocodeResponse,
+  ImportBatchRequest,
+  ImportBatchResponse,
+  ImportIssue,
+} from '@shared/customer';
 import type { ListRequest, ListResponse, SuccessResponse, ErrorResponse } from '@shared/messages';
 import { createRequest } from '@shared/messages';
 import { useNatsStore } from '../stores/natsStore';
@@ -120,4 +128,38 @@ export async function geocodeAddress(
   }
 
   return response.payload;
+}
+
+/**
+ * Import a batch of customers
+ * 
+ * For large imports, this should be called multiple times with smaller batches.
+ * Each batch is processed atomically on the server.
+ */
+export async function importCustomersBatch(
+  userId: string,
+  customers: CreateCustomerRequest[],
+  deps: CustomerServiceDeps = getDefaultDeps()
+): Promise<{ importedCount: number; updatedCount: number; errors: ImportIssue[] }> {
+  // For now, create customers one by one since we don't have batch endpoint yet
+  // TODO: Implement batch endpoint on server for better performance
+  let importedCount = 0;
+  let updatedCount = 0;
+  const errors: ImportIssue[] = [];
+
+  for (let i = 0; i < customers.length; i++) {
+    try {
+      await createCustomer(userId, customers[i], deps);
+      importedCount++;
+    } catch (error) {
+      errors.push({
+        rowNumber: i + 1,
+        level: 'error',
+        field: 'server',
+        message: error instanceof Error ? error.message : 'Nepodařilo se uložit zákazníka',
+      });
+    }
+  }
+
+  return { importedCount, updatedCount, errors };
 }

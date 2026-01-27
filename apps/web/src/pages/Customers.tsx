@@ -1,8 +1,9 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useSearch, Link } from '@tanstack/react-router';
-import type { Customer, CreateCustomerRequest } from '@shared/customer';
-import { createCustomer, listCustomers } from '../services/customerService';
+import type { Customer, CreateCustomerRequest, ImportIssue } from '@shared/customer';
+import { createCustomer, listCustomers, importCustomersBatch } from '../services/customerService';
 import { AddCustomerForm } from '../components/customers/AddCustomerForm';
+import { ImportCustomersModal } from '../components/customers/ImportCustomersModal';
 import { useNatsStore } from '../stores/natsStore';
 import styles from './Customers.module.css';
 
@@ -13,6 +14,7 @@ export function Customers() {
   const searchParams = useSearch({ strict: false }) as { action?: string };
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(searchParams?.action === 'new');
+  const [showImport, setShowImport] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -76,6 +78,26 @@ export function Customers() {
     setShowForm(true);
   }, []);
 
+  const handleShowImport = useCallback(() => {
+    setError(null);
+    setShowImport(true);
+  }, []);
+
+  const handleCloseImport = useCallback(() => {
+    setShowImport(false);
+    // Reload customers after import
+    loadCustomers();
+  }, [loadCustomers]);
+
+  const handleImportBatch = useCallback(async (batch: CreateCustomerRequest[]) => {
+    if (!isConnected) {
+      throw new Error('Není připojení k serveru');
+    }
+    
+    const result = await importCustomersBatch(TEMP_USER_ID, batch);
+    return result;
+  }, [isConnected]);
+
   // Filter customers by search
   const filteredCustomers = customers.filter((customer) => {
     if (!search) return true;
@@ -119,10 +141,21 @@ export function Customers() {
     <div className={styles.customers}>
       <div className={styles.header}>
         <h1>Zákazníci</h1>
-        <button className="btn-primary" onClick={handleShowForm}>
-          + Nový zákazník
-        </button>
+        <div className={styles.headerActions}>
+          <button className={styles.importButton} onClick={handleShowImport}>
+            📥 Import CSV
+          </button>
+          <button className="btn-primary" onClick={handleShowForm}>
+            + Nový zákazník
+          </button>
+        </div>
       </div>
+
+      <ImportCustomersModal
+        isOpen={showImport}
+        onClose={handleCloseImport}
+        onImportBatch={handleImportBatch}
+      />
 
       <div className={styles.toolbar}>
         <input
