@@ -654,6 +654,10 @@ cargo test
 - TypeScript utilities: 100%
 - React components: Critical paths
 
+## Related Documentation
+
+- [CSV Import Format](./IMPORT_FORMAT.MD) – Specifikace importu zákazníků z CSV
+
 ## Notes
 
 - Development on Windows 11

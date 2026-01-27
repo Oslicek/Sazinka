@@ -4,7 +4,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 use anyhow::Result;
 
-use crate::types::customer::{Customer, CreateCustomerRequest};
+use crate::types::customer::{Customer, CreateCustomerRequest, CustomerType};
 
 /// Create a new customer
 pub async fn create_customer(
@@ -12,29 +12,39 @@ pub async fn create_customer(
     user_id: Uuid,
     req: &CreateCustomerRequest,
 ) -> Result<Customer> {
+    let customer_type = req.customer_type.unwrap_or(CustomerType::Person);
+    
     let customer = sqlx::query_as::<_, Customer>(
         r#"
         INSERT INTO customers (
-            id, user_id, name, email, phone,
+            id, user_id, customer_type, name, contact_person, ico, dic,
+            email, phone, phone_raw,
             street, city, postal_code, country,
             lat, lng, notes, created_at, updated_at
         )
         VALUES (
-            $1, $2, $3, $4, $5,
-            $6, $7, $8, $9,
-            $10, $11, $12, NOW(), NOW()
+            $1, $2, $3, $4, $5, $6, $7,
+            $8, $9, $10,
+            $11, $12, $13, $14,
+            $15, $16, $17, NOW(), NOW()
         )
         RETURNING
-            id, user_id, name, email, phone,
+            id, user_id, customer_type, name, contact_person, ico, dic,
+            email, phone, phone_raw,
             street, city, postal_code, country,
             lat, lng, notes, created_at, updated_at
         "#
     )
     .bind(Uuid::new_v4())
     .bind(user_id)
+    .bind(customer_type)
     .bind(&req.name)
+    .bind(&req.contact_person)
+    .bind(&req.ico)
+    .bind(&req.dic)
     .bind(&req.email)
     .bind(&req.phone)
+    .bind(&req.phone_raw)
     .bind(&req.street)
     .bind(&req.city)
     .bind(&req.postal_code)
@@ -57,7 +67,8 @@ pub async fn get_customer(
     let customer = sqlx::query_as::<_, Customer>(
         r#"
         SELECT
-            id, user_id, name, email, phone,
+            id, user_id, customer_type, name, contact_person, ico, dic,
+            email, phone, phone_raw,
             street, city, postal_code, country,
             lat, lng, notes, created_at, updated_at
         FROM customers
@@ -82,7 +93,8 @@ pub async fn list_customers(
     let customers = sqlx::query_as::<_, Customer>(
         r#"
         SELECT
-            id, user_id, name, email, phone,
+            id, user_id, customer_type, name, contact_person, ico, dic,
+            email, phone, phone_raw,
             street, city, postal_code, country,
             lat, lng, notes, created_at, updated_at
         FROM customers

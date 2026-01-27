@@ -2,8 +2,23 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::FromRow;
+use sqlx::{FromRow, Type};
 use uuid::Uuid;
+
+/// Customer type enum
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[sqlx(type_name = "customer_type", rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
+pub enum CustomerType {
+    Person,
+    Company,
+}
+
+impl Default for CustomerType {
+    fn default() -> Self {
+        CustomerType::Person
+    }
+}
 
 /// Customer entity
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -11,9 +26,16 @@ use uuid::Uuid;
 pub struct Customer {
     pub id: Uuid,
     pub user_id: Uuid,
+    #[sqlx(rename = "customer_type")]
+    #[serde(rename = "type")]
+    pub customer_type: CustomerType,
     pub name: String,
+    pub contact_person: Option<String>,
+    pub ico: Option<String>,
+    pub dic: Option<String>,
     pub email: Option<String>,
     pub phone: Option<String>,
+    pub phone_raw: Option<String>,
     
     // Address
     pub street: String,
@@ -34,9 +56,15 @@ pub struct Customer {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateCustomerRequest {
+    #[serde(rename = "type")]
+    pub customer_type: Option<CustomerType>,
     pub name: String,
+    pub contact_person: Option<String>,
+    pub ico: Option<String>,
+    pub dic: Option<String>,
     pub email: Option<String>,
     pub phone: Option<String>,
+    pub phone_raw: Option<String>,
     pub street: String,
     pub city: String,
     pub postal_code: String,
@@ -51,12 +79,19 @@ pub struct CreateCustomerRequest {
 #[serde(rename_all = "camelCase")]
 pub struct UpdateCustomerRequest {
     pub id: Uuid,
+    #[serde(rename = "type")]
+    pub customer_type: Option<CustomerType>,
     pub name: Option<String>,
+    pub contact_person: Option<String>,
+    pub ico: Option<String>,
+    pub dic: Option<String>,
     pub email: Option<String>,
     pub phone: Option<String>,
+    pub phone_raw: Option<String>,
     pub street: Option<String>,
     pub city: Option<String>,
     pub postal_code: Option<String>,
+    pub country: Option<String>,
     pub lat: Option<f64>,
     pub lng: Option<f64>,
     pub notes: Option<String>,
