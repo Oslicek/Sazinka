@@ -7,6 +7,7 @@ import {
 import { Layout } from '@/components/Layout';
 import { Dashboard } from '@/pages/Dashboard';
 import { Customers } from '@/pages/Customers';
+import { CustomerDetail } from '@/pages/CustomerDetail';
 import { Calendar } from '@/pages/Calendar';
 import { Planner } from '@/pages/Planner';
 
@@ -33,6 +34,13 @@ const customersRoute = createRoute({
   component: Customers,
 });
 
+// Customer detail
+const customerDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/customers/$customerId',
+  component: CustomerDetail,
+});
+
 // Calendar
 const calendarRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -51,6 +59,7 @@ const plannerRoute = createRoute({
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   customersRoute,
+  customerDetailRoute,
   calendarRoute,
   plannerRoute,
 ]);

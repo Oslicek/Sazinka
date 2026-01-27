@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-01-26 (v0.5.0)
+> **Last Updated:** 2026-01-27 (v0.6.0)
 
 ## Overview
 
@@ -543,12 +543,17 @@ NOMINATIM_RATE_LIMIT_MS=1500
 - [x] **camelCase serialization** between frontend (TypeScript) and backend (Rust)
 - [x] Vitest test configuration with jsdom and testing-library
 - [x] **Geocoding abstraction layer** with safety features (MockGeocoder, RateLimiter, CircuitBreaker)
+- [x] **AddressMap component** (MapLibre GL JS map with marker display)
+- [x] **Geocoding in AddCustomerForm** (debounced real-time geocoding preview with map)
+- [x] **CustomerDetail page** with address, contact, notes, metadata, and map sections
+- [x] **Customer list navigation** (clickable cards linking to detail pages)
+- [x] **TanStack Router setup** for customer detail routes (`/customers/:customerId`)
+- [x] **Test coverage** for Customers page (9 tests) and CustomerDetail page (15 tests)
 
 **In Progress:**
-- [ ] Full CRUD for all entities
+- [ ] Full CRUD for all entities (edit/delete customer)
 - [ ] Frontend-backend integration testing
-- [ ] Map component integration
-- [ ] Geocoding integration into customer create flow
+- [ ] Device management UI
 
 **Pending:**
 - [ ] Device handlers

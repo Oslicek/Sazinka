@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { useSearch } from '@tanstack/react-router';
+import { useSearch, Link } from '@tanstack/react-router';
 import type { Customer, CreateCustomerRequest } from '@shared/customer';
 import { createCustomer, listCustomers } from '../services/customerService';
 import { AddCustomerForm } from '../components/customers/AddCustomerForm';
@@ -89,6 +89,18 @@ export function Customers() {
     );
   });
 
+  // Show connection error
+  if (!isConnected) {
+    return (
+      <div className={styles.customers}>
+        <div className={styles.header}>
+          <h1>Zákazníci</h1>
+        </div>
+        <div className={styles.error}>Není připojení k serveru</div>
+      </div>
+    );
+  }
+
   if (showForm) {
     return (
       <div className={styles.customers}>
@@ -151,7 +163,11 @@ export function Customers() {
       ) : (
         <div className={styles.list}>
           {filteredCustomers.map((customer) => (
-            <div key={customer.id} className={styles.customerCard}>
+            <Link
+              key={customer.id}
+              to={`/customers/${customer.id}`}
+              className={styles.customerCard}
+            >
               <div className={styles.customerInfo}>
                 <h3 className={styles.customerName}>{customer.name}</h3>
                 <p className={styles.customerAddress}>
@@ -165,7 +181,7 @@ export function Customers() {
                   </p>
                 )}
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       )}
