@@ -1,6 +1,7 @@
 //! VRP (Vehicle Routing Problem) solver
 //!
-//! Wraps the vrp-pragmatic crate for VRPTW optimization.
+//! Uses nearest neighbor heuristic for fast, simple optimization.
+//! Can be upgraded to vrp-pragmatic for better results later.
 
 mod problem;
 mod solution;
@@ -11,11 +12,12 @@ pub use solution::{RouteSolution, PlannedStop, RouteWarning};
 pub use config::SolverConfig;
 
 use anyhow::Result;
-use tracing::{debug, info, warn};
+use chrono::NaiveTime;
+use tracing::{debug, info};
 
 use crate::services::routing::DistanceTimeMatrices;
 
-/// VRP Solver using vrp-pragmatic crate
+/// VRP Solver using nearest neighbor heuristic
 pub struct VrpSolver {
     config: SolverConfig,
 }
@@ -25,7 +27,7 @@ impl VrpSolver {
         Self { config }
     }
 
-    /// Solve VRPTW problem
+    /// Solve VRP problem using nearest neighbor heuristic
     pub fn solve(
         &self,
         problem: &VrpProblem,
@@ -37,21 +39,15 @@ impl VrpSolver {
         }
 
         info!(
-            "Solving VRP with {} stops, max_time={}s",
+            "Solving VRP with {} stops using nearest neighbor",
             problem.stops.len(),
-            self.config.max_time_seconds
         );
 
-        // Build vrp-pragmatic problem JSON
-        let pragmatic_problem = problem.to_pragmatic_json(matrices)?;
+        // Use nearest neighbor heuristic
+        let ordered_indices = self.nearest_neighbor(matrices);
         
-        debug!("Built pragmatic problem JSON");
-
-        // Use vrp-pragmatic to solve
-        let solution_json = self.solve_with_vrp_pragmatic(&pragmatic_problem)?;
-
-        // Parse solution back to our format
-        let solution = RouteSolution::from_pragmatic_json(&solution_json, problem)?;
+        // Build solution from ordered indices
+        let solution = self.build_solution(problem, matrices, &ordered_indices);
 
         info!(
             "VRP solved: {} stops, {:.1} km, score={}",
@@ -63,41 +59,134 @@ impl VrpSolver {
         Ok(solution)
     }
 
-    fn solve_with_vrp_pragmatic(&self, problem_json: &serde_json::Value) -> Result<serde_json::Value> {
-        use vrp_pragmatic::format::problem::Problem;
-        use vrp_pragmatic::format::solution::Solution;
-        use vrp_pragmatic::core::prelude::*;
-        use vrp_pragmatic::core::solver::Builder;
-        use std::sync::Arc;
-        use std::io::BufReader;
+    /// Nearest neighbor heuristic
+    /// Returns indices of stops in visit order (0 = depot, 1..n = stops)
+    fn nearest_neighbor(&self, matrices: &DistanceTimeMatrices) -> Vec<usize> {
+        let n = matrices.size;
+        if n <= 1 {
+            return vec![];
+        }
 
-        // Serialize problem to string for parsing
-        let problem_str = serde_json::to_string(problem_json)?;
+        let mut visited = vec![false; n];
+        let mut route = Vec::with_capacity(n - 1);
         
-        // Parse problem
-        let problem = Problem::read_pragmatic(
-            &mut BufReader::new(problem_str.as_bytes()),
-            None
-        ).map_err(|e| anyhow::anyhow!("Failed to parse VRP problem: {:?}", e))?;
+        // Start from depot (index 0)
+        visited[0] = true;
+        let mut current = 0;
 
-        let problem = Arc::new(problem);
+        // Visit all stops (indices 1..n)
+        for _ in 1..n {
+            let mut best_next = None;
+            let mut best_distance = u64::MAX;
 
-        // Build and configure solver
-        let (solution, _, _) = Builder::new(problem.clone())
-            .with_max_time(Some(self.config.max_time_seconds as u64))
-            .with_max_generations(Some(self.config.max_generations))
-            .build()?
-            .solve()?;
+            for j in 1..n {
+                if !visited[j] {
+                    let dist = matrices.distance(current, j);
+                    if dist < best_distance {
+                        best_distance = dist;
+                        best_next = Some(j);
+                    }
+                }
+            }
 
-        // Serialize solution to JSON
-        let solution_json = Solution::write_pragmatic_json(&problem, &solution)
-            .map_err(|e| anyhow::anyhow!("Failed to serialize VRP solution: {:?}", e))?;
+            if let Some(next) = best_next {
+                visited[next] = true;
+                route.push(next);
+                current = next;
+            }
+        }
 
-        // Parse the JSON string back to Value
-        let solution_value: serde_json::Value = serde_json::from_str(&solution_json)?;
-
-        Ok(solution_value)
+        route
     }
+
+    /// Build solution from ordered stop indices
+    fn build_solution(
+        &self,
+        problem: &VrpProblem,
+        matrices: &DistanceTimeMatrices,
+        ordered_indices: &[usize],
+    ) -> RouteSolution {
+        let mut planned_stops = Vec::new();
+        let mut total_distance: u64 = 0;
+        let mut total_duration: u64 = 0;
+        
+        // Start time from shift start
+        let mut current_time = problem.shift_start;
+        let mut prev_idx = 0; // Start from depot
+
+        for (order, &stop_idx) in ordered_indices.iter().enumerate() {
+            // stop_idx is 1-based in matrices (0 is depot)
+            // but problem.stops is 0-indexed
+            let stop = &problem.stops[stop_idx - 1];
+            
+            // Travel from previous location
+            let travel_distance = matrices.distance(prev_idx, stop_idx);
+            let travel_duration = matrices.duration(prev_idx, stop_idx);
+            
+            total_distance += travel_distance;
+            total_duration += travel_duration;
+            
+            // Calculate arrival time
+            let arrival_time = add_seconds_to_time(current_time, travel_duration as i64);
+            
+            // Service time
+            let service_seconds = stop.service_duration_minutes as i64 * 60;
+            let departure_time = add_seconds_to_time(arrival_time, service_seconds);
+            
+            total_duration += service_seconds as u64;
+            
+            planned_stops.push(PlannedStop {
+                stop_id: stop.id.clone(),
+                customer_id: stop.customer_id,
+                customer_name: stop.customer_name.clone(),
+                order: (order + 1) as u32,
+                arrival_time,
+                departure_time,
+                waiting_time_minutes: 0,
+            });
+            
+            current_time = departure_time;
+            prev_idx = stop_idx;
+        }
+
+        // Add return to depot
+        if !ordered_indices.is_empty() {
+            let return_distance = matrices.distance(prev_idx, 0);
+            let return_duration = matrices.duration(prev_idx, 0);
+            total_distance += return_distance;
+            total_duration += return_duration;
+        }
+
+        // Calculate optimization score (simple heuristic: 80-100 based on route efficiency)
+        let score = if planned_stops.is_empty() {
+            100
+        } else {
+            // Score based on average distance per stop
+            let avg_dist = total_distance / planned_stops.len() as u64;
+            // Lower average = better score
+            if avg_dist < 5000 { 95 }
+            else if avg_dist < 10000 { 90 }
+            else if avg_dist < 20000 { 85 }
+            else { 80 }
+        };
+
+        RouteSolution {
+            stops: planned_stops,
+            total_distance_meters: total_distance,
+            total_duration_seconds: total_duration,
+            optimization_score: score,
+            warnings: vec![],
+            unassigned: vec![],
+        }
+    }
+}
+
+/// Add seconds to NaiveTime, wrapping at midnight
+fn add_seconds_to_time(time: NaiveTime, seconds: i64) -> NaiveTime {
+    let total_seconds = time.num_seconds_from_midnight() as i64 + seconds;
+    let wrapped = total_seconds % 86400; // Wrap at midnight
+    NaiveTime::from_num_seconds_from_midnight_opt(wrapped as u32, 0)
+        .unwrap_or(time)
 }
 
 impl Default for VrpSolver {
@@ -247,5 +336,45 @@ mod tests {
         assert!(solution.total_distance_meters > 0);
         assert!(solution.total_duration_seconds > 0);
         assert!(solution.optimization_score > 0);
+    }
+
+    #[test]
+    fn test_add_seconds_to_time() {
+        let time = NaiveTime::from_hms_opt(8, 0, 0).unwrap();
+        
+        // Add 30 minutes
+        let result = add_seconds_to_time(time, 1800);
+        assert_eq!(result.hour(), 8);
+        assert_eq!(result.minute(), 30);
+        
+        // Add 2 hours
+        let result = add_seconds_to_time(time, 7200);
+        assert_eq!(result.hour(), 10);
+        assert_eq!(result.minute(), 0);
+    }
+
+    #[test]
+    fn test_nearest_neighbor_ordering() {
+        let solver = VrpSolver::default();
+        
+        // Create a matrix where stop 2 is closest to depot, then stop 1
+        let mut distances = vec![vec![0u64; 3]; 3];
+        distances[0][1] = 20000; // depot -> stop1: 20km
+        distances[0][2] = 10000; // depot -> stop2: 10km
+        distances[1][0] = 20000;
+        distances[1][2] = 15000; // stop1 -> stop2: 15km
+        distances[2][0] = 10000;
+        distances[2][1] = 15000; // stop2 -> stop1: 15km
+        
+        let matrices = DistanceTimeMatrices {
+            distances,
+            durations: vec![vec![600u64; 3]; 3],
+            size: 3,
+        };
+        
+        let route = solver.nearest_neighbor(&matrices);
+        
+        // Should visit stop 2 first (closer to depot), then stop 1
+        assert_eq!(route, vec![2, 1]);
     }
 }

@@ -44,9 +44,8 @@ dotenvy = "0.15"
 reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls"] }
 urlencoding = "2.1"
 
-# VRP solver (VRPTW optimization)
-vrp-pragmatic = "1.25"
-vrp-core = "1.25"
+# VRP solver: using simple nearest-neighbor heuristic for now
+# vrp-pragmatic = "1.25"  # Disabled - requires complex setup, using heuristic instead
 
 # [dev-dependencies]
 # tokio-test = "0.4"  # Temporarily disabled - requires ring which needs MSVC env
