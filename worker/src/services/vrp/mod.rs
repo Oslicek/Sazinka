@@ -60,16 +60,22 @@ impl VrpSolver {
             Ok(mut solution) => {
                 solution.algorithm = "vrp-pragmatic".to_string();
                 solution.solve_time_ms = started_at.elapsed().as_millis() as u64;
-                solver_log.push(format!(
+                
+                // Build log with stats first, then append unassigned reasons from solution
+                let mut final_log = Vec::new();
+                final_log.push(format!(
                     "algorithm=vrp-pragmatic time_ms={}",
                     solution.solve_time_ms
                 ));
-                solver_log.push(format!(
+                final_log.push(format!(
                     "stops={} unassigned={}",
                     solution.stops.len(),
                     solution.unassigned.len()
                 ));
-                solution.solver_log = solver_log;
+                // Append unassigned reasons from pragmatic solution
+                final_log.extend(solution.solver_log.drain(..));
+                solution.solver_log = final_log;
+                
                 info!(
                     "VRP solved with vrp-pragmatic: {} stops, {:.1} km",
                     solution.stops.len(),

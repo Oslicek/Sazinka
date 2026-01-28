@@ -98,6 +98,7 @@ fn map_solution(problem: &VrpProblem, solution: &PragmaticSolution) -> RouteSolu
 
     let mut planned_stops = Vec::new();
     let mut warnings = Vec::new();
+    let mut solver_log = Vec::new();
 
     if let Some(tour) = solution.tours.first() {
         for stop in &tour.stops {
@@ -132,11 +133,33 @@ fn map_solution(problem: &VrpProblem, solution: &PragmaticSolution) -> RouteSolu
         }
     }
 
-    let unassigned = solution
-        .unassigned
-        .as_ref()
-        .map(|items| items.iter().map(|job| job.job_id.clone()).collect())
-        .unwrap_or_else(Vec::new);
+    // Extract unassigned jobs with their reasons
+    let mut unassigned = Vec::new();
+    if let Some(unassigned_jobs) = &solution.unassigned {
+        for job in unassigned_jobs {
+            unassigned.push(job.job_id.clone());
+            
+            // Get customer name for better readability
+            let customer_name = stop_by_id
+                .get(job.job_id.as_str())
+                .map(|s| s.customer_name.as_str())
+                .unwrap_or(&job.job_id);
+            
+            // Extract reasons for this job
+            let reasons: Vec<String> = job.reasons.iter().map(|r| {
+                let desc = if r.description.is_empty() { None } else { Some(r.description.as_str()) };
+                format_unassigned_reason(&r.code, desc)
+            }).collect();
+            
+            let reasons_str = if reasons.is_empty() {
+                "unknown reason".to_string()
+            } else {
+                reasons.join(", ")
+            };
+            
+            solver_log.push(format!("unassigned: {} - {}", customer_name, reasons_str));
+        }
+    }
 
     let total_distance = solution.statistic.distance.max(0) as u64;
     let total_duration = solution.statistic.duration.max(0) as u64;
@@ -148,9 +171,34 @@ fn map_solution(problem: &VrpProblem, solution: &PragmaticSolution) -> RouteSolu
         optimization_score: if unassigned.is_empty() { 100 } else { 80 },
         algorithm: "vrp-pragmatic".to_string(),
         solve_time_ms: 0,
-        solver_log: vec![],
+        solver_log,
         warnings,
         unassigned,
+    }
+}
+
+/// Format unassigned reason code to human-readable message
+fn format_unassigned_reason(code: &str, description: Option<&str>) -> String {
+    let reason = match code {
+        "NO_VEHICLE_SHIFT_TIME" => "shift time exceeded",
+        "CAPACITY_CONSTRAINT" => "vehicle capacity exceeded", 
+        "TIME_WINDOW_CONSTRAINT" => "time window violated",
+        "BREAK_CONSTRAINT" => "break constraint violated",
+        "LOCKING_CONSTRAINT" => "locking constraint violated",
+        "PRIORITY_CONSTRAINT" => "priority constraint violated",
+        "AREA_CONSTRAINT" => "area constraint violated",
+        "SKILL_CONSTRAINT" => "skill constraint violated",
+        "REACHABLE_CONSTRAINT" => "location not reachable",
+        "MAX_DISTANCE_CONSTRAINT" => "max distance exceeded",
+        "MAX_DURATION_CONSTRAINT" => "max duration exceeded",
+        "MAX_TRAVEL_TIME_CONSTRAINT" => "max travel time exceeded",
+        _ => code,
+    };
+    
+    if let Some(desc) = description {
+        format!("{} ({})", reason, desc)
+    } else {
+        reason.to_string()
     }
 }
 
