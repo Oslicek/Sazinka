@@ -55,8 +55,13 @@ if (-not $NoBuild) {
     
     Push-Location "$scriptDir\worker"
     try {
-        cargo build --release 2>&1 | Out-Null
-        if ($LASTEXITCODE -ne 0) {
+        # Run cargo and capture exit code (stderr goes to stdout to avoid PS errors)
+        $ErrorActionPreference = "Continue"
+        cmd /c "cargo build --release 2>&1"
+        $buildResult = $LASTEXITCODE
+        $ErrorActionPreference = "Stop"
+        
+        if ($buildResult -ne 0) {
             Write-Host "CHYBA: Kompilace workeru selhala!" -ForegroundColor Red
             Write-Host "      Spustte 'cargo build --release' manualne pro detaily." -ForegroundColor Gray
             exit 1
