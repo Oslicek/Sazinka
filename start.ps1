@@ -95,23 +95,38 @@ if (-not $NoDocker) {
 if (-not $NoBuild) {
     Write-Host "[2/4] Kompiluji Worker..." -ForegroundColor Yellow
     
-    Push-Location "$scriptDir\worker"
-    try {
-        # Run cargo and capture exit code (stderr goes to stdout to avoid PS errors)
-        $ErrorActionPreference = "Continue"
-        cmd /c "cargo build --release 2>&1"
-        $buildResult = $LASTEXITCODE
-        $ErrorActionPreference = "Stop"
-        
-        if ($buildResult -ne 0) {
-            Write-Host "CHYBA: Kompilace workeru selhala!" -ForegroundColor Red
-            Write-Host "      Spustte 'cargo build --release' manualne pro detaily." -ForegroundColor Gray
-            exit 1
-        }
-        Write-Host "      Worker zkompilovan [OK]" -ForegroundColor Green
-    } finally {
-        Pop-Location
+    # Find vcvars64.bat
+    $vcvars = "$vsPath\VC\Auxiliary\Build\vcvars64.bat"
+    if (-not (Test-Path $vcvars)) {
+        Write-Host "CHYBA: vcvars64.bat nenalezen!" -ForegroundColor Red
+        Write-Host "      Nainstalujte 'Desktop development with C++' ve VS Installer" -ForegroundColor Gray
+        exit 1
     }
+    
+    # Run cargo inside vcvars environment using cmd
+    Write-Host "      Pouzivam: $vcvars" -ForegroundColor Gray
+    
+    $cargoCmd = @"
+call "$vcvars" > nul 2>&1
+cd /d "$scriptDir\worker"
+cargo build --release
+"@
+    
+    # Write temp batch file and execute
+    $tempBat = "$env:TEMP\sazinka_build.bat"
+    $cargoCmd | Out-File -FilePath $tempBat -Encoding ascii
+    
+    cmd /c $tempBat
+    $buildResult = $LASTEXITCODE
+    
+    Remove-Item $tempBat -ErrorAction SilentlyContinue
+    
+    if ($buildResult -ne 0) {
+        Write-Host "CHYBA: Kompilace workeru selhala!" -ForegroundColor Red
+        Write-Host "      Spustte z 'Developer Command Prompt for VS 2026'" -ForegroundColor Gray
+        exit 1
+    }
+    Write-Host "      Worker zkompilovan [OK]" -ForegroundColor Green
 } else {
     Write-Host "[2/4] Preskakuji build (pouzit -NoBuild)" -ForegroundColor Gray
 }
