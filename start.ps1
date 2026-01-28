@@ -10,6 +10,25 @@ param(
 $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
+# Setup Visual Studio environment if not already set
+if (-not $env:VSINSTALLDIR) {
+    $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+    if (Test-Path $vsWhere) {
+        $vsPath = & $vsWhere -latest -property installationPath
+        if ($vsPath) {
+            $vcvars = "$vsPath\VC\Auxiliary\Build\vcvars64.bat"
+            if (Test-Path $vcvars) {
+                Write-Host "Nastavuji Visual Studio prostredi..." -ForegroundColor Gray
+                cmd /c "`"$vcvars`" > nul 2>&1 && set" | ForEach-Object {
+                    if ($_ -match "^([^=]+)=(.*)$") {
+                        [System.Environment]::SetEnvironmentVariable($matches[1], $matches[2], "Process")
+                    }
+                }
+            }
+        }
+    }
+}
+
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Sazinka - Spoustim aplikaci" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
