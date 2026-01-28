@@ -93,11 +93,11 @@ pub async fn handle_plan(
             .partition(|c| c.lat.is_some() && c.lng.is_some());
 
         let mut warnings = Vec::new();
-        for id in &invalid_ids {
+        for customer in &invalid_ids {
             warnings.push(RouteWarning {
                 stop_index: None,
                 warning_type: "MISSING_COORDINATES".to_string(),
-                message: format!("Customer {} has no coordinates and was excluded", id),
+                message: format!("Customer {} has no coordinates and was excluded", customer.name),
             });
         }
 
@@ -189,7 +189,7 @@ pub async fn handle_plan(
         }
 
         // Collect unassigned customer IDs
-        let mut unassigned: Vec<Uuid> = invalid_ids;
+        let mut unassigned: Vec<Uuid> = invalid_ids.iter().map(|c| c.id).collect();
         for stop_id in &solution.unassigned {
             if let Ok(id) = Uuid::parse_str(stop_id) {
                 unassigned.push(id);

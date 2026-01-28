@@ -12,7 +12,7 @@ pub use solution::{RouteSolution, PlannedStop, RouteWarning};
 pub use config::SolverConfig;
 
 use anyhow::Result;
-use chrono::NaiveTime;
+use chrono::{NaiveTime, Timelike};
 use tracing::{debug, info};
 
 use crate::services::routing::DistanceTimeMatrices;
