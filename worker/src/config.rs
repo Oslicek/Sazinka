@@ -13,6 +13,9 @@ pub struct Config {
     
     /// Nominatim API URL (for geocoding)
     pub nominatim_url: String,
+    
+    /// Valhalla routing engine URL (optional, falls back to mock if unavailable)
+    pub valhalla_url: Option<String>,
 }
 
 impl Config {
@@ -30,10 +33,40 @@ impl Config {
         let nominatim_url = std::env::var("NOMINATIM_URL")
             .unwrap_or_else(|_| "https://nominatim.openstreetmap.org".to_string());
 
+        let valhalla_url = std::env::var("VALHALLA_URL").ok();
+
         Ok(Self {
             nats_url,
             database_url,
             nominatim_url,
+            valhalla_url,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_config_valhalla_url_none_when_not_set() {
+        // Clear env var if set
+        std::env::remove_var("VALHALLA_URL");
+        std::env::set_var("DATABASE_URL", "postgres://test");
+        
+        let config = Config::from_env().unwrap();
+        assert!(config.valhalla_url.is_none());
+    }
+
+    #[test]
+    fn test_config_valhalla_url_some_when_set() {
+        std::env::set_var("VALHALLA_URL", "http://localhost:8002");
+        std::env::set_var("DATABASE_URL", "postgres://test");
+        
+        let config = Config::from_env().unwrap();
+        assert_eq!(config.valhalla_url, Some("http://localhost:8002".to_string()));
+        
+        // Cleanup
+        std::env::remove_var("VALHALLA_URL");
     }
 }

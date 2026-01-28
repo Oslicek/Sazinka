@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-01-28 (v0.7.1)
+> **Last Updated:** 2026-01-28 (v0.7.2)
 
 ## Overview
 
@@ -676,13 +676,29 @@ vrp-core = "1.25"        # Core solver algorithms
 
 ### Fallback Strategy
 
-If vrp-pragmatic fails, the system falls back to a nearest-neighbor heuristic.
-If Valhalla is unavailable, the routing service can fall back to Haversine distance estimation:
+The system has two levels of fallback for resilience:
+
+1. **VRP Solver Fallback:** If vrp-pragmatic fails, falls back to nearest-neighbor heuristic
+2. **Routing Service Fallback:** If Valhalla is unavailable (not configured or health check fails), automatically falls back to MockRoutingService
 
 ```rust
-// Fallback: Haversine × 1.3 coefficient for road distance
-let road_distance = haversine_distance(a, b) * 1.3;
-let travel_time_minutes = road_distance / 40.0 * 60.0;  // 40 km/h average
+// Automatic Valhalla detection with fallback
+pub async fn create_routing_service_with_fallback(valhalla_url: Option<String>) -> Box<dyn RoutingService> {
+    if let Some(url) = valhalla_url {
+        // Try Valhalla health check
+        if check_valhalla_health(&url).await.is_ok() {
+            return Box::new(ValhallaClient::new(config));
+        }
+    }
+    // Fallback: Haversine × 1.3 coefficient, 40 km/h average
+    Box::new(MockRoutingService::new())
+}
+```
+
+**Configuration:**
+```bash
+# .env - set VALHALLA_URL to enable real routing
+VALHALLA_URL=http://localhost:8002
 ```
 
 ### Module Structure
@@ -756,10 +772,13 @@ worker/src/services/
 - [x] **Customer type support** (person/company with IČO, DIČ, contact person)
 - [x] **Customer edit/delete** with confirmation dialog
 - [x] **CSV import** with TDD (80 tests) - parsing, normalization, phone E.164, batch processing
+- [x] **Valhalla routing integration** with automatic fallback to mock (TDD)
+- [x] **vrp-pragmatic solver** with unassigned job reasons in solver log
+- [x] **Solver diagnostics in UI** (algorithm, solve time, warnings, unassigned reasons)
 
 **In Progress:**
-- [ ] Route optimization with Valhalla + vrp-pragmatic (time windows + routing geometry)
 - [ ] Device management UI
+- [ ] Route geometry display on map (Valhalla route API)
 
 **Pending:**
 - [ ] Device handlers

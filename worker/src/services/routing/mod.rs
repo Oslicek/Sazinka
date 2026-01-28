@@ -134,6 +134,52 @@ pub fn create_routing_service(config: Option<ValhallaConfig>) -> Box<dyn Routing
     }
 }
 
+/// Create routing service with automatic Valhalla detection and fallback
+/// 
+/// Tries to connect to Valhalla if URL is provided. Falls back to mock
+/// routing service if Valhalla is unavailable or URL is not configured.
+pub async fn create_routing_service_with_fallback(
+    valhalla_url: Option<String>,
+) -> Box<dyn RoutingService> {
+    use tracing::{info, warn};
+    
+    if let Some(url) = valhalla_url {
+        let config = ValhallaConfig::new(&url);
+        let client = ValhallaClient::new(config);
+        
+        // Test connection with a simple health check
+        match check_valhalla_health(&url).await {
+            Ok(()) => {
+                info!("Valhalla routing service available at {}", url);
+                return Box::new(client);
+            }
+            Err(e) => {
+                warn!("Valhalla not available at {}: {}. Falling back to mock routing.", url, e);
+            }
+        }
+    }
+    
+    info!("Using mock routing service (Valhalla not configured or unavailable)");
+    Box::new(MockRoutingService::new())
+}
+
+/// Check if Valhalla is healthy by making a simple status request
+async fn check_valhalla_health(base_url: &str) -> Result<()> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()?;
+    
+    // Try the status endpoint
+    let url = format!("{}/status", base_url);
+    let response = client.get(&url).send().await?;
+    
+    if response.status().is_success() {
+        Ok(())
+    } else {
+        anyhow::bail!("Valhalla returned status {}", response.status())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -246,5 +292,29 @@ mod tests {
     fn test_routing_service_name() {
         let mock = MockRoutingService::new();
         assert_eq!(mock.name(), "MockRouting");
+    }
+
+    #[tokio::test]
+    async fn test_create_routing_service_with_fallback_no_url() {
+        let service = create_routing_service_with_fallback(None).await;
+        assert_eq!(service.name(), "MockRouting");
+    }
+
+    #[tokio::test]
+    async fn test_create_routing_service_with_fallback_invalid_url() {
+        // Should fall back to mock when URL is invalid/unreachable
+        let service = create_routing_service_with_fallback(
+            Some("http://localhost:99999".to_string())
+        ).await;
+        assert_eq!(service.name(), "MockRouting");
+    }
+
+    #[tokio::test]
+    #[ignore = "Requires running Valhalla server"]
+    async fn test_create_routing_service_with_fallback_valhalla_available() {
+        let service = create_routing_service_with_fallback(
+            Some("http://localhost:8002".to_string())
+        ).await;
+        assert_eq!(service.name(), "Valhalla");
     }
 }

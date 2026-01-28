@@ -11,19 +11,22 @@ use sqlx::PgPool;
 use tracing::{info, error};
 use tokio::select;
 
+use crate::config::Config;
 use crate::services::geocoding::{create_geocoder, Geocoder};
-use crate::services::routing::{RoutingService, MockRoutingService};
+use crate::services::routing::{RoutingService, create_routing_service_with_fallback};
 
 /// Start all message handlers
-pub async fn start_handlers(client: Client, pool: PgPool) -> Result<()> {
+pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Result<()> {
     info!("Starting message handlers...");
 
     // Create shared geocoder
     let geocoder: Arc<dyn Geocoder> = Arc::from(create_geocoder());
     info!("Geocoder initialized: {}", geocoder.name());
 
-    // Create routing service (mock for now, Valhalla when available)
-    let routing_service: Arc<dyn RoutingService> = Arc::new(MockRoutingService::new());
+    // Create routing service with automatic Valhalla detection
+    let routing_service: Arc<dyn RoutingService> = Arc::from(
+        create_routing_service_with_fallback(config.valhalla_url.clone()).await
+    );
     info!("Routing service initialized: {}", routing_service.name());
 
     // Subscribe to all subjects

@@ -41,7 +41,7 @@ async fn main() -> Result<()> {
     info!("Connected to NATS at {}", config.nats_url);
 
     // Start message handlers
-    let handler_result = handlers::start_handlers(nats_client, pool).await;
+    let handler_result = handlers::start_handlers(nats_client, pool, &config).await;
 
     if let Err(e) = handler_result {
         error!("Handler error: {}", e);
