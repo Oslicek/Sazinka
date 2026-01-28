@@ -185,6 +185,7 @@ export function Planner() {
         'sazinka.customer.random',
         {
           id: uuidv4(),
+          timestamp: new Date().toISOString(),
           userId: USER_ID,
           payload: { limit: 10 },
         },
@@ -210,6 +211,7 @@ export function Planner() {
         'sazinka.route.plan',
         {
           id: uuidv4(),
+          timestamp: new Date().toISOString(),
           userId: USER_ID,
           payload: {
             startLocation: DEFAULT_DEPOT,
