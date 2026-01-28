@@ -6,14 +6,18 @@
 mod problem;
 mod solution;
 mod config;
+mod adapter;
+mod pragmatic;
 
 pub use problem::{VrpProblem, VrpStop, Depot, StopTimeWindow};
 pub use solution::{RouteSolution, PlannedStop, RouteWarning};
 pub use config::SolverConfig;
+pub use adapter::{build_pragmatic_problem, build_pragmatic_matrix, DEFAULT_PROFILE};
+pub use pragmatic::solve_pragmatic;
 
 use anyhow::Result;
-use chrono::{NaiveTime, Timelike};
-use tracing::{debug, info};
+use chrono::{NaiveDate, NaiveTime, Timelike};
+use tracing::{debug, info, warn};
 
 use crate::services::routing::DistanceTimeMatrices;
 
@@ -32,6 +36,7 @@ impl VrpSolver {
         &self,
         problem: &VrpProblem,
         matrices: &DistanceTimeMatrices,
+        date: NaiveDate,
     ) -> Result<RouteSolution> {
         if problem.stops.is_empty() {
             debug!("No stops to optimize, returning empty solution");
@@ -39,15 +44,37 @@ impl VrpSolver {
         }
 
         info!(
-            "Solving VRP with {} stops using nearest neighbor",
+            "Solving VRP with {} stops using vrp-pragmatic",
             problem.stops.len(),
         );
+
+        match solve_pragmatic(problem, matrices, date, &self.config) {
+            Ok(solution) => {
+                info!(
+                    "VRP solved with vrp-pragmatic: {} stops, {:.1} km",
+                    solution.stops.len(),
+                    solution.total_distance_meters as f64 / 1000.0,
+                );
+                return Ok(solution);
+            }
+            Err(err) => {
+                warn!(
+                    "vrp-pragmatic failed, falling back to heuristic: {}",
+                    err
+                );
+            }
+        }
 
         // Use nearest neighbor heuristic
         let ordered_indices = self.nearest_neighbor(matrices);
         
         // Build solution from ordered indices
-        let solution = self.build_solution(problem, matrices, &ordered_indices);
+        let mut solution = self.build_solution(problem, matrices, &ordered_indices);
+        solution.warnings.push(RouteWarning {
+            stop_id: None,
+            warning_type: "PRAGMATIC_FAILED".to_string(),
+            message: "vrp-pragmatic failed, used heuristic fallback".to_string(),
+        });
 
         info!(
             "VRP solved: {} stops, {:.1} km, score={}",
@@ -265,7 +292,13 @@ mod tests {
         };
 
         let matrices = mock_matrices(1);
-        let solution = solver.solve(&problem, &matrices).unwrap();
+        let solution = solver
+            .solve(
+                &problem,
+                &matrices,
+                chrono::NaiveDate::from_ymd_opt(2026, 1, 26).unwrap(),
+            )
+            .unwrap();
 
         assert!(solution.stops.is_empty());
         assert_eq!(solution.total_distance_meters, 0);
@@ -283,7 +316,13 @@ mod tests {
         };
 
         let matrices = mock_matrices(2); // depot + 1 stop
-        let solution = solver.solve(&problem, &matrices).unwrap();
+        let solution = solver
+            .solve(
+                &problem,
+                &matrices,
+                chrono::NaiveDate::from_ymd_opt(2026, 1, 26).unwrap(),
+            )
+            .unwrap();
 
         assert_eq!(solution.stops.len(), 1);
         assert_eq!(solution.stops[0].order, 1);
@@ -304,7 +343,13 @@ mod tests {
         };
 
         let matrices = mock_matrices(4); // depot + 3 stops
-        let solution = solver.solve(&problem, &matrices).unwrap();
+        let solution = solver
+            .solve(
+                &problem,
+                &matrices,
+                chrono::NaiveDate::from_ymd_opt(2026, 1, 26).unwrap(),
+            )
+            .unwrap();
 
         // All stops should be assigned
         assert_eq!(solution.stops.len(), 3);
@@ -331,7 +376,13 @@ mod tests {
         };
 
         let matrices = mock_matrices(3);
-        let solution = solver.solve(&problem, &matrices).unwrap();
+        let solution = solver
+            .solve(
+                &problem,
+                &matrices,
+                chrono::NaiveDate::from_ymd_opt(2026, 1, 26).unwrap(),
+            )
+            .unwrap();
 
         assert!(solution.total_distance_meters > 0);
         assert!(solution.total_duration_seconds > 0);

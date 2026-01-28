@@ -67,6 +67,7 @@ impl RouteSolution {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Timelike;
 
     #[test]
     fn test_empty_solution() {

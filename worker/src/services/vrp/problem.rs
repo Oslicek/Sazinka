@@ -57,6 +57,7 @@ pub struct StopTimeWindow {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Timelike;
 
     fn prague() -> Coordinates {
         Coordinates { lat: 50.0755, lng: 14.4378 }

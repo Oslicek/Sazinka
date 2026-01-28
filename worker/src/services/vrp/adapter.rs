@@ -1,0 +1,218 @@
+//! Adapter to build vrp-pragmatic inputs.
+
+use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, SecondsFormat, Utc};
+use serde_json::{json, Value};
+use vrp_pragmatic::format::problem::Matrix;
+
+use crate::services::routing::DistanceTimeMatrices;
+use super::{VrpProblem, StopTimeWindow};
+
+pub const DEFAULT_PROFILE: &str = "car";
+pub const DEFAULT_VEHICLE_ID: &str = "vehicle_1";
+pub const DEFAULT_VEHICLE_TYPE: &str = "vehicle";
+
+/// Build pragmatic problem JSON with location indices.
+pub fn build_pragmatic_problem(problem: &VrpProblem, date: NaiveDate) -> Value {
+    let jobs: Vec<Value> = problem
+        .stops
+        .iter()
+        .enumerate()
+        .map(|(index, stop)| {
+            let place = json!({
+                "location": { "index": index + 1 },
+                "duration": (stop.service_duration_minutes as i64) * 60,
+            });
+
+            let place = match &stop.time_window {
+                Some(window) => add_time_window(place, date, window),
+                None => place,
+            };
+
+            json!({
+                "id": stop.id,
+                "services": [{
+                    "places": [place]
+                }]
+            })
+        })
+        .collect();
+
+    json!({
+        "plan": {
+            "jobs": jobs
+        },
+        "fleet": {
+            "vehicles": [{
+                "typeId": DEFAULT_VEHICLE_TYPE,
+                "vehicleIds": [DEFAULT_VEHICLE_ID],
+                "profile": { "matrix": DEFAULT_PROFILE },
+                "costs": {
+                    "fixed": 0.0,
+                    "distance": 1.0,
+                    "time": 1.0
+                },
+                "shifts": [{
+                    "start": {
+                        "earliest": format_rfc3339(date, problem.shift_start),
+                        "location": { "index": 0 }
+                    },
+                    "end": {
+                        "latest": format_rfc3339(date, problem.shift_end),
+                        "location": { "index": 0 }
+                    }
+                }],
+                "capacity": [1000]
+            }],
+            "profiles": [{
+                "name": DEFAULT_PROFILE
+            }]
+        }
+    })
+}
+
+/// Build pragmatic routing matrix from distance/time matrices.
+pub fn build_pragmatic_matrix(
+    matrices: &DistanceTimeMatrices,
+    profile: &str,
+) -> Matrix {
+    let size = matrices.size;
+    let mut travel_times = Vec::with_capacity(size * size);
+    let mut distances = Vec::with_capacity(size * size);
+
+    for i in 0..size {
+        for j in 0..size {
+            travel_times.push(matrices.duration(i, j) as i64);
+            distances.push(matrices.distance(i, j) as i64);
+        }
+    }
+
+    Matrix {
+        profile: Some(profile.to_string()),
+        timestamp: None,
+        travel_times,
+        distances,
+        error_codes: None,
+    }
+}
+
+fn add_time_window(base: Value, date: NaiveDate, window: &StopTimeWindow) -> Value {
+    let start = format_rfc3339(date, window.start);
+    let end = format_rfc3339(date, window.end);
+
+    json!({
+        "location": base["location"].clone(),
+        "duration": base["duration"].clone(),
+        "times": [[start, end]]
+    })
+}
+
+fn format_rfc3339(date: NaiveDate, time: NaiveTime) -> String {
+    let naive = NaiveDateTime::new(date, time);
+    DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc)
+        .to_rfc3339_opts(SecondsFormat::Secs, true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::NaiveDate;
+    use uuid::Uuid;
+    use vrp_pragmatic::format::problem::Problem;
+
+    use crate::types::Coordinates;
+    use crate::services::routing::DistanceTimeMatrices;
+    use super::super::{Depot, VrpStop, VrpProblem};
+
+    fn test_problem() -> VrpProblem {
+        VrpProblem {
+            depot: Depot {
+                coordinates: Coordinates { lat: 50.0755, lng: 14.4378 },
+            },
+            shift_start: NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
+            shift_end: NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+            stops: vec![
+                VrpStop {
+                    id: "stop-1".to_string(),
+                    customer_id: Uuid::new_v4(),
+                    customer_name: "Customer A".to_string(),
+                    coordinates: Coordinates { lat: 49.1951, lng: 16.6068 },
+                    service_duration_minutes: 30,
+                    time_window: Some(StopTimeWindow {
+                        start: NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
+                        end: NaiveTime::from_hms_opt(12, 0, 0).unwrap(),
+                        is_hard: true,
+                    }),
+                    priority: 1,
+                },
+                VrpStop {
+                    id: "stop-2".to_string(),
+                    customer_id: Uuid::new_v4(),
+                    customer_name: "Customer B".to_string(),
+                    coordinates: Coordinates { lat: 49.8209, lng: 18.2625 },
+                    service_duration_minutes: 20,
+                    time_window: None,
+                    priority: 1,
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn build_pragmatic_problem_contains_jobs_and_shift_times() {
+        let date = NaiveDate::from_ymd_opt(2026, 1, 26).unwrap();
+        let problem = test_problem();
+
+        let json = build_pragmatic_problem(&problem, date);
+
+        let jobs = json["plan"]["jobs"].as_array().unwrap();
+        assert_eq!(jobs.len(), 2);
+        assert_eq!(jobs[0]["id"], "stop-1");
+        assert_eq!(jobs[1]["id"], "stop-2");
+
+        let vehicle = &json["fleet"]["vehicles"][0];
+        assert_eq!(vehicle["shifts"][0]["start"]["location"]["index"], 0);
+        assert_eq!(vehicle["shifts"][0]["end"]["location"]["index"], 0);
+    }
+
+    #[test]
+    fn build_pragmatic_problem_encodes_service_duration_and_times() {
+        let date = NaiveDate::from_ymd_opt(2026, 1, 26).unwrap();
+        let problem = test_problem();
+
+        let json = build_pragmatic_problem(&problem, date);
+        let place = &json["plan"]["jobs"][0]["services"][0]["places"][0];
+
+        assert_eq!(place["duration"], 1800);
+        let times = place["times"].as_array().unwrap();
+        assert_eq!(times.len(), 1);
+        assert!(times[0][0].as_str().unwrap().starts_with("2026-01-26T10:00:00Z"));
+        assert!(times[0][1].as_str().unwrap().starts_with("2026-01-26T12:00:00Z"));
+    }
+
+    #[test]
+    fn build_pragmatic_problem_is_valid_for_deserialize() {
+        let date = NaiveDate::from_ymd_opt(2026, 1, 26).unwrap();
+        let problem = test_problem();
+
+        let json = build_pragmatic_problem(&problem, date);
+        let parsed: Problem = serde_json::from_value(json).unwrap();
+
+        assert_eq!(parsed.plan.jobs.len(), 2);
+        assert_eq!(parsed.fleet.vehicles.len(), 1);
+    }
+
+    #[test]
+    fn build_pragmatic_matrix_flattens_row_major() {
+        let matrices = DistanceTimeMatrices {
+            distances: vec![vec![0, 5], vec![7, 0]],
+            durations: vec![vec![0, 10], vec![20, 0]],
+            size: 2,
+        };
+
+        let matrix = build_pragmatic_matrix(&matrices, "car");
+
+        assert_eq!(matrix.distances, vec![0, 5, 7, 0]);
+        assert_eq!(matrix.travel_times, vec![0, 10, 20, 0]);
+        assert_eq!(matrix.profile.as_deref(), Some("car"));
+    }
+}

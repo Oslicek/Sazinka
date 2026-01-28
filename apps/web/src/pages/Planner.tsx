@@ -45,6 +45,8 @@ export function Planner() {
   const [totalDuration, setTotalDuration] = useState(0);
   const [optimizationScore, setOptimizationScore] = useState(0);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [routeWarnings, setRouteWarnings] = useState<string[]>([]);
+  const [unassignedCount, setUnassignedCount] = useState(0);
 
   const { request, isConnected } = useNatsStore();
 
@@ -243,6 +245,8 @@ export function Planner() {
       setTotalDistance(result.totalDistanceKm);
       setTotalDuration(result.totalDurationMinutes);
       setOptimizationScore(result.optimizationScore);
+      setRouteWarnings(result.warnings.map(w => w.message));
+      setUnassignedCount(result.unassigned.length);
 
       // Update map
       addStopMarkers(result.stops);
@@ -261,6 +265,8 @@ export function Planner() {
     setTotalDistance(0);
     setTotalDuration(0);
     setOptimizationScore(0);
+    setRouteWarnings([]);
+    setUnassignedCount(0);
     setError(null);
   };
 
@@ -305,6 +311,23 @@ export function Planner() {
         {error && (
           <div className={styles.error}>
             {error}
+          </div>
+        )}
+
+        {!error && (routeWarnings.length > 0 || unassignedCount > 0) && (
+          <div className={styles.warning}>
+            {unassignedCount > 0 && (
+              <div>
+                {unassignedCount} zákazníků nebylo přiřazeno k trase.
+              </div>
+            )}
+            {routeWarnings.length > 0 && (
+              <ul>
+                {routeWarnings.map((warning, index) => (
+                  <li key={`${warning}-${index}`}>{warning}</li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
 

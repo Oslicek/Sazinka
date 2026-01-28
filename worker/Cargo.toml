@@ -45,7 +45,9 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "nat
 urlencoding = "2.1"
 
 # VRP solver: using simple nearest-neighbor heuristic for now
-# vrp-pragmatic = "1.25"  # Disabled - requires complex setup, using heuristic instead
+vrp-pragmatic = "1.25"
+vrp-cli = "1.25"
+vrp-core = "1.25"
 
 # [dev-dependencies]
 # tokio-test = "0.4"  # Temporarily disabled - requires ring which needs MSVC env

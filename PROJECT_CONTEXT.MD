@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-01-27 (v0.7.0)
+> **Last Updated:** 2026-01-28 (v0.7.1)
 
 ## Overview
 
@@ -37,7 +37,7 @@
 | ORM | SQLx | Compile-time checked queries |
 | Geocoding | Nominatim API | Address → coordinates (public API for MVP) |
 | Routing Engine | Valhalla | Distance/time matrices (self-hosted) |
-| VRP Solver | vrp crate | VRPTW optimization (pure Rust) |
+| VRP Solver | vrp-pragmatic + vrp-core | VRP optimization (pure Rust) |
 | **Infrastructure** | | |
 | Frontend Hosting | Cloudflare Pages | Static site hosting |
 | Backend Hosting | VPS (Hetzner) | NATS + Rust worker |
@@ -518,12 +518,12 @@ NOMINATIM_RATE_LIMIT_MS=1500
 
 ## Route Optimization Architecture
 
-> **Status:** Implementation (v0.7.0)
+> **Status:** Implementation (v0.7.1)
 
 The route optimization system uses a two-component architecture for maximum performance and accuracy:
 
 1. **Valhalla** - Open source routing engine for real road distances and travel times
-2. **vrp crate** - Pure Rust VRPTW solver (inspired by Google OR-Tools)
+2. **vrp-pragmatic + vrp-core** - Pure Rust VRP solver (pragmatic JSON adapter + core metaheuristics)
 
 ### Architecture Overview
 
@@ -547,7 +547,7 @@ The route optimization system uses a two-component architecture for maximum perf
 │                                                                              │
 │   ┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐    │
 │   │ Route Handler   │─────▶│ RoutingService  │─────▶│ VrpSolver       │    │
-│   │                 │      │ (Valhalla HTTP) │      │ (vrp crate)     │    │
+│   │                 │      │ (Valhalla HTTP) │      │ (vrp-pragmatic) │    │
 │   └─────────────────┘      └────────┬────────┘      └─────────────────┘    │
 │                                     │                                       │
 │                                     │ HTTP                                  │
@@ -565,9 +565,9 @@ The route optimization system uses a two-component architecture for maximum perf
 | Component | Responsibility |
 |-----------|----------------|
 | **Valhalla** | Calculate real road distances and travel times between all points (distance/time matrix) |
-| **vrp crate** | Solve VRPTW problem using metaheuristics (guided local search) |
+| **vrp-pragmatic + vrp-core** | Solve VRP using pragmatic JSON + metaheuristics |
 | **RoutingService** | HTTP client for Valhalla API |
-| **VrpSolver** | Wrapper around vrp crate with our domain types |
+| **VrpSolver** | Wrapper around vrp-pragmatic with fallback heuristic |
 
 ### Data Flow
 
@@ -597,7 +597,7 @@ The route optimization system uses a two-component architecture for maximum perf
 │                                                                           │
 ├──────────────────────────────────────────────────────────────────────────┤
 │  STEP 3: VRP Solver - Optimize                                           │
-│  vrp crate with guided local search                                      │
+│  vrp-pragmatic (JSON adapter) + vrp-core metaheuristics                  │
 │  → route_order: [3, 1, 4, 2, 0]  // optimal order                        │
 │  → arrival_times: [08:45, 10:15, ...]                                    │
 │  → total_distance: 45.2 km                                               │
@@ -651,19 +651,19 @@ services:
 - `POST /sources_to_targets` - Distance/time matrix calculation
 - `POST /route` - Detailed route geometry for map display
 
-### VRP Solver (vrp crate)
+### VRP Solver (vrp-pragmatic + vrp-core)
 
 Pure Rust implementation inspired by Google OR-Tools:
 
 ```toml
 # worker/Cargo.toml
 [dependencies]
-vrp-pragmatic = "1.23"   # High-level JSON API
-vrp-core = "1.23"        # Core solver algorithms
+vrp-pragmatic = "1.25"   # High-level JSON API
+vrp-core = "1.25"        # Core solver algorithms
 ```
 
 **Features:**
-- VRPTW (Vehicle Routing Problem with Time Windows)
+- VRP (with time windows supported via pragmatic format)
 - Guided local search metaheuristic
 - Hard and soft time window constraints
 - Service duration per stop
@@ -676,7 +676,8 @@ vrp-core = "1.23"        # Core solver algorithms
 
 ### Fallback Strategy
 
-If Valhalla is unavailable, the system falls back to Haversine distance estimation:
+If vrp-pragmatic fails, the system falls back to a nearest-neighbor heuristic.
+If Valhalla is unavailable, the routing service can fall back to Haversine distance estimation:
 
 ```rust
 // Fallback: Haversine × 1.3 coefficient for road distance
@@ -694,8 +695,10 @@ worker/src/services/
 │   └── mock.rs             # Mock routing for tests
 ├── vrp/
 │   ├── mod.rs              # VrpSolver wrapper
-│   ├── problem.rs          # Problem builder (our types → vrp-pragmatic)
-│   ├── solution.rs         # Solution parser (vrp-pragmatic → our types)
+│   ├── adapter.rs          # Pragmatic problem/matrix builder
+│   ├── pragmatic.rs        # vrp-pragmatic solver integration
+│   ├── problem.rs          # Domain problem types
+│   ├── solution.rs         # Domain solution types
 │   └── config.rs           # Solver configuration
 └── geo.rs                  # Haversine (fallback)
 ```
@@ -708,6 +711,12 @@ worker/src/services/
 | VrpSolver | Unit tests with known optimal solutions |
 | Problem builder | Snapshot tests for JSON generation |
 | Route handler | End-to-end tests with mock services |
+
+### Current Planner UX (MVP)
+
+- Single button: **"Naplánovat trasu"**
+- Backend selects **10 random customers** with coordinates
+- Route is solved in Rust worker and rendered in the Planner map
 
 ## Current State
 
@@ -749,7 +758,7 @@ worker/src/services/
 - [x] **CSV import** with TDD (80 tests) - parsing, normalization, phone E.164, batch processing
 
 **In Progress:**
-- [ ] Route optimization with Valhalla + vrp crate
+- [ ] Route optimization with Valhalla + vrp-pragmatic (time windows + routing geometry)
 - [ ] Device management UI
 
 **Pending:**

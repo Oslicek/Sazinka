@@ -144,7 +144,7 @@ pub async fn handle_plan(
         };
 
         // Solve VRP
-        let solution = match solver.solve(&vrp_problem, &matrices) {
+        let solution = match solver.solve(&vrp_problem, &matrices, plan_request.date) {
             Ok(s) => s,
             Err(e) => {
                 error!("VRP solver failed: {}", e);
@@ -296,6 +296,8 @@ pub fn create_mock_routing_service() -> Arc<dyn RoutingService> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::WorkingHours;
+    use chrono::Timelike;
 
     fn prague() -> Coordinates {
         Coordinates { lat: 50.0755, lng: 14.4378 }
