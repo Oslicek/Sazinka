@@ -146,6 +146,9 @@ fn map_solution(problem: &VrpProblem, solution: &PragmaticSolution) -> RouteSolu
         total_distance_meters: total_distance,
         total_duration_seconds: total_duration,
         optimization_score: if unassigned.is_empty() { 100 } else { 80 },
+        algorithm: "vrp-pragmatic".to_string(),
+        solve_time_ms: 0,
+        solver_log: vec![],
         warnings,
         unassigned,
     }

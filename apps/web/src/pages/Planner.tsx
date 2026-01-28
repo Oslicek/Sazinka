@@ -47,6 +47,9 @@ export function Planner() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [routeWarnings, setRouteWarnings] = useState<string[]>([]);
   const [unassignedCount, setUnassignedCount] = useState(0);
+  const [algorithmName, setAlgorithmName] = useState('');
+  const [solveTimeMs, setSolveTimeMs] = useState(0);
+  const [solverLog, setSolverLog] = useState<string[]>([]);
 
   const { request, isConnected } = useNatsStore();
 
@@ -245,8 +248,11 @@ export function Planner() {
       setTotalDistance(result.totalDistanceKm);
       setTotalDuration(result.totalDurationMinutes);
       setOptimizationScore(result.optimizationScore);
+      setAlgorithmName(result.algorithm);
+      setSolveTimeMs(result.solveTimeMs);
       setRouteWarnings(result.warnings.map(w => w.message));
       setUnassignedCount(result.unassigned.length);
+      setSolverLog(result.solverLog);
 
       // Update map
       addStopMarkers(result.stops);
@@ -265,9 +271,27 @@ export function Planner() {
     setTotalDistance(0);
     setTotalDuration(0);
     setOptimizationScore(0);
+    setAlgorithmName('');
+    setSolveTimeMs(0);
     setRouteWarnings([]);
     setUnassignedCount(0);
+    setSolverLog([]);
     setError(null);
+  };
+
+  const formatDuration = (minutes: number) => {
+    if (!Number.isFinite(minutes) || minutes <= 0) return '0 min';
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    if (hours === 0) return `${mins} min`;
+    if (mins === 0) return `${hours} h`;
+    return `${hours} h ${mins} min`;
+  };
+
+  const formatSolveTime = (ms: number) => {
+    if (!Number.isFinite(ms) || ms <= 0) return '–';
+    if (ms < 1000) return `${ms} ms`;
+    return `${(ms / 1000).toFixed(1)} s`;
   };
 
   return (
@@ -331,6 +355,15 @@ export function Planner() {
           </div>
         )}
 
+        {solverLog.length > 0 && (
+          <div className={styles.solverLog}>
+            <div className={styles.solverLogTitle}>Log solveru</div>
+            <pre>
+              {solverLog.join('\n')}
+            </pre>
+          </div>
+        )}
+
         <div className={styles.actions}>
           <button 
             className="btn-primary w-full"
@@ -357,7 +390,15 @@ export function Planner() {
           </div>
           <div className={styles.stat}>
             <span className={styles.statLabel}>Odhadovaný čas</span>
-            <span className={styles.statValue}>{totalDuration} min</span>
+            <span className={styles.statValue}>{formatDuration(totalDuration)}</span>
+          </div>
+          <div className={styles.stat}>
+            <span className={styles.statLabel}>Algoritmus</span>
+            <span className={styles.statValue}>{algorithmName || '—'}</span>
+          </div>
+          <div className={styles.stat}>
+            <span className={styles.statLabel}>Doba výpočtu</span>
+            <span className={styles.statValue}>{formatSolveTime(solveTimeMs)}</span>
           </div>
           {optimizationScore > 0 && (
             <div className={styles.stat}>

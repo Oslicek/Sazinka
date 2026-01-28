@@ -14,6 +14,12 @@ pub struct RouteSolution {
     pub total_duration_seconds: u64,
     /// Optimization score (0-100)
     pub optimization_score: u8,
+    /// Algorithm used to produce the solution
+    pub algorithm: String,
+    /// Time spent solving in milliseconds
+    pub solve_time_ms: u64,
+    /// Solver log lines
+    pub solver_log: Vec<String>,
     /// Warnings about the solution
     pub warnings: Vec<RouteWarning>,
     /// Stop IDs that couldn't be scheduled
@@ -58,6 +64,9 @@ impl RouteSolution {
             total_distance_meters: 0,
             total_duration_seconds: 0,
             optimization_score: 100,
+            algorithm: "none".to_string(),
+            solve_time_ms: 0,
+            solver_log: vec![],
             warnings: vec![],
             unassigned: vec![],
         }

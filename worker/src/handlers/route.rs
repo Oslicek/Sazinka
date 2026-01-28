@@ -68,6 +68,9 @@ pub async fn handle_plan(
                 stops: vec![],
                 total_distance_km: 0.0,
                 total_duration_minutes: 0,
+                algorithm: "none".to_string(),
+                solve_time_ms: 0,
+                solver_log: vec![],
                 optimization_score: 100,
                 warnings: vec![],
                 unassigned: vec![],
@@ -106,6 +109,9 @@ pub async fn handle_plan(
                 stops: vec![],
                 total_distance_km: 0.0,
                 total_duration_minutes: 0,
+                algorithm: "none".to_string(),
+                solve_time_ms: 0,
+                solver_log: vec![],
                 optimization_score: 0,
                 warnings,
                 unassigned: plan_request.customer_ids.clone(),
@@ -115,7 +121,10 @@ pub async fn handle_plan(
         }
 
         // Build VRP problem
-        let working_hours = plan_request.working_hours.clone().unwrap_or_default();
+        let working_hours = WorkingHours {
+            start: chrono::NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
+            end: chrono::NaiveTime::from_hms_opt(23, 59, 59).unwrap(),
+        };
         let vrp_problem = build_vrp_problem(
             &plan_request.start_location,
             &valid_customers,
@@ -200,6 +209,9 @@ pub async fn handle_plan(
             stops: planned_stops,
             total_distance_km: solution.total_distance_meters as f64 / 1000.0,
             total_duration_minutes: (solution.total_duration_seconds / 60) as i32,
+            algorithm: solution.algorithm.clone(),
+            solve_time_ms: solution.solve_time_ms,
+            solver_log: solution.solver_log.clone(),
             optimization_score: solution.optimization_score as i32,
             warnings,
             unassigned,

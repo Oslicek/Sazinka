@@ -18,6 +18,7 @@ pub use pragmatic::solve_pragmatic;
 use anyhow::Result;
 use chrono::{NaiveDate, NaiveTime, Timelike};
 use tracing::{debug, info, warn};
+use std::time::Instant;
 
 use crate::services::routing::DistanceTimeMatrices;
 
@@ -38,9 +39,16 @@ impl VrpSolver {
         matrices: &DistanceTimeMatrices,
         date: NaiveDate,
     ) -> Result<RouteSolution> {
+        let started_at = Instant::now();
+        let mut solver_log = Vec::new();
+
         if problem.stops.is_empty() {
             debug!("No stops to optimize, returning empty solution");
-            return Ok(RouteSolution::empty());
+            let mut solution = RouteSolution::empty();
+            solution.solve_time_ms = started_at.elapsed().as_millis() as u64;
+            solution.algorithm = "none".to_string();
+            solution.solver_log = vec!["no_stops".to_string()];
+            return Ok(solution);
         }
 
         info!(
@@ -49,7 +57,19 @@ impl VrpSolver {
         );
 
         match solve_pragmatic(problem, matrices, date, &self.config) {
-            Ok(solution) => {
+            Ok(mut solution) => {
+                solution.algorithm = "vrp-pragmatic".to_string();
+                solution.solve_time_ms = started_at.elapsed().as_millis() as u64;
+                solver_log.push(format!(
+                    "algorithm=vrp-pragmatic time_ms={}",
+                    solution.solve_time_ms
+                ));
+                solver_log.push(format!(
+                    "stops={} unassigned={}",
+                    solution.stops.len(),
+                    solution.unassigned.len()
+                ));
+                solution.solver_log = solver_log;
                 info!(
                     "VRP solved with vrp-pragmatic: {} stops, {:.1} km",
                     solution.stops.len(),
@@ -62,6 +82,7 @@ impl VrpSolver {
                     "vrp-pragmatic failed, falling back to heuristic: {}",
                     err
                 );
+                solver_log.push(format!("pragmatic_error={}", err));
             }
         }
 
@@ -70,6 +91,18 @@ impl VrpSolver {
         
         // Build solution from ordered indices
         let mut solution = self.build_solution(problem, matrices, &ordered_indices);
+        solution.algorithm = "heuristic".to_string();
+        solution.solve_time_ms = started_at.elapsed().as_millis() as u64;
+        solver_log.push(format!(
+            "algorithm=heuristic time_ms={}",
+            solution.solve_time_ms
+        ));
+        solver_log.push(format!(
+            "stops={} unassigned={}",
+            solution.stops.len(),
+            solution.unassigned.len()
+        ));
+        solution.solver_log = solver_log;
         solution.warnings.push(RouteWarning {
             stop_id: None,
             warning_type: "PRAGMATIC_FAILED".to_string(),
@@ -202,6 +235,9 @@ impl VrpSolver {
             total_distance_meters: total_distance,
             total_duration_seconds: total_duration,
             optimization_score: score,
+            algorithm: "heuristic".to_string(),
+            solve_time_ms: 0,
+            solver_log: vec![],
             warnings: vec![],
             unassigned: vec![],
         }

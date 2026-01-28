@@ -99,6 +99,12 @@ export interface RoutePlanResponse {
   totalDistanceKm: number;
   /** Total duration in minutes */
   totalDurationMinutes: number;
+  /** Algorithm used for optimization */
+  algorithm: string;
+  /** Solver runtime in milliseconds */
+  solveTimeMs: number;
+  /** Solver log lines */
+  solverLog: string[];
   /** Optimization score (0-100) */
   optimizationScore: number;
   /** Warnings about the route */

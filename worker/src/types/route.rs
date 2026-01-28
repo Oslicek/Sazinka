@@ -101,8 +101,8 @@ pub struct WorkingHours {
 impl Default for WorkingHours {
     fn default() -> Self {
         Self {
-            start: NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
-            end: NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+            start: NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
+            end: NaiveTime::from_hms_opt(23, 59, 59).unwrap(),
         }
     }
 }
@@ -117,6 +117,12 @@ pub struct RoutePlanResponse {
     pub total_distance_km: f64,
     /// Total duration in minutes
     pub total_duration_minutes: i32,
+    /// Algorithm used for optimization
+    pub algorithm: String,
+    /// Solver runtime in milliseconds
+    pub solve_time_ms: u64,
+    /// Solver log lines
+    pub solver_log: Vec<String>,
     /// Optimization score (0-100)
     pub optimization_score: i32,
     /// Warnings about the route
