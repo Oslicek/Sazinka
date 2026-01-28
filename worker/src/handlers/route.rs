@@ -13,7 +13,7 @@ use crate::services::routing::{RoutingService, MockRoutingService};
 use crate::services::vrp::{VrpSolver, VrpProblem, VrpStop, Depot, SolverConfig, StopTimeWindow};
 use crate::types::{
     Coordinates, ErrorResponse, Request, SuccessResponse,
-    RoutePlanRequest, RoutePlanResponse, PlannedRouteStop, RouteWarning,
+    RoutePlanRequest, RoutePlanResponse, PlannedRouteStop, RouteWarning, WorkingHours,
 };
 
 /// Handle route.plan messages
