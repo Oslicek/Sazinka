@@ -1,23 +1,23 @@
 # Sazinka - Start Full Stack
-# Spustí celý stack aplikace: Docker services + Worker + Frontend
+# Spusti cely stack aplikace: Docker services + Worker + Frontend
 
 param(
-    [switch]$NoBuild,      # Přeskočit build workeru
-    [switch]$NoDocker,     # Přeskočit Docker (pokud už běží)
-    [switch]$NoFrontend    # Nespouštět frontend
+    [switch]$NoBuild,
+    [switch]$NoDocker,
+    [switch]$NoFrontend
 )
 
 $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "  Sazinka - Spouštím aplikaci" -ForegroundColor Cyan
+Write-Host "  Sazinka - Spoustim aplikaci" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
 # 1. Start Docker services
 if (-not $NoDocker) {
-    Write-Host "[1/4] Spouštím Docker services..." -ForegroundColor Yellow
+    Write-Host "[1/4] Spoustim Docker services..." -ForegroundColor Yellow
     
     Push-Location "$scriptDir\infra"
     try {
@@ -30,7 +30,7 @@ if (-not $NoDocker) {
         Pop-Location
     }
     
-    Write-Host "      Čekám na PostgreSQL..." -ForegroundColor Gray
+    Write-Host "      Cekam na PostgreSQL..." -ForegroundColor Gray
     $maxRetries = 30
     $retries = 0
     do {
@@ -40,13 +40,13 @@ if (-not $NoDocker) {
     } while ($LASTEXITCODE -ne 0 -and $retries -lt $maxRetries)
     
     if ($retries -ge $maxRetries) {
-        Write-Host "CHYBA: PostgreSQL není připraven!" -ForegroundColor Red
+        Write-Host "CHYBA: PostgreSQL neni pripraven!" -ForegroundColor Red
         exit 1
     }
     
-    Write-Host "      Docker services běží ✓" -ForegroundColor Green
+    Write-Host "      Docker services bezi [OK]" -ForegroundColor Green
 } else {
-    Write-Host "[1/4] Přeskakuji Docker (--NoDocker)" -ForegroundColor Gray
+    Write-Host "[1/4] Preskakuji Docker (pouzit -NoDocker)" -ForegroundColor Gray
 }
 
 # 2. Build Worker (if needed)
@@ -58,19 +58,19 @@ if (-not $NoBuild) {
         cargo build --release 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) {
             Write-Host "CHYBA: Kompilace workeru selhala!" -ForegroundColor Red
-            Write-Host "      Spusťte 'cargo build --release' manuálně pro detaily." -ForegroundColor Gray
+            Write-Host "      Spustte 'cargo build --release' manualne pro detaily." -ForegroundColor Gray
             exit 1
         }
-        Write-Host "      Worker zkompilován ✓" -ForegroundColor Green
+        Write-Host "      Worker zkompilovan [OK]" -ForegroundColor Green
     } finally {
         Pop-Location
     }
 } else {
-    Write-Host "[2/4] Přeskakuji build (--NoBuild)" -ForegroundColor Gray
+    Write-Host "[2/4] Preskakuji build (pouzit -NoBuild)" -ForegroundColor Gray
 }
 
 # 3. Start Worker in new terminal
-Write-Host "[3/4] Spouštím Worker..." -ForegroundColor Yellow
+Write-Host "[3/4] Spoustim Worker..." -ForegroundColor Yellow
 
 $workerPath = "$scriptDir\worker\target\release\sazinka-worker.exe"
 if (-not (Test-Path $workerPath)) {
@@ -79,46 +79,40 @@ if (-not (Test-Path $workerPath)) {
 
 if (-not (Test-Path $workerPath)) {
     Write-Host "CHYBA: Worker executable nenalezen!" -ForegroundColor Red
-    Write-Host "      Spusťte 'cargo build --release' v adresáři worker/" -ForegroundColor Gray
+    Write-Host "      Spustte 'cargo build --release' v adresari worker/" -ForegroundColor Gray
     exit 1
 }
 
 # Start worker in new terminal window
-Start-Process powershell -ArgumentList @(
-    "-NoExit",
-    "-Command",
-    "Set-Location '$scriptDir\worker'; `$env:RUST_LOG='info,sazinka_worker=debug'; .\target\release\sazinka-worker.exe"
-) -WindowStyle Normal
+$workerCmd = "Set-Location '$scriptDir\worker'; `$env:RUST_LOG='info,sazinka_worker=debug'; .\target\release\sazinka-worker.exe"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", $workerCmd -WindowStyle Normal
 
-Write-Host "      Worker spuštěn v novém okně ✓" -ForegroundColor Green
+Write-Host "      Worker spusten v novem okne [OK]" -ForegroundColor Green
 
 # Wait for worker to connect
 Start-Sleep -Seconds 2
 
 # 4. Start Frontend
 if (-not $NoFrontend) {
-    Write-Host "[4/4] Spouštím Frontend..." -ForegroundColor Yellow
+    Write-Host "[4/4] Spoustim Frontend..." -ForegroundColor Yellow
     
     # Start frontend in new terminal
-    Start-Process powershell -ArgumentList @(
-        "-NoExit",
-        "-Command",
-        "Set-Location '$scriptDir\apps\web'; pnpm dev"
-    ) -WindowStyle Normal
+    $frontendCmd = "Set-Location '$scriptDir\apps\web'; pnpm dev"
+    Start-Process powershell -ArgumentList "-NoExit", "-Command", $frontendCmd -WindowStyle Normal
     
-    Write-Host "      Frontend spuštěn v novém okně ✓" -ForegroundColor Green
+    Write-Host "      Frontend spusten v novem okne [OK]" -ForegroundColor Green
 } else {
-    Write-Host "[4/4] Přeskakuji Frontend (--NoFrontend)" -ForegroundColor Gray
+    Write-Host "[4/4] Preskakuji Frontend (pouzit -NoFrontend)" -ForegroundColor Gray
 }
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "  Aplikace běží!" -ForegroundColor Green
+Write-Host "  Aplikace bezi!" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  Frontend:  http://localhost:5173" -ForegroundColor White
 Write-Host "  NATS:      localhost:4222" -ForegroundColor White
 Write-Host "  Postgres:  localhost:5432" -ForegroundColor White
 Write-Host ""
-Write-Host "  Pro zastavení: .\stop.ps1" -ForegroundColor Gray
+Write-Host "  Pro zastaveni: .\stop.ps1" -ForegroundColor Gray
 Write-Host ""
