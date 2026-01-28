@@ -12,14 +12,25 @@ const USER_ID = '00000000-0000-0000-0000-000000000001';
 // Default depot location (Prague center)
 const DEFAULT_DEPOT = { lat: 50.0755, lng: 14.4378 };
 
-interface NatsResponse<T> {
-  success: boolean;
-  requestId: string;
+interface NatsSuccessResponse<T> {
+  id: string;
+  timestamp: string;
   payload: T;
-  error?: {
+}
+
+interface NatsErrorResponse {
+  id: string;
+  timestamp: string;
+  error: {
     code: string;
     message: string;
   };
+}
+
+type NatsResponse<T> = NatsSuccessResponse<T> | NatsErrorResponse;
+
+function isErrorResponse<T>(response: NatsResponse<T>): response is NatsErrorResponse {
+  return 'error' in response;
 }
 
 export function Planner() {
@@ -192,8 +203,8 @@ export function Planner() {
         30000
       );
 
-      if (!customersResponse.success) {
-        throw new Error(customersResponse.error?.message || 'Nepodařilo se načíst zákazníky');
+      if (isErrorResponse(customersResponse)) {
+        throw new Error(customersResponse.error.message || 'Nepodařilo se načíst zákazníky');
       }
 
       const customers = customersResponse.payload;
@@ -222,8 +233,8 @@ export function Planner() {
         60000 // 60s timeout for route planning
       );
 
-      if (!planResponse.success) {
-        throw new Error(planResponse.error?.message || 'Nepodařilo se naplánovat trasu');
+      if (isErrorResponse(planResponse)) {
+        throw new Error(planResponse.error.message || 'Nepodařilo se naplánovat trasu');
       }
 
       const result = planResponse.payload;
