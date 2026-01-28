@@ -10,37 +10,46 @@ param(
 $ErrorActionPreference = "Stop"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-# Setup Visual Studio environment if not already set
-if (-not $env:VSINSTALLDIR) {
-    # Try to find vswhere.exe
-    $vsWherePaths = @(
-        "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe",
-        "${env:ProgramFiles}\Microsoft Visual Studio\Installer\vswhere.exe"
-    )
-    
-    $vsWhere = $vsWherePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
-    
-    if ($vsWhere) {
+# Setup Visual Studio environment - FORCE Community over Insiders
+$vsCommunity = "C:\Program Files\Microsoft Visual Studio\18\Community"
+$vsInsiders = "C:\Program Files\Microsoft Visual Studio\18\Insiders"
+
+# Prefer Community
+if (Test-Path "$vsCommunity\VC\Auxiliary\Build\vcvars64.bat") {
+    $vsPath = $vsCommunity
+} elseif (Test-Path "$vsInsiders\VC\Auxiliary\Build\vcvars64.bat") {
+    $vsPath = $vsInsiders
+} else {
+    # Fallback to vswhere
+    $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+    if (Test-Path $vsWhere) {
         $vsPath = & $vsWhere -latest -property installationPath 2>$null
-        Write-Host "      Nalezeno VS: $vsPath" -ForegroundColor Gray
+    }
+}
+
+if ($vsPath) {
+    Write-Host "      Pouzivam VS: $vsPath" -ForegroundColor Gray
+    $vcvars = "$vsPath\VC\Auxiliary\Build\vcvars64.bat"
+    
+    if (Test-Path $vcvars) {
+        Write-Host "      Nastavuji VS prostredi..." -ForegroundColor Gray
         
-        if ($vsPath) {
-            $vcvars = "$vsPath\VC\Auxiliary\Build\vcvars64.bat"
-            if (Test-Path $vcvars) {
-                Write-Host "      Nastavuji VS prostredi..." -ForegroundColor Gray
-                cmd /c "`"$vcvars`" > nul 2>&1 && set" | ForEach-Object {
-                    if ($_ -match "^([^=]+)=(.*)$") {
-                        [System.Environment]::SetEnvironmentVariable($matches[1], $matches[2], "Process")
-                    }
-                }
-            } else {
-                Write-Host "      VAROVANI: vcvars64.bat nenalezen v $vcvars" -ForegroundColor Yellow
+        # Run vcvars and capture environment
+        cmd /c "`"$vcvars`" > nul 2>&1 && set" | ForEach-Object {
+            if ($_ -match "^([^=]+)=(.*)$") {
+                [System.Environment]::SetEnvironmentVariable($matches[1], $matches[2], "Process")
             }
         }
-    } else {
-        Write-Host "      VAROVANI: vswhere.exe nenalezen" -ForegroundColor Yellow
-        Write-Host "      Spustte skript z 'Developer Command Prompt for VS'" -ForegroundColor Yellow
+        
+        # IMPORTANT: Force Rust to use this VS installation
+        $env:VCINSTALLDIR = "$vsPath\VC\"
+        $env:VSINSTALLDIR = "$vsPath\"
+        
+        Write-Host "      VS prostredi nastaveno [OK]" -ForegroundColor Green
     }
+} else {
+    Write-Host "      VAROVANI: Visual Studio nenalezeno" -ForegroundColor Yellow
+    Write-Host "      Spustte z Developer Command Prompt" -ForegroundColor Yellow
 }
 
 Write-Host "========================================" -ForegroundColor Cyan
