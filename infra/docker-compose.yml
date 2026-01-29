@@ -36,23 +36,44 @@ services:
       retries: 3
     restart: unless-stopped
 
-  # Nominatim geocoding service for address -> coordinates
+  # ============================================================================
+  # NOMINATIM GEOCODING SERVICE
+  # ============================================================================
   # 
-  # IMPORTANT: Data is stored in Docker volume 'nominatim_data' and persists across restarts.
-  # First run downloads and imports Czech Republic (~1.5 hours).
-  # DO NOT use 'docker-compose down -v' or 'docker volume rm' unless you want to re-import!
+  # !!! CRITICAL - DATA PROTECTION !!!
   # 
-  # To force re-import: docker volume rm sazinka_nominatim_data && docker-compose up nominatim
+  # Data are stored in Docker volume 'sazinka_nominatim_data' and persist across:
+  # - Container restarts
+  # - Computer restarts  
+  # - Docker updates
+  # - System crashes (as long as disk survives)
+  #
+  # Initial import takes ~2 hours. Data should NEVER be deleted without explicit request!
+  #
+  # FORBIDDEN OPERATIONS (will destroy data):
+  # - docker-compose down -v
+  # - docker volume rm sazinka_nominatim_data
+  # - docker system prune --volumes
+  #
+  # To INTENTIONALLY re-import (ONLY if explicitly requested):
+  # 1. Stop container: docker-compose stop nominatim
+  # 2. Remove volume: docker volume rm sazinka_nominatim_data
+  # 3. Start fresh: docker-compose up nominatim
+  #
+  # ============================================================================
   nominatim:
     image: mediagis/nominatim:4.4
     container_name: sazinka-nominatim
     ports:
       - "8080:8080"
     environment:
-      # Download Czech Republic OSM data on first run
+      # Download Czech Republic OSM data on first run ONLY
       PBF_URL: https://download.geofabrik.de/europe/czech-republic-latest.osm.pbf
-      REPLICATION_URL: https://download.geofabrik.de/europe/czech-republic-updates/
+      # NO REPLICATION_URL - we do NOT want automatic updates!
+      # Updates would be triggered only by explicit re-import request.
       NOMINATIM_PASSWORD: nominatim_dev
+      # Disable update checks
+      FREEZE: "true"
     volumes:
       - nominatim_data:/var/lib/postgresql/14/main
     shm_size: 1g
@@ -104,6 +125,19 @@ volumes:
   postgres_data:
   valhalla_tiles:
   nats_jetstream:
-  # PERSISTENT - contains imported Czech Republic OSM data (~2GB)
-  # Takes ~1.5 hours to import. DO NOT DELETE unless explicitly requested!
+  
+  # ============================================================================
+  # !!! PROTECTED VOLUME - DO NOT DELETE !!!
+  # ============================================================================
+  # nominatim_data contains Czech Republic OSM data (~2GB)
+  # Initial import takes ~2 HOURS.
+  # 
+  # This volume MUST persist. Never use:
+  # - docker-compose down -v
+  # - docker volume rm sazinka_nominatim_data
+  # - docker system prune --volumes
+  #
+  # Data survives: restarts, crashes, Docker updates
+  # Data is lost: volume deletion, disk failure
+  # ============================================================================
   nominatim_data:
