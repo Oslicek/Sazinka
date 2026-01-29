@@ -2,6 +2,7 @@
 
 pub mod admin;
 pub mod customer;
+pub mod jobs;
 pub mod ping;
 pub mod route;
 
@@ -109,8 +110,9 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let client_admin = client.clone();
     let pool_admin = pool.clone();
     let valhalla_url = config.valhalla_url.clone();
+    let nominatim_url = Some(config.nominatim_url.clone());
     tokio::spawn(async move {
-        if let Err(e) = admin::start_admin_handlers(client_admin, pool_admin, valhalla_url).await {
+        if let Err(e) = admin::start_admin_handlers(client_admin, pool_admin, valhalla_url, nominatim_url).await {
             error!("Admin handlers error: {}", e);
         }
     });

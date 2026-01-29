@@ -69,4 +69,25 @@ mod tests {
         // Cleanup
         std::env::remove_var("VALHALLA_URL");
     }
+
+    #[test]
+    fn test_config_nominatim_url_defaults_to_public() {
+        std::env::remove_var("NOMINATIM_URL");
+        std::env::set_var("DATABASE_URL", "postgres://test");
+        
+        let config = Config::from_env().unwrap();
+        assert_eq!(config.nominatim_url, "https://nominatim.openstreetmap.org");
+    }
+
+    #[test]
+    fn test_config_nominatim_url_uses_local_when_set() {
+        std::env::set_var("NOMINATIM_URL", "http://localhost:8080");
+        std::env::set_var("DATABASE_URL", "postgres://test");
+        
+        let config = Config::from_env().unwrap();
+        assert_eq!(config.nominatim_url, "http://localhost:8080");
+        
+        // Cleanup
+        std::env::remove_var("NOMINATIM_URL");
+    }
 }

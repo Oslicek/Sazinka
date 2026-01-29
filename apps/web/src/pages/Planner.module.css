@@ -216,3 +216,98 @@
   width: 100%;
   height: 100%;
 }
+
+/* Job Status Indicator */
+.jobStatus {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 0.75rem;
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-bottom: 1rem;
+}
+
+.jobStatusIcon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.jobStatusText {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+}
+
+.jobStatusText strong {
+  font-size: 0.875rem;
+}
+
+.jobStatusText span {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.jobStatusSuccess {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.75rem;
+  background-color: var(--color-success-bg, #f0fdf4);
+  border: 1px solid var(--color-success, #22c55e);
+  color: var(--color-success, #22c55e);
+  border-radius: var(--radius-md);
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.jobStatusError {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.75rem;
+  background-color: var(--color-danger-bg, #fef2f2);
+  border: 1px solid var(--color-danger, #ef4444);
+  color: var(--color-danger, #ef4444);
+  border-radius: var(--radius-md);
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+}
+
+.progressBar {
+  width: 100%;
+  height: 6px;
+  background-color: var(--color-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background-color: var(--color-primary);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+/* Queue Toggle */
+.queueToggle {
+  margin-bottom: 1rem;
+}
+
+.queueToggle label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.queueToggle input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  cursor: pointer;
+}

@@ -34,6 +34,8 @@ export function Admin() {
     { name: 'NATS', status: 'unknown' },
     { name: 'PostgreSQL', status: 'unknown' },
     { name: 'Valhalla', status: 'unknown' },
+    { name: 'Nominatim', status: 'unknown' },
+    { name: 'JetStream', status: 'unknown' },
     { name: 'Worker', status: 'unknown' },
     { name: 'Frontend', status: 'running' }, // Always running if we see this
   ]);
@@ -137,6 +139,64 @@ export function Admin() {
       if (valhallaIdx >= 0) {
         newServices[valhallaIdx] = {
           ...newServices[valhallaIdx],
+          status: 'unknown',
+          lastCheck: new Date().toISOString(),
+          details: 'Could not check'
+        };
+      }
+    }
+
+    // Check Nominatim
+    try {
+      const response = await request<any, any>('sazinka.admin.nominatim.status', {});
+      const nominatimResult = response.payload || response;
+      const nominatimIdx = newServices.findIndex(s => s.name === 'Nominatim');
+      if (nominatimIdx >= 0) {
+        newServices[nominatimIdx] = {
+          ...newServices[nominatimIdx],
+          status: nominatimResult.available ? 'running' : 'stopped',
+          lastCheck: new Date().toISOString(),
+          details: nominatimResult.available 
+            ? `${nominatimResult.url}${nominatimResult.version ? ` v${nominatimResult.version}` : ''}`
+            : 'Not available'
+        };
+      }
+    } catch (e) {
+      const nominatimIdx = newServices.findIndex(s => s.name === 'Nominatim');
+      if (nominatimIdx >= 0) {
+        newServices[nominatimIdx] = {
+          ...newServices[nominatimIdx],
+          status: 'unknown',
+          lastCheck: new Date().toISOString(),
+          details: 'Could not check'
+        };
+      }
+    }
+
+    // Check JetStream
+    try {
+      const response = await request<any, any>('sazinka.admin.jetstream.status', {});
+      const jsResult = response.payload || response;
+      const jsIdx = newServices.findIndex(s => s.name === 'JetStream');
+      if (jsIdx >= 0) {
+        const streamInfo = jsResult.streams?.[0];
+        const consumerInfo = jsResult.consumers?.[0];
+        let details = jsResult.available ? 'Enabled' : 'Disabled';
+        if (streamInfo) {
+          details = `${streamInfo.messages} msgs, ${consumerInfo?.pending || 0} pending`;
+        }
+        newServices[jsIdx] = {
+          ...newServices[jsIdx],
+          status: jsResult.available ? 'running' : 'stopped',
+          lastCheck: new Date().toISOString(),
+          details
+        };
+      }
+    } catch (e) {
+      const jsIdx = newServices.findIndex(s => s.name === 'JetStream');
+      if (jsIdx >= 0) {
+        newServices[jsIdx] = {
+          ...newServices[jsIdx],
           status: 'unknown',
           lastCheck: new Date().toISOString(),
           details: 'Could not check'

@@ -12,6 +12,43 @@ const USER_ID = '00000000-0000-0000-0000-000000000001';
 // Default depot location (Prague center)
 const DEFAULT_DEPOT = { lat: 50.0755, lng: 14.4378 };
 
+// Job Status types for queue workflow
+interface JobSubmitResponse {
+  jobId: string;
+  position: number;
+  estimatedWaitSeconds: number;
+}
+
+interface JobStatusQueued {
+  type: 'queued';
+  position: number;
+  estimatedWaitSeconds: number;
+}
+
+interface JobStatusProcessing {
+  type: 'processing';
+  progress: number;
+  message: string;
+}
+
+interface JobStatusCompleted {
+  type: 'completed';
+  result: RoutePlanResponse;
+}
+
+interface JobStatusFailed {
+  type: 'failed';
+  error: string;
+}
+
+type JobStatus = JobStatusQueued | JobStatusProcessing | JobStatusCompleted | JobStatusFailed;
+
+interface JobStatusUpdate {
+  jobId: string;
+  timestamp: string;
+  status: JobStatus;
+}
+
 interface NatsSuccessResponse<T> {
   id: string;
   timestamp: string;
@@ -51,8 +88,14 @@ export function Planner() {
   const [solveTimeMs, setSolveTimeMs] = useState(0);
   const [solverLog, setSolverLog] = useState<string[]>([]);
   const [routeGeometry, setRouteGeometry] = useState<[number, number][]>([]);
+  
+  // Job queue state
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
+  const [useQueueMode, setUseQueueMode] = useState(false);
+  const unsubscribeRef = useRef<(() => void) | null>(null);
 
-  const { request, isConnected } = useNatsStore();
+  const { request, subscribe, isConnected } = useNatsStore();
 
   // Initialize map
   useEffect(() => {
@@ -271,6 +314,59 @@ export function Planner() {
     }
   };
 
+  // Clean up job subscription on unmount
+  useEffect(() => {
+    return () => {
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+      }
+    };
+  }, []);
+
+  // Handle job status update callback
+  const handleJobStatusUpdate = useCallback((update: JobStatusUpdate) => {
+    if (update.jobId !== jobId) return;
+    
+    setJobStatus(update.status);
+    
+    if (update.status.type === 'completed') {
+      const result = update.status.result;
+      const geometry = result.geometry || [];
+      
+      setStops(result.stops);
+      setTotalDistance(result.totalDistanceKm);
+      setTotalDuration(result.totalDurationMinutes);
+      setOptimizationScore(result.optimizationScore);
+      setAlgorithmName(result.algorithm);
+      setSolveTimeMs(result.solveTimeMs);
+      setRouteWarnings(result.warnings.map(w => w.message));
+      setUnassignedCount(result.unassigned.length);
+      setSolverLog(result.solverLog);
+      setRouteGeometry(geometry);
+      addStopMarkers(result.stops, geometry);
+      
+      setIsLoading(false);
+      setJobId(null);
+      setJobStatus(null);
+      
+      // Unsubscribe
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+        unsubscribeRef.current = null;
+      }
+    } else if (update.status.type === 'failed') {
+      setError(update.status.error);
+      setIsLoading(false);
+      setJobId(null);
+      setJobStatus(null);
+      
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+        unsubscribeRef.current = null;
+      }
+    }
+  }, [jobId, addStopMarkers]);
+
   // Clear route
   const handleClearRoute = () => {
     clearMarkers();
@@ -285,6 +381,13 @@ export function Planner() {
     setSolverLog([]);
     setRouteGeometry([]);
     setError(null);
+    setJobId(null);
+    setJobStatus(null);
+    
+    if (unsubscribeRef.current) {
+      unsubscribeRef.current();
+      unsubscribeRef.current = null;
+    }
   };
 
   const formatDuration = (minutes: number) => {
@@ -300,6 +403,55 @@ export function Planner() {
     if (!Number.isFinite(ms) || ms <= 0) return '–';
     if (ms < 1000) return `${ms} ms`;
     return `${(ms / 1000).toFixed(1)} s`;
+  };
+
+  // Job Status Indicator component
+  const JobStatusIndicator = () => {
+    if (!jobStatus) return null;
+
+    switch (jobStatus.type) {
+      case 'queued':
+        return (
+          <div className={styles.jobStatus}>
+            <div className={styles.jobStatusIcon}>⏳</div>
+            <div className={styles.jobStatusText}>
+              <strong>Ve frontě</strong>
+              <span>Pozice: {jobStatus.position}</span>
+              <span>Odhadovaný čas: ~{jobStatus.estimatedWaitSeconds}s</span>
+            </div>
+          </div>
+        );
+      case 'processing':
+        return (
+          <div className={styles.jobStatus}>
+            <div className={styles.jobStatusIcon}>⚙️</div>
+            <div className={styles.jobStatusText}>
+              <strong>Zpracování...</strong>
+              <div className={styles.progressBar}>
+                <div 
+                  className={styles.progressFill} 
+                  style={{ width: `${jobStatus.progress}%` }}
+                />
+              </div>
+              <span>{jobStatus.message}</span>
+            </div>
+          </div>
+        );
+      case 'completed':
+        return (
+          <div className={styles.jobStatusSuccess}>
+            <div className={styles.jobStatusIcon}>✅</div>
+            <span>Dokončeno!</span>
+          </div>
+        );
+      case 'failed':
+        return (
+          <div className={styles.jobStatusError}>
+            <div className={styles.jobStatusIcon}>❌</div>
+            <span>{jobStatus.error}</span>
+          </div>
+        );
+    }
   };
 
   return (
@@ -371,6 +523,19 @@ export function Planner() {
             </pre>
           </div>
         )}
+
+        {jobStatus && <JobStatusIndicator />}
+
+        <div className={styles.queueToggle}>
+          <label>
+            <input
+              type="checkbox"
+              checked={useQueueMode}
+              onChange={(e) => setUseQueueMode(e.target.checked)}
+            />
+            <span>Použít frontu (pro velkou zátěž)</span>
+          </label>
+        </div>
 
         <div className={styles.actions}>
           <button 

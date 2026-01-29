@@ -11,6 +11,7 @@ interface NatsState {
   connect: (url: string) => Promise<void>;
   disconnect: () => Promise<void>;
   request: <TReq, TRes>(subject: string, payload: TReq, timeoutMs?: number) => Promise<TRes>;
+  subscribe: <T>(subject: string, callback: (msg: T) => void) => Promise<() => void>;
 }
 
 const codec = JSONCodec();
@@ -89,6 +90,36 @@ export const useNatsStore = create<NatsState>((set, get) => ({
 
     const response = codec.decode(msg.data) as TRes;
     return response;
+  },
+
+  subscribe: async <T>(
+    subject: string,
+    callback: (msg: T) => void
+  ): Promise<() => void> => {
+    const { connection, isConnected } = get();
+
+    if (!connection || !isConnected) {
+      throw new Error('Not connected to NATS');
+    }
+
+    const sub = connection.subscribe(subject);
+    
+    // Process messages in background
+    (async () => {
+      for await (const msg of sub) {
+        try {
+          const data = codec.decode(msg.data) as T;
+          callback(data);
+        } catch (error) {
+          console.error('Failed to decode message:', error);
+        }
+      }
+    })();
+
+    // Return unsubscribe function
+    return () => {
+      sub.unsubscribe();
+    };
   },
 }));
 

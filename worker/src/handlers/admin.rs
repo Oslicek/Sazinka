@@ -76,6 +76,46 @@ pub struct LogsResponse {
     pub logs: Vec<LogEntry>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NominatimStatusRequest {}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NominatimStatusResponse {
+    pub available: bool,
+    pub url: String,
+    pub version: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JetStreamStatusRequest {}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JetStreamStatusResponse {
+    pub available: bool,
+    pub streams: Vec<StreamInfo>,
+    pub consumers: Vec<ConsumerInfo>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StreamInfo {
+    pub name: String,
+    pub messages: i64,
+    pub bytes: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConsumerInfo {
+    pub name: String,
+    pub stream: String,
+    pub pending: i64,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LogEntry {
@@ -94,6 +134,7 @@ pub async fn start_admin_handlers(
     client: Client,
     pool: PgPool,
     valhalla_url: Option<String>,
+    nominatim_url: Option<String>,
 ) -> Result<()> {
     info!("Starting admin handlers...");
 
@@ -126,6 +167,21 @@ pub async fn start_admin_handlers(
     tokio::spawn(async move {
         if let Err(e) = handle_logs(client4).await {
             error!("Logs handler error: {}", e);
+        }
+    });
+
+    let client5 = client.clone();
+    let nominatim_url_clone = nominatim_url.clone();
+    tokio::spawn(async move {
+        if let Err(e) = handle_nominatim_status(client5, nominatim_url_clone).await {
+            error!("Nominatim status handler error: {}", e);
+        }
+    });
+
+    let client6 = client.clone();
+    tokio::spawn(async move {
+        if let Err(e) = handle_jetstream_status(client6).await {
+            error!("JetStream status handler error: {}", e);
         }
     });
 
@@ -324,6 +380,116 @@ async fn handle_valhalla_status(client: Client, valhalla_url: Option<String>) ->
         let response = SuccessResponse::new(request_id, ValhallaStatusResponse {
             available,
             url,
+        });
+
+        let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+    }
+
+    Ok(())
+}
+
+/// Handle Nominatim status requests
+async fn handle_nominatim_status(client: Client, nominatim_url: Option<String>) -> Result<()> {
+    let mut sub = client.subscribe("sazinka.admin.nominatim.status").await?;
+    
+    while let Some(msg) = sub.next().await {
+        let reply = match msg.reply {
+            Some(r) => r,
+            None => continue,
+        };
+
+        let (available, url, version) = match &nominatim_url {
+            Some(url) => {
+                // Check Nominatim status endpoint
+                let http_client = reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(5))
+                    .build()
+                    .unwrap();
+                
+                let status_url = format!("{}/status?format=json", url);
+                match http_client.get(&status_url).send().await {
+                    Ok(response) if response.status().is_success() => {
+                        // Try to parse version from response
+                        let version = response
+                            .json::<serde_json::Value>()
+                            .await
+                            .ok()
+                            .and_then(|v| v.get("software_version").and_then(|s| s.as_str()).map(String::from));
+                        (true, url.clone(), version)
+                    }
+                    _ => (false, url.clone(), None),
+                }
+            }
+            None => (false, "Not configured".to_string(), None),
+        };
+
+        let request_id = extract_request_id(&msg.payload);
+        let response = SuccessResponse::new(request_id, NominatimStatusResponse {
+            available,
+            url,
+            version,
+        });
+
+        let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+    }
+
+    Ok(())
+}
+
+/// Handle JetStream status requests
+async fn handle_jetstream_status(client: Client) -> Result<()> {
+    use async_nats::jetstream;
+    
+    let mut sub = client.subscribe("sazinka.admin.jetstream.status").await?;
+    
+    while let Some(msg) = sub.next().await {
+        let reply = match msg.reply {
+            Some(r) => r,
+            None => continue,
+        };
+
+        let js = jetstream::new(client.clone());
+        
+        // Try to get stream info
+        let (available, streams, consumers) = match js.get_stream("SAZINKA_JOBS").await {
+            Ok(mut stream) => {
+                let stream_info = match stream.info().await {
+                    Ok(info) => vec![StreamInfo {
+                        name: info.config.name.clone(),
+                        messages: info.state.messages as i64,
+                        bytes: info.state.bytes as i64,
+                    }],
+                    Err(_) => vec![],
+                };
+                
+                // Get consumer info - we need to specify the consumer type
+                let consumer_info = match stream.get_consumer::<jetstream::consumer::pull::Config>("route_workers").await {
+                    Ok(mut consumer) => match consumer.info().await {
+                        Ok(info) => vec![ConsumerInfo {
+                            name: info.config.name.clone().unwrap_or_default(),
+                            stream: info.stream_name.clone(),
+                            pending: info.num_pending as i64,
+                        }],
+                        Err(_) => vec![],
+                    },
+                    Err(_) => vec![],
+                };
+                
+                (true, stream_info, consumer_info)
+            }
+            Err(_) => {
+                // JetStream might be available but stream not created yet
+                // Check if JetStream itself is available
+                let account_info = js.query_account().await;
+                (account_info.is_ok(), vec![], vec![])
+            }
+        };
+
+        let request_id = extract_request_id(&msg.payload);
+        let response = SuccessResponse::new(request_id, JetStreamStatusResponse {
+            available,
+            streams,
+            consumers,
         });
 
         let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;

@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   nats:
     image: nats:2.10-alpine
@@ -8,10 +6,11 @@ services:
       - "4222:4222"   # Client connections
       - "8222:8222"   # WebSocket (for browser)
       - "6222:6222"   # Cluster routing (optional)
-    command: ["--config", "/etc/nats/nats-server.conf", "--log", "/logs/nats.log"]
+    command: ["--config", "/etc/nats/nats-server.conf", "--jetstream", "--log", "/logs/nats.log"]
     volumes:
       - ./nats-server.conf:/etc/nats/nats-server.conf:ro
       - ../logs:/logs
+      - nats_jetstream:/data/jetstream
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8223/healthz"]
       interval: 5s
@@ -36,6 +35,33 @@ services:
       interval: 5s
       timeout: 3s
       retries: 3
+    restart: unless-stopped
+
+  # Nominatim geocoding service for address -> coordinates
+  # First run will download and import Czech Republic data (~30-60 min)
+  nominatim:
+    image: mediagis/nominatim:4.4
+    container_name: sazinka-nominatim
+    ports:
+      - "8080:8080"
+    environment:
+      # Download Czech Republic OSM data on first run
+      PBF_URL: https://download.geofabrik.de/europe/czech-republic-latest.osm.pbf
+      REPLICATION_URL: https://download.geofabrik.de/europe/czech-republic-updates/
+      NOMINATIM_PASSWORD: nominatim_dev
+    volumes:
+      - nominatim_data:/var/lib/postgresql/14/main
+    shm_size: 1g
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 3600s  # First import can take 30-60 minutes
     restart: unless-stopped
 
   # Valhalla routing engine for distance/time matrix calculations
@@ -70,6 +96,35 @@ services:
       start_period: 300s  # First build can take 5+ minutes
     restart: unless-stopped
 
+  # Nominatim geocoding service with Czech Republic data
+  # First run will import OSM data (~30-60 minutes for CZ)
+  nominatim:
+    image: mediagis/nominatim:4.4
+    container_name: sazinka-nominatim
+    ports:
+      - "8080:8080"
+    environment:
+      # Download Czech Republic OSM data on first run
+      PBF_URL: https://download.geofabrik.de/europe/czech-republic-latest.osm.pbf
+      REPLICATION_URL: https://download.geofabrik.de/europe/czech-republic-updates/
+      NOMINATIM_PASSWORD: nominatim_dev
+    volumes:
+      - nominatim_data:/var/lib/postgresql/14/main
+    shm_size: 1g
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 3600s  # Import CZ can take up to 60 minutes
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   valhalla_tiles:
+  nominatim_data:
+  nats_jetstream:

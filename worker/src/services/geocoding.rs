@@ -482,8 +482,12 @@ impl RateLimitedNominatimGeocoder {
     }
     
     /// Create from environment variables
+    /// 
+    /// Reads NOMINATIM_URL (or NOMINATIM_BASE_URL for backwards compatibility)
     pub fn from_env() -> Self {
-        let base_url = std::env::var("NOMINATIM_BASE_URL")
+        // Try NOMINATIM_URL first (new), then NOMINATIM_BASE_URL (legacy)
+        let base_url = std::env::var("NOMINATIM_URL")
+            .or_else(|_| std::env::var("NOMINATIM_BASE_URL"))
             .unwrap_or_else(|_| "https://nominatim.openstreetmap.org".to_string());
         
         let rate_limit_ms = std::env::var("NOMINATIM_RATE_LIMIT_MS")

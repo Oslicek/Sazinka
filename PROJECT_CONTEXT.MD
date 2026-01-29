@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-01-29 (v0.8.1)
+> **Last Updated:** 2026-01-29 (v0.9.0)
 
 ## Overview
 
@@ -157,7 +157,13 @@ sazinka.email.schedule          # Schedule reminder email
 sazinka.admin.db.status         # Get database status (connected, size, tables)
 sazinka.admin.db.reset          # Truncate all tables and create default user
 sazinka.admin.valhalla.status   # Check Valhalla routing service status
-sazinka.admin.logs              # Get recent logs (placeholder)
+sazinka.admin.nominatim.status  # Check Nominatim geocoding service status
+sazinka.admin.jetstream.status  # Check JetStream job queue status
+sazinka.admin.logs              # Get recent logs from all sources
+
+# Job Queue (JetStream)
+sazinka.jobs.route              # Submit route planning job to queue
+sazinka.job.status.<job_id>     # Real-time job status updates (pub/sub)
 ```
 
 ## Project Structure
@@ -852,6 +858,107 @@ For production deployment, consider:
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
+## Job Queue (JetStream)
+
+> **Status:** Implementation (v0.9.0)
+
+NATS JetStream provides persistent job queuing for long-running operations like route planning under high load.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           JetStream Job Queue                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   Frontend                         NATS JetStream                  Worker   │
+│   ┌─────────┐    submit job    ┌─────────────────┐   pull        ┌───────┐ │
+│   │ Planner │─────────────────▶│  SAZINKA_JOBS   │◀──────────────│JobProc│ │
+│   │         │                  │  (WorkQueue)    │               │essor  │ │
+│   │         │◀─────────────────│                 │───────────────│       │ │
+│   └─────────┘  status updates  └─────────────────┘   process     └───────┘ │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Configuration
+
+```yaml
+# infra/nats-server.conf
+jetstream {
+  store_dir: "/data/jetstream"
+  max_memory_store: 256MB
+  max_file_store: 1GB
+}
+```
+
+### Job Status Types
+
+| Status | Fields | Description |
+|--------|--------|-------------|
+| `queued` | position, estimatedWaitSeconds | Job waiting in queue |
+| `processing` | progress (0-100), message | Job being processed |
+| `completed` | result (RoutePlanResponse) | Job finished successfully |
+| `failed` | error | Job failed with error message |
+
+### Module Structure
+
+```
+worker/src/
+├── types/job.rs              # JobSubmitResponse, JobStatus, QueuedJob
+└── handlers/jobs.rs          # JobProcessor, submit/process/stats handlers
+```
+
+## Local Geocoding (Nominatim)
+
+> **Status:** Implementation (v0.9.0)
+
+Self-hosted Nominatim instance for geocoding independence from public APIs.
+
+### Container Configuration
+
+```yaml
+# infra/docker-compose.yml
+nominatim:
+  image: mediagis/nominatim:4.4
+  ports:
+    - "8080:8080"
+  environment:
+    PBF_URL: https://download.geofabrik.de/europe/czech-republic-latest.osm.pbf
+    REPLICATION_URL: https://download.geofabrik.de/europe/czech-republic-updates/
+  volumes:
+    - nominatim_data:/var/lib/postgresql/14/main
+  deploy:
+    resources:
+      limits:
+        memory: 4G
+```
+
+### Features
+
+- **Data**: Czech Republic OSM extract (~500MB)
+- **Import time**: 30-60 minutes on first run
+- **Memory**: 4GB limit (can be adjusted)
+- **Rate limiting**: Configurable via `NOMINATIM_RATE_LIMIT_MS` (default 100ms for local)
+
+### Configuration
+
+```bash
+# worker/.env
+GEOCODER_BACKEND=nominatim
+NOMINATIM_URL=http://localhost:8080    # Local instance
+NOMINATIM_RATE_LIMIT_MS=100            # Much faster than public API
+```
+
+### Fallback Strategy
+
+```rust
+// Uses NOMINATIM_URL first, falls back to NOMINATIM_BASE_URL (legacy)
+let base_url = std::env::var("NOMINATIM_URL")
+    .or_else(|_| std::env::var("NOMINATIM_BASE_URL"))
+    .unwrap_or_else(|_| "https://nominatim.openstreetmap.org".to_string());
+```
+
 ## Current State
 
 **Phase:** Core Development
@@ -899,6 +1006,9 @@ For production deployment, consider:
 - [x] **Valhalla matrix requests** with increased snapping radius for mock coordinates
 - [x] **Route geometry visualization** - full route from Valhalla with all legs concatenated
 - [x] **Centralized logging** - Worker and NATS logs to `logs/` directory with Admin UI viewer
+- [x] **JetStream job queue** - Persistent job queue for route planning with status updates
+- [x] **Local Nominatim geocoding** - Self-hosted geocoding with Czech Republic data
+- [x] **Admin health checks** - Nominatim and JetStream status in Admin UI
 
 **In Progress:**
 - [ ] Device management UI
@@ -1016,7 +1126,7 @@ cargo test
 
 ## Future Enhancements
 
-- [ ] Self-hosted Nominatim for geocoding
+- [x] ~~Self-hosted Nominatim for geocoding~~ (implemented v0.9.0)
 - [ ] Email notifications with Resend
 - [ ] Mobile-responsive design
 - [ ] Offline support (Service Worker)
