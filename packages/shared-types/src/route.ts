@@ -111,6 +111,8 @@ export interface RoutePlanResponse {
   warnings: RouteWarning[];
   /** Customer IDs that couldn't be scheduled */
   unassigned: string[];
+  /** Route geometry as GeoJSON coordinates [[lng, lat], ...] */
+  geometry?: [number, number][];
 }
 
 export interface PlannedRouteStop {

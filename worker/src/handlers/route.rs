@@ -74,6 +74,7 @@ pub async fn handle_plan(
                 optimization_score: 100,
                 warnings: vec![],
                 unassigned: vec![],
+                geometry: vec![],
             });
             let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
             continue;
@@ -115,6 +116,7 @@ pub async fn handle_plan(
                 optimization_score: 0,
                 warnings,
                 unassigned: plan_request.customer_ids.clone(),
+                geometry: vec![],
             });
             let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
             continue;
@@ -141,14 +143,22 @@ pub async fn handle_plan(
             });
         }
 
-        // Get distance/time matrices
-        let matrices = match routing_service.get_matrices(&locations).await {
-            Ok(m) => m,
+        // Get distance/time matrices (with fallback to mock if Valhalla fails)
+        let (matrices, routing_fallback_used) = match routing_service.get_matrices(&locations).await {
+            Ok(m) => (m, false),
             Err(e) => {
-                error!("Failed to get routing matrices: {}", e);
-                let error = ErrorResponse::new(request.id, "ROUTING_ERROR", e.to_string());
-                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
-                continue;
+                warn!("Primary routing service failed: {}. Falling back to mock routing.", e);
+                // Fallback to mock routing
+                let mock_service = crate::services::routing::MockRoutingService::new();
+                match mock_service.get_matrices(&locations).await {
+                    Ok(m) => (m, true),
+                    Err(e2) => {
+                        error!("Mock routing also failed: {}", e2);
+                        let error = ErrorResponse::new(request.id, "ROUTING_ERROR", e.to_string());
+                        let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                        continue;
+                    }
+                }
             }
         };
 
@@ -197,6 +207,15 @@ pub async fn handle_plan(
             });
         }
 
+        // Add routing fallback warning if applicable
+        if routing_fallback_used {
+            warnings.push(RouteWarning {
+                stop_index: None,
+                warning_type: "ROUTING_FALLBACK".to_string(),
+                message: "Valhalla unavailable - using estimated distances (40 km/h average)".to_string(),
+            });
+        }
+
         // Collect unassigned customer IDs
         let mut unassigned: Vec<Uuid> = invalid_ids.iter().map(|c| c.id).collect();
         for stop_id in &solution.unassigned {
@@ -204,6 +223,37 @@ pub async fn handle_plan(
                 unassigned.push(id);
             }
         }
+
+        // Build route geometry
+        // Order: depot -> stops in order -> depot
+        let geometry = if !planned_stops.is_empty() {
+            let mut route_coords: Vec<Coordinates> = vec![plan_request.start_location];
+            for stop in &planned_stops {
+                route_coords.push(stop.coordinates);
+            }
+            route_coords.push(plan_request.start_location); // Return to depot
+            
+            // Try to get real route geometry from Valhalla
+            if !routing_fallback_used {
+                if let Some(valhalla) = routing_service.as_any().downcast_ref::<crate::services::routing::ValhallaClient>() {
+                    match valhalla.get_route_geometry(&route_coords).await {
+                        Ok(geom) => geom.coordinates,
+                        Err(e) => {
+                            warn!("Failed to get route geometry: {}. Using straight lines.", e);
+                            route_coords.iter().map(|c| [c.lng, c.lat]).collect()
+                        }
+                    }
+                } else {
+                    // Not a Valhalla client, use straight lines
+                    route_coords.iter().map(|c| [c.lng, c.lat]).collect()
+                }
+            } else {
+                // Routing fallback was used, use straight lines
+                route_coords.iter().map(|c| [c.lng, c.lat]).collect()
+            }
+        } else {
+            vec![]
+        };
 
         let response = SuccessResponse::new(request.id, RoutePlanResponse {
             stops: planned_stops,
@@ -215,6 +265,7 @@ pub async fn handle_plan(
             optimization_score: solution.optimization_score as i32,
             warnings,
             unassigned,
+            geometry,
         });
 
         info!(

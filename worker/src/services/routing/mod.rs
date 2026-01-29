@@ -42,6 +42,36 @@ impl DistanceTimeMatrices {
     }
 }
 
+/// Route geometry as GeoJSON coordinates
+/// Coordinates are in [longitude, latitude] order (GeoJSON standard)
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RouteGeometry {
+    /// Array of [lng, lat] coordinates forming the route polyline
+    pub coordinates: Vec<[f64; 2]>,
+}
+
+impl RouteGeometry {
+    /// Create empty geometry (for fallback when no route available)
+    pub fn empty() -> Self {
+        Self { coordinates: vec![] }
+    }
+
+    /// Create geometry from a list of coordinates (straight lines)
+    pub fn from_coordinates(coords: &[Coordinates]) -> Self {
+        Self {
+            coordinates: coords
+                .iter()
+                .map(|c| [c.lng, c.lat])
+                .collect(),
+        }
+    }
+
+    /// Check if geometry is empty
+    pub fn is_empty(&self) -> bool {
+        self.coordinates.is_empty()
+    }
+}
+
 /// Routing service trait for abstraction (Valhalla, mock, etc.)
 #[async_trait]
 pub trait RoutingService: Send + Sync {
@@ -51,6 +81,9 @@ pub trait RoutingService: Send + Sync {
     
     /// Get service name for logging
     fn name(&self) -> &str;
+
+    /// Get as Any for downcasting (to access Valhalla-specific methods)
+    fn as_any(&self) -> &dyn std::any::Any;
 }
 
 /// Mock routing service for tests
@@ -123,6 +156,10 @@ impl RoutingService for MockRoutingService {
 
     fn name(&self) -> &str {
         "MockRouting"
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 

@@ -129,6 +129,10 @@ pub struct RoutePlanResponse {
     pub warnings: Vec<RouteWarning>,
     /// Customer IDs that couldn't be scheduled
     pub unassigned: Vec<Uuid>,
+    /// Route geometry as GeoJSON coordinates [[lng, lat], ...]
+    /// Empty if route geometry is not available
+    #[serde(default)]
+    pub geometry: Vec<[f64; 2]>,
 }
 
 /// A planned stop in the route
