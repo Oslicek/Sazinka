@@ -115,7 +115,7 @@ export function Planner() {
   }, []);
 
   // Add markers for stops
-  const addStopMarkers = useCallback((plannedStops: PlannedRouteStop[]) => {
+  const addStopMarkers = useCallback((plannedStops: PlannedRouteStop[], geometry: [number, number][] = []) => {
     if (!map.current) return;
 
     clearMarkers();
@@ -147,8 +147,8 @@ export function Planner() {
     // Draw route line
     if (plannedStops.length > 0) {
       // Use real road geometry if available, otherwise straight lines
-      const coordinates: [number, number][] = routeGeometry.length > 0
-        ? routeGeometry
+      const coordinates: [number, number][] = geometry.length > 0
+        ? geometry
         : [
             [DEFAULT_DEPOT.lng, DEFAULT_DEPOT.lat],
             ...plannedStops.map(s => [s.coordinates.lng, s.coordinates.lat] as [number, number]),
@@ -187,7 +187,7 @@ export function Planner() {
       coordinates.forEach(coord => bounds.extend(coord));
       map.current.fitBounds(bounds, { padding: 50 });
     }
-  }, [clearMarkers, routeGeometry]);
+  }, [clearMarkers]);
 
   // Plan route with random customers
   const handlePlanRoute = async () => {
@@ -248,6 +248,8 @@ export function Planner() {
 
       const result = planResponse.payload;
       
+      const geometry = result.geometry || [];
+      
       setStops(result.stops);
       setTotalDistance(result.totalDistanceKm);
       setTotalDuration(result.totalDurationMinutes);
@@ -257,10 +259,10 @@ export function Planner() {
       setRouteWarnings(result.warnings.map(w => w.message));
       setUnassignedCount(result.unassigned.length);
       setSolverLog(result.solverLog);
-      setRouteGeometry(result.geometry || []);
+      setRouteGeometry(geometry);
 
-      // Update map
-      addStopMarkers(result.stops);
+      // Update map with geometry passed directly (state is async)
+      addStopMarkers(result.stops, geometry);
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Neznámá chyba');

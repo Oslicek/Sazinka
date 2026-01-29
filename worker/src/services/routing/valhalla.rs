@@ -59,7 +59,12 @@ impl ValhallaClient {
     fn build_matrix_request(&self, locations: &[Coordinates]) -> MatrixRequest {
         let locs: Vec<ValhallaLocation> = locations
             .iter()
-            .map(|c| ValhallaLocation { lat: c.lat, lon: c.lng })
+            .map(|c| ValhallaLocation { 
+                lat: c.lat, 
+                lon: c.lng,
+                // Large radius for mock geocoding which generates random coordinates
+                radius: Some(50000), // 50km snapping radius
+            })
             .collect();
 
         MatrixRequest {
@@ -71,7 +76,7 @@ impl ValhallaClient {
                 auto: AutoCostingOptions {
                     // Increase search radius for snapping to roads (default is ~35m)
                     // This helps with coordinates that are slightly off-road
-                    search_cutoff: Some(5000), // 5km search radius
+                    search_cutoff: Some(50000), // 50km search radius
                 },
             }),
         }
@@ -81,7 +86,11 @@ impl ValhallaClient {
     pub fn build_route_request(&self, locations: &[Coordinates]) -> RouteRequest {
         let locs: Vec<ValhallaLocation> = locations
             .iter()
-            .map(|c| ValhallaLocation { lat: c.lat, lon: c.lng })
+            .map(|c| ValhallaLocation { 
+                lat: c.lat, 
+                lon: c.lng,
+                radius: Some(50000), // 50km snapping radius for mock geocoding
+            })
             .collect();
 
         RouteRequest {
@@ -90,7 +99,7 @@ impl ValhallaClient {
             directions_type: "none".to_string(), // We only need geometry, not turn-by-turn
             costing_options: Some(CostingOptions {
                 auto: AutoCostingOptions {
-                    search_cutoff: Some(5000),
+                    search_cutoff: Some(50000), // 50km
                 },
             }),
         }
@@ -125,12 +134,24 @@ impl ValhallaClient {
             .await
             .context("Failed to parse Valhalla route response")?;
 
-        // Extract geometry from response
-        let coordinates = decode_polyline(&route_response.trip.legs[0].shape, 6)?;
+        // Extract and concatenate geometry from ALL legs
+        let mut all_coordinates: Vec<[f64; 2]> = Vec::new();
+        for (i, leg) in route_response.trip.legs.iter().enumerate() {
+            let leg_coords = decode_polyline(&leg.shape, 6)?;
+            debug!("Leg {} has {} points", i, leg_coords.len());
+            
+            // Skip the first point of subsequent legs (it's the same as last point of previous leg)
+            if i == 0 {
+                all_coordinates.extend(leg_coords);
+            } else if !leg_coords.is_empty() {
+                all_coordinates.extend(leg_coords.into_iter().skip(1));
+            }
+        }
         
-        debug!("Received route geometry with {} points", coordinates.len());
+        debug!("Received route geometry with {} total points from {} legs", 
+               all_coordinates.len(), route_response.trip.legs.len());
 
-        Ok(RouteGeometry { coordinates })
+        Ok(RouteGeometry { coordinates: all_coordinates })
     }
 }
 
@@ -244,6 +265,9 @@ struct AutoCostingOptions {
 struct ValhallaLocation {
     lat: f64,
     lon: f64,
+    /// Radius in meters for snapping to roads (default ~35m, we use much larger for mock geocoding)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    radius: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
