@@ -152,7 +152,9 @@ export function Admin() {
   const loadLogs = useCallback(async () => {
     setIsLoadingLogs(true);
     try {
-      const result = await request('sazinka.admin.logs', { limit: 100, level: logFilter });
+      const response = await request<any, any>('sazinka.admin.logs', { limit: 100, level: logFilter });
+      // Response is wrapped in { id, timestamp, payload: { logs: [...] } }
+      const result = response.payload || response;
       setLogs(result.logs || []);
     } catch (e) {
       console.error('Failed to load logs:', e);
@@ -242,6 +244,7 @@ export function Admin() {
         <div className={styles.sectionHeader}>
           <h2>Stav služeb</h2>
           <button 
+            type="button"
             className={styles.primaryButton}
             onClick={runHealthCheck}
             disabled={isChecking || !connected}
@@ -331,6 +334,7 @@ export function Admin() {
 
             <div className={styles.dbActions}>
               <button 
+                type="button"
                 className={styles.dangerButton}
                 onClick={resetDatabase}
                 disabled={isResettingDb}
@@ -363,6 +367,7 @@ export function Admin() {
               <option value="debug">Debug a výše</option>
             </select>
             <button 
+              type="button"
               className={styles.secondaryButton}
               onClick={loadLogs}
               disabled={isLoadingLogs}

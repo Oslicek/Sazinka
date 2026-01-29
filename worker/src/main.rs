@@ -11,15 +11,30 @@ mod types;
 use anyhow::Result;
 use tracing::{info, error};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize logging
+    // Logs directory - use LOGS_DIR env var or default to ../logs (relative to worker)
+    let logs_dir = std::env::var("LOGS_DIR")
+        .unwrap_or_else(|_| "../logs".to_string());
+    std::fs::create_dir_all(&logs_dir).ok();
+    
+    // File appender for persistent logs (daily rotation)
+    let file_appender = RollingFileAppender::new(
+        Rotation::DAILY,
+        &logs_dir,
+        "worker.log",
+    );
+    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+
+    // Initialize logging - both stdout and file
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::new(
             std::env::var("RUST_LOG").unwrap_or_else(|_| "info,sazinka_worker=debug".into()),
         ))
-        .with(tracing_subscriber::fmt::layer())
+        .with(tracing_subscriber::fmt::layer())  // stdout
+        .with(tracing_subscriber::fmt::layer().with_writer(non_blocking).with_ansi(false))  // file
         .init();
 
     info!("Starting Sazinka Worker...");

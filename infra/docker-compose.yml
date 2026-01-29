@@ -8,9 +8,10 @@ services:
       - "4222:4222"   # Client connections
       - "8222:8222"   # WebSocket (for browser)
       - "6222:6222"   # Cluster routing (optional)
-    command: ["--config", "/etc/nats/nats-server.conf"]
+    command: ["--config", "/etc/nats/nats-server.conf", "--log", "/logs/nats.log"]
     volumes:
       - ./nats-server.conf:/etc/nats/nats-server.conf:ro
+      - ../logs:/logs
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8223/healthz"]
       interval: 5s
@@ -53,6 +54,10 @@ services:
       - build_elevation=False
       - build_admins=False
       - build_time_zones=False
+      - use_tiles_ignore_pbf=True
+      # Increase distance limits for matrix calculations (default is 400km, we need more for CZ)
+      - max_matrix_distance=5000000
+      - max_distance=10000000
     deploy:
       resources:
         limits:
