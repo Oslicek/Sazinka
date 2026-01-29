@@ -372,13 +372,19 @@ fn read_all_logs(logs_dir: &str, limit: usize, level_filter: Option<&str>) -> Ve
         return all_logs;
     }
     
-    // Read each .log file
+    // Read each .log file (including rotated files like worker.log.2026-01-29)
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.filter_map(|e| e.ok()) {
             let path = entry.path();
-            if path.extension().map_or(false, |e| e == "log") {
-                let source = path.file_stem()
-                    .and_then(|s| s.to_str())
+            let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            // Match .log extension OR files containing .log. (rotated files)
+            let is_log_file = path.extension().map_or(false, |e| e == "log") 
+                || filename.contains(".log.");
+            if is_log_file {
+                // Extract source name (e.g., "worker" from "worker.log.2026-01-29" or "nats" from "nats.log")
+                let source = filename
+                    .split(".log")
+                    .next()
                     .unwrap_or("unknown")
                     .to_string();
                 

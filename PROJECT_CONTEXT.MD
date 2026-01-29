@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-01-29 (v0.8.0)
+> **Last Updated:** 2026-01-29 (v0.8.1)
 
 ## Overview
 
@@ -743,6 +743,115 @@ worker/src/services/
 - Backend selects **10 random customers** with coordinates
 - Route is solved in Rust worker and rendered in the Planner map
 
+## Logging Architecture
+
+> **Status:** Implementation (v0.8.1)
+
+Centralized logging system for all components with file-based persistence.
+
+### Current Implementation
+
+```
+sazinka/
+└── logs/                              # Centralized log directory
+    ├── worker.log.YYYY-MM-DD          # Rust worker (daily rotation)
+    └── nats.log                       # NATS server
+```
+
+### Components
+
+| Component | Log File | Method | Status |
+|-----------|----------|--------|--------|
+| **Worker** | `worker.log.YYYY-MM-DD` | `tracing-appender` (daily rotation) | ✅ Implemented |
+| **NATS** | `nats.log` | `--log` flag in docker-compose | ✅ Implemented |
+| **PostgreSQL** | `postgres.log` | `logging_collector` config | 🔮 Planned |
+| **Valhalla** | `valhalla.log` | stderr redirect | 🔮 Planned |
+
+### Worker Logging
+
+Uses `tracing-appender` with non-blocking file writer:
+
+```rust
+// Cargo.toml
+tracing-appender = "0.2"
+
+// main.rs
+let file_appender = RollingFileAppender::new(
+    Rotation::DAILY,
+    &logs_dir,
+    "worker.log",
+);
+let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+
+tracing_subscriber::registry()
+    .with(fmt::layer())                                    // stdout
+    .with(fmt::layer().with_writer(non_blocking))          // file
+    .init();
+```
+
+### Configuration
+
+```bash
+# Environment variable (optional)
+LOGS_DIR=../logs    # Default: ../logs relative to worker binary
+```
+
+### Admin UI Integration
+
+The Admin page (`/admin`) displays aggregated logs from all sources:
+- Reads all `.log` files from `logs/` directory
+- Parses both tracing-subscriber and NATS log formats
+- Supports level filtering (error, warn, info, debug)
+- Auto-refresh option (5s interval)
+
+### Log Formats
+
+**Worker (tracing-subscriber):**
+```
+2026-01-29T16:29:21.250643Z  INFO sazinka_worker: Starting Sazinka Worker...
+2026-01-29T16:29:21.419848Z DEBUG sazinka_worker::handlers: Processing request
+```
+
+**NATS:**
+```
+[1] 2026/01/29 16:11:43.853519 [INF] Starting nats-server
+[1] 2026/01/29 16:11:43.956539 [WRN] Websocket not configured with TLS
+```
+
+### Future Enhancements
+
+| Phase | Enhancement | Description |
+|-------|-------------|-------------|
+| **Phase 1** | PostgreSQL logs | Configure `logging_collector` to write to shared volume |
+| **Phase 2** | Valhalla logs | Redirect stderr to file via docker-compose |
+| **Phase 3** | Log streaming | WebSocket-based real-time log streaming to Admin UI |
+| **Phase 4** | Professional stack | Integrate Vector/Fluent Bit for log aggregation |
+| **Phase 5** | Observability | OpenTelemetry for traces, metrics, and logs correlation |
+
+### Professional Stack (Future)
+
+For production deployment, consider:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     Log Aggregation Pipeline                         │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│   ┌─────────────┐    ┌─────────────┐    ┌─────────────────────────┐│
+│   │ Worker      │───▶│ Vector/     │───▶│ Loki / Elasticsearch    ││
+│   │ NATS        │    │ Fluent Bit  │    │ ClickHouse              ││
+│   │ PostgreSQL  │    │             │    └───────────┬─────────────┘│
+│   │ Valhalla    │    └─────────────┘                │              │
+│   └─────────────┘                                   ▼              │
+│                                          ┌─────────────────────────┐│
+│                                          │ Grafana                 ││
+│                                          │ - Log visualization     ││
+│                                          │ - Alerting              ││
+│                                          └─────────────────────────┘│
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
 ## Current State
 
 **Phase:** Core Development
@@ -788,9 +897,10 @@ worker/src/services/
 - [x] **Database reset** with automatic default user creation
 - [x] **MockGeocoder** generates coordinates strictly within Czech Republic (inner bounds: 49.0-50.5°N, 13.0-17.5°E)
 - [x] **Valhalla matrix requests** with increased snapping radius for mock coordinates
+- [x] **Route geometry visualization** - full route from Valhalla with all legs concatenated
+- [x] **Centralized logging** - Worker and NATS logs to `logs/` directory with Admin UI viewer
 
 **In Progress:**
-- [ ] Route geometry display on map (Valhalla route API) - geometry fetched, visualization needs fix
 - [ ] Device management UI
 
 **Pending:**
