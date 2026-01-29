@@ -1,13 +1,12 @@
-//! Geocoding abstraction layer with safety features
+//! Geocoding abstraction layer
 //!
-//! This module provides a safe geocoding architecture that:
-//! - Never risks getting blocked by external services
-//! - Uses MockGeocoder for tests (deterministic, no network)
-//! - Uses RateLimitedGeocoder for production (strict rate limiting)
+//! This module provides geocoding implementations:
+//! - MockGeocoder for tests (deterministic, no network)
+//! - NominatimGeocoder for production (local Nominatim instance)
 //!
 //! Configuration via GEOCODER_BACKEND env variable:
 //! - "mock" → MockGeocoder (tests, development)
-//! - "nominatim" → RateLimitedNominatimGeocoder (production)
+//! - "nominatim" → NominatimGeocoder (production with local Nominatim)
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -118,46 +117,6 @@ mod tests {
     }
 
     // ==========================================================================
-    // RateLimiter Tests
-    // ==========================================================================
-
-    #[tokio::test]
-    async fn rate_limiter_enforces_minimum_interval() {
-        let limiter = RateLimiter::new(std::time::Duration::from_millis(100));
-        
-        let start = std::time::Instant::now();
-        
-        // First call should be immediate
-        limiter.wait().await;
-        let after_first = start.elapsed();
-        assert!(after_first < std::time::Duration::from_millis(50), "First call should be immediate");
-        
-        // Second call should wait
-        limiter.wait().await;
-        let after_second = start.elapsed();
-        assert!(after_second >= std::time::Duration::from_millis(100), 
-            "Second call should wait at least 100ms, took {:?}", after_second);
-    }
-
-    #[tokio::test]
-    async fn rate_limiter_allows_call_after_interval() {
-        let limiter = RateLimiter::new(std::time::Duration::from_millis(50));
-        
-        limiter.wait().await;
-        
-        // Wait longer than interval
-        tokio::time::sleep(std::time::Duration::from_millis(60)).await;
-        
-        let start = std::time::Instant::now();
-        limiter.wait().await;
-        let elapsed = start.elapsed();
-        
-        // Should be immediate since we waited longer than interval
-        assert!(elapsed < std::time::Duration::from_millis(20), 
-            "Call after interval should be immediate, took {:?}", elapsed);
-    }
-
-    // ==========================================================================
     // CircuitBreaker Tests
     // ==========================================================================
 
@@ -223,20 +182,19 @@ mod tests {
     }
 
     // ==========================================================================
-    // RateLimitedNominatimGeocoder Tests
+    // NominatimGeocoder Tests
     // ==========================================================================
 
     #[test]
-    fn rate_limited_nominatim_geocoder_has_correct_name() {
-        let geocoder = RateLimitedNominatimGeocoder::new();
+    fn nominatim_geocoder_has_correct_name() {
+        let geocoder = NominatimGeocoder::new();
         assert_eq!(geocoder.name(), "nominatim");
     }
 
     #[test]
-    fn rate_limited_nominatim_geocoder_can_be_created_with_custom_config() {
-        let geocoder = RateLimitedNominatimGeocoder::with_config(
+    fn nominatim_geocoder_can_be_created_with_custom_config() {
+        let geocoder = NominatimGeocoder::with_config(
             "https://custom.nominatim.org",
-            std::time::Duration::from_millis(2000),
             5,
             std::time::Duration::from_secs(600),
         );
@@ -244,10 +202,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rate_limited_nominatim_geocoder_rejects_when_circuit_breaker_open() {
-        let geocoder = RateLimitedNominatimGeocoder::with_config(
+    async fn nominatim_geocoder_rejects_when_circuit_breaker_open() {
+        let geocoder = NominatimGeocoder::with_config(
             "https://nominatim.openstreetmap.org",
-            std::time::Duration::from_millis(100),
             1, // Open after 1 failure
             std::time::Duration::from_secs(300),
         );
@@ -335,49 +292,12 @@ impl Geocoder for MockGeocoder {
 }
 
 // ==========================================================================
-// RateLimiter Implementation
+// CircuitBreaker Implementation
 // ==========================================================================
 
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use std::time::{Duration, Instant};
-
-/// Rate limiter that enforces minimum interval between calls
-pub struct RateLimiter {
-    last_call: Arc<Mutex<Option<Instant>>>,
-    min_interval: Duration,
-}
-
-impl RateLimiter {
-    pub fn new(min_interval: Duration) -> Self {
-        Self {
-            last_call: Arc::new(Mutex::new(None)),
-            min_interval,
-        }
-    }
-    
-    /// Wait until it's safe to make another call
-    pub async fn wait(&self) {
-        let mut last = self.last_call.lock().await;
-        
-        if let Some(last_time) = *last {
-            let elapsed = last_time.elapsed();
-            if elapsed < self.min_interval {
-                let wait_time = self.min_interval - elapsed;
-                drop(last); // Release lock while sleeping
-                tokio::time::sleep(wait_time).await;
-                last = self.last_call.lock().await;
-            }
-        }
-        
-        *last = Some(Instant::now());
-    }
-}
-
-// ==========================================================================
-// CircuitBreaker Implementation
-// ==========================================================================
-
 use std::sync::atomic::{AtomicU32, Ordering};
 
 /// Circuit breaker to prevent hammering a failing service
@@ -430,13 +350,10 @@ impl CircuitBreaker {
 }
 
 // ==========================================================================
-// RateLimitedNominatimGeocoder Implementation
+// NominatimGeocoder Implementation
 // ==========================================================================
 
 use crate::services::nominatim::NominatimClient;
-
-/// Default rate limit interval (1.5 seconds - Nominatim allows 1 req/s)
-const DEFAULT_RATE_LIMIT_MS: u64 = 1500;
 
 /// Default circuit breaker threshold (3 failures)
 const DEFAULT_CIRCUIT_BREAKER_THRESHOLD: u32 = 3;
@@ -444,24 +361,22 @@ const DEFAULT_CIRCUIT_BREAKER_THRESHOLD: u32 = 3;
 /// Default circuit breaker recovery time (5 minutes)
 const DEFAULT_CIRCUIT_BREAKER_RECOVERY_SECS: u64 = 300;
 
-/// Rate-limited Nominatim geocoder with circuit breaker protection
+/// Nominatim geocoder with circuit breaker protection
 /// 
-/// This geocoder wraps the NominatimClient with:
-/// - Rate limiting: enforces minimum interval between requests
-/// - Circuit breaker: stops requests after repeated failures
-pub struct RateLimitedNominatimGeocoder {
+/// This geocoder wraps the NominatimClient with circuit breaker
+/// to prevent hammering when the service is down.
+/// No rate limiting - designed for local Nominatim instance.
+pub struct NominatimGeocoder {
     client: NominatimClient,
-    rate_limiter: RateLimiter,
     /// Circuit breaker - pub(crate) for testing
     pub(crate) circuit_breaker: CircuitBreaker,
 }
 
-impl RateLimitedNominatimGeocoder {
-    /// Create a new rate-limited Nominatim geocoder with default settings
+impl NominatimGeocoder {
+    /// Create a new Nominatim geocoder with default settings
     pub fn new() -> Self {
         Self::with_config(
-            "https://nominatim.openstreetmap.org",
-            Duration::from_millis(DEFAULT_RATE_LIMIT_MS),
+            "http://localhost:8080",
             DEFAULT_CIRCUIT_BREAKER_THRESHOLD,
             Duration::from_secs(DEFAULT_CIRCUIT_BREAKER_RECOVERY_SECS),
         )
@@ -470,13 +385,11 @@ impl RateLimitedNominatimGeocoder {
     /// Create with custom configuration
     pub fn with_config(
         base_url: &str,
-        rate_limit_interval: Duration,
         circuit_breaker_threshold: u32,
         circuit_breaker_recovery: Duration,
     ) -> Self {
         Self {
             client: NominatimClient::new(base_url),
-            rate_limiter: RateLimiter::new(rate_limit_interval),
             circuit_breaker: CircuitBreaker::new(circuit_breaker_threshold, circuit_breaker_recovery),
         }
     }
@@ -488,12 +401,7 @@ impl RateLimitedNominatimGeocoder {
         // Try NOMINATIM_URL first (new), then NOMINATIM_BASE_URL (legacy)
         let base_url = std::env::var("NOMINATIM_URL")
             .or_else(|_| std::env::var("NOMINATIM_BASE_URL"))
-            .unwrap_or_else(|_| "https://nominatim.openstreetmap.org".to_string());
-        
-        let rate_limit_ms = std::env::var("NOMINATIM_RATE_LIMIT_MS")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(DEFAULT_RATE_LIMIT_MS);
+            .unwrap_or_else(|_| "http://localhost:8080".to_string());
         
         let cb_threshold = std::env::var("NOMINATIM_CB_THRESHOLD")
             .ok()
@@ -507,21 +415,20 @@ impl RateLimitedNominatimGeocoder {
         
         Self::with_config(
             &base_url,
-            Duration::from_millis(rate_limit_ms),
             cb_threshold,
             Duration::from_secs(cb_recovery_secs),
         )
     }
 }
 
-impl Default for RateLimitedNominatimGeocoder {
+impl Default for NominatimGeocoder {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[async_trait]
-impl Geocoder for RateLimitedNominatimGeocoder {
+impl Geocoder for NominatimGeocoder {
     async fn geocode(&self, street: &str, city: &str, postal_code: &str) -> Result<Option<GeocodingResult>> {
         // Check circuit breaker first
         if self.circuit_breaker.is_open() {
@@ -529,10 +436,7 @@ impl Geocoder for RateLimitedNominatimGeocoder {
             return Err(anyhow::anyhow!("Geocoding service temporarily unavailable (circuit breaker open)"));
         }
         
-        // Wait for rate limiter
-        self.rate_limiter.wait().await;
-        
-        // Make the actual request
+        // Make the request (no rate limiting for local Nominatim)
         match self.client.geocode(street, city, postal_code).await {
             Ok(Some(coords)) => {
                 self.circuit_breaker.record_success();
@@ -578,8 +482,7 @@ fn create_geocoder_from_env_for_test(backend: &str) -> Box<dyn Geocoder> {
 /// # Environment Variables
 /// 
 /// - `GEOCODER_BACKEND`: "mock" or "nominatim" (default: "mock")
-/// - `NOMINATIM_BASE_URL`: Nominatim API URL (default: public OSM)
-/// - `NOMINATIM_RATE_LIMIT_MS`: Minimum interval between requests (default: 1500)
+/// - `NOMINATIM_URL`: Nominatim API URL (default: http://localhost:8080)
 /// - `NOMINATIM_CB_THRESHOLD`: Circuit breaker failure threshold (default: 3)
 /// - `NOMINATIM_CB_RECOVERY_SECS`: Circuit breaker recovery time (default: 300)
 pub fn create_geocoder() -> Box<dyn Geocoder> {
@@ -591,8 +494,8 @@ pub fn create_geocoder() -> Box<dyn Geocoder> {
             Box::new(MockGeocoder::new())
         }
         "nominatim" => {
-            tracing::info!("Using RateLimitedNominatimGeocoder");
-            Box::new(RateLimitedNominatimGeocoder::from_env())
+            tracing::info!("Using NominatimGeocoder");
+            Box::new(NominatimGeocoder::from_env())
         }
         _ => {
             tracing::warn!("Unknown GEOCODER_BACKEND '{}', using mock", backend);
