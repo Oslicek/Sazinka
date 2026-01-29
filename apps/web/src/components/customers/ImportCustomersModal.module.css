@@ -313,3 +313,71 @@
   color: var(--primary-color, #2563eb);
   text-decoration: underline;
 }
+
+/* Geocoding Section */
+.geocodeSection {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border-color, #e5e5e5);
+}
+
+.geocodeSection h3 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary, #666);
+  margin: 0 0 0.75rem 0;
+}
+
+.geocodeSubmitting {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--text-secondary, #666);
+}
+
+.geocodeSubmitting .spinner {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  border-width: 2px;
+}
+
+.geocodeSubmitted {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.geocodeSubmitted .successIcon {
+  color: var(--success-color, #16a34a);
+  font-weight: bold;
+}
+
+.geocodeSubmitted .jobId {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #999);
+  font-family: monospace;
+}
+
+.geocodeHint {
+  font-size: 0.8125rem;
+  color: var(--text-secondary, #666);
+  margin: 0.25rem 0 0 0;
+}
+
+.geocodeError {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--warning-color, #ca8a04);
+  font-size: 0.875rem;
+}
+
+.geocodeError .errorIcon {
+  font-size: 1rem;
+}
+
+.geocodeIdle {
+  font-size: 0.875rem;
+  color: var(--text-secondary, #666);
+}

@@ -208,3 +208,88 @@ export async function importCustomersBatch(
 
   return { importedCount, updatedCount, errors };
 }
+
+// ==========================================================================
+// Geocoding Job API
+// ==========================================================================
+
+/**
+ * Get customers pending geocoding (without coordinates)
+ */
+export interface PendingGeocodeCustomer {
+  id: string;
+  name: string;
+  address: string;
+}
+
+export interface PendingGeocodeResponse {
+  count: number;
+  customers: PendingGeocodeCustomer[];
+}
+
+export async function getCustomersPendingGeocode(
+  userId: string,
+  deps: CustomerServiceDeps = getDefaultDeps()
+): Promise<PendingGeocodeResponse> {
+  const request = createRequest(userId, {});
+
+  const response = await deps.request<typeof request, NatsResponse<PendingGeocodeResponse>>(
+    'sazinka.geocode.pending',
+    request
+  );
+
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+
+  return response.payload;
+}
+
+/**
+ * Submit a batch geocoding job for customers without coordinates
+ */
+export interface GeocodeJobSubmitResponse {
+  jobId: string;
+  message: string;
+}
+
+export async function submitGeocodeJob(
+  userId: string,
+  customerIds: string[],
+  deps: CustomerServiceDeps = getDefaultDeps()
+): Promise<GeocodeJobSubmitResponse> {
+  const request = createRequest(userId, { 
+    userId,
+    customerIds 
+  });
+
+  const response = await deps.request<typeof request, NatsResponse<GeocodeJobSubmitResponse>>(
+    'sazinka.geocode.submit',
+    request
+  );
+
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+
+  return response.payload;
+}
+
+/**
+ * Submit geocoding for all customers without coordinates
+ */
+export async function submitGeocodeAllPending(
+  userId: string,
+  deps: CustomerServiceDeps = getDefaultDeps()
+): Promise<GeocodeJobSubmitResponse | null> {
+  // First, get all customers pending geocode
+  const pending = await getCustomersPendingGeocode(userId, deps);
+  
+  if (pending.count === 0) {
+    return null; // Nothing to geocode
+  }
+  
+  // Submit geocoding job for all of them
+  const customerIds = pending.customers.map(c => c.id);
+  return submitGeocodeJob(userId, customerIds, deps);
+}

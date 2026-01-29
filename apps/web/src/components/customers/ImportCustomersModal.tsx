@@ -2,10 +2,15 @@
  * Modal for importing customers from CSV file
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, useEffect } from 'react';
 import { useImport } from '../../services/import';
+import { submitGeocodeAllPending } from '../../services/customerService';
+import { useNatsStore } from '../../stores/natsStore';
 import type { CreateCustomerRequest, ImportIssue } from '@shared/customer';
 import styles from './ImportCustomersModal.module.css';
+
+// Mock user ID for development
+const USER_ID = '00000000-0000-0000-0000-000000000001';
 
 interface ImportCustomersModalProps {
   isOpen: boolean;
@@ -24,10 +29,34 @@ export function ImportCustomersModal({
 }: ImportCustomersModalProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [geocodeStatus, setGeocodeStatus] = useState<'idle' | 'submitting' | 'submitted' | 'error'>('idle');
+  const [geocodeJobId, setGeocodeJobId] = useState<string | null>(null);
+  const [geocodeError, setGeocodeError] = useState<string | null>(null);
   
   const { state, startImport, reset } = useImport({
     onBatchReady: onImportBatch,
   });
+
+  // Trigger geocoding when import completes
+  useEffect(() => {
+    if (state.status === 'complete' && geocodeStatus === 'idle') {
+      setGeocodeStatus('submitting');
+      
+      submitGeocodeAllPending(USER_ID)
+        .then((result) => {
+          if (result) {
+            setGeocodeJobId(result.jobId);
+            setGeocodeStatus('submitted');
+          } else {
+            setGeocodeStatus('idle'); // No customers to geocode
+          }
+        })
+        .catch((err) => {
+          setGeocodeError(err.message);
+          setGeocodeStatus('error');
+        });
+    }
+  }, [state.status, geocodeStatus]);
 
   const handleFileSelect = useCallback((file: File) => {
     if (file.name.endsWith('.csv') || file.type === 'text/csv') {
@@ -86,6 +115,9 @@ export function ImportCustomersModal({
 
   const handleClose = useCallback(() => {
     reset();
+    setGeocodeStatus('idle');
+    setGeocodeJobId(null);
+    setGeocodeError(null);
     onClose();
   }, [reset, onClose]);
 
@@ -210,6 +242,40 @@ export function ImportCustomersModal({
                 <button className={styles.saveButton} onClick={handleSaveReport}>
                   💾 Uložit
                 </button>
+              </div>
+
+              {/* Geocoding status */}
+              <div className={styles.geocodeSection}>
+                <h3>Geokódování adres</h3>
+                {geocodeStatus === 'submitting' && (
+                  <div className={styles.geocodeSubmitting}>
+                    <div className={styles.spinner} />
+                    <span>Odesílám úlohu geokódování...</span>
+                  </div>
+                )}
+                {geocodeStatus === 'submitted' && (
+                  <div className={styles.geocodeSubmitted}>
+                    <span className={styles.successIcon}>✓</span>
+                    <span>Geokódování spuštěno na pozadí</span>
+                    {geocodeJobId && (
+                      <small className={styles.jobId}>Job ID: {geocodeJobId.slice(0, 8)}...</small>
+                    )}
+                    <p className={styles.geocodeHint}>
+                      Průběh můžete sledovat na stránce Admin.
+                    </p>
+                  </div>
+                )}
+                {geocodeStatus === 'error' && (
+                  <div className={styles.geocodeError}>
+                    <span className={styles.errorIcon}>⚠</span>
+                    <span>Nepodařilo se spustit geokódování: {geocodeError}</span>
+                  </div>
+                )}
+                {geocodeStatus === 'idle' && state.status === 'complete' && (
+                  <div className={styles.geocodeIdle}>
+                    <span>Všichni zákazníci již mají souřadnice.</span>
+                  </div>
+                )}
               </div>
             </div>
           )}

@@ -36,6 +36,7 @@ export function Admin() {
     { name: 'Valhalla', status: 'unknown' },
     { name: 'Nominatim', status: 'unknown' },
     { name: 'JetStream', status: 'unknown' },
+    { name: 'Geocoding', status: 'unknown' },
     { name: 'Worker', status: 'unknown' },
     { name: 'Frontend', status: 'running' }, // Always running if we see this
   ]);
@@ -197,6 +198,33 @@ export function Admin() {
       if (jsIdx >= 0) {
         newServices[jsIdx] = {
           ...newServices[jsIdx],
+          status: 'unknown',
+          lastCheck: new Date().toISOString(),
+          details: 'Could not check'
+        };
+      }
+    }
+
+    // Check Geocoding status
+    try {
+      const response = await request<any, any>('sazinka.admin.geocode.status', {});
+      const geocodeResult = response.payload || response;
+      const geocodeIdx = newServices.findIndex(s => s.name === 'Geocoding');
+      if (geocodeIdx >= 0) {
+        const pendingCustomers = geocodeResult.pendingCustomers || 0;
+        const queuedJobs = geocodeResult.streamMessages || 0;
+        newServices[geocodeIdx] = {
+          ...newServices[geocodeIdx],
+          status: geocodeResult.available ? 'running' : 'stopped',
+          lastCheck: new Date().toISOString(),
+          details: `${pendingCustomers} pending, ${queuedJobs} jobs queued`
+        };
+      }
+    } catch (e) {
+      const geocodeIdx = newServices.findIndex(s => s.name === 'Geocoding');
+      if (geocodeIdx >= 0) {
+        newServices[geocodeIdx] = {
+          ...newServices[geocodeIdx],
           status: 'unknown',
           lastCheck: new Date().toISOString(),
           details: 'Could not check'

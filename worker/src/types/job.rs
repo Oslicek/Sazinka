@@ -138,6 +138,64 @@ mod tests {
         assert!(JobPriority::High as u8 > JobPriority::Normal as u8);
         assert!(JobPriority::Normal as u8 > JobPriority::Low as u8);
     }
+
+    // ==========================================================================
+    // Geocoding Job Tests
+    // ==========================================================================
+
+    #[test]
+    fn test_geocode_job_request_serializes() {
+        let request = GeocodeJobRequest {
+            user_id: Uuid::nil(),
+            customer_ids: vec![Uuid::nil()],
+        };
+        
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains("userId"));
+        assert!(json.contains("customerIds"));
+    }
+
+    #[test]
+    fn test_geocode_job_status_processing_shows_progress() {
+        let status = GeocodeJobStatus::Processing {
+            processed: 5,
+            total: 10,
+            succeeded: 4,
+            failed: 1,
+        };
+        
+        let json = serde_json::to_string(&status).unwrap();
+        assert!(json.contains("processing"));
+        assert!(json.contains("\"processed\":5"));
+        assert!(json.contains("\"total\":10"));
+    }
+
+    #[test]
+    fn test_geocode_job_status_completed_has_summary() {
+        let status = GeocodeJobStatus::Completed {
+            total: 100,
+            succeeded: 95,
+            failed: 5,
+            failed_addresses: vec!["Bad Address 1".to_string()],
+        };
+        
+        let json = serde_json::to_string(&status).unwrap();
+        assert!(json.contains("completed"));
+        assert!(json.contains("failedAddresses"));
+    }
+
+    #[test]
+    fn test_geocode_job_result_serializes_correctly() {
+        let result = GeocodeJobResult {
+            customer_id: Uuid::nil(),
+            success: true,
+            error: None,
+        };
+        
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("customerId"));
+        assert!(json.contains("\"success\":true"));
+    }
 }
 
 // ==========================================================================
@@ -261,6 +319,116 @@ impl QueuedJob {
             submitted_at: chrono::Utc::now(),
             priority,
             request,
+        }
+    }
+}
+
+// ==========================================================================
+// Geocoding Job Types
+// ==========================================================================
+
+/// Request to geocode a batch of customers
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeocodeJobRequest {
+    /// User who initiated the geocoding
+    pub user_id: Uuid,
+    /// Customer IDs to geocode (those without coordinates)
+    pub customer_ids: Vec<Uuid>,
+}
+
+/// Status of a geocoding batch job
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum GeocodeJobStatus {
+    /// Job is waiting in queue
+    #[serde(rename_all = "camelCase")]
+    Queued {
+        position: u32,
+    },
+    /// Job is being processed
+    #[serde(rename_all = "camelCase")]
+    Processing {
+        /// Number of customers processed so far
+        processed: u32,
+        /// Total number of customers to process
+        total: u32,
+        /// Number of successful geocodes
+        succeeded: u32,
+        /// Number of failed geocodes
+        failed: u32,
+    },
+    /// Job completed
+    #[serde(rename_all = "camelCase")]
+    Completed {
+        /// Total customers processed
+        total: u32,
+        /// Successfully geocoded
+        succeeded: u32,
+        /// Failed to geocode
+        failed: u32,
+        /// List of addresses that failed (for display)
+        failed_addresses: Vec<String>,
+    },
+    /// Job failed entirely
+    #[serde(rename_all = "camelCase")]
+    Failed {
+        error: String,
+    },
+}
+
+/// Result of geocoding a single customer
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeocodeJobResult {
+    /// Customer ID
+    pub customer_id: Uuid,
+    /// Whether geocoding succeeded
+    pub success: bool,
+    /// Error message if failed
+    pub error: Option<String>,
+}
+
+/// A geocoding job stored in JetStream
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueuedGeocodeJob {
+    /// Unique job ID
+    pub id: Uuid,
+    /// When the job was submitted
+    pub submitted_at: chrono::DateTime<chrono::Utc>,
+    /// The geocoding request
+    pub request: GeocodeJobRequest,
+}
+
+impl QueuedGeocodeJob {
+    pub fn new(request: GeocodeJobRequest) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            submitted_at: chrono::Utc::now(),
+            request,
+        }
+    }
+}
+
+/// Status update for geocoding job (published via pub/sub)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeocodeJobStatusUpdate {
+    /// Job ID
+    pub job_id: Uuid,
+    /// Timestamp
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    /// Current status
+    pub status: GeocodeJobStatus,
+}
+
+impl GeocodeJobStatusUpdate {
+    pub fn new(job_id: Uuid, status: GeocodeJobStatus) -> Self {
+        Self {
+            job_id,
+            timestamp: chrono::Utc::now(),
+            status,
         }
     }
 }

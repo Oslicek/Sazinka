@@ -2,6 +2,7 @@
 
 pub mod admin;
 pub mod customer;
+pub mod geocode;
 pub mod jobs;
 pub mod ping;
 pub mod route;
@@ -114,6 +115,59 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     tokio::spawn(async move {
         if let Err(e) = admin::start_admin_handlers(client_admin, pool_admin, valhalla_url, nominatim_url).await {
             error!("Admin handlers error: {}", e);
+        }
+    });
+
+    // Start geocoding processor and handlers
+    let client_geocode = client.clone();
+    let pool_geocode = pool.clone();
+    let geocoder_batch = Arc::clone(&geocoder);
+    tokio::spawn(async move {
+        match geocode::GeocodeProcessor::new(client_geocode.clone(), pool_geocode.clone(), geocoder_batch).await {
+            Ok(processor) => {
+                let processor = Arc::new(processor);
+                
+                // Subscribe to geocode subjects
+                let geocode_submit_sub = match client_geocode.subscribe("sazinka.geocode.submit").await {
+                    Ok(sub) => sub,
+                    Err(e) => {
+                        error!("Failed to subscribe to geocode.submit: {}", e);
+                        return;
+                    }
+                };
+                let geocode_pending_sub = match client_geocode.subscribe("sazinka.geocode.pending").await {
+                    Ok(sub) => sub,
+                    Err(e) => {
+                        error!("Failed to subscribe to geocode.pending: {}", e);
+                        return;
+                    }
+                };
+                
+                // Start submit handler
+                let client_submit = client_geocode.clone();
+                let processor_submit = Arc::clone(&processor);
+                tokio::spawn(async move {
+                    if let Err(e) = geocode::handle_geocode_submit(client_submit, geocode_submit_sub, processor_submit).await {
+                        error!("Geocode submit handler error: {}", e);
+                    }
+                });
+                
+                // Start pending handler
+                let client_pending = client_geocode.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = geocode::handle_geocode_pending(client_pending, geocode_pending_sub, pool_geocode).await {
+                        error!("Geocode pending handler error: {}", e);
+                    }
+                });
+                
+                // Start job processor
+                if let Err(e) = processor.start_processing().await {
+                    error!("Geocode processor error: {}", e);
+                }
+            }
+            Err(e) => {
+                error!("Failed to create geocode processor: {}", e);
+            }
         }
     });
 

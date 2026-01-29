@@ -116,6 +116,18 @@ pub struct ConsumerInfo {
     pub pending: i64,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeocodeStatusRequest {}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeocodeStatusResponse {
+    pub available: bool,
+    pub pending_customers: i64,
+    pub stream_messages: i64,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LogEntry {
@@ -182,6 +194,14 @@ pub async fn start_admin_handlers(
     tokio::spawn(async move {
         if let Err(e) = handle_jetstream_status(client6).await {
             error!("JetStream status handler error: {}", e);
+        }
+    });
+
+    let client7 = client.clone();
+    let pool3 = pool.clone();
+    tokio::spawn(async move {
+        if let Err(e) = handle_geocode_status(client7, pool3).await {
+            error!("Geocode status handler error: {}", e);
         }
     });
 
@@ -490,6 +510,52 @@ async fn handle_jetstream_status(client: Client) -> Result<()> {
             available,
             streams,
             consumers,
+        });
+
+        let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+    }
+
+    Ok(())
+}
+
+/// Handle geocode status requests
+async fn handle_geocode_status(client: Client, pool: PgPool) -> Result<()> {
+    use async_nats::jetstream;
+    
+    let mut sub = client.subscribe("sazinka.admin.geocode.status").await?;
+    
+    while let Some(msg) = sub.next().await {
+        let reply = match msg.reply {
+            Some(ref r) => r.clone(),
+            None => continue,
+        };
+
+        let js = jetstream::new(client.clone());
+        
+        // Get pending customers count
+        let pending_customers: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM customers WHERE lat IS NULL OR lng IS NULL"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap_or((0,));
+        
+        // Get stream message count
+        let stream_messages = match js.get_stream("SAZINKA_GEOCODE_JOBS").await {
+            Ok(mut stream) => {
+                match stream.info().await {
+                    Ok(info) => info.state.messages as i64,
+                    Err(_) => 0,
+                }
+            }
+            Err(_) => 0,
+        };
+
+        let request_id = extract_request_id(&msg.payload);
+        let response = SuccessResponse::new(request_id, GeocodeStatusResponse {
+            available: true,
+            pending_customers: pending_customers.0,
+            stream_messages,
         });
 
         let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
