@@ -10,6 +10,7 @@ import { Customers } from '@/pages/Customers';
 import { CustomerDetail } from '@/pages/CustomerDetail';
 import { Calendar } from '@/pages/Calendar';
 import { Planner } from '@/pages/Planner';
+import { Admin } from '@/pages/Admin';
 
 // Root route with layout
 const rootRoute = createRootRoute({
@@ -55,6 +56,13 @@ const plannerRoute = createRoute({
   component: Planner,
 });
 
+// Admin
+const adminRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/admin',
+  component: Admin,
+});
+
 // Route tree
 export const routeTree = rootRoute.addChildren([
   indexRoute,
@@ -62,4 +70,5 @@ export const routeTree = rootRoute.addChildren([
   customerDetailRoute,
   calendarRoute,
   plannerRoute,
+  adminRoute,
 ]);

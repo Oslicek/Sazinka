@@ -278,6 +278,7 @@ impl MockGeocoder {
     }
     
     /// Generate deterministic coordinates from address hash
+    /// Coordinates are guaranteed to be within Czech Republic with safety margin
     fn hash_to_coordinates(street: &str, city: &str, postal_code: &str) -> Coordinates {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
@@ -288,17 +289,24 @@ impl MockGeocoder {
         postal_code.hash(&mut hasher);
         let hash = hasher.finish();
         
-        // Czech Republic bounds: lat 48.5-51.1, lng 12.0-18.9
-        let lat_range = 51.1 - 48.5;
-        let lng_range = 18.9 - 12.0;
+        // Czech Republic INNER bounds with safety margin (away from borders)
+        // Full CZ bounds: lat 48.5-51.1, lng 12.0-18.9
+        // We use tighter bounds to ensure coordinates are in populated areas with roads
+        const LAT_MIN: f64 = 49.0;  // North of Austrian border
+        const LAT_MAX: f64 = 50.5;  // South of Polish border
+        const LNG_MIN: f64 = 13.0;  // East of German border  
+        const LNG_MAX: f64 = 17.5;  // West of Polish/Slovak border
+        
+        let lat_range = LAT_MAX - LAT_MIN;
+        let lng_range = LNG_MAX - LNG_MIN;
         
         // Use different parts of the hash for lat and lng
         let lat_normalized = ((hash >> 32) as f64) / (u32::MAX as f64);
         let lng_normalized = ((hash & 0xFFFFFFFF) as f64) / (u32::MAX as f64);
         
         Coordinates {
-            lat: 48.5 + (lat_normalized * lat_range),
-            lng: 12.0 + (lng_normalized * lng_range),
+            lat: LAT_MIN + (lat_normalized * lat_range),
+            lng: LNG_MIN + (lng_normalized * lng_range),
         }
     }
 }

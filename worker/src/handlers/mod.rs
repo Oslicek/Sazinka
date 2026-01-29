@@ -1,5 +1,6 @@
 //! NATS message handlers
 
+pub mod admin;
 pub mod customer;
 pub mod ping;
 pub mod route;
@@ -102,6 +103,16 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
 
     let route_plan_handle = tokio::spawn(async move {
         route::handle_plan(client_route_plan, route_plan_sub, pool_route_plan, routing_plan).await
+    });
+
+    // Start admin handlers
+    let client_admin = client.clone();
+    let pool_admin = pool.clone();
+    let valhalla_url = config.valhalla_url.clone();
+    tokio::spawn(async move {
+        if let Err(e) = admin::start_admin_handlers(client_admin, pool_admin, valhalla_url).await {
+            error!("Admin handlers error: {}", e);
+        }
     });
 
     info!("All handlers started, waiting for messages...");

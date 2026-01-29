@@ -1,0 +1,449 @@
+.container {
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 32px;
+}
+
+.header h1 {
+  font-size: 28px;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin: 0;
+}
+
+.headerActions {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.autoRefresh {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #666;
+  cursor: pointer;
+}
+
+.autoRefresh input {
+  cursor: pointer;
+}
+
+/* Section Styles */
+.section {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.sectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.sectionHeader h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin: 0;
+}
+
+/* Services Grid */
+.servicesGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.serviceCard {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid #e9ecef;
+  transition: box-shadow 0.2s;
+}
+
+.serviceCard:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.serviceHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.statusIndicator {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+}
+
+.statusRunning {
+  color: #28a745;
+}
+
+.statusStopped {
+  color: #6c757d;
+}
+
+.statusError {
+  color: #dc3545;
+}
+
+.statusUnknown {
+  color: #ffc107;
+}
+
+.serviceName {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.serviceDetails {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.serviceStatus {
+  font-size: 13px;
+  color: #666;
+  text-transform: capitalize;
+}
+
+.serviceInfo {
+  font-size: 12px;
+  color: #888;
+  word-break: break-all;
+}
+
+.lastCheck {
+  font-size: 11px;
+  color: #aaa;
+}
+
+.serviceActions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Buttons */
+.primaryButton {
+  background: #4361ee;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: #3651d4;
+}
+
+.primaryButton:disabled {
+  background: #a0aec0;
+  cursor: not-allowed;
+}
+
+.secondaryButton {
+  background: #e9ecef;
+  color: #495057;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.secondaryButton:hover:not(:disabled) {
+  background: #dee2e6;
+}
+
+.secondaryButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.smallButton {
+  background: #e9ecef;
+  color: #495057;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.smallButton:hover:not(:disabled) {
+  background: #dee2e6;
+}
+
+.smallButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dangerButton {
+  background: #dc3545;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.dangerButton:hover:not(:disabled) {
+  background: #c82333;
+}
+
+.dangerButton:disabled {
+  background: #e4606d;
+  cursor: not-allowed;
+}
+
+/* Database Section */
+.dbInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.dbStats {
+  display: flex;
+  gap: 32px;
+}
+
+.dbStat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dbStatLabel {
+  font-size: 13px;
+  color: #666;
+}
+
+.dbStatValue {
+  font-size: 24px;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.textGreen {
+  color: #28a745;
+}
+
+.textRed {
+  color: #dc3545;
+}
+
+.tablesContainer {
+  margin-top: 8px;
+}
+
+.tablesContainer h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin: 0 0 12px 0;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.table th,
+.table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.table th {
+  background: #f8f9fa;
+  font-weight: 600;
+  color: #495057;
+}
+
+.table tr:hover {
+  background: #f8f9fa;
+}
+
+.dbActions {
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid #e9ecef;
+}
+
+/* Logs Section */
+.logControls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.select {
+  padding: 8px 12px;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  font-size: 14px;
+  background: white;
+  cursor: pointer;
+}
+
+.logsContainer {
+  background: #1a1a2e;
+  border-radius: 8px;
+  padding: 16px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.logsList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 13px;
+}
+
+.logEntry {
+  display: flex;
+  gap: 12px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.logEntry:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.logTime {
+  color: #6c757d;
+  flex-shrink: 0;
+  width: 80px;
+}
+
+.logLevel {
+  flex-shrink: 0;
+  width: 60px;
+  font-weight: 600;
+}
+
+.logTarget {
+  color: #888;
+  flex-shrink: 0;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.logMessage {
+  color: #e9ecef;
+  word-break: break-word;
+}
+
+.logError .logLevel {
+  color: #ff6b6b;
+}
+
+.logWarn .logLevel {
+  color: #ffd93d;
+}
+
+.logInfo .logLevel {
+  color: #6bcb77;
+}
+
+.logDebug .logLevel {
+  color: #4d96ff;
+}
+
+/* No Data */
+.noData {
+  color: #888;
+  text-align: center;
+  padding: 32px;
+  font-size: 14px;
+}
+
+/* Connection Banner */
+.connectionBanner {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #fff3cd;
+  color: #856404;
+  padding: 12px 24px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  font-size: 14px;
+  z-index: 1000;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .container {
+    padding: 16px;
+  }
+
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .sectionHeader {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .servicesGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .dbStats {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .logControls {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .select {
+    width: 100%;
+  }
+}

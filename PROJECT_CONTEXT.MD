@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-01-28 (v0.7.2)
+> **Last Updated:** 2026-01-29 (v0.8.0)
 
 ## Overview
 
@@ -152,6 +152,12 @@ sazinka.route.list              # List routes for date range
 # Email (future)
 sazinka.email.send              # Send email immediately
 sazinka.email.schedule          # Schedule reminder email
+
+# Admin
+sazinka.admin.db.status         # Get database status (connected, size, tables)
+sazinka.admin.db.reset          # Truncate all tables and create default user
+sazinka.admin.valhalla.status   # Check Valhalla routing service status
+sazinka.admin.logs              # Get recent logs (placeholder)
 ```
 
 ## Project Structure
@@ -180,6 +186,7 @@ sazinka/
 │       │   │   └── nominatim.ts    # Geocoding service
 │       │   ├── routes/             # TanStack Router pages
 │       │   │   ├── index.tsx       # Dashboard
+│       │   │   ├── admin.tsx       # Admin panel
 │       │   │   ├── customers.tsx
 │       │   │   ├── calendar.tsx
 │       │   │   └── planner.tsx     # Route planner
@@ -197,6 +204,7 @@ sazinka/
 │   │   ├── config.rs               # Configuration
 │   │   ├── handlers/
 │   │   │   ├── mod.rs
+│   │   │   ├── admin.rs
 │   │   │   ├── auth.rs
 │   │   │   ├── customer.rs
 │   │   │   ├── device.rs
@@ -423,6 +431,7 @@ pub struct RouteStop {
 | `MockGeocoder` | worker/src/services/geocoding.rs | Deterministic fake geocoder for tests |
 | `RateLimiter` | worker/src/services/geocoding.rs | Rate limiting for API calls |
 | `CircuitBreaker` | worker/src/services/geocoding.rs | Failure protection |
+| `AdminHandler` | worker/src/handlers/admin.rs | DB status, reset, Valhalla health |
 
 ## Route Optimization Algorithm
 
@@ -495,7 +504,7 @@ The geocoding system is designed with multiple safety layers to **never risk get
 
 For tests and development - generates **deterministic** coordinates from address hash:
 - Same input always produces same output (reproducible tests)
-- Coordinates are always within Czech Republic bounds (48.5-51.1°N, 12.0-18.9°E)
+- Coordinates are always within **inner** Czech Republic bounds (49.0-50.5°N, 13.0-17.5°E) to ensure Valhalla can snap all points
 - High confidence score (0.95)
 - Zero latency, zero network calls
 
@@ -744,7 +753,7 @@ worker/src/services/
 - [x] Data model design
 - [x] NATS message schema design
 - [x] Monorepo scaffolding (pnpm workspaces + Turborepo)
-- [x] Docker compose for local dev (NATS + PostgreSQL)
+- [x] Docker compose for local dev (NATS + PostgreSQL + Valhalla)
 - [x] Rust worker skeleton with handlers structure
 - [x] React frontend skeleton with routing
 - [x] Database migrations (initial schema)
@@ -755,7 +764,7 @@ worker/src/services/
 - [x] VRPTW route optimization algorithm (basic implementation)
 - [x] Geo service (Haversine distance, road coefficient)
 - [x] Nominatim geocoding client
-- [x] Basic page layouts (Dashboard, Customers, Calendar, Planner)
+- [x] Basic page layouts (Dashboard, Customers, Calendar, Planner, Admin)
 - [x] **Frontend customer service** (createCustomer, listCustomers, getCustomer)
 - [x] **Form validation logic** with TDD (33 unit tests)
 - [x] **AddCustomerForm component** with real-time validation
@@ -775,10 +784,14 @@ worker/src/services/
 - [x] **Valhalla routing integration** with automatic fallback to mock (TDD)
 - [x] **vrp-pragmatic solver** with unassigned job reasons in solver log
 - [x] **Solver diagnostics in UI** (algorithm, solve time, warnings, unassigned reasons)
+- [x] **Admin page** with service health checks (NATS, PostgreSQL, Valhalla, Worker)
+- [x] **Database reset** with automatic default user creation
+- [x] **MockGeocoder** generates coordinates strictly within Czech Republic (inner bounds: 49.0-50.5°N, 13.0-17.5°E)
+- [x] **Valhalla matrix requests** with increased snapping radius for mock coordinates
 
 **In Progress:**
+- [ ] Route geometry display on map (Valhalla route API) - geometry fetched, visualization needs fix
 - [ ] Device management UI
-- [ ] Route geometry display on map (Valhalla route API)
 
 **Pending:**
 - [ ] Device handlers
