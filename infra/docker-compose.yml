@@ -37,7 +37,12 @@ services:
     restart: unless-stopped
 
   # Nominatim geocoding service for address -> coordinates
-  # First run will download and import Czech Republic data (~30-60 min)
+  # 
+  # IMPORTANT: Data is stored in Docker volume 'nominatim_data' and persists across restarts.
+  # First run downloads and imports Czech Republic (~1.5 hours).
+  # DO NOT use 'docker-compose down -v' or 'docker volume rm' unless you want to re-import!
+  # 
+  # To force re-import: docker volume rm sazinka_nominatim_data && docker-compose up nominatim
   nominatim:
     image: mediagis/nominatim:4.4
     container_name: sazinka-nominatim
@@ -98,5 +103,7 @@ services:
 volumes:
   postgres_data:
   valhalla_tiles:
-  nominatim_data:
   nats_jetstream:
+  # PERSISTENT - contains imported Czech Republic OSM data (~2GB)
+  # Takes ~1.5 hours to import. DO NOT DELETE unless explicitly requested!
+  nominatim_data:
