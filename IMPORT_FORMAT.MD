@@ -1,6 +1,6 @@
 # CSV Import – Specifikace (v2.0.0)
 
-> **Verze:** 2.2.0  
+> **Verze:** 2.2.1  
 > **Datum:** 2026-01-25
 
 ## Obsah
@@ -217,9 +217,10 @@ Všechny textové hodnoty:
 
 1. `trim()` – **pouze okraje** (počáteční/koncové mezery)
 2. Převést na lowercase
-3. Validace: pokud neobsahuje `@` → **varování** (neblokuje)
+3. Validace: pokud neobsahuje `@` → **varování** "Chybí @" (neblokuje)
+4. Validace: pokud obsahuje whitespace uvnitř → **varování** "Email obsahuje mezery" (neblokuje)
 
-> **Upozornění:** Whitespace **uvnitř** emailu se neodstraňuje. Pokud email obsahuje mezeru uvnitř (např. `jan @example.com`), uloží se tak jak je a validace "@" projde, ale email bude neplatný. Toto je záměr – čištění vnitřních mezer by mohlo poškodit legitimní data.
+> **Poznámka:** Whitespace uvnitř emailu se neodstraňuje – hodnota se uloží beze změny. Tato validace je lenient a neblokuje import. Cílem je upozornit na pravděpodobně neplatné emaily bez destruktivních úprav.
 
 ---
 
@@ -740,11 +741,24 @@ customer_ref;device_type;device_name;manufacturer;model;serial_number;installati
 | Situace | Chování |
 |---------|---------|
 | Zákazník má 1 komín v DB, CSV obsahuje 1 komín | Auto-match (bez ohledu na `device_name`) |
-| Zákazník má 2 komíny v DB, CSV obsahuje komín bez `device_name` | Nové zařízení + **varování** |
+| Zákazník má 2 komíny v DB, CSV obsahuje komín bez `device_name` | Nové zařízení + **varování** (viz níže) |
 | Zákazník má 2 komíny v DB, CSV obsahuje komín s `device_name` | Match dle `device_name` |
 | `serial_number` vyplněno | Vždy match dle serial (má přednost) |
 
 Při duplicitě → **aktualizovat** existující záznam.
+
+**Unikátnost názvu zařízení (bez serial):**
+
+Pokud `serial_number` není vyplněno, považuje se kombinace `customer + device_type + device_name` za identifikátor zařízení.
+
+- Pokud import přinese stejné `device_name` pro stejný `device_type` u stejného zákazníka → vyhodnotí se jako duplicitní zařízení a dojde k **aktualizaci** existujícího záznamu (merge)
+- Porovnání `device_name` je case-insensitive po `trim()`
+
+**Varování při chybějícím `device_name`:**
+
+Když zákazník má více zařízení stejného typu a `device_name` chybí:
+- Vytvoří se **nové zařízení**
+- **Varování:** "Chybí device_name pro rozlišení zařízení stejného typu (zákazník má X zařízení typu Y)"
 
 > **Poznámka:** Pro jednoduché případy (zákazník má jen jeden kotel, jeden komín) není `device_name` potřeba. Je nutný pouze při rozlišení více zařízení stejného typu.
 
@@ -1039,7 +1053,7 @@ customer_ref + scheduled_date + visit_type [+ device_ref pokud vyplněno]
 
 Při duplicitě → **aktualizovat** existující záznam.
 
-> **Omezení:** Pokud `device_ref` není vyplněno, více návštěv **stejného typu** v **jeden den** u **stejného zákazníka** bude považováno za duplicitní a sloučeno. Pokud potřebujete více samostatných návštěv stejného typu v jeden den, použijte různé `scheduled_time_start` nebo vyplňte `device_ref`.
+> **Omezení:** Pokud `device_ref` není vyplněno, více návštěv **stejného typu** v **jeden den** u **stejného zákazníka** bude považováno za duplicitní a sloučeno. Pro rozlišení použijte `device_ref` nebo rozdílné `scheduled_time_start`.
 
 ### 14.9 Příklady
 
@@ -1095,9 +1109,15 @@ Soubory `revisions.csv` a `visits.csv` používají `device_ref` pro identifikac
 
 ```
 1. serial_number  → přesná shoda se sériovým číslem
-2. device_name    → přesná shoda s názvem zařízení
+2. device_name    → shoda s názvem zařízení (viz normalizace níže)
 3. device_type    → pokud zákazník má POUZE JEDNO zařízení tohoto typu
 ```
+
+**Normalizace a porovnání `device_name`:**
+
+- `device_ref` i uložené `device_name` se před porovnáním `trim()` (ořez okrajů)
+- Porovnání je **case-insensitive** (např. `Komín u garáže` = `komín u garáže`)
+- Neprovádí se žádné fuzzy hledání (žádné podobnosti, obsahuje, diakritika apod.) – musí jít o shodu po výše uvedené normalizaci
 
 **Příklady:**
 
@@ -1228,7 +1248,12 @@ Po importu:    "Klíče u souseda\n[Import: další tel. +420603333444]"
 
 #### Email validace – whitespace
 
-Provádí se pouze `trim()` **okrajů**. Whitespace uvnitř (např. `jan @ex.com`) se **neodstraňuje** – je to chyba, email dostane varování "obsahuje mezery" a uloží se jak je. Validace "@" pak selže.
+Provádí se pouze `trim()` **okrajů**. Whitespace uvnitř emailu se neodstraňuje – je to záměr.
+
+- Pokud email obsahuje whitespace uvnitř (např. `jan @example.com`) → **varování** "Email obsahuje mezery" a hodnota se uloží beze změny
+- Nezávisle na tom platí základní kontrola: pokud email neobsahuje `@` → **varování** "Chybí @"
+
+> **Poznámka:** Tato validace je lenient a neblokuje import. Cílem je upozornit na pravděpodobně neplatné emaily bez destruktivních úprav.
 
 ### 16.2 Normalizace telefonů (E.164)
 
@@ -1375,13 +1400,13 @@ result="passed", status=(prázdné) → status=completed, completed_at=null
 
 #### visits.csv – duplicitní klíč
 
-Duplicitní klíč je: `customer_ref + scheduled_date + visit_type`
-
-Pole `device_ref` **není součástí klíče**. To znamená:
+Duplicitní klíč návštěvy je:
 
 ```
-Dvě konzultace v jeden den u stejného zákazníka → sloučí se (update)
-Dvě revize v jeden den (různá zařízení) → sloučí se (záměr – obvykle jde o jednu návštěvu)
+customer_ref + scheduled_date + visit_type [+ device_ref pokud vyplněno]
 ```
 
-Pokud je potřeba více samostatných návštěv stejného typu v jeden den, použijte různé `scheduled_time_start`.
+- Pokud `device_ref` je vyplněno → rozlišuje návštěvy pro různá zařízení
+- Pokud `device_ref` není vyplněno → více návštěv stejného typu ve stejný den u stejného zákazníka se považuje za duplicitní a sloučí se
+
+> **Doporučení:** Pokud potřebujete více samostatných návštěv stejného typu v jeden den, vyplňte `device_ref` (pokud se vztahuje k zařízení) nebo použijte rozdílné `scheduled_time_start`.
