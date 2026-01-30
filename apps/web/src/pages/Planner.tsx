@@ -5,6 +5,22 @@ import { v4 as uuidv4 } from 'uuid';
 import type { RoutePlanResponse, PlannedRouteStop } from '@sazinka/shared-types';
 import * as settingsService from '../services/settingsService';
 import { getSuggestedRevisions, type RevisionSuggestion } from '../services/revisionService';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { SortableStopItem } from '../components/planner';
 import styles from './Planner.module.css';
 
 // Mock user ID for development
@@ -105,8 +121,24 @@ export function Planner() {
   const [selectedSuggestionIds, setSelectedSuggestionIds] = useState<Set<string>>(new Set());
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [totalCandidates, setTotalCandidates] = useState(0);
+  
+  // Drag/drop state
+  const [lockedStops, setLockedStops] = useState<Set<string>>(new Set());
+  const [isManuallyReordered, setIsManuallyReordered] = useState(false);
 
   const { request, subscribe, isConnected } = useNatsStore();
+  
+  // DnD sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // 8px movement required to start drag
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
   
   // Load user's primary depot from settings (wait for NATS connection)
   useEffect(() => {
@@ -461,6 +493,8 @@ export function Planner() {
     setError(null);
     setJobId(null);
     setJobStatus(null);
+    setLockedStops(new Set());
+    setIsManuallyReordered(false);
     
     if (unsubscribeRef.current) {
       unsubscribeRef.current();
@@ -494,6 +528,33 @@ export function Planner() {
     };
     return labels[reason] || reason;
   };
+
+  // Handle drag end - reorder stops
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      setStops((items) => {
+        const oldIndex = items.findIndex((item) => item.customerId === active.id);
+        const newIndex = items.findIndex((item) => item.customerId === over.id);
+        return arrayMove(items, oldIndex, newIndex);
+      });
+      setIsManuallyReordered(true);
+    }
+  }, []);
+
+  // Toggle lock on a stop
+  const handleLockToggle = useCallback((customerId: string) => {
+    setLockedStops((prev) => {
+      const next = new Set(prev);
+      if (next.has(customerId)) {
+        next.delete(customerId);
+      } else {
+        next.add(customerId);
+      }
+      return next;
+    });
+  }, []);
 
   // Job Status Indicator component
   const JobStatusIndicator = () => {
@@ -650,24 +711,37 @@ export function Planner() {
           )}
         </div>
 
-        {/* Planned stops */}
+        {/* Planned stops with drag/drop */}
         {stops.length > 0 && (
           <div className={styles.stops}>
-            <h3>Naplánovaná trasa ({stops.length} zastávek)</h3>
-            <ul className={styles.stopList}>
-              {stops.map((stop, index) => (
-                <li key={stop.customerId} className={styles.stopItem}>
-                  <span className={styles.stopOrder}>{index + 1}</span>
-                  <div className={styles.stopInfo}>
-                    <strong>{stop.customerName}</strong>
-                    <small>{stop.address}</small>
-                    <small className={styles.stopTime}>
-                      {stop.eta} - {stop.etd}
-                    </small>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <div className={styles.stopsHeader}>
+              <h3>Naplánovaná trasa ({stops.length} zastávek)</h3>
+              {isManuallyReordered && (
+                <span className={styles.reorderedBadge}>Ručně upraveno</span>
+              )}
+            </div>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={stops.map(s => s.customerId)}
+                strategy={verticalListSortingStrategy}
+              >
+                <ul className={styles.stopList}>
+                  {stops.map((stop, index) => (
+                    <SortableStopItem
+                      key={stop.customerId}
+                      stop={stop}
+                      index={index}
+                      isLocked={lockedStops.has(stop.customerId)}
+                      onLockToggle={handleLockToggle}
+                    />
+                  ))}
+                </ul>
+              </SortableContext>
+            </DndContext>
           </div>
         )}
 
