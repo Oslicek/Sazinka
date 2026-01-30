@@ -22,8 +22,9 @@ pub struct Device {
 }
 
 /// Device types enum
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
 #[serde(rename_all = "snake_case")]
+#[sqlx(type_name = "device_type", rename_all = "snake_case")]
 pub enum DeviceType {
     GasBoiler,
     GasWaterHeater,

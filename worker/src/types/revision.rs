@@ -27,8 +27,9 @@ pub struct Revision {
 }
 
 /// Revision status
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
 #[serde(rename_all = "snake_case")]
+#[sqlx(type_name = "revision_status", rename_all = "snake_case")]
 pub enum RevisionStatus {
     Upcoming,
     DueSoon,
@@ -54,8 +55,9 @@ impl RevisionStatus {
 }
 
 /// Revision result
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
 #[serde(rename_all = "snake_case")]
+#[sqlx(type_name = "revision_result", rename_all = "snake_case")]
 pub enum RevisionResult {
     Passed,
     Failed,
