@@ -63,7 +63,7 @@ if (-not $NoDocker) {
     
     Push-Location "$scriptDir\infra"
     try {
-        docker-compose up -d nats postgres
+        docker-compose up -d nats postgres nominatim valhalla
         if ($LASTEXITCODE -ne 0) {
             Write-Host "CHYBA: Docker compose selhal!" -ForegroundColor Red
             exit 1
@@ -87,6 +87,7 @@ if (-not $NoDocker) {
     }
     
     Write-Host "      Docker services bezi [OK]" -ForegroundColor Green
+    Write-Host "      (Nominatim a Valhalla mohou potrebovat chvili na zahrati)" -ForegroundColor Gray
 } else {
     Write-Host "[1/4] Preskakuji Docker (pouzit -NoDocker)" -ForegroundColor Gray
 }
@@ -172,9 +173,11 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Aplikace bezi!" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  Frontend:  http://localhost:5173" -ForegroundColor White
-Write-Host "  NATS:      localhost:4222" -ForegroundColor White
-Write-Host "  Postgres:  localhost:5432" -ForegroundColor White
+Write-Host "  Frontend:   http://localhost:5173" -ForegroundColor White
+Write-Host "  NATS:       localhost:4222" -ForegroundColor White
+Write-Host "  Postgres:   localhost:5432" -ForegroundColor White
+Write-Host "  Nominatim:  http://localhost:8080" -ForegroundColor White
+Write-Host "  Valhalla:   http://localhost:8002" -ForegroundColor White
 Write-Host ""
 Write-Host "  Pro zastaveni: .\stop.ps1" -ForegroundColor Gray
 Write-Host ""

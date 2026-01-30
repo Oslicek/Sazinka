@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-01-30 (v0.12.0)
+> **Last Updated:** 2026-01-30 (v0.12.1)
 
 ## Overview
 
@@ -92,8 +92,8 @@
 │                                                                              │
 │   ┌──────────────────┐         ┌──────────────────┐                        │
 │   │ Valhalla         │         │ Nominatim        │                        │
-│   │ Routing engine   │         │ (future, self-   │                        │
-│   │ :8002            │         │  hosted)         │                        │
+│   │ Routing engine   │         │ Geocoding        │                        │
+│   │ :8002            │         │ :8080            │                        │
 │   └──────────────────┘         └──────────────────┘                        │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -1148,6 +1148,23 @@ cargo test
 - Email notifications deferred to later phase
 - Invoicing/billing architecture prepared but not implemented
 
+## Recent Changes (v0.12.1)
+
+- **Geocoding Status Tracking** - Customers now have explicit geocode status:
+  - New `geocode_status` column: `pending`, `success`, `failed`
+  - Failed addresses marked as "failed" instead of staying "pending" forever
+  - Admin UI shows: `X pending, Y chybných, Z jobs queued`
+  - Customer list shows ⚠️ warning for customers with failed geocoding
+  - Customer detail shows prominent warning banner for failed addresses
+- **Start Script Improvements** - `start.ps1` now includes all services:
+  - Added `nominatim` and `valhalla` to docker-compose startup
+  - Added service URLs to final output (Nominatim :8080, Valhalla :8002)
+  - Added note about warm-up time for geocoding services
+- **CSV Import Format** - Extended documentation (IMPORT_FORMAT.MD v2.2.1):
+  - Added sections for Devices, Revisions, Communications, Visits
+  - Added FAQ section with detailed edge cases
+  - Device matching by serial_number, device_name, or device_type
+
 ## Recent Changes (v0.12.0)
 
 - **Phase 2.1 Complete** - Functional Calendar:
@@ -1203,8 +1220,9 @@ cargo test
 - [x] ~~Route planning uses user settings~~ (implemented v0.10.1)
 - [x] ~~Device/Revision frontend UI in CustomerDetail~~ (implemented v0.11.0)
 - [x] ~~Dashboard with real statistics~~ (implemented v0.11.0)
-- [ ] Functional Calendar page (Phase 2)
-- [ ] Smart plan suggestions (Phase 2)
+- [x] ~~Functional Calendar page~~ (implemented v0.12.0)
+- [x] ~~Smart plan suggestions~~ (implemented v0.12.0)
+- [x] ~~Geocoding status tracking~~ (implemented v0.12.1)
 - [ ] CRM: Communication log (Phase 4)
 - [ ] CRM: Visit tracking (Phase 4)
 - [ ] CRM: Customer timeline (Phase 4)
