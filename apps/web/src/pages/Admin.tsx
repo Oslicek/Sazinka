@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNatsStore } from '../stores/natsStore';
 import * as exportService from '../services/exportService';
+import { ImportModal, type ImportEntityType } from '../components/import';
 import styles from './Admin.module.css';
 
 interface ServiceStatus {
@@ -55,6 +56,19 @@ export function Admin() {
   const [exportDateFrom, setExportDateFrom] = useState('');
   const [exportDateTo, setExportDateTo] = useState('');
   const [exportStatus, setExportStatus] = useState<string>('all');
+  
+  // Import state
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importEntityType, setImportEntityType] = useState<ImportEntityType>('device');
+  
+  const handleOpenImport = (entityType: ImportEntityType) => {
+    setImportEntityType(entityType);
+    setImportModalOpen(true);
+  };
+  
+  const handleCloseImport = () => {
+    setImportModalOpen(false);
+  };
 
   // Health check function
   const runHealthCheck = useCallback(async () => {
@@ -555,6 +569,98 @@ export function Admin() {
           </div>
         </div>
       </section>
+
+      {/* Import Section */}
+      <section className={styles.section}>
+        <div className={styles.sectionHeader}>
+          <h2>Import dat</h2>
+        </div>
+
+        <div className={styles.exportContainer}>
+          {/* Devices Import */}
+          <div className={styles.exportCard}>
+            <h3>Import zařízení</h3>
+            <p className={styles.exportDescription}>
+              Importuje zařízení z CSV. Vyžaduje existující zákazníky (propojení přes IČO/email/telefon).
+            </p>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={() => handleOpenImport('device')}
+              disabled={!connected}
+            >
+              📤 Importovat zařízení
+            </button>
+          </div>
+
+          {/* Revisions Import */}
+          <div className={styles.exportCard}>
+            <h3>Import revizí</h3>
+            <p className={styles.exportDescription}>
+              Importuje revize z CSV. Vyžaduje existující zařízení (propojení přes sériové číslo).
+            </p>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={() => handleOpenImport('revision')}
+              disabled={!connected}
+            >
+              📤 Importovat revize
+            </button>
+          </div>
+
+          {/* Communications Import */}
+          <div className={styles.exportCard}>
+            <h3>Import komunikace</h3>
+            <p className={styles.exportDescription}>
+              Importuje historii komunikace (hovory, emaily, poznámky) z CSV.
+            </p>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={() => handleOpenImport('communication')}
+              disabled={!connected}
+            >
+              📤 Importovat komunikaci
+            </button>
+          </div>
+
+          {/* Visits Import */}
+          <div className={styles.exportCard}>
+            <h3>Import návštěv</h3>
+            <p className={styles.exportDescription}>
+              Importuje historii návštěv z CSV.
+            </p>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={() => handleOpenImport('visit')}
+              disabled={!connected}
+            >
+              📤 Importovat návštěvy
+            </button>
+          </div>
+        </div>
+
+        <div className={styles.importHint}>
+          <p>
+            📋 <a href="/IMPORT_FORMAT.MD" target="_blank" rel="noopener noreferrer">
+              Dokumentace formátů CSV pro import
+            </a>
+          </p>
+          <p>
+            <strong>Pořadí importu:</strong> 1. Zákazníci → 2. Zařízení → 3. Revize → 4. Komunikace / Návštěvy
+          </p>
+        </div>
+      </section>
+
+      {/* Import Modal */}
+      <ImportModal
+        isOpen={importModalOpen}
+        onClose={handleCloseImport}
+        entityType={importEntityType}
+        onComplete={() => runHealthCheck()}
+      />
 
       {/* Logs Section */}
       <section className={styles.section}>

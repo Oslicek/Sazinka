@@ -5,6 +5,7 @@ pub mod communication;
 pub mod customer;
 pub mod device;
 pub mod geocode;
+pub mod import;
 pub mod jobs;
 pub mod ping;
 pub mod revision;
@@ -93,6 +94,12 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let visit_update_sub = client.subscribe("sazinka.visit.update").await?;
     let visit_complete_sub = client.subscribe("sazinka.visit.complete").await?;
     let visit_delete_sub = client.subscribe("sazinka.visit.delete").await?;
+    
+    // Import subjects
+    let import_device_sub = client.subscribe("sazinka.import.device").await?;
+    let import_revision_sub = client.subscribe("sazinka.import.revision").await?;
+    let import_communication_sub = client.subscribe("sazinka.import.communication").await?;
+    let import_visit_sub = client.subscribe("sazinka.import.visit").await?;
 
     info!("Subscribed to NATS subjects");
 
@@ -205,6 +212,18 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_visit_update = pool.clone();
     let pool_visit_complete = pool.clone();
     let pool_visit_delete = pool.clone();
+    
+    // Import handler clones
+    let client_import_device = client.clone();
+    let client_import_revision = client.clone();
+    let client_import_communication = client.clone();
+    let client_import_visit = client.clone();
+    
+    // Import pool clones
+    let pool_import_device = pool.clone();
+    let pool_import_revision = pool.clone();
+    let pool_import_communication = pool.clone();
+    let pool_import_visit = pool.clone();
     
     let geocoder_create = Arc::clone(&geocoder);
     let geocoder_update = Arc::clone(&geocoder);
@@ -391,6 +410,23 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     
     let visit_delete_handle = tokio::spawn(async move {
         visit::handle_delete(client_visit_delete, visit_delete_sub, pool_visit_delete).await
+    });
+    
+    // Import handlers
+    let import_device_handle = tokio::spawn(async move {
+        import::handle_device_import(client_import_device, import_device_sub, pool_import_device).await
+    });
+    
+    let import_revision_handle = tokio::spawn(async move {
+        import::handle_revision_import(client_import_revision, import_revision_sub, pool_import_revision).await
+    });
+    
+    let import_communication_handle = tokio::spawn(async move {
+        import::handle_communication_import(client_import_communication, import_communication_sub, pool_import_communication).await
+    });
+    
+    let import_visit_handle = tokio::spawn(async move {
+        import::handle_visit_import(client_import_visit, import_visit_sub, pool_import_visit).await
     });
 
     // Start admin handlers
@@ -595,6 +631,19 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         }
         result = visit_delete_handle => {
             error!("Visit delete handler finished: {:?}", result);
+        }
+        // Import handlers
+        result = import_device_handle => {
+            error!("Import device handler finished: {:?}", result);
+        }
+        result = import_revision_handle => {
+            error!("Import revision handler finished: {:?}", result);
+        }
+        result = import_communication_handle => {
+            error!("Import communication handler finished: {:?}", result);
+        }
+        result = import_visit_handle => {
+            error!("Import visit handler finished: {:?}", result);
         }
     }
 

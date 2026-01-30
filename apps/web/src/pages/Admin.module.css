@@ -329,6 +329,32 @@
   margin: 0 0 1rem 0;
 }
 
+.importHint {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: var(--color-bg-light, #f8f9fa);
+  border-radius: 8px;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary, #6c757d);
+}
+
+.importHint p {
+  margin: 0 0 0.5rem 0;
+}
+
+.importHint p:last-child {
+  margin-bottom: 0;
+}
+
+.importHint a {
+  color: var(--color-primary, #2563eb);
+  text-decoration: none;
+}
+
+.importHint a:hover {
+  text-decoration: underline;
+}
+
 .exportFilters {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

@@ -7,3 +7,4 @@ export * from './messages';
 export * from './settings';
 export * from './communication';
 export * from './visit';
+export * from './import';

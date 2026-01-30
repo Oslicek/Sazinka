@@ -3,6 +3,7 @@
 pub mod communication;
 pub mod customer;
 pub mod device;
+pub mod import;
 pub mod job;
 pub mod messages;
 pub mod revision;
@@ -14,6 +15,7 @@ pub mod visit;
 pub use communication::*;
 pub use customer::*;
 pub use device::*;
+pub use import::*;
 pub use job::*;
 pub use messages::*;
 pub use revision::*;

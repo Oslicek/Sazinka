@@ -1,0 +1,808 @@
+/**
+ * Entity-specific CSV parsers and normalizers for import
+ * See IMPORT_FORMAT.MD for full specification
+ */
+
+import Papa from 'papaparse';
+import type { ImportIssue } from '@shared/customer';
+import type {
+  CsvDeviceRow,
+  CsvRevisionRow,
+  CsvCommunicationRow,
+  CsvVisitRow,
+  ImportDeviceRequest,
+  ImportRevisionRequest,
+  ImportCommunicationRequest,
+  ImportVisitRequest,
+} from '@shared/import';
+import {
+  DEVICE_TYPE_ALIASES as DeviceAliases,
+  REVISION_STATUS_ALIASES as RevisionStatusAliases,
+  REVISION_RESULT_ALIASES as RevisionResultAliases,
+  COMMUNICATION_TYPE_ALIASES as CommTypeAliases,
+  COMMUNICATION_DIRECTION_ALIASES as CommDirAliases,
+  VISIT_TYPE_ALIASES as VisitTypeAliases,
+  VISIT_STATUS_ALIASES as VisitStatusAliases,
+  VISIT_RESULT_ALIASES as VisitResultAliases,
+} from '@shared/import';
+import { normalizePhone, cleanValue } from './importService';
+
+// =============================================================================
+// COMMON UTILITIES
+// =============================================================================
+
+const EMPTY_VALUES = ['', '-', 'n/a', 'null'];
+
+function isEmptyValue(value: string | undefined | null): boolean {
+  if (value === undefined || value === null) return true;
+  const trimmed = value.trim().toLowerCase();
+  return EMPTY_VALUES.includes(trimmed);
+}
+
+function normalizeAlias(value: string | undefined, aliases: Record<string, string>): string | null {
+  if (!value) return null;
+  const cleaned = value.trim().toLowerCase();
+  if (isEmptyValue(cleaned)) return null;
+  return aliases[cleaned] || null;
+}
+
+function parseDate(value: string | undefined): string | null {
+  if (!value) return null;
+  const cleaned = cleanValue(value);
+  if (!cleaned) return null;
+  
+  // Try ISO format (YYYY-MM-DD)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) {
+    return cleaned;
+  }
+  
+  // Try Czech format (DD.MM.YYYY)
+  const czechMatch = cleaned.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (czechMatch) {
+    const [, day, month, year] = czechMatch;
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  }
+  
+  return null;
+}
+
+function parseTime(value: string | undefined): string | null {
+  if (!value) return null;
+  const cleaned = cleanValue(value);
+  if (!cleaned) return null;
+  
+  // Accept HH:MM or HH:MM:SS
+  if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(cleaned)) {
+    const parts = cleaned.split(':');
+    return `${parts[0].padStart(2, '0')}:${parts[1]}`;
+  }
+  
+  return null;
+}
+
+function parseBoolean(value: string | undefined): boolean | null {
+  if (!value) return null;
+  const cleaned = value.trim().toLowerCase();
+  if (['true', 'ano', '1', 'yes'].includes(cleaned)) return true;
+  if (['false', 'ne', '0', 'no'].includes(cleaned)) return false;
+  return null;
+}
+
+function parseInt(value: string | undefined): number | null {
+  if (!value) return null;
+  const cleaned = cleanValue(value);
+  if (!cleaned) return null;
+  const num = Number.parseInt(cleaned, 10);
+  return isNaN(num) ? null : num;
+}
+
+// =============================================================================
+// DEVICE PARSER
+// =============================================================================
+
+const DEVICE_HEADER_MAP: Record<string, keyof CsvDeviceRow> = {
+  'customer_ref': 'customer_ref',
+  'customerref': 'customer_ref',
+  'device_type': 'device_type',
+  'devicetype': 'device_type',
+  'manufacturer': 'manufacturer',
+  'model': 'model',
+  'serial_number': 'serial_number',
+  'serialnumber': 'serial_number',
+  'installation_date': 'installation_date',
+  'installationdate': 'installation_date',
+  'revision_interval_months': 'revision_interval_months',
+  'revisionintervalmonths': 'revision_interval_months',
+  'notes': 'notes',
+};
+
+export function parseDeviceCsv(csvContent: string): { data: CsvDeviceRow[]; errors: Papa.ParseError[] } {
+  const result = Papa.parse<Record<string, string>>(csvContent, {
+    header: true,
+    delimiter: ';',
+    skipEmptyLines: true,
+    transformHeader: (header) => header.trim().toLowerCase().replace(/\s+/g, '_'),
+  });
+
+  const data: CsvDeviceRow[] = result.data.map((row) => {
+    const cleaned: CsvDeviceRow = {};
+    for (const [key, value] of Object.entries(row)) {
+      const propName = DEVICE_HEADER_MAP[key];
+      if (propName && value !== undefined && value !== '') {
+        (cleaned as any)[propName] = value;
+      }
+    }
+    return cleaned;
+  });
+
+  return { data, errors: result.errors };
+}
+
+export function normalizeDeviceRow(row: CsvDeviceRow, rowNumber: number): {
+  device: ImportDeviceRequest | null;
+  issues: ImportIssue[];
+} {
+  const issues: ImportIssue[] = [];
+
+  // Required: customer_ref
+  const customerRef = cleanValue(row.customer_ref);
+  if (!customerRef) {
+    issues.push({
+      rowNumber,
+      level: 'error',
+      field: 'customer_ref',
+      message: 'Chybí reference na zákazníka',
+    });
+    return { device: null, issues };
+  }
+
+  // Required: device_type
+  const deviceType = normalizeAlias(row.device_type, DeviceAliases);
+  if (!deviceType) {
+    issues.push({
+      rowNumber,
+      level: 'error',
+      field: 'device_type',
+      message: row.device_type ? `Neznámý typ zařízení: "${row.device_type}"` : 'Chybí typ zařízení',
+      originalValue: row.device_type,
+    });
+    return { device: null, issues };
+  }
+
+  // Required: revision_interval_months
+  const revisionIntervalMonths = parseInt(row.revision_interval_months);
+  if (revisionIntervalMonths === null || revisionIntervalMonths <= 0) {
+    issues.push({
+      rowNumber,
+      level: 'error',
+      field: 'revision_interval_months',
+      message: 'Chybí nebo neplatný interval revizí',
+      originalValue: row.revision_interval_months,
+    });
+    return { device: null, issues };
+  }
+
+  // Optional: installation_date
+  const installationDate = parseDate(row.installation_date);
+  if (row.installation_date && !installationDate) {
+    issues.push({
+      rowNumber,
+      level: 'warning',
+      field: 'installation_date',
+      message: 'Neplatný formát data instalace',
+      originalValue: row.installation_date,
+    });
+  }
+
+  const device: ImportDeviceRequest = {
+    customerRef,
+    deviceType,
+    manufacturer: cleanValue(row.manufacturer) || undefined,
+    model: cleanValue(row.model) || undefined,
+    serialNumber: cleanValue(row.serial_number) || undefined,
+    installationDate: installationDate || undefined,
+    revisionIntervalMonths,
+    notes: cleanValue(row.notes) || undefined,
+  };
+
+  return { device, issues };
+}
+
+// =============================================================================
+// REVISION PARSER
+// =============================================================================
+
+const REVISION_HEADER_MAP: Record<string, keyof CsvRevisionRow> = {
+  'device_ref': 'device_ref',
+  'deviceref': 'device_ref',
+  'customer_ref': 'customer_ref',
+  'customerref': 'customer_ref',
+  'due_date': 'due_date',
+  'duedate': 'due_date',
+  'status': 'status',
+  'scheduled_date': 'scheduled_date',
+  'scheduleddate': 'scheduled_date',
+  'scheduled_time_start': 'scheduled_time_start',
+  'scheduledtimestart': 'scheduled_time_start',
+  'scheduled_time_end': 'scheduled_time_end',
+  'scheduledtimeend': 'scheduled_time_end',
+  'completed_at': 'completed_at',
+  'completedat': 'completed_at',
+  'duration_minutes': 'duration_minutes',
+  'durationminutes': 'duration_minutes',
+  'result': 'result',
+  'findings': 'findings',
+};
+
+export function parseRevisionCsv(csvContent: string): { data: CsvRevisionRow[]; errors: Papa.ParseError[] } {
+  const result = Papa.parse<Record<string, string>>(csvContent, {
+    header: true,
+    delimiter: ';',
+    skipEmptyLines: true,
+    transformHeader: (header) => header.trim().toLowerCase().replace(/\s+/g, '_'),
+  });
+
+  const data: CsvRevisionRow[] = result.data.map((row) => {
+    const cleaned: CsvRevisionRow = {};
+    for (const [key, value] of Object.entries(row)) {
+      const propName = REVISION_HEADER_MAP[key];
+      if (propName && value !== undefined && value !== '') {
+        (cleaned as any)[propName] = value;
+      }
+    }
+    return cleaned;
+  });
+
+  return { data, errors: result.errors };
+}
+
+export function normalizeRevisionRow(row: CsvRevisionRow, rowNumber: number): {
+  revision: ImportRevisionRequest | null;
+  issues: ImportIssue[];
+} {
+  const issues: ImportIssue[] = [];
+
+  // Required: device_ref
+  const deviceRef = cleanValue(row.device_ref);
+  if (!deviceRef) {
+    issues.push({
+      rowNumber,
+      level: 'error',
+      field: 'device_ref',
+      message: 'Chybí reference na zařízení',
+    });
+    return { revision: null, issues };
+  }
+
+  // Required: customer_ref
+  const customerRef = cleanValue(row.customer_ref);
+  if (!customerRef) {
+    issues.push({
+      rowNumber,
+      level: 'error',
+      field: 'customer_ref',
+      message: 'Chybí reference na zákazníka',
+    });
+    return { revision: null, issues };
+  }
+
+  // Required: due_date
+  const dueDate = parseDate(row.due_date);
+  if (!dueDate) {
+    issues.push({
+      rowNumber,
+      level: 'error',
+      field: 'due_date',
+      message: row.due_date ? `Neplatný formát data: "${row.due_date}"` : 'Chybí termín revize',
+      originalValue: row.due_date,
+    });
+    return { revision: null, issues };
+  }
+
+  // Optional: status
+  let status = normalizeAlias(row.status, RevisionStatusAliases);
+  const result = normalizeAlias(row.result, RevisionResultAliases);
+  
+  // Auto-set status to completed if result is provided
+  if (result && !status) {
+    status = 'completed';
+    issues.push({
+      rowNumber,
+      level: 'info',
+      field: 'status',
+      message: 'Status nastaven na "completed" dle výsledku',
+    });
+  }
+
+  // Warn if completed without result
+  if (status === 'completed' && !result) {
+    issues.push({
+      rowNumber,
+      level: 'warning',
+      field: 'result',
+      message: 'Dokončená revize bez výsledku',
+    });
+  }
+
+  const revision: ImportRevisionRequest = {
+    deviceRef,
+    customerRef,
+    dueDate,
+    status: status || 'upcoming',
+    scheduledDate: parseDate(row.scheduled_date) || undefined,
+    scheduledTimeStart: parseTime(row.scheduled_time_start) || undefined,
+    scheduledTimeEnd: parseTime(row.scheduled_time_end) || undefined,
+    completedAt: cleanValue(row.completed_at) || undefined,
+    durationMinutes: parseInt(row.duration_minutes) || undefined,
+    result: result || undefined,
+    findings: cleanValue(row.findings) || undefined,
+  };
+
+  return { revision, issues };
+}
+
+// =============================================================================
+// COMMUNICATION PARSER
+// =============================================================================
+
+const COMMUNICATION_HEADER_MAP: Record<string, keyof CsvCommunicationRow> = {
+  'customer_ref': 'customer_ref',
+  'customerref': 'customer_ref',
+  'date': 'date',
+  'comm_type': 'comm_type',
+  'commtype': 'comm_type',
+  'type': 'comm_type',
+  'direction': 'direction',
+  'subject': 'subject',
+  'content': 'content',
+  'contact_name': 'contact_name',
+  'contactname': 'contact_name',
+  'contact_phone': 'contact_phone',
+  'contactphone': 'contact_phone',
+  'duration_minutes': 'duration_minutes',
+  'durationminutes': 'duration_minutes',
+};
+
+export function parseCommunicationCsv(csvContent: string): { data: CsvCommunicationRow[]; errors: Papa.ParseError[] } {
+  const result = Papa.parse<Record<string, string>>(csvContent, {
+    header: true,
+    delimiter: ';',
+    skipEmptyLines: true,
+    transformHeader: (header) => header.trim().toLowerCase().replace(/\s+/g, '_'),
+  });
+
+  const data: CsvCommunicationRow[] = result.data.map((row) => {
+    const cleaned: CsvCommunicationRow = {};
+    for (const [key, value] of Object.entries(row)) {
+      const propName = COMMUNICATION_HEADER_MAP[key];
+      if (propName && value !== undefined && value !== '') {
+        (cleaned as any)[propName] = value;
+      }
+    }
+    return cleaned;
+  });
+
+  return { data, errors: result.errors };
+}
+
+export function normalizeCommunicationRow(row: CsvCommunicationRow, rowNumber: number): {
+  communication: ImportCommunicationRequest | null;
+  issues: ImportIssue[];
+} {
+  const issues: ImportIssue[] = [];
+
+  // Required: customer_ref
+  const customerRef = cleanValue(row.customer_ref);
+  if (!customerRef) {
+    issues.push({
+      rowNumber,
+      level: 'error',
+      field: 'customer_ref',
+      message: 'Chybí reference na zákazníka',
+    });
+    return { communication: null, issues };
+  }
+
+  // Required: date
+  const date = parseDate(row.date);
+  if (!date) {
+    issues.push({
+      rowNumber,
+      level: 'error',
+      field: 'date',
+      message: row.date ? `Neplatný formát data: "${row.date}"` : 'Chybí datum komunikace',
+      originalValue: row.date,
+    });
+    return { communication: null, issues };
+  }
+
+  // Required: comm_type
+  const commType = normalizeAlias(row.comm_type, CommTypeAliases);
+  if (!commType) {
+    issues.push({
+      rowNumber,
+      level: 'error',
+      field: 'comm_type',
+      message: row.comm_type ? `Neznámý typ komunikace: "${row.comm_type}"` : 'Chybí typ komunikace',
+      originalValue: row.comm_type,
+    });
+    return { communication: null, issues };
+  }
+
+  // Required: direction
+  const direction = normalizeAlias(row.direction, CommDirAliases);
+  if (!direction) {
+    issues.push({
+      rowNumber,
+      level: 'error',
+      field: 'direction',
+      message: row.direction ? `Neznámý směr: "${row.direction}"` : 'Chybí směr komunikace',
+      originalValue: row.direction,
+    });
+    return { communication: null, issues };
+  }
+
+  // Required: content
+  const content = cleanValue(row.content);
+  if (!content) {
+    issues.push({
+      rowNumber,
+      level: 'error',
+      field: 'content',
+      message: 'Chybí obsah komunikace',
+    });
+    return { communication: null, issues };
+  }
+
+  // Optional: contact_phone normalization
+  let contactPhone = cleanValue(row.contact_phone) || undefined;
+  if (contactPhone) {
+    const phoneResult = normalizePhone(contactPhone, 'CZ');
+    if (phoneResult.phone) {
+      contactPhone = phoneResult.phone;
+    }
+    phoneResult.issues.forEach(i => {
+      i.rowNumber = rowNumber;
+      i.field = 'contact_phone';
+    });
+    issues.push(...phoneResult.issues);
+  }
+
+  const communication: ImportCommunicationRequest = {
+    customerRef,
+    date,
+    commType,
+    direction,
+    subject: cleanValue(row.subject) || undefined,
+    content,
+    contactName: cleanValue(row.contact_name) || undefined,
+    contactPhone,
+    durationMinutes: parseInt(row.duration_minutes) || undefined,
+  };
+
+  return { communication, issues };
+}
+
+// =============================================================================
+// VISIT PARSER
+// =============================================================================
+
+const VISIT_HEADER_MAP: Record<string, keyof CsvVisitRow> = {
+  'customer_ref': 'customer_ref',
+  'customerref': 'customer_ref',
+  'device_ref': 'device_ref',
+  'deviceref': 'device_ref',
+  'scheduled_date': 'scheduled_date',
+  'scheduleddate': 'scheduled_date',
+  'scheduled_time_start': 'scheduled_time_start',
+  'scheduledtimestart': 'scheduled_time_start',
+  'scheduled_time_end': 'scheduled_time_end',
+  'scheduledtimeend': 'scheduled_time_end',
+  'visit_type': 'visit_type',
+  'visittype': 'visit_type',
+  'type': 'visit_type',
+  'status': 'status',
+  'result': 'result',
+  'result_notes': 'result_notes',
+  'resultnotes': 'result_notes',
+  'requires_follow_up': 'requires_follow_up',
+  'requiresfollowup': 'requires_follow_up',
+  'follow_up_reason': 'follow_up_reason',
+  'followupreason': 'follow_up_reason',
+};
+
+export function parseVisitCsv(csvContent: string): { data: CsvVisitRow[]; errors: Papa.ParseError[] } {
+  const result = Papa.parse<Record<string, string>>(csvContent, {
+    header: true,
+    delimiter: ';',
+    skipEmptyLines: true,
+    transformHeader: (header) => header.trim().toLowerCase().replace(/\s+/g, '_'),
+  });
+
+  const data: CsvVisitRow[] = result.data.map((row) => {
+    const cleaned: CsvVisitRow = {};
+    for (const [key, value] of Object.entries(row)) {
+      const propName = VISIT_HEADER_MAP[key];
+      if (propName && value !== undefined && value !== '') {
+        (cleaned as any)[propName] = value;
+      }
+    }
+    return cleaned;
+  });
+
+  return { data, errors: result.errors };
+}
+
+export function normalizeVisitRow(row: CsvVisitRow, rowNumber: number): {
+  visit: ImportVisitRequest | null;
+  issues: ImportIssue[];
+} {
+  const issues: ImportIssue[] = [];
+
+  // Required: customer_ref
+  const customerRef = cleanValue(row.customer_ref);
+  if (!customerRef) {
+    issues.push({
+      rowNumber,
+      level: 'error',
+      field: 'customer_ref',
+      message: 'Chybí reference na zákazníka',
+    });
+    return { visit: null, issues };
+  }
+
+  // Required: scheduled_date
+  const scheduledDate = parseDate(row.scheduled_date);
+  if (!scheduledDate) {
+    issues.push({
+      rowNumber,
+      level: 'error',
+      field: 'scheduled_date',
+      message: row.scheduled_date ? `Neplatný formát data: "${row.scheduled_date}"` : 'Chybí naplánované datum',
+      originalValue: row.scheduled_date,
+    });
+    return { visit: null, issues };
+  }
+
+  // Required: visit_type
+  const visitType = normalizeAlias(row.visit_type, VisitTypeAliases);
+  if (!visitType) {
+    issues.push({
+      rowNumber,
+      level: 'error',
+      field: 'visit_type',
+      message: row.visit_type ? `Neznámý typ návštěvy: "${row.visit_type}"` : 'Chybí typ návštěvy',
+      originalValue: row.visit_type,
+    });
+    return { visit: null, issues };
+  }
+
+  // Optional: device_ref
+  const deviceRef = cleanValue(row.device_ref) || undefined;
+  if (visitType === 'revision' && !deviceRef) {
+    issues.push({
+      rowNumber,
+      level: 'warning',
+      field: 'device_ref',
+      message: 'Revize bez zařízení',
+    });
+  }
+
+  // Optional: status
+  let status = normalizeAlias(row.status, VisitStatusAliases);
+  const result = normalizeAlias(row.result, VisitResultAliases);
+  
+  // Auto-set status to completed if result is provided
+  if (result && !status) {
+    status = 'completed';
+    issues.push({
+      rowNumber,
+      level: 'info',
+      field: 'status',
+      message: 'Status nastaven na "completed" dle výsledku',
+    });
+  }
+
+  // Warn if completed without result
+  if (status === 'completed' && !result) {
+    issues.push({
+      rowNumber,
+      level: 'warning',
+      field: 'result',
+      message: 'Dokončená návštěva bez výsledku',
+    });
+  }
+
+  const visit: ImportVisitRequest = {
+    customerRef,
+    deviceRef,
+    scheduledDate,
+    scheduledTimeStart: parseTime(row.scheduled_time_start) || undefined,
+    scheduledTimeEnd: parseTime(row.scheduled_time_end) || undefined,
+    visitType,
+    status: status || 'planned',
+    result: result || undefined,
+    resultNotes: cleanValue(row.result_notes) || undefined,
+    requiresFollowUp: parseBoolean(row.requires_follow_up) || undefined,
+    followUpReason: cleanValue(row.follow_up_reason) || undefined,
+  };
+
+  return { visit, issues };
+}
+
+// =============================================================================
+// GENERIC PROCESSING
+// =============================================================================
+
+export type EntityType = 'customer' | 'device' | 'revision' | 'communication' | 'visit';
+
+export interface ParsedEntity<T> {
+  entity: T | null;
+  issues: ImportIssue[];
+}
+
+export function processDeviceCsv(csvContent: string): {
+  devices: ImportDeviceRequest[];
+  issues: ImportIssue[];
+  totalRows: number;
+  skippedCount: number;
+} {
+  const { data, errors } = parseDeviceCsv(csvContent);
+  const devices: ImportDeviceRequest[] = [];
+  const issues: ImportIssue[] = [];
+  let skippedCount = 0;
+
+  // Add parsing errors
+  errors.forEach(err => {
+    issues.push({
+      rowNumber: err.row || 0,
+      level: 'error',
+      field: 'csv',
+      message: err.message,
+    });
+  });
+
+  // Process each row
+  data.forEach((row, index) => {
+    const rowNumber = index + 2; // +2 because of header and 1-based indexing
+    const result = normalizeDeviceRow(row, rowNumber);
+    
+    issues.push(...result.issues);
+    
+    if (result.device) {
+      devices.push(result.device);
+    } else {
+      skippedCount++;
+    }
+  });
+
+  return {
+    devices,
+    issues,
+    totalRows: data.length,
+    skippedCount,
+  };
+}
+
+export function processRevisionCsv(csvContent: string): {
+  revisions: ImportRevisionRequest[];
+  issues: ImportIssue[];
+  totalRows: number;
+  skippedCount: number;
+} {
+  const { data, errors } = parseRevisionCsv(csvContent);
+  const revisions: ImportRevisionRequest[] = [];
+  const issues: ImportIssue[] = [];
+  let skippedCount = 0;
+
+  errors.forEach(err => {
+    issues.push({
+      rowNumber: err.row || 0,
+      level: 'error',
+      field: 'csv',
+      message: err.message,
+    });
+  });
+
+  data.forEach((row, index) => {
+    const rowNumber = index + 2;
+    const result = normalizeRevisionRow(row, rowNumber);
+    
+    issues.push(...result.issues);
+    
+    if (result.revision) {
+      revisions.push(result.revision);
+    } else {
+      skippedCount++;
+    }
+  });
+
+  return {
+    revisions,
+    issues,
+    totalRows: data.length,
+    skippedCount,
+  };
+}
+
+export function processCommunicationCsv(csvContent: string): {
+  communications: ImportCommunicationRequest[];
+  issues: ImportIssue[];
+  totalRows: number;
+  skippedCount: number;
+} {
+  const { data, errors } = parseCommunicationCsv(csvContent);
+  const communications: ImportCommunicationRequest[] = [];
+  const issues: ImportIssue[] = [];
+  let skippedCount = 0;
+
+  errors.forEach(err => {
+    issues.push({
+      rowNumber: err.row || 0,
+      level: 'error',
+      field: 'csv',
+      message: err.message,
+    });
+  });
+
+  data.forEach((row, index) => {
+    const rowNumber = index + 2;
+    const result = normalizeCommunicationRow(row, rowNumber);
+    
+    issues.push(...result.issues);
+    
+    if (result.communication) {
+      communications.push(result.communication);
+    } else {
+      skippedCount++;
+    }
+  });
+
+  return {
+    communications,
+    issues,
+    totalRows: data.length,
+    skippedCount,
+  };
+}
+
+export function processVisitCsv(csvContent: string): {
+  visits: ImportVisitRequest[];
+  issues: ImportIssue[];
+  totalRows: number;
+  skippedCount: number;
+} {
+  const { data, errors } = parseVisitCsv(csvContent);
+  const visits: ImportVisitRequest[] = [];
+  const issues: ImportIssue[] = [];
+  let skippedCount = 0;
+
+  errors.forEach(err => {
+    issues.push({
+      rowNumber: err.row || 0,
+      level: 'error',
+      field: 'csv',
+      message: err.message,
+    });
+  });
+
+  data.forEach((row, index) => {
+    const rowNumber = index + 2;
+    const result = normalizeVisitRow(row, rowNumber);
+    
+    issues.push(...result.issues);
+    
+    if (result.visit) {
+      visits.push(result.visit);
+    } else {
+      skippedCount++;
+    }
+  });
+
+  return {
+    visits,
+    issues,
+    totalRows: data.length,
+    skippedCount,
+  };
+}

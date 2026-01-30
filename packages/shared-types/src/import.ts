@@ -1,0 +1,365 @@
+/**
+ * Import types for all entities
+ * See IMPORT_FORMAT.MD for full specification
+ */
+
+// Re-export common import types from customer.ts
+export type { ImportIssue, ImportIssueLevel, ImportReport } from './customer';
+
+// =============================================================================
+// CSV ROW TYPES
+// =============================================================================
+
+/**
+ * Raw CSV row for device import
+ */
+export interface CsvDeviceRow {
+  customer_ref?: string;
+  device_type?: string;
+  manufacturer?: string;
+  model?: string;
+  serial_number?: string;
+  installation_date?: string;
+  revision_interval_months?: string;
+  notes?: string;
+}
+
+/**
+ * Raw CSV row for revision import
+ */
+export interface CsvRevisionRow {
+  device_ref?: string;
+  customer_ref?: string;
+  due_date?: string;
+  status?: string;
+  scheduled_date?: string;
+  scheduled_time_start?: string;
+  scheduled_time_end?: string;
+  completed_at?: string;
+  duration_minutes?: string;
+  result?: string;
+  findings?: string;
+}
+
+/**
+ * Raw CSV row for communication import
+ */
+export interface CsvCommunicationRow {
+  customer_ref?: string;
+  date?: string;
+  comm_type?: string;
+  direction?: string;
+  subject?: string;
+  content?: string;
+  contact_name?: string;
+  contact_phone?: string;
+  duration_minutes?: string;
+}
+
+/**
+ * Raw CSV row for visit import
+ */
+export interface CsvVisitRow {
+  customer_ref?: string;
+  device_ref?: string;
+  scheduled_date?: string;
+  scheduled_time_start?: string;
+  scheduled_time_end?: string;
+  visit_type?: string;
+  status?: string;
+  result?: string;
+  result_notes?: string;
+  requires_follow_up?: string;
+  follow_up_reason?: string;
+}
+
+// =============================================================================
+// IMPORT REQUEST/RESPONSE TYPES
+// =============================================================================
+
+export type ImportEntityType = 'customer' | 'device' | 'revision' | 'communication' | 'visit';
+
+/**
+ * Batch import request for devices
+ */
+export interface ImportDeviceRequest {
+  customerRef: string;
+  deviceType: string;
+  manufacturer?: string;
+  model?: string;
+  serialNumber?: string;
+  installationDate?: string;
+  revisionIntervalMonths: number;
+  notes?: string;
+}
+
+export interface ImportDeviceBatchRequest {
+  devices: ImportDeviceRequest[];
+}
+
+/**
+ * Batch import request for revisions
+ */
+export interface ImportRevisionRequest {
+  deviceRef: string;
+  customerRef: string;
+  dueDate: string;
+  status?: string;
+  scheduledDate?: string;
+  scheduledTimeStart?: string;
+  scheduledTimeEnd?: string;
+  completedAt?: string;
+  durationMinutes?: number;
+  result?: string;
+  findings?: string;
+}
+
+export interface ImportRevisionBatchRequest {
+  revisions: ImportRevisionRequest[];
+}
+
+/**
+ * Batch import request for communications
+ */
+export interface ImportCommunicationRequest {
+  customerRef: string;
+  date: string;
+  commType: string;
+  direction: string;
+  subject?: string;
+  content: string;
+  contactName?: string;
+  contactPhone?: string;
+  durationMinutes?: number;
+}
+
+export interface ImportCommunicationBatchRequest {
+  communications: ImportCommunicationRequest[];
+}
+
+/**
+ * Batch import request for visits
+ */
+export interface ImportVisitRequest {
+  customerRef: string;
+  deviceRef?: string;
+  scheduledDate: string;
+  scheduledTimeStart?: string;
+  scheduledTimeEnd?: string;
+  visitType: string;
+  status?: string;
+  result?: string;
+  resultNotes?: string;
+  requiresFollowUp?: boolean;
+  followUpReason?: string;
+}
+
+export interface ImportVisitBatchRequest {
+  visits: ImportVisitRequest[];
+}
+
+/**
+ * Generic batch import response
+ */
+export interface ImportBatchResponse {
+  importedCount: number;
+  updatedCount: number;
+  errors: Array<{
+    rowNumber: number;
+    field: string;
+    message: string;
+    originalValue?: string;
+  }>;
+}
+
+// =============================================================================
+// ALIASES FOR NORMALIZATION
+// =============================================================================
+
+export const DEVICE_TYPE_ALIASES: Record<string, string> = {
+  // Czech aliases
+  'kotel': 'gas_boiler',
+  'plynový kotel': 'gas_boiler',
+  'plynovy kotel': 'gas_boiler',
+  'ohřívač': 'gas_water_heater',
+  'ohrivac': 'gas_water_heater',
+  'bojler': 'gas_water_heater',
+  'komín': 'chimney',
+  'komin': 'chimney',
+  'kouřovod': 'chimney',
+  'kourovod': 'chimney',
+  'krb': 'fireplace',
+  'krbová vložka': 'fireplace',
+  'krbova vlozka': 'fireplace',
+  'sporák': 'gas_stove',
+  'sporak': 'gas_stove',
+  'plynový sporák': 'gas_stove',
+  'plynovy sporak': 'gas_stove',
+  'jiné': 'other',
+  'jine': 'other',
+  'ostatní': 'other',
+  'ostatni': 'other',
+  // English values (passthrough)
+  'gas_boiler': 'gas_boiler',
+  'gas_water_heater': 'gas_water_heater',
+  'chimney': 'chimney',
+  'fireplace': 'fireplace',
+  'gas_stove': 'gas_stove',
+  'other': 'other',
+};
+
+export const REVISION_STATUS_ALIASES: Record<string, string> = {
+  'nadcházející': 'upcoming',
+  'nadchazejici': 'upcoming',
+  'budoucí': 'upcoming',
+  'budouci': 'upcoming',
+  'naplánováno': 'scheduled',
+  'naplanovano': 'scheduled',
+  'plánováno': 'scheduled',
+  'planovano': 'scheduled',
+  'potvrzeno': 'confirmed',
+  'dokončeno': 'completed',
+  'dokonceno': 'completed',
+  'hotovo': 'completed',
+  'provedeno': 'completed',
+  'zrušeno': 'cancelled',
+  'zruseno': 'cancelled',
+  'storno': 'cancelled',
+  // English passthrough
+  'upcoming': 'upcoming',
+  'scheduled': 'scheduled',
+  'confirmed': 'confirmed',
+  'completed': 'completed',
+  'cancelled': 'cancelled',
+};
+
+export const REVISION_RESULT_ALIASES: Record<string, string> = {
+  'ok': 'passed',
+  'v pořádku': 'passed',
+  'v poradku': 'passed',
+  'bez závad': 'passed',
+  'bez zavad': 'passed',
+  's výhradami': 'conditional',
+  's vyhradami': 'conditional',
+  'podmíněně': 'conditional',
+  'podminene': 'conditional',
+  'nevyhovělo': 'failed',
+  'nevyhovelo': 'failed',
+  'závada': 'failed',
+  'zavada': 'failed',
+  'nok': 'failed',
+  // English passthrough
+  'passed': 'passed',
+  'conditional': 'conditional',
+  'failed': 'failed',
+};
+
+export const COMMUNICATION_TYPE_ALIASES: Record<string, string> = {
+  'hovor': 'call',
+  'telefon': 'call',
+  'telefonát': 'call',
+  'telefonat': 'call',
+  'email': 'email_sent',
+  'mail': 'email_sent',
+  'odeslaný email': 'email_sent',
+  'odeslany email': 'email_sent',
+  'přijatý email': 'email_received',
+  'prijaty email': 'email_received',
+  'příchozí email': 'email_received',
+  'prichozi email': 'email_received',
+  'poznámka': 'note',
+  'poznamka': 'note',
+  'záznam': 'note',
+  'zaznam': 'note',
+  // English passthrough
+  'call': 'call',
+  'email_sent': 'email_sent',
+  'email_received': 'email_received',
+  'note': 'note',
+  'sms': 'sms',
+};
+
+export const COMMUNICATION_DIRECTION_ALIASES: Record<string, string> = {
+  'odchozí': 'outbound',
+  'odchozi': 'outbound',
+  'ven': 'outbound',
+  'out': 'outbound',
+  'příchozí': 'inbound',
+  'prichozi': 'inbound',
+  'dovnitř': 'inbound',
+  'dovnitr': 'inbound',
+  'in': 'inbound',
+  // English passthrough
+  'outbound': 'outbound',
+  'inbound': 'inbound',
+};
+
+export const VISIT_TYPE_ALIASES: Record<string, string> = {
+  'revize': 'revision',
+  'kontrola': 'revision',
+  'instalace': 'installation',
+  'montáž': 'installation',
+  'montaz': 'installation',
+  'oprava': 'repair',
+  'servis': 'repair',
+  'konzultace': 'consultation',
+  'poradenství': 'consultation',
+  'poradenstvi': 'consultation',
+  'následná': 'follow_up',
+  'nasledna': 'follow_up',
+  'follow-up': 'follow_up',
+  // English passthrough
+  'revision': 'revision',
+  'installation': 'installation',
+  'repair': 'repair',
+  'consultation': 'consultation',
+  'follow_up': 'follow_up',
+};
+
+export const VISIT_STATUS_ALIASES: Record<string, string> = {
+  'naplánováno': 'planned',
+  'naplanovano': 'planned',
+  'plánováno': 'planned',
+  'planovano': 'planned',
+  'probíhá': 'in_progress',
+  'probiha': 'in_progress',
+  'dokončeno': 'completed',
+  'dokonceno': 'completed',
+  'hotovo': 'completed',
+  'zrušeno': 'cancelled',
+  'zruseno': 'cancelled',
+  'přeplánováno': 'rescheduled',
+  'preplanovano': 'rescheduled',
+  // English passthrough
+  'planned': 'planned',
+  'in_progress': 'in_progress',
+  'completed': 'completed',
+  'cancelled': 'cancelled',
+  'rescheduled': 'rescheduled',
+};
+
+export const VISIT_RESULT_ALIASES: Record<string, string> = {
+  'úspěšná': 'successful',
+  'uspesna': 'successful',
+  'ok': 'successful',
+  'částečná': 'partial',
+  'castecna': 'partial',
+  'částečně': 'partial',
+  'castecne': 'partial',
+  'neúspěšná': 'failed',
+  'neuspesna': 'failed',
+  'nok': 'failed',
+  'nepřítomen': 'customer_absent',
+  'nepritomen': 'customer_absent',
+  'nikdo doma': 'customer_absent',
+  'přeplánováno': 'rescheduled',
+  'preplanovano': 'rescheduled',
+  'odloženo': 'rescheduled',
+  'odlozeno': 'rescheduled',
+  // English passthrough
+  'successful': 'successful',
+  'partial': 'partial',
+  'failed': 'failed',
+  'customer_absent': 'customer_absent',
+  'rescheduled': 'rescheduled',
+};
