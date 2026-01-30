@@ -28,21 +28,25 @@ export function CustomerTimeline({ customerId }: CustomerTimelineProps) {
   }
   
   const [items, setItems] = useState<TimelineItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState<'communication' | 'visit' | null>(null);
+  const [serviceAvailable, setServiceAvailable] = useState(true);
 
   // Load timeline data
   const loadTimeline = useCallback(async () => {
-    if (!isConnected) return;
+    if (!isConnected) {
+      setLoading(false);
+      return;
+    }
     
     setLoading(true);
     setError(null);
     
     try {
       const [communications, visits] = await Promise.all([
-        communicationService.listCustomerCommunications(customerId, 20),
-        visitService.listCustomerVisits(customerId, 20),
+        communicationService.listCustomerCommunications(customerId, 20).catch(() => []),
+        visitService.listCustomerVisits(customerId, 20).catch(() => []),
       ]);
 
       // Combine and sort by date
@@ -63,9 +67,12 @@ export function CustomerTimeline({ customerId }: CustomerTimelineProps) {
 
       combined.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setItems(combined);
+      setServiceAvailable(true);
     } catch (e) {
       console.error('Failed to load timeline:', e);
-      setError('Nepodařilo se načíst historii');
+      // Don't show error if services are just not available yet
+      setServiceAvailable(false);
+      setItems([]);
     } finally {
       setLoading(false);
     }
@@ -121,26 +128,31 @@ export function CustomerTimeline({ customerId }: CustomerTimelineProps) {
     return <div className={styles.loading}>Načítám historii...</div>;
   }
 
+  // Don't show buttons if services aren't available
+  const canAddItems = isConnected && serviceAvailable;
+
   return (
     <div className={styles.timeline}>
       <div className={styles.header}>
         <h3>Historie</h3>
-        <div className={styles.actions}>
-          <button
-            type="button"
-            className={styles.addButton}
-            onClick={() => setShowAddForm('communication')}
-          >
-            + Komunikace
-          </button>
-          <button
-            type="button"
-            className={styles.addButton}
-            onClick={() => setShowAddForm('visit')}
-          >
-            + Návštěva
-          </button>
-        </div>
+        {canAddItems && (
+          <div className={styles.actions}>
+            <button
+              type="button"
+              className={styles.addButton}
+              onClick={() => setShowAddForm('communication')}
+            >
+              + Komunikace
+            </button>
+            <button
+              type="button"
+              className={styles.addButton}
+              onClick={() => setShowAddForm('visit')}
+            >
+              + Návštěva
+            </button>
+          </div>
+        )}
       </div>
 
       {error && <div className={styles.error}>{error}</div>}
@@ -162,7 +174,13 @@ export function CustomerTimeline({ customerId }: CustomerTimelineProps) {
 
       {/* Timeline Items */}
       {items.length === 0 ? (
-        <p className={styles.empty}>Zatím žádná historie.</p>
+        <p className={styles.empty}>
+          {!isConnected 
+            ? 'Čekám na připojení...' 
+            : !serviceAvailable 
+              ? 'Historie zatím není k dispozici.' 
+              : 'Zatím žádná historie.'}
+        </p>
       ) : (
         <div className={styles.items}>
           {items.map((item) => (
