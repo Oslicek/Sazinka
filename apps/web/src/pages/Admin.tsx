@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNatsStore } from '../stores/natsStore';
 import * as exportService from '../services/exportService';
+import { importCustomersBatch } from '../services/customerService';
 import { ImportModal, type ImportEntityType } from '../components/import';
+import { ImportCustomersModal } from '../components/customers/ImportCustomersModal';
 import styles from './Admin.module.css';
 
 interface ServiceStatus {
@@ -60,6 +62,7 @@ export function Admin() {
   // Import state
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importEntityType, setImportEntityType] = useState<ImportEntityType>('device');
+  const [showCustomerImport, setShowCustomerImport] = useState(false);
   
   const handleOpenImport = (entityType: ImportEntityType) => {
     setImportEntityType(entityType);
@@ -68,6 +71,14 @@ export function Admin() {
   
   const handleCloseImport = () => {
     setImportModalOpen(false);
+  };
+  
+  const handleOpenCustomerImport = () => {
+    setShowCustomerImport(true);
+  };
+  
+  const handleCloseCustomerImport = () => {
+    setShowCustomerImport(false);
   };
 
   // Health check function
@@ -577,9 +588,25 @@ export function Admin() {
         </div>
 
         <div className={styles.exportContainer}>
+          {/* Customers Import */}
+          <div className={styles.exportCard}>
+            <h3>1. Import zákazníků</h3>
+            <p className={styles.exportDescription}>
+              Importuje zákazníky z CSV. Automaticky spustí geokódování adres.
+            </p>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={handleOpenCustomerImport}
+              disabled={!connected}
+            >
+              📤 Importovat zákazníky
+            </button>
+          </div>
+
           {/* Devices Import */}
           <div className={styles.exportCard}>
-            <h3>Import zařízení</h3>
+            <h3>2. Import zařízení</h3>
             <p className={styles.exportDescription}>
               Importuje zařízení z CSV. Vyžaduje existující zákazníky (propojení přes IČO/email/telefon).
             </p>
@@ -595,7 +622,7 @@ export function Admin() {
 
           {/* Revisions Import */}
           <div className={styles.exportCard}>
-            <h3>Import revizí</h3>
+            <h3>3. Import revizí</h3>
             <p className={styles.exportDescription}>
               Importuje revize z CSV. Vyžaduje existující zařízení (propojení přes sériové číslo).
             </p>
@@ -611,7 +638,7 @@ export function Admin() {
 
           {/* Communications Import */}
           <div className={styles.exportCard}>
-            <h3>Import komunikace</h3>
+            <h3>4. Import komunikace</h3>
             <p className={styles.exportDescription}>
               Importuje historii komunikace (hovory, emaily, poznámky) z CSV.
             </p>
@@ -627,7 +654,7 @@ export function Admin() {
 
           {/* Visits Import */}
           <div className={styles.exportCard}>
-            <h3>Import návštěv</h3>
+            <h3>5. Import návštěv</h3>
             <p className={styles.exportDescription}>
               Importuje historii návštěv z CSV.
             </p>
@@ -649,7 +676,7 @@ export function Admin() {
             </a>
           </p>
           <p>
-            <strong>Pořadí importu:</strong> 1. Zákazníci → 2. Zařízení → 3. Revize → 4. Komunikace / Návštěvy
+            Importujte v uvedeném pořadí (1-5). Každý import vyžaduje data z předchozích kroků.
           </p>
         </div>
       </section>
@@ -660,6 +687,13 @@ export function Admin() {
         onClose={handleCloseImport}
         entityType={importEntityType}
         onComplete={() => runHealthCheck()}
+      />
+
+      {/* Customer Import Modal */}
+      <ImportCustomersModal
+        isOpen={showCustomerImport}
+        onClose={handleCloseCustomerImport}
+        onImportBatch={importCustomersBatch}
       />
 
       {/* Logs Section */}
