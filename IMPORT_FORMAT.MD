@@ -1,10 +1,11 @@
-# CSV Import zákazníků – Specifikace (v1.0.1)
+# CSV Import – Specifikace (v2.0.0)
 
-> **Verze:** 1.0.1  
-> **Datum:** 2026-01-27
+> **Verze:** 2.0.0  
+> **Datum:** 2026-01-30
 
 ## Obsah
 
+### Zákazníci (customers.csv)
 1. [Přehled](#1-přehled)
 2. [Formát souboru](#2-formát-souboru)
 3. [Sloupce](#3-sloupce)
@@ -15,6 +16,13 @@
 8. [Report importu](#8-report-importu)
 9. [Architektura](#9-architektura)
 10. [Příklady](#10-příklady)
+
+### Další entity
+11. [Import zařízení (devices.csv)](#11-import-zařízení-devicescsv)
+12. [Import revizí (revisions.csv)](#12-import-revizí-revisionscsv)
+13. [Import komunikace (communications.csv)](#13-import-komunikace-communicationscsv)
+14. [Import návštěv (visits.csv)](#14-import-návštěv-visitscsv)
+15. [Pořadí importu a propojování záznamů](#15-pořadí-importu-a-propojování-záznamů)
 
 ---
 
@@ -567,3 +575,473 @@ type;name;contactPerson;ico;dic;street;city;postalCode;country;phone;email;notes
 **Výsledek:**
 - `type` → `company` (odvozeno z IČO)
 - **varování** "Typ odvozen z IČO: company"
+
+---
+
+## 11. Import zařízení (devices.csv)
+
+### 11.1 Přehled
+
+Import zařízení zákazníků (kotle, komíny, krby, sporáky apod.) s vazbou na existující zákazníky.
+
+**Prerekvizity:**
+- Zákazníci musí být již importováni (viz sekce 15)
+- Propojení přes `customer_ref` (IČO, email nebo telefon zákazníka)
+
+### 11.2 Hlavička
+
+```csv
+customer_ref;device_type;manufacturer;model;serial_number;installation_date;revision_interval_months;notes
+```
+
+### 11.3 Sloupce
+
+| Sloupec | Typ | Povinný | Popis |
+|---------|-----|---------|-------|
+| `customer_ref` | string | **ano** | Reference na zákazníka: IČO, email, nebo telefon (E.164) |
+| `device_type` | string | **ano** | Typ zařízení (viz tabulka níže) |
+| `manufacturer` | string | ne | Výrobce |
+| `model` | string | ne | Model |
+| `serial_number` | string | ne | Sériové číslo |
+| `installation_date` | string | ne | Datum instalace (YYYY-MM-DD) |
+| `revision_interval_months` | number | **ano** | Interval revizí v měsících |
+| `notes` | string | ne | Poznámky |
+
+### 11.4 Typy zařízení
+
+| Hodnota | Popis |
+|---------|-------|
+| `gas_boiler` | Plynový kotel |
+| `gas_water_heater` | Plynový ohřívač vody |
+| `chimney` | Komín |
+| `fireplace` | Krb |
+| `gas_stove` | Plynový sporák |
+| `other` | Jiné |
+
+**Aliasy (case-insensitive):**
+- `kotel`, `plynový kotel` → `gas_boiler`
+- `ohřívač`, `bojler` → `gas_water_heater`
+- `komín`, `kouřovod` → `chimney`
+- `krb`, `krbová vložka` → `fireplace`
+- `sporák`, `plynový sporák` → `gas_stove`
+- `jiné`, `ostatní` → `other`
+
+### 11.5 Validace
+
+**customer_ref:**
+1. Nejprve zkusit match jako IČO (8 číslic)
+2. Pokud neúspěch → zkusit jako email (case-insensitive)
+3. Pokud neúspěch → zkusit jako telefon (E.164)
+4. Pokud zákazník nenalezen → **chyba** "Zákazník nenalezen"
+
+**revision_interval_months:**
+- Musí být kladné celé číslo
+- Typické hodnoty: 12, 24, 36
+- Pokud chybí nebo nevalidní → **chyba**
+
+**installation_date:**
+- Formát YYYY-MM-DD
+- Pokud nevalidní → **varování**, hodnota se neuloží
+
+### 11.6 Detekce duplicit
+
+Zařízení je **duplicitní**, pokud pro daného zákazníka existuje zařízení se stejným:
+1. `serial_number` (pokud vyplněno)
+2. NEBO kombinace `device_type` + `manufacturer` + `model` (pokud všechny vyplněny)
+
+Při duplicitě → **aktualizovat** existující záznam.
+
+### 11.7 Příklady
+
+```csv
+customer_ref;device_type;manufacturer;model;serial_number;installation_date;revision_interval_months;notes
+12345678;gas_boiler;Vaillant;ecoTEC plus;VL123456;2023-05-15;12;Hlavní kotel
+info@abc.cz;chimney;;;CH-2020;2020-01-01;24;Nerezový komín
++420602123456;gas_water_heater;Junkers;Cerapur;JK789012;2024-01-10;12;
+12345678;fireplace;Romotop;Heat 2g 59.50.01;;;36;Krbová vložka v obýváku
+```
+
+---
+
+## 12. Import revizí (revisions.csv)
+
+### 12.1 Přehled
+
+Import historie revizí pro existující zařízení. Umožňuje importovat jak budoucí termíny, tak historické záznamy dokončených revizí.
+
+**Prerekvizity:**
+- Zařízení musí být již importována
+- Propojení přes `device_ref` (sériové číslo nebo kombinace customer_ref + device_type)
+
+### 12.2 Hlavička
+
+```csv
+device_ref;customer_ref;due_date;status;scheduled_date;scheduled_time_start;scheduled_time_end;completed_at;duration_minutes;result;findings
+```
+
+### 12.3 Sloupce
+
+| Sloupec | Typ | Povinný | Popis |
+|---------|-----|---------|-------|
+| `device_ref` | string | **ano** | Sériové číslo zařízení |
+| `customer_ref` | string | **ano** | Reference na zákazníka (pro jednoznačnou identifikaci) |
+| `due_date` | string | **ano** | Termín revize (YYYY-MM-DD) |
+| `status` | string | ne | Stav revize (viz tabulka) |
+| `scheduled_date` | string | ne | Naplánované datum (YYYY-MM-DD) |
+| `scheduled_time_start` | string | ne | Čas od (HH:MM) |
+| `scheduled_time_end` | string | ne | Čas do (HH:MM) |
+| `completed_at` | string | ne | Datum a čas dokončení (ISO 8601) |
+| `duration_minutes` | number | ne | Délka trvání v minutách |
+| `result` | string | ne | Výsledek revize (viz tabulka) |
+| `findings` | string | ne | Poznámky/nálezy |
+
+### 12.4 Stavy revize
+
+| Hodnota | Popis |
+|---------|-------|
+| `upcoming` | Nadcházející (výchozí) |
+| `scheduled` | Naplánováno |
+| `confirmed` | Potvrzeno |
+| `completed` | Dokončeno |
+| `cancelled` | Zrušeno |
+
+**Aliasy:**
+- `nadcházející`, `budoucí` → `upcoming`
+- `naplánováno`, `plánováno` → `scheduled`
+- `potvrzeno` → `confirmed`
+- `dokončeno`, `hotovo`, `provedeno` → `completed`
+- `zrušeno`, `storno` → `cancelled`
+
+### 12.5 Výsledky revize
+
+| Hodnota | Popis |
+|---------|-------|
+| `passed` | V pořádku |
+| `conditional` | S výhradami |
+| `failed` | Nevyhovělo |
+
+**Aliasy:**
+- `ok`, `v pořádku`, `bez závad` → `passed`
+- `s výhradami`, `podmíněně` → `conditional`
+- `nevyhovělo`, `závada`, `nok` → `failed`
+
+### 12.6 Validace
+
+**Identifikace zařízení:**
+1. Najít zákazníka podle `customer_ref`
+2. Najít zařízení podle `device_ref` (sériové číslo) u daného zákazníka
+3. Pokud nenalezeno → **chyba**
+
+**Logická validace:**
+- Pokud `status=completed` a chybí `result` → **varování** "Dokončená revize bez výsledku"
+- Pokud `result` vyplněn a `status≠completed` → automaticky nastavit `status=completed`
+- Pokud `completed_at` vyplněno a `status≠completed` → automaticky nastavit `status=completed`
+
+### 12.7 Detekce duplicit
+
+Revize je **duplicitní**, pokud pro dané zařízení existuje revize se stejným `due_date`.
+
+Při duplicitě → **aktualizovat** existující záznam.
+
+### 12.8 Příklady
+
+```csv
+device_ref;customer_ref;due_date;status;scheduled_date;scheduled_time_start;scheduled_time_end;completed_at;duration_minutes;result;findings
+VL123456;12345678;2025-05-15;completed;2025-05-10;09:00;10:30;2025-05-10T10:15:00;75;passed;Bez závad, kotel v dobrém stavu
+VL123456;12345678;2026-05-15;upcoming;;;;;;;Plánovaná pravidelná revize
+CH-2020;info@abc.cz;2024-12-01;completed;2024-12-01;14:00;;2024-12-01T15:00:00;60;conditional;Nutné vyčištění do 3 měsíců
+JK789012;+420602123456;2025-01-10;scheduled;2025-01-15;08:00;09:00;;;;
+```
+
+---
+
+## 13. Import komunikace (communications.csv)
+
+### 13.1 Přehled
+
+Import historie komunikace se zákazníky – hovory, e-maily, poznámky, SMS.
+
+**Prerekvizity:**
+- Zákazníci musí být již importováni
+
+### 13.2 Hlavička
+
+```csv
+customer_ref;date;comm_type;direction;subject;content;contact_name;contact_phone;duration_minutes
+```
+
+### 13.3 Sloupce
+
+| Sloupec | Typ | Povinný | Popis |
+|---------|-----|---------|-------|
+| `customer_ref` | string | **ano** | Reference na zákazníka (IČO, email, telefon) |
+| `date` | string | **ano** | Datum komunikace (YYYY-MM-DD) |
+| `comm_type` | string | **ano** | Typ komunikace (viz tabulka) |
+| `direction` | string | **ano** | Směr: `outbound` nebo `inbound` |
+| `subject` | string | ne | Předmět |
+| `content` | string | **ano** | Obsah/popis komunikace |
+| `contact_name` | string | ne | Jméno kontaktní osoby |
+| `contact_phone` | string | ne | Telefon kontaktu |
+| `duration_minutes` | number | ne | Délka hovoru (pouze pro `call`) |
+
+### 13.4 Typy komunikace
+
+| Hodnota | Popis |
+|---------|-------|
+| `call` | Telefonát |
+| `email_sent` | Odeslaný e-mail |
+| `email_received` | Přijatý e-mail |
+| `note` | Poznámka |
+| `sms` | SMS zpráva |
+
+**Aliasy:**
+- `hovor`, `telefon`, `telefonát` → `call`
+- `email`, `mail`, `odeslaný email` → `email_sent`
+- `přijatý email`, `příchozí email` → `email_received`
+- `poznámka`, `záznam` → `note`
+
+### 13.5 Směr komunikace
+
+| Hodnota | Popis |
+|---------|-------|
+| `outbound` | Odchozí (my → zákazník) |
+| `inbound` | Příchozí (zákazník → my) |
+
+**Aliasy:**
+- `odchozí`, `ven`, `out` → `outbound`
+- `příchozí`, `dovnitř`, `in` → `inbound`
+
+### 13.6 Validace
+
+- Pro `comm_type=call` je doporučeno vyplnit `duration_minutes`
+- Pro `comm_type=email_*` je doporučeno vyplnit `subject`
+- `contact_phone` se normalizuje na E.164 (s varováním při neúspěchu)
+
+### 13.7 Příklady
+
+```csv
+customer_ref;date;comm_type;direction;subject;content;contact_name;contact_phone;duration_minutes
+12345678;2025-01-15;call;outbound;Domluvení termínu;Volal jsem ohledně revize kotle, zákazník souhlasí s termínem 20.1.;Jan Novák;+420602123456;5
+12345678;2025-01-16;email_sent;outbound;Potvrzení termínu revize;Dobrý den, potvrzuji termín revize na 20.1.2025 v 9:00.;;;
+info@abc.cz;2025-01-18;email_received;inbound;Dotaz na cenu;Jaká je cena revize komínu?;;;
++420602123456;2025-01-20;note;outbound;;Zákaznice preferuje odpolední hodiny, má malé děti;;;
+12345678;2025-01-22;sms;outbound;;Připomínka: zítra revize v 9:00;;;
+```
+
+---
+
+## 14. Import návštěv (visits.csv)
+
+### 14.1 Přehled
+
+Import plánovaných a uskutečněných návštěv u zákazníků.
+
+**Prerekvizity:**
+- Zákazníci musí být již importováni
+- Zařízení (volitelně) pro návštěvy typu revize
+
+### 14.2 Hlavička
+
+```csv
+customer_ref;device_ref;scheduled_date;scheduled_time_start;scheduled_time_end;visit_type;status;result;result_notes;requires_follow_up;follow_up_reason
+```
+
+### 14.3 Sloupce
+
+| Sloupec | Typ | Povinný | Popis |
+|---------|-----|---------|-------|
+| `customer_ref` | string | **ano** | Reference na zákazníka |
+| `device_ref` | string | ne | Sériové číslo zařízení (pokud návštěva souvisí se zařízením) |
+| `scheduled_date` | string | **ano** | Naplánované datum (YYYY-MM-DD) |
+| `scheduled_time_start` | string | ne | Čas od (HH:MM) |
+| `scheduled_time_end` | string | ne | Čas do (HH:MM) |
+| `visit_type` | string | **ano** | Typ návštěvy (viz tabulka) |
+| `status` | string | ne | Stav návštěvy (viz tabulka) |
+| `result` | string | ne | Výsledek návštěvy (viz tabulka) |
+| `result_notes` | string | ne | Poznámky k výsledku |
+| `requires_follow_up` | boolean | ne | Vyžaduje následnou návštěvu (`true`/`false`) |
+| `follow_up_reason` | string | ne | Důvod následné návštěvy |
+
+### 14.4 Typy návštěv
+
+| Hodnota | Popis |
+|---------|-------|
+| `revision` | Revize |
+| `installation` | Instalace |
+| `repair` | Oprava |
+| `consultation` | Konzultace |
+| `follow_up` | Následná návštěva |
+
+**Aliasy:**
+- `revize`, `kontrola` → `revision`
+- `instalace`, `montáž` → `installation`
+- `oprava`, `servis` → `repair`
+- `konzultace`, `poradenství` → `consultation`
+- `následná`, `follow-up` → `follow_up`
+
+### 14.5 Stavy návštěv
+
+| Hodnota | Popis |
+|---------|-------|
+| `planned` | Naplánováno (výchozí) |
+| `in_progress` | Probíhá |
+| `completed` | Dokončeno |
+| `cancelled` | Zrušeno |
+| `rescheduled` | Přeplánováno |
+
+### 14.6 Výsledky návštěv
+
+| Hodnota | Popis |
+|---------|-------|
+| `successful` | Úspěšná |
+| `partial` | Částečná |
+| `failed` | Neúspěšná |
+| `customer_absent` | Zákazník nepřítomen |
+| `rescheduled` | Přeplánováno |
+
+**Aliasy:**
+- `úspěšná`, `ok` → `successful`
+- `částečná`, `částečně` → `partial`
+- `neúspěšná`, `nok` → `failed`
+- `nepřítomen`, `nikdo doma` → `customer_absent`
+- `přeplánováno`, `odloženo` → `rescheduled`
+
+### 14.7 Validace
+
+- Pokud `visit_type=revision` a `device_ref` je prázdné → **varování** "Revize bez zařízení"
+- Pokud `status=completed` a `result` je prázdné → **varování** "Dokončená návštěva bez výsledku"
+- `requires_follow_up` přijímá: `true`, `false`, `ano`, `ne`, `1`, `0`
+
+### 14.8 Detekce duplicit
+
+Návštěva je **duplicitní**, pokud pro daného zákazníka existuje návštěva se stejným:
+- `scheduled_date` + `visit_type` + `device_ref` (pokud vyplněno)
+
+Při duplicitě → **aktualizovat** existující záznam.
+
+### 14.9 Příklady
+
+```csv
+customer_ref;device_ref;scheduled_date;scheduled_time_start;scheduled_time_end;visit_type;status;result;result_notes;requires_follow_up;follow_up_reason
+12345678;VL123456;2025-01-20;09:00;11:00;revision;completed;successful;Revize proběhla bez problémů;false;
+info@abc.cz;;2025-01-22;14:00;;consultation;planned;;;;;
++420602123456;JK789012;2025-01-25;10:00;12:00;repair;completed;partial;Opraveno, ale doporučuji výměnu ventilu;true;Objednat nový díl a vyměnit
+12345678;;2025-02-01;08:00;09:00;follow_up;planned;;;;false;
+```
+
+---
+
+## 15. Pořadí importu a propojování záznamů
+
+### 15.1 Povinné pořadí importu
+
+Import musí probíhat v tomto pořadí (kvůli závislostem mezi entitami):
+
+```
+1. customers.csv     → vytvoří zákazníky
+       ↓
+2. devices.csv       → vytvoří zařízení (vyžaduje zákazníky)
+       ↓
+3. revisions.csv     → vytvoří revize (vyžaduje zařízení)
+       ↓
+4. communications.csv → vytvoří komunikace (vyžaduje zákazníky)
+       ↓
+5. visits.csv        → vytvoří návštěvy (vyžaduje zákazníky, volitelně zařízení)
+```
+
+### 15.2 Mechanismus propojování (customer_ref)
+
+Všechny soubory kromě `customers.csv` používají sloupec `customer_ref` pro identifikaci zákazníka.
+
+**Pořadí vyhledávání:**
+
+1. **IČO** – pokud hodnota odpovídá formátu 8 číslic
+2. **Email** – pokud hodnota obsahuje `@`
+3. **Telefon** – pokud hodnota začíná `+` nebo je to číslo
+
+```
+customer_ref="12345678"     → hledání dle IČO
+customer_ref="info@abc.cz"  → hledání dle emailu
+customer_ref="+420602123456" → hledání dle telefonu
+```
+
+### 15.3 Mechanismus propojování (device_ref)
+
+Soubory `revisions.csv` a `visits.csv` mohou obsahovat `device_ref` pro identifikaci zařízení.
+
+**Hodnota `device_ref`:**
+- **Sériové číslo** zařízení (`serial_number`)
+
+Vyhledávání probíhá v kontextu zákazníka určeného `customer_ref`.
+
+### 15.4 Chybějící reference
+
+| Situace | Chování |
+|---------|---------|
+| `customer_ref` nenalezen | **chyba** – řádek se přeskočí |
+| `device_ref` nenalezen (povinný) | **chyba** – řádek se přeskočí |
+| `device_ref` nenalezen (volitelný) | **varování** – řádek se importuje bez vazby |
+
+### 15.5 Doporučení pro přípravu dat
+
+1. **Zajistěte unikátní identifikátory** – každý zákazník by měl mít alespoň IČO, email nebo telefon
+2. **Používejte sériová čísla** – pro zařízení, která budou mít revize
+3. **Konzistentní formát telefonů** – ideálně E.164 (`+420...`)
+4. **Datumy v ISO formátu** – YYYY-MM-DD
+
+### 15.6 Hromadný import (ZIP archiv)
+
+Pro import všech souborů najednou lze použít ZIP archiv s touto strukturou:
+
+```
+import_2026-01.zip
+├── customers.csv
+├── devices.csv
+├── revisions.csv
+├── communications.csv
+└── visits.csv
+```
+
+Systém automaticky:
+1. Rozbalí archiv
+2. Importuje soubory ve správném pořadí
+3. Vygeneruje souhrnný report
+
+### 15.7 Příklad kompletního importu
+
+**customers.csv:**
+```csv
+type;name;contactPerson;ico;dic;street;city;postalCode;country;phone;email;notes
+company;ABC Trading s.r.o.;Jan Novák;12345678;CZ12345678;Průmyslová 1;Brno;60200;CZ;+420541234567;info@abc.cz;
+person;Marie Svobodová;;;;;Lipová 15;Praha;15000;CZ;+420602123456;marie@email.cz;
+```
+
+**devices.csv:**
+```csv
+customer_ref;device_type;manufacturer;model;serial_number;installation_date;revision_interval_months;notes
+12345678;gas_boiler;Vaillant;ecoTEC plus;VL-2023-001;2023-05-15;12;Hlavní kotel
+12345678;chimney;;;CH-2020-001;2020-01-01;24;Nerezový komín
++420602123456;gas_water_heater;Junkers;Cerapur;JK-2024-001;2024-01-10;12;
+```
+
+**revisions.csv:**
+```csv
+device_ref;customer_ref;due_date;status;scheduled_date;scheduled_time_start;scheduled_time_end;completed_at;duration_minutes;result;findings
+VL-2023-001;12345678;2024-05-15;completed;2024-05-10;09:00;;2024-05-10T10:30:00;90;passed;Bez závad
+VL-2023-001;12345678;2025-05-15;upcoming;;;;;;;;;
+CH-2020-001;12345678;2024-12-01;completed;;;2024-12-01T15:00:00;60;conditional;Doporučeno vyčistit
+JK-2024-001;+420602123456;2025-01-10;scheduled;2025-01-15;08:00;09:00;;;;;
+```
+
+**communications.csv:**
+```csv
+customer_ref;date;comm_type;direction;subject;content;contact_name;contact_phone;duration_minutes
+12345678;2025-01-15;call;outbound;;Domluven termín revize kotle na 20.1.;Jan Novák;+420602111222;5
++420602123456;2025-01-18;note;outbound;;Zákaznice preferuje odpolední hodiny;;;
+```
+
+**visits.csv:**
+```csv
+customer_ref;device_ref;scheduled_date;scheduled_time_start;scheduled_time_end;visit_type;status;result;result_notes;requires_follow_up;follow_up_reason
+12345678;VL-2023-001;2025-01-20;09:00;11:00;revision;planned;;;;;
++420602123456;;2025-01-22;14:00;;consultation;planned;;;;;
