@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNatsStore } from '../stores/natsStore';
 import * as exportService from '../services/exportService';
-import { importCustomersBatch } from '../services/customerService';
+import { importCustomersBatch, submitGeocodeAllPending } from '../services/customerService';
 import { ImportModal, type ImportEntityType } from '../components/import';
 import { ImportCustomersModal } from '../components/customers/ImportCustomersModal';
 import styles from './Admin.module.css';
@@ -85,6 +85,28 @@ export function Admin() {
   const handleCustomerImportBatch = useCallback(async (customers: Parameters<typeof importCustomersBatch>[1]) => {
     const USER_ID = '00000000-0000-0000-0000-000000000001';
     return importCustomersBatch(USER_ID, customers);
+  }, []);
+
+  // Geocoding state and handler
+  const [isSubmittingGeocode, setIsSubmittingGeocode] = useState(false);
+  
+  const handleTriggerGeocode = useCallback(async () => {
+    const USER_ID = '00000000-0000-0000-0000-000000000001';
+    setIsSubmittingGeocode(true);
+    try {
+      const result = await submitGeocodeAllPending(USER_ID);
+      if (result) {
+        alert(`Geokódování spuštěno! Job ID: ${result.jobId}`);
+      } else {
+        alert('Žádní zákazníci k geokódování.');
+      }
+      // Refresh status after submission
+      runHealthCheck();
+    } catch (error) {
+      alert(`Chyba při spouštění geokódování: ${error instanceof Error ? error.message : 'Neznámá chyba'}`);
+    } finally {
+      setIsSubmittingGeocode(false);
+    }
   }, []);
 
   // Health check function
@@ -437,13 +459,24 @@ export function Admin() {
                 )}
               </div>
               <div className={styles.serviceActions}>
-                <button 
-                  className={styles.smallButton}
-                  disabled={service.name === 'Frontend'}
-                  title="Restartovat službu"
-                >
-                  ↻ Restart
-                </button>
+                {service.name === 'Geocoding' ? (
+                  <button 
+                    className={styles.smallButton}
+                    onClick={handleTriggerGeocode}
+                    disabled={isSubmittingGeocode || !connected}
+                    title="Spustit geokódování pro čekající zákazníky"
+                  >
+                    {isSubmittingGeocode ? '⏳ Odesílám...' : '▶ Spustit'}
+                  </button>
+                ) : (
+                  <button 
+                    className={styles.smallButton}
+                    disabled={service.name === 'Frontend'}
+                    title="Restartovat službu"
+                  >
+                    ↻ Restart
+                  </button>
+                )}
               </div>
             </div>
           ))}
