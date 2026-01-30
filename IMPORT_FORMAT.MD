@@ -1,6 +1,6 @@
 # CSV Import – Specifikace (v2.0.0)
 
-> **Verze:** 2.1.0  
+> **Verze:** 2.2.0  
 > **Datum:** 2026-01-25
 
 ## Obsah
@@ -669,7 +669,7 @@ Import zařízení zákazníků (kotle, komíny, krby, sporáky apod.) s vazbou 
 ### 11.2 Hlavička
 
 ```csv
-customer_ref;device_type;manufacturer;model;serial_number;installation_date;revision_interval_months;notes
+customer_ref;device_type;device_name;manufacturer;model;serial_number;installation_date;revision_interval_months;notes
 ```
 
 ### 11.3 Sloupce
@@ -678,12 +678,15 @@ customer_ref;device_type;manufacturer;model;serial_number;installation_date;revi
 |---------|-----|---------|-------|
 | `customer_ref` | string | **ano** | Reference na zákazníka: IČO, email, nebo telefon (E.164) |
 | `device_type` | string | **ano** | Typ zařízení (viz tabulka níže) |
+| `device_name` | string | ne* | Lidský název zařízení (např. "Komín u garáže") |
 | `manufacturer` | string | ne | Výrobce |
 | `model` | string | ne | Model |
 | `serial_number` | string | ne | Sériové číslo |
 | `installation_date` | string | ne | Datum instalace (YYYY-MM-DD) |
 | `revision_interval_months` | number | **ano** | Interval revizí v měsících |
 | `notes` | string | ne | Poznámky |
+
+> **\*** `device_name` je povinný pouze pokud zákazník má více zařízení stejného typu a žádné nemá `serial_number`. Viz sekce 11.6.
 
 ### 11.4 Typy zařízení
 
@@ -723,21 +726,44 @@ customer_ref;device_type;manufacturer;model;serial_number;installation_date;revi
 
 ### 11.6 Detekce duplicit
 
-Zařízení je **duplicitní**, pokud pro daného zákazníka existuje zařízení se stejným:
-1. `serial_number` (pokud vyplněno)
-2. NEBO kombinace `device_type` + `manufacturer` + `model` (pokud všechny vyplněny)
+**Priorita identifikace zařízení:**
+
+```
+1. serial_number (pokud vyplněno) → jednoznačný match
+2. device_name (pokud vyplněno) → match dle customer + device_type + device_name
+3. device_type (pokud zákazník má POUZE JEDNO zařízení tohoto typu) → auto-match
+4. Žádná shoda → vytvořit nové zařízení
+```
+
+**Pravidla:**
+
+| Situace | Chování |
+|---------|---------|
+| Zákazník má 1 komín v DB, CSV obsahuje 1 komín | Auto-match (bez ohledu na `device_name`) |
+| Zákazník má 2 komíny v DB, CSV obsahuje komín bez `device_name` | Nové zařízení + **varování** |
+| Zákazník má 2 komíny v DB, CSV obsahuje komín s `device_name` | Match dle `device_name` |
+| `serial_number` vyplněno | Vždy match dle serial (má přednost) |
 
 Při duplicitě → **aktualizovat** existující záznam.
+
+> **Poznámka:** Pro jednoduché případy (zákazník má jen jeden kotel, jeden komín) není `device_name` potřeba. Je nutný pouze při rozlišení více zařízení stejného typu.
 
 ### 11.7 Příklady
 
 ```csv
-customer_ref;device_type;manufacturer;model;serial_number;installation_date;revision_interval_months;notes
-12345678;gas_boiler;Vaillant;ecoTEC plus;VL123456;2023-05-15;12;Hlavní kotel
-info@abc.cz;chimney;;;CH-2020;2020-01-01;24;Nerezový komín
-+420602123456;gas_water_heater;Junkers;Cerapur;JK789012;2024-01-10;12;
-12345678;fireplace;Romotop;Heat 2g 59.50.01;;;36;Krbová vložka v obýváku
+customer_ref;device_type;device_name;manufacturer;model;serial_number;installation_date;revision_interval_months;notes
+12345678;gas_boiler;Hlavní kotel;Vaillant;ecoTEC plus;VL123456;2023-05-15;12;
+info@abc.cz;chimney;Komín u kotelny;;;;2020-01-01;24;Nerezový
+info@abc.cz;chimney;Komín garáž;;;;;24;Cihlový komín
++420602123456;gas_water_heater;;Junkers;Cerapur;JK789012;2024-01-10;12;
+12345678;fireplace;Krb v obýváku;Romotop;Heat 2g 59.50.01;;;36;
 ```
+
+**Vysvětlení příkladů:**
+- Řádek 1: Kotel s `serial_number` – `device_name` je volitelný (match přes serial)
+- Řádek 2-3: Dva komíny bez serial – `device_name` je **povinný** pro rozlišení
+- Řádek 4: Jediný ohřívač zákazníka – `device_name` není potřeba
+- Řádek 5: Jediný krb zákazníka – `device_name` je volitelný (ale pěkný pro UX)
 
 ---
 
@@ -749,7 +775,7 @@ Import historie revizí pro existující zařízení. Umožňuje importovat jak 
 
 **Prerekvizity:**
 - Zařízení musí být již importována
-- Propojení přes `device_ref` (sériové číslo nebo kombinace customer_ref + device_type)
+- Propojení přes `device_ref` (sériové číslo, device_name, nebo typ zařízení)
 
 ### 12.2 Hlavička
 
@@ -761,7 +787,7 @@ device_ref;customer_ref;due_date;status;scheduled_date;scheduled_time_start;sche
 
 | Sloupec | Typ | Povinný | Popis |
 |---------|-----|---------|-------|
-| `device_ref` | string | **ano** | Sériové číslo zařízení |
+| `device_ref` | string | **ano** | Reference na zařízení: `serial_number`, `device_name`, nebo `device_type` (viz 15.3) |
 | `customer_ref` | string | **ano** | Reference na zákazníka (pro jednoznačnou identifikaci) |
 | `due_date` | string | **ano** | Termín revize (YYYY-MM-DD) |
 | `status` | string | ne | Stav revize (viz tabulka) |
@@ -805,9 +831,12 @@ device_ref;customer_ref;due_date;status;scheduled_date;scheduled_time_start;sche
 
 ### 12.6 Validace
 
-**Identifikace zařízení:**
+**Identifikace zařízení** (viz podrobně sekce 15.3):
 1. Najít zákazníka podle `customer_ref`
-2. Najít zařízení podle `device_ref` (sériové číslo) u daného zákazníka
+2. Najít zařízení podle `device_ref`:
+   - Jako `serial_number`
+   - Jako `device_name`
+   - Jako `device_type` (pokud zákazník má jen jedno zařízení tohoto typu)
 3. Pokud nenalezeno → **chyba**
 
 **Logická validace:**
@@ -826,10 +855,15 @@ Při duplicitě → **aktualizovat** existující záznam.
 ```csv
 device_ref;customer_ref;due_date;status;scheduled_date;scheduled_time_start;scheduled_time_end;completed_at;duration_minutes;result;findings
 VL123456;12345678;2025-05-15;completed;2025-05-10;09:00;10:30;2025-05-10T10:15:00;75;passed;Bez závad, kotel v dobrém stavu
-VL123456;12345678;2026-05-15;upcoming;;;;;;;Plánovaná pravidelná revize
-CH-2020;info@abc.cz;2024-12-01;completed;2024-12-01;14:00;;2024-12-01T15:00:00;60;conditional;Nutné vyčištění do 3 měsíců
-JK789012;+420602123456;2025-01-10;scheduled;2025-01-15;08:00;09:00;;;;
+Komín u kotelny;info@abc.cz;2024-12-01;completed;2024-12-01;14:00;;2024-12-01T15:00:00;60;conditional;Nutné vyčištění do 3 měsíců
+Komín garáž;info@abc.cz;2024-12-15;completed;;;;;passed;OK
+gas_water_heater;+420602123456;2025-01-10;scheduled;2025-01-15;08:00;09:00;;;;
 ```
+
+**Vysvětlení `device_ref`:**
+- Řádek 1: `VL123456` = sériové číslo
+- Řádek 2-3: `Komín u kotelny`, `Komín garáž` = device_name (zákazník má 2 komíny)
+- Řádek 4: `gas_water_heater` = device_type (zákazník má jediný ohřívač)
 
 ---
 
@@ -929,7 +963,7 @@ customer_ref;device_ref;scheduled_date;scheduled_time_start;scheduled_time_end;v
 | Sloupec | Typ | Povinný | Popis |
 |---------|-----|---------|-------|
 | `customer_ref` | string | **ano** | Reference na zákazníka |
-| `device_ref` | string | ne | Sériové číslo zařízení (pokud návštěva souvisí se zařízením) |
+| `device_ref` | string | ne | Reference na zařízení: `serial_number`, `device_name`, nebo `device_type` (viz 15.3) |
 | `scheduled_date` | string | **ano** | Naplánované datum (YYYY-MM-DD) |
 | `scheduled_time_start` | string | ne | Čas od (HH:MM) |
 | `scheduled_time_end` | string | ne | Čas do (HH:MM) |
@@ -1055,12 +1089,32 @@ customer_ref="+420602123456" → hledání dle telefonu
 
 ### 15.3 Mechanismus propojování (device_ref)
 
-Soubory `revisions.csv` a `visits.csv` mohou obsahovat `device_ref` pro identifikaci zařízení.
+Soubory `revisions.csv` a `visits.csv` používají `device_ref` pro identifikaci zařízení.
 
-**Hodnota `device_ref`:**
-- **Sériové číslo** zařízení (`serial_number`)
+**Pořadí vyhledávání** (v kontextu zákazníka z `customer_ref`):
 
-Vyhledávání probíhá v kontextu zákazníka určeného `customer_ref`.
+```
+1. serial_number  → přesná shoda se sériovým číslem
+2. device_name    → přesná shoda s názvem zařízení
+3. device_type    → pokud zákazník má POUZE JEDNO zařízení tohoto typu
+```
+
+**Příklady:**
+
+| `device_ref` | Interpretace |
+|--------------|--------------|
+| `VL123456` | Sériové číslo |
+| `Komín u kotelny` | device_name |
+| `chimney` | device_type (jen pokud zákazník má 1 komín) |
+| `gas_boiler` | device_type (jen pokud zákazník má 1 kotel) |
+
+**Chybové stavy:**
+
+| Situace | Chování |
+|---------|---------|
+| Zákazník má 2 komíny a `device_ref=chimney` | **chyba** – nelze jednoznačně určit |
+| Zákazník nemá žádný komín a `device_ref=chimney` | **chyba** – zařízení nenalezeno |
+| `device_ref` neodpovídá ničemu | **chyba** – zařízení nenalezeno |
 
 ### 15.4 Chybějící reference
 
@@ -1073,7 +1127,7 @@ Vyhledávání probíhá v kontextu zákazníka určeného `customer_ref`.
 ### 15.5 Doporučení pro přípravu dat
 
 1. **Zajistěte unikátní identifikátory** – každý zákazník by měl mít alespoň IČO, email nebo telefon
-2. **Používejte sériová čísla** – pro zařízení, která budou mít revize
+2. **Pojmenujte zařízení** – používejte `device_name` pro zařízení bez sériového čísla (zejména komíny)
 3. **Konzistentní formát telefonů** – ideálně E.164 (`+420...`)
 4. **Datumy v ISO formátu** – YYYY-MM-DD
 
@@ -1106,19 +1160,20 @@ person;Marie Svobodová;;;;;Lipová 15;Praha;15000;CZ;+420602123456;marie@email.
 
 **devices.csv:**
 ```csv
-customer_ref;device_type;manufacturer;model;serial_number;installation_date;revision_interval_months;notes
-12345678;gas_boiler;Vaillant;ecoTEC plus;VL-2023-001;2023-05-15;12;Hlavní kotel
-12345678;chimney;;;CH-2020-001;2020-01-01;24;Nerezový komín
-+420602123456;gas_water_heater;Junkers;Cerapur;JK-2024-001;2024-01-10;12;
+customer_ref;device_type;device_name;manufacturer;model;serial_number;installation_date;revision_interval_months;notes
+12345678;gas_boiler;Hlavní kotel;Vaillant;ecoTEC plus;VL-2023-001;2023-05-15;12;
+12345678;chimney;Komín u kotelny;;;;2020-01-01;24;Nerezový
+12345678;chimney;Komín garáž;;;;;24;Cihlový
++420602123456;gas_water_heater;;Junkers;Cerapur;;2024-01-10;12;
 ```
 
 **revisions.csv:**
 ```csv
 device_ref;customer_ref;due_date;status;scheduled_date;scheduled_time_start;scheduled_time_end;completed_at;duration_minutes;result;findings
 VL-2023-001;12345678;2024-05-15;completed;2024-05-10;09:00;;2024-05-10T10:30:00;90;passed;Bez závad
-VL-2023-001;12345678;2025-05-15;upcoming;;;;;;;;;
-CH-2020-001;12345678;2024-12-01;completed;;;2024-12-01T15:00:00;60;conditional;Doporučeno vyčistit
-JK-2024-001;+420602123456;2025-01-10;scheduled;2025-01-15;08:00;09:00;;;;;
+Komín u kotelny;12345678;2024-12-01;completed;;;2024-12-01T15:00:00;60;conditional;Doporučeno vyčistit
+Komín garáž;12345678;2024-12-15;completed;;;;;passed;OK
+gas_water_heater;+420602123456;2025-01-10;scheduled;2025-01-15;08:00;09:00;;;;;
 ```
 
 **communications.csv:**
@@ -1131,8 +1186,9 @@ customer_ref;date;comm_type;direction;subject;content;contact_name;contact_phone
 **visits.csv:**
 ```csv
 customer_ref;device_ref;scheduled_date;scheduled_time_start;scheduled_time_end;visit_type;status;result;result_notes;requires_follow_up;follow_up_reason
-12345678;VL-2023-001;2025-01-20;09:00;11:00;revision;planned;;;;;
-+420602123456;;2025-01-22;14:00;;consultation;planned;;;;;
+12345678;Hlavní kotel;2025-01-20;09:00;11:00;revision;planned;;;;;
+12345678;Komín u kotelny;2025-01-20;11:00;12:00;revision;planned;;;;;
++420602123456;gas_water_heater;2025-01-22;14:00;;revision;planned;;;;;
 ```
 
 ---
@@ -1299,9 +1355,15 @@ customer_ref="12345678"  → IČO (8 číslic)
 customer_ref="info@x.cz" → email (obsahuje @)
 ```
 
-#### devices.csv – bez serial_number
+#### devices.csv – identifikace zařízení
 
-Pokud `serial_number` chybí a není vyplněna kombinace `device_type + manufacturer + model`, **vytvoří se nové zařízení**. To je záměr – duplicita nelze bezpečně rozpoznat.
+Priorita identifikace:
+1. `serial_number` (pokud vyplněno) → jednoznačný match
+2. `device_name` (pokud vyplněno) → match dle `customer + device_type + device_name`
+3. `device_type` (pokud zákazník má jen 1 zařízení tohoto typu) → auto-match
+4. Žádná shoda → nové zařízení + varování
+
+> **Tip:** Pro zařízení bez sériového čísla (komíny, krby) používejte `device_name` jako lidský identifikátor: "Komín u garáže", "Krb v obýváku".
 
 #### revisions.csv – status auto-set
 
