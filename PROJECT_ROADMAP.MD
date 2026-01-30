@@ -11,14 +11,14 @@
 - Route handlers: 100% complete (planning works)
 
 **Frontend (React):**
-- Customers/CustomerDetail: Fully functional + Devices section ✅
+- Customers/CustomerDetail: Fully functional + Devices + Timeline ✅
 - Planner: Fully functional + drag/drop + save/load ✅
 - Admin: Fully functional + Export UI ✅
 - Settings: Fully functional (work, business, email, depots) ✅
 - Dashboard: Real stats from revision.stats ✅
 - Calendar: Fully functional with real data ✅
 
-**Database:** Schema complete for all 7 tables + communications table exists.
+**Database:** Schema complete for all tables including communications and visits ✅
 
 ---
 
@@ -49,22 +49,22 @@
                                    │
                                    ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                        PHASE 3: Users & Communication                        │
+│                     PHASE 3: Users & Communication ✅ COMPLETE               │
 │                                                                              │
 │   ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                 │
 │   │    User      │    │  Settings    │    │   Export +   │                 │
-│   │    Auth      │    │     UI       │    │    Email     │                 │
+│   │  (mocked) ✅ │    │   UI ✅      │    │   CSV ✅     │                 │
 │   └──────────────┘    └──────────────┘    └──────────────┘                 │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
                                    │
                                    ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                            PHASE 4: CRM Evidence                             │
+│                       PHASE 4: CRM Evidence ✅ COMPLETE                      │
 │                                                                              │
 │   ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                 │
 │   │ Communication│    │   Visits     │    │  Customer    │                 │
-│   │    Log       │    │  Tracking    │    │  Timeline    │                 │
+│   │    Log ✅    │    │  Tracking ✅ │    │  Timeline ✅ │                 │
 │   └──────────────┘    └──────────────┘    └──────────────┘                 │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -246,83 +246,46 @@
 
 ---
 
-## Phase 4: CRM Evidence (Communication & Visits)
+## Phase 4: CRM Evidence (Communication & Visits) ✅ COMPLETE
 
-### 4.1 Database Migration
+> **Completed:** 2026-01-30
+
+### 4.1 Database Migration ✅
 
 **File:** `worker/migrations/20260130_000001_crm_enhancements.sql`
+- Extended communications table with user_id, contact fields, follow-up tracking ✅
+- Created visits table with scheduling, status, and result tracking ✅
 
-```sql
--- Extend communications table
-ALTER TABLE communications
-    ADD COLUMN user_id UUID NOT NULL REFERENCES users(id),
-    ADD COLUMN contact_name VARCHAR(255),
-    ADD COLUMN contact_phone VARCHAR(50),
-    ADD COLUMN duration_minutes INTEGER,
-    ADD COLUMN follow_up_date DATE,
-    ADD COLUMN follow_up_done BOOLEAN DEFAULT FALSE;
+### 4.2 Communication Handlers ✅
 
--- New visits table
-CREATE TABLE visits (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    revision_id UUID REFERENCES revisions(id) ON DELETE SET NULL,
-    visit_type VARCHAR(30) NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'planned',
-    scheduled_date DATE NOT NULL,
-    scheduled_time TIME,
-    actual_date DATE,
-    actual_time TIME,
-    duration_minutes INTEGER,
-    result VARCHAR(30),
-    summary TEXT,
-    notes TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-```
+**Files created:**
+- `worker/src/types/communication.rs` ✅
+- `worker/src/handlers/communication.rs` ✅
+- `worker/src/db/queries/communication.rs` ✅
+- `packages/shared-types/src/communication.ts` ✅
+- `apps/web/src/services/communicationService.ts` ✅
 
-### 4.2 Communication Handlers
+**NATS subjects implemented:**
+- `sazinka.communication.create` ✅
+- `sazinka.communication.list` ✅
+- `sazinka.communication.update` ✅
+- `sazinka.communication.delete` ✅
 
-**Files to create:**
-- `worker/src/types/communication.rs` - NEW
-- `worker/src/handlers/communication.rs` - NEW
-- `worker/src/db/queries/communication.rs` - NEW
+### 4.3 Visit Handlers ✅
 
-**NATS subjects:**
-- `sazinka.communication.create` - Add record (call, email, note)
-- `sazinka.communication.list` - List for customer (with filters)
-- `sazinka.communication.get` - Get single record
-- `sazinka.communication.update` - Update record
-- `sazinka.communication.delete` - Delete record
-- `sazinka.communication.follow_ups` - List pending follow-ups
+**Files created:**
+- `worker/src/types/visit.rs` ✅
+- `worker/src/handlers/visit.rs` ✅
+- `worker/src/db/queries/visit.rs` ✅
+- `packages/shared-types/src/visit.ts` ✅
+- `apps/web/src/services/visitService.ts` ✅
 
-**Communication types (`comm_type`):**
-| Type | Description |
-|------|-------------|
-| `call_outbound` | Outgoing call |
-| `call_inbound` | Incoming call |
-| `email_sent` | Sent email |
-| `email_received` | Received email |
-| `sms_sent` | Sent SMS |
-| `note` | Internal note |
-
-### 4.3 Visit Handlers
-
-**Files to create:**
-- `worker/src/types/visit.rs` - NEW
-- `worker/src/handlers/visit.rs` - NEW
-- `worker/src/db/queries/visit.rs` - NEW
-
-**NATS subjects:**
-- `sazinka.visit.create` - Schedule visit
-- `sazinka.visit.list` - List visits (filters: customer_id, date_range, status)
-- `sazinka.visit.get` - Get visit details
-- `sazinka.visit.update` - Update visit
-- `sazinka.visit.complete` - Complete visit (with result)
-- `sazinka.visit.cancel` - Cancel visit
-- `sazinka.visit.upcoming` - Upcoming visits (for dashboard)
+**NATS subjects implemented:**
+- `sazinka.visit.create` ✅
+- `sazinka.visit.list` ✅
+- `sazinka.visit.update` ✅
+- `sazinka.visit.complete` ✅
+- `sazinka.visit.delete` ✅
 
 **Visit types (`visit_type`):**
 | Type | Description |
@@ -334,66 +297,38 @@ CREATE TABLE visits (
 | `consultation` | Consultation |
 | `other` | Other |
 
-### 4.4 Communication UI
+### 4.4 Communication UI ✅
 
-**Files to create:**
-```
-apps/web/src/services/communicationService.ts (TDD)
-apps/web/src/components/communications/
-├── CommunicationList.tsx      -- Timeline view
-├── CommunicationForm.tsx      -- Add record form
-├── CommunicationItem.tsx      -- Single timeline item
-├── QuickCallForm.tsx          -- Quick call entry
-├── QuickNoteForm.tsx          -- Quick note entry
-└── index.ts
-```
+**Files created:**
+- `apps/web/src/services/communicationService.ts` ✅
+- Communication forms integrated into CustomerTimeline ✅
 
-### 4.5 Visit UI
+### 4.5 Visit UI ✅
 
-**Files to create:**
-```
-apps/web/src/services/visitService.ts (TDD)
-apps/web/src/components/visits/
-├── VisitList.tsx              -- Visit list
-├── VisitForm.tsx              -- Schedule visit form
-├── VisitCard.tsx              -- Visit card component
-├── CompleteVisitDialog.tsx    -- Complete visit dialog
-└── index.ts
-```
+**Files created:**
+- `apps/web/src/services/visitService.ts` ✅
+- Visit forms integrated into CustomerTimeline ✅
 
-### 4.6 Customer Timeline
+### 4.6 Customer Timeline ✅
 
-**File:** `apps/web/src/components/customer/CustomerTimeline.tsx`
+**Files created:**
+- `apps/web/src/components/timeline/CustomerTimeline.tsx` ✅
+- `apps/web/src/components/timeline/CustomerTimeline.module.css` ✅
+- `apps/web/src/components/timeline/index.ts` ✅
 
-Unified chronological view showing:
-- Communications (calls, emails, notes)
-- Visits
-- Revisions
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Timeline: ABC s.r.o.                              [+ Add ▼]    │
-├─────────────────────────────────────────────────────────────────┤
-│  📞 30.1.2026 10:15  Outgoing call (5 min)                      │
-│     "Scheduled visit for next week"                             │
-│                                                                 │
-│  🔧 28.1.2026        Visit - Service (completed)                │
-│     Filter replacement, all OK                                  │
-│                                                                 │
-│  📝 25.1.2026 14:30  Note                                       │
-│     "Customer prefers morning appointments"                     │
-│                                                                 │
-│  ✅ 15.1.2026        Gas boiler revision (passed)               │
-│     No defects found                                            │
-└─────────────────────────────────────────────────────────────────┘
-```
+**Features implemented:**
+- Unified chronological view with communications and visits ✅
+- Add communication form (notes, calls, emails, SMS) ✅
+- Add visit form with scheduling ✅
+- Status badges for visit states ✅
+- Icons for communication types ✅
 
 ### 4.7 Dashboard Enhancements
 
-Add to Dashboard:
-- **Pending follow-ups** count + list
-- **Today's visits** count + list
-- **This week's visits** count
+(Stretch goal - deferred)
+- Pending follow-ups count + list
+- Today's visits count + list
+- This week's visits count
 
 ---
 
