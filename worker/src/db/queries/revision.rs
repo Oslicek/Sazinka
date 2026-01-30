@@ -18,9 +18,9 @@ pub async fn create_revision(
         INSERT INTO revisions (
             id, device_id, customer_id, user_id, status,
             due_date, scheduled_date, scheduled_time_start, scheduled_time_end,
-            created_at, updated_at
+            findings, created_at, updated_at
         )
-        VALUES ($1, $2, $3, $4, 'upcoming', $5, $6, $7, $8, NOW(), NOW())
+        VALUES ($1, $2, $3, $4, 'upcoming', $5, $6, $7, $8, $9, NOW(), NOW())
         RETURNING
             id, device_id, customer_id, user_id, status,
             due_date, scheduled_date, scheduled_time_start, scheduled_time_end,
@@ -36,6 +36,7 @@ pub async fn create_revision(
     .bind(req.scheduled_date)
     .bind(req.scheduled_time_start)
     .bind(req.scheduled_time_end)
+    .bind(&req.findings)
     .fetch_one(pool)
     .await?;
 

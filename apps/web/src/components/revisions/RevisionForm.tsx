@@ -24,6 +24,7 @@ interface FormData {
   scheduledTimeStart: string;
   scheduledTimeEnd: string;
   status: string;
+  findings: string;
 }
 
 const STATUSES = [
@@ -38,6 +39,7 @@ const createInitialFormData = (revision?: Revision): FormData => ({
   scheduledTimeStart: revision?.scheduledTimeStart?.substring(0, 5) ?? '',
   scheduledTimeEnd: revision?.scheduledTimeEnd?.substring(0, 5) ?? '',
   status: revision?.status ?? 'upcoming',
+  findings: revision?.findings ?? '',
 });
 
 export function RevisionForm({ customerId, deviceId, userId, revision, onSuccess, onCancel }: RevisionFormProps) {
@@ -100,6 +102,7 @@ export function RevisionForm({ customerId, deviceId, userId, revision, onSuccess
           scheduledDate: formData.scheduledDate || undefined,
           scheduledTimeStart: formData.scheduledTimeStart || undefined,
           scheduledTimeEnd: formData.scheduledTimeEnd || undefined,
+          findings: formData.findings || undefined,
         };
         
         await createRevision(userId, createData);
@@ -193,6 +196,19 @@ export function RevisionForm({ customerId, deviceId, userId, revision, onSuccess
             />
           </div>
         </div>
+      </div>
+
+      <div className={styles.field}>
+        <label htmlFor="findings" className={styles.label}>Poznámka</label>
+        <textarea
+          id="findings"
+          value={formData.findings}
+          onChange={(e) => handleChange('findings', e.target.value)}
+          className={styles.textarea}
+          disabled={isSubmitting}
+          rows={3}
+          placeholder="Volitelná poznámka k revizi..."
+        />
       </div>
 
       <div className={styles.actions}>

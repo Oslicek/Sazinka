@@ -60,7 +60,8 @@
 }
 
 .input,
-.select {
+.select,
+.textarea {
   width: 100%;
   padding: 0.625rem 0.75rem;
   border: 1px solid var(--color-border);
@@ -71,15 +72,23 @@
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 
+.textarea {
+  resize: vertical;
+  min-height: 60px;
+  font-family: inherit;
+}
+
 .input:focus,
-.select:focus {
+.select:focus,
+.textarea:focus {
   outline: none;
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
 .input:disabled,
-.select:disabled {
+.select:disabled,
+.textarea:disabled {
   background: var(--color-bg-secondary);
   cursor: not-allowed;
 }

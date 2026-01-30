@@ -81,6 +81,7 @@ pub struct CreateRevisionRequest {
     pub scheduled_date: Option<NaiveDate>,
     pub scheduled_time_start: Option<NaiveTime>,
     pub scheduled_time_end: Option<NaiveTime>,
+    pub findings: Option<String>,
 }
 
 /// Request to update a revision

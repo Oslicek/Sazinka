@@ -42,6 +42,7 @@ export interface CreateRevisionRequest {
   scheduledDate?: string;
   scheduledTimeStart?: string;
   scheduledTimeEnd?: string;
+  findings?: string;
 }
 
 export interface UpdateRevisionRequest {
