@@ -59,6 +59,37 @@ fn comm_direction_to_str(dir: CommunicationDirection) -> &'static str {
     }
 }
 
+fn device_type_to_str(dtype: DeviceType) -> &'static str {
+    match dtype {
+        DeviceType::GasBoiler => "gas_boiler",
+        DeviceType::GasWaterHeater => "gas_water_heater",
+        DeviceType::Chimney => "chimney",
+        DeviceType::Fireplace => "fireplace",
+        DeviceType::GasStove => "gas_stove",
+        DeviceType::Other => "other",
+    }
+}
+
+fn revision_status_to_str(status: RevisionStatus) -> &'static str {
+    match status {
+        RevisionStatus::Upcoming => "upcoming",
+        RevisionStatus::DueSoon => "due_soon",
+        RevisionStatus::Overdue => "overdue",
+        RevisionStatus::Scheduled => "scheduled",
+        RevisionStatus::Confirmed => "confirmed",
+        RevisionStatus::Completed => "completed",
+        RevisionStatus::Cancelled => "cancelled",
+    }
+}
+
+fn revision_result_to_str(result: RevisionResult) -> &'static str {
+    match result {
+        RevisionResult::Passed => "passed",
+        RevisionResult::Failed => "failed",
+        RevisionResult::Conditional => "conditional",
+    }
+}
+
 // =============================================================================
 // CUSTOMER LOOKUP
 // =============================================================================
@@ -133,21 +164,21 @@ pub async fn create_device_import(
 ) -> Result<Uuid> {
     let id = Uuid::new_v4();
     
-    sqlx::query!(
+    sqlx::query(
         r#"
         INSERT INTO devices (id, customer_id, device_type, manufacturer, model, serial_number, installation_date, revision_interval_months, notes, created_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
         "#,
-        id,
-        customer_id,
-        device_type as DeviceType,
-        manufacturer,
-        model,
-        serial_number,
-        installation_date,
-        revision_interval_months,
-        notes
     )
+    .bind(id)
+    .bind(customer_id)
+    .bind(device_type_to_str(device_type))
+    .bind(manufacturer)
+    .bind(model)
+    .bind(serial_number)
+    .bind(installation_date)
+    .bind(revision_interval_months)
+    .bind(notes)
     .execute(pool)
     .await?;
     
@@ -165,7 +196,7 @@ pub async fn update_device_import(
     revision_interval_months: i32,
     notes: Option<&str>,
 ) -> Result<()> {
-    sqlx::query!(
+    sqlx::query(
         r#"
         UPDATE devices 
         SET device_type = $2,
@@ -176,14 +207,14 @@ pub async fn update_device_import(
             notes = COALESCE($7, notes)
         WHERE id = $1
         "#,
-        device_id,
-        device_type as DeviceType,
-        manufacturer,
-        model,
-        installation_date,
-        revision_interval_months,
-        notes
     )
+    .bind(device_id)
+    .bind(device_type_to_str(device_type))
+    .bind(manufacturer)
+    .bind(model)
+    .bind(installation_date)
+    .bind(revision_interval_months)
+    .bind(notes)
     .execute(pool)
     .await?;
     
@@ -223,25 +254,26 @@ pub async fn create_revision_import(
     findings: Option<&str>,
 ) -> Result<Uuid> {
     let id = Uuid::new_v4();
+    let result_str = result.map(revision_result_to_str);
     
-    sqlx::query!(
+    sqlx::query(
         r#"
         INSERT INTO revisions (id, device_id, customer_id, user_id, status, due_date, scheduled_date, scheduled_time_start, scheduled_time_end, duration_minutes, result, findings, created_at, updated_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
         "#,
-        id,
-        device_id,
-        customer_id,
-        user_id,
-        status as RevisionStatus,
-        due_date,
-        scheduled_date,
-        scheduled_time_start,
-        scheduled_time_end,
-        duration_minutes,
-        result as Option<RevisionResult>,
-        findings
     )
+    .bind(id)
+    .bind(device_id)
+    .bind(customer_id)
+    .bind(user_id)
+    .bind(revision_status_to_str(status))
+    .bind(due_date)
+    .bind(scheduled_date)
+    .bind(scheduled_time_start)
+    .bind(scheduled_time_end)
+    .bind(duration_minutes)
+    .bind(result_str)
+    .bind(findings)
     .execute(pool)
     .await?;
     
@@ -260,7 +292,9 @@ pub async fn update_revision_import(
     result: Option<RevisionResult>,
     findings: Option<&str>,
 ) -> Result<()> {
-    sqlx::query!(
+    let result_str = result.map(revision_result_to_str);
+    
+    sqlx::query(
         r#"
         UPDATE revisions 
         SET status = $2,
@@ -273,15 +307,15 @@ pub async fn update_revision_import(
             updated_at = NOW()
         WHERE id = $1
         "#,
-        revision_id,
-        status as RevisionStatus,
-        scheduled_date,
-        scheduled_time_start,
-        scheduled_time_end,
-        duration_minutes,
-        result as Option<RevisionResult>,
-        findings
     )
+    .bind(revision_id)
+    .bind(revision_status_to_str(status))
+    .bind(scheduled_date)
+    .bind(scheduled_time_start)
+    .bind(scheduled_time_end)
+    .bind(duration_minutes)
+    .bind(result_str)
+    .bind(findings)
     .execute(pool)
     .await?;
     

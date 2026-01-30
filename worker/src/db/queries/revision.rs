@@ -234,18 +234,20 @@ pub async fn list_revisions(
     let revisions = sqlx::query_as::<_, Revision>(
         r#"
         SELECT
-            id, device_id, customer_id, user_id, status,
-            due_date, scheduled_date, scheduled_time_start, scheduled_time_end,
-            completed_at, duration_minutes, result, findings,
-            created_at, updated_at
-        FROM revisions
-        WHERE user_id = $1
-          AND ($2::uuid IS NULL OR customer_id = $2)
-          AND ($3::uuid IS NULL OR device_id = $3)
-          AND ($4::text IS NULL OR status = $4)
-          AND ($5::date IS NULL OR due_date >= $5)
-          AND ($6::date IS NULL OR due_date <= $6)
-        ORDER BY due_date ASC
+            r.id, r.device_id, r.customer_id, r.user_id, r.status,
+            r.due_date, r.scheduled_date, r.scheduled_time_start, r.scheduled_time_end,
+            r.completed_at, r.duration_minutes, r.result, r.findings,
+            r.created_at, r.updated_at,
+            d.model as device_name, d.device_type
+        FROM revisions r
+        LEFT JOIN devices d ON r.device_id = d.id
+        WHERE r.user_id = $1
+          AND ($2::uuid IS NULL OR r.customer_id = $2)
+          AND ($3::uuid IS NULL OR r.device_id = $3)
+          AND ($4::text IS NULL OR r.status = $4)
+          AND ($5::date IS NULL OR r.due_date >= $5)
+          AND ($6::date IS NULL OR r.due_date <= $6)
+        ORDER BY r.due_date ASC
         LIMIT $7 OFFSET $8
         "#
     )

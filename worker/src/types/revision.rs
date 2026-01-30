@@ -24,6 +24,11 @@ pub struct Revision {
     pub findings: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    // Device info (joined from devices table)
+    #[sqlx(default)]
+    pub device_name: Option<String>,
+    #[sqlx(default)]
+    pub device_type: Option<String>,
 }
 
 /// Revision status

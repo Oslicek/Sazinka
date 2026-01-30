@@ -1,6 +1,6 @@
 # Project Roadmap - Sazinka v1.0 GA
 
-> **Last Updated:** 2026-01-30
+> **Last Updated:** 2026-01-30 (added Phase 5: Production Readiness)
 
 ## Current State Analysis
 
@@ -65,6 +65,18 @@
 │   ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                 │
 │   │ Communication│    │   Visits     │    │  Customer    │                 │
 │   │    Log ✅    │    │  Tracking ✅ │    │  Timeline ✅ │                 │
+│   └──────────────┘    └──────────────┘    └──────────────┘                 │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                   │
+                                   ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   PHASE 5: Production Readiness 📋 PLANNED                   │
+│                                                                              │
+│   ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                 │
+│   │ 5A: Auth +   │    │ 5B: Billing  │    │ 5C: 2FA +    │                 │
+│   │ Security 🔴  │───▶│ + RLS  🟡    │───▶│ GDPR   🟢    │                 │
+│   │  (MUST)      │    │  (SHOULD)    │    │  (NICE)      │                 │
 │   └──────────────┘    └──────────────┘    └──────────────┘                 │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -332,11 +344,386 @@
 
 ---
 
+## Phase 5: Production Readiness (Public SaaS) 📋 PLANNED
+
+> **Status:** Planning phase - required before public launch
+
+### Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    PHASE 5: Production Readiness                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   ┌──────────────────────────────────────────────────────────────────────┐  │
+│   │ 5A: Pre-Launch (MUST HAVE)                                           │  │
+│   │  ├─ Authentication (JWT)                                             │  │
+│   │  ├─ TLS on WebSocket                                                 │  │
+│   │  ├─ Rate limiting                                                    │  │
+│   │  ├─ Health checks                                                    │  │
+│   │  ├─ Managed PostgreSQL                                               │  │
+│   │  └─ Error tracking (Sentry)                                          │  │
+│   └──────────────────────────────────────────────────────────────────────┘  │
+│                                    │                                         │
+│                                    ▼                                         │
+│   ┌──────────────────────────────────────────────────────────────────────┐  │
+│   │ 5B: Launch (SHOULD HAVE)                                             │  │
+│   │  ├─ Row Level Security                                               │  │
+│   │  ├─ Billing integration (Stripe)                                     │  │
+│   │  ├─ Usage metering                                                   │  │
+│   │  ├─ Uptime monitoring                                                │  │
+│   │  └─ Terms of Service + Privacy Policy                                │  │
+│   └──────────────────────────────────────────────────────────────────────┘  │
+│                                    │                                         │
+│                                    ▼                                         │
+│   ┌──────────────────────────────────────────────────────────────────────┐  │
+│   │ 5C: Post-Launch (NICE TO HAVE)                                       │  │
+│   │  ├─ 2FA/MFA                                                          │  │
+│   │  ├─ OAuth providers                                                  │  │
+│   │  ├─ Full observability stack                                         │  │
+│   │  ├─ GDPR compliance tools                                            │  │
+│   │  └─ Advanced audit logging                                           │  │
+│   └──────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 5A: Pre-Launch (MUST HAVE) 🔴
+
+#### 5A.1 Authentication & Authorization
+
+**Current state:** Hardcoded `TEMP_USER_ID`, no login flow
+
+**Files to create/modify:**
+- `worker/src/handlers/auth.rs` - JWT login/logout/verify
+- `worker/src/middleware/auth.rs` - JWT validation middleware
+- `apps/web/src/pages/Login.tsx` - Login form
+- `apps/web/src/stores/authStore.ts` - Implement JWT storage
+
+**Features:**
+| Feature | Priority | Description |
+|---------|----------|-------------|
+| JWT login | MUST | Email + password → JWT token |
+| JWT refresh | MUST | Refresh token rotation |
+| Password hashing | MUST | bcrypt or argon2 |
+| Password reset | MUST | Email-based reset flow |
+| Session invalidation | MUST | Logout clears tokens |
+
+**NATS subjects:**
+- `sazinka.auth.login` - Returns JWT + refresh token
+- `sazinka.auth.logout` - Invalidates session
+- `sazinka.auth.verify` - Validates JWT
+- `sazinka.auth.refresh` - Rotates tokens
+- `sazinka.auth.reset-password` - Initiates reset
+- `sazinka.auth.set-password` - Completes reset
+
+#### 5A.2 TLS on WebSocket
+
+**Current state:** NATS WebSocket without encryption (warning in logs)
+
+**Solution options:**
+1. **Cloudflare Tunnel** (recommended) - Zero-config TLS termination
+2. **nginx reverse proxy** - `proxy_pass` to NATS with SSL cert
+3. **Native NATS TLS** - Configure certs in `nats-server.conf`
+
+**Files to modify:**
+- `infra/docker-compose.yml` - Add nginx or configure NATS TLS
+- `infra/nginx.conf` - NEW (if using nginx)
+
+#### 5A.3 Rate Limiting
+
+**Current state:** Only geocoding has rate limiting
+
+**Implementation:**
+- Per-handler rate limits in Rust (token bucket algorithm)
+- Or: nginx `limit_req_zone` directive
+
+**Limits to implement:**
+| Endpoint | Limit | Window |
+|----------|-------|--------|
+| `auth.login` | 5 | 1 min |
+| `customer.*` | 100 | 1 min |
+| `route.plan` | 10 | 1 min |
+| `geocode.*` | 20 | 1 min |
+
+#### 5A.4 Health Checks
+
+**Current state:** Only `sazinka.ping` handler exists
+
+**Endpoints to add:**
+- `GET /health` - Basic liveness (HTTP, not NATS)
+- `GET /ready` - Readiness (DB connected, services up)
+
+**Files to create:**
+- `worker/src/http_server.rs` - Minimal HTTP server for health checks
+
+#### 5A.5 Managed PostgreSQL
+
+**Current state:** Local Docker PostgreSQL
+
+**Recommended providers:**
+| Provider | Free tier | Backups | Notes |
+|----------|-----------|---------|-------|
+| **Neon** | 0.5 GB | Daily | Serverless, auto-scaling |
+| **Supabase** | 500 MB | Daily | Includes auth (alternative) |
+| **Railway** | $5 credit | Manual | Simple setup |
+
+**Migration steps:**
+1. Export schema and data
+2. Update `DATABASE_URL` in production
+3. Test connection from VPS
+
+#### 5A.6 Error Tracking
+
+**Current state:** File-based logging only
+
+**Solution:** Sentry (free tier: 5K errors/month)
+
+**Files to modify:**
+- `worker/Cargo.toml` - Add `sentry` crate
+- `worker/src/main.rs` - Initialize Sentry
+- `apps/web/package.json` - Add `@sentry/react`
+- `apps/web/src/main.tsx` - Initialize Sentry
+
+---
+
+### 5B: Launch (SHOULD HAVE) 🟡
+
+#### 5B.1 Row Level Security (RLS)
+
+**Purpose:** Database-level tenant isolation
+
+**Migration:**
+```sql
+-- Enable RLS on all tenant tables
+ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE devices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE revisions ENABLE ROW LEVEL SECURITY;
+-- etc.
+
+-- Create policies
+CREATE POLICY tenant_isolation ON customers
+    USING (user_id = current_setting('app.current_user_id')::uuid);
+```
+
+**Worker modification:**
+```rust
+// Set user context before each query
+sqlx::query("SET app.current_user_id = $1")
+    .bind(user_id)
+    .execute(&pool)
+    .await?;
+```
+
+#### 5B.2 Billing Integration
+
+**Provider:** Stripe (recommended for simplicity)
+
+**Database tables:**
+```sql
+CREATE TABLE subscriptions (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id),
+    stripe_customer_id VARCHAR(255),
+    stripe_subscription_id VARCHAR(255),
+    plan_id VARCHAR(50) NOT NULL, -- 'free', 'basic', 'pro'
+    status VARCHAR(20) NOT NULL,  -- 'active', 'canceled', 'past_due'
+    current_period_end TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE usage_records (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id),
+    metric VARCHAR(50) NOT NULL, -- 'customers', 'geocoding', 'routes'
+    count INTEGER NOT NULL,
+    period_start DATE NOT NULL,
+    period_end DATE NOT NULL
+);
+```
+
+**Plan limits:**
+| Plan | Customers | Routes/day | Geocoding/month |
+|------|-----------|------------|-----------------|
+| Free | 50 | 5 | 100 |
+| Basic | 500 | 20 | 1,000 |
+| Pro | Unlimited | Unlimited | 10,000 |
+
+#### 5B.3 Usage Metering
+
+**Metrics to track:**
+- `customers_count` - Total customers per user
+- `routes_planned` - Routes planned per day
+- `geocoding_requests` - Geocoding API calls per month
+- `storage_bytes` - Future: attachments storage
+
+**Implementation:**
+- Increment counters in handlers
+- Check limits before operations
+- Return `LIMIT_EXCEEDED` error when over quota
+
+#### 5B.4 Uptime Monitoring
+
+**Services:**
+- **UptimeRobot** (free: 50 monitors) - HTTP health checks
+- **Better Stack** (free tier) - Incident management
+
+**Monitors to create:**
+- Frontend availability
+- NATS WebSocket connectivity
+- Health endpoint response time
+
+#### 5B.5 Legal Documents
+
+**Required documents:**
+- Terms of Service (ToS)
+- Privacy Policy
+- Cookie Policy (if using cookies)
+- Data Processing Agreement (DPA) for B2B
+
+**Implementation:**
+- Static pages in frontend
+- Consent checkbox on signup
+
+---
+
+### 5C: Post-Launch (NICE TO HAVE) 🟢
+
+#### 5C.1 Two-Factor Authentication (2FA)
+
+**Options:**
+- TOTP (Google Authenticator, Authy)
+- SMS (via Twilio)
+- Email OTP
+
+**Files to create:**
+- `worker/src/services/totp.rs` - TOTP generation/verification
+- `apps/web/src/components/auth/TwoFactorSetup.tsx`
+
+#### 5C.2 OAuth Providers
+
+**Providers to consider:**
+- Google (most common)
+- Microsoft (for B2B)
+- Apple (for future mobile app)
+
+**Library:** `oauth2` crate for Rust
+
+#### 5C.3 Full Observability Stack
+
+**Components:**
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     Observability Stack                              │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│   ┌─────────────┐    ┌─────────────┐    ┌─────────────────────────┐│
+│   │ Worker      │───▶│ Vector      │───▶│ Loki (logs)             ││
+│   │ NATS        │    │             │    │ Prometheus (metrics)    ││
+│   │ PostgreSQL  │    │             │    │ Tempo (traces)          ││
+│   └─────────────┘    └─────────────┘    └───────────┬─────────────┘│
+│                                                     │              │
+│                                          ┌──────────▼──────────┐   │
+│                                          │ Grafana             │   │
+│                                          │ - Dashboards        │   │
+│                                          │ - Alerting          │   │
+│                                          └─────────────────────┘   │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Rust crates:**
+- `tracing-opentelemetry` - Distributed tracing
+- `metrics` + `metrics-exporter-prometheus` - Metrics export
+
+#### 5C.4 GDPR Compliance
+
+**Features to implement:**
+- **Data export** - Full user data in JSON/ZIP
+- **Data deletion** - "Right to be forgotten"
+- **Consent management** - Track what user agreed to
+- **Audit trail** - Who accessed what when
+
+**Database tables:**
+```sql
+CREATE TABLE audit_log (
+    id UUID PRIMARY KEY,
+    user_id UUID,
+    action VARCHAR(50) NOT NULL,
+    entity_type VARCHAR(50),
+    entity_id UUID,
+    old_value JSONB,
+    new_value JSONB,
+    ip_address INET,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE user_consents (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users(id),
+    consent_type VARCHAR(50) NOT NULL,
+    granted BOOLEAN NOT NULL,
+    granted_at TIMESTAMPTZ,
+    revoked_at TIMESTAMPTZ
+);
+```
+
+---
+
+### Production Architecture Target
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Production Architecture                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   ┌──────────────────┐                                                      │
+│   │ Cloudflare       │  - CDN for static assets                             │
+│   │ (Edge)           │  - TLS termination                                   │
+│   │                  │  - DDoS protection                                   │
+│   │                  │  - WAF rules                                         │
+│   └────────┬─────────┘                                                      │
+│            │                                                                 │
+│            ▼                                                                 │
+│   ┌──────────────────┐      ┌──────────────────┐                           │
+│   │ NATS Cluster     │◀────▶│ Worker Cluster   │                           │
+│   │ (2+ nodes)       │      │ (2+ instances)   │                           │
+│   │ + JetStream      │      │ + Health checks  │                           │
+│   └──────────────────┘      └────────┬─────────┘                           │
+│                                      │                                      │
+│                                      ▼                                      │
+│                            ┌──────────────────┐                             │
+│                            │ Managed PostgreSQL│                            │
+│                            │ (Neon/Supabase)  │                             │
+│                            │ + Auto backups   │                             │
+│                            │ + RLS enabled    │                             │
+│                            └──────────────────┘                             │
+│                                                                              │
+│   ┌──────────────────┐      ┌──────────────────┐                           │
+│   │ Valhalla         │      │ Nominatim        │                           │
+│   │ (self-hosted)    │      │ (self-hosted)    │                           │
+│   └──────────────────┘      └──────────────────┘                           │
+│                                                                              │
+│   ┌──────────────────────────────────────────────────────────────────────┐ │
+│   │ External Services                                                     │ │
+│   │  ├─ Stripe (billing)                                                 │ │
+│   │  ├─ Sentry (error tracking)                                          │ │
+│   │  ├─ Resend (emails)                                                  │ │
+│   │  └─ UptimeRobot (monitoring)                                         │ │
+│   └──────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## Out of Scope for v1.0
 
 Explicitly excluded:
 - Mobile app
-- Multi-tenant/team features
+- Multi-tenant/team features (multiple users per account)
 - Invoice generation
 - Document attachments
 - Incoming email processing
@@ -355,24 +742,46 @@ Phase 1 (Core Flow): ✅ COMPLETE
   1.4 Revision UI components ✅
   1.5 Dashboard stats ✅
 
-Phase 2 (Smart Planning): 🔄 IN PROGRESS
+Phase 2 (Smart Planning): ✅ COMPLETE
   2.1 Calendar with real data ✅
   2.2 Smart plan suggestion algorithm ✅
-  2.3 Drag/drop + lock/unlock
-  2.4 Route persistence
+  2.3 Drag/drop + lock/unlock ✅
+  2.4 Route persistence ✅
 
-Phase 3 (Users & Comms):
-  3.1 Authentication
-  3.2 Settings UI (partially done)
-  3.3 CSV export
-  3.4 Email reminders (stretch goal)
+Phase 3 (Users & Comms): ✅ COMPLETE
+  3.1 Authentication (mocked) ✅
+  3.2 Settings UI ✅
+  3.3 CSV export ✅
+  3.4 Email reminders (stretch goal - deferred)
 
-Phase 4 (CRM Evidence):
-  4.1 Database migration (communications + visits)
-  4.2 Communication handlers (TDD)
-  4.3 Visit handlers (TDD)
-  4.4 Communication UI components
-  4.5 Visit UI components
-  4.6 Customer Timeline
-  4.7 Dashboard enhancements
+Phase 4 (CRM Evidence): ✅ COMPLETE
+  4.1 Database migration (communications + visits) ✅
+  4.2 Communication handlers (TDD) ✅
+  4.3 Visit handlers (TDD) ✅
+  4.4 Communication UI components ✅
+  4.5 Visit UI components ✅
+  4.6 Customer Timeline ✅
+  4.7 Dashboard enhancements (deferred)
+
+Phase 5 (Production Readiness): 📋 PLANNED
+  5A: Pre-Launch (MUST HAVE) 🔴
+    5A.1 JWT Authentication
+    5A.2 TLS on WebSocket
+    5A.3 Rate limiting
+    5A.4 Health checks
+    5A.5 Managed PostgreSQL
+    5A.6 Error tracking (Sentry)
+  
+  5B: Launch (SHOULD HAVE) 🟡
+    5B.1 Row Level Security
+    5B.2 Billing (Stripe)
+    5B.3 Usage metering
+    5B.4 Uptime monitoring
+    5B.5 Legal documents (ToS, Privacy)
+  
+  5C: Post-Launch (NICE TO HAVE) 🟢
+    5C.1 Two-Factor Authentication
+    5C.2 OAuth providers
+    5C.3 Full observability stack
+    5C.4 GDPR compliance tools
 ```

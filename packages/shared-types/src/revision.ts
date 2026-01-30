@@ -16,6 +16,9 @@ export interface Revision {
   findings?: string;
   createdAt: string;
   updatedAt: string;
+  // Device info (joined from devices table)
+  deviceName?: string;
+  deviceType?: string;
 }
 
 export type RevisionStatus =

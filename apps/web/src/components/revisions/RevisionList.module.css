@@ -180,6 +180,27 @@
   color: #92400e;
 }
 
+.deviceInfo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.deviceType {
+  padding: 0.2rem 0.5rem;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.deviceName {
+  color: var(--color-text-secondary);
+}
+
 .revisionDates {
   display: flex;
   flex-wrap: wrap;

@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Revision, RevisionStatus, RevisionResult } from '@shared/revision';
 import { REVISION_STATUS_LABELS, REVISION_RESULT_LABELS } from '@shared/revision';
+import type { DeviceType } from '@shared/device';
+import { DEVICE_TYPE_LABELS } from '@shared/device';
 import { listRevisions, deleteRevision, type ListRevisionsFilters } from '../../services/revisionService';
 import { useNatsStore } from '../../stores/natsStore';
 import { RevisionForm } from './RevisionForm';
@@ -225,6 +227,14 @@ export function RevisionList({
                     </span>
                   )}
                 </div>
+                {revision.deviceType && (
+                  <div className={styles.deviceInfo}>
+                    <span className={styles.deviceType}>
+                      {DEVICE_TYPE_LABELS[revision.deviceType as DeviceType] || revision.deviceType}
+                    </span>
+                    {revision.deviceName && <span className={styles.deviceName}>{revision.deviceName}</span>}
+                  </div>
+                )}
                 <div className={styles.revisionDates}>
                   <span className={styles.dueDate}>
                     Termín: <strong>{formatDate(revision.dueDate)}</strong>
