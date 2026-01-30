@@ -336,7 +336,23 @@ function normalizeSinglePhone(
       }
     }
   } catch {
-    // Fall through to error handling
+    // Fall through to fallback handling
+  }
+
+  // Fallback for CZ: if exactly 9 digits, assume valid Czech mobile number
+  // This handles newer Czech mobile prefixes (669, 674, 687, etc.) that libphonenumber may not know
+  if (country === 'CZ' && !cleaned.startsWith('+')) {
+    const digitsOnly = cleaned.replace(/\D/g, '');
+    if (digitsOnly.length === 9 && /^[1-9]/.test(digitsOnly)) {
+      issues.push({
+        rowNumber: 0,
+        level: 'warning',
+        field: 'phone',
+        message: `Číslo normalizováno jako CZ (fallback): "${value}"`,
+        originalValue: value,
+      });
+      return { phone: `+420${digitsOnly}`, issues };
+    }
   }
 
   // Failed to parse

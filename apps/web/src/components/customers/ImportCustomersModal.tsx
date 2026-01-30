@@ -29,7 +29,7 @@ export function ImportCustomersModal({
 }: ImportCustomersModalProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [geocodeStatus, setGeocodeStatus] = useState<'idle' | 'submitting' | 'submitted' | 'error'>('idle');
+  const [geocodeStatus, setGeocodeStatus] = useState<'idle' | 'submitting' | 'submitted' | 'skipped' | 'error'>('idle');
   const [geocodeJobId, setGeocodeJobId] = useState<string | null>(null);
   const [geocodeError, setGeocodeError] = useState<string | null>(null);
   
@@ -48,7 +48,7 @@ export function ImportCustomersModal({
             setGeocodeJobId(result.jobId);
             setGeocodeStatus('submitted');
           } else {
-            setGeocodeStatus('idle'); // No customers to geocode
+            setGeocodeStatus('skipped'); // No customers to geocode - use 'skipped' to avoid loop
           }
         })
         .catch((err) => {
@@ -271,7 +271,7 @@ export function ImportCustomersModal({
                     <span>Nepodařilo se spustit geokódování: {geocodeError}</span>
                   </div>
                 )}
-                {geocodeStatus === 'idle' && state.status === 'complete' && (
+                {geocodeStatus === 'skipped' && (
                   <div className={styles.geocodeIdle}>
                     <span>Všichni zákazníci již mají souřadnice.</span>
                   </div>
