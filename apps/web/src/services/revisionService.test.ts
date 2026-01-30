@@ -8,6 +8,7 @@ import {
   deleteRevision,
   getUpcomingRevisions,
   getRevisionStats,
+  getSuggestedRevisions,
   type RevisionServiceDeps,
 } from './revisionService';
 import type { Revision } from '@shared/revision';
@@ -337,6 +338,91 @@ describe('revisionService', () => {
       });
 
       await expect(getRevisionStats('user-123', mockDeps)).rejects.toThrow('Query failed');
+    });
+  });
+
+  describe('getSuggestedRevisions', () => {
+    const mockSuggestion = {
+      id: 'revision-123',
+      deviceId: 'device-456',
+      customerId: 'customer-789',
+      userId: 'user-123',
+      status: 'upcoming',
+      dueDate: '2026-02-10',
+      scheduledDate: null,
+      scheduledTimeStart: null,
+      scheduledTimeEnd: null,
+      customerName: 'Test Customer',
+      customerStreet: 'Test Street 1',
+      customerCity: 'Prague',
+      customerLat: 50.08,
+      customerLng: 14.42,
+      priorityScore: 80,
+      daysUntilDue: 5,
+      priorityReason: 'due_this_week',
+    };
+
+    it('should call NATS with correct subject and date', async () => {
+      mockRequest.mockResolvedValueOnce({
+        payload: { suggestions: [mockSuggestion], totalCandidates: 1 },
+      });
+
+      await getSuggestedRevisions('user-123', '2026-02-05', 50, [], mockDeps);
+
+      expect(mockRequest).toHaveBeenCalledWith(
+        'sazinka.revision.suggest',
+        expect.objectContaining({
+          userId: 'user-123',
+          payload: {
+            date: '2026-02-05',
+            maxCount: 50,
+            excludeIds: undefined,
+          },
+        })
+      );
+    });
+
+    it('should pass excludeIds when provided', async () => {
+      mockRequest.mockResolvedValueOnce({
+        payload: { suggestions: [], totalCandidates: 0 },
+      });
+
+      await getSuggestedRevisions('user-123', '2026-02-05', 10, ['rev-1', 'rev-2'], mockDeps);
+
+      expect(mockRequest).toHaveBeenCalledWith(
+        'sazinka.revision.suggest',
+        expect.objectContaining({
+          payload: {
+            date: '2026-02-05',
+            maxCount: 10,
+            excludeIds: ['rev-1', 'rev-2'],
+          },
+        })
+      );
+    });
+
+    it('should return suggestions with priority scores', async () => {
+      const overdueSuggestion = { ...mockSuggestion, priorityScore: 100, priorityReason: 'overdue' };
+      const upcomingSuggestion = { ...mockSuggestion, id: 'rev-2', priorityScore: 40, priorityReason: 'due_this_month' };
+
+      mockRequest.mockResolvedValueOnce({
+        payload: { suggestions: [overdueSuggestion, upcomingSuggestion], totalCandidates: 25 },
+      });
+
+      const result = await getSuggestedRevisions('user-123', '2026-02-05', 50, [], mockDeps);
+
+      expect(result.suggestions).toHaveLength(2);
+      expect(result.suggestions[0].priorityScore).toBe(100);
+      expect(result.suggestions[0].priorityReason).toBe('overdue');
+      expect(result.totalCandidates).toBe(25);
+    });
+
+    it('should throw error when suggestions cannot be retrieved', async () => {
+      mockRequest.mockResolvedValueOnce({
+        error: { code: 'DATABASE_ERROR', message: 'Query failed' },
+      });
+
+      await expect(getSuggestedRevisions('user-123', '2026-02-05', 50, [], mockDeps)).rejects.toThrow('Query failed');
     });
   });
 });

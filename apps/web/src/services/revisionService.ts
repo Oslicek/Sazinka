@@ -92,6 +92,37 @@ export interface RevisionStats {
   completedThisMonth: number;
 }
 
+export interface RevisionSuggestion {
+  id: string;
+  deviceId: string;
+  customerId: string;
+  userId: string;
+  status: string;
+  dueDate: string;
+  scheduledDate: string | null;
+  scheduledTimeStart: string | null;
+  scheduledTimeEnd: string | null;
+  customerName: string;
+  customerStreet: string;
+  customerCity: string;
+  customerLat: number | null;
+  customerLng: number | null;
+  priorityScore: number;
+  daysUntilDue: number;
+  priorityReason: string;
+}
+
+export interface SuggestRevisionsRequest {
+  date: string;
+  maxCount?: number;
+  excludeIds?: string[];
+}
+
+export interface SuggestRevisionsResponse {
+  suggestions: RevisionSuggestion[];
+  totalCandidates: number;
+}
+
 // ============================================================================
 // Service Functions
 // ============================================================================
@@ -261,6 +292,36 @@ export async function getRevisionStats(
 
   const response = await deps.request<typeof request, NatsResponse<RevisionStats>>(
     'sazinka.revision.stats',
+    request
+  );
+
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+
+  return response.payload;
+}
+
+/**
+ * Get suggested revisions for route planning
+ * Returns prioritized list based on urgency (overdue > due soon > upcoming)
+ */
+export async function getSuggestedRevisions(
+  userId: string,
+  date: string,
+  maxCount: number = 50,
+  excludeIds: string[] = [],
+  deps: RevisionServiceDeps = getDefaultDeps()
+): Promise<SuggestRevisionsResponse> {
+  const payload: SuggestRevisionsRequest = {
+    date,
+    maxCount,
+    excludeIds: excludeIds.length > 0 ? excludeIds : undefined,
+  };
+  const request = createRequest(userId, payload);
+
+  const response = await deps.request<typeof request, NatsResponse<SuggestRevisionsResponse>>(
+    'sazinka.revision.suggest',
     request
   );
 

@@ -14,6 +14,7 @@ use crate::types::{
 use crate::types::revision::{
     CreateRevisionRequest, UpdateRevisionRequest, CompleteRevisionRequest,
     ListRevisionsRequest, UpcomingRevisionsRequest, RevisionStats, Revision,
+    SuggestRevisionsRequest, SuggestRevisionsResponse,
 };
 
 /// Response for list of revisions
@@ -546,6 +547,86 @@ pub async fn handle_stats(
             }
             Err(e) => {
                 error!("Failed to get revision stats: {}", e);
+                let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Handle revision.suggest messages - returns prioritized suggestions for route planning
+pub async fn handle_suggest(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+) -> Result<()> {
+    use tracing::info;
+
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received revision.suggest message");
+
+        let reply = match msg.reply {
+            Some(ref reply) => reply.clone(),
+            None => {
+                warn!("Message without reply subject");
+                continue;
+            }
+        };
+
+        // Parse request
+        let request: Request<SuggestRevisionsRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("Failed to parse request: {}", e);
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Check user_id
+        let user_id = match request.user_id {
+            Some(id) => id,
+            None => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        let max_count = request.payload.max_count.unwrap_or(50);
+        let exclude_ids = request.payload.exclude_ids.as_deref().unwrap_or(&[]);
+
+        info!(
+            "Getting revision suggestions for date {} (max: {}, excluding: {} ids)",
+            request.payload.date,
+            max_count,
+            exclude_ids.len()
+        );
+
+        // Get suggestions
+        match queries::revision::get_revision_suggestions(
+            &pool,
+            user_id,
+            request.payload.date,
+            max_count,
+            exclude_ids,
+        ).await {
+            Ok((suggestions, total)) => {
+                let response = SuccessResponse::new(
+                    request.id,
+                    SuggestRevisionsResponse {
+                        suggestions,
+                        total_candidates: total,
+                    },
+                );
+                let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+                info!("Returned {} suggestions out of {} total candidates", response.payload.suggestions.len(), total);
+            }
+            Err(e) => {
+                error!("Failed to get revision suggestions: {}", e);
                 let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
             }

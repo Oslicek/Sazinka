@@ -142,3 +142,48 @@ pub struct RevisionStats {
 pub struct RevisionIdRequest {
     pub id: Uuid,
 }
+
+/// Request to get suggested revisions for route planning
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SuggestRevisionsRequest {
+    pub date: NaiveDate,            // Target date for planning
+    pub max_count: Option<i32>,     // Max suggestions to return (default 50)
+    pub exclude_ids: Option<Vec<Uuid>>, // Already selected revision IDs to exclude
+}
+
+/// A revision candidate with priority score and customer info
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct RevisionSuggestion {
+    // Revision fields
+    pub id: Uuid,
+    pub device_id: Uuid,
+    pub customer_id: Uuid,
+    pub user_id: Uuid,
+    pub status: String,
+    pub due_date: NaiveDate,
+    pub scheduled_date: Option<NaiveDate>,
+    pub scheduled_time_start: Option<NaiveTime>,
+    pub scheduled_time_end: Option<NaiveTime>,
+    
+    // Customer fields for display and geographic clustering
+    pub customer_name: String,
+    pub customer_street: String,
+    pub customer_city: String,
+    pub customer_lat: Option<f64>,
+    pub customer_lng: Option<f64>,
+    
+    // Priority scoring
+    pub priority_score: i32,        // 0-100, higher = more urgent
+    pub days_until_due: i32,        // Negative = overdue
+    pub priority_reason: String,    // e.g., "overdue", "due_soon", "upcoming"
+}
+
+/// Response for revision suggestions
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SuggestRevisionsResponse {
+    pub suggestions: Vec<RevisionSuggestion>,
+    pub total_candidates: i64,
+}

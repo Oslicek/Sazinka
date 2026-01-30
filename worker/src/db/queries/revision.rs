@@ -401,3 +401,113 @@ pub async fn list_revisions_by_device(pool: &PgPool, device_id: Uuid, user_id: U
 
     Ok(revisions)
 }
+
+use crate::types::revision::RevisionSuggestion;
+
+/// Get suggested revisions for route planning with priority scoring
+/// 
+/// Priority algorithm:
+/// - Overdue: 100 points
+/// - Due within 7 days: 80 points  
+/// - Due within 14 days: 60 points
+/// - Due within 30 days: 40 points
+/// - Due later: 20 points
+pub async fn get_revision_suggestions(
+    pool: &PgPool,
+    user_id: Uuid,
+    target_date: NaiveDate,
+    max_count: i32,
+    exclude_ids: &[Uuid],
+) -> Result<(Vec<RevisionSuggestion>, i64)> {
+    let today = Utc::now().date_naive();
+    
+    // Build exclusion clause
+    let exclude_clause = if exclude_ids.is_empty() {
+        "TRUE".to_string()
+    } else {
+        let ids: Vec<String> = exclude_ids.iter().map(|id| format!("'{}'", id)).collect();
+        format!("r.id NOT IN ({})", ids.join(","))
+    };
+    
+    // Query with priority scoring
+    let query = format!(
+        r#"
+        WITH scored_revisions AS (
+            SELECT
+                r.id,
+                r.device_id,
+                r.customer_id,
+                r.user_id,
+                r.status,
+                r.due_date,
+                r.scheduled_date,
+                r.scheduled_time_start,
+                r.scheduled_time_end,
+                c.name as customer_name,
+                c.street as customer_street,
+                c.city as customer_city,
+                c.lat as customer_lat,
+                c.lng as customer_lng,
+                (r.due_date - $2::date)::int as days_until_due,
+                CASE
+                    WHEN r.due_date < $2 THEN 100  -- Overdue
+                    WHEN r.due_date <= $2 + INTERVAL '7 days' THEN 80  -- Due within week
+                    WHEN r.due_date <= $2 + INTERVAL '14 days' THEN 60  -- Due within 2 weeks
+                    WHEN r.due_date <= $2 + INTERVAL '30 days' THEN 40  -- Due within month
+                    ELSE 20  -- Due later
+                END as priority_score,
+                CASE
+                    WHEN r.due_date < $2 THEN 'overdue'
+                    WHEN r.due_date <= $2 + INTERVAL '7 days' THEN 'due_this_week'
+                    WHEN r.due_date <= $2 + INTERVAL '14 days' THEN 'due_soon'
+                    WHEN r.due_date <= $2 + INTERVAL '30 days' THEN 'due_this_month'
+                    ELSE 'upcoming'
+                END as priority_reason
+            FROM revisions r
+            INNER JOIN customers c ON r.customer_id = c.id
+            WHERE r.user_id = $1
+              AND r.status NOT IN ('completed', 'cancelled')
+              AND (r.scheduled_date IS NULL OR r.scheduled_date = $3)
+              AND c.lat IS NOT NULL
+              AND c.lng IS NOT NULL
+              AND {}
+        )
+        SELECT * FROM scored_revisions
+        ORDER BY priority_score DESC, days_until_due ASC
+        LIMIT $4
+        "#,
+        exclude_clause
+    );
+    
+    let suggestions = sqlx::query_as::<_, RevisionSuggestion>(&query)
+        .bind(user_id)
+        .bind(today)
+        .bind(target_date)
+        .bind(max_count as i64)
+        .fetch_all(pool)
+        .await?;
+    
+    // Get total count of candidates
+    let count_query = format!(
+        r#"
+        SELECT COUNT(*)
+        FROM revisions r
+        INNER JOIN customers c ON r.customer_id = c.id
+        WHERE r.user_id = $1
+          AND r.status NOT IN ('completed', 'cancelled')
+          AND (r.scheduled_date IS NULL OR r.scheduled_date = $2)
+          AND c.lat IS NOT NULL
+          AND c.lng IS NOT NULL
+          AND {}
+        "#,
+        exclude_clause
+    );
+    
+    let total: (i64,) = sqlx::query_as(&count_query)
+        .bind(user_id)
+        .bind(target_date)
+        .fetch_one(pool)
+        .await?;
+    
+    Ok((suggestions, total.0))
+}

@@ -310,3 +310,191 @@
   border-radius: 3px;
   transition: width 0.3s ease;
 }
+
+/* Smart Suggestions */
+.suggestions {
+  flex: 1;
+  min-height: 0;
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.suggestionsHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.suggestionsHeader h3 {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.suggestionsActions {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.selectButton,
+.refreshButton {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.selectButton:hover,
+.refreshButton:hover {
+  background: var(--color-bg-secondary);
+  color: var(--color-text);
+}
+
+.refreshButton {
+  font-size: 0.875rem;
+  padding: 0.25rem 0.375rem;
+}
+
+.loading {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  text-align: center;
+  padding: 1.5rem 0;
+}
+
+.suggestionList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  flex: 1;
+  overflow-y: auto;
+  max-height: 280px;
+}
+
+.suggestionItem {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.625rem;
+  border-radius: var(--radius-md);
+  margin-bottom: 0.375rem;
+  background-color: var(--color-bg-secondary);
+  align-items: flex-start;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 2px solid transparent;
+}
+
+.suggestionItem:hover {
+  background-color: var(--color-border);
+}
+
+.suggestionItem.selected {
+  border-color: var(--color-primary);
+  background-color: rgba(37, 99, 235, 0.05);
+}
+
+.suggestionItem input[type="checkbox"] {
+  margin-top: 0.25rem;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.suggestionInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.suggestionCustomer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.suggestionCustomer strong {
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.suggestionInfo small {
+  font-size: 0.7rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dueInfo {
+  color: var(--color-text-secondary);
+}
+
+.overdue {
+  color: var(--color-error) !important;
+  font-weight: 600;
+}
+
+.dueSoon {
+  color: var(--color-warning) !important;
+}
+
+.priorityBadge {
+  font-size: 0.6rem;
+  padding: 0.125rem 0.375rem;
+  border-radius: 9999px;
+  font-weight: 600;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.priority-overdue {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.priority-due_this_week {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.priority-due_soon {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.priority-due_this_month {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.priority-upcoming {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.priorityScore {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  background: rgba(37, 99, 235, 0.1);
+  padding: 0.25rem 0.375rem;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.moreAvailable {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  text-align: center;
+  padding: 0.5rem;
+  font-style: italic;
+}

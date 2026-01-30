@@ -62,6 +62,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let revision_complete_sub = client.subscribe("sazinka.revision.complete").await?;
     let revision_upcoming_sub = client.subscribe("sazinka.revision.upcoming").await?;
     let revision_stats_sub = client.subscribe("sazinka.revision.stats").await?;
+    let revision_suggest_sub = client.subscribe("sazinka.revision.suggest").await?;
     
     // Settings subjects
     let settings_get_sub = client.subscribe("sazinka.settings.get").await?;
@@ -105,6 +106,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let client_revision_complete = client.clone();
     let client_revision_upcoming = client.clone();
     let client_revision_stats = client.clone();
+    let client_revision_suggest = client.clone();
     
     let pool_customer_create = pool.clone();
     let pool_customer_list = pool.clone();
@@ -130,6 +132,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_revision_complete = pool.clone();
     let pool_revision_upcoming = pool.clone();
     let pool_revision_stats = pool.clone();
+    let pool_revision_suggest = pool.clone();
     
     // Settings handler clones
     let client_settings_get = client.clone();
@@ -253,6 +256,10 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     
     let revision_stats_handle = tokio::spawn(async move {
         revision::handle_stats(client_revision_stats, revision_stats_sub, pool_revision_stats).await
+    });
+    
+    let revision_suggest_handle = tokio::spawn(async move {
+        revision::handle_suggest(client_revision_suggest, revision_suggest_sub, pool_revision_suggest).await
     });
     
     // Settings handlers
@@ -428,6 +435,9 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         }
         result = revision_stats_handle => {
             error!("Revision stats handler finished: {:?}", result);
+        }
+        result = revision_suggest_handle => {
+            error!("Revision suggest handler finished: {:?}", result);
         }
         // Settings handlers
         result = settings_get_handle => {

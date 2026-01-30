@@ -2,9 +2,9 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import { useNatsStore } from '../stores/natsStore';
 import { v4 as uuidv4 } from 'uuid';
-import type { Customer } from '@sazinka/shared-types';
-import type { RoutePlanResponse, PlannedRouteStop, Depot } from '@sazinka/shared-types';
+import type { RoutePlanResponse, PlannedRouteStop } from '@sazinka/shared-types';
 import * as settingsService from '../services/settingsService';
+import { getSuggestedRevisions, type RevisionSuggestion } from '../services/revisionService';
 import styles from './Planner.module.css';
 
 // Mock user ID for development
@@ -99,6 +99,12 @@ export function Planner() {
   const [depot, setDepot] = useState<{ lat: number; lng: number; name?: string } | null>(null);
   const [depotLoading, setDepotLoading] = useState(true);
   const depotMarkerRef = useRef<maplibregl.Marker | null>(null);
+  
+  // Smart suggestions state
+  const [suggestions, setSuggestions] = useState<RevisionSuggestion[]>([]);
+  const [selectedSuggestionIds, setSelectedSuggestionIds] = useState<Set<string>>(new Set());
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [totalCandidates, setTotalCandidates] = useState(0);
 
   const { request, subscribe, isConnected } = useNatsStore();
   
@@ -125,6 +131,54 @@ export function Planner() {
     }
     loadDepot();
   }, [isConnected]);
+
+  // Load smart suggestions when date changes
+  const loadSuggestions = useCallback(async () => {
+    if (!isConnected) return;
+    
+    setSuggestionsLoading(true);
+    try {
+      const response = await getSuggestedRevisions(USER_ID, selectedDate, 20);
+      setSuggestions(response.suggestions);
+      setTotalCandidates(response.totalCandidates);
+      // Auto-select top 10 by default
+      const topIds = response.suggestions.slice(0, 10).map(s => s.id);
+      setSelectedSuggestionIds(new Set(topIds));
+    } catch (err) {
+      console.error('Failed to load suggestions:', err);
+      setSuggestions([]);
+      setTotalCandidates(0);
+    } finally {
+      setSuggestionsLoading(false);
+    }
+  }, [isConnected, selectedDate]);
+
+  // Load suggestions on date change
+  useEffect(() => {
+    loadSuggestions();
+  }, [loadSuggestions]);
+
+  // Toggle suggestion selection
+  const toggleSuggestion = useCallback((id: string) => {
+    setSelectedSuggestionIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  // Select all / none helpers
+  const selectAllSuggestions = useCallback(() => {
+    setSelectedSuggestionIds(new Set(suggestions.map(s => s.id)));
+  }, [suggestions]);
+
+  const deselectAllSuggestions = useCallback(() => {
+    setSelectedSuggestionIds(new Set());
+  }, []);
 
   // Initialize map only after depot is loaded
   useEffect(() => {
@@ -262,7 +316,7 @@ export function Planner() {
     }
   }, [clearMarkers, depot]);
 
-  // Plan route with random customers
+  // Plan route with selected suggestions
   const handlePlanRoute = async () => {
     if (!isConnected) {
       setError('Není připojeno k serveru');
@@ -274,37 +328,26 @@ export function Planner() {
       return;
     }
 
+    if (selectedSuggestionIds.size === 0) {
+      setError('Vyberte alespoň jednu revizi k naplánování');
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
     try {
-      // Step 1: Get random customers
-      const customersResponse = await request<any, NatsResponse<Customer[]>>(
-        'sazinka.customer.random',
-        {
-          id: uuidv4(),
-          timestamp: new Date().toISOString(),
-          userId: USER_ID,
-          payload: { limit: 10 },
-        },
-        30000
-      );
-
-      if (isErrorResponse(customersResponse)) {
-        throw new Error(customersResponse.error.message || 'Nepodařilo se načíst zákazníky');
-      }
-
-      const customers = customersResponse.payload;
+      // Get customer IDs from selected suggestions
+      const selectedSuggestions = suggestions.filter(s => selectedSuggestionIds.has(s.id));
+      const customerIds = [...new Set(selectedSuggestions.map(s => s.customerId))]; // Unique customer IDs
       
-      if (customers.length === 0) {
-        setError('Žádní zákazníci s platnými souřadnicemi');
+      if (customerIds.length === 0) {
+        setError('Žádní zákazníci k naplánování');
         setIsLoading(false);
         return;
       }
 
-      // Step 2: Plan route
-      const customerIds = customers.map((c: Customer) => c.id);
-      
+      // Plan route
       const planResponse = await request<any, NatsResponse<RoutePlanResponse>>(
         'sazinka.route.plan',
         {
@@ -440,6 +483,18 @@ export function Planner() {
     return `${(ms / 1000).toFixed(1)} s`;
   };
 
+  // Priority reason labels
+  const getPriorityLabel = (reason: string): string => {
+    const labels: Record<string, string> = {
+      overdue: 'Po termínu',
+      due_this_week: 'Tento týden',
+      due_soon: 'Brzy',
+      due_this_month: 'Tento měsíc',
+      upcoming: 'Nadcházející',
+    };
+    return labels[reason] || reason;
+  };
+
   // Job Status Indicator component
   const JobStatusIndicator = () => {
     if (!jobStatus) return null;
@@ -510,13 +565,95 @@ export function Planner() {
           </span>
         </div>
 
-        <div className={styles.stops}>
-          <h3>Zastávky ({stops.length})</h3>
-          {stops.length === 0 ? (
+        {/* Smart Suggestions */}
+        <div className={styles.suggestions}>
+          <div className={styles.suggestionsHeader}>
+            <h3>Doporučené revize ({selectedSuggestionIds.size}/{suggestions.length})</h3>
+            <div className={styles.suggestionsActions}>
+              <button 
+                type="button" 
+                className={styles.selectButton}
+                onClick={selectAllSuggestions}
+                disabled={suggestionsLoading}
+              >
+                Vše
+              </button>
+              <button 
+                type="button" 
+                className={styles.selectButton}
+                onClick={deselectAllSuggestions}
+                disabled={suggestionsLoading}
+              >
+                Nic
+              </button>
+              <button 
+                type="button" 
+                className={styles.refreshButton}
+                onClick={loadSuggestions}
+                disabled={suggestionsLoading}
+                title="Obnovit doporučení"
+              >
+                ↻
+              </button>
+            </div>
+          </div>
+          
+          {suggestionsLoading ? (
+            <div className={styles.loading}>Načítám doporučení...</div>
+          ) : suggestions.length === 0 ? (
             <p className={styles.empty}>
-              Klikněte na "Naplánovat trasu" pro výběr 10 náhodných zákazníků
+              Žádné revize k naplánování pro vybraný den.
             </p>
           ) : (
+            <>
+              <ul className={styles.suggestionList}>
+                {suggestions.map((suggestion) => (
+                  <li 
+                    key={suggestion.id} 
+                    className={`${styles.suggestionItem} ${selectedSuggestionIds.has(suggestion.id) ? styles.selected : ''}`}
+                    onClick={() => toggleSuggestion(suggestion.id)}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedSuggestionIds.has(suggestion.id)}
+                      onChange={() => toggleSuggestion(suggestion.id)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <div className={styles.suggestionInfo}>
+                      <div className={styles.suggestionCustomer}>
+                        <strong>{suggestion.customerName}</strong>
+                        <span className={`${styles.priorityBadge} ${styles[`priority-${suggestion.priorityReason}`]}`}>
+                          {getPriorityLabel(suggestion.priorityReason)}
+                        </span>
+                      </div>
+                      <small>{suggestion.customerStreet}, {suggestion.customerCity}</small>
+                      <small className={styles.dueInfo}>
+                        Termín: {suggestion.dueDate}
+                        {suggestion.daysUntilDue < 0 && (
+                          <span className={styles.overdue}> ({Math.abs(suggestion.daysUntilDue)} dnů po termínu)</span>
+                        )}
+                        {suggestion.daysUntilDue >= 0 && suggestion.daysUntilDue <= 7 && (
+                          <span className={styles.dueSoon}> (za {suggestion.daysUntilDue} dnů)</span>
+                        )}
+                      </small>
+                    </div>
+                    <div className={styles.priorityScore}>{suggestion.priorityScore}</div>
+                  </li>
+                ))}
+              </ul>
+              {totalCandidates > suggestions.length && (
+                <p className={styles.moreAvailable}>
+                  + {totalCandidates - suggestions.length} dalších kandidátů
+                </p>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Planned stops */}
+        {stops.length > 0 && (
+          <div className={styles.stops}>
+            <h3>Naplánovaná trasa ({stops.length} zastávek)</h3>
             <ul className={styles.stopList}>
               {stops.map((stop, index) => (
                 <li key={stop.customerId} className={styles.stopItem}>
@@ -531,8 +668,8 @@ export function Planner() {
                 </li>
               ))}
             </ul>
-          )}
-        </div>
+          </div>
+        )}
 
         {error && (
           <div className={styles.error}>
@@ -572,9 +709,9 @@ export function Planner() {
           <button 
             className="btn-primary w-full"
             onClick={handlePlanRoute}
-            disabled={isLoading || !isConnected || !depot}
+            disabled={isLoading || !isConnected || !depot || selectedSuggestionIds.size === 0}
           >
-            {isLoading ? 'Plánování...' : 'Naplánovat trasu'}
+            {isLoading ? 'Plánování...' : `Naplánovat trasu (${selectedSuggestionIds.size})`}
           </button>
           {stops.length > 0 && (
             <button 
