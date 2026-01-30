@@ -3,13 +3,14 @@ import maplibregl from 'maplibre-gl';
 import { useNatsStore } from '../stores/natsStore';
 import { v4 as uuidv4 } from 'uuid';
 import type { Customer } from '@sazinka/shared-types';
-import type { RoutePlanResponse, PlannedRouteStop } from '@sazinka/shared-types';
+import type { RoutePlanResponse, PlannedRouteStop, Depot } from '@sazinka/shared-types';
+import * as settingsService from '../services/settingsService';
 import styles from './Planner.module.css';
 
 // Mock user ID for development
 const USER_ID = '00000000-0000-0000-0000-000000000001';
 
-// Default depot location (Prague center)
+// Default depot location (Prague center) - fallback if no depot configured
 const DEFAULT_DEPOT = { lat: 50.0755, lng: 14.4378 };
 
 // Job Status types for queue workflow
@@ -93,12 +94,41 @@ export function Planner() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const unsubscribeRef = useRef<(() => void) | null>(null);
+  
+  // Depot state
+  const [depot, setDepot] = useState<{ lat: number; lng: number; name?: string } | null>(null);
+  const [depotLoading, setDepotLoading] = useState(true);
+  const depotMarkerRef = useRef<maplibregl.Marker | null>(null);
 
   const { request, subscribe, isConnected } = useNatsStore();
-
-  // Initialize map
+  
+  // Load user's primary depot from settings (wait for NATS connection)
   useEffect(() => {
-    if (!mapContainer.current || map.current) return;
+    if (!isConnected) return;
+    
+    async function loadDepot() {
+      try {
+        const settings = await settingsService.getSettings(USER_ID);
+        const primaryDepot = settings.depots.find(d => d.isPrimary) || settings.depots[0];
+        if (primaryDepot) {
+          setDepot({ lat: primaryDepot.lat, lng: primaryDepot.lng, name: primaryDepot.name });
+        } else {
+          // No depot configured, use default
+          setDepot(DEFAULT_DEPOT);
+        }
+      } catch (err) {
+        console.warn('Failed to load depot, using default:', err);
+        setDepot(DEFAULT_DEPOT);
+      } finally {
+        setDepotLoading(false);
+      }
+    }
+    loadDepot();
+  }, [isConnected]);
+
+  // Initialize map only after depot is loaded
+  useEffect(() => {
+    if (!mapContainer.current || map.current || !depot) return;
 
     map.current = new maplibregl.Map({
       container: mapContainer.current,
@@ -124,23 +154,24 @@ export function Planner() {
           },
         ],
       },
-      center: [DEFAULT_DEPOT.lng, DEFAULT_DEPOT.lat],
+      center: [depot.lng, depot.lat],
       zoom: 11,
     });
 
     map.current.addControl(new maplibregl.NavigationControl(), 'top-right');
 
     // Add depot marker
-    new maplibregl.Marker({ color: '#22c55e' })
-      .setLngLat([DEFAULT_DEPOT.lng, DEFAULT_DEPOT.lat])
-      .setPopup(new maplibregl.Popup().setHTML('<strong>Depot</strong><br/>Výchozí místo'))
+    depotMarkerRef.current = new maplibregl.Marker({ color: '#22c55e' })
+      .setLngLat([depot.lng, depot.lat])
+      .setPopup(new maplibregl.Popup().setHTML(`<strong>Depo</strong><br/>${depot.name || 'Výchozí místo'}`))
       .addTo(map.current);
 
     return () => {
       map.current?.remove();
       map.current = null;
+      depotMarkerRef.current = null;
     };
-  }, []);
+  }, [depot]);
 
   // Clear markers helper
   const clearMarkers = useCallback(() => {
@@ -187,14 +218,14 @@ export function Planner() {
     });
 
     // Draw route line
-    if (plannedStops.length > 0) {
+    if (plannedStops.length > 0 && depot) {
       // Use real road geometry if available, otherwise straight lines
       const coordinates: [number, number][] = geometry.length > 0
         ? geometry
         : [
-            [DEFAULT_DEPOT.lng, DEFAULT_DEPOT.lat],
+            [depot.lng, depot.lat],
             ...plannedStops.map(s => [s.coordinates.lng, s.coordinates.lat] as [number, number]),
-            [DEFAULT_DEPOT.lng, DEFAULT_DEPOT.lat], // Return to depot
+            [depot.lng, depot.lat], // Return to depot
           ];
 
       map.current.addSource('route', {
@@ -229,12 +260,17 @@ export function Planner() {
       coordinates.forEach(coord => bounds.extend(coord));
       map.current.fitBounds(bounds, { padding: 50 });
     }
-  }, [clearMarkers]);
+  }, [clearMarkers, depot]);
 
   // Plan route with random customers
   const handlePlanRoute = async () => {
     if (!isConnected) {
       setError('Není připojeno k serveru');
+      return;
+    }
+
+    if (!depot) {
+      setError('Depo není načteno');
       return;
     }
 
@@ -276,7 +312,7 @@ export function Planner() {
           timestamp: new Date().toISOString(),
           userId: USER_ID,
           payload: {
-            startLocation: DEFAULT_DEPOT,
+            startLocation: { lat: depot.lat, lng: depot.lng },
             customerIds,
             date: selectedDate,
           },
@@ -467,6 +503,13 @@ export function Planner() {
           />
         </div>
 
+        <div className={styles.depotInfo}>
+          <label>Výchozí depo</label>
+          <span className={styles.depotName}>
+            {depotLoading ? 'Načítám...' : (depot?.name || 'Praha (výchozí)')}
+          </span>
+        </div>
+
         <div className={styles.stops}>
           <h3>Zastávky ({stops.length})</h3>
           {stops.length === 0 ? (
@@ -529,7 +572,7 @@ export function Planner() {
           <button 
             className="btn-primary w-full"
             onClick={handlePlanRoute}
-            disabled={isLoading || !isConnected}
+            disabled={isLoading || !isConnected || !depot}
           >
             {isLoading ? 'Plánování...' : 'Naplánovat trasu'}
           </button>

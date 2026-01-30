@@ -27,6 +27,25 @@
   margin-bottom: 0.5rem;
 }
 
+.depotInfo {
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background-color: var(--color-bg-secondary);
+  border-radius: var(--radius-md);
+}
+
+.depotInfo label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  margin-bottom: 0.25rem;
+}
+
+.depotName {
+  font-weight: 500;
+  color: var(--color-text);
+}
+
 .stops {
   flex: 1;
   margin-bottom: 1.5rem;
