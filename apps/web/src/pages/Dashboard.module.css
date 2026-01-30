@@ -8,6 +8,25 @@
   gap: 1rem;
 }
 
+.statCard {
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.statActive {
+  border-color: #22c55e;
+  background: linear-gradient(135deg, #f0fdf4 0%, #fff 100%);
+}
+
+.statWarning {
+  border-color: #f59e0b;
+  background: linear-gradient(135deg, #fffbeb 0%, #fff 100%);
+}
+
+.statDanger {
+  border-color: #ef4444;
+  background: linear-gradient(135deg, #fef2f2 0%, #fff 100%);
+}
+
 .bigNumber {
   font-size: 3rem;
   font-weight: 700;
@@ -16,15 +35,26 @@
   margin: 0.5rem 0;
 }
 
+.dangerNumber {
+  color: #dc2626;
+}
+
+.successNumber {
+  color: #16a34a;
+}
+
 .subtitle {
   color: var(--color-text-secondary);
   font-size: 0.875rem;
 }
 
 .error {
-  color: var(--color-error);
+  color: var(--color-error, #dc2626);
   font-size: 0.875rem;
   margin-top: 0.5rem;
+  background: #fef2f2;
+  padding: 0.75rem;
+  border-radius: 6px;
 }
 
 .actions {

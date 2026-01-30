@@ -5,6 +5,7 @@ import { getCustomer, updateCustomer, deleteCustomer } from '../services/custome
 import { AddressMap } from '../components/customers/AddressMap';
 import { CustomerForm } from '../components/customers/CustomerForm';
 import { DeleteConfirmDialog } from '../components/customers/DeleteConfirmDialog';
+import { DeviceList } from '../components/devices';
 import { useNatsStore } from '../stores/natsStore';
 import styles from './CustomerDetail.module.css';
 
@@ -303,6 +304,14 @@ export function CustomerDetail() {
           </section>
         </div>
       </div>
+
+      {/* Devices section - full width */}
+      <section className={styles.section} style={{ marginTop: '1.5rem' }}>
+        <DeviceList
+          customerId={customer.id}
+          userId={TEMP_USER_ID}
+        />
+      </section>
 
       {/* Action buttons */}
       <div className={styles.actions}>

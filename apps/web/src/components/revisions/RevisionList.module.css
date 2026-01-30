@@ -1,0 +1,272 @@
+.container {
+  margin-top: 1.5rem;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.headerActions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.filterSelect {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 0.875rem;
+  background: white;
+  cursor: pointer;
+}
+
+.addButton {
+  padding: 0.5rem 1rem;
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.addButton:hover:not(:disabled) {
+  background: var(--color-primary-dark);
+}
+
+.addButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.error {
+  padding: 0.75rem;
+  background: #fef2f2;
+  color: var(--color-error);
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+}
+
+.loading {
+  padding: 2rem;
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-secondary);
+  border-radius: 8px;
+  border: 1px dashed var(--color-border);
+}
+
+.empty p {
+  margin: 0;
+}
+
+.emptyHint {
+  font-size: 0.875rem;
+  margin-top: 0.5rem !important;
+  color: var(--color-text-secondary);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.revisionCard {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 1rem;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.revisionCard:hover {
+  border-color: var(--color-primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.revisionInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.revisionHeader {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.statusBadge,
+.resultBadge {
+  display: inline-flex;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.statusUpcoming {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.statusDueSoon {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.statusOverdue {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.statusScheduled {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.statusConfirmed {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.statusCompleted {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.statusCancelled {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.resultPassed {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.resultFailed {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.resultConditional {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.revisionDates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.dueDate strong {
+  color: var(--color-text);
+}
+
+.scheduledDate {
+  color: var(--color-text-secondary);
+}
+
+.completedInfo {
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+.findings {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.revisionActions {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: 1rem;
+  flex-wrap: wrap;
+}
+
+.editButton,
+.deleteButton,
+.completeButton {
+  padding: 0.375rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.editButton {
+  background: white;
+  color: var(--color-text);
+}
+
+.editButton:hover:not(:disabled) {
+  background: var(--color-bg-secondary);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.completeButton {
+  background: var(--color-success);
+  color: white;
+  border-color: var(--color-success);
+}
+
+.completeButton:hover:not(:disabled) {
+  background: #16a34a;
+  border-color: #16a34a;
+}
+
+.deleteButton {
+  background: white;
+  color: var(--color-error);
+  border-color: var(--color-error);
+}
+
+.deleteButton:hover:not(:disabled) {
+  background: var(--color-error);
+  color: white;
+}
+
+.editButton:disabled,
+.deleteButton:disabled,
+.completeButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
