@@ -12,10 +12,10 @@
 
 **Frontend (React):**
 - Customers/CustomerDetail: Fully functional + Devices section ✅
-- Planner: Fully functional
+- Planner: Fully functional + drag/drop + save/load ✅
 - Admin: Fully functional
 - Dashboard: Real stats from revision.stats ✅
-- Calendar: Placeholder (static, non-functional)
+- Calendar: Fully functional with real data ✅
 
 **Database:** Schema complete for all 7 tables + communications table exists.
 
@@ -37,11 +37,11 @@
                                    │
                                    ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                      PHASE 2: Smart Planning 🔄 IN PROGRESS                  │
+│                      PHASE 2: Smart Planning ✅ COMPLETE                     │
 │                                                                              │
 │   ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                 │
 │   │  Functional  │    │ Smart Plan   │    │ Planner UX   │                 │
-│   │  Calendar    │    │ Suggestions  │    │ Improvements │                 │
+│   │  Calendar ✅ │    │ Suggest. ✅  │    │ + Persist ✅ │                 │
 │   └──────────────┘    └──────────────┘    └──────────────┘                 │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -131,7 +131,9 @@
 
 ---
 
-## Phase 2: Smart Planning (Calendar, Intelligent Suggestions)
+## Phase 2: Smart Planning (Calendar, Intelligent Suggestions) ✅ COMPLETE
+
+> **Completed:** 2026-01-30
 
 ### 2.1 Functional Calendar ✅
 
@@ -168,20 +170,35 @@
 | Due this month | 40 | due_date <= today + 30 days |
 | Upcoming | 20 | due_date > today + 30 days |
 
-### 2.3 Planner UX Improvements
+### 2.3 Planner UX Improvements ✅
 
-**Features to add:**
-- Drag and drop reordering (dnd-kit)
-- Lock/unlock individual stops
-- Manual add/remove stops from plan
-- Stability indicator (green/yellow/red)
+**Files created/modified:**
+- `apps/web/src/components/planner/SortableStopItem.tsx` ✅
+- `apps/web/src/components/planner/SortableStopItem.module.css` ✅
+- `apps/web/src/pages/Planner.tsx` - Added DndContext ✅
 
-### 2.4 Route Persistence
+**Features implemented:**
+- Drag and drop reordering with @dnd-kit ✅
+- Lock/unlock individual stops ✅
+- Visual feedback during drag ✅
+- "Manually reordered" indicator ✅
+
+### 2.4 Route Persistence ✅
+
+**Files created/modified:**
+- `worker/src/handlers/route.rs` - Added handle_save, handle_get ✅
+- `worker/src/db/queries/route.rs` - Added route_stops queries ✅
+- `apps/web/src/services/routeService.ts` ✅
 
 **NATS subjects:**
-- `sazinka.route.save` - Save planned route
-- `sazinka.route.get` - Load route for date
-- `sazinka.route.update` - Update stop status
+- `sazinka.route.save` - Save planned route ✅
+- `sazinka.route.get` - Load route for date ✅
+
+**Features implemented:**
+- Save current route with stops to database ✅
+- Load saved route for selected date ✅
+- "Load" button appears when saved route exists ✅
+- Last saved timestamp display ✅
 
 ---
 

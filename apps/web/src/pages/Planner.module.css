@@ -219,6 +219,59 @@
   margin-bottom: 1.5rem;
 }
 
+.routeActions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.routeActions button {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.routeActions button:hover:not(:disabled) {
+  background: var(--color-bg-secondary);
+}
+
+.routeActions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.saveButton {
+  color: var(--color-primary) !important;
+  border-color: var(--color-primary) !important;
+}
+
+.saveButton:hover:not(:disabled) {
+  background: rgba(37, 99, 235, 0.1) !important;
+}
+
+.loadButton {
+  color: var(--color-success, #22c55e) !important;
+  border-color: var(--color-success, #22c55e) !important;
+}
+
+.loadButton:hover:not(:disabled) {
+  background: rgba(34, 197, 94, 0.1) !important;
+}
+
+.clearButton {
+  color: var(--color-danger, #ef4444) !important;
+  border-color: var(--color-danger, #ef4444) !important;
+}
+
+.clearButton:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.1) !important;
+}
+
 .stats {
   border-top: 1px solid var(--color-border);
   padding-top: 1rem;

@@ -386,6 +386,248 @@ pub fn create_mock_routing_service() -> Arc<dyn RoutingService> {
     Arc::new(MockRoutingService::new())
 }
 
+// ============================================================================
+// Route Persistence Handlers
+// ============================================================================
+
+use chrono::NaiveDate;
+use crate::types::route::Route;
+
+/// Request to save a route
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveRouteRequest {
+    pub date: NaiveDate,
+    pub stops: Vec<SaveRouteStop>,
+    pub total_distance_km: f64,
+    pub total_duration_minutes: i32,
+    pub optimization_score: i32,
+}
+
+/// A stop to save
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveRouteStop {
+    pub customer_id: Uuid,
+    pub revision_id: Option<Uuid>,
+    pub order: i32,
+    pub eta: Option<chrono::NaiveTime>,
+    pub etd: Option<chrono::NaiveTime>,
+}
+
+/// Response after saving a route
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveRouteResponse {
+    pub route_id: Uuid,
+    pub saved: bool,
+    pub stops_count: usize,
+}
+
+/// Request to get a saved route
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetRouteRequest {
+    pub date: NaiveDate,
+}
+
+/// Response with saved route data
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetRouteResponse {
+    pub route: Option<Route>,
+    pub stops: Vec<queries::route::RouteStopWithInfo>,
+}
+
+/// Handle route.save messages
+pub async fn handle_save(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received route.save message");
+
+        let reply = match msg.reply {
+            Some(ref reply) => reply.clone(),
+            None => {
+                warn!("Message without reply subject");
+                continue;
+            }
+        };
+
+        // Parse request
+        let request: Request<SaveRouteRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("Failed to parse request: {}", e);
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Check user_id
+        let user_id = match request.user_id {
+            Some(id) => id,
+            None => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        let payload = request.payload;
+        info!("Saving route for date {} with {} stops", payload.date, payload.stops.len());
+
+        // Upsert route
+        match queries::route::upsert_route(
+            &pool,
+            user_id,
+            payload.date,
+            "saved",
+            Some(payload.total_distance_km),
+            Some(payload.total_duration_minutes),
+            Some(payload.optimization_score),
+        ).await {
+            Ok(route) => {
+                // Delete existing stops
+                if let Err(e) = queries::route::delete_route_stops(&pool, route.id).await {
+                    error!("Failed to delete existing stops: {}", e);
+                    let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                    let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                    continue;
+                }
+
+                // Insert new stops (only those with revision_id)
+                let mut saved_count = 0;
+                for stop in &payload.stops {
+                    if let Some(revision_id) = stop.revision_id {
+                        if let Err(e) = queries::route::insert_route_stop(
+                            &pool,
+                            route.id,
+                            revision_id,
+                            stop.order,
+                            stop.eta,
+                            stop.etd,
+                            None, // distance
+                            None, // duration
+                        ).await {
+                            warn!("Failed to insert stop: {}", e);
+                        } else {
+                            saved_count += 1;
+                        }
+                    }
+                }
+
+                let response = SuccessResponse::new(
+                    request.id,
+                    SaveRouteResponse {
+                        route_id: route.id,
+                        saved: true,
+                        stops_count: saved_count,
+                    },
+                );
+                let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+                info!("Saved route {} with {} stops", route.id, saved_count);
+            }
+            Err(e) => {
+                error!("Failed to save route: {}", e);
+                let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Handle route.get messages
+pub async fn handle_get(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received route.get message");
+
+        let reply = match msg.reply {
+            Some(ref reply) => reply.clone(),
+            None => {
+                warn!("Message without reply subject");
+                continue;
+            }
+        };
+
+        // Parse request
+        let request: Request<GetRouteRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("Failed to parse request: {}", e);
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Check user_id
+        let user_id = match request.user_id {
+            Some(id) => id,
+            None => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        info!("Getting route for date {}", request.payload.date);
+
+        // Get route
+        match queries::route::get_route_for_date(&pool, user_id, request.payload.date).await {
+            Ok(Some(route)) => {
+                // Get stops with info
+                match queries::route::get_route_stops_with_info(&pool, route.id).await {
+                    Ok(stops) => {
+                        let response = SuccessResponse::new(
+                            request.id,
+                            GetRouteResponse {
+                                route: Some(route),
+                                stops,
+                            },
+                        );
+                        let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+                        debug!("Returned saved route");
+                    }
+                    Err(e) => {
+                        error!("Failed to get route stops: {}", e);
+                        let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                        let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                    }
+                }
+            }
+            Ok(None) => {
+                // No saved route for this date
+                let response = SuccessResponse::new(
+                    request.id,
+                    GetRouteResponse {
+                        route: None,
+                        stops: vec![],
+                    },
+                );
+                let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+                debug!("No saved route for date {}", request.payload.date);
+            }
+            Err(e) => {
+                error!("Failed to get route: {}", e);
+                let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

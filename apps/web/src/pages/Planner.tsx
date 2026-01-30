@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { RoutePlanResponse, PlannedRouteStop } from '@sazinka/shared-types';
 import * as settingsService from '../services/settingsService';
 import { getSuggestedRevisions, type RevisionSuggestion } from '../services/revisionService';
+import * as routeService from '../services/routeService';
 import {
   DndContext,
   closestCenter,
@@ -125,6 +126,12 @@ export function Planner() {
   // Drag/drop state
   const [lockedStops, setLockedStops] = useState<Set<string>>(new Set());
   const [isManuallyReordered, setIsManuallyReordered] = useState(false);
+  
+  // Route persistence state
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLoadingSaved, setIsLoadingSaved] = useState(false);
+  const [hasSavedRoute, setHasSavedRoute] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
   const { request, subscribe, isConnected } = useNatsStore();
   
@@ -556,6 +563,84 @@ export function Planner() {
     });
   }, []);
 
+  // Check if a saved route exists for the selected date
+  const checkSavedRoute = useCallback(async () => {
+    if (!isConnected) return;
+    try {
+      const result = await routeService.getRoute(selectedDate);
+      setHasSavedRoute(result.route !== null);
+    } catch (e) {
+      // Ignore - no saved route
+      setHasSavedRoute(false);
+    }
+  }, [selectedDate, isConnected]);
+
+  // Check for saved route when date changes
+  useEffect(() => {
+    checkSavedRoute();
+  }, [checkSavedRoute]);
+
+  // Save the current route
+  const handleSaveRoute = useCallback(async () => {
+    if (stops.length === 0) return;
+    
+    setIsSaving(true);
+    try {
+      // Map stops to save format - we need revision IDs
+      // For now, we'll save without revision IDs (they can be looked up later)
+      const saveStops = stops.map((stop, index) => 
+        routeService.toSaveRouteStop(stop)
+      );
+
+      await routeService.saveRoute({
+        date: selectedDate,
+        stops: saveStops,
+        totalDistanceKm: totalDistance,
+        totalDurationMinutes: totalDuration,
+        optimizationScore: optimizationScore,
+      });
+      
+      setLastSaved(new Date());
+      setHasSavedRoute(true);
+    } catch (e) {
+      console.error('Failed to save route:', e);
+      setError('Nepodařilo se uložit trasu');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [stops, selectedDate, totalDistance, totalDuration, optimizationScore]);
+
+  // Load a saved route
+  const handleLoadRoute = useCallback(async () => {
+    setIsLoadingSaved(true);
+    try {
+      const result = await routeService.getRoute(selectedDate);
+      
+      if (result.route && result.stops.length > 0) {
+        // Convert to PlannedRouteStop format
+        const loadedStops = result.stops.map(routeService.toPlannedRouteStop);
+        
+        setStops(loadedStops);
+        setTotalDistance(result.route.totalDistanceKm ?? 0);
+        setTotalDuration(result.route.totalDurationMinutes ?? 0);
+        setOptimizationScore(result.route.optimizationScore ?? 0);
+        setAlgorithmName('Uložená trasa');
+        setIsManuallyReordered(false);
+        setLockedStops(new Set());
+        
+        // Add markers for the loaded stops
+        addStopMarkers(loadedStops, []);
+      } else {
+        setError('Pro tento den není uložena žádná trasa');
+      }
+    } catch (e) {
+      console.error('Failed to load route:', e);
+      setError('Nepodařilo se načíst trasu');
+    } finally {
+      setIsLoadingSaved(false);
+    }
+  }, [selectedDate, addStopMarkers]);
+
   // Job Status Indicator component
   const JobStatusIndicator = () => {
     if (!jobStatus) return null;
@@ -787,15 +872,37 @@ export function Planner() {
           >
             {isLoading ? 'Plánování...' : `Naplánovat trasu (${selectedSuggestionIds.size})`}
           </button>
-          {stops.length > 0 && (
-            <button 
-              className="btn-secondary w-full"
-              onClick={handleClearRoute}
-              style={{ marginTop: '0.5rem' }}
-            >
-              Vyčistit
-            </button>
-          )}
+          
+          <div className={styles.routeActions}>
+            {stops.length > 0 && (
+              <button 
+                className={styles.saveButton}
+                onClick={handleSaveRoute}
+                disabled={isSaving || stops.length === 0}
+                title={lastSaved ? `Naposledy uloženo: ${lastSaved.toLocaleTimeString()}` : 'Uložit trasu'}
+              >
+                {isSaving ? 'Ukládám...' : '💾 Uložit'}
+              </button>
+            )}
+            {hasSavedRoute && (
+              <button 
+                className={styles.loadButton}
+                onClick={handleLoadRoute}
+                disabled={isLoadingSaved}
+                title="Načíst uloženou trasu"
+              >
+                {isLoadingSaved ? 'Načítám...' : '📂 Načíst'}
+              </button>
+            )}
+            {stops.length > 0 && (
+              <button 
+                className={styles.clearButton}
+                onClick={handleClearRoute}
+              >
+                🗑️ Vyčistit
+              </button>
+            )}
+          </div>
         </div>
 
         <div className={styles.stats}>

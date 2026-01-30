@@ -45,6 +45,8 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let customer_geocode_sub = client.subscribe("sazinka.customer.geocode").await?;
     let customer_random_sub = client.subscribe("sazinka.customer.random").await?;
     let route_plan_sub = client.subscribe("sazinka.route.plan").await?;
+    let route_save_sub = client.subscribe("sazinka.route.save").await?;
+    let route_get_sub = client.subscribe("sazinka.route.get").await?;
     
     // Device subjects
     let device_create_sub = client.subscribe("sazinka.device.create").await?;
@@ -89,6 +91,8 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let client_customer_geocode = client.clone();
     let client_customer_random = client.clone();
     let client_route_plan = client.clone();
+    let client_route_save = client.clone();
+    let client_route_get = client.clone();
     
     // Device handler clones
     let client_device_create = client.clone();
@@ -115,6 +119,8 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_customer_delete = pool.clone();
     let pool_customer_random = pool.clone();
     let pool_route_plan = pool.clone();
+    let pool_route_save = pool.clone();
+    let pool_route_get = pool.clone();
     
     // Device pool clones
     let pool_device_create = pool.clone();
@@ -202,6 +208,14 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
 
     let route_plan_handle = tokio::spawn(async move {
         route::handle_plan(client_route_plan, route_plan_sub, pool_route_plan, routing_plan).await
+    });
+
+    let route_save_handle = tokio::spawn(async move {
+        route::handle_save(client_route_save, route_save_sub, pool_route_save).await
+    });
+
+    let route_get_handle = tokio::spawn(async move {
+        route::handle_get(client_route_get, route_get_sub, pool_route_get).await
     });
 
     // Device handlers
@@ -394,6 +408,12 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         }
         result = route_plan_handle => {
             error!("Route plan handler finished: {:?}", result);
+        }
+        result = route_save_handle => {
+            error!("Route save handler finished: {:?}", result);
+        }
+        result = route_get_handle => {
+            error!("Route get handler finished: {:?}", result);
         }
         // Device handlers
         result = device_create_handle => {

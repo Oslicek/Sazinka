@@ -2,10 +2,25 @@
 
 use sqlx::PgPool;
 use uuid::Uuid;
-use chrono::NaiveDate;
+use chrono::{NaiveDate, NaiveTime};
 use anyhow::Result;
 
 use crate::types::route::Route;
+
+/// A stop in a saved route
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedRouteStop {
+    pub id: Uuid,
+    pub route_id: Uuid,
+    pub revision_id: Uuid,
+    pub stop_order: i32,
+    pub estimated_arrival: Option<NaiveTime>,
+    pub estimated_departure: Option<NaiveTime>,
+    pub distance_from_previous_km: Option<f64>,
+    pub duration_from_previous_minutes: Option<i32>,
+    pub status: String,
+}
 
 /// Get route for a specific date
 pub async fn get_route_for_date(
@@ -73,4 +88,126 @@ pub async fn upsert_route(
     .await?;
 
     Ok(route)
+}
+
+/// Delete all stops for a route
+pub async fn delete_route_stops(pool: &PgPool, route_id: Uuid) -> Result<()> {
+    sqlx::query("DELETE FROM route_stops WHERE route_id = $1")
+        .bind(route_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// Insert a route stop
+pub async fn insert_route_stop(
+    pool: &PgPool,
+    route_id: Uuid,
+    revision_id: Uuid,
+    stop_order: i32,
+    estimated_arrival: Option<NaiveTime>,
+    estimated_departure: Option<NaiveTime>,
+    distance_from_previous_km: Option<f64>,
+    duration_from_previous_minutes: Option<i32>,
+) -> Result<SavedRouteStop> {
+    let stop = sqlx::query_as::<_, SavedRouteStop>(
+        r#"
+        INSERT INTO route_stops (
+            id, route_id, revision_id, stop_order,
+            estimated_arrival, estimated_departure,
+            distance_from_previous_km, duration_from_previous_minutes,
+            status
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
+        RETURNING
+            id, route_id, revision_id, stop_order,
+            estimated_arrival, estimated_departure,
+            distance_from_previous_km, duration_from_previous_minutes,
+            status
+        "#
+    )
+    .bind(Uuid::new_v4())
+    .bind(route_id)
+    .bind(revision_id)
+    .bind(stop_order)
+    .bind(estimated_arrival)
+    .bind(estimated_departure)
+    .bind(distance_from_previous_km)
+    .bind(duration_from_previous_minutes)
+    .fetch_one(pool)
+    .await?;
+    
+    Ok(stop)
+}
+
+/// Get all stops for a route with customer/revision info
+pub async fn get_route_stops_with_info(
+    pool: &PgPool,
+    route_id: Uuid,
+) -> Result<Vec<RouteStopWithInfo>> {
+    let stops = sqlx::query_as::<_, RouteStopWithInfo>(
+        r#"
+        SELECT
+            rs.id,
+            rs.route_id,
+            rs.revision_id,
+            rs.stop_order,
+            rs.estimated_arrival,
+            rs.estimated_departure,
+            rs.distance_from_previous_km,
+            rs.duration_from_previous_minutes,
+            rs.status,
+            c.id as customer_id,
+            c.name as customer_name,
+            CONCAT(c.street, ', ', c.city) as address,
+            c.lat as customer_lat,
+            c.lng as customer_lng
+        FROM route_stops rs
+        INNER JOIN revisions r ON rs.revision_id = r.id
+        INNER JOIN customers c ON r.customer_id = c.id
+        WHERE rs.route_id = $1
+        ORDER BY rs.stop_order ASC
+        "#
+    )
+    .bind(route_id)
+    .fetch_all(pool)
+    .await?;
+    
+    Ok(stops)
+}
+
+/// Route stop with customer info for loading saved routes
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RouteStopWithInfo {
+    pub id: Uuid,
+    pub route_id: Uuid,
+    pub revision_id: Uuid,
+    pub stop_order: i32,
+    pub estimated_arrival: Option<NaiveTime>,
+    pub estimated_departure: Option<NaiveTime>,
+    pub distance_from_previous_km: Option<f64>,
+    pub duration_from_previous_minutes: Option<i32>,
+    pub status: String,
+    pub customer_id: Uuid,
+    pub customer_name: String,
+    pub address: String,
+    pub customer_lat: Option<f64>,
+    pub customer_lng: Option<f64>,
+}
+
+/// Delete a route and all its stops
+pub async fn delete_route(pool: &PgPool, user_id: Uuid, date: NaiveDate) -> Result<bool> {
+    let result = sqlx::query(
+        r#"
+        DELETE FROM routes
+        WHERE user_id = $1 AND date = $2
+        "#
+    )
+    .bind(user_id)
+    .bind(date)
+    .execute(pool)
+    .await?;
+    
+    Ok(result.rows_affected() > 0)
 }
