@@ -6,6 +6,7 @@ import { AddressMap } from '../components/customers/AddressMap';
 import { CustomerForm } from '../components/customers/CustomerForm';
 import { DeleteConfirmDialog } from '../components/customers/DeleteConfirmDialog';
 import { DeviceList } from '../components/devices';
+import { CustomerTimeline } from '../components/timeline';
 import { useNatsStore } from '../stores/natsStore';
 import styles from './CustomerDetail.module.css';
 
@@ -311,6 +312,11 @@ export function CustomerDetail() {
           customerId={customer.id}
           userId={TEMP_USER_ID}
         />
+      </section>
+
+      {/* Timeline section - full width */}
+      <section className={styles.section} style={{ marginTop: '1.5rem' }}>
+        <CustomerTimeline customerId={customer.id} />
       </section>
 
       {/* Action buttons */}
