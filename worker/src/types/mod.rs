@@ -1,5 +1,6 @@
 //! Type definitions
 
+pub mod communication;
 pub mod customer;
 pub mod device;
 pub mod job;
@@ -8,7 +9,9 @@ pub mod revision;
 pub mod route;
 pub mod settings;
 pub mod user;
+pub mod visit;
 
+pub use communication::*;
 pub use customer::*;
 pub use device::*;
 pub use job::*;
@@ -17,3 +20,4 @@ pub use revision::*;
 pub use route::*;
 pub use settings::*;
 pub use user::*;
+pub use visit::*;

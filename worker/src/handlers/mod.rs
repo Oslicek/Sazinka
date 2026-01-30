@@ -1,6 +1,7 @@
 //! NATS message handlers
 
 pub mod admin;
+pub mod communication;
 pub mod customer;
 pub mod device;
 pub mod geocode;
@@ -9,6 +10,7 @@ pub mod ping;
 pub mod revision;
 pub mod route;
 pub mod settings;
+pub mod visit;
 
 use std::sync::Arc;
 use anyhow::Result;
@@ -78,6 +80,19 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let depot_update_sub = client.subscribe("sazinka.depot.update").await?;
     let depot_delete_sub = client.subscribe("sazinka.depot.delete").await?;
     let depot_geocode_sub = client.subscribe("sazinka.depot.geocode").await?;
+    
+    // Communication subjects
+    let comm_create_sub = client.subscribe("sazinka.communication.create").await?;
+    let comm_list_sub = client.subscribe("sazinka.communication.list").await?;
+    let comm_update_sub = client.subscribe("sazinka.communication.update").await?;
+    let comm_delete_sub = client.subscribe("sazinka.communication.delete").await?;
+    
+    // Visit subjects
+    let visit_create_sub = client.subscribe("sazinka.visit.create").await?;
+    let visit_list_sub = client.subscribe("sazinka.visit.list").await?;
+    let visit_update_sub = client.subscribe("sazinka.visit.update").await?;
+    let visit_complete_sub = client.subscribe("sazinka.visit.complete").await?;
+    let visit_delete_sub = client.subscribe("sazinka.visit.delete").await?;
 
     info!("Subscribed to NATS subjects");
 
@@ -164,6 +179,32 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_depot_create = pool.clone();
     let pool_depot_update = pool.clone();
     let pool_depot_delete = pool.clone();
+    
+    // Communication handler clones
+    let client_comm_create = client.clone();
+    let client_comm_list = client.clone();
+    let client_comm_update = client.clone();
+    let client_comm_delete = client.clone();
+    
+    // Visit handler clones
+    let client_visit_create = client.clone();
+    let client_visit_list = client.clone();
+    let client_visit_update = client.clone();
+    let client_visit_complete = client.clone();
+    let client_visit_delete = client.clone();
+    
+    // Communication pool clones
+    let pool_comm_create = pool.clone();
+    let pool_comm_list = pool.clone();
+    let pool_comm_update = pool.clone();
+    let pool_comm_delete = pool.clone();
+    
+    // Visit pool clones
+    let pool_visit_create = pool.clone();
+    let pool_visit_list = pool.clone();
+    let pool_visit_update = pool.clone();
+    let pool_visit_complete = pool.clone();
+    let pool_visit_delete = pool.clone();
     
     let geocoder_create = Arc::clone(&geocoder);
     let geocoder_update = Arc::clone(&geocoder);
@@ -312,6 +353,44 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     
     let depot_geocode_handle = tokio::spawn(async move {
         settings::handle_geocode_depot(client_depot_geocode, depot_geocode_sub, geocoder_depot_geocode).await
+    });
+    
+    // Communication handlers
+    let comm_create_handle = tokio::spawn(async move {
+        communication::handle_create(client_comm_create, comm_create_sub, pool_comm_create).await
+    });
+    
+    let comm_list_handle = tokio::spawn(async move {
+        communication::handle_list(client_comm_list, comm_list_sub, pool_comm_list).await
+    });
+    
+    let comm_update_handle = tokio::spawn(async move {
+        communication::handle_update(client_comm_update, comm_update_sub, pool_comm_update).await
+    });
+    
+    let comm_delete_handle = tokio::spawn(async move {
+        communication::handle_delete(client_comm_delete, comm_delete_sub, pool_comm_delete).await
+    });
+    
+    // Visit handlers
+    let visit_create_handle = tokio::spawn(async move {
+        visit::handle_create(client_visit_create, visit_create_sub, pool_visit_create).await
+    });
+    
+    let visit_list_handle = tokio::spawn(async move {
+        visit::handle_list(client_visit_list, visit_list_sub, pool_visit_list).await
+    });
+    
+    let visit_update_handle = tokio::spawn(async move {
+        visit::handle_update(client_visit_update, visit_update_sub, pool_visit_update).await
+    });
+    
+    let visit_complete_handle = tokio::spawn(async move {
+        visit::handle_complete(client_visit_complete, visit_complete_sub, pool_visit_complete).await
+    });
+    
+    let visit_delete_handle = tokio::spawn(async move {
+        visit::handle_delete(client_visit_delete, visit_delete_sub, pool_visit_delete).await
     });
 
     // Start admin handlers
@@ -487,6 +566,35 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         }
         result = depot_geocode_handle => {
             error!("Depot geocode handler finished: {:?}", result);
+        }
+        // Communication handlers
+        result = comm_create_handle => {
+            error!("Communication create handler finished: {:?}", result);
+        }
+        result = comm_list_handle => {
+            error!("Communication list handler finished: {:?}", result);
+        }
+        result = comm_update_handle => {
+            error!("Communication update handler finished: {:?}", result);
+        }
+        result = comm_delete_handle => {
+            error!("Communication delete handler finished: {:?}", result);
+        }
+        // Visit handlers
+        result = visit_create_handle => {
+            error!("Visit create handler finished: {:?}", result);
+        }
+        result = visit_list_handle => {
+            error!("Visit list handler finished: {:?}", result);
+        }
+        result = visit_update_handle => {
+            error!("Visit update handler finished: {:?}", result);
+        }
+        result = visit_complete_handle => {
+            error!("Visit complete handler finished: {:?}", result);
+        }
+        result = visit_delete_handle => {
+            error!("Visit delete handler finished: {:?}", result);
         }
     }
 
