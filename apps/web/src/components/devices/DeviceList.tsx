@@ -8,6 +8,7 @@ import { listRevisions } from '../../services/revisionService';
 import { useNatsStore } from '../../stores/natsStore';
 import { DeviceForm } from './DeviceForm';
 import { RevisionForm } from '../revisions/RevisionForm';
+import { RevisionDetailDialog } from '../revisions/RevisionDetailDialog';
 import styles from './DeviceList.module.css';
 
 interface DeviceListProps {
@@ -26,6 +27,7 @@ export function DeviceList({ customerId, userId, onDeviceSelect }: DeviceListPro
   const [deletingDeviceId, setDeletingDeviceId] = useState<string | null>(null);
   const [addingRevisionForDevice, setAddingRevisionForDevice] = useState<Device | null>(null);
   const [expandedDeviceId, setExpandedDeviceId] = useState<string | null>(null);
+  const [selectedRevision, setSelectedRevision] = useState<Revision | null>(null);
   
   const isConnected = useNatsStore((s) => s.isConnected);
 
@@ -141,6 +143,19 @@ export function DeviceList({ customerId, userId, onDeviceSelect }: DeviceListPro
       default: return styles.statusUpcoming;
     }
   };
+
+  const handleRevisionClick = useCallback((revision: Revision) => {
+    setSelectedRevision(revision);
+  }, []);
+
+  const handleRevisionDialogClose = useCallback(() => {
+    setSelectedRevision(null);
+  }, []);
+
+  const handleRevisionDialogSaved = useCallback(() => {
+    setSelectedRevision(null);
+    loadDevices();
+  }, [loadDevices]);
 
   // Show revision form for a specific device
   if (addingRevisionForDevice) {
@@ -294,7 +309,16 @@ export function DeviceList({ customerId, userId, onDeviceSelect }: DeviceListPro
                           {revisions
                             .sort((a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime())
                             .map((revision) => (
-                              <div key={revision.id} className={styles.revisionRow}>
+                              <div 
+                                key={revision.id} 
+                                className={styles.revisionRow}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRevisionClick(revision);
+                                }}
+                                role="button"
+                                tabIndex={0}
+                              >
                                 <div className={styles.revisionDate}>
                                   {formatDate(revision.dueDate)}
                                 </div>
@@ -322,6 +346,16 @@ export function DeviceList({ customerId, userId, onDeviceSelect }: DeviceListPro
             );
           })}
         </div>
+      )}
+
+      {/* Revision detail dialog */}
+      {selectedRevision && (
+        <RevisionDetailDialog
+          revision={selectedRevision}
+          userId={userId}
+          onClose={handleRevisionDialogClose}
+          onSaved={handleRevisionDialogSaved}
+        />
       )}
     </div>
   );

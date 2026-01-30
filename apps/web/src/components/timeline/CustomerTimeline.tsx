@@ -3,6 +3,7 @@ import { useNatsStore } from '../../stores/natsStore';
 import * as communicationService from '../../services/communicationService';
 import * as visitService from '../../services/visitService';
 import type { Communication, Visit } from '@sazinka/shared-types';
+import { VisitDetailDialog } from './VisitDetailDialog';
 import styles from './CustomerTimeline.module.css';
 
 interface TimelineItem {
@@ -32,6 +33,7 @@ export function CustomerTimeline({ customerId }: CustomerTimelineProps) {
   const [error, setError] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState<'communication' | 'visit' | null>(null);
   const [serviceAvailable, setServiceAvailable] = useState(true);
+  const [selectedVisit, setSelectedVisit] = useState<Visit | null>(null);
 
   // Load timeline data
   const loadTimeline = useCallback(async () => {
@@ -184,16 +186,38 @@ export function CustomerTimeline({ customerId }: CustomerTimelineProps) {
       ) : (
         <div className={styles.items}>
           {items.map((item) => (
-            <TimelineItemCard key={`${item.type}-${item.id}`} item={item} />
+            <TimelineItemCard 
+              key={`${item.type}-${item.id}`} 
+              item={item}
+              onVisitClick={(visit) => setSelectedVisit(visit)}
+            />
           ))}
         </div>
+      )}
+
+      {/* Visit detail dialog */}
+      {selectedVisit && (
+        <VisitDetailDialog
+          visit={selectedVisit}
+          onClose={() => setSelectedVisit(null)}
+          onSaved={() => {
+            setSelectedVisit(null);
+            loadTimeline();
+          }}
+        />
       )}
     </div>
   );
 }
 
 // Timeline Item Card
-function TimelineItemCard({ item }: { item: TimelineItem }) {
+function TimelineItemCard({ 
+  item, 
+  onVisitClick 
+}: { 
+  item: TimelineItem; 
+  onVisitClick: (visit: Visit) => void;
+}) {
   if (item.type === 'communication') {
     const comm = item.data as Communication;
     return (
@@ -222,7 +246,12 @@ function TimelineItemCard({ item }: { item: TimelineItem }) {
 
   const visit = item.data as Visit;
   return (
-    <div className={`${styles.item} ${styles.visit}`}>
+    <div 
+      className={`${styles.item} ${styles.visit} ${styles.clickable}`}
+      onClick={() => onVisitClick(visit)}
+      role="button"
+      tabIndex={0}
+    >
       <div className={styles.itemIcon}>
         {visitService.getVisitStatusIcon(visit.status)}
       </div>

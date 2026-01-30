@@ -227,3 +227,13 @@
   font-style: italic;
   margin: 0.5rem 0;
 }
+
+.clickable {
+  cursor: pointer;
+  transition: background-color 0.15s, box-shadow 0.15s;
+}
+
+.clickable:hover {
+  background: #f3f4f6;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
