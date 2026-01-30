@@ -333,6 +333,7 @@ function AddCommunicationForm({
 }
 
 // Add Visit Form
+// Note: "Revize" is not available here - revisions must be added via device card
 function AddVisitForm({
   onSubmit,
   onCancel,
@@ -343,7 +344,7 @@ function AddVisitForm({
   const [formData, setFormData] = useState({
     scheduledDate: new Date().toISOString().slice(0, 10),
     scheduledTimeStart: '',
-    visitType: 'revision',
+    visitType: 'consultation',
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -385,13 +386,16 @@ function AddVisitForm({
           value={formData.visitType}
           onChange={(e) => setFormData({ ...formData, visitType: e.target.value })}
         >
-          <option value="revision">Revize</option>
+          <option value="consultation">Konzultace</option>
           <option value="installation">Instalace</option>
           <option value="repair">Oprava</option>
-          <option value="consultation">Konzultace</option>
           <option value="follow_up">Následná návštěva</option>
         </select>
       </div>
+
+      <p className={styles.hint}>
+        Pro přidání revize použijte kartu konkrétního zařízení.
+      </p>
 
       <div className={styles.formActions}>
         <button type="button" className="btn-secondary" onClick={onCancel}>
