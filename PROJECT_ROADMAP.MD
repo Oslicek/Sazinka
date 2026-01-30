@@ -13,7 +13,8 @@
 **Frontend (React):**
 - Customers/CustomerDetail: Fully functional + Devices section ✅
 - Planner: Fully functional + drag/drop + save/load ✅
-- Admin: Fully functional
+- Admin: Fully functional + Export UI ✅
+- Settings: Fully functional (work, business, email, depots) ✅
 - Dashboard: Real stats from revision.stats ✅
 - Calendar: Fully functional with real data ✅
 
@@ -202,40 +203,34 @@
 
 ---
 
-## Phase 3: Users, Settings, Communication
+## Phase 3: Users, Settings, Communication 🔄 IN PROGRESS
 
-### 3.1 User Authentication
+### 3.1 User Authentication (Skipped - using mock user)
 
-**Files to create:**
-- `worker/src/handlers/auth.rs` - NEW
-- `apps/web/src/pages/Login.tsx` - NEW
-- `apps/web/src/stores/authStore.ts` - Implement
+**Status:** Deferred - using TEMP_USER_ID for now
 
-**NATS subjects:**
-- `sazinka.auth.login`
-- `sazinka.auth.logout`
-- `sazinka.auth.verify`
+### 3.2 User Settings UI ✅
 
-### 3.2 User Settings UI
+**Files created:**
+- `apps/web/src/pages/Settings.tsx` ✅
+- `apps/web/src/pages/Settings.module.css` ✅
 
-**Files to create:**
-- `apps/web/src/pages/Settings.tsx` - NEW
-- `apps/web/src/components/settings/SettingsForm.tsx` - NEW
+**Features implemented:**
+- Tab-based settings UI ✅
+- Work constraints form (hours, max revisions, service duration) ✅
+- Business info form (name, contact, billing) ✅
+- Email templates form ✅
+- Depots manager (list, add, edit, delete, set primary) ✅
 
-**Settings:**
-- Working hours (start, end)
-- Default revision interval
-- Max revisions per day
-- Start address (with geocoding)
+### 3.3 Export CSV ✅
 
-### 3.3 Export CSV
+**Files created:**
+- `apps/web/src/services/exportService.ts` ✅
 
-**Files to create:**
-- `apps/web/src/services/exportService.ts` - NEW
-
-**Export types:**
-- Customers export (same format as import)
-- Revisions export (date range filter)
+**Export types implemented:**
+- Customers export (CSV format matching import) ✅
+- Revisions export with date range and status filters ✅
+- Export UI in Admin page ✅
 
 ### 3.4 Basic Email Reminders (Stretch Goal)
 

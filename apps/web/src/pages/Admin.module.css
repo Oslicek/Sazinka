@@ -303,6 +303,59 @@
   border-top: 1px solid #e9ecef;
 }
 
+/* Export Section */
+.exportContainer {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.exportCard {
+  background: var(--color-bg, #ffffff);
+  border: 1px solid var(--color-border, #e9ecef);
+  border-radius: 8px;
+  padding: 1.25rem;
+}
+
+.exportCard h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.exportDescription {
+  color: var(--color-text-secondary, #6c757d);
+  font-size: 0.875rem;
+  margin: 0 0 1rem 0;
+}
+
+.exportFilters {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.filterGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.filterGroup label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-secondary, #6c757d);
+}
+
+.filterGroup input,
+.filterGroup select {
+  padding: 0.5rem;
+  border: 1px solid var(--color-border, #dee2e6);
+  border-radius: 6px;
+  font-size: 0.875rem;
+}
+
 /* Logs Section */
 .logControls {
   display: flex;
