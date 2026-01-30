@@ -1,7 +1,7 @@
 # CSV Import – Specifikace (v2.0.0)
 
-> **Verze:** 2.0.0  
-> **Datum:** 2026-01-30
+> **Verze:** 2.1.0  
+> **Datum:** 2026-01-25
 
 ## Obsah
 
@@ -132,6 +132,18 @@ Všechny textové hodnoty:
 1. `trim()` – oříznutí mezer na začátku/konci
 2. Mapování na `null`: `""`, `-`, `N/A`, `NULL`
 
+**Definice "prázdné hodnoty"** (platí v celé specifikaci):
+
+| Vstup | Po zpracování | Je prázdné? |
+|-------|---------------|-------------|
+| `null` | `null` | ✓ |
+| `""` (prázdný string) | `null` | ✓ |
+| `"   "` (pouze whitespace) | `null` | ✓ |
+| `"-"`, `"N/A"`, `"NULL"` | `null` | ✓ |
+| `"hodnota"` | `"hodnota"` | ✗ |
+
+> **Důležité:** Tato definice se používá i při merge pravidlech ("nepřepisovat prázdnými") – prázdný string v CSV se chová jako `null` a nepřepíše existující hodnotu.
+
 ### 4.2 Type (typ zákazníka)
 
 | Vstup | Výstup | Poznámka |
@@ -203,9 +215,11 @@ Všechny textové hodnoty:
 
 ### 4.8 Email
 
-1. `trim()`
+1. `trim()` – **pouze okraje** (počáteční/koncové mezery)
 2. Převést na lowercase
 3. Validace: pokud neobsahuje `@` → **varování** (neblokuje)
+
+> **Upozornění:** Whitespace **uvnitř** emailu se neodstraňuje. Pokud email obsahuje mezeru uvnitř (např. `jan @example.com`), uloží se tak jak je a validace "@" projde, ale email bude neplatný. Toto je záměr – čištění vnitřních mezer by mohlo poškodit legitimní data.
 
 ---
 
@@ -246,18 +260,29 @@ Příklady:
 3. Pokud začíná +
    - Validovat délku (7–15 číslic po +)
    - Pokud OK → E.164
-   - Pokud ne → varování, phone=null, phoneRaw=původní
+   - Pokud ne → FAIL (varování + phone=null + phoneRaw=původní)
 
 4. Pokud nezačíná +
    - Použít country jako kontext
    - Pro CZ:
-     - Odstranit leading 0 (s varováním)
-     - Pokud 9 číslic → +420 + číslo
-     - Jinak → varování, uložit raw
-   - Pro ostatní země:
-     - Doplnit předvolbu dle mapy country→calling code
-     - Pokud nemáme mapu → varování, uložit raw
+     a) Pokud začíná 0 → odstranit 0 (s varováním)
+     b) Pokud je nyní přesně 9 číslic → +420 + číslo → OK
+     c) Jinak → FAIL (varování + phone=null + phoneRaw=původní)
+   - Pro ostatní země (country je známý ISO kód):
+     - Doplnit předvolbu dle libphonenumber-js
+     - Validovat výsledek
+   - Pro neznámou zemi (country není rozpoznatelný ISO kód):
+     → FAIL (varování + phone=null + phoneRaw=původní)
 ```
+
+**Příklady CZ normalizace:**
+
+| Vstup | Krok | Výsledek |
+|-------|------|----------|
+| `0602123456` | odstraň 0 → `602123456` (9 číslic) | `+420602123456` ✓ |
+| `602123456` | 9 číslic | `+420602123456` ✓ |
+| `06021234` | odstraň 0 → `6021234` (7 číslic) | FAIL, `phoneRaw="06021234"` |
+| `12345` | 5 číslic | FAIL, `phoneRaw="12345"` |
 
 ### 5.4 Knihovna
 
@@ -272,12 +297,26 @@ Použití **libphonenumber-js** pro robustní parsing.
 
 > **Poznámka:** `phoneRaw` není importovaný sloupec z CSV. Je to interní pole v databázi, kam se ukládá původní hodnota telefonu, pokud normalizace na E.164 selže. Umožňuje pozdější ruční opravu.
 
+**Report:** Při selhání normalizace telefonu se v `ImportIssue` **vždy vyplní** `originalValue` s původní hodnotou z CSV.
+
 ### 5.6 Více telefonů v jednom poli
 
 Pokud `phone` obsahuje `,` nebo `/`:
-- Vzít **první** číslo jako primární
-- Ostatní přidat do `notes` s prefixem `[Import: další tel. ...]`
-- Vygenerovat varování
+
+**Pořadí zpracování:**
+1. **Split** podle `,` nebo `/`
+2. **Trim** každého tokenu
+3. **Normalizace** prvního neprázdného tokenu → primární telefon
+4. **Ostatní tokeny** přidat do `notes` s prefixem `[Import: další tel. ...]`
+5. **Varování** "více telefonů v jednom poli, použit první"
+
+```
+Vstup: "602111222 , 603333444"
+1. Split: ["602111222 ", " 603333444"]
+2. Trim:  ["602111222", "603333444"]
+3. Normalizace prvního: +420602111222
+4. Do notes: "[Import: další tel. +420603333444]"
+```
 
 ---
 
@@ -296,6 +335,8 @@ Adresa se ukládá **ihned** při importu:
 Podmínky pro geokódování:
 - Minimálně `city` + (`street` NEBO `postalCode`)
 - Pokud není splněno → přeskočit + varování "adresa neúplná pro geokódování"
+
+> **Důležité:** Varování "adresa neúplná pro geokódování" se generuje **již při importu zákazníků** (ne až v geocoding jobu). Uživatel tak vidí problém ihned v import reportu a může data opravit.
 
 ### 6.3 Rate limiting
 
@@ -319,10 +360,36 @@ Podmínky pro geokódování:
 > - `email` – lowercase
 > - `phone` – E.164 formát (např. `+420602123456`)
 
+#### Kolize více zákazníků
+
+Pokud CSV řádek matchuje **více různých zákazníků** (např. email patří zákazníkovi A, telefon zákazníkovi B):
+
+1. Vybere se match podle **nejvyšší priority** (IČO > email > phone)
+2. Generuje se **varování** "Možná kolize: nalezeni různí zákazníci pro různé identifikátory"
+3. Nižší priority se ignorují
+
+> **Toto je záměrně varování, ne chyba.** Import pokračuje s matchem nejvyšší priority.
+
 ### 7.2 Pravidla pro aktualizaci (lenient)
 
 - **Nepřepisovat** existující neprázdné hodnoty prázdnými z CSV
-- **Přepisovat** jen pokud CSV pole obsahuje hodnotu
+- **Přepisovat** jen pokud CSV pole obsahuje hodnotu (viz definice "prázdné hodnoty" v 4.1)
+
+#### Konfliktní identifikátory
+
+Pokud CSV obsahuje jiný identifikátor než existující zákazník v DB:
+
+```
+DB:  { email: "info@abc.cz", ico: "12345678", name: "Firma A" }
+CSV: { email: "info@abc.cz", ico: "87654321", name: "Firma B" }
+```
+
+**Chování:**
+1. Match proběhne přes email (priorita 2)
+2. `ico` se **NEaktualizuje** (konflikt) + **varování** "Konfliktní IČO: CSV obsahuje jiné IČO než existující zákazník"
+3. `name` se aktualizuje na "Firma B" (není konfliktní identifikátor)
+
+> **Pravidlo:** Identifikátory používané pro dedup (IČO, email, phone) se při konfliktu nepřepisují – pouze varování. Ostatní pole se aktualizují normálně.
 
 ---
 
@@ -348,13 +415,23 @@ interface ImportReport {
 }
 
 interface ImportIssue {
-  rowNumber: number;
+  rowNumber: number;      // číslo řádku v CSV včetně hlavičky
   level: 'warning' | 'error';  // pouze tyto dva typy, info zprávy nejsou v issues
   field: string;
   message: string;
-  originalValue?: string;
+  originalValue?: string; // vždy vyplněno při selhání normalizace (telefon, datum, ...)
 }
 ```
+
+**Číslování řádků (`rowNumber`):**
+
+| Řádek v CSV | rowNumber | Popis |
+|-------------|-----------|-------|
+| Hlavička | 1 | `type;name;contactPerson;...` |
+| První datový záznam | 2 | první zákazník/zařízení/... |
+| Druhý datový záznam | 3 | druhý zákazník/zařízení/... |
+
+> **Důležité:** `rowNumber` je index řádku v **původním CSV souboru včetně hlavičky**. Při hlášení "Řádek 15" jde o 15. řádek souboru = 14. datový záznam. Toto odpovídá tomu, co uživatel vidí v textovém editoru nebo Excelu.
 
 ### 8.2 Formát textového reportu
 
@@ -915,10 +992,20 @@ customer_ref;device_ref;scheduled_date;scheduled_time_start;scheduled_time_end;v
 
 ### 14.8 Detekce duplicit
 
-Návštěva je **duplicitní**, pokud pro daného zákazníka existuje návštěva se stejným:
-- `scheduled_date` + `visit_type` + `device_ref` (pokud vyplněno)
+**Duplicitní klíč návštěvy:**
+
+```
+customer_ref + scheduled_date + visit_type [+ device_ref pokud vyplněno]
+```
+
+| Situace | Klíč |
+|---------|------|
+| `device_ref` vyplněno | `customer + date + type + device` |
+| `device_ref` prázdné | `customer + date + type` |
 
 Při duplicitě → **aktualizovat** existující záznam.
+
+> **Omezení:** Pokud `device_ref` není vyplněno, více návštěv **stejného typu** v **jeden den** u **stejného zákazníka** bude považováno za duplicitní a sloučeno. Pokud potřebujete více samostatných návštěv stejného typu v jeden den, použijte různé `scheduled_time_start` nebo vyplňte `device_ref`.
 
 ### 14.9 Příklady
 
