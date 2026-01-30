@@ -47,6 +47,9 @@ pub struct Customer {
     pub lat: Option<f64>,
     pub lng: Option<f64>,
     
+    // Geocoding status: 'pending', 'success', 'failed'
+    pub geocode_status: String,
+    
     pub notes: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

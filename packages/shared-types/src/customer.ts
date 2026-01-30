@@ -2,6 +2,8 @@
 
 export type CustomerType = 'person' | 'company';
 
+export type GeocodeStatus = 'pending' | 'success' | 'failed';
+
 export interface Customer {
   id: string;
   userId: string;
@@ -19,6 +21,7 @@ export interface Customer {
   country: string;
   lat?: number;
   lng?: number;
+  geocodeStatus: GeocodeStatus;  // Geocoding status: pending, success, failed
   notes?: string;
   createdAt: string;
   updatedAt: string;

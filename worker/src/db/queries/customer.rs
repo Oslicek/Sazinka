@@ -14,25 +14,32 @@ pub async fn create_customer(
 ) -> Result<Customer> {
     let customer_type = req.customer_type.unwrap_or(CustomerType::Person);
     
+    // Determine geocode_status based on whether coordinates are provided
+    let geocode_status = if req.lat.is_some() && req.lng.is_some() {
+        "success"
+    } else {
+        "pending"
+    };
+    
     let customer = sqlx::query_as::<_, Customer>(
         r#"
         INSERT INTO customers (
             id, user_id, customer_type, name, contact_person, ico, dic,
             email, phone, phone_raw,
             street, city, postal_code, country,
-            lat, lng, notes, created_at, updated_at
+            lat, lng, geocode_status, notes, created_at, updated_at
         )
         VALUES (
             $1, $2, $3, $4, $5, $6, $7,
             $8, $9, $10,
             $11, $12, $13, $14,
-            $15, $16, $17, NOW(), NOW()
+            $15, $16, $17, $18, NOW(), NOW()
         )
         RETURNING
             id, user_id, customer_type, name, contact_person, ico, dic,
             email, phone, phone_raw,
             street, city, postal_code, country,
-            lat, lng, notes, created_at, updated_at
+            lat, lng, geocode_status, notes, created_at, updated_at
         "#
     )
     .bind(Uuid::new_v4())
@@ -51,6 +58,7 @@ pub async fn create_customer(
     .bind(req.country.as_deref().unwrap_or("CZ"))
     .bind(req.lat)
     .bind(req.lng)
+    .bind(geocode_status)
     .bind(&req.notes)
     .fetch_one(pool)
     .await?;
@@ -70,7 +78,7 @@ pub async fn get_customer(
             id, user_id, customer_type, name, contact_person, ico, dic,
             email, phone, phone_raw,
             street, city, postal_code, country,
-            lat, lng, notes, created_at, updated_at
+            lat, lng, geocode_status, notes, created_at, updated_at
         FROM customers
         WHERE id = $1 AND user_id = $2
         "#
@@ -96,7 +104,7 @@ pub async fn list_customers(
             id, user_id, customer_type, name, contact_person, ico, dic,
             email, phone, phone_raw,
             street, city, postal_code, country,
-            lat, lng, notes, created_at, updated_at
+            lat, lng, geocode_status, notes, created_at, updated_at
         FROM customers
         WHERE user_id = $1
         ORDER BY name ASC
@@ -122,7 +130,7 @@ pub async fn update_customer_coordinates(
     sqlx::query(
         r#"
         UPDATE customers
-        SET lat = $1, lng = $2, updated_at = NOW()
+        SET lat = $1, lng = $2, geocode_status = 'success', updated_at = NOW()
         WHERE id = $3
         "#
     )
@@ -141,6 +149,17 @@ pub async fn update_customer(
     user_id: Uuid,
     req: &UpdateCustomerRequest,
 ) -> Result<Option<Customer>> {
+    // If new coordinates are provided, update geocode_status to success
+    // If address is changed (street, city, postal_code), reset to pending
+    let geocode_status_update = if req.lat.is_some() && req.lng.is_some() {
+        Some("success")
+    } else if req.street.is_some() || req.city.is_some() || req.postal_code.is_some() {
+        // Address changed, reset geocoding status
+        Some("pending")
+    } else {
+        None
+    };
+    
     let customer = sqlx::query_as::<_, Customer>(
         r#"
         UPDATE customers
@@ -159,14 +178,15 @@ pub async fn update_customer(
             country = COALESCE($14, country),
             lat = COALESCE($15, lat),
             lng = COALESCE($16, lng),
-            notes = COALESCE($17, notes),
+            geocode_status = COALESCE($17, geocode_status),
+            notes = COALESCE($18, notes),
             updated_at = NOW()
         WHERE id = $1 AND user_id = $2
         RETURNING
             id, user_id, customer_type, name, contact_person, ico, dic,
             email, phone, phone_raw,
             street, city, postal_code, country,
-            lat, lng, notes, created_at, updated_at
+            lat, lng, geocode_status, notes, created_at, updated_at
         "#
     )
     .bind(req.id)
@@ -185,6 +205,7 @@ pub async fn update_customer(
     .bind(&req.country)
     .bind(req.lat)
     .bind(req.lng)
+    .bind(geocode_status_update)
     .bind(&req.notes)
     .fetch_optional(pool)
     .await?;
@@ -224,7 +245,7 @@ pub async fn get_random_customers_with_coords(
             id, user_id, customer_type, name, contact_person, ico, dic,
             email, phone, phone_raw,
             street, city, postal_code, country,
-            lat, lng, notes, created_at, updated_at
+            lat, lng, geocode_status, notes, created_at, updated_at
         FROM customers
         WHERE user_id = $1 AND lat IS NOT NULL AND lng IS NOT NULL
         ORDER BY RANDOM()

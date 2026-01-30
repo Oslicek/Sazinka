@@ -216,6 +216,45 @@
   margin-bottom: 1rem;
 }
 
+/* Geocode warning banner */
+.geocodeWarning {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: #fffbeb;
+  border: 1px solid #f59e0b;
+  border-left: 4px solid #f59e0b;
+  border-radius: 6px;
+  margin-bottom: 1.5rem;
+}
+
+.warningIcon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.warningContent {
+  flex: 1;
+}
+
+.warningContent strong {
+  display: block;
+  color: #92400e;
+  font-size: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.warningContent p {
+  margin: 0;
+  color: #a16207;
+  font-size: 0.875rem;
+}
+
+.noMapError {
+  color: #d97706;
+  font-weight: 600;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .content {

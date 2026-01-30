@@ -113,3 +113,20 @@
   font-size: 0.8125rem;
   color: var(--text-tertiary, #888);
 }
+
+/* Geocoding warning styles */
+.geocodeFailed {
+  border-left: 3px solid #f59e0b;
+}
+
+.geocodeWarning {
+  margin-left: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.geocodeError {
+  margin: 0.25rem 0 0 0;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #d97706;
+}

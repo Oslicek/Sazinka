@@ -226,11 +226,11 @@ impl GeocodeProcessor {
         
         match result {
             Some(geo_result) => {
-                // Update database with coordinates
+                // Update database with coordinates and status
                 sqlx::query(
                     r#"
                     UPDATE customers
-                    SET lat = $1, lng = $2, updated_at = NOW()
+                    SET lat = $1, lng = $2, geocode_status = 'success', updated_at = NOW()
                     WHERE id = $3
                     "#
                 )
@@ -246,6 +246,18 @@ impl GeocodeProcessor {
                 Ok(true)
             }
             None => {
+                // Mark as failed - address cannot be located
+                sqlx::query(
+                    r#"
+                    UPDATE customers
+                    SET geocode_status = 'failed', updated_at = NOW()
+                    WHERE id = $1
+                    "#
+                )
+                .bind(customer_id)
+                .execute(&self.pool)
+                .await?;
+                
                 warn!("No geocoding result for customer {} ({}, {}, {})", 
                       customer_id, street, city, postal_code);
                 Ok(false)
@@ -335,12 +347,12 @@ pub async fn handle_geocode_pending(
         // Get request ID
         let request_id = extract_request_id(&msg.payload);
         
-        // Query customers without coordinates
+        // Query customers pending geocoding (not yet attempted)
         let customers: Vec<(Uuid, String, String, String)> = sqlx::query_as(
             r#"
             SELECT id, name, street, city
             FROM customers
-            WHERE lat IS NULL OR lng IS NULL
+            WHERE geocode_status = 'pending'
             ORDER BY created_at DESC
             LIMIT 1000
             "#

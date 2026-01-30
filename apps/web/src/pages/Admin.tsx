@@ -279,12 +279,18 @@ export function Admin() {
       const geocodeIdx = newServices.findIndex(s => s.name === 'Geocoding');
       if (geocodeIdx >= 0) {
         const pendingCustomers = geocodeResult.pendingCustomers || 0;
+        const failedCustomers = geocodeResult.failedCustomers || 0;
         const queuedJobs = geocodeResult.streamMessages || 0;
+        let details = `${pendingCustomers} pending`;
+        if (failedCustomers > 0) {
+          details += `, ${failedCustomers} chybných`;
+        }
+        details += `, ${queuedJobs} jobs queued`;
         newServices[geocodeIdx] = {
           ...newServices[geocodeIdx],
           status: geocodeResult.available ? 'running' : 'stopped',
           lastCheck: new Date().toISOString(),
-          details: `${pendingCustomers} pending, ${queuedJobs} jobs queued`
+          details
         };
       }
     } catch (e) {

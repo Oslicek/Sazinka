@@ -199,13 +199,25 @@ export function Customers() {
             <Link
               key={customer.id}
               to={`/customers/${customer.id}`}
-              className={styles.customerCard}
+              className={`${styles.customerCard} ${customer.geocodeStatus === 'failed' ? styles.geocodeFailed : ''}`}
             >
               <div className={styles.customerInfo}>
-                <h3 className={styles.customerName}>{customer.name}</h3>
+                <h3 className={styles.customerName}>
+                  {customer.name}
+                  {customer.geocodeStatus === 'failed' && (
+                    <span className={styles.geocodeWarning} title="Adresu nelze lokalizovat">
+                      ⚠️
+                    </span>
+                  )}
+                </h3>
                 <p className={styles.customerAddress}>
                   {customer.street}, {customer.city} {customer.postalCode}
                 </p>
+                {customer.geocodeStatus === 'failed' && (
+                  <p className={styles.geocodeError}>
+                    ⚠️ Adresu nelze lokalizovat
+                  </p>
+                )}
                 {(customer.email || customer.phone) && (
                   <p className={styles.customerContact}>
                     {customer.email && <span>{customer.email}</span>}

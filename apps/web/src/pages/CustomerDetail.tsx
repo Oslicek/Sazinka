@@ -192,6 +192,16 @@ export function CustomerDetail() {
 
       {error && <div className={styles.error}>{error}</div>}
 
+      {customer.geocodeStatus === 'failed' && (
+        <div className={styles.geocodeWarning}>
+          <span className={styles.warningIcon}>⚠️</span>
+          <div className={styles.warningContent}>
+            <strong>Adresu nelze lokalizovat</strong>
+            <p>Zadaná adresa nebyla nalezena. Zákazník nebude zahrnut do optimalizace tras.</p>
+          </div>
+        </div>
+      )}
+
       <div className={styles.content}>
         {/* Left column - Customer info */}
         <div className={styles.infoColumn}>
@@ -296,10 +306,21 @@ export function CustomerDetail() {
               </div>
             ) : (
               <div className={styles.noMap}>
-                <p>Poloha zákazníka není k dispozici.</p>
-                <p className={styles.hint}>
-                  Upravte zákazníka a vyplňte adresu pro zobrazení na mapě.
-                </p>
+                {customer.geocodeStatus === 'failed' ? (
+                  <>
+                    <p className={styles.noMapError}>⚠️ Adresu nelze lokalizovat</p>
+                    <p className={styles.hint}>
+                      Zkontrolujte a opravte adresu zákazníka.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p>Poloha zákazníka není k dispozici.</p>
+                    <p className={styles.hint}>
+                      Upravte zákazníka a vyplňte adresu pro zobrazení na mapě.
+                    </p>
+                  </>
+                )}
               </div>
             )}
           </section>

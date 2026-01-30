@@ -125,6 +125,7 @@ pub struct GeocodeStatusRequest {}
 pub struct GeocodeStatusResponse {
     pub available: bool,
     pub pending_customers: i64,
+    pub failed_customers: i64,
     pub stream_messages: i64,
 }
 
@@ -532,9 +533,17 @@ async fn handle_geocode_status(client: Client, pool: PgPool) -> Result<()> {
 
         let js = jetstream::new(client.clone());
         
-        // Get pending customers count
+        // Get pending customers count (only those not yet attempted)
         let pending_customers: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM customers WHERE lat IS NULL OR lng IS NULL"
+            "SELECT COUNT(*) FROM customers WHERE geocode_status = 'pending'"
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap_or((0,));
+        
+        // Get failed customers count (attempted but address not found)
+        let failed_customers: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM customers WHERE geocode_status = 'failed'"
         )
         .fetch_one(&pool)
         .await
@@ -555,6 +564,7 @@ async fn handle_geocode_status(client: Client, pool: PgPool) -> Result<()> {
         let response = SuccessResponse::new(request_id, GeocodeStatusResponse {
             available: true,
             pending_customers: pending_customers.0,
+            failed_customers: failed_customers.0,
             stream_messages,
         });
 
