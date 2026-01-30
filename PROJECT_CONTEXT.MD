@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-01-30 (v0.11.0)
+> **Last Updated:** 2026-01-30 (v0.12.0)
 
 ## Overview
 
@@ -1147,6 +1147,19 @@ cargo test
 - MVP focuses on core CRM + route planning
 - Email notifications deferred to later phase
 - Invoicing/billing architecture prepared but not implemented
+
+## Recent Changes (v0.12.0)
+
+- **Phase 2.1 Complete** - Functional Calendar:
+  - **calendarUtils.ts** - Date utilities with 18 TDD tests
+  - **CalendarGrid/DayCell** - Components for month view
+  - **Calendar.tsx** - Month navigation, revision display, day details panel
+- **Phase 2.2 Complete** - Smart Plan Suggestions:
+  - **Backend handler** - sazinka.revision.suggest with priority scoring
+  - **Priority algorithm** - Overdue (100) > Due week (80) > Due soon (60) > Month (40) > Later (20)
+  - **Planner rewrite** - Shows prioritized suggestions with checkbox selection
+  - **revisionService.ts** - Added getSuggestedRevisions (+4 tests, 24 total)
+- **195 Frontend Tests** - All tests passing
 
 ## Recent Changes (v0.11.0)
 

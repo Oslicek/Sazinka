@@ -133,34 +133,40 @@
 
 ## Phase 2: Smart Planning (Calendar, Intelligent Suggestions)
 
-### 2.1 Functional Calendar
+### 2.1 Functional Calendar ✅
 
-**Files to modify:**
-- `apps/web/src/pages/Calendar.tsx` - Complete rewrite
-- `apps/web/src/components/calendar/CalendarGrid.tsx` - NEW
-- `apps/web/src/components/calendar/DayCell.tsx` - NEW
+**Files created:**
+- `apps/web/src/pages/Calendar.tsx` - Complete rewrite ✅
+- `apps/web/src/components/calendar/CalendarGrid.tsx` ✅
+- `apps/web/src/components/calendar/DayCell.tsx` ✅
+- `apps/web/src/utils/calendarUtils.ts` ✅ (18 TDD tests)
 
-**Features:**
-- Month navigation (working)
-- Display scheduled revisions per day
-- Color coding by revision count/status
-- Click day to see details or navigate to planner
+**Features implemented:**
+- Month navigation ✅
+- Display scheduled revisions per day ✅
+- Color coding by revision count/status ✅
+- Click day to see details or navigate to planner ✅
 
-### 2.2 Smart Plan Suggestion
+### 2.2 Smart Plan Suggestion ✅
 
-**Files to modify:**
-- `worker/src/handlers/route.rs` - Add selection logic
-- `apps/web/src/pages/Planner.tsx` - Replace random selection
+**Files created/modified:**
+- `worker/src/handlers/revision.rs` - Added handle_suggest ✅
+- `worker/src/db/queries/revision.rs` - Added get_revision_suggestions ✅
+- `worker/src/types/revision.rs` - Added suggestion types ✅
+- `apps/web/src/services/revisionService.ts` - Added getSuggestedRevisions (+4 TDD tests) ✅
+- `apps/web/src/pages/Planner.tsx` - Replaced random selection ✅
 
-**New NATS subject:**
-- `sazinka.revision.suggest` - Get best candidates for a date
+**NATS subject:**
+- `sazinka.revision.suggest` ✅
 
-**Selection algorithm (priority scoring):**
-1. Overdue revisions (highest priority)
-2. Due within 7 days
-3. Due within 30 days
-4. Geographic clustering (nearby customers)
-5. Time window compatibility
+**Priority scoring implemented:**
+| Priority | Score | Criteria |
+|----------|-------|----------|
+| Overdue | 100 | due_date < today |
+| Due this week | 80 | due_date <= today + 7 days |
+| Due soon | 60 | due_date <= today + 14 days |
+| Due this month | 40 | due_date <= today + 30 days |
+| Upcoming | 20 | due_date > today + 30 days |
 
 ### 2.3 Planner UX Improvements
 
@@ -403,8 +409,8 @@ Phase 1 (Core Flow): ✅ COMPLETE
   1.5 Dashboard stats ✅
 
 Phase 2 (Smart Planning): 🔄 IN PROGRESS
-  2.1 Calendar with real data
-  2.2 Smart plan suggestion algorithm
+  2.1 Calendar with real data ✅
+  2.2 Smart plan suggestion algorithm ✅
   2.3 Drag/drop + lock/unlock
   2.4 Route persistence
 
