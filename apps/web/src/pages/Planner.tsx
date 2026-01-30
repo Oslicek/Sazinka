@@ -92,7 +92,6 @@ export function Planner() {
   // Job queue state
   const [jobId, setJobId] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
-  const [useQueueMode, setUseQueueMode] = useState(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
   const { request, subscribe, isConnected } = useNatsStore();
@@ -525,17 +524,6 @@ export function Planner() {
         )}
 
         {jobStatus && <JobStatusIndicator />}
-
-        <div className={styles.queueToggle}>
-          <label>
-            <input
-              type="checkbox"
-              checked={useQueueMode}
-              onChange={(e) => setUseQueueMode(e.target.checked)}
-            />
-            <span>Použít frontu (pro velkou zátěž)</span>
-          </label>
-        </div>
 
         <div className={styles.actions}>
           <button 

@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-01-29 (v0.9.0)
+> **Last Updated:** 2026-01-30 (v0.10.0)
 
 ## Overview
 
@@ -164,6 +164,19 @@ sazinka.admin.logs              # Get recent logs from all sources
 # Job Queue (JetStream)
 sazinka.jobs.route              # Submit route planning job to queue
 sazinka.job.status.<job_id>     # Real-time job status updates (pub/sub)
+
+# Settings
+sazinka.settings.get            # Get all user settings including depots
+sazinka.settings.work.update    # Update work constraints (hours, limits)
+sazinka.settings.business.update # Update business info
+sazinka.settings.email.update   # Update email templates
+
+# Depots
+sazinka.depot.list              # List all depots for user
+sazinka.depot.create            # Create new depot
+sazinka.depot.update            # Update depot
+sazinka.depot.delete            # Delete depot
+sazinka.depot.geocode           # Geocode depot address
 ```
 
 ## Project Structure
@@ -427,8 +440,11 @@ pub struct RouteStop {
 | `MapView` | apps/web/src/components/map/ | MapLibre map rendering |
 | `RoutePlanner` | apps/web/src/components/routes/ | Route planning UI |
 | `Calendar` | apps/web/src/components/calendar/ | Monthly revision calendar |
+| `Settings` | apps/web/src/pages/Settings.tsx | User settings page (depots, work, business) |
+| `settingsService` | apps/web/src/services/settingsService.ts | Settings and depot API |
 | **Backend** | | |
 | `CustomerHandler` | worker/src/handlers/customer.rs | Customer CRUD |
+| `SettingsHandler` | worker/src/handlers/settings.rs | Settings and depot CRUD |
 | `RevisionHandler` | worker/src/handlers/revision.rs | Revision management |
 | `RouteHandler` | worker/src/handlers/route.rs | Route optimization |
 | `VrptwSolver` | worker/src/services/vrptw.rs | VRPTW algorithm |
@@ -1009,6 +1025,10 @@ let base_url = std::env::var("NOMINATIM_URL")
 - [x] **JetStream job queue** - Persistent job queue for route planning with status updates
 - [x] **Local Nominatim geocoding** - Self-hosted geocoding with Czech Republic data
 - [x] **Admin health checks** - Nominatim and JetStream status in Admin UI
+- [x] **Settings page** - Full settings UI with 3 sections (Depots, Work constraints, Business info)
+- [x] **Depot management** - Multiple depots per user with map selection, geocoding support
+- [x] **Work constraints settings** - Working hours, max revisions, default service duration
+- [x] **Email template settings** - Customizable subject and body templates with variables
 
 **In Progress:**
 - [ ] Device management UI
@@ -1124,9 +1144,26 @@ cargo test
 - Email notifications deferred to later phase
 - Invoicing/billing architecture prepared but not implemented
 
+## Recent Changes (v0.10.0)
+
+- **Settings Page** - New UI for user settings with three tabs:
+  - Depots management (CRUD with map)
+  - Work constraints (working hours, max visits, default intervals)
+  - Business info and email templates
+- **Device Handlers** - Full CRUD backend for devices (create, list, get, update, delete)
+- **Revision Handlers** - Full CRUD backend plus upcoming/stats endpoints
+- **Admin Page Improvements** - Better Nominatim status (shows "Importing" during data import)
+- **Planner UI Cleanup** - Removed unused queue toggle checkbox
+- **Bug Fix** - Fixed `EmptyPayload` deserialization for settings requests
+
 ## Future Enhancements
 
 - [x] ~~Self-hosted Nominatim for geocoding~~ (implemented v0.9.0)
+- [x] ~~Settings UI for depots and work constraints~~ (implemented v0.10.0)
+- [x] ~~Device/Revision backend handlers~~ (implemented v0.10.0)
+- [ ] Device/Revision frontend UI in CustomerDetail
+- [ ] Dashboard with real statistics
+- [ ] Functional Calendar page
 - [ ] Email notifications with Resend
 - [ ] Mobile-responsive design
 - [ ] Offline support (Service Worker)

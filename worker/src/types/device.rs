@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 /// Device entity
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct Device {
     pub id: Uuid,
     pub customer_id: Uuid,
@@ -47,6 +48,7 @@ impl DeviceType {
 
 /// Request to create a device
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateDeviceRequest {
     pub customer_id: Uuid,
     pub device_type: String,
@@ -54,6 +56,39 @@ pub struct CreateDeviceRequest {
     pub model: Option<String>,
     pub serial_number: Option<String>,
     pub installation_date: Option<NaiveDate>,
+    #[serde(default = "default_revision_interval")]
     pub revision_interval_months: i32,
     pub notes: Option<String>,
+}
+
+fn default_revision_interval() -> i32 {
+    12
+}
+
+/// Request to update a device
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateDeviceRequest {
+    pub id: Uuid,
+    pub device_type: Option<String>,
+    pub manufacturer: Option<String>,
+    pub model: Option<String>,
+    pub serial_number: Option<String>,
+    pub installation_date: Option<NaiveDate>,
+    pub revision_interval_months: Option<i32>,
+    pub notes: Option<String>,
+}
+
+/// Request to list devices
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListDevicesRequest {
+    pub customer_id: Uuid,
+}
+
+/// Request to get or delete a device
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceIdRequest {
+    pub id: Uuid,
 }

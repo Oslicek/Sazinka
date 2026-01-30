@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 /// Revision entity
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct Revision {
     pub id: Uuid,
     pub device_id: Uuid,
@@ -63,8 +64,81 @@ pub enum RevisionResult {
 
 /// Time window for scheduling
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TimeWindow {
     pub start: NaiveTime,
     pub end: NaiveTime,
     pub is_hard: bool,  // true = must be respected, false = flexible
+}
+
+/// Request to create a revision
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateRevisionRequest {
+    pub device_id: Uuid,
+    pub customer_id: Uuid,
+    pub due_date: NaiveDate,
+    pub scheduled_date: Option<NaiveDate>,
+    pub scheduled_time_start: Option<NaiveTime>,
+    pub scheduled_time_end: Option<NaiveTime>,
+}
+
+/// Request to update a revision
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateRevisionRequest {
+    pub id: Uuid,
+    pub status: Option<String>,
+    pub due_date: Option<NaiveDate>,
+    pub scheduled_date: Option<NaiveDate>,
+    pub scheduled_time_start: Option<NaiveTime>,
+    pub scheduled_time_end: Option<NaiveTime>,
+    pub duration_minutes: Option<i32>,
+}
+
+/// Request to complete a revision
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompleteRevisionRequest {
+    pub id: Uuid,
+    pub result: String,  // passed, failed, conditional
+    pub findings: Option<String>,
+    pub duration_minutes: Option<i32>,
+}
+
+/// Request to list revisions with filters
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListRevisionsRequest {
+    pub customer_id: Option<Uuid>,
+    pub device_id: Option<Uuid>,
+    pub status: Option<String>,
+    pub from_date: Option<NaiveDate>,
+    pub to_date: Option<NaiveDate>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+/// Request to get upcoming/overdue revisions
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpcomingRevisionsRequest {
+    pub days_ahead: Option<i32>,  // default 30
+}
+
+/// Revision statistics for dashboard
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RevisionStats {
+    pub overdue: i64,
+    pub due_this_week: i64,
+    pub scheduled_today: i64,
+    pub completed_this_month: i64,
+}
+
+/// Request to get or delete a revision
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RevisionIdRequest {
+    pub id: Uuid,
 }

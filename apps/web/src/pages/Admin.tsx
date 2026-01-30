@@ -153,13 +153,19 @@ export function Admin() {
       const nominatimResult = response.payload || response;
       const nominatimIdx = newServices.findIndex(s => s.name === 'Nominatim');
       if (nominatimIdx >= 0) {
+        // If URL is configured but not available, it's likely importing/starting
+        const isConfigured = nominatimResult.url && nominatimResult.url !== 'Not configured';
+        const status = nominatimResult.available 
+          ? 'running' 
+          : (isConfigured ? 'starting' : 'stopped');
+        const details = nominatimResult.available 
+          ? `${nominatimResult.url}${nominatimResult.version ? ` v${nominatimResult.version}` : ''}`
+          : (isConfigured ? 'Importing data / starting up...' : 'Not configured');
         newServices[nominatimIdx] = {
           ...newServices[nominatimIdx],
-          status: nominatimResult.available ? 'running' : 'stopped',
+          status,
           lastCheck: new Date().toISOString(),
-          details: nominatimResult.available 
-            ? `${nominatimResult.url}${nominatimResult.version ? ` v${nominatimResult.version}` : ''}`
-            : 'Not available'
+          details
         };
       }
     } catch (e) {
@@ -288,6 +294,7 @@ export function Admin() {
   const getStatusColor = (status: ServiceStatus['status']) => {
     switch (status) {
       case 'running': return styles.statusRunning;
+      case 'starting': return styles.statusStarting;
       case 'stopped': return styles.statusStopped;
       case 'error': return styles.statusError;
       default: return styles.statusUnknown;
@@ -297,6 +304,7 @@ export function Admin() {
   const getStatusIcon = (status: ServiceStatus['status']) => {
     switch (status) {
       case 'running': return '●';
+      case 'starting': return '◐';
       case 'stopped': return '○';
       case 'error': return '✕';
       default: return '?';

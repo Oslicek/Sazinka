@@ -50,8 +50,8 @@ vrp-pragmatic = "1.25"
 vrp-cli = "1.25"
 vrp-core = "1.25"
 
-# [dev-dependencies]
-# tokio-test = "0.4"  # Temporarily disabled - requires ring which needs MSVC env
+[dev-dependencies]
+tokio-test = "0.4"
 
 [profile.release]
 lto = true

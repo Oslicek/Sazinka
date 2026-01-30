@@ -291,23 +291,3 @@
   border-radius: 3px;
   transition: width 0.3s ease;
 }
-
-/* Queue Toggle */
-.queueToggle {
-  margin-bottom: 1rem;
-}
-
-.queueToggle label {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.875rem;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-}
-
-.queueToggle input[type="checkbox"] {
-  width: 1rem;
-  height: 1rem;
-  cursor: pointer;
-}

@@ -4,3 +4,4 @@ export * from './device';
 export * from './revision';
 export * from './route';
 export * from './messages';
+export * from './settings';

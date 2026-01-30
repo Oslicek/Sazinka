@@ -76,6 +76,10 @@ impl ErrorResponse {
     }
 }
 
+/// Empty payload that accepts both `null` and `{}`
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct EmptyPayload {}
+
 /// List request with pagination
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

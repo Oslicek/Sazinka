@@ -2,10 +2,13 @@
 
 pub mod admin;
 pub mod customer;
+pub mod device;
 pub mod geocode;
 pub mod jobs;
 pub mod ping;
+pub mod revision;
 pub mod route;
+pub mod settings;
 
 use std::sync::Arc;
 use anyhow::Result;
@@ -42,6 +45,36 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let customer_geocode_sub = client.subscribe("sazinka.customer.geocode").await?;
     let customer_random_sub = client.subscribe("sazinka.customer.random").await?;
     let route_plan_sub = client.subscribe("sazinka.route.plan").await?;
+    
+    // Device subjects
+    let device_create_sub = client.subscribe("sazinka.device.create").await?;
+    let device_list_sub = client.subscribe("sazinka.device.list").await?;
+    let device_get_sub = client.subscribe("sazinka.device.get").await?;
+    let device_update_sub = client.subscribe("sazinka.device.update").await?;
+    let device_delete_sub = client.subscribe("sazinka.device.delete").await?;
+    
+    // Revision subjects
+    let revision_create_sub = client.subscribe("sazinka.revision.create").await?;
+    let revision_list_sub = client.subscribe("sazinka.revision.list").await?;
+    let revision_get_sub = client.subscribe("sazinka.revision.get").await?;
+    let revision_update_sub = client.subscribe("sazinka.revision.update").await?;
+    let revision_delete_sub = client.subscribe("sazinka.revision.delete").await?;
+    let revision_complete_sub = client.subscribe("sazinka.revision.complete").await?;
+    let revision_upcoming_sub = client.subscribe("sazinka.revision.upcoming").await?;
+    let revision_stats_sub = client.subscribe("sazinka.revision.stats").await?;
+    
+    // Settings subjects
+    let settings_get_sub = client.subscribe("sazinka.settings.get").await?;
+    let settings_work_update_sub = client.subscribe("sazinka.settings.work.update").await?;
+    let settings_business_update_sub = client.subscribe("sazinka.settings.business.update").await?;
+    let settings_email_update_sub = client.subscribe("sazinka.settings.email.update").await?;
+    
+    // Depot subjects
+    let depot_list_sub = client.subscribe("sazinka.depot.list").await?;
+    let depot_create_sub = client.subscribe("sazinka.depot.create").await?;
+    let depot_update_sub = client.subscribe("sazinka.depot.update").await?;
+    let depot_delete_sub = client.subscribe("sazinka.depot.delete").await?;
+    let depot_geocode_sub = client.subscribe("sazinka.depot.geocode").await?;
 
     info!("Subscribed to NATS subjects");
 
@@ -56,6 +89,23 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let client_customer_random = client.clone();
     let client_route_plan = client.clone();
     
+    // Device handler clones
+    let client_device_create = client.clone();
+    let client_device_list = client.clone();
+    let client_device_get = client.clone();
+    let client_device_update = client.clone();
+    let client_device_delete = client.clone();
+    
+    // Revision handler clones
+    let client_revision_create = client.clone();
+    let client_revision_list = client.clone();
+    let client_revision_get = client.clone();
+    let client_revision_update = client.clone();
+    let client_revision_delete = client.clone();
+    let client_revision_complete = client.clone();
+    let client_revision_upcoming = client.clone();
+    let client_revision_stats = client.clone();
+    
     let pool_customer_create = pool.clone();
     let pool_customer_list = pool.clone();
     let pool_customer_get = pool.clone();
@@ -64,9 +114,53 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_customer_random = pool.clone();
     let pool_route_plan = pool.clone();
     
+    // Device pool clones
+    let pool_device_create = pool.clone();
+    let pool_device_list = pool.clone();
+    let pool_device_get = pool.clone();
+    let pool_device_update = pool.clone();
+    let pool_device_delete = pool.clone();
+    
+    // Revision pool clones
+    let pool_revision_create = pool.clone();
+    let pool_revision_list = pool.clone();
+    let pool_revision_get = pool.clone();
+    let pool_revision_update = pool.clone();
+    let pool_revision_delete = pool.clone();
+    let pool_revision_complete = pool.clone();
+    let pool_revision_upcoming = pool.clone();
+    let pool_revision_stats = pool.clone();
+    
+    // Settings handler clones
+    let client_settings_get = client.clone();
+    let client_settings_work = client.clone();
+    let client_settings_business = client.clone();
+    let client_settings_email = client.clone();
+    
+    // Depot handler clones
+    let client_depot_list = client.clone();
+    let client_depot_create = client.clone();
+    let client_depot_update = client.clone();
+    let client_depot_delete = client.clone();
+    let client_depot_geocode = client.clone();
+    
+    // Settings pool clones
+    let pool_settings_get = pool.clone();
+    let pool_settings_work = pool.clone();
+    let pool_settings_business = pool.clone();
+    let pool_settings_email = pool.clone();
+    
+    // Depot pool clones
+    let pool_depot_list = pool.clone();
+    let pool_depot_create = pool.clone();
+    let pool_depot_update = pool.clone();
+    let pool_depot_delete = pool.clone();
+    
     let geocoder_create = Arc::clone(&geocoder);
     let geocoder_update = Arc::clone(&geocoder);
     let geocoder_geocode = Arc::clone(&geocoder);
+    let geocoder_depot_create = Arc::clone(&geocoder);
+    let geocoder_depot_geocode = Arc::clone(&geocoder);
     
     let routing_plan = Arc::clone(&routing_service);
 
@@ -105,6 +199,98 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
 
     let route_plan_handle = tokio::spawn(async move {
         route::handle_plan(client_route_plan, route_plan_sub, pool_route_plan, routing_plan).await
+    });
+
+    // Device handlers
+    let device_create_handle = tokio::spawn(async move {
+        device::handle_create(client_device_create, device_create_sub, pool_device_create).await
+    });
+    
+    let device_list_handle = tokio::spawn(async move {
+        device::handle_list(client_device_list, device_list_sub, pool_device_list).await
+    });
+    
+    let device_get_handle = tokio::spawn(async move {
+        device::handle_get(client_device_get, device_get_sub, pool_device_get).await
+    });
+    
+    let device_update_handle = tokio::spawn(async move {
+        device::handle_update(client_device_update, device_update_sub, pool_device_update).await
+    });
+    
+    let device_delete_handle = tokio::spawn(async move {
+        device::handle_delete(client_device_delete, device_delete_sub, pool_device_delete).await
+    });
+    
+    // Revision handlers
+    let revision_create_handle = tokio::spawn(async move {
+        revision::handle_create(client_revision_create, revision_create_sub, pool_revision_create).await
+    });
+    
+    let revision_list_handle = tokio::spawn(async move {
+        revision::handle_list(client_revision_list, revision_list_sub, pool_revision_list).await
+    });
+    
+    let revision_get_handle = tokio::spawn(async move {
+        revision::handle_get(client_revision_get, revision_get_sub, pool_revision_get).await
+    });
+    
+    let revision_update_handle = tokio::spawn(async move {
+        revision::handle_update(client_revision_update, revision_update_sub, pool_revision_update).await
+    });
+    
+    let revision_delete_handle = tokio::spawn(async move {
+        revision::handle_delete(client_revision_delete, revision_delete_sub, pool_revision_delete).await
+    });
+    
+    let revision_complete_handle = tokio::spawn(async move {
+        revision::handle_complete(client_revision_complete, revision_complete_sub, pool_revision_complete).await
+    });
+    
+    let revision_upcoming_handle = tokio::spawn(async move {
+        revision::handle_upcoming(client_revision_upcoming, revision_upcoming_sub, pool_revision_upcoming).await
+    });
+    
+    let revision_stats_handle = tokio::spawn(async move {
+        revision::handle_stats(client_revision_stats, revision_stats_sub, pool_revision_stats).await
+    });
+    
+    // Settings handlers
+    let settings_get_handle = tokio::spawn(async move {
+        settings::handle_get_settings(client_settings_get, settings_get_sub, pool_settings_get).await
+    });
+    
+    let settings_work_handle = tokio::spawn(async move {
+        settings::handle_update_work_constraints(client_settings_work, settings_work_update_sub, pool_settings_work).await
+    });
+    
+    let settings_business_handle = tokio::spawn(async move {
+        settings::handle_update_business_info(client_settings_business, settings_business_update_sub, pool_settings_business).await
+    });
+    
+    let settings_email_handle = tokio::spawn(async move {
+        settings::handle_update_email_templates(client_settings_email, settings_email_update_sub, pool_settings_email).await
+    });
+    
+    // Depot handlers
+    let depot_list_handle = tokio::spawn(async move {
+        settings::handle_list_depots(client_depot_list, depot_list_sub, pool_depot_list).await
+    });
+    
+    let depot_create_handle = tokio::spawn(async move {
+        settings::handle_create_depot(client_depot_create, depot_create_sub, pool_depot_create, geocoder_depot_create).await
+    });
+    
+    let depot_update_handle = tokio::spawn(async move {
+        settings::handle_update_depot(client_depot_update, depot_update_sub, pool_depot_update).await
+    });
+    
+    let depot_delete_handle = tokio::spawn(async move {
+        settings::handle_delete_depot(client_depot_delete, depot_delete_sub, pool_depot_delete).await
+    });
+    
+    let depot_geocode_handle = tokio::spawn(async move {
+        settings::handle_geocode_depot(client_depot_geocode, depot_geocode_sub, geocoder_depot_geocode).await
     });
 
     // Start admin handlers
@@ -201,6 +387,76 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         }
         result = route_plan_handle => {
             error!("Route plan handler finished: {:?}", result);
+        }
+        // Device handlers
+        result = device_create_handle => {
+            error!("Device create handler finished: {:?}", result);
+        }
+        result = device_list_handle => {
+            error!("Device list handler finished: {:?}", result);
+        }
+        result = device_get_handle => {
+            error!("Device get handler finished: {:?}", result);
+        }
+        result = device_update_handle => {
+            error!("Device update handler finished: {:?}", result);
+        }
+        result = device_delete_handle => {
+            error!("Device delete handler finished: {:?}", result);
+        }
+        // Revision handlers
+        result = revision_create_handle => {
+            error!("Revision create handler finished: {:?}", result);
+        }
+        result = revision_list_handle => {
+            error!("Revision list handler finished: {:?}", result);
+        }
+        result = revision_get_handle => {
+            error!("Revision get handler finished: {:?}", result);
+        }
+        result = revision_update_handle => {
+            error!("Revision update handler finished: {:?}", result);
+        }
+        result = revision_delete_handle => {
+            error!("Revision delete handler finished: {:?}", result);
+        }
+        result = revision_complete_handle => {
+            error!("Revision complete handler finished: {:?}", result);
+        }
+        result = revision_upcoming_handle => {
+            error!("Revision upcoming handler finished: {:?}", result);
+        }
+        result = revision_stats_handle => {
+            error!("Revision stats handler finished: {:?}", result);
+        }
+        // Settings handlers
+        result = settings_get_handle => {
+            error!("Settings get handler finished: {:?}", result);
+        }
+        result = settings_work_handle => {
+            error!("Settings work handler finished: {:?}", result);
+        }
+        result = settings_business_handle => {
+            error!("Settings business handler finished: {:?}", result);
+        }
+        result = settings_email_handle => {
+            error!("Settings email handler finished: {:?}", result);
+        }
+        // Depot handlers
+        result = depot_list_handle => {
+            error!("Depot list handler finished: {:?}", result);
+        }
+        result = depot_create_handle => {
+            error!("Depot create handler finished: {:?}", result);
+        }
+        result = depot_update_handle => {
+            error!("Depot update handler finished: {:?}", result);
+        }
+        result = depot_delete_handle => {
+            error!("Depot delete handler finished: {:?}", result);
+        }
+        result = depot_geocode_handle => {
+            error!("Depot geocode handler finished: {:?}", result);
         }
     }
 
