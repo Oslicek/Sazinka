@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-01-30 (v0.10.1)
+> **Last Updated:** 2026-01-30 (v0.11.0)
 
 ## Overview
 
@@ -1030,15 +1030,18 @@ let base_url = std::env::var("NOMINATIM_URL")
 - [x] **Work constraints settings** - Working hours, max revisions, default service duration
 - [x] **Email template settings** - Customizable subject and body templates with variables
 - [x] **Route planning uses settings** - VRP solver uses working hours and service duration from user settings
+- [x] **Phase 1 Complete** - Device and Revision management with TDD:
+  - Device service + UI (DeviceList, DeviceForm)
+  - Revision service + UI (RevisionList, RevisionForm, CompleteRevisionDialog)
+  - Dashboard with real-time statistics from revision.stats
+  - 173 frontend tests passing
 
 **In Progress:**
-- [ ] Device management UI
+- [ ] Phase 2: Smart Planning (Calendar, Smart suggestions)
 
 **Pending:**
-- [ ] Device handlers
-- [ ] Revision handlers  
-- [ ] Email notifications
-- [ ] User authentication
+- [ ] Phase 3: User authentication, CSV export, Email notifications
+- [ ] Phase 4: CRM Evidence (Communications, Visits, Timeline)
 
 ### Serialization Notes
 
@@ -1145,6 +1148,16 @@ cargo test
 - Email notifications deferred to later phase
 - Invoicing/billing architecture prepared but not implemented
 
+## Recent Changes (v0.11.0)
+
+- **Phase 1 Complete** - Full Device and Revision management:
+  - **Frontend services (TDD)** - deviceService.ts (16 tests), revisionService.ts (20 tests)
+  - **Device UI** - DeviceList, DeviceForm components integrated into CustomerDetail
+  - **Revision UI** - RevisionList, RevisionForm, CompleteRevisionDialog components
+  - **Dashboard stats** - Real-time statistics from revision.stats endpoint
+  - **CSS fixes** - Corrected CSS variable names (--color-primary, --color-border, etc.)
+- **173 Frontend Tests** - All tests passing
+
 ## Recent Changes (v0.10.1)
 
 - **Route Planning Uses User Settings** - VRP solver now uses user's configured settings:
@@ -1175,9 +1188,13 @@ cargo test
 - [x] ~~Settings UI for depots and work constraints~~ (implemented v0.10.0)
 - [x] ~~Device/Revision backend handlers~~ (implemented v0.10.0)
 - [x] ~~Route planning uses user settings~~ (implemented v0.10.1)
-- [ ] Device/Revision frontend UI in CustomerDetail
-- [ ] Dashboard with real statistics
-- [ ] Functional Calendar page
+- [x] ~~Device/Revision frontend UI in CustomerDetail~~ (implemented v0.11.0)
+- [x] ~~Dashboard with real statistics~~ (implemented v0.11.0)
+- [ ] Functional Calendar page (Phase 2)
+- [ ] Smart plan suggestions (Phase 2)
+- [ ] CRM: Communication log (Phase 4)
+- [ ] CRM: Visit tracking (Phase 4)
+- [ ] CRM: Customer timeline (Phase 4)
 - [ ] Email notifications with Resend
 - [ ] Mobile-responsive design
 - [ ] Offline support (Service Worker)

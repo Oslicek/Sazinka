@@ -1,0 +1,124 @@
+.cell {
+  aspect-ratio: 1;
+  min-height: 80px;
+  padding: 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+}
+
+.cell:hover {
+  background-color: var(--color-bg-secondary);
+  border-color: var(--color-primary);
+}
+
+.cell:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-primary);
+}
+
+/* Other month days (padding) */
+.otherMonth {
+  opacity: 0.4;
+  background: var(--color-bg-secondary);
+}
+
+.otherMonth:hover {
+  opacity: 0.6;
+}
+
+/* Today */
+.today {
+  border-color: var(--color-primary);
+  border-width: 2px;
+}
+
+.today .dayNumber {
+  background: var(--color-primary);
+  color: white;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Day number */
+.dayNumber {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+/* Revision count indicators */
+.indicators {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: auto;
+}
+
+.scheduledDot,
+.overdueDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.scheduledDot {
+  background: var(--color-success);
+}
+
+.overdueDot {
+  background: var(--color-error);
+}
+
+.count {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-left: auto;
+}
+
+/* Color intensity based on revision count */
+.low {
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.medium {
+  background: rgba(245, 158, 11, 0.15);
+}
+
+.high {
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.hasOverdue {
+  border-left: 3px solid var(--color-error);
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+  .cell {
+    min-height: 60px;
+    padding: 0.25rem;
+  }
+  
+  .dayNumber {
+    font-size: 0.75rem;
+  }
+  
+  .today .dayNumber {
+    width: 20px;
+    height: 20px;
+  }
+  
+  .count {
+    font-size: 0.65rem;
+  }
+}
