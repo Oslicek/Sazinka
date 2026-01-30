@@ -81,6 +81,12 @@ export function Admin() {
     setShowCustomerImport(false);
   };
 
+  // Handler for customer import batch - wraps importCustomersBatch with userId
+  const handleCustomerImportBatch = useCallback(async (customers: Parameters<typeof importCustomersBatch>[1]) => {
+    const USER_ID = '00000000-0000-0000-0000-000000000001';
+    return importCustomersBatch(USER_ID, customers);
+  }, []);
+
   // Health check function
   const runHealthCheck = useCallback(async () => {
     setIsChecking(true);
@@ -693,7 +699,7 @@ export function Admin() {
       <ImportCustomersModal
         isOpen={showCustomerImport}
         onClose={handleCloseCustomerImport}
-        onImportBatch={importCustomersBatch}
+        onImportBatch={handleCustomerImportBatch}
       />
 
       {/* Logs Section */}
