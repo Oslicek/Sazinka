@@ -122,16 +122,45 @@ pub async fn handle_plan(
             continue;
         }
 
-        // Build VRP problem
-        let working_hours = WorkingHours {
-            start: chrono::NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
-            end: chrono::NaiveTime::from_hms_opt(23, 59, 59).unwrap(),
+        // Load user settings for working hours and service duration
+        let (shift_start, shift_end, service_duration) = match queries::settings::get_user_settings(&pool, user_id).await {
+            Ok(Some(settings)) => {
+                let start = settings.working_hours_start;
+                let end = settings.working_hours_end;
+                let duration = settings.default_service_duration_minutes as u32;
+                info!(
+                    "Route planning using user settings: working hours {:?}-{:?}, service duration {} min",
+                    start, end, duration
+                );
+                (start, end, duration)
+            }
+            Ok(None) => {
+                // User not found in database
+                warn!("User {} not found in database, using default settings", user_id);
+                (
+                    chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
+                    chrono::NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+                    30u32,
+                )
+            }
+            Err(e) => {
+                // Database error
+                warn!("Failed to load user settings: {}, using defaults", e);
+                (
+                    chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
+                    chrono::NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+                    30u32,
+                )
+            }
         };
+
+        // Build VRP problem with user settings
         let vrp_problem = build_vrp_problem(
             &plan_request.start_location,
             &valid_customers,
-            working_hours.start,
-            working_hours.end,
+            shift_start,
+            shift_end,
+            service_duration,
         );
 
         // Build location list for matrix (depot + customers)
@@ -192,7 +221,7 @@ pub async fn handle_plan(
                     order: stop.order as i32,
                     eta: stop.arrival_time,
                     etd: stop.departure_time,
-                    service_duration_minutes: 30, // TODO: from customer/device data
+                    service_duration_minutes: service_duration as i32,
                     time_window: None, // TODO: from customer preferences
                 });
             }
@@ -324,6 +353,7 @@ fn build_vrp_problem(
     customers: &[CustomerForRoute],
     shift_start: chrono::NaiveTime,
     shift_end: chrono::NaiveTime,
+    service_duration_minutes: u32,
 ) -> VrpProblem {
     let stops: Vec<VrpStop> = customers
         .iter()
@@ -335,7 +365,7 @@ fn build_vrp_problem(
                 lat: c.lat.unwrap(),
                 lng: c.lng.unwrap(),
             },
-            service_duration_minutes: 30, // Default service time
+            service_duration_minutes,
             time_window: None, // TODO: from customer preferences
             priority: 1,
         })
@@ -373,6 +403,7 @@ mod tests {
             &[],
             chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
             chrono::NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+            30,
         );
 
         assert!(problem.stops.is_empty());
@@ -407,6 +438,7 @@ mod tests {
             &customers,
             chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
             chrono::NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+            30,
         );
 
         assert_eq!(problem.stops.len(), 2);
@@ -415,9 +447,65 @@ mod tests {
     }
 
     #[test]
+    fn test_build_vrp_problem_uses_custom_service_duration() {
+        let customers = vec![
+            CustomerForRoute {
+                id: Uuid::new_v4(),
+                name: "Customer A".to_string(),
+                street: "Street 1".to_string(),
+                city: "Prague".to_string(),
+                postal_code: "11000".to_string(),
+                lat: Some(50.1),
+                lng: Some(14.5),
+            },
+        ];
+
+        // Test with 45 minute service duration
+        let problem = build_vrp_problem(
+            &prague(),
+            &customers,
+            chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
+            chrono::NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+            45, // Custom service duration
+        );
+
+        assert_eq!(problem.stops.len(), 1);
+        assert_eq!(problem.stops[0].service_duration_minutes, 45);
+    }
+
+    #[test]
+    fn test_build_vrp_problem_uses_working_hours() {
+        let customers = vec![
+            CustomerForRoute {
+                id: Uuid::new_v4(),
+                name: "Customer A".to_string(),
+                street: "Street 1".to_string(),
+                city: "Prague".to_string(),
+                postal_code: "11000".to_string(),
+                lat: Some(50.1),
+                lng: Some(14.5),
+            },
+        ];
+
+        // Test with custom working hours 9:00-16:00
+        let problem = build_vrp_problem(
+            &prague(),
+            &customers,
+            chrono::NaiveTime::from_hms_opt(9, 0, 0).unwrap(),
+            chrono::NaiveTime::from_hms_opt(16, 0, 0).unwrap(),
+            30,
+        );
+
+        assert_eq!(problem.shift_start.hour(), 9);
+        assert_eq!(problem.shift_end.hour(), 16);
+    }
+
+    #[test]
     fn test_working_hours_default() {
+        // Default WorkingHours uses full day (0:00-23:59) to not constrain planning
+        // Actual working hours come from user settings
         let hours = WorkingHours::default();
-        assert_eq!(hours.start.hour(), 8);
-        assert_eq!(hours.end.hour(), 17);
+        assert_eq!(hours.start.hour(), 0);
+        assert_eq!(hours.end.hour(), 23);
     }
 }

@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-01-30 (v0.10.0)
+> **Last Updated:** 2026-01-30 (v0.10.1)
 
 ## Overview
 
@@ -1029,6 +1029,7 @@ let base_url = std::env::var("NOMINATIM_URL")
 - [x] **Depot management** - Multiple depots per user with map selection, geocoding support
 - [x] **Work constraints settings** - Working hours, max revisions, default service duration
 - [x] **Email template settings** - Customizable subject and body templates with variables
+- [x] **Route planning uses settings** - VRP solver uses working hours and service duration from user settings
 
 **In Progress:**
 - [ ] Device management UI
@@ -1144,6 +1145,18 @@ cargo test
 - Email notifications deferred to later phase
 - Invoicing/billing architecture prepared but not implemented
 
+## Recent Changes (v0.10.1)
+
+- **Route Planning Uses User Settings** - VRP solver now uses user's configured settings:
+  - **Working hours** - Shift start/end times from Settings page (instead of hardcoded 0:00-23:59)
+  - **Service duration** - Default visit duration from Settings (instead of hardcoded 30 min)
+  - Falls back to defaults (8:00-17:00, 30 min) if user settings not found
+- **New Tests (TDD)** - Added tests for:
+  - `build_vrp_problem` with custom service duration and working hours
+  - `solve_pragmatic_includes_service_duration_in_total` - verifies service time affects total duration
+  - `solve_pragmatic_longer_service_duration_increases_total` - verifies longer service = longer route
+- **Improved Logging** - Route handler now logs which settings are being used (info level)
+
 ## Recent Changes (v0.10.0)
 
 - **Settings Page** - New UI for user settings with three tabs:
@@ -1161,6 +1174,7 @@ cargo test
 - [x] ~~Self-hosted Nominatim for geocoding~~ (implemented v0.9.0)
 - [x] ~~Settings UI for depots and work constraints~~ (implemented v0.10.0)
 - [x] ~~Device/Revision backend handlers~~ (implemented v0.10.0)
+- [x] ~~Route planning uses user settings~~ (implemented v0.10.1)
 - [ ] Device/Revision frontend UI in CustomerDetail
 - [ ] Dashboard with real statistics
 - [ ] Functional Calendar page

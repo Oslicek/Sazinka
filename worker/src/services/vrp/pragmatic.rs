@@ -272,4 +272,144 @@ mod tests {
         assert_eq!(solution.stops.len(), 2);
         assert!(solution.unassigned.is_empty());
     }
+
+    #[test]
+    fn solve_pragmatic_includes_service_duration_in_total() {
+        // Problem with 2 stops, each with 30 min service duration = 1800 seconds each
+        let problem = VrpProblem {
+            depot: Depot { coordinates: Coordinates { lat: 50.0755, lng: 14.4378 } },
+            shift_start: NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
+            shift_end: NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+            stops: vec![
+                VrpStop {
+                    id: "stop-1".to_string(),
+                    customer_id: Uuid::new_v4(),
+                    customer_name: "Customer A".to_string(),
+                    coordinates: Coordinates { lat: 49.1951, lng: 16.6068 },
+                    service_duration_minutes: 30, // 30 min = 1800 seconds
+                    time_window: None,
+                    priority: 1,
+                },
+                VrpStop {
+                    id: "stop-2".to_string(),
+                    customer_id: Uuid::new_v4(),
+                    customer_name: "Customer B".to_string(),
+                    coordinates: Coordinates { lat: 49.8209, lng: 18.2625 },
+                    service_duration_minutes: 30, // 30 min = 1800 seconds
+                    time_window: None,
+                    priority: 1,
+                },
+            ],
+        };
+
+        // Very short travel times to isolate service duration effect
+        let matrices = DistanceTimeMatrices {
+            distances: vec![
+                vec![0, 100, 100],
+                vec![100, 0, 100],
+                vec![100, 100, 0],
+            ],
+            // Travel times: 60 seconds between any two points
+            durations: vec![
+                vec![0, 60, 60],
+                vec![60, 0, 60],
+                vec![60, 60, 0],
+            ],
+            size: 3,
+        };
+
+        let solution = solve_pragmatic(
+            &problem,
+            &matrices,
+            NaiveDate::from_ymd_opt(2026, 1, 26).unwrap(),
+            &SolverConfig::instant(),
+        ).unwrap();
+
+        // Total service duration = 2 stops × 30 min = 60 min = 3600 seconds
+        // Travel time = depot->A + A->B + B->depot = 3 × 60s = 180 seconds
+        // Total expected = 3600 + 180 = 3780 seconds (63 minutes)
+        
+        // Assert that total duration includes at least the service time
+        let min_expected_duration_seconds = 3600u64; // At least 60 min service time
+        assert!(
+            solution.total_duration_seconds >= min_expected_duration_seconds,
+            "Total duration {} seconds should be >= {} seconds (service time)",
+            solution.total_duration_seconds,
+            min_expected_duration_seconds
+        );
+
+        // Also verify both stops are assigned
+        assert_eq!(solution.stops.len(), 2);
+    }
+
+    #[test]
+    fn solve_pragmatic_longer_service_duration_increases_total() {
+        // Same setup, but with longer service duration
+        let short_problem = VrpProblem {
+            depot: Depot { coordinates: Coordinates { lat: 50.0755, lng: 14.4378 } },
+            shift_start: NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
+            shift_end: NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+            stops: vec![
+                VrpStop {
+                    id: "stop-1".to_string(),
+                    customer_id: Uuid::new_v4(),
+                    customer_name: "Customer A".to_string(),
+                    coordinates: Coordinates { lat: 49.1951, lng: 16.6068 },
+                    service_duration_minutes: 15, // Short: 15 min
+                    time_window: None,
+                    priority: 1,
+                },
+            ],
+        };
+
+        let long_problem = VrpProblem {
+            depot: Depot { coordinates: Coordinates { lat: 50.0755, lng: 14.4378 } },
+            shift_start: NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
+            shift_end: NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+            stops: vec![
+                VrpStop {
+                    id: "stop-1".to_string(),
+                    customer_id: Uuid::new_v4(),
+                    customer_name: "Customer A".to_string(),
+                    coordinates: Coordinates { lat: 49.1951, lng: 16.6068 },
+                    service_duration_minutes: 60, // Long: 60 min
+                    time_window: None,
+                    priority: 1,
+                },
+            ],
+        };
+
+        let matrices = DistanceTimeMatrices {
+            distances: vec![vec![0, 100], vec![100, 0]],
+            durations: vec![vec![0, 60], vec![60, 0]],
+            size: 2,
+        };
+
+        let short_solution = solve_pragmatic(
+            &short_problem,
+            &matrices,
+            NaiveDate::from_ymd_opt(2026, 1, 26).unwrap(),
+            &SolverConfig::instant(),
+        ).unwrap();
+
+        let long_solution = solve_pragmatic(
+            &long_problem,
+            &matrices,
+            NaiveDate::from_ymd_opt(2026, 1, 26).unwrap(),
+            &SolverConfig::instant(),
+        ).unwrap();
+
+        // Long service duration should result in longer total duration
+        // Difference should be at least 45 min (60-15) = 2700 seconds
+        let duration_difference = long_solution.total_duration_seconds as i64 
+            - short_solution.total_duration_seconds as i64;
+        
+        assert!(
+            duration_difference >= 2700,
+            "Long service ({} sec) should be at least 45 min (2700 sec) longer than short ({} sec), but difference is {} sec",
+            long_solution.total_duration_seconds,
+            short_solution.total_duration_seconds,
+            duration_difference
+        );
+    }
 }
