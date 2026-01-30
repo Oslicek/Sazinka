@@ -23,6 +23,7 @@
 13. [Import komunikace (communications.csv)](#13-import-komunikace-communicationscsv)
 14. [Import návštěv (visits.csv)](#14-import-návštěv-visitscsv)
 15. [Pořadí importu a propojování záznamů](#15-pořadí-importu-a-propojování-záznamů)
+16. [Upřesnění a FAQ](#16-upřesnění-a-faq)
 
 ---
 
@@ -1045,3 +1046,193 @@ customer_ref;date;comm_type;direction;subject;content;contact_name;contact_phone
 customer_ref;device_ref;scheduled_date;scheduled_time_start;scheduled_time_end;visit_type;status;result;result_notes;requires_follow_up;follow_up_reason
 12345678;VL-2023-001;2025-01-20;09:00;11:00;revision;planned;;;;;
 +420602123456;;2025-01-22;14:00;;consultation;planned;;;;;
+```
+
+---
+
+## 16. Upřesnění a FAQ
+
+### 16.1 customers.csv – mapování a ukládání
+
+#### Heuristické varování vs. změna typu
+
+Pokud `type` je prázdný a podle pravidel vyjde `person`, ale název obsahuje firemní suffix (`s.r.o.` apod.), **pouze se varuje** – typ se **nezmění**. Automatická změna by byla příliš agresivní; uživatel může typ opravit ručně.
+
+```
+name="Malá firma s.r.o.", type=(prázdné)
+→ type=person + varování "Název vypadá jako firma, ale typ je person"
+```
+
+#### Prázdné name
+
+Pokud `name` chybí, ukládá se `name=null`. **Negeneruje se placeholder** jako "(bez názvu)". Řádek je validní, pokud má alespoň email, phone, ico nebo adresu.
+
+#### Notes a automatické doplňky (více telefonů)
+
+Při více telefonech se další čísla přidávají do `notes` takto:
+
+- Pokud `notes` je prázdné → text začíná přímo `[Import: další tel. ...]`
+- Pokud `notes` obsahuje text → přidá se na **nový řádek** (`\n`)
+
+```
+Původní notes: "Klíče u souseda"
+Po importu:    "Klíče u souseda\n[Import: další tel. +420603333444]"
+```
+
+#### phoneRaw – kdy se ukládá
+
+`phoneRaw` se ukládá **pouze při selhání normalizace**. Při úspěchu se neukládá (pro audit existují jiné mechanismy). Slouží jako recovery field pro pozdější ruční opravu.
+
+#### Email validace – whitespace
+
+Provádí se pouze `trim()` **okrajů**. Whitespace uvnitř (např. `jan @ex.com`) se **neodstraňuje** – je to chyba, email dostane varování "obsahuje mezery" a uloží se jak je. Validace "@" pak selže.
+
+### 16.2 Normalizace telefonů (E.164)
+
+#### originalValue v reportu
+
+Při selhání normalizace (neplatná délka, neznámý formát) se **vždy** uvádí `originalValue` v reportu.
+
+#### CZ čísla s úvodní 0
+
+Pravidlo odstranění `0` se aplikuje **pouze pokud** po odebrání vznikne přesně 9 číslic:
+
+```
+0602123456 → 602123456 (9 číslic) → +420602123456 ✓ (+ varování)
+06021234   → 6021234 (7 číslic) → phone=null, phoneRaw="06021234" (+ varování)
+```
+
+#### Mapa country → calling code
+
+Používáme knihovnu **libphonenumber-js**, která obsahuje kompletní mapu všech zemí. Pokud:
+
+- `country` je známý ISO kód → doplní se předvolba
+- `country` je neznámý → `phone=null`, `phoneRaw` s varováním
+
+#### Více telefonů – pořadí zpracování
+
+1. **Split** podle `,` nebo `/`
+2. **Trim** každého tokenu
+3. **Normalizace** prvního neprázdného tokenu
+4. Ostatní do notes
+
+```
+phone="602111222 , 603333444"
+→ tokeny: ["602111222", "603333444"]
+→ první po trim: "602111222" → normalizace
+```
+
+### 16.3 Adresy a geokódování
+
+#### Varování "adresa neúplná pro geokódování"
+
+Varování se generuje **při importu** zákazníků (ne až v geocoding jobu). Uživatel tak vidí problém ihned v reportu.
+
+#### CZ PSČ – tolerované formáty
+
+| Vstup | Po čištění | Validace |
+|-------|-----------|----------|
+| `110 00` | `11000` | ✓ |
+| `11000` | `11000` | ✓ |
+| `1100` | `1100` | varování (není 5 číslic) |
+| `11000-1234` | `110001234` | varování (není 5 číslic) |
+
+### 16.4 Detekce duplicit a aktualizace
+
+#### Co znamená "aktualizovat existujícího"
+
+**Merge vybraných polí** s těmito pravidly:
+
+1. Prázdná hodnota z CSV **nepřepisuje** existující hodnotu v DB
+2. Hodnota z CSV **přepíše** existující, pokud je vyplněna
+3. **Konfliktní identifikátory** (např. jiné IČO než v DB při match přes email) se **neupdatují**, pouze varování
+
+```
+DB:  { email: "info@abc.cz", ico: "12345678", name: "Firma A" }
+CSV: { email: "info@abc.cz", ico: "87654321", name: "Firma B" }
+→ Match přes email
+→ ico se NEaktualizuje (konflikt) + varování
+→ name se aktualizuje na "Firma B"
+```
+
+#### Priorita dedup – kolize více zákazníků
+
+Pokud CSV řádek matchuje **více různých zákazníků** (např. email patří zákazníkovi A, telefon zákazníkovi B):
+
+1. Vybere se match podle **nejvyšší priority** (IČO > email > phone)
+2. Generuje se **varování** o možné kolizi
+3. Nižší priority se ignorují
+
+#### Definice "prázdné" hodnoty
+
+V celé logice je "prázdné" sjednoceno na `null`:
+
+- `null` → prázdné
+- `""` (prázdný string) → prázdné (konvertuje se na null)
+- `"   "` (whitespace) → prázdné (po trim)
+
+### 16.5 Report importu
+
+#### level='error' vs 'warning'
+
+| Typ problému | Level |
+|-------------|-------|
+| Rozbitá CSV struktura | `error` |
+| Chybějící header | `error` |
+| Nevalidní telefon | `warning` |
+| Nevalidní email | `warning` |
+| Nevalidní PSČ | `warning` |
+| Zákazník nenalezen (devices/revisions) | `error` |
+| Zařízení nenalezeno (revisions) | `error` |
+
+Pro `customers.csv` jsou prakticky všechny datové problémy **varování** (lenient režim). Chyby jsou pouze technické.
+
+#### Row numbering
+
+`rowNumber` je číslo řádku **včetně hlavičky**:
+
+- Hlavička = řádek 1
+- První datový záznam = řádek 2
+- Druhý datový záznam = řádek 3
+
+```
+Řádek 15: [phone] Číslo nelze normalizovat
+→ 15. řádek v souboru = 14. datový záznam
+```
+
+### 16.6 Další entity – propojování
+
+#### customer_ref – telefon bez +
+
+Pokud `customer_ref` **není** IČO (8 číslic) a **neobsahuje** `@`, pokusí se normalizace jako telefon:
+
+```
+customer_ref="602123456" → normalizace jako CZ → +420602123456 → vyhledání
+customer_ref="12345678"  → IČO (8 číslic)
+customer_ref="info@x.cz" → email (obsahuje @)
+```
+
+#### devices.csv – bez serial_number
+
+Pokud `serial_number` chybí a není vyplněna kombinace `device_type + manufacturer + model`, **vytvoří se nové zařízení**. To je záměr – duplicita nelze bezpečně rozpoznat.
+
+#### revisions.csv – status auto-set
+
+Pokud `result` je vyplněn → `status` se automaticky nastaví na `completed`. Pole `completed_at` se **nevyžaduje ani neodvozuje** – je volitelné.
+
+```
+result="passed", status=(prázdné) → status=completed, completed_at=null
+```
+
+#### visits.csv – duplicitní klíč
+
+Duplicitní klíč je: `customer_ref + scheduled_date + visit_type`
+
+Pole `device_ref` **není součástí klíče**. To znamená:
+
+```
+Dvě konzultace v jeden den u stejného zákazníka → sloučí se (update)
+Dvě revize v jeden den (různá zařízení) → sloučí se (záměr – obvykle jde o jednu návštěvu)
+```
+
+Pokud je potřeba více samostatných návštěv stejného typu v jeden den, použijte různé `scheduled_time_start`.
