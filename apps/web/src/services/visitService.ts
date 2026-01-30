@@ -10,6 +10,7 @@ import type {
   ListVisitsRequest,
   ListVisitsResponse,
 } from '@sazinka/shared-types';
+import { createRequest } from '@shared/messages';
 import { useNatsStore } from '../stores/natsStore';
 
 const TEMP_USER_ID = '00000000-0000-0000-0000-000000000001';
@@ -31,12 +32,10 @@ export async function createVisit(
   data: CreateVisitRequest,
   deps = getDefaultDeps()
 ): Promise<Visit> {
+  const request = createRequest(TEMP_USER_ID, data);
   const response = await deps.request<{ payload: Visit }>(
     'sazinka.visit.create',
-    {
-      userId: TEMP_USER_ID,
-      payload: data,
-    }
+    request
   );
   return response.payload;
 }
@@ -48,12 +47,10 @@ export async function listVisits(
   filters: ListVisitsRequest = {},
   deps = getDefaultDeps()
 ): Promise<ListVisitsResponse> {
+  const request = createRequest(TEMP_USER_ID, filters);
   const response = await deps.request<{ payload: ListVisitsResponse }>(
     'sazinka.visit.list',
-    {
-      userId: TEMP_USER_ID,
-      payload: filters,
-    }
+    request
   );
   return response.payload;
 }
@@ -77,12 +74,10 @@ export async function updateVisit(
   data: UpdateVisitRequest,
   deps = getDefaultDeps()
 ): Promise<Visit> {
+  const request = createRequest(TEMP_USER_ID, data);
   const response = await deps.request<{ payload: Visit }>(
     'sazinka.visit.update',
-    {
-      userId: TEMP_USER_ID,
-      payload: data,
-    }
+    request
   );
   return response.payload;
 }
@@ -94,12 +89,10 @@ export async function completeVisit(
   data: CompleteVisitRequest,
   deps = getDefaultDeps()
 ): Promise<Visit> {
+  const request = createRequest(TEMP_USER_ID, data);
   const response = await deps.request<{ payload: Visit }>(
     'sazinka.visit.complete',
-    {
-      userId: TEMP_USER_ID,
-      payload: data,
-    }
+    request
   );
   return response.payload;
 }
@@ -111,12 +104,10 @@ export async function deleteVisit(
   id: string,
   deps = getDefaultDeps()
 ): Promise<boolean> {
+  const request = createRequest(TEMP_USER_ID, { id });
   const response = await deps.request<{ payload: { deleted: boolean } }>(
     'sazinka.visit.delete',
-    {
-      userId: TEMP_USER_ID,
-      payload: { id },
-    }
+    request
   );
   return response.payload.deleted;
 }

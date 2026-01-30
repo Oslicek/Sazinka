@@ -9,6 +9,7 @@ import type {
   ListCommunicationsRequest,
   ListCommunicationsResponse,
 } from '@sazinka/shared-types';
+import { createRequest } from '@shared/messages';
 import { useNatsStore } from '../stores/natsStore';
 
 const TEMP_USER_ID = '00000000-0000-0000-0000-000000000001';
@@ -30,12 +31,10 @@ export async function createCommunication(
   data: CreateCommunicationRequest,
   deps = getDefaultDeps()
 ): Promise<Communication> {
+  const request = createRequest(TEMP_USER_ID, data);
   const response = await deps.request<{ payload: Communication }>(
     'sazinka.communication.create',
-    {
-      userId: TEMP_USER_ID,
-      payload: data,
-    }
+    request
   );
   return response.payload;
 }
@@ -47,12 +46,10 @@ export async function listCommunications(
   filters: ListCommunicationsRequest = {},
   deps = getDefaultDeps()
 ): Promise<ListCommunicationsResponse> {
+  const request = createRequest(TEMP_USER_ID, filters);
   const response = await deps.request<{ payload: ListCommunicationsResponse }>(
     'sazinka.communication.list',
-    {
-      userId: TEMP_USER_ID,
-      payload: filters,
-    }
+    request
   );
   return response.payload;
 }
@@ -76,12 +73,10 @@ export async function updateCommunication(
   data: UpdateCommunicationRequest,
   deps = getDefaultDeps()
 ): Promise<Communication> {
+  const request = createRequest(TEMP_USER_ID, data);
   const response = await deps.request<{ payload: Communication }>(
     'sazinka.communication.update',
-    {
-      userId: TEMP_USER_ID,
-      payload: data,
-    }
+    request
   );
   return response.payload;
 }
@@ -93,12 +88,10 @@ export async function deleteCommunication(
   id: string,
   deps = getDefaultDeps()
 ): Promise<boolean> {
+  const request = createRequest(TEMP_USER_ID, { id });
   const response = await deps.request<{ payload: { deleted: boolean } }>(
     'sazinka.communication.delete',
-    {
-      userId: TEMP_USER_ID,
-      payload: { id },
-    }
+    request
   );
   return response.payload.deleted;
 }
