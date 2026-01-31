@@ -10,6 +10,7 @@ pub mod revision;
 pub mod route;
 pub mod settings;
 pub mod user;
+pub mod vehicle;
 pub mod visit;
 
 pub use communication::*;
@@ -22,4 +23,5 @@ pub use revision::*;
 pub use route::*;
 pub use settings::*;
 pub use user::*;
+pub use vehicle::*;
 pub use visit::*;

@@ -8,6 +8,8 @@ interface CalendarGridProps {
   year: number;
   month: number;
   revisions: Revision[];
+  /** Which date field to group by: 'due' or 'scheduled' */
+  dateField?: 'due' | 'scheduled';
   onDayClick?: (day: CalendarDay, revisions: Revision[]) => void;
 }
 
@@ -16,9 +18,9 @@ const WEEKDAY_NAMES = ['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'];
 /**
  * Calendar grid component displaying a month with revisions
  */
-export function CalendarGrid({ year, month, revisions, onDayClick }: CalendarGridProps) {
+export function CalendarGrid({ year, month, revisions, dateField = 'due', onDayClick }: CalendarGridProps) {
   const days = getMonthDays(year, month);
-  const revisionsByDay = groupRevisionsByDay(revisions);
+  const revisionsByDay = groupRevisionsByDay(revisions, dateField);
 
   return (
     <div className={styles.grid}>

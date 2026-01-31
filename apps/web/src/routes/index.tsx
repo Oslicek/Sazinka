@@ -12,6 +12,7 @@ import { Calendar } from '@/pages/Calendar';
 import { Planner } from '@/pages/Planner';
 import { Admin } from '@/pages/Admin';
 import { Settings } from '@/pages/Settings';
+import { CallQueue } from '@/pages/CallQueue';
 
 // Root route with layout
 const rootRoute = createRootRoute({
@@ -71,6 +72,13 @@ const settingsRoute = createRoute({
   component: Settings,
 });
 
+// Call Queue
+const callQueueRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/queue',
+  component: CallQueue,
+});
+
 // Route tree
 export const routeTree = rootRoute.addChildren([
   indexRoute,
@@ -78,6 +86,7 @@ export const routeTree = rootRoute.addChildren([
   customerDetailRoute,
   calendarRoute,
   plannerRoute,
+  callQueueRoute,
   adminRoute,
   settingsRoute,
 ]);

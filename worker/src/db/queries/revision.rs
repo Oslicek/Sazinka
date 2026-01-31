@@ -2,7 +2,7 @@
 
 use sqlx::PgPool;
 use uuid::Uuid;
-use chrono::{Datelike, NaiveDate, Utc};
+use chrono::{Datelike, NaiveDate, NaiveTime, Utc};
 use anyhow::Result;
 
 use crate::types::revision::{Revision, CreateRevisionRequest, UpdateRevisionRequest, RevisionStats};
@@ -217,6 +217,10 @@ pub async fn list_revisions_for_date(
 }
 
 /// List revisions with optional filters
+/// 
+/// `date_type` can be:
+/// - "due" (default): filter by due_date
+/// - "scheduled": filter by scheduled_date
 pub async fn list_revisions(
     pool: &PgPool,
     user_id: Uuid,
@@ -225,13 +229,22 @@ pub async fn list_revisions(
     status: Option<&str>,
     from_date: Option<NaiveDate>,
     to_date: Option<NaiveDate>,
+    date_type: Option<&str>,
     limit: Option<i64>,
     offset: Option<i64>,
 ) -> Result<Vec<Revision>> {
     let limit = limit.unwrap_or(100);
     let offset = offset.unwrap_or(0);
+    let use_scheduled = date_type == Some("scheduled");
     
-    let revisions = sqlx::query_as::<_, Revision>(
+    // Build dynamic date filter and order
+    let (date_field, order_field) = if use_scheduled {
+        ("r.scheduled_date", "r.scheduled_date ASC, r.scheduled_time_start ASC NULLS LAST")
+    } else {
+        ("r.due_date", "r.due_date ASC")
+    };
+    
+    let query = format!(
         r#"
         SELECT
             r.id, r.device_id, r.customer_id, r.user_id, r.status,
@@ -245,22 +258,25 @@ pub async fn list_revisions(
           AND ($2::uuid IS NULL OR r.customer_id = $2)
           AND ($3::uuid IS NULL OR r.device_id = $3)
           AND ($4::text IS NULL OR r.status = $4)
-          AND ($5::date IS NULL OR r.due_date >= $5)
-          AND ($6::date IS NULL OR r.due_date <= $6)
-        ORDER BY r.due_date ASC
+          AND ($5::date IS NULL OR {} >= $5)
+          AND ($6::date IS NULL OR {} <= $6)
+        ORDER BY {}
         LIMIT $7 OFFSET $8
-        "#
-    )
-    .bind(user_id)
-    .bind(customer_id)
-    .bind(device_id)
-    .bind(status)
-    .bind(from_date)
-    .bind(to_date)
-    .bind(limit)
-    .bind(offset)
-    .fetch_all(pool)
-    .await?;
+        "#,
+        date_field, date_field, order_field
+    );
+    
+    let revisions = sqlx::query_as::<_, Revision>(&query)
+        .bind(user_id)
+        .bind(customer_id)
+        .bind(device_id)
+        .bind(status)
+        .bind(from_date)
+        .bind(to_date)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(pool)
+        .await?;
 
     Ok(revisions)
 }
@@ -513,4 +529,258 @@ pub async fn get_revision_suggestions(
         .await?;
     
     Ok((suggestions, total.0))
+}
+
+// ============================================================================
+// Call Queue Queries
+// ============================================================================
+
+use crate::types::revision::{CallQueueItem, CallQueueRequest, CallQueueResponse};
+
+/// Get the call queue - revisions needing customer contact
+/// 
+/// Returns revisions that:
+/// - Are not yet scheduled (scheduled_date IS NULL)
+/// - Are not completed or cancelled
+/// - Are not snoozed (snooze_until IS NULL or snooze_until <= today)
+/// - Have due_date within a reasonable window (past 30 days to future 60 days)
+pub async fn get_call_queue(
+    pool: &PgPool,
+    user_id: Uuid,
+    request: CallQueueRequest,
+) -> Result<CallQueueResponse> {
+    let today = Utc::now().date_naive();
+    let limit = request.limit.unwrap_or(50) as i64;
+    let offset = request.offset.unwrap_or(0) as i64;
+
+    // Build WHERE clause for filters
+    let mut conditions = vec![
+        "r.user_id = $1".to_string(),
+        "r.status IN ('upcoming', 'scheduled')".to_string(),
+        "r.scheduled_date IS NULL".to_string(),
+        "(r.snooze_until IS NULL OR r.snooze_until <= $2)".to_string(),
+        "r.due_date BETWEEN $2 - INTERVAL '30 days' AND $2 + INTERVAL '60 days'".to_string(),
+    ];
+
+    if let Some(ref area) = request.area {
+        conditions.push(format!("c.postal_code LIKE '{}%'", area));
+    }
+
+    if let Some(ref device_type) = request.device_type {
+        conditions.push(format!("d.device_type = '{}'", device_type));
+    }
+
+    // Priority filter
+    if let Some(ref priority) = request.priority_filter {
+        match priority.as_str() {
+            "overdue" => conditions.push("r.due_date < $2".to_string()),
+            "due_soon" => conditions.push("r.due_date BETWEEN $2 AND $2 + INTERVAL '7 days'".to_string()),
+            "upcoming" => conditions.push("r.due_date > $2 + INTERVAL '7 days'".to_string()),
+            _ => {} // "all" or unknown - no filter
+        }
+    }
+
+    let where_clause = conditions.join(" AND ");
+
+    let query = format!(
+        r#"
+        SELECT
+            r.id,
+            r.device_id,
+            r.customer_id,
+            r.user_id,
+            r.status,
+            r.due_date,
+            r.snooze_until,
+            r.snooze_reason,
+            c.name as customer_name,
+            c.phone as customer_phone,
+            c.email as customer_email,
+            c.street as customer_street,
+            c.city as customer_city,
+            c.postal_code as customer_postal_code,
+            d.model as device_name,
+            d.device_type,
+            (r.due_date - $2::date)::int as days_until_due,
+            CASE
+                WHEN r.due_date < $2 THEN 'overdue'
+                WHEN r.due_date <= $2 + INTERVAL '7 days' THEN 'due_this_week'
+                WHEN r.due_date <= $2 + INTERVAL '14 days' THEN 'due_soon'
+                ELSE 'upcoming'
+            END as priority,
+            (SELECT MAX(created_at) FROM communications WHERE customer_id = c.id) as last_contact_at,
+            (SELECT COUNT(*) FROM communications WHERE customer_id = c.id AND created_at > $2 - INTERVAL '30 days') as contact_attempts
+        FROM revisions r
+        INNER JOIN customers c ON r.customer_id = c.id
+        INNER JOIN devices d ON r.device_id = d.id
+        WHERE {}
+        ORDER BY
+            CASE WHEN r.due_date < $2 THEN 0 ELSE 1 END,
+            r.due_date ASC
+        LIMIT $3 OFFSET $4
+        "#,
+        where_clause
+    );
+
+    let items = sqlx::query_as::<_, CallQueueItem>(&query)
+        .bind(user_id)
+        .bind(today)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(pool)
+        .await?;
+
+    // Get counts
+    let count_query = format!(
+        "SELECT COUNT(*) FROM revisions r 
+         INNER JOIN customers c ON r.customer_id = c.id 
+         INNER JOIN devices d ON r.device_id = d.id
+         WHERE {}",
+        where_clause
+    );
+
+    let total: (i64,) = sqlx::query_as(&count_query)
+        .bind(user_id)
+        .bind(today)
+        .fetch_one(pool)
+        .await?;
+
+    // Get overdue count
+    let overdue_count: (i64,) = sqlx::query_as(
+        r#"
+        SELECT COUNT(*) FROM revisions r
+        WHERE r.user_id = $1
+          AND r.status IN ('upcoming', 'scheduled')
+          AND r.scheduled_date IS NULL
+          AND (r.snooze_until IS NULL OR r.snooze_until <= $2)
+          AND r.due_date < $2
+        "#
+    )
+    .bind(user_id)
+    .bind(today)
+    .fetch_one(pool)
+    .await?;
+
+    // Get due soon count (within 7 days)
+    let due_soon_count: (i64,) = sqlx::query_as(
+        r#"
+        SELECT COUNT(*) FROM revisions r
+        WHERE r.user_id = $1
+          AND r.status IN ('upcoming', 'scheduled')
+          AND r.scheduled_date IS NULL
+          AND (r.snooze_until IS NULL OR r.snooze_until <= $2)
+          AND r.due_date BETWEEN $2 AND $2 + INTERVAL '7 days'
+        "#
+    )
+    .bind(user_id)
+    .bind(today)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(CallQueueResponse {
+        items,
+        total: total.0,
+        overdue_count: overdue_count.0,
+        due_soon_count: due_soon_count.0,
+    })
+}
+
+/// Snooze a revision (postpone contact until a future date)
+pub async fn snooze_revision(
+    pool: &PgPool,
+    user_id: Uuid,
+    revision_id: Uuid,
+    snooze_until: NaiveDate,
+    reason: Option<String>,
+) -> Result<Option<Revision>> {
+    let revision = sqlx::query_as::<_, Revision>(
+        r#"
+        UPDATE revisions
+        SET snooze_until = $1, snooze_reason = $2, updated_at = NOW()
+        WHERE id = $3 AND user_id = $4
+        RETURNING id, device_id, customer_id, user_id, status,
+                  due_date, scheduled_date, scheduled_time_start, scheduled_time_end,
+                  completed_at, duration_minutes, result, findings,
+                  created_at, updated_at, snooze_until, snooze_reason,
+                  assigned_vehicle_id, route_order
+        "#
+    )
+    .bind(snooze_until)
+    .bind(reason)
+    .bind(revision_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(revision)
+}
+
+/// Clear snooze from a revision
+pub async fn clear_snooze(
+    pool: &PgPool,
+    user_id: Uuid,
+    revision_id: Uuid,
+) -> Result<Option<Revision>> {
+    let revision = sqlx::query_as::<_, Revision>(
+        r#"
+        UPDATE revisions
+        SET snooze_until = NULL, snooze_reason = NULL, updated_at = NOW()
+        WHERE id = $3 AND user_id = $4
+        RETURNING id, device_id, customer_id, user_id, status,
+                  due_date, scheduled_date, scheduled_time_start, scheduled_time_end,
+                  completed_at, duration_minutes, result, findings,
+                  created_at, updated_at, snooze_until, snooze_reason,
+                  assigned_vehicle_id, route_order
+        "#
+    )
+    .bind(revision_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(revision)
+}
+
+/// Schedule a revision (set date, time window, and optionally vehicle)
+pub async fn schedule_revision(
+    pool: &PgPool,
+    user_id: Uuid,
+    revision_id: Uuid,
+    scheduled_date: NaiveDate,
+    time_start: Option<NaiveTime>,
+    time_end: Option<NaiveTime>,
+    vehicle_id: Option<Uuid>,
+    duration_minutes: Option<i32>,
+) -> Result<Option<Revision>> {
+    let revision = sqlx::query_as::<_, Revision>(
+        r#"
+        UPDATE revisions
+        SET scheduled_date = $1,
+            scheduled_time_start = $2,
+            scheduled_time_end = $3,
+            assigned_vehicle_id = $4,
+            duration_minutes = COALESCE($5, duration_minutes),
+            status = 'scheduled',
+            snooze_until = NULL,
+            snooze_reason = NULL,
+            updated_at = NOW()
+        WHERE id = $6 AND user_id = $7
+        RETURNING id, device_id, customer_id, user_id, status,
+                  due_date, scheduled_date, scheduled_time_start, scheduled_time_end,
+                  completed_at, duration_minutes, result, findings,
+                  created_at, updated_at, snooze_until, snooze_reason,
+                  assigned_vehicle_id, route_order
+        "#
+    )
+    .bind(scheduled_date)
+    .bind(time_start)
+    .bind(time_end)
+    .bind(vehicle_id)
+    .bind(duration_minutes)
+    .bind(revision_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(revision)
 }

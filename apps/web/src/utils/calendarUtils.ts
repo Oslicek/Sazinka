@@ -88,15 +88,22 @@ function createCalendarDay(date: Date, currentMonth: number, today: Date): Calen
 }
 
 /**
- * Group revisions by their scheduled date (or due date if not scheduled)
+ * Group revisions by a specific date field
+ * @param revisions - list of revisions to group
+ * @param dateField - which date field to use: 'due' for dueDate, 'scheduled' for scheduledDate
  * Returns a map of dateKey -> revisions[]
  */
-export function groupRevisionsByDay(revisions: Revision[]): Record<string, Revision[]> {
+export function groupRevisionsByDay(
+  revisions: Revision[], 
+  dateField: 'due' | 'scheduled' = 'due'
+): Record<string, Revision[]> {
   const grouped: Record<string, Revision[]> = {};
 
   for (const revision of revisions) {
-    // Use scheduled date if available, otherwise use due date
-    const dateStr = revision.scheduledDate || revision.dueDate;
+    // Use the specified date field
+    const dateStr = dateField === 'scheduled' 
+      ? revision.scheduledDate 
+      : revision.dueDate;
     
     if (!dateStr) {
       continue;

@@ -3,6 +3,9 @@ import type { SuccessResponse, ErrorResponse } from '@shared/messages';
 import { createRequest } from '@shared/messages';
 import { useNatsStore } from '../stores/natsStore';
 
+// Re-export types
+export type { Revision };
+
 /**
  * Dependencies for revision service (for testing)
  */
@@ -68,6 +71,8 @@ export interface ListRevisionsFilters {
   status?: string;
   fromDate?: string;
   toDate?: string;
+  /** Which date field to filter: "due" (default) or "scheduled" */
+  dateType?: 'due' | 'scheduled';
   limit?: number;
   offset?: number;
 }
@@ -122,6 +127,64 @@ export interface SuggestRevisionsRequest {
 export interface SuggestRevisionsResponse {
   suggestions: RevisionSuggestion[];
   totalCandidates: number;
+}
+
+// ============================================================================
+// Call Queue Types (Phase 6A)
+// ============================================================================
+
+export interface CallQueueRequest {
+  area?: string;
+  deviceType?: string;
+  priorityFilter?: 'all' | 'overdue' | 'due_soon' | 'upcoming';
+  limit?: number;
+  offset?: number;
+}
+
+export interface CallQueueItem {
+  id: string;
+  deviceId: string;
+  customerId: string;
+  userId: string;
+  status: string;
+  dueDate: string;
+  snoozeUntil: string | null;
+  snoozeReason: string | null;
+  customerName: string;
+  customerPhone: string | null;
+  customerEmail: string | null;
+  customerStreet: string;
+  customerCity: string;
+  customerPostalCode: string;
+  deviceName: string | null;
+  deviceType: string;
+  daysUntilDue: number;
+  priority: 'overdue' | 'due_this_week' | 'due_soon' | 'upcoming';
+  lastContactAt: string | null;
+  contactAttempts: number;
+}
+
+export interface CallQueueResponse {
+  items: CallQueueItem[];
+  total: number;
+  overdueCount: number;
+  dueSoonCount: number;
+}
+
+export interface SnoozeRevisionRequest {
+  id: string;
+  snoozeUntil: string;
+  reason?: string;
+}
+
+export interface ScheduleRevisionRequest {
+  id: string;
+  scheduledDate: string;
+  timeWindowStart?: string;
+  timeWindowEnd?: string;
+  assignedVehicleId?: string;
+  durationMinutes?: number;
+  notes?: string;
 }
 
 // ============================================================================
@@ -323,6 +386,76 @@ export async function getSuggestedRevisions(
 
   const response = await deps.request<typeof request, NatsResponse<SuggestRevisionsResponse>>(
     'sazinka.revision.suggest',
+    request
+  );
+
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+
+  return response.payload;
+}
+
+// ============================================================================
+// Call Queue Service Functions (Phase 6A)
+// ============================================================================
+
+/**
+ * Get the call queue - revisions needing customer contact
+ */
+export async function getCallQueue(
+  userId: string,
+  filters: CallQueueRequest = {},
+  deps: RevisionServiceDeps = getDefaultDeps()
+): Promise<CallQueueResponse> {
+  const request = createRequest(userId, filters);
+
+  const response = await deps.request<typeof request, NatsResponse<CallQueueResponse>>(
+    'sazinka.revision.queue',
+    request
+  );
+
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+
+  return response.payload;
+}
+
+/**
+ * Snooze a revision - postpone contact until a future date
+ */
+export async function snoozeRevision(
+  userId: string,
+  data: SnoozeRevisionRequest,
+  deps: RevisionServiceDeps = getDefaultDeps()
+): Promise<Revision> {
+  const request = createRequest(userId, data);
+
+  const response = await deps.request<typeof request, NatsResponse<Revision>>(
+    'sazinka.revision.snooze',
+    request
+  );
+
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+
+  return response.payload;
+}
+
+/**
+ * Schedule a revision - set date, time window, and optionally vehicle
+ */
+export async function scheduleRevision(
+  userId: string,
+  data: ScheduleRevisionRequest,
+  deps: RevisionServiceDeps = getDefaultDeps()
+): Promise<Revision> {
+  const request = createRequest(userId, data);
+
+  const response = await deps.request<typeof request, NatsResponse<Revision>>(
+    'sazinka.revision.schedule',
     request
   );
 

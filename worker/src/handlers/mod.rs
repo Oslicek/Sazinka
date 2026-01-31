@@ -11,6 +11,7 @@ pub mod ping;
 pub mod revision;
 pub mod route;
 pub mod settings;
+pub mod vehicle;
 pub mod visit;
 
 use std::sync::Arc;
@@ -68,6 +69,9 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let revision_upcoming_sub = client.subscribe("sazinka.revision.upcoming").await?;
     let revision_stats_sub = client.subscribe("sazinka.revision.stats").await?;
     let revision_suggest_sub = client.subscribe("sazinka.revision.suggest").await?;
+    let revision_queue_sub = client.subscribe("sazinka.revision.queue").await?;
+    let revision_snooze_sub = client.subscribe("sazinka.revision.snooze").await?;
+    let revision_schedule_sub = client.subscribe("sazinka.revision.schedule").await?;
     
     // Settings subjects
     let settings_get_sub = client.subscribe("sazinka.settings.get").await?;
@@ -94,6 +98,12 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let visit_update_sub = client.subscribe("sazinka.visit.update").await?;
     let visit_complete_sub = client.subscribe("sazinka.visit.complete").await?;
     let visit_delete_sub = client.subscribe("sazinka.visit.delete").await?;
+    
+    // Vehicle subjects
+    let vehicle_create_sub = client.subscribe("sazinka.vehicle.create").await?;
+    let vehicle_list_sub = client.subscribe("sazinka.vehicle.list").await?;
+    let vehicle_update_sub = client.subscribe("sazinka.vehicle.update").await?;
+    let vehicle_delete_sub = client.subscribe("sazinka.vehicle.delete").await?;
     
     // Import subjects
     let import_device_sub = client.subscribe("sazinka.import.device").await?;
@@ -133,6 +143,9 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let client_revision_upcoming = client.clone();
     let client_revision_stats = client.clone();
     let client_revision_suggest = client.clone();
+    let client_revision_queue = client.clone();
+    let client_revision_snooze = client.clone();
+    let client_revision_schedule = client.clone();
     
     let pool_customer_create = pool.clone();
     let pool_customer_list = pool.clone();
@@ -161,6 +174,9 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_revision_upcoming = pool.clone();
     let pool_revision_stats = pool.clone();
     let pool_revision_suggest = pool.clone();
+    let pool_revision_queue = pool.clone();
+    let pool_revision_snooze = pool.clone();
+    let pool_revision_schedule = pool.clone();
     
     // Settings handler clones
     let client_settings_get = client.clone();
@@ -212,6 +228,18 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_visit_update = pool.clone();
     let pool_visit_complete = pool.clone();
     let pool_visit_delete = pool.clone();
+    
+    // Vehicle handler clones
+    let client_vehicle_create = client.clone();
+    let client_vehicle_list = client.clone();
+    let client_vehicle_update = client.clone();
+    let client_vehicle_delete = client.clone();
+    
+    // Vehicle pool clones
+    let pool_vehicle_create = pool.clone();
+    let pool_vehicle_list = pool.clone();
+    let pool_vehicle_update = pool.clone();
+    let pool_vehicle_delete = pool.clone();
     
     // Import handler clones
     let client_import_device = client.clone();
@@ -336,6 +364,18 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         revision::handle_suggest(client_revision_suggest, revision_suggest_sub, pool_revision_suggest).await
     });
     
+    let revision_queue_handle = tokio::spawn(async move {
+        revision::handle_queue(client_revision_queue, revision_queue_sub, pool_revision_queue).await
+    });
+    
+    let revision_snooze_handle = tokio::spawn(async move {
+        revision::handle_snooze(client_revision_snooze, revision_snooze_sub, pool_revision_snooze).await
+    });
+    
+    let revision_schedule_handle = tokio::spawn(async move {
+        revision::handle_schedule(client_revision_schedule, revision_schedule_sub, pool_revision_schedule).await
+    });
+    
     // Settings handlers
     let settings_get_handle = tokio::spawn(async move {
         settings::handle_get_settings(client_settings_get, settings_get_sub, pool_settings_get).await
@@ -410,6 +450,23 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     
     let visit_delete_handle = tokio::spawn(async move {
         visit::handle_delete(client_visit_delete, visit_delete_sub, pool_visit_delete).await
+    });
+    
+    // Vehicle handlers
+    let vehicle_create_handle = tokio::spawn(async move {
+        vehicle::handle_create(client_vehicle_create, vehicle_create_sub, pool_vehicle_create).await
+    });
+    
+    let vehicle_list_handle = tokio::spawn(async move {
+        vehicle::handle_list(client_vehicle_list, vehicle_list_sub, pool_vehicle_list).await
+    });
+    
+    let vehicle_update_handle = tokio::spawn(async move {
+        vehicle::handle_update(client_vehicle_update, vehicle_update_sub, pool_vehicle_update).await
+    });
+    
+    let vehicle_delete_handle = tokio::spawn(async move {
+        vehicle::handle_delete(client_vehicle_delete, vehicle_delete_sub, pool_vehicle_delete).await
     });
     
     // Import handlers
@@ -574,6 +631,15 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         result = revision_suggest_handle => {
             error!("Revision suggest handler finished: {:?}", result);
         }
+        result = revision_queue_handle => {
+            error!("Revision queue handler finished: {:?}", result);
+        }
+        result = revision_snooze_handle => {
+            error!("Revision snooze handler finished: {:?}", result);
+        }
+        result = revision_schedule_handle => {
+            error!("Revision schedule handler finished: {:?}", result);
+        }
         // Settings handlers
         result = settings_get_handle => {
             error!("Settings get handler finished: {:?}", result);
@@ -631,6 +697,19 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         }
         result = visit_delete_handle => {
             error!("Visit delete handler finished: {:?}", result);
+        }
+        // Vehicle handlers
+        result = vehicle_create_handle => {
+            error!("Vehicle create handler finished: {:?}", result);
+        }
+        result = vehicle_list_handle => {
+            error!("Vehicle list handler finished: {:?}", result);
+        }
+        result = vehicle_update_handle => {
+            error!("Vehicle update handler finished: {:?}", result);
+        }
+        result = vehicle_delete_handle => {
+            error!("Vehicle delete handler finished: {:?}", result);
         }
         // Import handlers
         result = import_device_handle => {

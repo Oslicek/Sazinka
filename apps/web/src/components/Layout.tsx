@@ -20,6 +20,7 @@ export function Layout({ children }: LayoutProps) {
           <NavLink to="/">Dashboard</NavLink>
           <NavLink to="/customers">Zákazníci</NavLink>
           <NavLink to="/calendar">Kalendář</NavLink>
+          <NavLink to="/queue">Fronta</NavLink>
           <NavLink to="/planner">Plánování</NavLink>
           <NavLink to="/settings">Nastavení</NavLink>
           <NavLink to="/admin">Admin</NavLink>

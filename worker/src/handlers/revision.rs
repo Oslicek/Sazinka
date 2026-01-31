@@ -4,7 +4,7 @@ use anyhow::Result;
 use async_nats::{Client, Subscriber};
 use futures::StreamExt;
 use sqlx::PgPool;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::db::queries;
@@ -15,6 +15,7 @@ use crate::types::revision::{
     CreateRevisionRequest, UpdateRevisionRequest, CompleteRevisionRequest,
     ListRevisionsRequest, UpcomingRevisionsRequest, RevisionStats, Revision,
     SuggestRevisionsRequest, SuggestRevisionsResponse,
+    CallQueueRequest, CallQueueResponse, SnoozeRevisionRequest, ScheduleRevisionRequest,
 };
 
 /// Response for list of revisions
@@ -143,6 +144,7 @@ pub async fn handle_list(
             request.payload.status.as_deref(),
             request.payload.from_date,
             request.payload.to_date,
+            request.payload.date_type.as_deref(),
             request.payload.limit,
             request.payload.offset,
         ).await {
@@ -627,6 +629,190 @@ pub async fn handle_suggest(
             }
             Err(e) => {
                 error!("Failed to get revision suggestions: {}", e);
+                let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Handle revision.queue messages - get call queue
+pub async fn handle_queue(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received revision.queue message");
+
+        let reply = match msg.reply {
+            Some(ref reply) => reply.clone(),
+            None => {
+                warn!("Message without reply subject");
+                continue;
+            }
+        };
+
+        let request: Request<CallQueueRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("Failed to parse request: {}", e);
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        let user_id = match request.user_id {
+            Some(id) => id,
+            None => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        match queries::revision::get_call_queue(&pool, user_id, request.payload).await {
+            Ok(queue_response) => {
+                let response = SuccessResponse::new(request.id, queue_response);
+                let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+            }
+            Err(e) => {
+                error!("Failed to get call queue: {}", e);
+                let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Handle revision.snooze messages - snooze a revision
+pub async fn handle_snooze(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received revision.snooze message");
+
+        let reply = match msg.reply {
+            Some(ref reply) => reply.clone(),
+            None => {
+                warn!("Message without reply subject");
+                continue;
+            }
+        };
+
+        let request: Request<SnoozeRevisionRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("Failed to parse request: {}", e);
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        let user_id = match request.user_id {
+            Some(id) => id,
+            None => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        match queries::revision::snooze_revision(
+            &pool,
+            user_id,
+            request.payload.id,
+            request.payload.snooze_until,
+            request.payload.reason.clone(),
+        ).await {
+            Ok(Some(revision)) => {
+                let response = SuccessResponse::new(request.id, revision);
+                let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+            }
+            Ok(None) => {
+                let error = ErrorResponse::new(request.id, "NOT_FOUND", "Revision not found");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+            Err(e) => {
+                error!("Failed to snooze revision: {}", e);
+                let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Handle revision.schedule messages - schedule a revision
+pub async fn handle_schedule(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received revision.schedule message");
+
+        let reply = match msg.reply {
+            Some(ref reply) => reply.clone(),
+            None => {
+                warn!("Message without reply subject");
+                continue;
+            }
+        };
+
+        let request: Request<ScheduleRevisionRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("Failed to parse request: {}", e);
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        let user_id = match request.user_id {
+            Some(id) => id,
+            None => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        info!("Scheduling revision {} for user {} on {}", 
+            request.payload.id, user_id, request.payload.scheduled_date);
+
+        match queries::revision::schedule_revision(
+            &pool,
+            user_id,
+            request.payload.id,
+            request.payload.scheduled_date,
+            request.payload.time_window_start,
+            request.payload.time_window_end,
+            request.payload.assigned_vehicle_id,
+            request.payload.duration_minutes,
+        ).await {
+            Ok(Some(revision)) => {
+                info!("Successfully scheduled revision {} for {}", revision.id, revision.scheduled_date.unwrap());
+                let response = SuccessResponse::new(request.id, revision);
+                let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+            }
+            Ok(None) => {
+                warn!("Revision {} not found for user {}", request.payload.id, user_id);
+                let error = ErrorResponse::new(request.id, "NOT_FOUND", "Revision not found");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+            Err(e) => {
+                error!("Failed to schedule revision: {}", e);
                 let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
             }

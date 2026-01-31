@@ -4,7 +4,7 @@ import { useNatsStore } from '../stores/natsStore';
 import { v4 as uuidv4 } from 'uuid';
 import type { RoutePlanResponse, PlannedRouteStop } from '@sazinka/shared-types';
 import * as settingsService from '../services/settingsService';
-import { getSuggestedRevisions, type RevisionSuggestion } from '../services/revisionService';
+import { getSuggestedRevisions, listRevisions, type RevisionSuggestion, type Revision } from '../services/revisionService';
 import * as routeService from '../services/routeService';
 import {
   DndContext,
@@ -117,11 +117,19 @@ export function Planner() {
   const [depotLoading, setDepotLoading] = useState(true);
   const depotMarkerRef = useRef<maplibregl.Marker | null>(null);
   
+  // View mode: 'suggestions' or 'scheduled'
+  type ViewMode = 'suggestions' | 'scheduled';
+  const [viewMode, setViewMode] = useState<ViewMode>('suggestions');
+  
   // Smart suggestions state
   const [suggestions, setSuggestions] = useState<RevisionSuggestion[]>([]);
   const [selectedSuggestionIds, setSelectedSuggestionIds] = useState<Set<string>>(new Set());
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [totalCandidates, setTotalCandidates] = useState(0);
+  
+  // Scheduled revisions state
+  const [scheduledRevisions, setScheduledRevisions] = useState<Revision[]>([]);
+  const [scheduledLoading, setScheduledLoading] = useState(false);
   
   // Drag/drop state
   const [lockedStops, setLockedStops] = useState<Set<string>>(new Set());
@@ -196,6 +204,32 @@ export function Planner() {
   useEffect(() => {
     loadSuggestions();
   }, [loadSuggestions]);
+
+  // Load scheduled revisions when date changes
+  const loadScheduledRevisions = useCallback(async () => {
+    if (!isConnected) return;
+    
+    setScheduledLoading(true);
+    try {
+      const response = await listRevisions(USER_ID, {
+        fromDate: selectedDate,
+        toDate: selectedDate,
+        dateType: 'scheduled',
+        limit: 50,
+      });
+      setScheduledRevisions(response.items);
+    } catch (err) {
+      console.error('Failed to load scheduled revisions:', err);
+      setScheduledRevisions([]);
+    } finally {
+      setScheduledLoading(false);
+    }
+  }, [isConnected, selectedDate]);
+
+  // Load scheduled revisions on date change
+  useEffect(() => {
+    loadScheduledRevisions();
+  }, [loadScheduledRevisions]);
 
   // Toggle suggestion selection
   const toggleSuggestion = useCallback((id: string) => {
@@ -536,6 +570,17 @@ export function Planner() {
     return labels[reason] || reason;
   };
 
+  const getStatusLabel = (status: string): string => {
+    const labels: Record<string, string> = {
+      upcoming: 'Nadcházející',
+      scheduled: 'Naplánováno',
+      confirmed: 'Potvrzeno',
+      completed: 'Dokončeno',
+      cancelled: 'Zrušeno',
+    };
+    return labels[status] || status;
+  };
+
   // Handle drag end - reorder stops
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
@@ -711,90 +756,160 @@ export function Planner() {
           </span>
         </div>
 
-        {/* Smart Suggestions */}
-        <div className={styles.suggestions}>
-          <div className={styles.suggestionsHeader}>
-            <h3>Doporučené revize ({selectedSuggestionIds.size}/{suggestions.length})</h3>
-            <div className={styles.suggestionsActions}>
-              <button 
-                type="button" 
-                className={styles.selectButton}
-                onClick={selectAllSuggestions}
-                disabled={suggestionsLoading}
-              >
-                Vše
-              </button>
-              <button 
-                type="button" 
-                className={styles.selectButton}
-                onClick={deselectAllSuggestions}
-                disabled={suggestionsLoading}
-              >
-                Nic
-              </button>
+        {/* View Mode Tabs */}
+        <div className={styles.viewTabs}>
+          <button
+            className={`${styles.viewTab} ${viewMode === 'suggestions' ? styles.activeTab : ''}`}
+            onClick={() => setViewMode('suggestions')}
+          >
+            Doporučené ({suggestions.length})
+          </button>
+          <button
+            className={`${styles.viewTab} ${viewMode === 'scheduled' ? styles.activeTab : ''}`}
+            onClick={() => setViewMode('scheduled')}
+          >
+            Naplánované ({scheduledRevisions.length})
+          </button>
+        </div>
+
+        {/* Suggestions View */}
+        {viewMode === 'suggestions' && (
+          <div className={styles.suggestions}>
+            <div className={styles.suggestionsHeader}>
+              <h3>Doporučené revize ({selectedSuggestionIds.size}/{suggestions.length})</h3>
+              <div className={styles.suggestionsActions}>
+                <button 
+                  type="button" 
+                  className={styles.selectButton}
+                  onClick={selectAllSuggestions}
+                  disabled={suggestionsLoading}
+                >
+                  Vše
+                </button>
+                <button 
+                  type="button" 
+                  className={styles.selectButton}
+                  onClick={deselectAllSuggestions}
+                  disabled={suggestionsLoading}
+                >
+                  Nic
+                </button>
+                <button 
+                  type="button" 
+                  className={styles.refreshButton}
+                  onClick={loadSuggestions}
+                  disabled={suggestionsLoading}
+                  title="Obnovit doporučení"
+                >
+                  ↻
+                </button>
+              </div>
+            </div>
+            
+            {suggestionsLoading ? (
+              <div className={styles.loading}>Načítám doporučení...</div>
+            ) : suggestions.length === 0 ? (
+              <p className={styles.empty}>
+                Žádné revize k naplánování pro vybraný den.
+              </p>
+            ) : (
+              <>
+                <ul className={styles.suggestionList}>
+                  {suggestions.map((suggestion) => (
+                    <li 
+                      key={suggestion.id} 
+                      className={`${styles.suggestionItem} ${selectedSuggestionIds.has(suggestion.id) ? styles.selected : ''}`}
+                      onClick={() => toggleSuggestion(suggestion.id)}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedSuggestionIds.has(suggestion.id)}
+                        onChange={() => toggleSuggestion(suggestion.id)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                      <div className={styles.suggestionInfo}>
+                        <div className={styles.suggestionCustomer}>
+                          <strong>{suggestion.customerName}</strong>
+                          <span className={`${styles.priorityBadge} ${styles[`priority-${suggestion.priorityReason}`]}`}>
+                            {getPriorityLabel(suggestion.priorityReason)}
+                          </span>
+                        </div>
+                        <small>{suggestion.customerStreet}, {suggestion.customerCity}</small>
+                        <small className={styles.dueInfo}>
+                          Termín: {suggestion.dueDate}
+                          {suggestion.daysUntilDue < 0 && (
+                            <span className={styles.overdue}> ({Math.abs(suggestion.daysUntilDue)} dnů po termínu)</span>
+                          )}
+                          {suggestion.daysUntilDue >= 0 && suggestion.daysUntilDue <= 7 && (
+                            <span className={styles.dueSoon}> (za {suggestion.daysUntilDue} dnů)</span>
+                          )}
+                        </small>
+                      </div>
+                      <div className={styles.priorityScore}>{suggestion.priorityScore}</div>
+                    </li>
+                  ))}
+                </ul>
+                {totalCandidates > suggestions.length && (
+                  <p className={styles.moreAvailable}>
+                    + {totalCandidates - suggestions.length} dalších kandidátů
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Scheduled Revisions View */}
+        {viewMode === 'scheduled' && (
+          <div className={styles.suggestions}>
+            <div className={styles.suggestionsHeader}>
+              <h3>Naplánované na {new Date(selectedDate).toLocaleDateString('cs-CZ')}</h3>
               <button 
                 type="button" 
                 className={styles.refreshButton}
-                onClick={loadSuggestions}
-                disabled={suggestionsLoading}
-                title="Obnovit doporučení"
+                onClick={loadScheduledRevisions}
+                disabled={scheduledLoading}
+                title="Obnovit"
               >
                 ↻
               </button>
             </div>
-          </div>
-          
-          {suggestionsLoading ? (
-            <div className={styles.loading}>Načítám doporučení...</div>
-          ) : suggestions.length === 0 ? (
-            <p className={styles.empty}>
-              Žádné revize k naplánování pro vybraný den.
-            </p>
-          ) : (
-            <>
+            
+            {scheduledLoading ? (
+              <div className={styles.loading}>Načítám naplánované revize...</div>
+            ) : scheduledRevisions.length === 0 ? (
+              <p className={styles.empty}>
+                Pro tento den nejsou naplánované žádné revize.
+              </p>
+            ) : (
               <ul className={styles.suggestionList}>
-                {suggestions.map((suggestion) => (
+                {scheduledRevisions.map((revision) => (
                   <li 
-                    key={suggestion.id} 
-                    className={`${styles.suggestionItem} ${selectedSuggestionIds.has(suggestion.id) ? styles.selected : ''}`}
-                    onClick={() => toggleSuggestion(suggestion.id)}
+                    key={revision.id} 
+                    className={styles.suggestionItem}
                   >
-                    <input
-                      type="checkbox"
-                      checked={selectedSuggestionIds.has(suggestion.id)}
-                      onChange={() => toggleSuggestion(suggestion.id)}
-                      onClick={(e) => e.stopPropagation()}
-                    />
+                    <div className={styles.scheduledIcon}>📅</div>
                     <div className={styles.suggestionInfo}>
                       <div className={styles.suggestionCustomer}>
-                        <strong>{suggestion.customerName}</strong>
-                        <span className={`${styles.priorityBadge} ${styles[`priority-${suggestion.priorityReason}`]}`}>
-                          {getPriorityLabel(suggestion.priorityReason)}
+                        <strong>Revize #{revision.id.substring(0, 8)}</strong>
+                        <span className={`${styles.statusBadge} ${styles[`status-${revision.status}`]}`}>
+                          {getStatusLabel(revision.status)}
                         </span>
                       </div>
-                      <small>{suggestion.customerStreet}, {suggestion.customerCity}</small>
-                      <small className={styles.dueInfo}>
-                        Termín: {suggestion.dueDate}
-                        {suggestion.daysUntilDue < 0 && (
-                          <span className={styles.overdue}> ({Math.abs(suggestion.daysUntilDue)} dnů po termínu)</span>
-                        )}
-                        {suggestion.daysUntilDue >= 0 && suggestion.daysUntilDue <= 7 && (
-                          <span className={styles.dueSoon}> (za {suggestion.daysUntilDue} dnů)</span>
-                        )}
-                      </small>
+                      {revision.scheduledTimeStart && (
+                        <small className={styles.timeInfo}>
+                          🕐 {revision.scheduledTimeStart.substring(0, 5)}
+                          {revision.scheduledTimeEnd && ` - ${revision.scheduledTimeEnd.substring(0, 5)}`}
+                        </small>
+                      )}
+                      <small>Termín: {revision.dueDate}</small>
                     </div>
-                    <div className={styles.priorityScore}>{suggestion.priorityScore}</div>
                   </li>
                 ))}
               </ul>
-              {totalCandidates > suggestions.length && (
-                <p className={styles.moreAvailable}>
-                  + {totalCandidates - suggestions.length} dalších kandidátů
-                </p>
-              )}
-            </>
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
         {/* Planned stops with drag/drop */}
         {stops.length > 0 && (

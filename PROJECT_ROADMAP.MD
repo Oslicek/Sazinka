@@ -719,6 +719,197 @@ CREATE TABLE user_consents (
 
 ---
 
+---
+
+## Phase 6: UX Workflow (Call Queue, Smart Scheduling) 🚧 IN PROGRESS
+
+> **Status:** Phase 6A-6B complete, 6C partially complete
+> **Reference:** See `PROJECT_UX.MD` for full wireframes and concepts
+
+### Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      PHASE 6: UX Workflow                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   ┌──────────────────────────────────────────────────────────────────────┐  │
+│   │ 6A: Call Queue (MVP)                                                 │  │
+│   │  ├─ Fronta k obvolání (revize v okně 11-12 měsíců)                  │  │
+│   │  ├─ Filtry: oblast, typ služby, priorita                            │  │
+│   │  ├─ Quick actions: Zavolat, Odložit, Domluvit                       │  │
+│   │  └─ snooze_until pole pro odložení                                   │  │
+│   └──────────────────────────────────────────────────────────────────────┘  │
+│                                    │                                         │
+│                                    ▼                                         │
+│   ┌──────────────────────────────────────────────────────────────────────┐  │
+│   │ 6B: Schedule Dialog (MVP)                                            │  │
+│   │  ├─ Výběr dne + časového okna                                       │  │
+│   │  ├─ Přiřazení vozidla/technika                                      │  │
+│   │  ├─ Délka úkonu (default z device type)                             │  │
+│   │  └─ Uložení do Revision (scheduled_date, time_window)               │  │
+│   └──────────────────────────────────────────────────────────────────────┘  │
+│                                    │                                         │
+│                                    ▼                                         │
+│   ┌──────────────────────────────────────────────────────────────────────┐  │
+│   │ 6C: Enhanced Day Planner (MVP)                                       │  │
+│   │  ├─ Seznam zastávek s časovými okny                                 │  │
+│   │  ├─ Varování konfliktů (červené/žluté)                              │  │
+│   │  ├─ Vehicle tabs (multi-car)                                         │  │
+│   │  └─ Day load indicator                                               │  │
+│   └──────────────────────────────────────────────────────────────────────┘  │
+│                                    │                                         │
+│                                    ▼                                         │
+│   ┌──────────────────────────────────────────────────────────────────────┐  │
+│   │ 6D: Technician View (MVP)                                            │  │
+│   │  ├─ Můj dnešní plán (mobile-friendly)                               │  │
+│   │  ├─ Per-stop: Navigovat, Volat, Hotovo, Nezastižen                  │  │
+│   │  └─ Export: segmented Google Maps + PDF                              │  │
+│   └──────────────────────────────────────────────────────────────────────┘  │
+│                                    │                                         │
+│                                    ▼                                         │
+│   ┌──────────────────────────────────────────────────────────────────────┐  │
+│   │ 6E: Smart Slots (V2)                                                 │  │
+│   │  ├─ Insertion heuristic algoritmus                                   │  │
+│   │  ├─ Valhalla matrix cache per den/vozidlo                           │  │
+│   │  ├─ 3-5 doporučených slotů při domluvě                              │  │
+│   │  └─ Vizualizace dopadu na trasu (+X min)                            │  │
+│   └──────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 6A: Call Queue (Fronta k obvolání)
+
+**Database changes:**
+```sql
+ALTER TABLE revisions ADD COLUMN snooze_until DATE;
+ALTER TABLE revisions ADD COLUMN snooze_reason VARCHAR(255);
+```
+
+**NATS subjects:**
+- `sazinka.revision.queue` - List revisions in due window
+- `sazinka.revision.snooze` - Postpone revision
+
+**Files to create:**
+- [x] `worker/src/db/queries/revision.rs` - Add queue query ✅
+- [x] `apps/web/src/pages/CallQueue.tsx` - NEW ✅
+- [x] `apps/web/src/pages/CallQueue.module.css` - NEW ✅
+- [x] Queue item inline in CallQueue.tsx (no separate component needed)
+
+**Query logic:**
+```sql
+SELECT r.*, c.*, d.*
+FROM revisions r
+JOIN customers c ON r.customer_id = c.id
+JOIN devices d ON r.device_id = d.id
+WHERE r.user_id = $1
+  AND r.status IN ('upcoming', 'scheduled')
+  AND r.scheduled_date IS NULL  -- not yet scheduled
+  AND (r.snooze_until IS NULL OR r.snooze_until <= CURRENT_DATE)
+  AND r.due_date BETWEEN CURRENT_DATE - INTERVAL '30 days' 
+                     AND CURRENT_DATE + INTERVAL '60 days'
+ORDER BY 
+  CASE WHEN r.due_date < CURRENT_DATE THEN 0 ELSE 1 END,  -- overdue first
+  r.due_date ASC
+```
+
+---
+
+### 6B: Schedule Dialog
+
+**Database changes:**
+```sql
+ALTER TABLE revisions ADD COLUMN assigned_vehicle_id UUID;
+ALTER TABLE revisions ADD COLUMN route_order INTEGER;
+
+CREATE TABLE vehicles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id),
+  name VARCHAR(100) NOT NULL,
+  home_depot_id UUID REFERENCES depots(id),
+  preferred_areas TEXT[],
+  working_hours_start TIME DEFAULT '08:00',
+  working_hours_end TIME DEFAULT '17:00',
+  is_active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+**NATS subjects:**
+- `sazinka.vehicle.create` - Create vehicle
+- `sazinka.vehicle.list` - List vehicles
+- `sazinka.vehicle.update` - Update vehicle
+- `sazinka.vehicle.delete` - Delete vehicle
+
+**Files to create:**
+- [x] `worker/src/types/vehicle.rs` - NEW ✅
+- [x] `worker/src/handlers/vehicle.rs` - NEW ✅
+- [x] `worker/src/db/queries/vehicle.rs` - NEW ✅
+- [ ] `apps/web/src/services/vehicleService.ts` - NEW (pending)
+- [x] Schedule dialog inline in CallQueue.tsx ✅
+
+---
+
+### 6C: Enhanced Day Planner
+
+**Enhancements to existing Planner:**
+- ~~Vehicle tabs (select which vehicle's route to view/edit)~~ (pending)
+- ~~Time window display per stop~~ (pending)
+- ~~Conflict warnings (time window violations)~~ (pending)
+- ~~Day load indicator (total service time + travel time)~~ (pending)
+- [x] View tabs: "Doporučené" / "Naplánované" ✅
+- [x] Load scheduled revisions for selected date ✅
+
+**Files modified:**
+- [x] `apps/web/src/pages/Planner.tsx` - Added view tabs, scheduled revisions ✅
+- [x] `apps/web/src/pages/Planner.module.css` - Tab styles ✅
+
+**Calendar enhancements:**
+- [x] View mode toggle: "Termíny" (due_date) / "Naplánované" (scheduled_date) ✅
+- [x] `apps/web/src/pages/Calendar.tsx` - Added view toggle ✅
+- [x] `apps/web/src/utils/calendarUtils.ts` - groupRevisionsByDay with dateField param ✅
+
+---
+
+### 6D: Technician View
+
+**Files to create:**
+- [ ] `apps/web/src/pages/TechnicianDay.tsx` - NEW (mobile-friendly)
+- [ ] `apps/web/src/pages/TechnicianDay.module.css` - NEW
+- [ ] `apps/web/src/services/exportService.ts` - Add Google Maps + PDF
+
+**Export features:**
+- Segmented Google Maps links (8-10 stops per link)
+- PDF with addresses, phones, time windows, notes
+- "Navigate to next" single-stop links
+
+---
+
+### 6E: Smart Slots (V2)
+
+**NATS subject:**
+- `sazinka.slots.suggest` - Get best slots for new appointment
+
+**Algorithm (insertion heuristic):**
+1. Load existing route for day + vehicle
+2. For each possible time slot (e.g., 08-10, 10-12, 12-14...):
+   - Try inserting new stop at each position
+   - Calculate delta travel time using Valhalla
+   - Check feasibility (time windows)
+   - Score: 60% delta time + 25% slack + 15% area coherence
+3. Return top 3-5 slots with impact visualization
+
+**Files to create:**
+- [ ] `worker/src/services/slot_suggester.rs` - NEW
+- [ ] `worker/src/handlers/slots.rs` - NEW
+- [ ] `apps/web/src/services/slotService.ts` - NEW
+
+---
+
 ## Out of Scope for v1.0
 
 Explicitly excluded:
@@ -784,4 +975,32 @@ Phase 5 (Production Readiness): 📋 PLANNED
     5C.2 OAuth providers
     5C.3 Full observability stack
     5C.4 GDPR compliance tools
+
+Phase 6 (UX Workflow): 🔄 IN PROGRESS
+  6A: Call Queue (MVP)
+    6A.1 DB migration (snooze_until, snooze_reason) 🔄
+    6A.2 revision.queue endpoint (TDD)
+    6A.3 revision.snooze endpoint (TDD)
+    6A.4 CallQueue page UI
+  
+  6B: Schedule Dialog (MVP)
+    6B.1 DB migration (vehicles table, assigned_vehicle_id)
+    6B.2 Vehicle CRUD handlers (TDD)
+    6B.3 ScheduleRevisionDialog component
+  
+  6C: Enhanced Day Planner (MVP)
+    6C.1 Vehicle selector tabs
+    6C.2 Time window display
+    6C.3 Conflict warnings
+  
+  6D: Technician View (MVP)
+    6D.1 TechnicianDay page
+    6D.2 Google Maps export (segmented)
+    6D.3 PDF export
+  
+  6E: Smart Slots (V2)
+    6E.1 Insertion heuristic algorithm
+    6E.2 Valhalla matrix cache
+    6E.3 slots.suggest endpoint
+    6E.4 UI integration
 ```

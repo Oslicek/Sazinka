@@ -88,6 +88,14 @@
 
 ## Rust Conventions
 
+### Build Configuration
+- **Use debug builds** (`cargo build`) during development for faster compilation
+- Debug builds compile in ~30 seconds vs 5-20 minutes for release
+- Switch to release builds (`cargo build --release`) only for:
+  - Production deployment
+  - Performance benchmarking
+  - Final integration testing
+
 ### Naming
 - `PascalCase`: Types, traits, structs, enums
 - `snake_case`: Functions, variables, modules, file names

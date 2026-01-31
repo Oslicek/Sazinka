@@ -16,9 +16,14 @@ const MONTH_NAMES = [
   'Červenec', 'Srpen', 'Září', 'Říjen', 'Listopad', 'Prosinec'
 ];
 
+type ViewMode = 'due' | 'scheduled';
+
 export function Calendar() {
   const navigate = useNavigate();
   const isConnected = useNatsStore((s) => s.isConnected);
+
+  // View mode: show by due_date or scheduled_date
+  const [viewMode, setViewMode] = useState<ViewMode>('due');
 
   // Current displayed month
   const [year, setYear] = useState(() => new Date().getFullYear());
@@ -50,6 +55,7 @@ export function Calendar() {
       const response = await listRevisions(TEMP_USER_ID, {
         fromDate: start,
         toDate: end,
+        dateType: viewMode,
         limit: 500, // Should be enough for a month
       });
 
@@ -60,7 +66,7 @@ export function Calendar() {
     } finally {
       setIsLoading(false);
     }
-  }, [isConnected, year, month]);
+  }, [isConnected, year, month, viewMode]);
 
   // Load revisions when month changes
   useEffect(() => {
@@ -123,6 +129,20 @@ export function Calendar() {
     <div className={styles.calendar}>
       <div className={styles.header}>
         <h1>Kalendář</h1>
+        <div className={styles.viewToggle}>
+          <button
+            className={`${styles.viewButton} ${viewMode === 'due' ? styles.active : ''}`}
+            onClick={() => setViewMode('due')}
+          >
+            Termíny
+          </button>
+          <button
+            className={`${styles.viewButton} ${viewMode === 'scheduled' ? styles.active : ''}`}
+            onClick={() => setViewMode('scheduled')}
+          >
+            Naplánované
+          </button>
+        </div>
         <div className={styles.monthNav}>
           <button 
             className="btn-secondary" 
@@ -183,6 +203,7 @@ export function Calendar() {
             year={year}
             month={month}
             revisions={revisions}
+            dateField={viewMode}
             onDayClick={handleDayClick}
           />
         )}

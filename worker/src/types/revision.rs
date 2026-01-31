@@ -24,6 +24,16 @@ pub struct Revision {
     pub findings: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    // Snooze fields (for call queue)
+    #[sqlx(default)]
+    pub snooze_until: Option<NaiveDate>,
+    #[sqlx(default)]
+    pub snooze_reason: Option<String>,
+    // Vehicle assignment
+    #[sqlx(default)]
+    pub assigned_vehicle_id: Option<Uuid>,
+    #[sqlx(default)]
+    pub route_order: Option<i32>,
     // Device info (joined from devices table)
     #[sqlx(default)]
     pub device_name: Option<String>,
@@ -123,6 +133,8 @@ pub struct ListRevisionsRequest {
     pub status: Option<String>,
     pub from_date: Option<NaiveDate>,
     pub to_date: Option<NaiveDate>,
+    /// Which date field to filter: "due" (default) or "scheduled"
+    pub date_type: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
@@ -194,4 +206,130 @@ pub struct RevisionSuggestion {
 pub struct SuggestRevisionsResponse {
     pub suggestions: Vec<RevisionSuggestion>,
     pub total_candidates: i64,
+}
+
+// ============================================================================
+// Call Queue Types
+// ============================================================================
+
+/// Request to get the call queue (revisions needing customer contact)
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CallQueueRequest {
+    /// Filter by area (PSČ prefix)
+    pub area: Option<String>,
+    /// Filter by device type
+    pub device_type: Option<String>,
+    /// Filter: 'overdue', 'due_soon', 'upcoming', or 'all'
+    pub priority_filter: Option<String>,
+    /// Max items to return
+    pub limit: Option<i32>,
+    /// Offset for pagination
+    pub offset: Option<i32>,
+}
+
+/// A single item in the call queue
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct CallQueueItem {
+    // Revision fields
+    pub id: Uuid,
+    pub device_id: Uuid,
+    pub customer_id: Uuid,
+    pub user_id: Uuid,
+    pub status: String,
+    pub due_date: NaiveDate,
+    pub snooze_until: Option<NaiveDate>,
+    pub snooze_reason: Option<String>,
+    
+    // Customer fields
+    pub customer_name: String,
+    pub customer_phone: Option<String>,
+    pub customer_email: Option<String>,
+    pub customer_street: String,
+    pub customer_city: String,
+    pub customer_postal_code: Option<String>,
+    
+    // Device fields
+    pub device_name: String,
+    pub device_type: String,
+    
+    // Computed fields
+    pub days_until_due: i32,
+    pub priority: String,           // 'overdue', 'due_this_week', 'due_soon', 'upcoming'
+    pub last_contact_at: Option<DateTime<Utc>>,
+    pub contact_attempts: i64,
+}
+
+/// Response for call queue
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CallQueueResponse {
+    pub items: Vec<CallQueueItem>,
+    pub total: i64,
+    pub overdue_count: i64,
+    pub due_soon_count: i64,
+}
+
+/// Request to snooze a revision (postpone contact)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnoozeRevisionRequest {
+    pub id: Uuid,
+    pub snooze_until: NaiveDate,
+    pub reason: Option<String>,
+}
+
+/// Request to schedule a revision (set date and time window)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScheduleRevisionRequest {
+    pub id: Uuid,
+    pub scheduled_date: NaiveDate,
+    pub time_window_start: Option<NaiveTime>,
+    pub time_window_end: Option<NaiveTime>,
+    pub assigned_vehicle_id: Option<Uuid>,
+    pub duration_minutes: Option<i32>,
+    pub notes: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_snooze_request_deserialize() {
+        let json = r#"{
+            "id": "123e4567-e89b-12d3-a456-426614174000",
+            "snoozeUntil": "2026-02-15",
+            "reason": "Customer on vacation"
+        }"#;
+
+        let request: SnoozeRevisionRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(request.snooze_until, NaiveDate::from_ymd_opt(2026, 2, 15).unwrap());
+        assert_eq!(request.reason, Some("Customer on vacation".to_string()));
+    }
+
+    #[test]
+    fn test_schedule_request_deserialize() {
+        let json = r#"{
+            "id": "123e4567-e89b-12d3-a456-426614174000",
+            "scheduledDate": "2026-02-10",
+            "timeWindowStart": "10:00:00",
+            "timeWindowEnd": "12:00:00",
+            "durationMinutes": 45
+        }"#;
+
+        let request: ScheduleRevisionRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(request.scheduled_date, NaiveDate::from_ymd_opt(2026, 2, 10).unwrap());
+        assert_eq!(request.time_window_start, Some(NaiveTime::from_hms_opt(10, 0, 0).unwrap()));
+        assert_eq!(request.duration_minutes, Some(45));
+    }
+
+    #[test]
+    fn test_call_queue_request_default() {
+        let request = CallQueueRequest::default();
+        assert!(request.area.is_none());
+        assert!(request.limit.is_none());
+    }
 }
