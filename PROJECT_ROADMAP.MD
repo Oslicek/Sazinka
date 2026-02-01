@@ -875,17 +875,22 @@ CREATE TABLE vehicles (
 
 ---
 
-### 6D: Technician View
+### 6D: Technician View ✅
 
-**Files to create:**
-- [ ] `apps/web/src/pages/TechnicianDay.tsx` - NEW (mobile-friendly)
-- [ ] `apps/web/src/pages/TechnicianDay.module.css` - NEW
-- [ ] `apps/web/src/services/exportService.ts` - Add Google Maps + PDF
+**Files created:**
+- [x] `apps/web/src/pages/TechnicianDay.tsx` - Mobile-friendly day view ✅
+- [x] `apps/web/src/pages/TechnicianDay.module.css` - Styles ✅
+- [x] Route `/today` added to router ✅
+- [x] Navigation link "Můj den" added ✅
 
-**Export features:**
-- Segmented Google Maps links (8-10 stops per link)
-- PDF with addresses, phones, time windows, notes
-- "Navigate to next" single-stop links
+**Export features implemented:**
+- [x] Segmented Google Maps links (8 stops per segment) ✅
+- [x] Print/PDF with addresses, phones, time windows ✅
+- [x] Single-stop navigation buttons ✅
+
+**Backend enhancements:**
+- [x] `Revision` type extended with customer info fields ✅
+- [x] `list_revisions` query joins customer table ✅
 
 ---
 

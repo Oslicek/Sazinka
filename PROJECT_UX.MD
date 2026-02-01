@@ -10,6 +10,7 @@
 > - ✅ Dialog pro odložení (snooze)
 > - ✅ Kalendář - přepínač Termíny/Naplánované
 > - ✅ Plánovač - záložky Doporučené/Naplánované
+> - ✅ Pohled technika (`/today`) - mobilní denní plán, Google Maps export, tisk
 
 ## Přehled
 

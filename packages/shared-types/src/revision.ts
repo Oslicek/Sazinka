@@ -19,6 +19,12 @@ export interface Revision {
   // Device info (joined from devices table)
   deviceName?: string;
   deviceType?: string;
+  // Customer info (joined from customers table)
+  customerName?: string;
+  customerPhone?: string;
+  customerStreet?: string;
+  customerCity?: string;
+  customerPostalCode?: string;
 }
 
 export type RevisionStatus =

@@ -13,6 +13,7 @@ import { Planner } from '@/pages/Planner';
 import { Admin } from '@/pages/Admin';
 import { Settings } from '@/pages/Settings';
 import { CallQueue } from '@/pages/CallQueue';
+import { TechnicianDay } from '@/pages/TechnicianDay';
 
 // Root route with layout
 const rootRoute = createRootRoute({
@@ -79,6 +80,13 @@ const callQueueRoute = createRoute({
   component: CallQueue,
 });
 
+// Technician Day View
+const technicianDayRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/today',
+  component: TechnicianDay,
+});
+
 // Route tree
 export const routeTree = rootRoute.addChildren([
   indexRoute,
@@ -87,6 +95,7 @@ export const routeTree = rootRoute.addChildren([
   calendarRoute,
   plannerRoute,
   callQueueRoute,
+  technicianDayRoute,
   adminRoute,
   settingsRoute,
 ]);

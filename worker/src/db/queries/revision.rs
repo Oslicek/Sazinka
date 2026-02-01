@@ -251,9 +251,13 @@ pub async fn list_revisions(
             r.due_date, r.scheduled_date, r.scheduled_time_start, r.scheduled_time_end,
             r.completed_at, r.duration_minutes, r.result, r.findings,
             r.created_at, r.updated_at,
-            d.model as device_name, d.device_type
+            d.model as device_name, d.device_type,
+            c.name as customer_name, c.phone as customer_phone,
+            c.street as customer_street, c.city as customer_city, 
+            c.postal_code as customer_postal_code
         FROM revisions r
         LEFT JOIN devices d ON r.device_id = d.id
+        LEFT JOIN customers c ON r.customer_id = c.id
         WHERE r.user_id = $1
           AND ($2::uuid IS NULL OR r.customer_id = $2)
           AND ($3::uuid IS NULL OR r.device_id = $3)

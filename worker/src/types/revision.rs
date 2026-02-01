@@ -39,6 +39,17 @@ pub struct Revision {
     pub device_name: Option<String>,
     #[sqlx(default)]
     pub device_type: Option<String>,
+    // Customer info (joined from customers table)
+    #[sqlx(default)]
+    pub customer_name: Option<String>,
+    #[sqlx(default)]
+    pub customer_phone: Option<String>,
+    #[sqlx(default)]
+    pub customer_street: Option<String>,
+    #[sqlx(default)]
+    pub customer_city: Option<String>,
+    #[sqlx(default)]
+    pub customer_postal_code: Option<String>,
 }
 
 /// Revision status
