@@ -233,6 +233,8 @@ pub struct CallQueueRequest {
     pub device_type: Option<String>,
     /// Filter: 'overdue', 'due_soon', 'upcoming', or 'all'
     pub priority_filter: Option<String>,
+    /// Only include customers with valid geocoded coordinates
+    pub geocoded_only: Option<bool>,
     /// Max items to return
     pub limit: Option<i32>,
     /// Offset for pagination
@@ -262,6 +264,7 @@ pub struct CallQueueItem {
     pub customer_postal_code: Option<String>,
     pub customer_lat: Option<f64>,
     pub customer_lng: Option<f64>,
+    pub customer_geocode_status: String,
     
     // Device fields
     pub device_name: String,

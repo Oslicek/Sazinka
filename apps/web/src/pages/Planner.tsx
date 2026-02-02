@@ -181,7 +181,7 @@ export function Planner() {
     loadScheduledRevisions();
   }, [loadScheduledRevisions]);
 
-  // Load call queue preview
+  // Load call queue preview (only customers with valid coordinates)
   const loadQueuePreview = useCallback(async () => {
     if (!isConnected) return;
     
@@ -189,6 +189,7 @@ export function Planner() {
     try {
       const response = await getCallQueue(USER_ID, { 
         priorityFilter: 'all', 
+        geocodedOnly: true,  // Only show customers with valid coordinates
         limit: 5 
       });
       setQueuePreview(response.items);

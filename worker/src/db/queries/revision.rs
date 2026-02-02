@@ -584,6 +584,11 @@ pub async fn get_call_queue(
         }
     }
 
+    // Geocoded only filter - only include customers with valid coordinates
+    if request.geocoded_only.unwrap_or(false) {
+        conditions.push("c.geocode_status = 'success'".to_string());
+    }
+
     let where_clause = conditions.join(" AND ");
 
     let query = format!(
@@ -605,6 +610,7 @@ pub async fn get_call_queue(
             c.postal_code as customer_postal_code,
             c.lat as customer_lat,
             c.lng as customer_lng,
+            c.geocode_status as customer_geocode_status,
             d.model as device_name,
             d.device_type,
             (r.due_date - $2::date)::int as days_until_due,

@@ -243,6 +243,14 @@ export function CallQueue() {
           <option value="due_soon">Tento týden</option>
           <option value="upcoming">Nadcházející</option>
         </select>
+        <label className={styles.checkboxLabel}>
+          <input
+            type="checkbox"
+            checked={filters.geocodedOnly || false}
+            onChange={(e) => setFilters({ ...filters, geocodedOnly: e.target.checked })}
+          />
+          Jen s adresou
+        </label>
         <button onClick={loadQueue} className={styles.refreshButton} disabled={loading}>
           {loading ? 'Načítání...' : 'Obnovit'}
         </button>
@@ -290,6 +298,11 @@ export function CallQueue() {
                 <p className={styles.customerAddress}>
                   {item.customerStreet}, {item.customerCity} {item.customerPostalCode}
                 </p>
+                {item.customerGeocodeStatus === 'failed' && (
+                  <p className={styles.geocodeWarning}>
+                    ⚠️ Adresu nelze geolokovat
+                  </p>
+                )}
                 <p className={styles.deviceInfo}>
                   <span className={styles.deviceType}>
                     {DEVICE_TYPE_LABELS[item.deviceType] || item.deviceType}
@@ -415,6 +428,11 @@ export function CallQueue() {
           <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
             <h2>Naplánovat návštěvu</h2>
             <p className={styles.modalSubtitle}>{selectedItem.customerName}</p>
+            {selectedItem.customerGeocodeStatus === 'failed' && (
+              <div className={styles.modalWarning}>
+                Adresu nelze geolokovat, je třeba ji upřesnit!
+              </div>
+            )}
 
             <div className={styles.formGroup}>
               <label>Datum:</label>

@@ -137,6 +137,8 @@ export interface CallQueueRequest {
   area?: string;
   deviceType?: string;
   priorityFilter?: 'all' | 'overdue' | 'due_soon' | 'upcoming';
+  /** Only include customers with valid geocoded coordinates */
+  geocodedOnly?: boolean;
   limit?: number;
   offset?: number;
 }
@@ -158,6 +160,7 @@ export interface CallQueueItem {
   customerPostalCode: string;
   customerLat: number | null;
   customerLng: number | null;
+  customerGeocodeStatus: 'pending' | 'success' | 'failed';
   deviceName: string | null;
   deviceType: string;
   daysUntilDue: number;
