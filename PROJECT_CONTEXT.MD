@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-02-02 (v0.13.0 - Job Status System)
+> **Last Updated:** 2026-02-02 (v0.14.0 - Phase 7 JetStream External Services planned)
 
 ## Overview
 
@@ -884,9 +884,9 @@ For production deployment, consider:
 
 ## Job Queue (JetStream)
 
-> **Status:** Implementation (v0.9.0)
+> **Status:** Implementation (v0.9.0) - Expanding in Phase 7
 
-NATS JetStream provides persistent job queuing for long-running operations like route planning under high load.
+NATS JetStream provides persistent job queuing for ALL external service communication. This ensures backpressure, automatic retry, and horizontal scalability.
 
 ### Architecture
 
@@ -897,13 +897,38 @@ NATS JetStream provides persistent job queuing for long-running operations like 
 │                                                                              │
 │   Frontend                         NATS JetStream                  Worker   │
 │   ┌─────────┐    submit job    ┌─────────────────┐   pull        ┌───────┐ │
-│   │ Planner │─────────────────▶│  SAZINKA_JOBS   │◀──────────────│JobProc│ │
-│   │         │                  │  (WorkQueue)    │               │essor  │ │
+│   │   UI    │─────────────────▶│  Stream Pool    │◀──────────────│Process│ │
+│   │         │                  │  (WorkQueue)    │               │or Pool│ │
 │   │         │◀─────────────────│                 │───────────────│       │ │
 │   └─────────┘  status updates  └─────────────────┘   process     └───────┘ │
 │                                                                              │
+│   Streams:                                                                   │
+│   ├─ SAZINKA_GEOCODE_JOBS        (Nominatim) ✅ Implemented                 │
+│   ├─ SAZINKA_GEOCODE_ADDRESS_JOBS (Nominatim) ✅ Implemented                │
+│   ├─ SAZINKA_REVERSE_GEOCODE_JOBS (Nominatim) ✅ Implemented                │
+│   ├─ SAZINKA_ROUTING_MATRIX_JOBS  (Valhalla) 📋 Phase 7                    │
+│   ├─ SAZINKA_ROUTING_GEOMETRY_JOBS (Valhalla) 📋 Phase 7                   │
+│   ├─ SAZINKA_IMPORT_JOBS          (DB imports) 📋 Phase 7                  │
+│   ├─ SAZINKA_EXPORT_JOBS          (CSV exports) 📋 Phase 7                 │
+│   ├─ SAZINKA_EMAIL_JOBS           (Resend API) 📋 Phase 7                  │
+│   └─ SAZINKA_SMS_JOBS             (Twilio) 📋 Phase 7                      │
+│                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
+
+### JetStream Streams Overview
+
+| Stream | Subject | External Service | Status |
+|--------|---------|------------------|--------|
+| `SAZINKA_GEOCODE_JOBS` | `sazinka.jobs.geocode` | Nominatim | ✅ Implemented |
+| `SAZINKA_GEOCODE_ADDRESS_JOBS` | `sazinka.jobs.geocode.address` | Nominatim | ✅ Implemented |
+| `SAZINKA_REVERSE_GEOCODE_JOBS` | `sazinka.jobs.geocode.reverse` | Nominatim | ✅ Implemented |
+| `SAZINKA_ROUTING_MATRIX_JOBS` | `sazinka.jobs.valhalla.matrix` | Valhalla | 📋 Phase 7A |
+| `SAZINKA_ROUTING_GEOMETRY_JOBS` | `sazinka.jobs.valhalla.geometry` | Valhalla | 📋 Phase 7A |
+| `SAZINKA_IMPORT_JOBS` | `sazinka.jobs.import.*` | PostgreSQL | 📋 Phase 7B |
+| `SAZINKA_EXPORT_JOBS` | `sazinka.jobs.export.*` | PostgreSQL | 📋 Phase 7B |
+| `SAZINKA_EMAIL_JOBS` | `sazinka.jobs.email.*` | Resend API | 📋 Phase 7C |
+| `SAZINKA_SMS_JOBS` | `sazinka.jobs.sms.*` | Twilio | 📋 Phase 7C |
 
 ### Configuration
 
@@ -912,7 +937,7 @@ NATS JetStream provides persistent job queuing for long-running operations like 
 jetstream {
   store_dir: "/data/jetstream"
   max_memory_store: 256MB
-  max_file_store: 1GB
+  max_file_store: 10GB
 }
 ```
 
@@ -922,16 +947,63 @@ jetstream {
 |--------|--------|-------------|
 | `queued` | position, estimatedWaitSeconds | Job waiting in queue |
 | `processing` | progress (0-100), message | Job being processed |
-| `completed` | result (RoutePlanResponse) | Job finished successfully |
+| `completed` | result (varies by job type) | Job finished successfully |
 | `failed` | error | Job failed with error message |
+
+### Stream Configuration Pattern
+
+```rust
+// Standard configuration for all job streams
+jetstream::stream::Config {
+    name: "SAZINKA_*_JOBS",
+    subjects: vec!["sazinka.jobs.*"],
+    max_messages: 1_000,
+    max_bytes: 50 * 1024 * 1024, // 50 MB
+    retention: RetentionPolicy::WorkQueue,
+    ..Default::default()
+}
+
+// Consumer configuration
+jetstream::consumer::pull::Config {
+    durable_name: Some("*_workers"),
+    ack_policy: AckPolicy::Explicit,
+    max_deliver: 3, // Retry up to 3 times
+    ..Default::default()
+}
+```
 
 ### Module Structure
 
 ```
 worker/src/
-├── types/job.rs              # JobSubmitResponse, JobStatus, QueuedJob
-└── handlers/jobs.rs          # JobProcessor, submit/process/stats handlers
+├── types/
+│   ├── job.rs                    # Generic JobStatus, QueuedJob
+│   ├── valhalla_job.rs           # MatrixJob, GeometryJob (Phase 7A)
+│   ├── import_job.rs             # ImportJob types (Phase 7B)
+│   ├── export_job.rs             # ExportJob types (Phase 7B)
+│   ├── email_job.rs              # EmailJob types (Phase 7C)
+│   └── sms_job.rs                # SMSJob types (Phase 7C)
+├── services/
+│   ├── valhalla_processor.rs     # Valhalla JetStream wrapper (Phase 7A)
+│   ├── import_processor.rs       # Import job processor (Phase 7B)
+│   ├── export_processor.rs       # Export job processor (Phase 7B)
+│   ├── email_processor.rs        # Email job processor (Phase 7C)
+│   └── sms_processor.rs          # SMS job processor (Phase 7C)
+└── handlers/
+    ├── jobs.rs                   # Generic job handlers
+    └── geocode.rs                # Geocode processor (implemented)
 ```
+
+### Benefits of JetStream for External Services
+
+| Benefit | Description |
+|---------|-------------|
+| **Backpressure** | Queue limits prevent external service overload |
+| **Automatic retry** | Failed jobs retry up to 3 times |
+| **Persistence** | Jobs survive worker restart |
+| **Horizontal scaling** | Multiple workers can process from same queue |
+| **Observability** | Real-time status updates, unified monitoring |
+| **Consistency** | Same pattern for all external services |
 
 ## Job Status System (Reusable)
 
@@ -1468,6 +1540,248 @@ cargo test
 - **Admin Page Improvements** - Better Nominatim status (shows "Importing" during data import)
 - **Planner UI Cleanup** - Removed unused queue toggle checkbox
 - **Bug Fix** - Fixed `EmptyPayload` deserialization for settings requests
+
+## Route-Aware Planning Architecture
+
+> **Status:** Planning phase (Phase 8)
+> **Goal:** "Domluvit návštěvu" = vložit zakázku do trasy s minimem Δkm/Δmin
+
+### Data Model Decisions
+
+#### Entity Mapping (GA Redesign)
+
+| UI Termín | DB Entita | Popis |
+|-----------|-----------|-------|
+| Zákazník | `Customer` | Osoba nebo firma |
+| Zařízení | `Device` | Kotel, komín, plynový spotřebič |
+| Zakázka | `Revision` | Co se má udělat (revize/servis) |
+| Návštěva | `Visit` | Domluvený termín + časové okno + auto |
+| Plán dne | `PlannedRoute` | Trasa pro den a auto |
+
+#### Entity Relationships
+
+```
+┌─────────────┐      ┌─────────────┐      ┌─────────────┐
+│  Customer   │──1:N─│   Device    │──1:N─│  Revision   │
+└─────────────┘      └─────────────┘      └──────┬──────┘
+                                                 │
+                                              0..1│
+                                                 ▼
+                                          ┌─────────────┐
+                                          │    Visit    │
+                                          └─────────────┘
+```
+
+**Key decisions:**
+- 1 Device → N Revision (periodické zakázky)
+- 1 Revision → 0..1 Visit (dokud není domluveno, Visit neexistuje)
+- 1 Visit může obsluhovat N Revisions (více zařízení u zákazníka)
+
+#### Snooze Extension
+
+```sql
+-- Rozšíření pro odložení
+ALTER TABLE revisions ADD COLUMN snooze_reason VARCHAR(255);
+ALTER TABLE revisions ADD COLUMN snoozed_by UUID REFERENCES users(id);
+ALTER TABLE revisions ADD COLUMN snoozed_at TIMESTAMPTZ;
+```
+
+### Performance Requirements
+
+#### Latency Targets
+
+| Operace | Cílová latence | Poznámka |
+|---------|----------------|----------|
+| UI highlight kandidáta | ≤150ms | Jen UI, bez výpočtů |
+| Slot suggestions | 400-700ms | Akceptovatelné se skeletonem |
+| Kompletní route recalc | ≤1200ms | S progressive loading |
+
+#### Matrix Calculation Strategy
+
+**Problém:** Pro best-insertion nepotřebujeme kompletní NxN matici.
+
+**Řešení:** Využít Valhalla `sources_to_targets` s 1×K + K×1 namísto K×K.
+
+```
+Trasa: S1 → S2 → S3 → ... → Sk
+Kandidát: X
+
+Pro výpočet Δ vložení mezi Si → Si+1:
+  Δ = t(Si, X) + t(X, Si+1) - t(Si, Si+1)
+
+Potřebujeme dopočítat:
+  - vektor t(Si, X) pro všechna Si  (K×1 - many-to-one)
+  - vektor t(X, Si) pro všechna Si  (1×K - one-to-many)
+
+Výhody:
+  - 2K výpočtů místo K² 
+  - Řádově rychlejší
+  - Bezpečnější pro Valhalla paměť
+```
+
+### Scoring Algorithm
+
+#### Best Insertion Score
+
+```
+HARD CONSTRAINTS (filtr - must pass):
+├── Časová okna splněna (arrival ≤ window_end)
+├── Vejde se do pracovního dne (včetně návratu do depa)
+└── Slack ≥ minimum (např. 10 min)
+
+SOFT SCORE (řazení - lower is better):
+score = w1 * Δmin 
+      + w2 * Δkm 
+      + w3 * riskPenalty(slack) 
+      + w4 * dueUrgency
+
+Doporučené váhy:
+├── w1 = 1.0   (čas je primární)
+├── w2 = 0.5   (km sekundární)
+├── w3 = 0.3   (penalizace těsných dnů)
+└── w4 = 0.2   (zvýhodnění urgentních)
+```
+
+#### Due Urgency Bonus
+
+| Stav | Bonus |
+|------|-------|
+| Overdue (po termínu) | -100 (vyšší priorita) |
+| Due this week | -80 |
+| Due soon (14 dní) | -60 |
+| Due this month | -40 |
+| Upcoming | -20 |
+
+### Caching Strategy
+
+#### Cache Key Structure
+
+```typescript
+interface RouteCacheKey {
+  date: string;           // "2026-02-05"
+  vehicleId: string;      // UUID
+  candidateId: string;    // UUID
+  routeVersion: number;   // Inkrementuje při změně trasy
+}
+```
+
+#### Cache Invalidation
+
+| Událost | Akce |
+|---------|------|
+| Přidání/odebrání zastávky | Increment routeVersion |
+| Změna pořadí zastávek | Increment routeVersion |
+| Změna časového okna | Increment routeVersion |
+| Výběr jiného dne/auta | Nový cache key |
+
+### Edge Cases
+
+#### Multiple Devices per Customer
+
+Zákazník má kotel + komín, oba jsou k revizi:
+
+```
+Řešení: 1 Visit pro N Revisions
+
+visit.service_duration = sum(revision_durations) + overhead
+  - overhead: konfigurovatelný (default 5-10 min)
+
+V UI: Stop má badge "2 zakázky" s rozklikem
+```
+
+#### Fixed Appointments
+
+Zákazník říká "jen v pátek 10:00":
+
+```
+Reprezentace: Úzké časové okno
+
+time_window_start = 10:00
+time_window_end = 10:15   // nebo 10:00 pro "přesně"
+is_hard_constraint = true
+
+V UI: Chip "Pevný termín" (nelze přesouvat)
+```
+
+#### Lunch Breaks / Pauses
+
+```sql
+-- V nastavení vozidla/technika
+break_start TIME DEFAULT '12:00',
+break_end TIME DEFAULT '12:30'
+```
+
+V optimalizaci: Pauza se chová jako blokovaný interval.
+
+#### Depot Return
+
+```
+Kapacita dne zahrnuje:
+├── Čas jízdy (travel_time)
+├── Servisní čas (service_duration)
+├── Pauzy (breaks)
+└── Návrat do depa (return_to_depot)
+
+V UI: Metriky "včetně návratu do depa"
+```
+
+### Route-Aware Inbox Pre-ranking
+
+Pro celý inbox (50+ kandidátů) nepočítat full best insertion hned.
+
+```
+Levný pre-ranking (pro celý list):
+├── Vzdálenost k nejbližší zastávce v trase
+├── Vzdálenost k bounding boxu trasy
+└── Shoda města/oblasti
+
+Přesný výpočet (lazy):
+├── Viditelné řádky (virtualizace)
+├── Prefetch +10 řádků
+└── Vybraný kandidát (vždy)
+```
+
+### Multi-Vehicle Comparison
+
+```
+Nepočítat pro všechny kandidáty × všechna auta.
+
+Strategie:
+1. Pro aktuální auto: plné slot suggestions
+2. Pro 1-2 další auta: jen "best insertion delta"
+3. Ukázat tip jen když rozdíl > práh:
+   - >10 min lepší NEBO
+   - >5 km lepší
+
+UI: "Tip: Auto 2 (+2 min)" - ne spam pro malé rozdíly
+```
+
+### Status Signals (Consistent)
+
+#### Address Status
+
+| Status | Code | Description |
+|--------|------|-------------|
+| `verified` | ✅ | Má geo, prošla validací |
+| `pending` | ⏳ | Geokódování čeká |
+| `unlocatable` | ⚠ | Geokód selhal |
+| `missing` | ⛔ | Bez adresy |
+
+#### Slot Insertion Status
+
+| Status | Conditions |
+|--------|------------|
+| `ok` ✅ | Bez konfliktu, load ≤90%, slack ≥20min |
+| `tight` ⚠ | Load 90-100% OR slack 10-20min |
+| `conflict` ❌ | Window violated OR load >100% |
+
+#### Day Capacity Status
+
+| Status | Conditions |
+|--------|------------|
+| `ok` ✅ | load <80%, slack >30min |
+| `tight` ⚠ | load 80-95% OR slack 15-30min |
+| `overloaded` ❌ | load >95% OR slack <15min |
 
 ## Future Enhancements
 

@@ -1,7 +1,7 @@
 # Sazinka - Workflow & UI Koncept
 
-> **Status:** MVP kompletní  
-> **Verze:** 0.3  
+> **Status:** MVP kompletní + Phase 7 plánována  
+> **Verze:** 0.4  
 > **Datum:** 2026-02-02
 > 
 > **Implementováno:**
@@ -775,5 +775,645 @@ interface DayPlan {
 
 ---
 
+## Jobs Dashboard (Phase 7D)
+
+> **Status:** Planned (Phase 7)
+> **Umístění:** `/admin/jobs` (součást Admin sekce)
+
+### Účel
+
+Centralizovaný monitoring všech asynchronních úloh zpracovávaných přes JetStream:
+- Geocoding (Nominatim)
+- Routing (Valhalla)
+- Importy/Exporty
+- Email/SMS (budoucí)
+
+### Wireframe
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  SAZINKA              Zákazníci  Plán dne  Kalendář  Fronta  Admin         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌─ Jobs Dashboard ───────────────────────────────────────────────────────┐ │
+│  │                                                                         │ │
+│  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐      │ │
+│  │  │ Ve frontě   │ │ Zpracování  │ │ Dokončeno   │ │ Selhalo     │      │ │
+│  │  │     12      │ │      3      │ │    1,247    │ │      5      │      │ │
+│  │  │   ○ ○ ○     │ │   ● ● ●     │ │   ✓ ✓ ✓     │ │   ✗ ✗       │      │ │
+│  │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘      │ │
+│  │                                                                         │ │
+│  │  ┌─ Aktivní úlohy ────────────────────────────────────────────────────┐│ │
+│  │  │                                                                     ││ │
+│  │  │  ┌─────────────────────────────────────────────────────────────┐  ││ │
+│  │  │  │ 🔄 Valhalla Matrix                                    3s ago │  ││ │
+│  │  │  │ ID: job-abc123                                               │  ││ │
+│  │  │  │ ████████████░░░░░░░░ 60%  Calculating distances...          │  ││ │
+│  │  │  │                                              [Zrušit]        │  ││ │
+│  │  │  └─────────────────────────────────────────────────────────────┘  ││ │
+│  │  │                                                                     ││ │
+│  │  │  ┌─────────────────────────────────────────────────────────────┐  ││ │
+│  │  │  │ 📍 Geocoding Batch                                   15s ago │  ││ │
+│  │  │  │ ID: job-def456                                               │  ││ │
+│  │  │  │ ██████████████████░░ 85%  Geocoding customer 42/50...       │  ││ │
+│  │  │  │                                              [Zrušit]        │  ││ │
+│  │  │  └─────────────────────────────────────────────────────────────┘  ││ │
+│  │  │                                                                     ││ │
+│  │  │  ┌─────────────────────────────────────────────────────────────┐  ││ │
+│  │  │  │ 📥 Import CSV                                        1m ago  │  ││ │
+│  │  │  │ ID: job-ghi789                                               │  ││ │
+│  │  │  │ ████████░░░░░░░░░░░░ 40%  Processing row 200/500...         │  ││ │
+│  │  │  │                                              [Zrušit]        │  ││ │
+│  │  │  └─────────────────────────────────────────────────────────────┘  ││ │
+│  │  │                                                                     ││ │
+│  │  └─────────────────────────────────────────────────────────────────────┘│ │
+│  │                                                                         │ │
+│  │  ┌─ Nedávno dokončené ─────────────────────────────────────────────────┐│ │
+│  │  │                                                                     ││ │
+│  │  │  ┌─────────────────────────────────────────────────────────────┐  ││ │
+│  │  │  │ ✓ Geocoding Batch                              2m ago  2.3s │  ││ │
+│  │  │  │   25 customers geocoded, 2 failed                           │  ││ │
+│  │  │  └─────────────────────────────────────────────────────────────┘  ││ │
+│  │  │                                                                     ││ │
+│  │  │  ┌─────────────────────────────────────────────────────────────┐  ││ │
+│  │  │  │ ✓ Valhalla Geometry                            5m ago  1.1s │  ││ │
+│  │  │  │   Route for 12 stops calculated                             │  ││ │
+│  │  │  └─────────────────────────────────────────────────────────────┘  ││ │
+│  │  │                                                                     ││ │
+│  │  └─────────────────────────────────────────────────────────────────────┘│ │
+│  │                                                                         │ │
+│  │  ┌─ Selhané úlohy ─────────────────────────────────────────────────────┐│ │
+│  │  │                                                                     ││ │
+│  │  │  ┌─────────────────────────────────────────────────────────────┐  ││ │
+│  │  │  │ ✗ Valhalla Matrix                             10m ago        │  ││ │
+│  │  │  │   Error: Connection timeout after 30s                        │  ││ │
+│  │  │  │   Retries: 3/3                                               │  ││ │
+│  │  │  │                                    [Opakovat]  [Zahodit]     │  ││ │
+│  │  │  └─────────────────────────────────────────────────────────────┘  ││ │
+│  │  │                                                                     ││ │
+│  │  └─────────────────────────────────────────────────────────────────────┘│ │
+│  │                                                                         │ │
+│  └─────────────────────────────────────────────────────────────────────────┘ │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Datové typy
+
+```typescript
+interface JobSummary {
+  id: string;
+  type: 'geocode' | 'geocode_address' | 'geocode_reverse' | 
+        'valhalla_matrix' | 'valhalla_geometry' |
+        'import' | 'export' | 'email' | 'sms';
+  status: 'queued' | 'processing' | 'completed' | 'failed';
+  progress?: number;        // 0-100
+  message?: string;         // Current status message
+  submittedAt: string;      // ISO timestamp
+  startedAt?: string;
+  completedAt?: string;
+  durationMs?: number;
+  error?: string;
+  retryCount: number;
+  maxRetries: number;
+}
+
+interface JobsDashboardStats {
+  queued: number;
+  processing: number;
+  completed: number;
+  failed: number;
+}
+```
+
+### NATS Subjects
+
+| Subject | Popis |
+|---------|-------|
+| `sazinka.admin.jobs.list` | Seznam aktivních úloh |
+| `sazinka.admin.jobs.stats` | Statistiky front |
+| `sazinka.admin.jobs.cancel` | Zrušení úlohy |
+| `sazinka.admin.jobs.retry` | Opakování selhané úlohy |
+
+### UI komponenty
+
+- [ ] `JobsDashboard` - hlavní stránka
+- [ ] `JobStatsCards` - 4 karty se statistikami
+- [ ] `ActiveJobsList` - seznam aktivních úloh
+- [ ] `CompletedJobsList` - nedávno dokončené
+- [ ] `FailedJobsList` - selhané úlohy s akcemi
+- [ ] `JobProgressBar` - progress bar s procentem
+- [ ] `JobTypeIcon` - ikona podle typu úlohy
+
+### Integrace s existujícím Admin UI
+
+Jobs Dashboard bude nová záložka v Admin sekci:
+
+```
+Admin
+├── Přehled (stávající)
+├── Export dat (stávající)
+├── Jobs Dashboard (nové) ← Phase 7D
+└── Nastavení (stávající)
+```
+
+---
+
+---
+
+## Phase 8: GA Redesign - Route-Aware Planning
+
+> **Status:** Planning phase  
+> **Verze:** 1.0  
+> **Datum:** 2026-02-02
+
+### Klíčový koncept
+
+**Hlavní změna:** "Domluvit návštěvu" již není oddělené od plánování trasy - je to **jedna činnost**: vložit zakázku do denní trasy s minimem Δkm/Δmin a s ohledem na časová okna.
+
+---
+
+### 1. Persony
+
+#### 1.1 Dispečerka (primárně desktop)
+
+**Kontext:** PC, telefon, často přepíná mezi hovorem, mapou, seznamem a plánem dne.
+
+**Cíl:** Domluvit termíny a průběžně skládat denní trasy pro 1–N aut tak, aby byl minimální čas/kilometry a přitom byla splněna okna a kapacita dne.
+
+**Klíčové potřeby:**
+- Rychle vidět kdo je na řadě a proč (due, priorita)
+- Při domluvě hned vidět dopad na trasu: Δkm / Δmin a konflikty
+- Vidět kapacitu dne (vytížení, rezerva/slack) a varování "den je plný"
+- Řešit výjimky v místě (nelze geokódovat, chybí tel, zákazník chce zavolat později)
+- Minimum scrollu, maximum informační hustoty, klávesové zkratky
+
+**Typické chování:**
+- Vybere den + auto + depo → vybírá zákazníky z inboxu tak, aby "seděli" do trasy
+- V hovoru nabídne 3 nejlepší sloty, ne celý kalendář
+- Když něco "nesedí", odloží nebo přehodí na jiný den/auto
+
+#### 1.2 Řemeslník (primárně mobil)
+
+**Kontext:** Mobilní web, často venku; potřebuje rychle navigovat, volat, vidět poznámky a uzavřít zakázku.
+
+**Cíl:** Provést návštěvy, minimalizovat zmatky, mít všechny informace dostupné (kontakt, adresa, poznámky, zařízení, historie), rychle zaznamenat výsledek.
+
+**Klíčové potřeby:**
+- Dnešní plán: pořadí, okna, čas dojezdu, navigace
+- Jedno kliknutí: Navigovat, Volat, Na místě, Hotovo
+- Poznámky typu "parkování / klíče / přístup" zvýrazněné
+- I bez mobilní aplikace: export (odkaz/Google Maps) a offline-ish "tisk/PDF"
+
+---
+
+### 2. Názvosloví (sjednocení)
+
+| UI termín | Popis | Mapování na DB |
+|-----------|-------|----------------|
+| **Zákazník** | Osoba nebo firma | `Customer` |
+| **Zařízení** | Kotel, komín, plynový spotřebič | `Device` |
+| **Zakázka** | Co se má udělat (revize/servis/čištění) | `Revision` |
+| **Návštěva** | Domluvené datum + časové okno + délka + auto | `Visit` |
+| **Plán dne** | Konkrétní trasa pro den a auto (sekvence návštěv + metriky) | `PlannedRoute` |
+| **Plánovací inbox** | Seznam zakázek k domluvení/vložení do trasy | Query over `Revision` |
+
+---
+
+### 3. Stavové signály (konzistentní napříč aplikací)
+
+#### 3.1 Stav adresy
+
+| Stav | Ikona | Popis |
+|------|-------|-------|
+| Ověřeno | ✅ | Má geo a prošla validací |
+| Čeká na ověření | ⏳ | Geokódování pending |
+| Nelze lokalizovat | ⚠ | Geokód selhal |
+| Bez adresy | ⛔ | Nelze optimalizovat |
+
+#### 3.2 Stav vložení slotu do trasy
+
+| Stav | Ikona | Podmínky |
+|------|-------|----------|
+| OK | ✅ | Bez konfliktu, vytížení ≤90%, slack ≥20 min |
+| Těsné | ⚠ | Vytížení 90–100% nebo slack 10–20 min |
+| Konflikt | ❌ | Porušení okna nebo vytížení >100% |
+
+#### 3.3 Kapacita dne
+
+| Stav | Ikona | Podmínky |
+|------|-------|----------|
+| V pohodě | ✅ | load <80%, slack >30 min |
+| Těsný | ⚠ | load 80–95% nebo slack 15–30 min |
+| Přetížený | ❌ | load >95% nebo slack <15 min |
+
+---
+
+### 4. Design principy pro GA
+
+#### 4.1 Tři zásadní UX pravidla
+
+1. **Route-aware všude tam, kde se domlouvá termín**
+   - "Domluvit" vždy ukazuje dopad na trasu
+
+2. **Výjimky řešitelné přímo v místě**
+   - Nelze geokódovat → okamžitě "Opravit adresu" a pokračovat
+
+3. **Desktop je hustý a rychlý; mobil je rovnocenný, jen jinak poskládaný**
+   - Ne "desktop jako zvětšený mobil"
+
+#### 4.2 Explicitní "Route-aware" režim
+
+V Inboxu i v Domluvě termínu bude přepínač:
+
+```
+Optimalizovat podle trasy: [Zapnuto]
+```
+
+Když je **OFF**:
+- Sloty nemají Δkm/Δmin, jen "časový konflikt"
+- UI ukáže InlineAlert: "Bez ověřené adresy nelze optimalizovat. Opravit adresu."
+
+---
+
+### 5. Komponentový katalog
+
+#### 5.1 Základní layoutové komponenty
+
+| Komponenta | Popis |
+|------------|-------|
+| `AppShell` | Top nav, breadcrumb slot, content container, dense mód |
+| `SplitView` | Desktop: 2–3 panely (Inbox / Map / Detail) |
+| `RightDrawer` / `BottomSheet` | Jednotná logika otevření/zavření, focus trap, ESC |
+
+#### 5.2 Route-aware plánování
+
+| Komponenta | Popis |
+|------------|-------|
+| `RouteContextHeader` | Sticky nahoře: Den, Auto, Depo + souhrn metrik |
+| `CandidateRow` | Řádek v inboxu: jméno, město, due, Δkm, Δmin, slot chips |
+| `RouteMap` | Mapa s číslovanými piny + polyline + insertion preview |
+| `SlotSuggestions` | Nabídka 3–5 slotů s metrikami a stavy |
+| `InsertionPreview` | Mini panel "vloží se mezi: 3 (Jana) → 4 (Michaela)" |
+
+#### 5.3 Stavové komponenty
+
+| Komponenta | Popis |
+|------------|-------|
+| `StatusChip` | Badge pro adresu/zakázku/kapacitu se stavem |
+| `InlineAlert` | Krátké vysvětlení problému + CTA |
+| `MetricBadge` | Pro Δkm/Δmin a denní metriky |
+
+#### 5.4 Data grid
+
+| Komponenta | Popis |
+|------------|-------|
+| `CustomerTable` | TanStack Table s bohatými buňkami |
+| `CustomerPreviewPanel` | Shrnutí + CTA v side panelu |
+| `CustomerEditDrawer` | Editace + ověření adresy |
+
+---
+
+### 6. Klávesové zkratky (dispečerka / desktop)
+
+#### 6.1 Globální
+
+| Zkratka | Akce |
+|---------|------|
+| `/` | Focus do search |
+| `g i` | Go to Inbox |
+| `g c` | Go to Customers |
+| `g d` | Go to Day plan |
+
+#### 6.2 Inbox
+
+| Zkratka | Akce |
+|---------|------|
+| `↑` / `↓` | Výběr kandidáta |
+| `Enter` | Otevřít detail |
+| `1`..`5` | Vybrat doporučený slot |
+| `D` | Otevřít "Domluvit" |
+| `S` | Uložit/"Domluvit" (commit) |
+| `O` | Otevřít "Odložit" |
+| `E` | "Opravit adresu" |
+| `Esc` | Zavřít drawer/modal |
+
+#### 6.3 Plán dne
+
+| Zkratka | Akce |
+|---------|------|
+| `Ctrl+S` | Uložit plán |
+| `R` | Re-optimalizovat |
+| `P` | Tisk |
+| `M` | Export do Google Maps |
+
+---
+
+### 7. Metriky kapacity a jak je ukazovat
+
+#### 7.1 Metriky v RouteContextHeader
+
+```
+51 km • jízda 1h16 • servis 5h30 • vytížení 92% ⚠ • rezerva 18 min ⚠
+```
+
+| Metrika | Popis |
+|---------|-------|
+| Vzdálenost (km) | Součet všech úseků trasy |
+| Čas jízdy (travel time) | Z Valhalla matrix |
+| Servisní čas | Součet service duration všech zastávek |
+| Vytížení dne (load %) | (jízda + servis + pauzy) / pracovní doba |
+| Rezerva (slack) | Nejmenší časová rezerva mezi návštěvami |
+
+#### 7.2 Tooltip vysvětlení
+
+- **Vytížení:** "Vytížení = (jízda + servis + pauzy) / pracovní doba dne"
+- **Rezerva:** "Nejmenší časová rezerva mezi návštěvami vzhledem k časovým oknům; nízká rezerva = riziko skluzu"
+
+---
+
+### 8. Stránky - detailní popis a wireframes
+
+#### 8.1 Plánovací inbox (route-aware)
+
+**Účel:** Domluvit/vložit zakázky do konkrétní denní trasy s minimálním dopadem na km/čas.
+
+**Desktop layout (3 panely):**
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Plánovací inbox  Den[St 5.3] Auto[1] Depo[Brno]  Route-aware[ON] [Filtry]│
+│ 51 km • jízda 1h16 • servis 5h30 • vytížení 92%⚠ • rezerva 18m⚠          │
+│ [Po termínu(12)] [Týden(18)] [30 dní(43)] [Vše] [Odložené] [Problémy]   │
+├───────────────┬───────────────────────────────────────────┬─────────────┤
+│ INBOX         │ MAPA + TRASA DNE                           │ DETAIL      │
+│ Jana Novotná  │ piny 1..N + highlight kandidát             │ Jana Novotná│
+│ +3.2km +6min ✅│ návrh vložení mezi 3→4                     │ Sloty:      │
+│ 10–12✅ 12–14⚠ │                                           │ 10–12 ✅ +6m │
+│               │                                           │ 12–14 ⚠ +14m│
+│ Michaela…     │                                           │ 8–10 ❌      │
+│ +7.8km +14m⚠  │                                           │ [DOMLUVIT]  │
+│               │                                           │ [ODLOŽIT]   │
+└───────────────┴───────────────────────────────────────────┴─────────────┘
+```
+
+**Mobile layout:**
+
+```
+┌──────────────────────────────┐
+│ Inbox  Den [..] Auto [1]     │
+│ Kapacita 92% ⚠               │
+│ [Seznam] [Mapa]              │
+├──────────────────────────────┤
+│ (karty s Δkm/Δmin)            │
+│ Jana Novotná  +6m +3.2km ✅   │
+│ [Domluvit] [Odložit]          │
+└──────────────────────────────┘
+```
+
+**Segmenty:**
+- Po termínu / Tento týden / Do 30 dní / Vše / Odložené / Problémy
+
+**UI stavy:**
+1. `context=missing` - Vyžaduje výběr dne+auta
+2. `context=ready, route=loading` - Skeleton metrik a mapy
+3. `route=ready, inbox=ready` - Kandidáti seřazení dle "nejlepší vložení"
+4. `candidate=selected, suggestions=loading` - Dotekají sloty
+5. `routeAware=forcedOff` - Chybí geo, banner s vysvětlením
+6. `capacity=warn|danger` - Varování v headeru
+
+---
+
+#### 8.2 Plán dne (route editor / export)
+
+**Účel:** Vidět a upravit denní trasu, reorder, export, kapacita.
+
+**Desktop layout:**
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ Plán dne  Den[..] Auto[1] Depo[..]  51km • 92%⚠ • slack 18m⚠    │
+│ [Přidat z inboxu] [Export ▾] [Tisk] [Uložit]                     │
+├───────────────┬──────────────────────────────────────────────────┤
+│ Stops (DND)   │ MAPA + TRASA                                      │
+│ 1 Jana 10–12  │ polyline + piny                                   │
+│ 2 ...         │                                                   │
+└───────────────┴──────────────────────────────────────────────────┘
+```
+
+**Funkce:**
+- Drag & drop reorder zastávek
+- Draft mode s "Neuložené změny" bannerem
+- "Přidat z inboxu" otevře drawer s kandidáty
+- Export: Google Maps (segmentovaný), Tisk/PDF
+
+---
+
+#### 8.3 Seznam zákazníků
+
+**Účel:** Katalog pro dohledání a údržbu dat.
+
+**Desktop (tabulka):**
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│ Zákazníci  [🔎 hledat…____________________] [Saved ▾] [Filtry] │
+│ [Řadit ▾] [Tabulka|Karty]                               [+Nový]│
+├───────────────────────────────────────────────────────────────┤
+│ ZÁKAZNÍK             | MĚSTO | ZAŘ. | NEJBL. ZAK. | ADRESA | ⋯ │
+│ Alena Hájek          | Hodonín| 2    | 3.1.2027    | ✅     | ⋯ │
+│ +420… • email… • U Pošty 220…                               … │
+├───────────────────────────────┬───────────────────────────────┤
+│ (klik řádku)                   │ Náhled zákazníka (panel)      │
+│                                │ kontakt, adresa, CTA          │
+└───────────────────────────────┴───────────────────────────────┘
+```
+
+**Mobile (karty):**
+
+```
+┌──────────────────────────────┐
+│ Zákazníci                    │
+│ [🔎 hledat…_______________]   │
+│ [Bez adresy] [Nelze loc] [Po]│
+├──────────────────────────────┤
+│ Alena Hájek (Osoba)          │
+│ Hodonín • U Pošty 220…       │
+│ ✅ Ověřeno • Zařízení 2      │
+│ Nejbližší: 3.1.2027          │
+└──────────────────────────────┘
+```
+
+---
+
+#### 8.4 Detail zákazníka (workspace + edit drawer)
+
+**Účel:** Rychlý přehled + zařízení + historie + komunikace; editace v draweru.
+
+**Desktop (2 sloupce + taby):**
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│ ← Zpět  Alena Hájek [OSOBA]  [📞] [🧭] [➕ do plánu] [✎ Upravit] │
+├───────────────────────┬────────────────────────────────────────┤
+│ Kontakt               │ [Zařízení] [Zakázky&Návštěvy] [Komunik.]│
+│ +420… (kopírovat)     │ ─ Zařízení (kompaktní řádky)            │
+│ email…                │ Kotel…  Interval 12  Další: …  [Domluvit]│
+│ Adresa ✅ Ověřeno      │ Komín…  Interval 24  Další: …  [Domluvit]│
+│ U Pošty 220… [Opravit] │                                          │
+│ Mini mapa [Otevřít]   │                                          │
+│ Poznámky…             │                                          │
+└───────────────────────┴────────────────────────────────────────┘
+```
+
+**Editace:** Pravý drawer se sekcemi "Základ", "Kontakt", "Adresa + ověření", "Poznámky"
+
+---
+
+#### 8.5 Domluvit termín (vložit do trasy) - dialog/panel
+
+**Účel:** Jedním rozhodnutím vybrat slot a vložit do trasy.
+
+**Desktop (inline panel):**
+
+```
+Domluvit termín
+Doporučené: [Út 10–12 ✅ +6m/+3.2km] [St 8–10 ✅ +0m] [Čt 12–14 ❌]
+Datum [..]  Okno [10:00]–[12:00]  Doba [30m]  (Auto/Depo dle kontextu)
+Stav: ✅ OK (rezerva 18 min)
+[Zrušit]                         [Domluvit]
+```
+
+**Mobile (full-screen sheet):**
+
+```
+┌──────────────────────────────┐
+│ Domluvit termín              │
+│ Doporučené:                  │
+│ [St 8–10 ✅] [Út 10–12 ✅]     │
+│ Datum [..] Okno [..]–[..]     │
+│ Doba [30m]                    │
+│ Stav: OK (+6m / +3.2km)       │
+│ [Zrušit]         [Domluvit]   │
+└──────────────────────────────┘
+```
+
+---
+
+#### 8.6 Odložit akci - dialog
+
+**Účel:** Odložit další krok zakázky do data s důvodem.
+
+```
+Odložit akci
+Odložit do: [dd.mm.rrrr]  Rychle: [+7] [+14] [+30]
+Důvod: [Nezvedá ▾]
+Poznámka: [__________]
+[Zrušit]            [Odložit]
+```
+
+**Důvody:** Nezvedá, Dovolená, Chce zavolat později, Jiný
+
+---
+
+#### 8.7 Detail zakázky (workflow hub)
+
+**Účel:** Centrální detail toho, co se má udělat.
+
+**Desktop:**
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ ← Zpět  Zakázka: Revize plynového kotle  [NADCHÁZEJÍCÍ]       │
+│ Due: 26.2.2026   [Domluvit termín] [Odložit] [Zrušit ⋯]       │
+├─────────────────────────┬────────────────────────────────────┤
+│ Zákazník + Zařízení      │ Návštěva                           │
+│ Hustopeče… ✅ adresa      │ St 5.3. 10–12  Doba 30m  Auto 1     │
+│ Kontakt…                 │ [Změnit] [Otevřít plán dne]         │
+├──────────────────────────────────────────────────────────────┤
+│ [Průběh/Výsledek] [Komunikace] [Historie]                     │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Kontextové akce dle stavu:**
+- `upcoming` → "Domluvit termín"
+- `scheduled` → "Změnit termín", "Přesunout"
+- `in_progress` → "Na místě", "Hotovo"
+- `completed` → "Zobrazit výsledek"
+
+---
+
+### 9. UI stavové modely
+
+#### 9.1 Plánovací inbox - stavy
+
+| Stav | UI | Akce | Fallback |
+|------|-----|------|----------|
+| `context=missing` | Vyžaduje výběr dne+auta | Vybrat | - |
+| `route=loading` | Skeleton metrik | Čekat | - |
+| `route=ready` | Kandidáti seřazení | Vybrat kandidáta | - |
+| `suggestions=loading` | Skeleton slotů | Čekat | - |
+| `routeAware=forcedOff` | Banner "bez optimalizace" | Opravit adresu | Domluvit bez Δ |
+| `capacity=warn` | Chip v headeru | Přepnout auto/den | - |
+
+#### 9.2 Optimistic UI
+
+**Ano (optimistic):**
+- Vložit do dne / domluvit
+- Odložit
+- Uložení poznámky
+
+**Ne (neoptimistic):**
+- Editace adresy + ověření
+- Reorder celé trasy (draft mód)
+
+---
+
+### 10. Empty states a edge cases
+
+#### 10.1 Inbox je prázdný
+
+```
+Inbox je prázdný – na tento den nejsou žádné položky k domluvení.
+[Zobrazit další období] [Přejít na Zákazníky]
+```
+
+#### 10.2 Nelze geokódovat
+
+```
+⚠ Adresu se nepodařilo ověřit. Do optimalizace trasy se nezahrne.
+[Opravit adresu]
+```
+
+#### 10.3 Chybí telefon
+
+```
+⚠ Zákazník nemá telefon. Nelze obvolat.
+[Doplnit telefon]
+```
+
+#### 10.4 Den je plný
+
+```
+❌ Den je téměř plný (92%). Doporučeno přidat max. 1 krátkou návštěvu v okolí.
+```
+
+---
+
+### 11. Doporučené UI knihovny
+
+| Knihovna | Účel |
+|----------|------|
+| shadcn/ui + Radix UI | Dostupnost, moderní vzhled |
+| Tailwind CSS | Konzistentní spacing |
+| TanStack Table | Tabulka zákazníků |
+| React Query | Cachování, optimistic updates |
+| React Hook Form + Zod | Formuláře + validace |
+| date-fns | Data/časy |
+| Zustand | UI stav (den/auto, panely, filtry) |
+| react-virtuoso | Virtualizace dlouhých seznamů |
+
+---
+
 *Dokument vytvořen: 2026-01-31*  
-*Poslední aktualizace: 2026-01-31 (odpovědi na otázky + implementační plán)*
+*Poslední aktualizace: 2026-02-02 (Phase 8 - GA Redesign specification)*
