@@ -88,23 +88,29 @@ describe('calendarUtils', () => {
   });
 
   describe('groupRevisionsByDay', () => {
-    const mockRevisions: Partial<Revision>[] = [
+    const mockRevisionsScheduled: Partial<Revision>[] = [
       { id: '1', scheduledDate: '2026-01-15', status: 'scheduled' },
       { id: '2', scheduledDate: '2026-01-15', status: 'confirmed' },
       { id: '3', scheduledDate: '2026-01-20', status: 'scheduled' },
-      { id: '4', dueDate: '2026-01-25', scheduledDate: null, status: 'upcoming' },
     ];
 
-    it('should group revisions by scheduled date', () => {
-      const grouped = groupRevisionsByDay(mockRevisions as Revision[]);
+    const mockRevisionsDue: Partial<Revision>[] = [
+      { id: '1', dueDate: '2026-01-15', status: 'upcoming' },
+      { id: '2', dueDate: '2026-01-15', status: 'upcoming' },
+      { id: '3', dueDate: '2026-01-25', status: 'upcoming' },
+    ];
+
+    it('should group revisions by scheduled date when dateField is scheduled', () => {
+      const grouped = groupRevisionsByDay(mockRevisionsScheduled as Revision[], 'scheduled');
       
       expect(grouped['2026-01-15']).toHaveLength(2);
       expect(grouped['2026-01-20']).toHaveLength(1);
     });
 
-    it('should use due date for unscheduled revisions', () => {
-      const grouped = groupRevisionsByDay(mockRevisions as Revision[]);
+    it('should group revisions by due date when dateField is due (default)', () => {
+      const grouped = groupRevisionsByDay(mockRevisionsDue as Revision[]);
       
+      expect(grouped['2026-01-15']).toHaveLength(2);
       expect(grouped['2026-01-25']).toHaveLength(1);
     });
 
@@ -113,13 +119,20 @@ describe('calendarUtils', () => {
       expect(grouped).toEqual({});
     });
 
-    it('should handle revisions without dates', () => {
+    it('should skip revisions without the specified date field', () => {
       const revisionsWithoutDate: Partial<Revision>[] = [
         { id: '1', status: 'upcoming' },
+        { id: '2', scheduledDate: '2026-01-10', status: 'scheduled' }, // has scheduled but no due
       ];
       
+      // Default is 'due', so revision without dueDate should be skipped
       const grouped = groupRevisionsByDay(revisionsWithoutDate as Revision[]);
       expect(Object.keys(grouped)).toHaveLength(0);
+      
+      // With 'scheduled', revision with scheduledDate should be included
+      const groupedScheduled = groupRevisionsByDay(revisionsWithoutDate as Revision[], 'scheduled');
+      expect(Object.keys(groupedScheduled)).toHaveLength(1);
+      expect(groupedScheduled['2026-01-10']).toHaveLength(1);
     });
   });
 
