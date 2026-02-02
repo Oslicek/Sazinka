@@ -11,6 +11,9 @@ import {
 } from '../components/planner';
 import { ThreePanelLayout } from '../components/common';
 import * as settingsService from '../services/settingsService';
+import * as vehicleService from '../services/vehicleService';
+import * as routeService from '../services/routeService';
+import * as insertionService from '../services/insertionService';
 import { getCallQueue, type CallQueueItem } from '../services/revisionService';
 import styles from './PlanningInbox.module.css';
 
@@ -18,11 +21,6 @@ import styles from './PlanningInbox.module.css';
 const USER_ID = '00000000-0000-0000-0000-000000000001';
 
 type InboxSegment = 'overdue' | 'thisWeek' | 'thisMonth' | 'all' | 'snoozed' | 'problems';
-
-interface Vehicle {
-  id: string;
-  name: string;
-}
 
 interface Depot {
   id: string;
@@ -35,6 +33,7 @@ interface InboxCandidate extends CallQueueItem {
   deltaKm?: number;
   deltaMin?: number;
   slotStatus?: 'ok' | 'tight' | 'conflict';
+  isCalculating?: boolean;
 }
 
 // Helper to check if customer is overdue
@@ -61,19 +60,23 @@ export function PlanningInbox() {
   // Route context state
   const [context, setContext] = useState<RouteContext | null>(null);
   const [isRouteAware, setIsRouteAware] = useState(true);
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [vehicles, setVehicles] = useState<vehicleService.Vehicle[]>([]);
   const [depots, setDepots] = useState<Depot[]>([]);
   
   // Route state
-  const [routeStops] = useState<MapStop[]>([]);
-  const [metrics] = useState<RouteMetrics | null>(null);
-  const [isLoadingRoute] = useState(false);
+  const [routeStops, setRouteStops] = useState<MapStop[]>([]);
+  const [metrics, setMetrics] = useState<RouteMetrics | null>(null);
+  const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   
   // Inbox state
   const [segment, setSegment] = useState<InboxSegment>('thisWeek');
   const [candidates, setCandidates] = useState<InboxCandidate[]>([]);
   const [isLoadingCandidates, setIsLoadingCandidates] = useState(false);
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
+  
+  // Insertion calculation state
+  const [slotSuggestions, setSlotSuggestions] = useState<insertionService.InsertionPosition[]>([]);
+  const [isCalculatingSlots, setIsCalculatingSlots] = useState(false);
   
   // Segment counts
   const [segmentCounts, setSegmentCounts] = useState<Record<InboxSegment, number>>({
@@ -91,7 +94,11 @@ export function PlanningInbox() {
     
     async function loadSettings() {
       try {
-        const settings = await settingsService.getSettings(USER_ID);
+        // Load settings and vehicles in parallel
+        const [settings, loadedVehicles] = await Promise.all([
+          settingsService.getSettings(USER_ID),
+          vehicleService.listVehicles(true),
+        ]);
         
         // Convert depots to our format
         const loadedDepots = settings.depots.map((d) => ({
@@ -101,23 +108,20 @@ export function PlanningInbox() {
           lng: d.lng,
         }));
         setDepots(loadedDepots);
+        setVehicles(loadedVehicles);
         
-        // Mock vehicles for now (could come from settings later)
-        setVehicles([
-          { id: '1', name: 'Auto 1' },
-          { id: '2', name: 'Auto 2' },
-        ]);
-        
-        // Set initial context with today's date and primary depot
+        // Set initial context with today's date, first vehicle, and primary depot
         const primaryDepot = loadedDepots.find((d) => 
           settings.depots.find((sd) => sd.name === d.name && sd.isPrimary)
         ) || loadedDepots[0];
         
-        if (primaryDepot) {
+        const firstVehicle = loadedVehicles[0];
+        
+        if (primaryDepot && firstVehicle) {
           setContext({
             date: new Date().toISOString().split('T')[0],
-            vehicleId: '1',
-            vehicleName: 'Auto 1',
+            vehicleId: firstVehicle.id,
+            vehicleName: firstVehicle.name,
             depotId: primaryDepot.id,
             depotName: primaryDepot.name,
           });
@@ -129,6 +133,128 @@ export function PlanningInbox() {
     
     loadSettings();
   }, [isConnected]);
+
+  // Load saved route for selected day
+  useEffect(() => {
+    if (!isConnected || !context?.date) return;
+    
+    const dateToLoad = context.date;
+    
+    async function loadRoute() {
+      setIsLoadingRoute(true);
+      try {
+        const response = await routeService.getRoute(dateToLoad);
+        
+        if (response.route && response.stops.length > 0) {
+          // Convert to MapStop format
+          const stops: MapStop[] = response.stops.map((stop) => ({
+            id: stop.customerId,
+            name: stop.customerName,
+            address: stop.address,
+            coordinates: {
+              lat: stop.customerLat ?? 0,
+              lng: stop.customerLng ?? 0,
+            },
+            order: stop.stopOrder,
+            eta: stop.estimatedArrival ?? undefined,
+            etd: stop.estimatedDeparture ?? undefined,
+          }));
+          setRouteStops(stops);
+          
+          // Set metrics from route
+          const totalMin = response.route.totalDurationMinutes ?? 0;
+          const serviceMin = stops.length * 30; // Assume 30 min per stop
+          const travelMin = totalMin - serviceMin;
+          const workingDayMin = 9 * 60; // 9 hours
+          
+          setMetrics({
+            distanceKm: response.route.totalDistanceKm ?? 0,
+            travelTimeMin: Math.max(0, travelMin),
+            serviceTimeMin: serviceMin,
+            loadPercent: Math.round((totalMin / workingDayMin) * 100),
+            slackMin: Math.max(0, workingDayMin - totalMin),
+            stopCount: stops.length,
+          });
+        } else {
+          setRouteStops([]);
+          setMetrics(null);
+        }
+      } catch (err) {
+        console.error('Failed to load route:', err);
+        setRouteStops([]);
+        setMetrics(null);
+      } finally {
+        setIsLoadingRoute(false);
+      }
+    }
+    
+    loadRoute();
+  }, [isConnected, context?.date]);
+
+  // Calculate insertion when candidate is selected (route-aware mode)
+  useEffect(() => {
+    if (!isConnected || !isRouteAware || !selectedCandidateId || !context) return;
+    
+    const candidate = candidates.find((c) => c.customerId === selectedCandidateId);
+    if (!candidate || !candidate.customerLat || !candidate.customerLng) {
+      setSlotSuggestions([]);
+      return;
+    }
+    
+    const depot = depots.find((d) => d.id === context.depotId);
+    if (!depot) {
+      setSlotSuggestions([]);
+      return;
+    }
+    
+    async function calculateInsertion() {
+      setIsCalculatingSlots(true);
+      try {
+        const response = await insertionService.calculateInsertion({
+          routeStops: routeStops.map((stop) => ({
+            id: stop.id,
+            name: stop.name,
+            coordinates: stop.coordinates,
+            arrivalTime: stop.eta,
+            departureTime: stop.etd,
+          })),
+          depot: { lat: depot!.lat, lng: depot!.lng },
+          candidate: {
+            id: candidate!.id, // revision ID
+            customerId: candidate!.customerId,
+            coordinates: { lat: candidate!.customerLat!, lng: candidate!.customerLng! },
+            serviceDurationMinutes: 30, // Default, could come from settings
+          },
+          date: context!.date,
+        });
+        
+        setSlotSuggestions(response.allPositions);
+        
+        // Update candidate with best insertion metrics
+        if (response.bestPosition) {
+          setCandidates((prev) => 
+            prev.map((c) => 
+              c.customerId === selectedCandidateId
+                ? {
+                    ...c,
+                    deltaKm: response.bestPosition!.deltaKm,
+                    deltaMin: response.bestPosition!.deltaMin,
+                    slotStatus: response.bestPosition!.status as 'ok' | 'tight' | 'conflict',
+                  }
+                : c
+            )
+          );
+        }
+      } catch (err) {
+        console.error('Failed to calculate insertion:', err);
+        setSlotSuggestions([]);
+      } finally {
+        setIsCalculatingSlots(false);
+      }
+    }
+    
+    calculateInsertion();
+  }, [isConnected, isRouteAware, selectedCandidateId, routeStops, context, depots, candidates]);
 
   // Load candidates based on segment
   const loadCandidates = useCallback(async () => {
@@ -143,20 +269,19 @@ export function PlanningInbox() {
         limit: 50,
       });
       
-      // Transform to inbox candidates
+      // Transform to inbox candidates - metrics will be calculated when selected
       const loadedCandidates: InboxCandidate[] = response.items.map((item) => ({
         ...item,
-        // These would be calculated by the backend in the real implementation
-        deltaKm: isRouteAware ? Math.random() * 10 + 1 : undefined,
-        deltaMin: isRouteAware ? Math.random() * 15 + 2 : undefined,
-        slotStatus: isRouteAware 
-          ? (['ok', 'tight', 'conflict'] as const)[Math.floor(Math.random() * 3)]
-          : undefined,
+        // Metrics will be populated when candidate is selected
+        deltaKm: undefined,
+        deltaMin: undefined,
+        slotStatus: undefined,
       }));
       
       setCandidates(loadedCandidates);
+      setSlotSuggestions([]);
       
-      // Update segment counts (mock for now)
+      // Update segment counts
       setSegmentCounts({
         overdue: loadedCandidates.filter((c) => getDaysOverdue(c) > 0).length,
         thisWeek: loadedCandidates.length,
@@ -343,16 +468,24 @@ export function PlanningInbox() {
             <div className={styles.detailSection}>
               <h4>Doporučené sloty</h4>
               <div className={styles.slotSuggestions}>
-                {/* Mock slot suggestions - would come from backend */}
-                <button type="button" className={`${styles.slotChip} ${styles.ok}`}>
-                  10:00–12:00 ✅
-                </button>
-                <button type="button" className={`${styles.slotChip} ${styles.tight}`}>
-                  12:00–14:00 ⚠️
-                </button>
-                <button type="button" className={`${styles.slotChip} ${styles.conflict}`}>
-                  8:00–10:00 ❌
-                </button>
+                {isCalculatingSlots ? (
+                  <span className={styles.calculating}>Počítám...</span>
+                ) : slotSuggestions.length > 0 ? (
+                  slotSuggestions.slice(0, 5).map((slot, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      className={`${styles.slotChip} ${styles[slot.status]}`}
+                      title={`Vloží se mezi: ${slot.insertAfterName} → ${slot.insertBeforeName}\n+${slot.deltaMin.toFixed(0)}min / +${slot.deltaKm.toFixed(1)}km`}
+                    >
+                      {slot.estimatedArrival}–{slot.estimatedDeparture} {getStatusIcon(slot.status as 'ok' | 'tight' | 'conflict')}
+                    </button>
+                  ))
+                ) : hasValidAddress(selectedCandidate) ? (
+                  <span className={styles.noSlots}>Žádné sloty - zkuste jiný den</span>
+                ) : (
+                  <span className={styles.noSlots}>⚠️ Nelze vypočítat - chybí adresa</span>
+                )}
               </div>
             </div>
           )}

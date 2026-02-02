@@ -287,6 +287,13 @@
   cursor: not-allowed;
 }
 
+.calculating,
+.noSlots {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  padding: 0.5rem;
+}
+
 /* Actions */
 .detailActions {
   display: flex;
