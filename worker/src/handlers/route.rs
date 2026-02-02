@@ -876,6 +876,214 @@ pub async fn handle_insertion_calculate(
     Ok(())
 }
 
+// ============================================================================
+// Batch Insertion Calculation Handler
+// ============================================================================
+
+/// Request for batch insertion calculation
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CalculateBatchInsertionRequest {
+    pub route_stops: Vec<RouteStopInput>,
+    pub depot: Coordinates,
+    pub candidates: Vec<InsertionCandidateInput>,
+    pub date: String,
+    pub workday_start: Option<String>,
+    pub workday_end: Option<String>,
+    pub best_only: Option<bool>,
+}
+
+/// Single result in batch insertion response
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchInsertionResult {
+    pub candidate_id: String,
+    pub best_delta_km: f64,
+    pub best_delta_min: f64,
+    pub best_insert_after_index: i32,
+    pub status: String,
+    pub is_feasible: bool,
+}
+
+/// Response for batch insertion calculation
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CalculateBatchInsertionResponse {
+    pub results: Vec<BatchInsertionResult>,
+    pub processing_time_ms: u64,
+}
+
+/// Handle route.insertion.batch messages
+/// Calculates best insertion position for multiple candidates efficiently
+pub async fn handle_insertion_batch(
+    client: Client,
+    mut subscriber: Subscriber,
+    _pool: PgPool,
+    routing_service: Arc<dyn RoutingService>,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received route.insertion.batch message");
+        let start_time = std::time::Instant::now();
+
+        let reply = match msg.reply {
+            Some(ref reply) => reply.clone(),
+            None => {
+                warn!("Message without reply subject");
+                continue;
+            }
+        };
+
+        // Parse request
+        let request: Request<CalculateBatchInsertionRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("Failed to parse batch request: {}", e);
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        let calc_req = &request.payload;
+        let mut results: Vec<BatchInsertionResult> = Vec::new();
+
+        // If no candidates, return empty results
+        if calc_req.candidates.is_empty() {
+            let response = SuccessResponse::new(request.id, CalculateBatchInsertionResponse {
+                results: vec![],
+                processing_time_ms: start_time.elapsed().as_millis() as u64,
+            });
+            let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+            continue;
+        }
+
+        // Build location list: all candidates, then depot, then route stops
+        // This allows us to compute one matrix for all candidates
+        let mut all_locations: Vec<Coordinates> = Vec::new();
+        
+        // Add all candidates first (indices 0 to num_candidates-1)
+        for candidate in &calc_req.candidates {
+            all_locations.push(candidate.coordinates);
+        }
+        let num_candidates = calc_req.candidates.len();
+        
+        // Add depot (index num_candidates)
+        all_locations.push(calc_req.depot);
+        let depot_idx = num_candidates;
+        
+        // Add route stops (indices num_candidates+1 onwards)
+        for stop in &calc_req.route_stops {
+            all_locations.push(stop.coordinates);
+        }
+
+        // Get the matrix for all locations
+        let matrices = match routing_service.get_matrices(&all_locations).await {
+            Ok(m) => m,
+            Err(e) => {
+                warn!("Routing service failed: {}. Using estimates.", e);
+                let mock = MockRoutingService::new();
+                match mock.get_matrices(&all_locations).await {
+                    Ok(m) => m,
+                    Err(e2) => {
+                        error!("Mock routing also failed: {}", e2);
+                        let error = ErrorResponse::new(request.id, "ROUTING_ERROR", e.to_string());
+                        let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                        continue;
+                    }
+                }
+            }
+        };
+
+        let num_stops = calc_req.route_stops.len();
+
+        // Calculate insertion for each candidate
+        for (candidate_idx, candidate) in calc_req.candidates.iter().enumerate() {
+            // If no route stops, insertion is trivially at position 0
+            if calc_req.route_stops.is_empty() {
+                results.push(BatchInsertionResult {
+                    candidate_id: candidate.id.clone(),
+                    best_delta_km: 0.0,
+                    best_delta_min: candidate.service_duration_minutes as f64,
+                    best_insert_after_index: -1,
+                    status: "ok".to_string(),
+                    is_feasible: true,
+                });
+                continue;
+            }
+
+            // Find best insertion position for this candidate
+            let mut best_delta_min = f64::MAX;
+            let mut best_delta_km = 0.0;
+            let mut best_insert_idx: i32 = -1;
+
+            for insert_idx in 0..=num_stops {
+                // Matrix indices for "from" and "to" nodes
+                // Route stops start at index num_candidates+1
+                let from_matrix_idx = if insert_idx == 0 { 
+                    depot_idx 
+                } else { 
+                    num_candidates + insert_idx  // route stop at insert_idx-1
+                };
+                let to_matrix_idx = if insert_idx >= num_stops { 
+                    depot_idx 
+                } else { 
+                    num_candidates + 1 + insert_idx  // route stop at insert_idx
+                };
+
+                // Current edge cost (from -> to without candidate)
+                let current_distance_m = matrices.distances[from_matrix_idx][to_matrix_idx] as f64;
+                let current_time_s = matrices.durations[from_matrix_idx][to_matrix_idx] as f64;
+
+                // New costs with candidate insertion
+                let dist_from_to_candidate = matrices.distances[from_matrix_idx][candidate_idx] as f64;
+                let dist_candidate_to_next = matrices.distances[candidate_idx][to_matrix_idx] as f64;
+                let time_from_to_candidate = matrices.durations[from_matrix_idx][candidate_idx] as f64;
+                let time_candidate_to_next = matrices.durations[candidate_idx][to_matrix_idx] as f64;
+
+                let delta_km = (dist_from_to_candidate + dist_candidate_to_next - current_distance_m) / 1000.0;
+                let delta_min = (time_from_to_candidate + time_candidate_to_next - current_time_s) / 60.0 
+                    + candidate.service_duration_minutes as f64;
+
+                if delta_min < best_delta_min {
+                    best_delta_min = delta_min;
+                    best_delta_km = delta_km;
+                    best_insert_idx = (insert_idx as i32) - 1;
+                }
+            }
+
+            // Determine status based on best delta
+            let status = if best_delta_min < 15.0 {
+                "ok"
+            } else if best_delta_min < 30.0 {
+                "tight"
+            } else {
+                "conflict"
+            };
+
+            results.push(BatchInsertionResult {
+                candidate_id: candidate.id.clone(),
+                best_delta_km,
+                best_delta_min,
+                best_insert_after_index: best_insert_idx,
+                status: status.to_string(),
+                is_feasible: status != "conflict",
+            });
+        }
+
+        let processing_time_ms = start_time.elapsed().as_millis() as u64;
+        info!("Batch insertion calculated for {} candidates in {}ms", results.len(), processing_time_ms);
+
+        let response = SuccessResponse::new(request.id, CalculateBatchInsertionResponse {
+            results,
+            processing_time_ms,
+        });
+
+        let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+    }
+
+    Ok(())
+}
+
 /// Haversine distance in km
 fn haversine_km(a: Coordinates, b: Coordinates) -> f64 {
     const R: f64 = 6371.0; // Earth radius in km

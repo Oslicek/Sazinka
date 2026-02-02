@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Link } from '@tanstack/react-router';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { useNatsStore } from '../stores/natsStore';
 import { 
   RouteContextHeader, 
@@ -15,6 +15,7 @@ import * as vehicleService from '../services/vehicleService';
 import * as routeService from '../services/routeService';
 import * as insertionService from '../services/insertionService';
 import { getCallQueue, type CallQueueItem } from '../services/revisionService';
+import { usePlannerShortcuts } from '../hooks/useKeyboardShortcuts';
 import styles from './PlanningInbox.module.css';
 
 // Mock user ID for development
@@ -56,6 +57,8 @@ function hasValidAddress(item: CallQueueItem): boolean {
 
 export function PlanningInbox() {
   const { isConnected } = useNatsStore();
+  const navigate = useNavigate();
+  const searchInputRef = useRef<HTMLInputElement>(null);
   
   // Route context state
   const [context, setContext] = useState<RouteContext | null>(null);
@@ -302,6 +305,74 @@ export function PlanningInbox() {
     loadCandidates();
   }, [loadCandidates]);
 
+  // Batch calculate insertion metrics for all candidates with valid coordinates
+  useEffect(() => {
+    if (!isConnected || !isRouteAware || !context || candidates.length === 0) return;
+    
+    const depot = depots.find((d) => d.id === context.depotId);
+    if (!depot) return;
+    
+    // Filter candidates with valid coordinates
+    const validCandidates = candidates.filter(
+      (c) => c.customerLat !== null && c.customerLng !== null
+    );
+    
+    if (validCandidates.length === 0) return;
+    
+    // Skip if all candidates already have metrics calculated
+    const needsCalculation = validCandidates.some((c) => c.deltaKm === undefined);
+    if (!needsCalculation) return;
+    
+    async function calculateBatch() {
+      try {
+        const response = await insertionService.calculateBatchInsertion({
+          routeStops: routeStops.map((stop) => ({
+            id: stop.id,
+            name: stop.name,
+            coordinates: stop.coordinates,
+            arrivalTime: stop.eta,
+            departureTime: stop.etd,
+          })),
+          depot: { lat: depot!.lat, lng: depot!.lng },
+          candidates: validCandidates.map((c) => ({
+            id: c.id,
+            customerId: c.customerId,
+            coordinates: { lat: c.customerLat!, lng: c.customerLng! },
+            serviceDurationMinutes: 30,
+          })),
+          date: context!.date,
+          bestOnly: true,
+        });
+        
+        // Update candidates with batch results
+        const resultsMap = new Map(
+          response.results.map((r) => [r.candidateId, r])
+        );
+        
+        setCandidates((prev) =>
+          prev.map((c) => {
+            const result = resultsMap.get(c.id);
+            if (result) {
+              return {
+                ...c,
+                deltaKm: result.bestDeltaKm,
+                deltaMin: result.bestDeltaMin,
+                slotStatus: result.status as 'ok' | 'tight' | 'conflict',
+              };
+            }
+            return c;
+          })
+        );
+        
+        console.log(`Batch insertion calculated for ${response.results.length} candidates in ${response.processingTimeMs}ms`);
+      } catch (err) {
+        console.error('Failed to calculate batch insertion:', err);
+      }
+    }
+    
+    calculateBatch();
+  }, [isConnected, isRouteAware, context, candidates, routeStops, depots]);
+
   // Get current depot for map
   const currentDepot: MapDepot | null = useMemo(() => {
     if (!context?.depotId) return null;
@@ -314,6 +385,50 @@ export function PlanningInbox() {
     candidates.find((c) => c.customerId === selectedCandidateId),
     [candidates, selectedCandidateId]
   );
+
+  // Sorted candidates for display (pre-ranked by insertion cost)
+  const sortedCandidates = useMemo(() => {
+    if (!isRouteAware) {
+      // Without route-aware mode, sort by due date only
+      return [...candidates].sort((a, b) => {
+        const aOverdue = getDaysOverdue(a);
+        const bOverdue = getDaysOverdue(b);
+        if (aOverdue !== bOverdue) return bOverdue - aOverdue; // More overdue first
+        return a.daysUntilDue - b.daysUntilDue; // Sooner due first
+      });
+    }
+    
+    // With route-aware mode, sort by insertion metrics
+    return [...candidates].sort((a, b) => {
+      // Problems last (no coordinates)
+      const aValid = hasValidAddress(a);
+      const bValid = hasValidAddress(b);
+      if (aValid !== bValid) return aValid ? -1 : 1;
+      
+      // Candidates with calculated metrics first
+      const aHasMetrics = a.deltaMin !== undefined;
+      const bHasMetrics = b.deltaMin !== undefined;
+      if (aHasMetrics !== bHasMetrics) return aHasMetrics ? -1 : 1;
+      
+      // Sort by status (ok > tight > conflict)
+      if (a.slotStatus && b.slotStatus) {
+        const statusOrder = { ok: 0, tight: 1, conflict: 2 };
+        const statusDiff = statusOrder[a.slotStatus] - statusOrder[b.slotStatus];
+        if (statusDiff !== 0) return statusDiff;
+      }
+      
+      // Sort by delta time
+      if (a.deltaMin !== undefined && b.deltaMin !== undefined) {
+        return a.deltaMin - b.deltaMin;
+      }
+      
+      // Fallback to due date
+      const aOverdue = getDaysOverdue(a);
+      const bOverdue = getDaysOverdue(b);
+      if (aOverdue !== bOverdue) return bOverdue - aOverdue;
+      return a.daysUntilDue - b.daysUntilDue;
+    });
+  }, [candidates, isRouteAware]);
 
   // Handle context changes
   const handleDateChange = (date: string) => {
@@ -355,6 +470,78 @@ export function PlanningInbox() {
     }
   };
 
+  // Keyboard shortcuts handlers
+  const handleMoveUp = useCallback(() => {
+    if (sortedCandidates.length === 0) return;
+    
+    const currentIndex = selectedCandidateId 
+      ? sortedCandidates.findIndex((c) => c.customerId === selectedCandidateId)
+      : -1;
+    
+    const newIndex = currentIndex <= 0 ? sortedCandidates.length - 1 : currentIndex - 1;
+    setSelectedCandidateId(sortedCandidates[newIndex].customerId);
+  }, [sortedCandidates, selectedCandidateId]);
+
+  const handleMoveDown = useCallback(() => {
+    if (sortedCandidates.length === 0) return;
+    
+    const currentIndex = selectedCandidateId 
+      ? sortedCandidates.findIndex((c) => c.customerId === selectedCandidateId)
+      : -1;
+    
+    const newIndex = currentIndex >= sortedCandidates.length - 1 ? 0 : currentIndex + 1;
+    setSelectedCandidateId(sortedCandidates[newIndex].customerId);
+  }, [sortedCandidates, selectedCandidateId]);
+
+  const handleSelectSlot = useCallback((index: number) => {
+    if (slotSuggestions.length > index) {
+      // TODO: Implement slot selection action (schedule visit)
+      console.log('Selected slot:', slotSuggestions[index]);
+    }
+  }, [slotSuggestions]);
+
+  const handleSchedule = useCallback(() => {
+    if (selectedCandidate) {
+      // TODO: Open schedule dialog
+      console.log('Schedule:', selectedCandidate.customerName);
+    }
+  }, [selectedCandidate]);
+
+  const handleSnooze = useCallback(() => {
+    if (selectedCandidate) {
+      // TODO: Open snooze dialog
+      console.log('Snooze:', selectedCandidate.customerName);
+    }
+  }, [selectedCandidate]);
+
+  const handleFixAddress = useCallback(() => {
+    if (selectedCandidate) {
+      navigate({ to: '/customers/$customerId', params: { customerId: selectedCandidate.customerId } });
+    }
+  }, [selectedCandidate, navigate]);
+
+  const handleSearch = useCallback(() => {
+    searchInputRef.current?.focus();
+  }, []);
+
+  const handleEscape = useCallback(() => {
+    setSelectedCandidateId(null);
+    setSlotSuggestions([]);
+  }, []);
+
+  // Register keyboard shortcuts
+  usePlannerShortcuts({
+    onMoveUp: handleMoveUp,
+    onMoveDown: handleMoveDown,
+    onSelectSlot: handleSelectSlot,
+    onSchedule: handleSchedule,
+    onSnooze: handleSnooze,
+    onFixAddress: handleFixAddress,
+    onSearch: handleSearch,
+    onEscape: handleEscape,
+    enabled: true,
+  });
+
   // Render inbox list
   const renderInboxList = () => (
     <div className={styles.inboxPanel}>
@@ -388,7 +575,7 @@ export function PlanningInbox() {
             <p>Žádní kandidáti v tomto segmentu</p>
           </div>
         ) : (
-          candidates.map((candidate) => {
+          sortedCandidates.map((candidate) => {
             const daysOverdue = getDaysOverdue(candidate);
             return (
               <button

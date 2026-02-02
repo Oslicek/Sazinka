@@ -141,6 +141,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let route_save_sub = client.subscribe("sazinka.route.save").await?;
     let route_get_sub = client.subscribe("sazinka.route.get").await?;
     let route_insertion_sub = client.subscribe("sazinka.route.insertion.calculate").await?;
+    let route_insertion_batch_sub = client.subscribe("sazinka.route.insertion.batch").await?;
     
     // Device subjects
     let device_create_sub = client.subscribe("sazinka.device.create").await?;
@@ -220,6 +221,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let client_route_save = client.clone();
     let client_route_get = client.clone();
     let client_route_insertion = client.clone();
+    let client_route_insertion_batch = client.clone();
     
     // Device handler clones
     let client_device_create = client.clone();
@@ -255,6 +257,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_route_save = pool.clone();
     let pool_route_get = pool.clone();
     let pool_route_insertion = pool.clone();
+    let pool_route_insertion_batch = pool.clone();
     
     // Device pool clones
     let pool_device_create = pool.clone();
@@ -358,6 +361,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     
     let routing_plan = Arc::clone(&routing_service);
     let routing_insertion = Arc::clone(&routing_service);
+    let routing_insertion_batch = Arc::clone(&routing_service);
 
     // Spawn handlers
     let ping_handle = tokio::spawn(async move {
@@ -411,6 +415,10 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
 
     let route_insertion_handle = tokio::spawn(async move {
         route::handle_insertion_calculate(client_route_insertion, route_insertion_sub, pool_route_insertion, routing_insertion).await
+    });
+
+    let route_insertion_batch_handle = tokio::spawn(async move {
+        route::handle_insertion_batch(client_route_insertion_batch, route_insertion_batch_sub, pool_route_insertion_batch, routing_insertion_batch).await
     });
 
     // Device handlers
@@ -888,6 +896,9 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         }
         result = route_insertion_handle => {
             error!("Route insertion handler finished: {:?}", result);
+        }
+        result = route_insertion_batch_handle => {
+            error!("Route insertion batch handler finished: {:?}", result);
         }
         // Device handlers
         result = device_create_handle => {
