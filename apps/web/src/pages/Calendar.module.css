@@ -205,10 +205,22 @@
 }
 
 .revisionItem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
   padding: 0.75rem;
   background: var(--color-bg-secondary);
   border-radius: var(--radius-md);
   border-left: 3px solid var(--color-border);
+  text-decoration: none;
+  color: inherit;
+  transition: background 0.15s, transform 0.15s;
+}
+
+.revisionItem:hover {
+  background: var(--hover-bg, #f0f0f0);
+  transform: translateX(4px);
 }
 
 .revisionItem.status-scheduled,
@@ -225,16 +237,52 @@
 }
 
 .revisionStatus {
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   color: var(--color-text-secondary);
   text-transform: uppercase;
-  margin-bottom: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  background: var(--color-bg, #fff);
+  border-radius: 4px;
 }
 
 .revisionTime {
   font-weight: 600;
   color: var(--color-text);
+  font-size: 0.875rem;
+}
+
+.revisionInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.revisionCustomer {
+  font-weight: 500;
+  color: var(--color-text);
+  font-size: 0.9375rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.revisionDevice {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+}
+
+.revisionArrow {
+  color: var(--primary-color, #2563eb);
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.revisionItem:hover .revisionArrow {
+  opacity: 1;
 }
 
 .revisionDevice {

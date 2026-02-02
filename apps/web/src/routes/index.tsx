@@ -1,6 +1,7 @@
 import {
   createRootRoute,
   createRoute,
+  redirect,
   Outlet,
 } from '@tanstack/react-router';
 
@@ -13,7 +14,7 @@ import { Planner } from '@/pages/Planner';
 import { Admin } from '@/pages/Admin';
 import { Settings } from '@/pages/Settings';
 import { CallQueue } from '@/pages/CallQueue';
-import { TechnicianDay } from '@/pages/TechnicianDay';
+import { RevisionDetail } from '@/pages/RevisionDetail';
 
 // Root route with layout
 const rootRoute = createRootRoute({
@@ -80,11 +81,20 @@ const callQueueRoute = createRoute({
   component: CallQueue,
 });
 
-// Technician Day View
-const technicianDayRoute = createRoute({
+// Redirect /today to /planner (TechnicianDay merged into Planner)
+const todayRedirectRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/today',
-  component: TechnicianDay,
+  beforeLoad: () => {
+    throw redirect({ to: '/planner' });
+  },
+});
+
+// Revision Detail
+const revisionDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/revisions/$revisionId',
+  component: RevisionDetail,
 });
 
 // Route tree
@@ -95,7 +105,8 @@ export const routeTree = rootRoute.addChildren([
   calendarRoute,
   plannerRoute,
   callQueueRoute,
-  technicianDayRoute,
+  todayRedirectRoute,
+  revisionDetailRoute,
   adminRoute,
   settingsRoute,
 ]);

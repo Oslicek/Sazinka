@@ -1,17 +1,28 @@
 # Sazinka - Workflow & UI Koncept
 
-> **Status:** Částečně implementováno  
-> **Verze:** 0.2  
-> **Datum:** 2026-01-31
+> **Status:** MVP kompletní  
+> **Verze:** 0.3  
+> **Datum:** 2026-02-02
 > 
 > **Implementováno:**
 > - ✅ Fronta k obvolání (`/queue`) - filtry, statistiky, akce
 > - ✅ Dialog pro plánování návštěvy (datum, časové okno, délka)
 > - ✅ Dialog pro odložení (snooze)
 > - ✅ Kalendář - přepínač Termíny/Naplánované
-> - ✅ Plánovač - záložky Doporučené/Naplánované
-> - ✅ Pohled technika (`/today`) - mobilní denní plán, Google Maps export, tisk
+> - ✅ **Plán dne** (`/planner`) - sloučená stránka Plánování + Můj den:
+>   - Mapa s trasou + statistiky
+>   - Seznam zastávek s akcemi (navigovat, volat, hotovo)
+>   - Google Maps export (single + segmented)
+>   - Tisk/PDF
+>   - Náhled fronty k obvolání
 > - ✅ Smart Slots - inteligentní návrhy časových slotů podle existující trasy
+> - ✅ Detail revize (`/revisions/:id`) - workflow hub
+> - ✅ Dashboard - clickable stats, CTA fronta k obvolání
+> 
+> **Změny v navigaci:**
+> - `/planner` → "Plán dne" (sloučeno Plánování + Můj den)
+> - `/today` → přesměrování na `/planner`
+> - Navigační položka "Můj den" odstraněna
 
 ## Přehled
 
@@ -388,6 +399,124 @@ Ne "vyberte si datum a čas naslepo", ale inteligentní návrhy na základě akt
 
 ### 2. Jedno kliknutí: z domluvy do plánu
 A hned vidět dopad na trasu (vzdálenost, čas, konflikty).
+
+---
+
+## Plán integrace UI podle workflow
+
+Cíl: Uživatel nesmí "přeskakovat" mezi izolovanými stránkami. Každá obrazovka musí nabídnout jasný další krok a kontext.
+
+### Globální pravidla navigace
+- Vždy viditelné CTA pro další krok workflow (napravo nahoře / v detail panelu).
+- Každá revize/zákazník má dostupné akce: `Detail`, `Domluvit`, `Naplánovat`, `Označit hotovo` podle stavu.
+- Zobrazení kontextu: u každé revize vždy zobrazit zákazníka, adresu, termín a stav.
+
+### Stránky a jejich propojení (MVP plán)
+1. Dashboard
+   - CTA: "Fronta k obvolání" (primární), "Plánování dne" (sekundární), "Můj den".
+   - Widgety "Po termínu" a "Tento týden" musí být klikatelné → filtr na frontu nebo kalendář.
+
+2. Fronta k obvolání (`/queue`)
+   - Akce "Naplánovat" po uložení přesměruje do Plánovače na vybraný den.
+   - Přidat proklik na `Detail zákazníka` a `Detail revize`.
+   - V kartě ukázat poslední komunikaci a poznámku (z timeline).
+
+3. Kalendář (`/calendar`)
+   - Klik na revizi vede na `Detail revize` (ne pouze seznam).
+   - V detail panelu CTA: "Otevřít v plánovači" + "Domluvit" (pokud nemá termín).
+   - Přepínač Termíny/Naplánované zachovat, ale doplnit legendu pro stav workflow.
+
+4. Plánovač (`/planner`)
+   - V seznamu "Naplánované" zobrazit jméno zákazníka + adresu + časové okno.
+   - Klik na položku → detail revize (nebo side panel).
+   - Tlačítko "Přidat z fronty" (kontextový filtr na datum).
+
+5. Detail revize (nový cílový kontext)
+   - Centrální hub: status, termín, poznámky, akce podle stavu.
+   - Odkazy: zákazník, komunikace, návštěvy, plán dne.
+
+#### Detail revize - struktura stránky (workflow hub)
+
+**Cíl:** Jeden pohled pro všechny kroky workflow. Uživatel vidí kontext + další akci bez hledání.
+
+**1) Sticky header**
+- Název: `Revize - [typ zařízení]`
+- Status badge: `Čeká na kontakt / Domluveno / Naplánováno / Hotovo / Zrušeno`
+- Klíčové info: `Termín`, `Časové okno`, `Délka`, `Technik/vozidlo`
+- Primární CTA (context-aware):
+  - Čeká na kontakt → `Domluvit termín`
+  - Domluveno → `Otevřít v plánovači (den)`
+  - Naplánováno → `Otevřít v plánovači (den)`
+  - Hotovo → `Zobrazit výsledek`
+- Sekundární akce (menu): `Přeplánovat`, `Odložit`, `Zrušit`
+
+**2) Kontekt zákazníka (card)**
+- Jméno, adresa, poznámka
+- Kontakty: `📞 Zavolat`, `✉️ Email`
+- CTA: `Otevřít zákazníka`
+- Mini mapa (pokud existuje)
+
+**3) Detail revize (card)**
+- Zařízení: typ, název, interval, poslední revize
+- Termín: datum + časové okno + délka
+- Přiřazení: technik/vozidlo/depo (pokud existuje)
+- CTA: `Otevřít zařízení`
+
+**4) Workflow panel (pravý sloupec / side panel)**
+- Kontextové akce dle stavu:
+  - Čeká na kontakt: `Domluvit`, `Odložit`, `Zavolat`
+  - Domluveno: `Přeplánovat`, `Otevřít v plánovači`, `Zrušit`
+  - Naplánováno: `Otevřít v plánovači`, `Přesun v trase` (pokud existuje)
+  - Hotovo: `Zobrazit výsledek`, `Vytvořit další revizi` (pokud se dělá ručně)
+- Text "Další krok": např. `Další krok: naplánovat den`
+
+**5) Historie a komunikace (timeline)**
+- Komunikace (hovory, emaily, poznámky)
+- Návštěvy (visit log)
+- Rychlé přidání komunikace
+
+**6) Operativa (volitelné)**
+- `Tisk / PDF / Export`
+- `Navigovat` (single-stop, pro technika)
+
+#### Detail revize - wireframe (ASCII)
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Revize - Plynovy kotel          [STATUS: DOMLUVENO]   [Domluvit termín]    │
+│ Termín: 30.01.2026  |  Okno: 10:00-11:00  |  Délka: 45 min  |  Technik: A  │
+│ [Přeplánovat] [Odložit] [Zrušit]                                             │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌───────────────────────────────────────────┐  ┌─────────────────────────────┐
+│ ZAKAZNIK                                  │  │ WORKFLOW                     │
+│ Jan Novak                                 │  │ Další krok: naplánovat den   │
+│ Lesni 123, Brno                           │  │                             │
+│ Pozn.: Parkovat za domem                  │  │ [Otevřít v plánovači (den)]  │
+│ [📞 Zavolat] [✉️ Email] [Detail zákazníka]│  │ [Přeplánovat] [Zrušit]        │
+│ [Mini mapa]                               │  │                             │
+└───────────────────────────────────────────┘  └─────────────────────────────┘
+
+┌───────────────────────────────────────────┐  ┌─────────────────────────────┐
+│ REVIZE                                    │  │ HISTORIE / KOMUNIKACE        │
+│ Zařízení: Kotel ABC-123                   │  │ - 20.01: Voláno, nezastižen  │
+│ Interval: 12 měsíců                       │  │ - 25.01: Email o termínu     │
+│ Poslední revize: 15.01.2026               │  │ [Přidat záznam]               │
+│ [Detail zařízení]                         │  │                             │
+└───────────────────────────────────────────┘  └─────────────────────────────┘
+```
+
+6. ~~Můj den (`/today`)~~ → **SLOUČENO DO PLÁN DNE (`/planner`)**
+   - `/today` nyní přesměrovává na `/planner`
+   - Všechny funkce (navigace, volání, hotovo) jsou v Plán dne
+
+### Minimální integrační checklist ✅ COMPLETE
+- [x] Zavést `Detail revize` jako primární uzel workflow ✅
+- [x] Přidat prokliky mezi Fronta → Detail → Plán dne ✅
+- [x] Všechny seznamy revizí zobrazují zákazníka a akci ✅
+- [x] Dashboard a Kalendář mají přímý vstup do fronty/planování ✅
+- [x] Po naplánování automatický návrat do kontextu (plán dne) ✅
+- [x] Sloučit Plánování + Můj den do jedné stránky "Plán dne" ✅
 
 ---
 

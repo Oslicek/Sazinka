@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, Link } from '@tanstack/react-router';
 import type { Revision } from '@shared/revision';
 import type { CalendarDay } from '../utils/calendarUtils';
 import { getMonthRange } from '../utils/calendarUtils';
@@ -235,8 +235,10 @@ export function Calendar() {
               <>
                 <div className={styles.revisionList}>
                   {selectedRevisions.map((revision) => (
-                    <div 
+                    <Link 
                       key={revision.id} 
+                      to="/revisions/$revisionId"
+                      params={{ revisionId: revision.id }}
                       className={`${styles.revisionItem} ${styles[`status-${revision.status}`]}`}
                     >
                       <div className={styles.revisionStatus}>
@@ -247,11 +249,16 @@ export function Calendar() {
                           <span>{revision.scheduledTimeStart.substring(0, 5)}</span>
                         )}
                       </div>
-                      <div className={styles.revisionDevice}>
-                        {/* We'd need to fetch device/customer info here */}
-                        Revize #{revision.id.substring(0, 8)}
+                      <div className={styles.revisionInfo}>
+                        <span className={styles.revisionCustomer}>
+                          {revision.customerName || 'Zákazník'}
+                        </span>
+                        <span className={styles.revisionDevice}>
+                          {revision.deviceType || revision.deviceName || 'Zařízení'}
+                        </span>
                       </div>
-                    </div>
+                      <span className={styles.revisionArrow}>→</span>
+                    </Link>
                   ))}
                 </div>
                 <div className={styles.detailsActions}>

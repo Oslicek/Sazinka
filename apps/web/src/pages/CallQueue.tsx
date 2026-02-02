@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { useNatsStore } from '../stores/natsStore';
 import {
   getCallQueue,
@@ -37,6 +38,7 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
 };
 
 export function CallQueue() {
+  const navigate = useNavigate();
   const { isConnected } = useNatsStore();
   const [queue, setQueue] = useState<CallQueueItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -120,7 +122,7 @@ export function CallQueue() {
     
     setLoadingSlots(true);
     try {
-      const response = await suggestSlots(USER_ID, {
+      const response = await suggestSlots({
         date,
         customerCoordinates: {
           lat: selectedItem.customerLat || 50.0,
@@ -149,13 +151,18 @@ export function CallQueue() {
         timeWindowEnd: scheduleTimeEnd || undefined,
         durationMinutes: scheduleDuration,
       });
+      
+      const scheduledDateValue = scheduleDate;
+      
       setShowScheduleModal(false);
       setSelectedItem(null);
       setScheduleDate('');
       setScheduleTimeStart('');
       setScheduleTimeEnd('');
       setSuggestedSlots([]);
-      loadQueue();
+      
+      // Navigate to planner for the scheduled date
+      navigate({ to: '/planner', search: { date: scheduledDateValue } });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to schedule revision');
     }
@@ -277,7 +284,9 @@ export function CallQueue() {
 
             <div className={styles.itemContent}>
               <div className={styles.customerInfo}>
-                <h3 className={styles.customerName}>{item.customerName}</h3>
+                <Link to="/revisions/$revisionId" params={{ revisionId: item.id }} className={styles.customerNameLink}>
+                  <h3 className={styles.customerName}>{item.customerName}</h3>
+                </Link>
                 <p className={styles.customerAddress}>
                   {item.customerStreet}, {item.customerCity} {item.customerPostalCode}
                 </p>
@@ -343,6 +352,13 @@ export function CallQueue() {
               >
                 ⏰ Odložit
               </button>
+              <Link
+                to="/revisions/$revisionId"
+                params={{ revisionId: item.id }}
+                className={`${styles.actionButton} ${styles.detailButton}`}
+              >
+                📋 Detail
+              </Link>
             </div>
           </div>
         ))}

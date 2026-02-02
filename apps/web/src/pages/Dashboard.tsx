@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, Link } from '@tanstack/react-router';
 import { useNatsStore } from '@/stores/natsStore';
 import { getRevisionStats, type RevisionStats } from '../services/revisionService';
 import styles from './Dashboard.module.css';
@@ -47,9 +47,26 @@ export function Dashboard() {
     return () => clearInterval(interval);
   }, [isConnected, loadStats]);
 
+  // Calculate total to call
+  const totalToCall = (stats?.overdue ?? 0) + (stats?.dueThisWeek ?? 0);
+
   return (
     <div className={styles.dashboard}>
       <h1>Dashboard</h1>
+
+      {/* Call Queue CTA - prominent banner */}
+      {totalToCall > 0 && (
+        <Link to="/queue" className={styles.callQueueBanner}>
+          <div className={styles.bannerContent}>
+            <span className={styles.bannerIcon}>📞</span>
+            <div className={styles.bannerText}>
+              <strong>{totalToCall} zákazníků k obvolání</strong>
+              <span>Začít obvolávat</span>
+            </div>
+          </div>
+          <span className={styles.bannerArrow}>→</span>
+        </Link>
+      )}
       
       <div className={styles.grid}>
         <div className="card">
@@ -60,29 +77,43 @@ export function Dashboard() {
           {connectionError && <p className={styles.error}>{connectionError}</p>}
         </div>
 
-        <div className={`card ${styles.statCard} ${(stats?.scheduledToday ?? 0) > 0 ? styles.statActive : ''}`}>
+        {/* Clickable stat - Today's revisions -> Planner */}
+        <Link 
+          to="/planner" 
+          className={`card ${styles.statCard} ${styles.clickableStat} ${(stats?.scheduledToday ?? 0) > 0 ? styles.statActive : ''}`}
+        >
           <h3>Dnešní revize</h3>
           <p className={styles.bigNumber}>
             {isLoading ? '-' : (stats?.scheduledToday ?? 0)}
           </p>
-          <p className={styles.subtitle}>naplánováno</p>
-        </div>
+          <p className={styles.subtitle}>naplánováno →</p>
+        </Link>
 
-        <div className={`card ${styles.statCard} ${(stats?.dueThisWeek ?? 0) > 0 ? styles.statWarning : ''}`}>
+        {/* Clickable stat - This week -> Queue */}
+        <Link 
+          to="/queue" 
+          search={{ filter: 'thisWeek' }}
+          className={`card ${styles.statCard} ${styles.clickableStat} ${(stats?.dueThisWeek ?? 0) > 0 ? styles.statWarning : ''}`}
+        >
           <h3>Tento týden</h3>
           <p className={styles.bigNumber}>
             {isLoading ? '-' : (stats?.dueThisWeek ?? 0)}
           </p>
-          <p className={styles.subtitle}>revizí k provedení</p>
-        </div>
+          <p className={styles.subtitle}>k obvolání →</p>
+        </Link>
 
-        <div className={`card ${styles.statCard} ${(stats?.overdue ?? 0) > 0 ? styles.statDanger : ''}`}>
+        {/* Clickable stat - Overdue -> Queue with filter */}
+        <Link 
+          to="/queue" 
+          search={{ filter: 'overdue' }}
+          className={`card ${styles.statCard} ${styles.clickableStat} ${(stats?.overdue ?? 0) > 0 ? styles.statDanger : ''}`}
+        >
           <h3>Po termínu</h3>
           <p className={`${styles.bigNumber} ${(stats?.overdue ?? 0) > 0 ? styles.dangerNumber : ''}`}>
             {isLoading ? '-' : (stats?.overdue ?? 0)}
           </p>
-          <p className={styles.subtitle}>revizí</p>
-        </div>
+          <p className={styles.subtitle}>revizí →</p>
+        </Link>
       </div>
 
       <div className={styles.grid} style={{ marginTop: '1rem' }}>
@@ -106,21 +137,27 @@ export function Dashboard() {
         <div className={styles.actions}>
           <button 
             className="btn-primary"
-            onClick={() => navigate({ to: '/customers', search: { action: 'new' } })}
+            onClick={() => navigate({ to: '/queue' })}
           >
-            + Nový zákazník
+            📞 Začít obvolávat
+          </button>
+          <button 
+            className="btn-secondary"
+            onClick={() => navigate({ to: '/today' })}
+          >
+            📋 Můj den
           </button>
           <button 
             className="btn-secondary"
             onClick={() => navigate({ to: '/planner' })}
           >
-            Naplánovat den
+            🗓️ Naplánovat
           </button>
           <button 
             className="btn-secondary"
-            onClick={() => navigate({ to: '/calendar' })}
+            onClick={() => navigate({ to: '/customers', search: { action: 'new' } })}
           >
-            Zobrazit kalendář
+            + Nový zákazník
           </button>
         </div>
       </div>

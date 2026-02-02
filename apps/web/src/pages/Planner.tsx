@@ -1,10 +1,18 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { Link } from '@tanstack/react-router';
 import maplibregl from 'maplibre-gl';
 import { useNatsStore } from '../stores/natsStore';
 import { v4 as uuidv4 } from 'uuid';
 import type { RoutePlanResponse, PlannedRouteStop } from '@sazinka/shared-types';
 import * as settingsService from '../services/settingsService';
-import { getSuggestedRevisions, listRevisions, type RevisionSuggestion, type Revision } from '../services/revisionService';
+import { 
+  listRevisions, 
+  completeRevision, 
+  getCallQueue,
+  type Revision, 
+  type CompleteRevisionRequest,
+  type CallQueueItem,
+} from '../services/revisionService';
 import * as routeService from '../services/routeService';
 import {
   DndContext,
@@ -30,43 +38,6 @@ const USER_ID = '00000000-0000-0000-0000-000000000001';
 // Default depot location (Prague center) - fallback if no depot configured
 const DEFAULT_DEPOT = { lat: 50.0755, lng: 14.4378 };
 
-// Job Status types for queue workflow
-interface JobSubmitResponse {
-  jobId: string;
-  position: number;
-  estimatedWaitSeconds: number;
-}
-
-interface JobStatusQueued {
-  type: 'queued';
-  position: number;
-  estimatedWaitSeconds: number;
-}
-
-interface JobStatusProcessing {
-  type: 'processing';
-  progress: number;
-  message: string;
-}
-
-interface JobStatusCompleted {
-  type: 'completed';
-  result: RoutePlanResponse;
-}
-
-interface JobStatusFailed {
-  type: 'failed';
-  error: string;
-}
-
-type JobStatus = JobStatusQueued | JobStatusProcessing | JobStatusCompleted | JobStatusFailed;
-
-interface JobStatusUpdate {
-  jobId: string;
-  timestamp: string;
-  status: JobStatus;
-}
-
 interface NatsSuccessResponse<T> {
   id: string;
   timestamp: string;
@@ -88,6 +59,13 @@ function isErrorResponse<T>(response: NatsResponse<T>): response is NatsErrorRes
   return 'error' in response;
 }
 
+// Extended stop with revision details
+interface StopWithRevision extends Revision {
+  order?: number;
+  eta?: string;
+  etd?: string;
+}
+
 export function Planner() {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
@@ -96,40 +74,31 @@ export function Planner() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stops, setStops] = useState<PlannedRouteStop[]>([]);
+  const [scheduledRevisions, setScheduledRevisions] = useState<StopWithRevision[]>([]);
   const [totalDistance, setTotalDistance] = useState(0);
   const [totalDuration, setTotalDuration] = useState(0);
   const [optimizationScore, setOptimizationScore] = useState(0);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [routeWarnings, setRouteWarnings] = useState<string[]>([]);
-  const [unassignedCount, setUnassignedCount] = useState(0);
-  const [algorithmName, setAlgorithmName] = useState('');
-  const [solveTimeMs, setSolveTimeMs] = useState(0);
-  const [solverLog, setSolverLog] = useState<string[]>([]);
-  const [routeGeometry, setRouteGeometry] = useState<[number, number][]>([]);
-  
-  // Job queue state
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
-  const unsubscribeRef = useRef<(() => void) | null>(null);
+  // These values are set when optimizing but currently not displayed in UI
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_algorithmName, setAlgorithmName] = useState('');
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_solveTimeMs, setSolveTimeMs] = useState(0);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_routeGeometry, setRouteGeometry] = useState<[number, number][]>([]);
   
   // Depot state
   const [depot, setDepot] = useState<{ lat: number; lng: number; name?: string } | null>(null);
   const [depotLoading, setDepotLoading] = useState(true);
   const depotMarkerRef = useRef<maplibregl.Marker | null>(null);
   
-  // View mode: 'suggestions' or 'scheduled'
-  type ViewMode = 'suggestions' | 'scheduled';
-  const [viewMode, setViewMode] = useState<ViewMode>('suggestions');
-  
-  // Smart suggestions state
-  const [suggestions, setSuggestions] = useState<RevisionSuggestion[]>([]);
-  const [selectedSuggestionIds, setSelectedSuggestionIds] = useState<Set<string>>(new Set());
-  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
-  const [totalCandidates, setTotalCandidates] = useState(0);
-  
-  // Scheduled revisions state
-  const [scheduledRevisions, setScheduledRevisions] = useState<Revision[]>([]);
+  // Scheduled revisions loading
   const [scheduledLoading, setScheduledLoading] = useState(false);
+  
+  // Call queue preview
+  const [queuePreview, setQueuePreview] = useState<CallQueueItem[]>([]);
+  const [queueLoading, setQueueLoading] = useState(false);
   
   // Drag/drop state
   const [lockedStops, setLockedStops] = useState<Set<string>>(new Set());
@@ -141,13 +110,13 @@ export function Planner() {
   const [hasSavedRoute, setHasSavedRoute] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
-  const { request, subscribe, isConnected } = useNatsStore();
+  const { request, isConnected } = useNatsStore();
   
   // DnD sensors
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8, // 8px movement required to start drag
+        distance: 8,
       },
     }),
     useSensor(KeyboardSensor, {
@@ -155,7 +124,7 @@ export function Planner() {
     })
   );
   
-  // Load user's primary depot from settings (wait for NATS connection)
+  // Load user's primary depot from settings
   useEffect(() => {
     if (!isConnected) return;
     
@@ -166,7 +135,6 @@ export function Planner() {
         if (primaryDepot) {
           setDepot({ lat: primaryDepot.lat, lng: primaryDepot.lng, name: primaryDepot.name });
         } else {
-          // No depot configured, use default
           setDepot(DEFAULT_DEPOT);
         }
       } catch (err) {
@@ -178,32 +146,6 @@ export function Planner() {
     }
     loadDepot();
   }, [isConnected]);
-
-  // Load smart suggestions when date changes
-  const loadSuggestions = useCallback(async () => {
-    if (!isConnected) return;
-    
-    setSuggestionsLoading(true);
-    try {
-      const response = await getSuggestedRevisions(USER_ID, selectedDate, 20);
-      setSuggestions(response.suggestions);
-      setTotalCandidates(response.totalCandidates);
-      // Auto-select top 10 by default
-      const topIds = response.suggestions.slice(0, 10).map(s => s.id);
-      setSelectedSuggestionIds(new Set(topIds));
-    } catch (err) {
-      console.error('Failed to load suggestions:', err);
-      setSuggestions([]);
-      setTotalCandidates(0);
-    } finally {
-      setSuggestionsLoading(false);
-    }
-  }, [isConnected, selectedDate]);
-
-  // Load suggestions on date change
-  useEffect(() => {
-    loadSuggestions();
-  }, [loadSuggestions]);
 
   // Load scheduled revisions when date changes
   const loadScheduledRevisions = useCallback(async () => {
@@ -217,7 +159,16 @@ export function Planner() {
         dateType: 'scheduled',
         limit: 50,
       });
-      setScheduledRevisions(response.items);
+      
+      // Sort by scheduled time
+      const sorted = response.items.sort((a, b) => {
+        if (!a.scheduledTimeStart && !b.scheduledTimeStart) return 0;
+        if (!a.scheduledTimeStart) return 1;
+        if (!b.scheduledTimeStart) return -1;
+        return a.scheduledTimeStart.localeCompare(b.scheduledTimeStart);
+      });
+      
+      setScheduledRevisions(sorted);
     } catch (err) {
       console.error('Failed to load scheduled revisions:', err);
       setScheduledRevisions([]);
@@ -226,32 +177,32 @@ export function Planner() {
     }
   }, [isConnected, selectedDate]);
 
-  // Load scheduled revisions on date change
   useEffect(() => {
     loadScheduledRevisions();
   }, [loadScheduledRevisions]);
 
-  // Toggle suggestion selection
-  const toggleSuggestion = useCallback((id: string) => {
-    setSelectedSuggestionIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  }, []);
+  // Load call queue preview
+  const loadQueuePreview = useCallback(async () => {
+    if (!isConnected) return;
+    
+    setQueueLoading(true);
+    try {
+      const response = await getCallQueue(USER_ID, { 
+        priorityFilter: 'all', 
+        limit: 5 
+      });
+      setQueuePreview(response.items);
+    } catch (err) {
+      console.error('Failed to load queue preview:', err);
+      setQueuePreview([]);
+    } finally {
+      setQueueLoading(false);
+    }
+  }, [isConnected]);
 
-  // Select all / none helpers
-  const selectAllSuggestions = useCallback(() => {
-    setSelectedSuggestionIds(new Set(suggestions.map(s => s.id)));
-  }, [suggestions]);
-
-  const deselectAllSuggestions = useCallback(() => {
-    setSelectedSuggestionIds(new Set());
-  }, []);
+  useEffect(() => {
+    loadQueuePreview();
+  }, [loadQueuePreview]);
 
   // Initialize map only after depot is loaded
   useEffect(() => {
@@ -305,7 +256,6 @@ export function Planner() {
     markersRef.current.forEach(marker => marker.remove());
     markersRef.current = [];
     
-    // Also remove route line if exists
     if (map.current?.getLayer('route-line')) {
       map.current.removeLayer('route-line');
     }
@@ -334,7 +284,6 @@ export function Planner() {
         )
         .addTo(map.current!);
 
-      // Add number label
       const el = marker.getElement();
       const label = document.createElement('div');
       label.className = styles.markerLabel;
@@ -346,13 +295,12 @@ export function Planner() {
 
     // Draw route line
     if (plannedStops.length > 0 && depot) {
-      // Use real road geometry if available, otherwise straight lines
       const coordinates: [number, number][] = geometry.length > 0
         ? geometry
         : [
             [depot.lng, depot.lat],
             ...plannedStops.map(s => [s.coordinates.lng, s.coordinates.lat] as [number, number]),
-            [depot.lng, depot.lat], // Return to depot
+            [depot.lng, depot.lat],
           ];
 
       map.current.addSource('route', {
@@ -382,15 +330,14 @@ export function Planner() {
         },
       });
 
-      // Fit map to show all stops
       const bounds = new maplibregl.LngLatBounds();
       coordinates.forEach(coord => bounds.extend(coord));
       map.current.fitBounds(bounds, { padding: 50 });
     }
   }, [clearMarkers, depot]);
 
-  // Plan route with selected suggestions
-  const handlePlanRoute = async () => {
+  // Optimize route with VRP solver
+  const handleOptimizeRoute = async () => {
     if (!isConnected) {
       setError('Není připojeno k serveru');
       return;
@@ -401,8 +348,8 @@ export function Planner() {
       return;
     }
 
-    if (selectedSuggestionIds.size === 0) {
-      setError('Vyberte alespoň jednu revizi k naplánování');
+    if (scheduledRevisions.length === 0) {
+      setError('Žádné revize k optimalizaci');
       return;
     }
 
@@ -410,17 +357,8 @@ export function Planner() {
     setError(null);
 
     try {
-      // Get customer IDs from selected suggestions
-      const selectedSuggestions = suggestions.filter(s => selectedSuggestionIds.has(s.id));
-      const customerIds = [...new Set(selectedSuggestions.map(s => s.customerId))]; // Unique customer IDs
+      const customerIds = [...new Set(scheduledRevisions.map(r => r.customerId))];
       
-      if (customerIds.length === 0) {
-        setError('Žádní zákazníci k naplánování');
-        setIsLoading(false);
-        return;
-      }
-
-      // Plan route
       const planResponse = await request<any, NatsResponse<RoutePlanResponse>>(
         'sazinka.route.plan',
         {
@@ -433,15 +371,14 @@ export function Planner() {
             date: selectedDate,
           },
         },
-        60000 // 60s timeout for route planning
+        60000
       );
 
       if (isErrorResponse(planResponse)) {
-        throw new Error(planResponse.error.message || 'Nepodařilo se naplánovat trasu');
+        throw new Error(planResponse.error.message || 'Nepodařilo se optimalizovat trasu');
       }
 
       const result = planResponse.payload;
-      
       const geometry = result.geometry || [];
       
       setStops(result.stops);
@@ -450,12 +387,10 @@ export function Planner() {
       setOptimizationScore(result.optimizationScore);
       setAlgorithmName(result.algorithm);
       setSolveTimeMs(result.solveTimeMs);
-      setRouteWarnings(result.warnings.map(w => w.message));
-      setUnassignedCount(result.unassigned.length);
-      setSolverLog(result.solverLog);
+      setRouteWarnings(result.warnings.map((w: { message: string }) => w.message));
       setRouteGeometry(geometry);
+      setIsManuallyReordered(false);
 
-      // Update map with geometry passed directly (state is async)
       addStopMarkers(result.stops, geometry);
 
     } catch (err) {
@@ -465,58 +400,193 @@ export function Planner() {
     }
   };
 
-  // Clean up job subscription on unmount
-  useEffect(() => {
-    return () => {
-      if (unsubscribeRef.current) {
-        unsubscribeRef.current();
-      }
-    };
+  // Mark revision as done
+  const handleMarkDone = useCallback(async (revisionId: string) => {
+    const result = prompt('Výsledek revize (passed/conditional/failed):', 'passed');
+    if (!result) return;
+
+    const validResults = ['passed', 'conditional', 'failed'];
+    const normalizedResult = result.toLowerCase();
+    const finalResult = validResults.includes(normalizedResult) 
+      ? normalizedResult as 'passed' | 'conditional' | 'failed'
+      : 'passed';
+
+    try {
+      const data: CompleteRevisionRequest = {
+        id: revisionId,
+        result: finalResult,
+      };
+      await completeRevision(USER_ID, data);
+      loadScheduledRevisions();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nepodařilo se dokončit revizi');
+    }
+  }, [loadScheduledRevisions]);
+
+  // Navigation helpers
+  const openNavigation = useCallback((address: string) => {
+    const encodedAddress = encodeURIComponent(address);
+    window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodedAddress}`, '_blank');
   }, []);
 
-  // Handle job status update callback
-  const handleJobStatusUpdate = useCallback((update: JobStatusUpdate) => {
-    if (update.jobId !== jobId) return;
+  const callCustomer = useCallback((phone: string) => {
+    window.location.href = `tel:${phone}`;
+  }, []);
+
+  // Google Maps export - single route
+  const generateGoogleMapsRoute = useCallback(() => {
+    const stopsToExport = stops.length > 0 ? stops : scheduledRevisions;
+    if (stopsToExport.length === 0) return;
     
-    setJobStatus(update.status);
+    const maxWaypoints = 9;
+    const waypoints = stopsToExport.slice(0, maxWaypoints).map(stop => {
+      const address = 'address' in stop 
+        ? stop.address 
+        : `${stop.customerStreet || ''}, ${stop.customerCity || ''} ${stop.customerPostalCode || ''}`.trim();
+      return encodeURIComponent(address);
+    });
     
-    if (update.status.type === 'completed') {
-      const result = update.status.result;
-      const geometry = result.geometry || [];
-      
-      setStops(result.stops);
-      setTotalDistance(result.totalDistanceKm);
-      setTotalDuration(result.totalDurationMinutes);
-      setOptimizationScore(result.optimizationScore);
-      setAlgorithmName(result.algorithm);
-      setSolveTimeMs(result.solveTimeMs);
-      setRouteWarnings(result.warnings.map(w => w.message));
-      setUnassignedCount(result.unassigned.length);
-      setSolverLog(result.solverLog);
-      setRouteGeometry(geometry);
-      addStopMarkers(result.stops, geometry);
-      
-      setIsLoading(false);
-      setJobId(null);
-      setJobStatus(null);
-      
-      // Unsubscribe
-      if (unsubscribeRef.current) {
-        unsubscribeRef.current();
-        unsubscribeRef.current = null;
-      }
-    } else if (update.status.type === 'failed') {
-      setError(update.status.error);
-      setIsLoading(false);
-      setJobId(null);
-      setJobStatus(null);
-      
-      if (unsubscribeRef.current) {
-        unsubscribeRef.current();
-        unsubscribeRef.current = null;
-      }
+    if (waypoints.length === 0) return;
+    
+    const origin = waypoints[0];
+    const destination = waypoints[waypoints.length - 1];
+    const waypointsParam = waypoints.length > 2 
+      ? waypoints.slice(1, -1).join('|') 
+      : '';
+    
+    let url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}`;
+    if (waypointsParam) {
+      url += `&waypoints=${waypointsParam}`;
     }
-  }, [jobId, addStopMarkers]);
+    url += '&travelmode=driving';
+    
+    window.open(url, '_blank');
+  }, [stops, scheduledRevisions]);
+
+  // Google Maps export - segmented routes
+  const generateSegmentedRoutes = useMemo(() => {
+    const stopsToExport = stops.length > 0 ? stops : scheduledRevisions;
+    if (stopsToExport.length === 0) return [];
+    
+    const segmentSize = 8;
+    const segments: { name: string; url: string }[] = [];
+    
+    for (let i = 0; i < stopsToExport.length; i += segmentSize) {
+      const segment = stopsToExport.slice(i, i + segmentSize);
+      const waypoints = segment.map(stop => {
+        const address = 'address' in stop 
+          ? stop.address 
+          : `${stop.customerStreet || ''}, ${stop.customerCity || ''} ${stop.customerPostalCode || ''}`.trim();
+        return encodeURIComponent(address);
+      });
+      
+      if (waypoints.length === 0) continue;
+      
+      const origin = waypoints[0];
+      const destination = waypoints[waypoints.length - 1];
+      const waypointsParam = waypoints.length > 2 
+        ? waypoints.slice(1, -1).join('|') 
+        : '';
+      
+      let url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}`;
+      if (waypointsParam) {
+        url += `&waypoints=${waypointsParam}`;
+      }
+      url += '&travelmode=driving';
+      
+      const segmentNumber = Math.floor(i / segmentSize) + 1;
+      const totalSegments = Math.ceil(stopsToExport.length / segmentSize);
+      segments.push({
+        name: `Trasa ${segmentNumber}/${totalSegments}`,
+        url,
+      });
+    }
+    
+    return segments;
+  }, [stops, scheduledRevisions]);
+
+  // Print day plan
+  const printDayPlan = useCallback(() => {
+    const stopsToExport = stops.length > 0 ? stops : scheduledRevisions;
+    if (stopsToExport.length === 0) return;
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const formatDate = (dateStr: string) => {
+      const date = new Date(dateStr);
+      const days = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
+      const dayName = days[date.getDay()];
+      return `${dayName} ${date.getDate()}. ${date.getMonth() + 1}. ${date.getFullYear()}`;
+    };
+
+    const formatTime = (time: string | undefined) => {
+      if (!time) return '-';
+      return time.substring(0, 5);
+    };
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Plán dne - ${formatDate(selectedDate)}</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 20px; }
+          h1 { font-size: 18px; margin-bottom: 5px; }
+          .date { color: #666; margin-bottom: 20px; }
+          .stats { margin-bottom: 15px; font-size: 12px; color: #666; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
+          th { background: #f5f5f5; }
+          .time { white-space: nowrap; }
+          .phone { white-space: nowrap; }
+          @media print {
+            body { padding: 0; }
+            table { page-break-inside: auto; }
+            tr { page-break-inside: avoid; }
+          }
+        </style>
+      </head>
+      <body>
+        <h1>Plán dne</h1>
+        <div class="date">${formatDate(selectedDate)}</div>
+        ${totalDistance > 0 ? `<div class="stats">Vzdálenost: ${totalDistance.toFixed(1)} km | Čas: ${Math.round(totalDuration)} min</div>` : ''}
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th class="time">Čas</th>
+              <th>Zákazník</th>
+              <th>Adresa</th>
+              <th class="phone">Telefon</th>
+              <th>Zařízení</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${stopsToExport.map((stop, index) => {
+              const isPlannedStop = 'address' in stop;
+              return `
+                <tr>
+                  <td>${index + 1}</td>
+                  <td class="time">${isPlannedStop ? `${stop.eta} - ${stop.etd}` : formatTime(stop.scheduledTimeStart)}</td>
+                  <td>${isPlannedStop ? stop.customerName : (stop.customerName || '-')}</td>
+                  <td>${isPlannedStop ? stop.address : `${stop.customerStreet || ''}${stop.customerCity ? `, ${stop.customerCity}` : ''}${stop.customerPostalCode ? ` ${stop.customerPostalCode}` : ''}`}</td>
+                  <td class="phone">${isPlannedStop ? '-' : (stop.customerPhone || '-')}</td>
+                  <td>${isPlannedStop ? '-' : (stop.deviceType || '-')}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.print();
+  }, [stops, scheduledRevisions, selectedDate, totalDistance, totalDuration]);
 
   // Clear route
   const handleClearRoute = () => {
@@ -528,60 +598,13 @@ export function Planner() {
     setAlgorithmName('');
     setSolveTimeMs(0);
     setRouteWarnings([]);
-    setUnassignedCount(0);
-    setSolverLog([]);
     setRouteGeometry([]);
     setError(null);
-    setJobId(null);
-    setJobStatus(null);
     setLockedStops(new Set());
     setIsManuallyReordered(false);
-    
-    if (unsubscribeRef.current) {
-      unsubscribeRef.current();
-      unsubscribeRef.current = null;
-    }
   };
 
-  const formatDuration = (minutes: number) => {
-    if (!Number.isFinite(minutes) || minutes <= 0) return '0 min';
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    if (hours === 0) return `${mins} min`;
-    if (mins === 0) return `${hours} h`;
-    return `${hours} h ${mins} min`;
-  };
-
-  const formatSolveTime = (ms: number) => {
-    if (!Number.isFinite(ms) || ms <= 0) return '–';
-    if (ms < 1000) return `${ms} ms`;
-    return `${(ms / 1000).toFixed(1)} s`;
-  };
-
-  // Priority reason labels
-  const getPriorityLabel = (reason: string): string => {
-    const labels: Record<string, string> = {
-      overdue: 'Po termínu',
-      due_this_week: 'Tento týden',
-      due_soon: 'Brzy',
-      due_this_month: 'Tento měsíc',
-      upcoming: 'Nadcházející',
-    };
-    return labels[reason] || reason;
-  };
-
-  const getStatusLabel = (status: string): string => {
-    const labels: Record<string, string> = {
-      upcoming: 'Nadcházející',
-      scheduled: 'Naplánováno',
-      confirmed: 'Potvrzeno',
-      completed: 'Dokončeno',
-      cancelled: 'Zrušeno',
-    };
-    return labels[status] || status;
-  };
-
-  // Handle drag end - reorder stops
+  // Handle drag end
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
 
@@ -615,12 +638,10 @@ export function Planner() {
       const result = await routeService.getRoute(selectedDate);
       setHasSavedRoute(result.route !== null);
     } catch (e) {
-      // Ignore - no saved route
       setHasSavedRoute(false);
     }
   }, [selectedDate, isConnected]);
 
-  // Check for saved route when date changes
   useEffect(() => {
     checkSavedRoute();
   }, [checkSavedRoute]);
@@ -631,11 +652,7 @@ export function Planner() {
     
     setIsSaving(true);
     try {
-      // Map stops to save format - we need revision IDs
-      // For now, we'll save without revision IDs (they can be looked up later)
-      const saveStops = stops.map((stop, index) => 
-        routeService.toSaveRouteStop(stop)
-      );
+      const saveStops = stops.map((stop) => routeService.toSaveRouteStop(stop));
 
       await routeService.saveRoute({
         date: selectedDate,
@@ -662,7 +679,6 @@ export function Planner() {
       const result = await routeService.getRoute(selectedDate);
       
       if (result.route && result.stops.length > 0) {
-        // Convert to PlannedRouteStop format
         const loadedStops = result.stops.map(routeService.toPlannedRouteStop);
         
         setStops(loadedStops);
@@ -673,7 +689,6 @@ export function Planner() {
         setIsManuallyReordered(false);
         setLockedStops(new Set());
         
-        // Add markers for the loaded stops
         addStopMarkers(loadedStops, []);
       } else {
         setError('Pro tento den není uložena žádná trasa');
@@ -686,238 +701,171 @@ export function Planner() {
     }
   }, [selectedDate, addStopMarkers]);
 
-  // Job Status Indicator component
-  const JobStatusIndicator = () => {
-    if (!jobStatus) return null;
+  // Format helpers
+  const formatDuration = (minutes: number) => {
+    if (!Number.isFinite(minutes) || minutes <= 0) return '0 min';
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    if (hours === 0) return `${mins} min`;
+    if (mins === 0) return `${hours} h`;
+    return `${hours} h ${mins} min`;
+  };
 
-    switch (jobStatus.type) {
-      case 'queued':
-        return (
-          <div className={styles.jobStatus}>
-            <div className={styles.jobStatusIcon}>⏳</div>
-            <div className={styles.jobStatusText}>
-              <strong>Ve frontě</strong>
-              <span>Pozice: {jobStatus.position}</span>
-              <span>Odhadovaný čas: ~{jobStatus.estimatedWaitSeconds}s</span>
-            </div>
-          </div>
-        );
-      case 'processing':
-        return (
-          <div className={styles.jobStatus}>
-            <div className={styles.jobStatusIcon}>⚙️</div>
-            <div className={styles.jobStatusText}>
-              <strong>Zpracování...</strong>
-              <div className={styles.progressBar}>
-                <div 
-                  className={styles.progressFill} 
-                  style={{ width: `${jobStatus.progress}%` }}
-                />
-              </div>
-              <span>{jobStatus.message}</span>
-            </div>
-          </div>
-        );
-      case 'completed':
-        return (
-          <div className={styles.jobStatusSuccess}>
-            <div className={styles.jobStatusIcon}>✅</div>
-            <span>Dokončeno!</span>
-          </div>
-        );
-      case 'failed':
-        return (
-          <div className={styles.jobStatusError}>
-            <div className={styles.jobStatusIcon}>❌</div>
-            <span>{jobStatus.error}</span>
-          </div>
-        );
+  const formatTime = (time: string | undefined) => {
+    if (!time) return '-';
+    return time.substring(0, 5);
+  };
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const days = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
+    const dayName = days[date.getDay()];
+    return `${dayName} ${date.getDate()}. ${date.getMonth() + 1}. ${date.getFullYear()}`;
+  };
+
+  const getStatusClass = (status: string) => {
+    switch (status) {
+      case 'completed': return styles.statusCompleted;
+      case 'confirmed': return styles.statusConfirmed;
+      case 'scheduled': return styles.statusScheduled;
+      default: return '';
     }
   };
+
+  const getStatusLabel = (status: string): string => {
+    const labels: Record<string, string> = {
+      upcoming: 'Čeká',
+      scheduled: 'Naplánováno',
+      confirmed: 'Potvrzeno',
+      completed: 'Hotovo',
+      cancelled: 'Zrušeno',
+    };
+    return labels[status] || status;
+  };
+
+  const getPriorityLabel = (priority: string): string => {
+    const labels: Record<string, string> = {
+      overdue: 'Po termínu',
+      due_this_week: 'Tento týden',
+      due_soon: 'Brzy',
+      upcoming: 'Nadcházející',
+    };
+    return labels[priority] || priority;
+  };
+
+  // Progress tracking
+  const completedCount = scheduledRevisions.filter(r => r.status === 'completed').length;
+  const hasStopsOrRevisions = stops.length > 0 || scheduledRevisions.length > 0;
 
   return (
     <div className={styles.planner}>
       <div className={styles.sidebar}>
-        <h2>Plánování trasy</h2>
-        
-        <div className={styles.dateSelector}>
-          <label>Datum</label>
+        {/* Header */}
+        <div className={styles.header}>
+          <h2>Plán dne</h2>
           <input 
             type="date" 
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
+            className={styles.dateInput}
           />
         </div>
 
+        {/* Date info and progress */}
+        <div className={styles.dateInfo}>
+          <span className={styles.dateLabel}>{formatDate(selectedDate)}</span>
+          {scheduledRevisions.length > 0 && (
+            <span className={styles.progress}>
+              {completedCount}/{scheduledRevisions.length} hotovo
+            </span>
+          )}
+        </div>
+
+        {/* Depot info */}
         <div className={styles.depotInfo}>
-          <label>Výchozí depo</label>
+          <span className={styles.depotLabel}>Depo:</span>
           <span className={styles.depotName}>
             {depotLoading ? 'Načítám...' : (depot?.name || 'Praha (výchozí)')}
           </span>
         </div>
 
-        {/* View Mode Tabs */}
-        <div className={styles.viewTabs}>
-          <button
-            className={`${styles.viewTab} ${viewMode === 'suggestions' ? styles.activeTab : ''}`}
-            onClick={() => setViewMode('suggestions')}
-          >
-            Doporučené ({suggestions.length})
-          </button>
-          <button
-            className={`${styles.viewTab} ${viewMode === 'scheduled' ? styles.activeTab : ''}`}
-            onClick={() => setViewMode('scheduled')}
-          >
-            Naplánované ({scheduledRevisions.length})
-          </button>
-        </div>
-
-        {/* Suggestions View */}
-        {viewMode === 'suggestions' && (
-          <div className={styles.suggestions}>
-            <div className={styles.suggestionsHeader}>
-              <h3>Doporučené revize ({selectedSuggestionIds.size}/{suggestions.length})</h3>
-              <div className={styles.suggestionsActions}>
-                <button 
-                  type="button" 
-                  className={styles.selectButton}
-                  onClick={selectAllSuggestions}
-                  disabled={suggestionsLoading}
-                >
-                  Vše
-                </button>
-                <button 
-                  type="button" 
-                  className={styles.selectButton}
-                  onClick={deselectAllSuggestions}
-                  disabled={suggestionsLoading}
-                >
-                  Nic
-                </button>
-                <button 
-                  type="button" 
-                  className={styles.refreshButton}
-                  onClick={loadSuggestions}
-                  disabled={suggestionsLoading}
-                  title="Obnovit doporučení"
-                >
-                  ↻
-                </button>
-              </div>
-            </div>
-            
-            {suggestionsLoading ? (
-              <div className={styles.loading}>Načítám doporučení...</div>
-            ) : suggestions.length === 0 ? (
-              <p className={styles.empty}>
-                Žádné revize k naplánování pro vybraný den.
-              </p>
-            ) : (
-              <>
-                <ul className={styles.suggestionList}>
-                  {suggestions.map((suggestion) => (
-                    <li 
-                      key={suggestion.id} 
-                      className={`${styles.suggestionItem} ${selectedSuggestionIds.has(suggestion.id) ? styles.selected : ''}`}
-                      onClick={() => toggleSuggestion(suggestion.id)}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedSuggestionIds.has(suggestion.id)}
-                        onChange={() => toggleSuggestion(suggestion.id)}
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                      <div className={styles.suggestionInfo}>
-                        <div className={styles.suggestionCustomer}>
-                          <strong>{suggestion.customerName}</strong>
-                          <span className={`${styles.priorityBadge} ${styles[`priority-${suggestion.priorityReason}`]}`}>
-                            {getPriorityLabel(suggestion.priorityReason)}
-                          </span>
-                        </div>
-                        <small>{suggestion.customerStreet}, {suggestion.customerCity}</small>
-                        <small className={styles.dueInfo}>
-                          Termín: {suggestion.dueDate}
-                          {suggestion.daysUntilDue < 0 && (
-                            <span className={styles.overdue}> ({Math.abs(suggestion.daysUntilDue)} dnů po termínu)</span>
-                          )}
-                          {suggestion.daysUntilDue >= 0 && suggestion.daysUntilDue <= 7 && (
-                            <span className={styles.dueSoon}> (za {suggestion.daysUntilDue} dnů)</span>
-                          )}
-                        </small>
-                      </div>
-                      <div className={styles.priorityScore}>{suggestion.priorityScore}</div>
-                    </li>
-                  ))}
-                </ul>
-                {totalCandidates > suggestions.length && (
-                  <p className={styles.moreAvailable}>
-                    + {totalCandidates - suggestions.length} dalších kandidátů
-                  </p>
-                )}
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Scheduled Revisions View */}
-        {viewMode === 'scheduled' && (
-          <div className={styles.suggestions}>
-            <div className={styles.suggestionsHeader}>
-              <h3>Naplánované na {new Date(selectedDate).toLocaleDateString('cs-CZ')}</h3>
+        {/* Export buttons */}
+        {hasStopsOrRevisions && (
+          <div className={styles.exportSection}>
+            {generateSegmentedRoutes.length <= 1 ? (
               <button 
-                type="button" 
-                className={styles.refreshButton}
-                onClick={loadScheduledRevisions}
-                disabled={scheduledLoading}
-                title="Obnovit"
+                className={styles.exportButton}
+                onClick={generateGoogleMapsRoute}
               >
-                ↻
+                🗺️ Google Maps
               </button>
-            </div>
-            
-            {scheduledLoading ? (
-              <div className={styles.loading}>Načítám naplánované revize...</div>
-            ) : scheduledRevisions.length === 0 ? (
-              <p className={styles.empty}>
-                Pro tento den nejsou naplánované žádné revize.
-              </p>
             ) : (
-              <ul className={styles.suggestionList}>
-                {scheduledRevisions.map((revision) => (
-                  <li 
-                    key={revision.id} 
-                    className={styles.suggestionItem}
+              <div className={styles.segmentButtons}>
+                <span className={styles.segmentLabel}>Navigace:</span>
+                {generateSegmentedRoutes.map((segment, index) => (
+                  <button
+                    key={index}
+                    className={styles.segmentButton}
+                    onClick={() => window.open(segment.url, '_blank')}
                   >
-                    <div className={styles.scheduledIcon}>📅</div>
-                    <div className={styles.suggestionInfo}>
-                      <div className={styles.suggestionCustomer}>
-                        <strong>Revize #{revision.id.substring(0, 8)}</strong>
-                        <span className={`${styles.statusBadge} ${styles[`status-${revision.status}`]}`}>
-                          {getStatusLabel(revision.status)}
-                        </span>
-                      </div>
-                      {revision.scheduledTimeStart && (
-                        <small className={styles.timeInfo}>
-                          🕐 {revision.scheduledTimeStart.substring(0, 5)}
-                          {revision.scheduledTimeEnd && ` - ${revision.scheduledTimeEnd.substring(0, 5)}`}
-                        </small>
-                      )}
-                      <small>Termín: {revision.dueDate}</small>
-                    </div>
-                  </li>
+                    {segment.name}
+                  </button>
                 ))}
-              </ul>
+              </div>
+            )}
+            <button 
+              className={styles.printButton}
+              onClick={printDayPlan}
+            >
+              🖨️ Tisk
+            </button>
+          </div>
+        )}
+
+        {/* Statistics */}
+        {(totalDistance > 0 || totalDuration > 0) && (
+          <div className={styles.stats}>
+            <div className={styles.stat}>
+              <span className={styles.statLabel}>Vzdálenost</span>
+              <span className={styles.statValue}>{totalDistance.toFixed(1)} km</span>
+            </div>
+            <div className={styles.stat}>
+              <span className={styles.statLabel}>Čas</span>
+              <span className={styles.statValue}>{formatDuration(totalDuration)}</span>
+            </div>
+            {optimizationScore > 0 && (
+              <div className={styles.stat}>
+                <span className={styles.statLabel}>Skóre</span>
+                <span className={styles.statValue}>{optimizationScore}%</span>
+              </div>
             )}
           </div>
         )}
 
-        {/* Planned stops with drag/drop */}
-        {stops.length > 0 && (
-          <div className={styles.stops}>
-            <div className={styles.stopsHeader}>
-              <h3>Naplánovaná trasa ({stops.length} zastávek)</h3>
+        {/* Error display */}
+        {error && (
+          <div className={styles.error}>
+            {error}
+            <button onClick={() => setError(null)}>✕</button>
+          </div>
+        )}
+
+        {/* Warnings */}
+        {routeWarnings.length > 0 && (
+          <div className={styles.warning}>
+            {routeWarnings.map((warning, index) => (
+              <div key={index}>{warning}</div>
+            ))}
+          </div>
+        )}
+
+        {/* Optimized stops with drag/drop */}
+        {stops.length > 0 ? (
+          <div className={styles.stopsSection}>
+            <div className={styles.sectionHeader}>
+              <h3>Optimalizovaná trasa ({stops.length})</h3>
               {isManuallyReordered && (
-                <span className={styles.reorderedBadge}>Ručně upraveno</span>
+                <span className={styles.reorderedBadge}>Upraveno</span>
               )}
             </div>
             <DndContext
@@ -937,114 +885,214 @@ export function Planner() {
                       index={index}
                       isLocked={lockedStops.has(stop.customerId)}
                       onLockToggle={handleLockToggle}
+                      onNavigate={() => openNavigation(stop.address)}
+                      onMarkDone={() => {
+                        // Find revision ID by customer ID
+                        const rev = scheduledRevisions.find(r => r.customerId === stop.customerId);
+                        if (rev) handleMarkDone(rev.id);
+                      }}
                     />
                   ))}
                 </ul>
               </SortableContext>
             </DndContext>
           </div>
-        )}
-
-        {error && (
-          <div className={styles.error}>
-            {error}
-          </div>
-        )}
-
-        {!error && (routeWarnings.length > 0 || unassignedCount > 0) && (
-          <div className={styles.warning}>
-            {unassignedCount > 0 && (
-              <div>
-                {unassignedCount} zákazníků nebylo přiřazeno k trase.
+        ) : (
+          /* Scheduled revisions list */
+          <div className={styles.stopsSection}>
+            <div className={styles.sectionHeader}>
+              <h3>Naplánované návštěvy ({scheduledRevisions.length})</h3>
+              <button 
+                className={styles.refreshButton}
+                onClick={loadScheduledRevisions}
+                disabled={scheduledLoading}
+                title="Obnovit"
+              >
+                ↻
+              </button>
+            </div>
+            
+            {scheduledLoading ? (
+              <div className={styles.loading}>Načítám...</div>
+            ) : scheduledRevisions.length === 0 ? (
+              <div className={styles.empty}>
+                Žádné naplánované návštěvy pro tento den.
               </div>
-            )}
-            {routeWarnings.length > 0 && (
-              <ul>
-                {routeWarnings.map((warning, index) => (
-                  <li key={`${warning}-${index}`}>{warning}</li>
+            ) : (
+              <ul className={styles.revisionList}>
+                {scheduledRevisions.map((revision, index) => (
+                  <li 
+                    key={revision.id} 
+                    className={`${styles.revisionItem} ${getStatusClass(revision.status)}`}
+                  >
+                    <div className={styles.stopNumber}>{index + 1}</div>
+                    
+                    <div className={styles.revisionContent}>
+                      <div className={styles.revisionHeader}>
+                        <span className={styles.timeWindow}>
+                          {formatTime(revision.scheduledTimeStart)}
+                          {revision.scheduledTimeEnd && ` - ${formatTime(revision.scheduledTimeEnd)}`}
+                        </span>
+                        <span className={`${styles.statusBadge} ${getStatusClass(revision.status)}`}>
+                          {getStatusLabel(revision.status)}
+                        </span>
+                      </div>
+                      
+                      <Link 
+                        to="/revisions/$revisionId" 
+                        params={{ revisionId: revision.id }} 
+                        className={styles.customerLink}
+                      >
+                        <div className={styles.customerName}>
+                          {revision.customerName || `Revize #${revision.id.substring(0, 8)}`}
+                        </div>
+                      </Link>
+                      
+                      <div className={styles.address}>
+                        {revision.customerStreet || 'Adresa neuvedena'}
+                        {revision.customerCity && `, ${revision.customerCity}`}
+                        {revision.customerPostalCode && ` ${revision.customerPostalCode}`}
+                      </div>
+                      
+                      {revision.deviceType && (
+                        <div className={styles.device}>
+                          {revision.deviceType} {revision.deviceName && `- ${revision.deviceName}`}
+                        </div>
+                      )}
+                      
+                      <div className={styles.revisionLinks}>
+                        <Link 
+                          to="/revisions/$revisionId" 
+                          params={{ revisionId: revision.id }} 
+                          className={styles.linkButton}
+                        >
+                          Detail
+                        </Link>
+                        <Link 
+                          to="/customers/$customerId" 
+                          params={{ customerId: revision.customerId }} 
+                          className={styles.linkButton}
+                        >
+                          Zákazník
+                        </Link>
+                      </div>
+                    </div>
+                    
+                    <div className={styles.revisionActions}>
+                      <button
+                        className={styles.actionButton}
+                        onClick={() => openNavigation(
+                          `${revision.customerStreet || ''}, ${revision.customerCity || ''} ${revision.customerPostalCode || ''}`.trim()
+                        )}
+                        title="Navigovat"
+                      >
+                        🧭
+                      </button>
+                      {revision.customerPhone && (
+                        <button
+                          className={styles.actionButton}
+                          onClick={() => callCustomer(revision.customerPhone!)}
+                          title="Zavolat"
+                        >
+                          📞
+                        </button>
+                      )}
+                      {revision.status !== 'completed' && (
+                        <button
+                          className={`${styles.actionButton} ${styles.doneButton}`}
+                          onClick={() => handleMarkDone(revision.id)}
+                          title="Hotovo"
+                        >
+                          ✅
+                        </button>
+                      )}
+                    </div>
+                  </li>
                 ))}
               </ul>
             )}
           </div>
         )}
 
-        {solverLog.length > 0 && (
-          <div className={styles.solverLog}>
-            <div className={styles.solverLogTitle}>Log solveru</div>
-            <pre>
-              {solverLog.join('\n')}
-            </pre>
-          </div>
-        )}
-
-        {jobStatus && <JobStatusIndicator />}
-
-        <div className={styles.actions}>
-          <button 
-            className="btn-primary w-full"
-            onClick={handlePlanRoute}
-            disabled={isLoading || !isConnected || !depot || selectedSuggestionIds.size === 0}
-          >
-            {isLoading ? 'Plánování...' : `Naplánovat trasu (${selectedSuggestionIds.size})`}
-          </button>
+        {/* Route actions */}
+        <div className={styles.routeActions}>
+          {scheduledRevisions.length > 0 && stops.length === 0 && (
+            <button 
+              className={styles.optimizeButton}
+              onClick={handleOptimizeRoute}
+              disabled={isLoading || !isConnected || !depot}
+            >
+              {isLoading ? 'Optimalizuji...' : '🚀 Optimalizovat trasu'}
+            </button>
+          )}
           
-          <div className={styles.routeActions}>
-            {stops.length > 0 && (
+          {stops.length > 0 && (
+            <>
               <button 
                 className={styles.saveButton}
                 onClick={handleSaveRoute}
-                disabled={isSaving || stops.length === 0}
-                title={lastSaved ? `Naposledy uloženo: ${lastSaved.toLocaleTimeString()}` : 'Uložit trasu'}
+                disabled={isSaving}
+                title={lastSaved ? `Uloženo: ${lastSaved.toLocaleTimeString()}` : ''}
               >
                 {isSaving ? 'Ukládám...' : '💾 Uložit'}
               </button>
-            )}
-            {hasSavedRoute && (
-              <button 
-                className={styles.loadButton}
-                onClick={handleLoadRoute}
-                disabled={isLoadingSaved}
-                title="Načíst uloženou trasu"
-              >
-                {isLoadingSaved ? 'Načítám...' : '📂 Načíst'}
-              </button>
-            )}
-            {stops.length > 0 && (
               <button 
                 className={styles.clearButton}
                 onClick={handleClearRoute}
               >
                 🗑️ Vyčistit
               </button>
-            )}
-          </div>
-        </div>
-
-        <div className={styles.stats}>
-          <div className={styles.stat}>
-            <span className={styles.statLabel}>Celková vzdálenost</span>
-            <span className={styles.statValue}>{totalDistance.toFixed(1)} km</span>
-          </div>
-          <div className={styles.stat}>
-            <span className={styles.statLabel}>Odhadovaný čas</span>
-            <span className={styles.statValue}>{formatDuration(totalDuration)}</span>
-          </div>
-          <div className={styles.stat}>
-            <span className={styles.statLabel}>Algoritmus</span>
-            <span className={styles.statValue}>{algorithmName || '—'}</span>
-          </div>
-          <div className={styles.stat}>
-            <span className={styles.statLabel}>Doba výpočtu</span>
-            <span className={styles.statValue}>{formatSolveTime(solveTimeMs)}</span>
-          </div>
-          {optimizationScore > 0 && (
-            <div className={styles.stat}>
-              <span className={styles.statLabel}>Skóre optimalizace</span>
-              <span className={styles.statValue}>{optimizationScore}%</span>
-            </div>
+            </>
+          )}
+          
+          {hasSavedRoute && stops.length === 0 && (
+            <button 
+              className={styles.loadButton}
+              onClick={handleLoadRoute}
+              disabled={isLoadingSaved}
+            >
+              {isLoadingSaved ? 'Načítám...' : '📂 Načíst uloženou'}
+            </button>
           )}
         </div>
 
+        {/* Call Queue Preview */}
+        <div className={styles.queuePreview}>
+          <div className={styles.queueHeader}>
+            <h3>Fronta k obvolání</h3>
+            <Link to="/queue" className={styles.queueLink}>
+              Otevřít →
+            </Link>
+          </div>
+          
+          {queueLoading ? (
+            <div className={styles.loading}>Načítám...</div>
+          ) : queuePreview.length === 0 ? (
+            <div className={styles.emptyQueue}>Fronta je prázdná</div>
+          ) : (
+            <ul className={styles.queueList}>
+              {queuePreview.map((item) => (
+                <li key={item.id} className={styles.queueItem}>
+                  <div className={styles.queueItemInfo}>
+                    <span className={styles.queueCustomer}>{item.customerName}</span>
+                    <span className={`${styles.queuePriority} ${styles[`priority-${item.priority}`]}`}>
+                      {getPriorityLabel(item.priority)}
+                    </span>
+                  </div>
+                  <Link 
+                    to="/revisions/$revisionId" 
+                    params={{ revisionId: item.id }}
+                    className={styles.queueAction}
+                  >
+                    Naplánovat
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* Connection status */}
         {!isConnected && (
           <div className={styles.connectionStatus}>
             ⚠️ Není připojeno k serveru

@@ -193,10 +193,30 @@
   min-width: 0;
 }
 
+.customerNameLink {
+  text-decoration: none;
+  color: inherit;
+}
+
+.customerNameLink:hover .customerName {
+  color: var(--primary-color, #2563eb);
+}
+
 .customerName {
   margin: 0;
   font-size: 1.1rem;
   color: var(--color-text);
+  transition: color 0.15s;
+}
+
+.detailButton {
+  background: var(--hover-bg, #f3f4f6) !important;
+  color: var(--text-secondary, #666) !important;
+}
+
+.detailButton:hover {
+  background: var(--primary-color-light, #eff6ff) !important;
+  color: var(--primary-color, #2563eb) !important;
 }
 
 .customerAddress {
