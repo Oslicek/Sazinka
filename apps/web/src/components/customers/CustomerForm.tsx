@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import type { Customer, CreateCustomerRequest, UpdateCustomerRequest, CustomerType, Coordinates } from '@shared/customer';
 import {
   validateCustomerForm,
@@ -6,8 +6,20 @@ import {
   type CustomerFormData,
   type ValidationErrors,
 } from '../../utils/customerValidation';
-import { geocodeAddress } from '../../services/customerService';
+import { 
+  submitGeocodeJob, 
+  subscribeToGeocodeJobStatus,
+  submitGeocodeAddressJob,
+  subscribeToGeocodeAddressJobStatus,
+  submitReverseGeocodeJob,
+  subscribeToReverseGeocodeJobStatus,
+  type GeocodeJobStatusUpdate,
+  type GeocodeAddressJobStatusUpdate,
+  type ReverseGeocodeJobStatusUpdate,
+} from '../../services/customerService';
 import { AddressMap } from './AddressMap';
+import { JobStatusTimeline } from '../common/JobStatusTimeline';
+import type { JobStatus } from '../../types/jobStatus';
 import styles from './AddCustomerForm.module.css';
 
 interface CustomerFormProps {
@@ -17,8 +29,7 @@ interface CustomerFormProps {
   onSubmit: (data: CreateCustomerRequest | UpdateCustomerRequest) => Promise<void>;
   onCancel: () => void;
   isSubmitting?: boolean;
-  /** User ID for geocoding requests */
-  userId: string;
+  onGeocodeCompleted?: () => void;
 }
 
 interface ExtendedFormData extends CustomerFormData {
@@ -42,79 +53,35 @@ const createInitialFormData = (customer?: Customer): ExtendedFormData => ({
   notes: customer?.notes ?? '',
 });
 
-/** Debounce delay for geocoding (ms) */
-const GEOCODE_DEBOUNCE_MS = 800;
+const normalizeAddressKey = (street: string, city: string, postalCode: string) => {
+  return `${street.trim()}|${city.trim()}|${postalCode.replace(/\s/g, '')}`;
+};
 
-export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = false, userId }: CustomerFormProps) {
+export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = false, onGeocodeCompleted }: CustomerFormProps) {
   const isEditMode = !!customer;
   const [formData, setFormData] = useState<ExtendedFormData>(() => createInitialFormData(customer));
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   
-  // Geocoding state
+  // Coordinate state (manual adjustment only)
   const [coordinates, setCoordinates] = useState<Coordinates | null>(
     customer?.lat && customer?.lng ? { lat: customer.lat, lng: customer.lng } : null
   );
-  const [isGeocoding, setIsGeocoding] = useState(false);
-  const [geocodeDisplayName, setGeocodeDisplayName] = useState<string | undefined>();
-  const [manuallyAdjusted, setManuallyAdjusted] = useState(false);
-  const geocodeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Debounced geocoding when address changes
-  useEffect(() => {
-    const { street, city, postalCode } = formData;
-    
-    // Don't geocode if manually adjusted or missing required fields
-    if (manuallyAdjusted) return;
-    if (!street.trim() || !city.trim() || !postalCode.trim()) {
-      if (!isEditMode) {
-        setCoordinates(null);
-        setGeocodeDisplayName(undefined);
-      }
-      return;
-    }
-    
-    // Clear previous timeout
-    if (geocodeTimeoutRef.current) {
-      clearTimeout(geocodeTimeoutRef.current);
-    }
-    
-    // Set new debounced geocode
-    geocodeTimeoutRef.current = setTimeout(async () => {
-      setIsGeocoding(true);
-      try {
-        const result = await geocodeAddress(userId, {
-          street: street.trim(),
-          city: city.trim(),
-          postalCode: postalCode.replace(/\s/g, ''),
-        });
-        
-        if (result.geocoded && result.coordinates) {
-          setCoordinates(result.coordinates);
-          setGeocodeDisplayName(result.displayName ?? undefined);
-        } else if (!isEditMode) {
-          setCoordinates(null);
-          setGeocodeDisplayName(undefined);
-        }
-      } catch (err) {
-        console.error('Geocoding failed:', err);
-      } finally {
-        setIsGeocoding(false);
-      }
-    }, GEOCODE_DEBOUNCE_MS);
-    
-    return () => {
-      if (geocodeTimeoutRef.current) {
-        clearTimeout(geocodeTimeoutRef.current);
-      }
-    };
-  }, [formData.street, formData.city, formData.postalCode, userId, manuallyAdjusted, isEditMode]);
+  const [geocodeJob, setGeocodeJob] = useState<GeocodeJobStatusUpdate | GeocodeAddressJobStatusUpdate | ReverseGeocodeJobStatusUpdate | null>(null);
+  const [isGeocodeSubmitting, setIsGeocodeSubmitting] = useState(false);
+  const [isPicking, setIsPicking] = useState(false);
+  const [autoCenterMap, setAutoCenterMap] = useState(() => Boolean(customer?.lat && customer?.lng));
+  const [needsRecenter, setNeedsRecenter] = useState(false);
+  const [mapMoved, setMapMoved] = useState(false);
+  const geocodeUnsubscribeRef = useRef<(() => void) | null>(null);
+  const suppressMapInteractionRef = useRef(true);
+  const [lastGeocodedAddress, setLastGeocodedAddress] = useState(() =>
+    customer ? normalizeAddressKey(customer.street, customer.city, customer.postalCode) : null
+  );
 
   // Handle manual position adjustment from map
   const handlePositionChange = useCallback((lat: number, lng: number) => {
     setCoordinates({ lat, lng });
-    setManuallyAdjusted(true);
-    setGeocodeDisplayName('Ručně upravená poloha');
   }, []);
 
   const handleChange = useCallback((field: keyof ExtendedFormData, value: string | CustomerType) => {
@@ -129,11 +96,164 @@ export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = fals
       });
     }
     
-    // Reset manual adjustment when address changes
+    // Reset coordinates when address changes (geocoding will run asynchronously after save)
     if (['street', 'city', 'postalCode'].includes(field)) {
-      setManuallyAdjusted(false);
+      setCoordinates(null);
     }
   }, [errors]);
+
+  const handleGeocode = useCallback(async () => {
+    if (!customer) return;
+    const currentAddressKey = normalizeAddressKey(formData.street, formData.city, formData.postalCode);
+    if (lastGeocodedAddress && currentAddressKey === lastGeocodedAddress && mapMoved) {
+      suppressMapInteractionRef.current = true;
+      setAutoCenterMap(true);
+      setNeedsRecenter(false);
+      setMapMoved(false);
+      return;
+    }
+    setIsGeocodeSubmitting(true);
+    try {
+      const job = await submitGeocodeAddressJob(customer.userId, {
+        street: formData.street.trim(),
+        city: formData.city.trim(),
+        postalCode: formData.postalCode.replace(/\s/g, ''),
+      });
+      setGeocodeJob({
+        jobId: job.jobId,
+        timestamp: new Date().toISOString(),
+        status: { type: 'queued', position: 1 },
+      });
+      if (geocodeUnsubscribeRef.current) {
+        geocodeUnsubscribeRef.current();
+      }
+      const unsubscribe = await subscribeToGeocodeAddressJobStatus(job.jobId, (update) => {
+        setGeocodeJob(update);
+        if (update.status.type === 'completed') {
+          setCoordinates(update.status.coordinates);
+          suppressMapInteractionRef.current = true;
+          setAutoCenterMap(true);
+          setNeedsRecenter(false);
+          setMapMoved(false);
+          setLastGeocodedAddress(
+            normalizeAddressKey(formData.street, formData.city, formData.postalCode)
+          );
+          setIsGeocodeSubmitting(false);
+          if (geocodeUnsubscribeRef.current) {
+            geocodeUnsubscribeRef.current();
+            geocodeUnsubscribeRef.current = null;
+          }
+        } else if (update.status.type === 'failed') {
+          setIsGeocodeSubmitting(false);
+          if (geocodeUnsubscribeRef.current) {
+            geocodeUnsubscribeRef.current();
+            geocodeUnsubscribeRef.current = null;
+          }
+        }
+      });
+      geocodeUnsubscribeRef.current = unsubscribe;
+    } catch (err) {
+      setIsGeocodeSubmitting(false);
+      setGeocodeJob({
+        jobId: 'unknown',
+        timestamp: new Date().toISOString(),
+        status: { type: 'failed', error: err instanceof Error ? err.message : 'Neznámá chyba' },
+      });
+    }
+  }, [
+    customer,
+    formData.street,
+    formData.city,
+    formData.postalCode,
+    lastGeocodedAddress,
+    mapMoved,
+  ]);
+
+  const handleAutoCenterComplete = useCallback(() => {
+    setAutoCenterMap(false);
+    suppressMapInteractionRef.current = false;
+  }, []);
+
+  const handlePickAddress = useCallback(() => {
+    setIsPicking(true);
+  }, []);
+
+  const handleMapPick = useCallback(async (lat: number, lng: number) => {
+    if (!customer) return;
+    setCoordinates({ lat, lng });
+    setIsPicking(false);
+    setIsGeocodeSubmitting(true);
+    try {
+      const job = await submitReverseGeocodeJob(customer.userId, {
+        customerId: customer.id,
+        lat,
+        lng,
+      });
+      setGeocodeJob({
+        jobId: job.jobId,
+        timestamp: new Date().toISOString(),
+        status: { type: 'queued', position: 1 },
+      });
+      if (geocodeUnsubscribeRef.current) {
+        geocodeUnsubscribeRef.current();
+      }
+      const unsubscribe = await subscribeToReverseGeocodeJobStatus(job.jobId, (update) => {
+        setGeocodeJob(update);
+        if (update.status.type === 'completed') {
+          setFormData((prev) => ({
+            ...prev,
+            street: update.status.street,
+            city: update.status.city,
+            postalCode: update.status.postalCode,
+          }));
+          setIsGeocodeSubmitting(false);
+          setNeedsRecenter(false);
+          setLastGeocodedAddress(
+            normalizeAddressKey(update.status.street, update.status.city, update.status.postalCode)
+          );
+          if (onGeocodeCompleted) {
+            onGeocodeCompleted();
+          }
+          if (geocodeUnsubscribeRef.current) {
+            geocodeUnsubscribeRef.current();
+            geocodeUnsubscribeRef.current = null;
+          }
+        } else if (update.status.type === 'failed') {
+          setIsGeocodeSubmitting(false);
+          if (geocodeUnsubscribeRef.current) {
+            geocodeUnsubscribeRef.current();
+            geocodeUnsubscribeRef.current = null;
+          }
+        }
+      });
+      geocodeUnsubscribeRef.current = unsubscribe;
+    } catch (err) {
+      setIsGeocodeSubmitting(false);
+      setGeocodeJob({
+        jobId: 'unknown',
+        timestamp: new Date().toISOString(),
+        status: { type: 'failed', error: err instanceof Error ? err.message : 'Neznámá chyba' },
+      });
+    }
+  }, [customer, onGeocodeCompleted]);
+
+  useEffect(() => {
+    return () => {
+      if (geocodeUnsubscribeRef.current) {
+        geocodeUnsubscribeRef.current();
+        geocodeUnsubscribeRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!geocodeJob) return;
+    if (geocodeJob.status.type !== 'completed') return;
+    const timer = setTimeout(() => {
+      setGeocodeJob(null);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [geocodeJob]);
 
   const handleBlur = useCallback((field: keyof CustomerFormData) => {
     setTouched((prev) => ({ ...prev, [field]: true }));
@@ -217,6 +337,56 @@ export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = fals
   };
 
   const isCompany = formData.type === 'company';
+
+  useEffect(() => {
+    if (!customer) return;
+    const hasCoords = Boolean(customer.lat && customer.lng);
+    if (hasCoords) {
+      suppressMapInteractionRef.current = true;
+      setAutoCenterMap(true);
+    } else {
+      suppressMapInteractionRef.current = false;
+    }
+    setNeedsRecenter(false);
+    setMapMoved(false);
+    setLastGeocodedAddress(
+      normalizeAddressKey(customer.street, customer.city, customer.postalCode)
+    );
+  }, [customer?.id]);
+
+  useEffect(() => {
+    if (!customer) return;
+    const currentAddressKey = normalizeAddressKey(formData.street, formData.city, formData.postalCode);
+    if (!lastGeocodedAddress || currentAddressKey !== lastGeocodedAddress) {
+      setNeedsRecenter(true);
+    } else if (!mapMoved) {
+      setNeedsRecenter(false);
+    }
+  }, [
+    customer,
+    formData.street,
+    formData.city,
+    formData.postalCode,
+    lastGeocodedAddress,
+    mapMoved,
+  ]);
+  // Convert geocode job status to generic JobStatus for timeline
+  const timelineStatus: JobStatus | null = useMemo(() => {
+    if (!geocodeJob) return null;
+    const { status } = geocodeJob;
+    switch (status.type) {
+      case 'queued':
+        return { type: 'queued', position: status.position };
+      case 'processing':
+        return { type: 'processing', message: 'Hledám adresu...' };
+      case 'completed':
+        return { type: 'completed' };
+      case 'failed':
+        return { type: 'failed', error: status.error };
+      default:
+        return null;
+    }
+  }, [geocodeJob]);
 
   return (
     <form className={styles.form} onSubmit={handleSubmit}>
@@ -409,14 +579,50 @@ export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = fals
         
         {/* Address Map */}
         <div className={styles.mapContainer}>
+          {isEditMode && customer && (
+            <div className={styles.geocodeActions}>
+              <button
+                type="button"
+                className={styles.geocodeButton}
+                onClick={handleGeocode}
+                disabled={isSubmitting || isGeocodeSubmitting || !needsRecenter}
+              >
+                {isGeocodeSubmitting ? 'Hledám...' : 'Zobraz adresu na mapě'}
+              </button>
+              <button
+                type="button"
+                className={styles.geocodeButton}
+                onClick={handlePickAddress}
+                disabled={isSubmitting || isGeocodeSubmitting}
+              >
+                Zadej adresu špendlíkem na mapě
+              </button>
+            </div>
+          )}
           <AddressMap
             lat={coordinates?.lat}
             lng={coordinates?.lng}
-            isGeocoding={isGeocoding}
-            displayName={geocodeDisplayName}
             onPositionChange={handlePositionChange}
             draggable={!isSubmitting}
+            emptyMessage=""
+            enablePick={isPicking}
+            onPick={handleMapPick}
+            autoCenter={autoCenterMap}
+            onMapInteraction={() => {
+              if (suppressMapInteractionRef.current) {
+                return;
+              }
+              if (!coordinates) return;
+              setMapMoved(true);
+              setNeedsRecenter(true);
+            }}
+            onAutoCenterComplete={handleAutoCenterComplete}
           />
+          {timelineStatus && (
+            <div className={styles.geocodeTimeline}>
+              <JobStatusTimeline status={timelineStatus} size="sm" showProgress={false} />
+            </div>
+          )}
         </div>
       </div>
       
