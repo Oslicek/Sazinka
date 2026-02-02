@@ -1,12 +1,11 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
-import type { CreateCustomerRequest, Coordinates } from '@shared/customer';
+import { useState, useCallback } from 'react';
+import type { CreateCustomerRequest } from '@shared/customer';
 import {
   validateCustomerForm,
   isFormValid,
   type CustomerFormData,
   type ValidationErrors,
 } from '../../utils/customerValidation';
-import { geocodeAddress } from '../../services/customerService';
 import { AddressMap } from './AddressMap';
 import styles from './AddCustomerForm.module.css';
 
@@ -14,8 +13,6 @@ interface AddCustomerFormProps {
   onSubmit: (data: CreateCustomerRequest) => Promise<void>;
   onCancel: () => void;
   isSubmitting?: boolean;
-  /** User ID for geocoding requests */
-  userId: string;
 }
 
 const initialFormData: CustomerFormData = {
@@ -28,77 +25,11 @@ const initialFormData: CustomerFormData = {
   notes: '',
 };
 
-/** Debounce delay for geocoding (ms) */
-const GEOCODE_DEBOUNCE_MS = 800;
-
-export function AddCustomerForm({ onSubmit, onCancel, isSubmitting = false, userId }: AddCustomerFormProps) {
+export function AddCustomerForm({ onSubmit, onCancel, isSubmitting = false }: AddCustomerFormProps) {
   const [formData, setFormData] = useState<CustomerFormData>(initialFormData);
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   
-  // Geocoding state
-  const [coordinates, setCoordinates] = useState<Coordinates | null>(null);
-  const [isGeocoding, setIsGeocoding] = useState(false);
-  const [geocodeDisplayName, setGeocodeDisplayName] = useState<string | undefined>();
-  const [manuallyAdjusted, setManuallyAdjusted] = useState(false);
-  const geocodeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Debounced geocoding when address changes
-  useEffect(() => {
-    const { street, city, postalCode } = formData;
-    
-    // Don't geocode if manually adjusted or missing required fields
-    if (manuallyAdjusted) return;
-    if (!street.trim() || !city.trim() || !postalCode.trim()) {
-      setCoordinates(null);
-      setGeocodeDisplayName(undefined);
-      return;
-    }
-    
-    // Clear previous timeout
-    if (geocodeTimeoutRef.current) {
-      clearTimeout(geocodeTimeoutRef.current);
-    }
-    
-    // Set new debounced geocode
-    geocodeTimeoutRef.current = setTimeout(async () => {
-      setIsGeocoding(true);
-      try {
-        const result = await geocodeAddress(userId, {
-          street: street.trim(),
-          city: city.trim(),
-          postalCode: postalCode.replace(/\s/g, ''),
-        });
-        
-        if (result.geocoded && result.coordinates) {
-          setCoordinates(result.coordinates);
-          setGeocodeDisplayName(result.displayName ?? undefined);
-        } else {
-          setCoordinates(null);
-          setGeocodeDisplayName(undefined);
-        }
-      } catch (err) {
-        console.error('Geocoding failed:', err);
-        // Don't show error to user - geocoding is optional
-      } finally {
-        setIsGeocoding(false);
-      }
-    }, GEOCODE_DEBOUNCE_MS);
-    
-    return () => {
-      if (geocodeTimeoutRef.current) {
-        clearTimeout(geocodeTimeoutRef.current);
-      }
-    };
-  }, [formData.street, formData.city, formData.postalCode, userId, manuallyAdjusted]);
-
-  // Handle manual position adjustment from map
-  const handlePositionChange = useCallback((lat: number, lng: number) => {
-    setCoordinates({ lat, lng });
-    setManuallyAdjusted(true);
-    setGeocodeDisplayName('Ručně upravená poloha');
-  }, []);
-
   const handleChange = useCallback((field: keyof CustomerFormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     
@@ -111,10 +42,6 @@ export function AddCustomerForm({ onSubmit, onCancel, isSubmitting = false, user
       });
     }
     
-    // Reset manual adjustment when address changes
-    if (['street', 'city', 'postalCode'].includes(field)) {
-      setManuallyAdjusted(false);
-    }
   }, [errors]);
 
   const handleBlur = useCallback((field: keyof CustomerFormData) => {
@@ -153,9 +80,6 @@ export function AddCustomerForm({ onSubmit, onCancel, isSubmitting = false, user
       postalCode: formData.postalCode.replace(/\s/g, ''),
       country: 'CZ',
       notes: formData.notes.trim() || undefined,
-      // Include coordinates if available (from geocoding or manual adjustment)
-      lat: coordinates?.lat,
-      lng: coordinates?.lng,
     };
     
     await onSubmit(requestData);
@@ -281,12 +205,8 @@ export function AddCustomerForm({ onSubmit, onCancel, isSubmitting = false, user
         {/* Address Map */}
         <div className={styles.mapContainer}>
           <AddressMap
-            lat={coordinates?.lat}
-            lng={coordinates?.lng}
-            isGeocoding={isGeocoding}
-            displayName={geocodeDisplayName}
-            onPositionChange={handlePositionChange}
-            draggable={!isSubmitting}
+            draggable={false}
+            emptyMessage="Geokódování proběhne po uložení zákazníka."
           />
         </div>
       </div>

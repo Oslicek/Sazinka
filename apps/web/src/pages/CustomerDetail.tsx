@@ -1,7 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link, useNavigate } from '@tanstack/react-router';
 import type { Customer, UpdateCustomerRequest } from '@shared/customer';
-import { getCustomer, updateCustomer, deleteCustomer } from '../services/customerService';
+import { 
+  getCustomer, 
+  updateCustomer, 
+  deleteCustomer, 
+  submitGeocodeJob, 
+  subscribeToGeocodeJobStatus,
+  type GeocodeJobStatusUpdate,
+} from '../services/customerService';
 import { AddressMap } from '../components/customers/AddressMap';
 import { CustomerForm } from '../components/customers/CustomerForm';
 import { DeleteConfirmDialog } from '../components/customers/DeleteConfirmDialog';
@@ -19,6 +26,8 @@ export function CustomerDetail() {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [geocodeJob, setGeocodeJob] = useState<GeocodeJobStatusUpdate | null>(null);
+  const geocodeUnsubscribeRef = useRef<(() => void) | null>(null);
   
   // Edit mode
   const [isEditing, setIsEditing] = useState(false);
@@ -60,6 +69,15 @@ export function CustomerDetail() {
     loadCustomer();
   }, [loadCustomer]);
 
+  useEffect(() => {
+    return () => {
+      if (geocodeUnsubscribeRef.current) {
+        geocodeUnsubscribeRef.current();
+        geocodeUnsubscribeRef.current = null;
+      }
+    };
+  }, []);
+
   const handleEdit = useCallback(() => {
     setIsEditing(true);
     setError(null);
@@ -81,13 +99,38 @@ export function CustomerDetail() {
       const updated = await updateCustomer(TEMP_USER_ID, data as UpdateCustomerRequest);
       setCustomer(updated);
       setIsEditing(false);
+
+      const addressChanged = Boolean(data.street || data.city || data.postalCode);
+      const hasCoords = data.lat !== undefined && data.lng !== undefined;
+      if (addressChanged && !hasCoords) {
+        const job = await submitGeocodeJob(TEMP_USER_ID, [updated.id]);
+        setGeocodeJob({
+          jobId: job.jobId,
+          timestamp: new Date().toISOString(),
+          status: { type: 'queued', position: 1 },
+        });
+        if (geocodeUnsubscribeRef.current) {
+          geocodeUnsubscribeRef.current();
+        }
+        const unsubscribe = await subscribeToGeocodeJobStatus(job.jobId, (update) => {
+          setGeocodeJob(update);
+          if (update.status.type === 'completed' || update.status.type === 'failed') {
+            loadCustomer();
+            if (geocodeUnsubscribeRef.current) {
+              geocodeUnsubscribeRef.current();
+              geocodeUnsubscribeRef.current = null;
+            }
+          }
+        });
+        geocodeUnsubscribeRef.current = unsubscribe;
+      }
     } catch (err) {
       console.error('Failed to update customer:', err);
       setError(err instanceof Error ? err.message : 'Nepodařilo se aktualizovat zákazníka');
     } finally {
       setIsSubmitting(false);
     }
-  }, [isConnected]);
+  }, [isConnected, loadCustomer]);
 
   const handleDeleteClick = useCallback(() => {
     setShowDeleteDialog(true);
@@ -166,7 +209,7 @@ export function CustomerDetail() {
           onSubmit={handleSubmitEdit}
           onCancel={handleCancelEdit}
           isSubmitting={isSubmitting}
-          userId={TEMP_USER_ID}
+          onGeocodeCompleted={loadCustomer}
         />
         {error && <div className={styles.error}>{error}</div>}
       </div>
@@ -191,6 +234,23 @@ export function CustomerDetail() {
       </div>
 
       {error && <div className={styles.error}>{error}</div>}
+
+      {geocodeJob && (
+        <div className={styles.geocodeWarning}>
+          <span className={styles.warningIcon}>ℹ️</span>
+          <div className={styles.warningContent}>
+            <strong>Geokódování</strong>
+            <p>
+              {geocodeJob.status.type === 'queued' && 'Čeká ve frontě.'}
+              {geocodeJob.status.type === 'processing' &&
+                `Zpracování ${geocodeJob.status.processed}/${geocodeJob.status.total}.`}
+              {geocodeJob.status.type === 'completed' &&
+                `Hotovo (${geocodeJob.status.succeeded}/${geocodeJob.status.total} úspěšně).`}
+              {geocodeJob.status.type === 'failed' && `Selhalo: ${geocodeJob.status.error}`}
+            </p>
+          </div>
+        </div>
+      )}
 
       {customer.geocodeStatus === 'failed' && (
         <div className={styles.geocodeWarning}>

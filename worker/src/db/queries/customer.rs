@@ -143,6 +143,27 @@ pub async fn update_customer_coordinates(
     Ok(())
 }
 
+/// Reset customer coordinates and mark geocode as pending
+pub async fn reset_customer_coordinates(
+    pool: &PgPool,
+    user_id: Uuid,
+    customer_id: Uuid,
+) -> Result<()> {
+    sqlx::query(
+        r#"
+        UPDATE customers
+        SET lat = NULL, lng = NULL, geocode_status = 'pending', updated_at = NOW()
+        WHERE id = $1 AND user_id = $2
+        "#
+    )
+    .bind(customer_id)
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
 /// Update a customer
 pub async fn update_customer(
     pool: &PgPool,

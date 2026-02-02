@@ -7,6 +7,10 @@ import type { Customer } from '@shared/customer';
 // Mock the customerService
 vi.mock('../services/customerService', () => ({
   getCustomer: vi.fn(),
+  updateCustomer: vi.fn(),
+  deleteCustomer: vi.fn(),
+  submitGeocodeJob: vi.fn(),
+  subscribeToGeocodeJobStatus: vi.fn(),
 }));
 
 // Mock the router
@@ -54,6 +58,7 @@ describe('CustomerDetail', () => {
     country: 'CZ',
     lat: 50.0755,
     lng: 14.4378,
+    geocodeStatus: 'success',
     notes: 'Testovací poznámka',
     createdAt: '2026-01-26T12:00:00Z',
     updatedAt: '2026-01-26T12:00:00Z',

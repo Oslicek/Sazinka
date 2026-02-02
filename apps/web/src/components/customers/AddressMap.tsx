@@ -16,6 +16,18 @@ interface AddressMapProps {
   onPositionChange?: (lat: number, lng: number) => void;
   /** Whether the marker can be dragged */
   draggable?: boolean;
+  /** Placeholder text when no coordinates */
+  emptyMessage?: string;
+  /** Allow picking a point on the map */
+  enablePick?: boolean;
+  /** Callback when a point is picked */
+  onPick?: (lat: number, lng: number) => void;
+  /** Whether to auto-center map when coordinates change */
+  autoCenter?: boolean;
+  /** Called when user moves/zooms the map */
+  onMapInteraction?: () => void;
+  /** Callback after auto-centering completes */
+  onAutoCenterComplete?: () => void;
 }
 
 // Default center: Czech Republic
@@ -30,6 +42,12 @@ export function AddressMap({
   displayName,
   onPositionChange,
   draggable = true,
+  emptyMessage = 'Vyplňte adresu pro zobrazení polohy na mapě',
+  enablePick = false,
+  onPick,
+  autoCenter = true,
+  onMapInteraction,
+  onAutoCenterComplete,
 }: AddressMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
@@ -111,13 +129,20 @@ export function AddressMap({
         });
       }
 
-      // Fly to the marker
-      map.current.flyTo({
-        center: [lng, lat],
-        zoom: MARKER_ZOOM,
-        duration: 1000,
-      });
-    } else {
+      if (autoCenter) {
+        // Fly to the marker
+        map.current.flyTo({
+          center: [lng, lat],
+          zoom: MARKER_ZOOM,
+          duration: 1000,
+        });
+        if (onAutoCenterComplete) {
+          map.current.once('moveend', () => {
+            onAutoCenterComplete();
+          });
+        }
+      }
+    } else if (autoCenter) {
       // Reset to default view
       map.current.flyTo({
         center: DEFAULT_CENTER,
@@ -125,7 +150,42 @@ export function AddressMap({
         duration: 500,
       });
     }
-  }, [lat, lng, mapLoaded, draggable, onPositionChange]);
+  }, [lat, lng, mapLoaded, draggable, onPositionChange, autoCenter]);
+
+  // Allow picking a point on the map
+  useEffect(() => {
+    if (!map.current || !mapLoaded || !enablePick || !onPick) return;
+
+    const handleClick = (e: maplibregl.MapMouseEvent) => {
+      const { lat, lng } = e.lngLat;
+      onPick(lat, lng);
+    };
+
+    map.current.on('click', handleClick);
+
+    return () => {
+      map.current?.off('click', handleClick);
+    };
+  }, [mapLoaded, enablePick, onPick]);
+
+  // Track user map interactions
+  useEffect(() => {
+    if (!map.current || !mapLoaded || !onMapInteraction) return;
+
+    const handleInteraction = () => {
+      onMapInteraction();
+    };
+
+    map.current.on('moveend', handleInteraction);
+    map.current.on('zoomend', handleInteraction);
+    map.current.on('dragend', handleInteraction);
+
+    return () => {
+      map.current?.off('moveend', handleInteraction);
+      map.current?.off('zoomend', handleInteraction);
+      map.current?.off('dragend', handleInteraction);
+    };
+  }, [mapLoaded, onMapInteraction]);
 
   return (
     <div className={styles.container}>
@@ -140,10 +200,10 @@ export function AddressMap({
         </div>
       )}
       
-      {!isGeocoding && lat === undefined && lng === undefined && (
+      {!isGeocoding && lat === undefined && lng === undefined && emptyMessage && (
         <div className={styles.placeholder}>
           <span className={styles.placeholderIcon}>📍</span>
-          <p>Vyplňte adresu pro zobrazení polohy na mapě</p>
+          <p>{emptyMessage}</p>
         </div>
       )}
       

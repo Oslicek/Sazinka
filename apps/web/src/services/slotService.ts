@@ -3,7 +3,8 @@
  * Handles NATS communication for smart slot suggestions
  */
 
-import { publish } from '../stores/natsStore';
+import type { SuccessResponse, ErrorResponse } from '@shared/messages';
+import { useNatsStore } from '../stores/natsStore';
 
 export interface SuggestSlotsRequest {
   date: string; // YYYY-MM-DD
@@ -32,19 +33,30 @@ export interface SuggestSlotsResponse {
   existingStops: number;
 }
 
+type NatsResponse<T> = SuccessResponse<T> | ErrorResponse;
+
+function isErrorResponse(response: NatsResponse<unknown>): response is ErrorResponse {
+  return 'error' in response;
+}
+
 /**
  * Get suggested time slots for a new appointment
  */
 export async function suggestSlots(
-  userId: string,
   request: SuggestSlotsRequest
 ): Promise<SuggestSlotsResponse> {
-  const response = await publish<SuggestSlotsResponse>(
+  const { request: natsRequest } = useNatsStore.getState();
+  
+  const response = await natsRequest<SuggestSlotsRequest, NatsResponse<SuggestSlotsResponse>>(
     'sazinka.slots.suggest',
-    request,
-    userId
+    request
   );
-  return response;
+  
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+  
+  return response.data;
 }
 
 /**

@@ -47,7 +47,6 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let customer_get_sub = client.subscribe("sazinka.customer.get").await?;
     let customer_update_sub = client.subscribe("sazinka.customer.update").await?;
     let customer_delete_sub = client.subscribe("sazinka.customer.delete").await?;
-    let customer_geocode_sub = client.subscribe("sazinka.customer.geocode").await?;
     let customer_random_sub = client.subscribe("sazinka.customer.random").await?;
     let route_plan_sub = client.subscribe("sazinka.route.plan").await?;
     let route_save_sub = client.subscribe("sazinka.route.save").await?;
@@ -124,7 +123,6 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let client_customer_get = client.clone();
     let client_customer_update = client.clone();
     let client_customer_delete = client.clone();
-    let client_customer_geocode = client.clone();
     let client_customer_random = client.clone();
     let client_route_plan = client.clone();
     let client_route_save = client.clone();
@@ -259,9 +257,6 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_import_communication = pool.clone();
     let pool_import_visit = pool.clone();
     
-    let geocoder_create = Arc::clone(&geocoder);
-    let geocoder_update = Arc::clone(&geocoder);
-    let geocoder_geocode = Arc::clone(&geocoder);
     let geocoder_depot_create = Arc::clone(&geocoder);
     let geocoder_depot_geocode = Arc::clone(&geocoder);
     
@@ -273,7 +268,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     });
 
     let customer_create_handle = tokio::spawn(async move {
-        customer::handle_create(client_customer_create, customer_create_sub, pool_customer_create, geocoder_create).await
+        customer::handle_create(client_customer_create, customer_create_sub, pool_customer_create).await
     });
 
     let customer_list_handle = tokio::spawn(async move {
@@ -285,16 +280,13 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     });
 
     let customer_update_handle = tokio::spawn(async move {
-        customer::handle_update(client_customer_update, customer_update_sub, pool_customer_update, geocoder_update).await
+        customer::handle_update(client_customer_update, customer_update_sub, pool_customer_update).await
     });
 
     let customer_delete_handle = tokio::spawn(async move {
         customer::handle_delete(client_customer_delete, customer_delete_sub, pool_customer_delete).await
     });
 
-    let customer_geocode_handle = tokio::spawn(async move {
-        customer::handle_geocode(client_customer_geocode, customer_geocode_sub, geocoder_geocode).await
-    });
 
     let customer_random_handle = tokio::spawn(async move {
         customer::handle_random(client_customer_random, customer_random_sub, pool_customer_random).await
@@ -532,6 +524,20 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
                         return;
                     }
                 };
+                let geocode_address_sub = match client_geocode.subscribe("sazinka.geocode.address.submit").await {
+                    Ok(sub) => sub,
+                    Err(e) => {
+                        error!("Failed to subscribe to geocode.address.submit: {}", e);
+                        return;
+                    }
+                };
+                let reverse_geocode_sub = match client_geocode.subscribe("sazinka.geocode.reverse.submit").await {
+                    Ok(sub) => sub,
+                    Err(e) => {
+                        error!("Failed to subscribe to geocode.reverse.submit: {}", e);
+                        return;
+                    }
+                };
                 
                 // Start submit handler
                 let client_submit = client_geocode.clone();
@@ -549,11 +555,42 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
                         error!("Geocode pending handler error: {}", e);
                     }
                 });
+
+                let client_address = client_geocode.clone();
+                let processor_address = Arc::clone(&processor);
+                tokio::spawn(async move {
+                    if let Err(e) = geocode::handle_geocode_address_submit(client_address, geocode_address_sub, processor_address).await {
+                        error!("Geocode address submit handler error: {}", e);
+                    }
+                });
+
+                let client_reverse = client_geocode.clone();
+                let processor_reverse = Arc::clone(&processor);
+                tokio::spawn(async move {
+                    if let Err(e) = geocode::handle_reverse_geocode_submit(client_reverse, reverse_geocode_sub, processor_reverse).await {
+                        error!("Reverse geocode submit handler error: {}", e);
+                    }
+                });
                 
-                // Start job processor
-                if let Err(e) = processor.start_processing().await {
-                    error!("Geocode processor error: {}", e);
-                }
+                // Start job processors
+                let processor_main = Arc::clone(&processor);
+                tokio::spawn(async move {
+                    if let Err(e) = processor_main.start_processing().await {
+                        error!("Geocode processor error: {}", e);
+                    }
+                });
+                let processor_address = Arc::clone(&processor);
+                tokio::spawn(async move {
+                    if let Err(e) = processor_address.start_address_processing().await {
+                        error!("Geocode address processor error: {}", e);
+                    }
+                });
+                let processor_reverse = Arc::clone(&processor);
+                tokio::spawn(async move {
+                    if let Err(e) = processor_reverse.start_reverse_processing().await {
+                        error!("Reverse geocode processor error: {}", e);
+                    }
+                });
             }
             Err(e) => {
                 error!("Failed to create geocode processor: {}", e);
@@ -582,9 +619,6 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         }
         result = customer_delete_handle => {
             error!("Customer delete handler finished: {:?}", result);
-        }
-        result = customer_geocode_handle => {
-            error!("Customer geocode handler finished: {:?}", result);
         }
         result = customer_random_handle => {
             error!("Customer random handler finished: {:?}", result);

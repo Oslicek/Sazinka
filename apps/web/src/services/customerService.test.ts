@@ -1,11 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createCustomer, listCustomers, type CustomerServiceDeps } from './customerService';
+import { 
+  createCustomer, 
+  listCustomers, 
+  submitGeocodeJob, 
+  subscribeToGeocodeJobStatus,
+  submitGeocodeAddressJob,
+  subscribeToGeocodeAddressJobStatus,
+  submitReverseGeocodeJob,
+  subscribeToReverseGeocodeJobStatus,
+  type CustomerServiceDeps 
+} from './customerService';
 import type { CreateCustomerRequest, Customer } from '@shared/customer';
 
 describe('customerService', () => {
   const mockRequest = vi.fn();
+  const mockSubscribe = vi.fn();
   const mockDeps: CustomerServiceDeps = {
     request: mockRequest,
+    subscribe: mockSubscribe,
   };
 
   beforeEach(() => {
@@ -34,6 +46,7 @@ describe('customerService', () => {
       city: 'Praha',
       postalCode: '11000',
       country: 'CZ',
+      geocodeStatus: 'pending',
       notes: 'Testovací zákazník',
       createdAt: '2026-01-26T12:00:00Z',
       updatedAt: '2026-01-26T12:00:00Z',
@@ -115,6 +128,7 @@ describe('customerService', () => {
         city: 'Praha',
         postalCode: '11000',
         country: 'CZ',
+        geocodeStatus: 'success',
         createdAt: '2026-01-26T12:00:00Z',
         updatedAt: '2026-01-26T12:00:00Z',
       },
@@ -126,6 +140,7 @@ describe('customerService', () => {
         city: 'Brno',
         postalCode: '60200',
         country: 'CZ',
+        geocodeStatus: 'pending',
         createdAt: '2026-01-26T12:00:00Z',
         updatedAt: '2026-01-26T12:00:00Z',
       },
@@ -169,6 +184,124 @@ describe('customerService', () => {
         expect.objectContaining({
           payload: { limit: 10, offset: 20 },
         })
+      );
+    });
+  });
+
+  describe('submitGeocodeJob', () => {
+    it('should call NATS with correct subject and payload', async () => {
+      mockRequest.mockResolvedValueOnce({ payload: { jobId: 'job-123', message: 'ok' } });
+
+      await submitGeocodeJob('user-123', ['cust-1'], mockDeps);
+
+      expect(mockRequest).toHaveBeenCalledWith(
+        'sazinka.geocode.submit',
+        expect.objectContaining({
+          userId: 'user-123',
+          payload: expect.objectContaining({
+            customerIds: ['cust-1'],
+          }),
+        })
+      );
+    });
+
+    it('should return job response on success', async () => {
+      mockRequest.mockResolvedValueOnce({ payload: { jobId: 'job-123', message: 'ok' } });
+
+      const result = await submitGeocodeJob('user-123', ['cust-1'], mockDeps);
+
+      expect(result.jobId).toBe('job-123');
+    });
+
+    it('should throw error when NATS returns error response', async () => {
+      mockRequest.mockResolvedValueOnce({
+        error: { code: 'SUBMIT_ERROR', message: 'Queue error' },
+      });
+
+      await expect(submitGeocodeJob('user-123', ['cust-1'], mockDeps)).rejects.toThrow(
+        'Queue error'
+      );
+    });
+  });
+
+  describe('subscribeToGeocodeJobStatus', () => {
+    it('should subscribe to job status subject', async () => {
+      mockSubscribe.mockResolvedValueOnce(() => {});
+      const callback = vi.fn();
+
+      await subscribeToGeocodeJobStatus('job-123', callback, mockDeps);
+
+      expect(mockSubscribe).toHaveBeenCalledWith(
+        'sazinka.job.geocode.status.job-123',
+        callback
+      );
+    });
+  });
+
+  describe('submitGeocodeAddressJob', () => {
+    it('should call NATS with correct subject and payload', async () => {
+      mockRequest.mockResolvedValueOnce({ payload: { jobId: 'job-addr', message: 'ok' } });
+
+      await submitGeocodeAddressJob('user-123', { street: 'A', city: 'B', postalCode: '10000' }, mockDeps);
+
+      expect(mockRequest).toHaveBeenCalledWith(
+        'sazinka.geocode.address.submit',
+        expect.objectContaining({
+          userId: 'user-123',
+          payload: expect.objectContaining({
+            street: 'A',
+            city: 'B',
+            postalCode: '10000',
+          }),
+        })
+      );
+    });
+  });
+
+  describe('subscribeToGeocodeAddressJobStatus', () => {
+    it('should subscribe to address job status subject', async () => {
+      mockSubscribe.mockResolvedValueOnce(() => {});
+      const callback = vi.fn();
+
+      await subscribeToGeocodeAddressJobStatus('job-addr', callback, mockDeps);
+
+      expect(mockSubscribe).toHaveBeenCalledWith(
+        'sazinka.job.geocode.address.status.job-addr',
+        callback
+      );
+    });
+  });
+
+  describe('submitReverseGeocodeJob', () => {
+    it('should call NATS with correct subject and payload', async () => {
+      mockRequest.mockResolvedValueOnce({ payload: { jobId: 'job-rev', message: 'ok' } });
+
+      await submitReverseGeocodeJob('user-123', { customerId: 'cust-1', lat: 1, lng: 2 }, mockDeps);
+
+      expect(mockRequest).toHaveBeenCalledWith(
+        'sazinka.geocode.reverse.submit',
+        expect.objectContaining({
+          userId: 'user-123',
+          payload: expect.objectContaining({
+            customerId: 'cust-1',
+            lat: 1,
+            lng: 2,
+          }),
+        })
+      );
+    });
+  });
+
+  describe('subscribeToReverseGeocodeJobStatus', () => {
+    it('should subscribe to reverse job status subject', async () => {
+      mockSubscribe.mockResolvedValueOnce(() => {});
+      const callback = vi.fn();
+
+      await subscribeToReverseGeocodeJobStatus('job-rev', callback, mockDeps);
+
+      expect(mockSubscribe).toHaveBeenCalledWith(
+        'sazinka.job.geocode.reverse.status.job-rev',
+        callback
       );
     });
   });

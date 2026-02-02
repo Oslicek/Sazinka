@@ -12,6 +12,22 @@ pub struct NominatimResult {
     pub display_name: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct NominatimReverseAddress {
+    pub road: Option<String>,
+    pub house_number: Option<String>,
+    pub city: Option<String>,
+    pub town: Option<String>,
+    pub village: Option<String>,
+    pub postcode: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct NominatimReverseResult {
+    pub display_name: String,
+    pub address: Option<NominatimReverseAddress>,
+}
+
 /// Nominatim geocoding client
 pub struct NominatimClient {
     base_url: String,
@@ -66,6 +82,61 @@ impl NominatimClient {
             Ok(None)
         }
     }
+
+    /// Reverse geocode coordinates to address
+    pub async fn reverse_geocode(&self, lat: f64, lng: f64) -> Result<Option<ReverseGeocodeOutput>> {
+        let url = format!(
+            "{}/reverse?lat={}&lon={}&format=json&addressdetails=1",
+            self.base_url,
+            lat,
+            lng
+        );
+
+        let response = self.client
+            .get(&url)
+            .send()
+            .await
+            .context("Failed to send reverse geocoding request")?;
+
+        if !response.status().is_success() {
+            return Ok(None);
+        }
+
+        let result: NominatimReverseResult = response
+            .json()
+            .await
+            .context("Failed to parse reverse geocoding response")?;
+
+        let address = result.address.unwrap_or(NominatimReverseAddress {
+            road: None,
+            house_number: None,
+            city: None,
+            town: None,
+            village: None,
+            postcode: None,
+        });
+
+        let city = address.city.or(address.town).or(address.village).unwrap_or_default();
+        let street = match (address.road, address.house_number) {
+            (Some(road), Some(number)) => format!("{} {}", road, number),
+            (Some(road), None) => road,
+            _ => String::new(),
+        };
+
+        Ok(Some(ReverseGeocodeOutput {
+            street,
+            city,
+            postal_code: address.postcode.unwrap_or_default(),
+            display_name: result.display_name,
+        }))
+    }
+}
+
+pub struct ReverseGeocodeOutput {
+    pub street: String,
+    pub city: String,
+    pub postal_code: String,
+    pub display_name: String,
 }
 
 #[cfg(test)]

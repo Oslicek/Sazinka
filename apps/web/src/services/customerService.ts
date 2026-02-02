@@ -2,10 +2,6 @@ import type {
   CreateCustomerRequest,
   UpdateCustomerRequest,
   Customer, 
-  GeocodeRequest, 
-  GeocodeResponse,
-  ImportBatchRequest,
-  ImportBatchResponse,
   ImportIssue,
 } from '@shared/customer';
 import type { ListRequest, ListResponse, SuccessResponse, ErrorResponse } from '@shared/messages';
@@ -17,6 +13,7 @@ import { useNatsStore } from '../stores/natsStore';
  */
 export interface CustomerServiceDeps {
   request: <TReq, TRes>(subject: string, payload: TReq) => Promise<TRes>;
+  subscribe?: <T>(subject: string, callback: (msg: T) => void) => Promise<() => void>;
 }
 
 /**
@@ -25,6 +22,7 @@ export interface CustomerServiceDeps {
 function getDefaultDeps(): CustomerServiceDeps {
   return {
     request: useNatsStore.getState().request,
+    subscribe: useNatsStore.getState().subscribe,
   };
 }
 
@@ -96,31 +94,6 @@ export async function getCustomer(
 
   const response = await deps.request<typeof request, NatsResponse<Customer>>(
     'sazinka.customer.get',
-    request
-  );
-
-  if (isErrorResponse(response)) {
-    throw new Error(response.error.message);
-  }
-
-  return response.payload;
-}
-
-/**
- * Geocode an address to coordinates
- * 
- * This does not create a customer - it just returns coordinates for the address.
- * Useful for showing the location on a map before saving.
- */
-export async function geocodeAddress(
-  userId: string,
-  address: GeocodeRequest,
-  deps: CustomerServiceDeps = getDefaultDeps()
-): Promise<GeocodeResponse> {
-  const request = createRequest(userId, address);
-
-  const response = await deps.request<typeof request, NatsResponse<GeocodeResponse>>(
-    'sazinka.customer.geocode',
     request
   );
 
@@ -273,6 +246,145 @@ export async function submitGeocodeJob(
   }
 
   return response.payload;
+}
+
+// ==========================================================================
+// Geocode Address Preview (async)
+// ==========================================================================
+
+export interface GeocodeAddressJobSubmitResponse {
+  jobId: string;
+  message: string;
+}
+
+export async function submitGeocodeAddressJob(
+  userId: string,
+  address: { street: string; city: string; postalCode: string },
+  deps: CustomerServiceDeps = getDefaultDeps()
+): Promise<GeocodeAddressJobSubmitResponse> {
+  const request = createRequest(userId, {
+    street: address.street,
+    city: address.city,
+    postalCode: address.postalCode,
+  });
+
+  const response = await deps.request<typeof request, NatsResponse<GeocodeAddressJobSubmitResponse>>(
+    'sazinka.geocode.address.submit',
+    request
+  );
+
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+
+  return response.payload;
+}
+
+export type GeocodeAddressJobStatus =
+  | { type: 'queued'; position: number }
+  | { type: 'processing' }
+  | { type: 'completed'; coordinates: { lat: number; lng: number }; displayName?: string }
+  | { type: 'failed'; error: string };
+
+export interface GeocodeAddressJobStatusUpdate {
+  jobId: string;
+  timestamp: string;
+  status: GeocodeAddressJobStatus;
+}
+
+export async function subscribeToGeocodeAddressJobStatus(
+  jobId: string,
+  callback: (update: GeocodeAddressJobStatusUpdate) => void,
+  deps: CustomerServiceDeps = getDefaultDeps()
+): Promise<() => void> {
+  if (!deps.subscribe) {
+    throw new Error('subscribe is not available');
+  }
+
+  const subject = `sazinka.job.geocode.address.status.${jobId}`;
+  return deps.subscribe<GeocodeAddressJobStatusUpdate>(subject, callback);
+}
+
+// ==========================================================================
+// Reverse Geocoding (async)
+// ==========================================================================
+
+export interface ReverseGeocodeJobSubmitResponse {
+  jobId: string;
+  message: string;
+}
+
+export async function submitReverseGeocodeJob(
+  userId: string,
+  payload: { customerId: string; lat: number; lng: number },
+  deps: CustomerServiceDeps = getDefaultDeps()
+): Promise<ReverseGeocodeJobSubmitResponse> {
+  const request = createRequest(userId, payload);
+
+  const response = await deps.request<typeof request, NatsResponse<ReverseGeocodeJobSubmitResponse>>(
+    'sazinka.geocode.reverse.submit',
+    request
+  );
+
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+
+  return response.payload;
+}
+
+export type ReverseGeocodeJobStatus =
+  | { type: 'queued'; position: number }
+  | { type: 'processing' }
+  | { type: 'completed'; street: string; city: string; postalCode: string; displayName?: string }
+  | { type: 'failed'; error: string };
+
+export interface ReverseGeocodeJobStatusUpdate {
+  jobId: string;
+  timestamp: string;
+  status: ReverseGeocodeJobStatus;
+}
+
+export async function subscribeToReverseGeocodeJobStatus(
+  jobId: string,
+  callback: (update: ReverseGeocodeJobStatusUpdate) => void,
+  deps: CustomerServiceDeps = getDefaultDeps()
+): Promise<() => void> {
+  if (!deps.subscribe) {
+    throw new Error('subscribe is not available');
+  }
+
+  const subject = `sazinka.job.geocode.reverse.status.${jobId}`;
+  return deps.subscribe<ReverseGeocodeJobStatusUpdate>(subject, callback);
+}
+
+// ==========================================================================
+// Geocoding Job Status (async updates)
+// ==========================================================================
+
+export type GeocodeJobStatus =
+  | { type: 'queued'; position: number }
+  | { type: 'processing'; processed: number; total: number; succeeded: number; failed: number }
+  | { type: 'completed'; total: number; succeeded: number; failed: number; failedAddresses: string[] }
+  | { type: 'failed'; error: string };
+
+export interface GeocodeJobStatusUpdate {
+  jobId: string;
+  timestamp: string;
+  status: GeocodeJobStatus;
+}
+
+export async function subscribeToGeocodeJobStatus(
+  jobId: string,
+  callback: (update: GeocodeJobStatusUpdate) => void,
+  deps: CustomerServiceDeps = getDefaultDeps()
+): Promise<() => void> {
+  if (!deps.subscribe) {
+    throw new Error('subscribe is not available');
+  }
+
+  const subject = `sazinka.job.geocode.status.${jobId}`;
+  return deps.subscribe<GeocodeJobStatusUpdate>(subject, callback);
 }
 
 /**

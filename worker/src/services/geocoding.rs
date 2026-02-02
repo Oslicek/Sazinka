@@ -21,6 +21,9 @@ pub trait Geocoder: Send + Sync {
     
     /// Get the name of this geocoder implementation
     fn name(&self) -> &'static str;
+
+    /// Reverse geocode coordinates to address
+    async fn reverse_geocode(&self, lat: f64, lng: f64) -> Result<Option<ReverseGeocodingResult>>;
 }
 
 /// Result of geocoding operation
@@ -31,6 +34,15 @@ pub struct GeocodingResult {
     /// Confidence score 0.0-1.0
     pub confidence: f64,
     /// Display name returned by geocoder
+    pub display_name: String,
+}
+
+/// Result of reverse geocoding operation
+#[derive(Debug, Clone)]
+pub struct ReverseGeocodingResult {
+    pub street: String,
+    pub city: String,
+    pub postal_code: String,
     pub display_name: String,
 }
 
@@ -289,6 +301,15 @@ impl Geocoder for MockGeocoder {
     fn name(&self) -> &'static str {
         "mock"
     }
+
+    async fn reverse_geocode(&self, _lat: f64, _lng: f64) -> Result<Option<ReverseGeocodingResult>> {
+        Ok(Some(ReverseGeocodingResult {
+            street: "Mock Street 1".to_string(),
+            city: "Mock City".to_string(),
+            postal_code: "10000".to_string(),
+            display_name: "Mock Street 1, 10000 Mock City, Czech Republic".to_string(),
+        }))
+    }
 }
 
 // ==========================================================================
@@ -461,6 +482,34 @@ impl Geocoder for NominatimGeocoder {
     
     fn name(&self) -> &'static str {
         "nominatim"
+    }
+
+    async fn reverse_geocode(&self, lat: f64, lng: f64) -> Result<Option<ReverseGeocodingResult>> {
+        if self.circuit_breaker.is_open() {
+            tracing::warn!("Circuit breaker is open, rejecting reverse geocoding request");
+            return Err(anyhow::anyhow!("Geocoding service temporarily unavailable (circuit breaker open)"));
+        }
+
+        match self.client.reverse_geocode(lat, lng).await {
+            Ok(Some(result)) => {
+                self.circuit_breaker.record_success();
+                Ok(Some(ReverseGeocodingResult {
+                    street: result.street,
+                    city: result.city,
+                    postal_code: result.postal_code,
+                    display_name: result.display_name,
+                }))
+            }
+            Ok(None) => {
+                self.circuit_breaker.record_success();
+                Ok(None)
+            }
+            Err(e) => {
+                self.circuit_breaker.record_failure();
+                tracing::error!("Reverse geocoding failed: {}", e);
+                Err(e)
+            }
+        }
     }
 }
 

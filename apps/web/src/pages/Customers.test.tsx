@@ -8,6 +8,8 @@ import type { Customer } from '@shared/customer';
 vi.mock('../services/customerService', () => ({
   createCustomer: vi.fn(),
   listCustomers: vi.fn(),
+  submitGeocodeJob: vi.fn(),
+  subscribeToGeocodeJobStatus: vi.fn(),
 }));
 
 // Mock the router
@@ -54,6 +56,7 @@ describe('Customers', () => {
       country: 'CZ',
       lat: 50.0755,
       lng: 14.4378,
+      geocodeStatus: 'success',
       createdAt: '2026-01-26T12:00:00Z',
       updatedAt: '2026-01-26T12:00:00Z',
     },
@@ -67,6 +70,7 @@ describe('Customers', () => {
       city: 'Brno',
       postalCode: '60200',
       country: 'CZ',
+      geocodeStatus: 'pending',
       createdAt: '2026-01-26T13:00:00Z',
       updatedAt: '2026-01-26T13:00:00Z',
     },

@@ -18,6 +18,8 @@ use uuid::Uuid;
 use crate::services::geocoding::Geocoder;
 use crate::types::{
     GeocodeJobRequest, GeocodeJobStatus, GeocodeJobStatusUpdate,
+    GeocodeAddressJobRequest, GeocodeAddressJobStatus, GeocodeAddressJobStatusUpdate,
+    ReverseGeocodeJobRequest, ReverseGeocodeJobStatus, ReverseGeocodeJobStatusUpdate,
     QueuedGeocodeJob, ErrorResponse, Request, SuccessResponse,
 };
 
@@ -26,6 +28,16 @@ const STREAM_NAME: &str = "SAZINKA_GEOCODE_JOBS";
 const CONSUMER_NAME: &str = "geocode_workers";
 const SUBJECT_JOBS: &str = "sazinka.jobs.geocode";
 const SUBJECT_STATUS_PREFIX: &str = "sazinka.job.geocode.status";
+
+const ADDRESS_STREAM_NAME: &str = "SAZINKA_GEOCODE_ADDRESS_JOBS";
+const ADDRESS_CONSUMER_NAME: &str = "geocode_address_workers";
+const SUBJECT_ADDRESS_JOBS: &str = "sazinka.jobs.geocode.address";
+const SUBJECT_ADDRESS_STATUS_PREFIX: &str = "sazinka.job.geocode.address.status";
+
+const REVERSE_STREAM_NAME: &str = "SAZINKA_REVERSE_GEOCODE_JOBS";
+const REVERSE_CONSUMER_NAME: &str = "reverse_geocode_workers";
+const SUBJECT_REVERSE_JOBS: &str = "sazinka.jobs.geocode.reverse";
+const SUBJECT_REVERSE_STATUS_PREFIX: &str = "sazinka.job.geocode.reverse.status";
 
 /// Geocoding job processor
 pub struct GeocodeProcessor {
@@ -56,6 +68,28 @@ impl GeocodeProcessor {
         
         js.get_or_create_stream(stream_config).await?;
         info!("JetStream geocode stream '{}' ready", STREAM_NAME);
+
+        let address_stream_config = jetstream::stream::Config {
+            name: ADDRESS_STREAM_NAME.to_string(),
+            subjects: vec![SUBJECT_ADDRESS_JOBS.to_string()],
+            max_messages: 1_000,
+            max_bytes: 5 * 1024 * 1024, // 5 MB
+            retention: jetstream::stream::RetentionPolicy::WorkQueue,
+            ..Default::default()
+        };
+        js.get_or_create_stream(address_stream_config).await?;
+        info!("JetStream geocode address stream '{}' ready", ADDRESS_STREAM_NAME);
+
+        let reverse_stream_config = jetstream::stream::Config {
+            name: REVERSE_STREAM_NAME.to_string(),
+            subjects: vec![SUBJECT_REVERSE_JOBS.to_string()],
+            max_messages: 1_000,
+            max_bytes: 5 * 1024 * 1024, // 5 MB
+            retention: jetstream::stream::RetentionPolicy::WorkQueue,
+            ..Default::default()
+        };
+        js.get_or_create_stream(reverse_stream_config).await?;
+        info!("JetStream reverse geocode stream '{}' ready", REVERSE_STREAM_NAME);
         
         Ok(Self {
             client,
@@ -88,6 +122,22 @@ impl GeocodeProcessor {
         let subject = format!("{}.{}", SUBJECT_STATUS_PREFIX, job_id);
         let payload = serde_json::to_vec(&update)?;
         
+        self.client.publish(subject, payload.into()).await?;
+        Ok(())
+    }
+
+    pub async fn publish_address_status(&self, job_id: Uuid, status: GeocodeAddressJobStatus) -> Result<()> {
+        let update = GeocodeAddressJobStatusUpdate::new(job_id, status);
+        let subject = format!("{}.{}", SUBJECT_ADDRESS_STATUS_PREFIX, job_id);
+        let payload = serde_json::to_vec(&update)?;
+        self.client.publish(subject, payload.into()).await?;
+        Ok(())
+    }
+
+    pub async fn publish_reverse_status(&self, job_id: Uuid, status: ReverseGeocodeJobStatus) -> Result<()> {
+        let update = ReverseGeocodeJobStatusUpdate::new(job_id, status);
+        let subject = format!("{}.{}", SUBJECT_REVERSE_STATUS_PREFIX, job_id);
+        let payload = serde_json::to_vec(&update)?;
         self.client.publish(subject, payload.into()).await?;
         Ok(())
     }
@@ -124,6 +174,60 @@ impl GeocodeProcessor {
             }
         }
         
+        Ok(())
+    }
+
+    pub async fn start_address_processing(self: Arc<Self>) -> Result<()> {
+        let stream = self.js.get_stream(ADDRESS_STREAM_NAME).await?;
+        let consumer_config = jetstream::consumer::pull::Config {
+            durable_name: Some(ADDRESS_CONSUMER_NAME.to_string()),
+            ack_policy: jetstream::consumer::AckPolicy::Explicit,
+            max_deliver: 3,
+            ..Default::default()
+        };
+        let consumer = stream.get_or_create_consumer(ADDRESS_CONSUMER_NAME, consumer_config).await?;
+        info!("JetStream geocode address consumer '{}' ready", ADDRESS_CONSUMER_NAME);
+
+        let mut messages = consumer.messages().await?;
+        while let Some(msg) = messages.next().await {
+            match msg {
+                Ok(msg) => {
+                    if let Err(e) = self.process_address_job(msg).await {
+                        error!("Failed to process geocode address job: {}", e);
+                    }
+                }
+                Err(e) => {
+                    error!("Error receiving geocode address message: {}", e);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn start_reverse_processing(self: Arc<Self>) -> Result<()> {
+        let stream = self.js.get_stream(REVERSE_STREAM_NAME).await?;
+        let consumer_config = jetstream::consumer::pull::Config {
+            durable_name: Some(REVERSE_CONSUMER_NAME.to_string()),
+            ack_policy: jetstream::consumer::AckPolicy::Explicit,
+            max_deliver: 3,
+            ..Default::default()
+        };
+        let consumer = stream.get_or_create_consumer(REVERSE_CONSUMER_NAME, consumer_config).await?;
+        info!("JetStream reverse geocode consumer '{}' ready", REVERSE_CONSUMER_NAME);
+
+        let mut messages = consumer.messages().await?;
+        while let Some(msg) = messages.next().await {
+            match msg {
+                Ok(msg) => {
+                    if let Err(e) = self.process_reverse_job(msg).await {
+                        error!("Failed to process reverse geocode job: {}", e);
+                    }
+                }
+                Err(e) => {
+                    error!("Error receiving reverse geocode message: {}", e);
+                }
+            }
+        }
         Ok(())
     }
     
@@ -191,6 +295,98 @@ impl GeocodeProcessor {
         info!("Geocode job {} completed: {}/{} succeeded, {} failed", 
               job_id, succeeded, total, failed);
         
+        Ok(())
+    }
+
+    async fn process_address_job(&self, msg: jetstream::Message) -> Result<()> {
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct QueuedAddressJob {
+            id: Uuid,
+            submitted_at: chrono::DateTime<chrono::Utc>,
+            request: GeocodeAddressJobRequest,
+        }
+
+        let job: QueuedAddressJob = serde_json::from_slice(&msg.payload)?;
+        let job_id = job.id;
+
+        self.publish_address_status(job_id, GeocodeAddressJobStatus::Processing).await?;
+
+        let result = self.geocoder.geocode(
+            &job.request.street,
+            &job.request.city,
+            &job.request.postal_code,
+        ).await?;
+
+        match result {
+            Some(geo) => {
+                self.publish_address_status(job_id, GeocodeAddressJobStatus::Completed {
+                    coordinates: geo.coordinates,
+                    display_name: Some(geo.display_name),
+                }).await?;
+                let _ = msg.ack().await;
+            }
+            None => {
+                self.publish_address_status(job_id, GeocodeAddressJobStatus::Failed {
+                    error: "Address not found".to_string(),
+                }).await?;
+                let _ = msg.ack().await;
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn process_reverse_job(&self, msg: jetstream::Message) -> Result<()> {
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct QueuedReverseJob {
+            id: Uuid,
+            submitted_at: chrono::DateTime<chrono::Utc>,
+            request: ReverseGeocodeJobRequest,
+        }
+
+        let job: QueuedReverseJob = serde_json::from_slice(&msg.payload)?;
+        let job_id = job.id;
+
+        self.publish_reverse_status(job_id, ReverseGeocodeJobStatus::Processing).await?;
+
+        let result = self.geocoder.reverse_geocode(job.request.lat, job.request.lng).await?;
+        match result {
+            Some(addr) => {
+                sqlx::query(
+                    r#"
+                    UPDATE customers
+                    SET street = $1, city = $2, postal_code = $3,
+                        lat = $4, lng = $5, geocode_status = 'success', updated_at = NOW()
+                    WHERE id = $6
+                    "#
+                )
+                .bind(&addr.street)
+                .bind(&addr.city)
+                .bind(&addr.postal_code)
+                .bind(job.request.lat)
+                .bind(job.request.lng)
+                .bind(job.request.customer_id)
+                .execute(&self.pool)
+                .await?;
+
+                self.publish_reverse_status(job_id, ReverseGeocodeJobStatus::Completed {
+                    street: addr.street,
+                    city: addr.city,
+                    postal_code: addr.postal_code,
+                    display_name: Some(addr.display_name),
+                }).await?;
+                let _ = msg.ack().await;
+            }
+            None => {
+                self.publish_reverse_status(job_id, ReverseGeocodeJobStatus::Failed {
+                    error: "Reverse geocode failed".to_string(),
+                }).await?;
+                let _ = msg.ack().await;
+            }
+        }
+
         Ok(())
     }
     
@@ -329,6 +525,120 @@ pub async fn handle_geocode_submit(
         }
     }
     
+    Ok(())
+}
+
+pub async fn handle_geocode_address_submit(
+    client: Client,
+    mut subscriber: async_nats::Subscriber,
+    processor: Arc<GeocodeProcessor>,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        let reply = match msg.reply {
+            Some(ref r) => r.clone(),
+            None => continue,
+        };
+
+        let request: Request<GeocodeAddressJobRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        #[derive(serde::Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct SubmitResponse {
+            job_id: Uuid,
+            message: String,
+        }
+
+        #[derive(serde::Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct QueuedAddressJob {
+            id: Uuid,
+            submitted_at: chrono::DateTime<chrono::Utc>,
+            request: GeocodeAddressJobRequest,
+        }
+
+        let job_id = Uuid::new_v4();
+        let queued = QueuedAddressJob {
+            id: job_id,
+            submitted_at: chrono::Utc::now(),
+            request: request.payload,
+        };
+
+        let payload = serde_json::to_vec(&queued)?;
+        processor.js.publish(SUBJECT_ADDRESS_JOBS, payload.into()).await?.await?;
+
+        processor.publish_address_status(job_id, GeocodeAddressJobStatus::Queued { position: 1 }).await?;
+
+        let response = SubmitResponse {
+            job_id,
+            message: "Geocode address job submitted".to_string(),
+        };
+        let success = SuccessResponse::new(request.id, response);
+        let _ = client.publish(reply, serde_json::to_vec(&success)?.into()).await;
+    }
+    Ok(())
+}
+
+pub async fn handle_reverse_geocode_submit(
+    client: Client,
+    mut subscriber: async_nats::Subscriber,
+    processor: Arc<GeocodeProcessor>,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        let reply = match msg.reply {
+            Some(ref r) => r.clone(),
+            None => continue,
+        };
+
+        let request: Request<ReverseGeocodeJobRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        #[derive(serde::Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct SubmitResponse {
+            job_id: Uuid,
+            message: String,
+        }
+
+        #[derive(serde::Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct QueuedReverseJob {
+            id: Uuid,
+            submitted_at: chrono::DateTime<chrono::Utc>,
+            request: ReverseGeocodeJobRequest,
+        }
+
+        let job_id = Uuid::new_v4();
+        let queued = QueuedReverseJob {
+            id: job_id,
+            submitted_at: chrono::Utc::now(),
+            request: request.payload,
+        };
+
+        let payload = serde_json::to_vec(&queued)?;
+        processor.js.publish(SUBJECT_REVERSE_JOBS, payload.into()).await?.await?;
+
+        processor.publish_reverse_status(job_id, ReverseGeocodeJobStatus::Queued { position: 1 }).await?;
+
+        let response = SubmitResponse {
+            job_id,
+            message: "Reverse geocode job submitted".to_string(),
+        };
+        let success = SuccessResponse::new(request.id, response);
+        let _ = client.publish(reply, serde_json::to_vec(&success)?.into()).await;
+    }
     Ok(())
 }
 

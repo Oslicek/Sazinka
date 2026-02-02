@@ -1,7 +1,14 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSearch, Link } from '@tanstack/react-router';
 import type { Customer, CreateCustomerRequest, ImportIssue } from '@shared/customer';
-import { createCustomer, listCustomers, importCustomersBatch } from '../services/customerService';
+import { 
+  createCustomer, 
+  listCustomers, 
+  importCustomersBatch, 
+  submitGeocodeJob, 
+  subscribeToGeocodeJobStatus, 
+  type GeocodeJobStatusUpdate,
+} from '../services/customerService';
 import { AddCustomerForm } from '../components/customers/AddCustomerForm';
 import { ImportCustomersModal } from '../components/customers/ImportCustomersModal';
 import { useNatsStore } from '../stores/natsStore';
@@ -19,6 +26,8 @@ export function Customers() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [geocodeJob, setGeocodeJob] = useState<GeocodeJobStatusUpdate | null>(null);
+  const geocodeUnsubscribeRef = useRef<(() => void) | null>(null);
   
   const isConnected = useNatsStore((s) => s.isConnected);
 
@@ -60,6 +69,31 @@ export function Customers() {
       const newCustomer = await createCustomer(TEMP_USER_ID, data);
       setCustomers((prev) => [...prev, newCustomer]);
       setShowForm(false);
+
+      // Trigger async geocoding if coordinates are missing
+      if (!newCustomer.lat || !newCustomer.lng) {
+        const job = await submitGeocodeJob(TEMP_USER_ID, [newCustomer.id]);
+        setGeocodeJob({
+          jobId: job.jobId,
+          timestamp: new Date().toISOString(),
+          status: { type: 'queued', position: 1 },
+        });
+        // Subscribe to job status updates
+        if (geocodeUnsubscribeRef.current) {
+          geocodeUnsubscribeRef.current();
+        }
+        const unsubscribe = await subscribeToGeocodeJobStatus(job.jobId, (update) => {
+          setGeocodeJob(update);
+          if (update.status.type === 'completed' || update.status.type === 'failed') {
+            loadCustomers();
+            if (geocodeUnsubscribeRef.current) {
+              geocodeUnsubscribeRef.current();
+              geocodeUnsubscribeRef.current = null;
+            }
+          }
+        });
+        geocodeUnsubscribeRef.current = unsubscribe;
+      }
     } catch (err) {
       console.error('Failed to create customer:', err);
       setError(err instanceof Error ? err.message : 'Nepodařilo se vytvořit zákazníka');
@@ -67,10 +101,19 @@ export function Customers() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [isConnected]);
+  }, [isConnected, loadCustomers]);
 
   const handleCancel = useCallback(() => {
     setShowForm(false);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (geocodeUnsubscribeRef.current) {
+        geocodeUnsubscribeRef.current();
+        geocodeUnsubscribeRef.current = null;
+      }
+    };
   }, []);
 
   const handleShowForm = useCallback(() => {
@@ -130,7 +173,6 @@ export function Customers() {
           onSubmit={handleAddCustomer}
           onCancel={handleCancel}
           isSubmitting={isSubmitting}
-          userId={TEMP_USER_ID}
         />
         {error && <div className={styles.error}>{error}</div>}
       </div>
@@ -168,6 +210,18 @@ export function Customers() {
       </div>
 
       {error && <div className={styles.error}>{error}</div>}
+
+      {geocodeJob && (
+        <div className="card" style={{ marginBottom: '1rem' }}>
+          <strong>Geokódování:</strong>{' '}
+          {geocodeJob.status.type === 'queued' && 'čeká ve frontě'}
+          {geocodeJob.status.type === 'processing' &&
+            `zpracování ${geocodeJob.status.processed}/${geocodeJob.status.total}`}
+          {geocodeJob.status.type === 'completed' &&
+            `hotovo (${geocodeJob.status.succeeded}/${geocodeJob.status.total} úspěšně)`}
+          {geocodeJob.status.type === 'failed' && `selhalo: ${geocodeJob.status.error}`}
+        </div>
+      )}
 
       {isLoading ? (
         <div className="card">

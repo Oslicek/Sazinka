@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::route::RoutePlanResponse;
+use super::Coordinates;
 
 // ==========================================================================
 // Tests First (TDD)
@@ -195,6 +196,32 @@ mod tests {
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("customerId"));
         assert!(json.contains("\"success\":true"));
+    }
+
+    #[test]
+    fn test_geocode_address_job_status_completed_serializes() {
+        let status = GeocodeAddressJobStatus::Completed {
+            coordinates: Coordinates { lat: 50.0, lng: 14.0 },
+            display_name: Some("Test".to_string()),
+        };
+
+        let json = serde_json::to_string(&status).unwrap();
+        assert!(json.contains("completed"));
+        assert!(json.contains("coordinates"));
+    }
+
+    #[test]
+    fn test_reverse_geocode_job_status_completed_serializes() {
+        let status = ReverseGeocodeJobStatus::Completed {
+            street: "Street 1".to_string(),
+            city: "City".to_string(),
+            postal_code: "10000".to_string(),
+            display_name: Some("Street 1, City".to_string()),
+        };
+
+        let json = serde_json::to_string(&status).unwrap();
+        assert!(json.contains("completed"));
+        assert!(json.contains("postalCode"));
     }
 }
 
@@ -425,6 +452,98 @@ pub struct GeocodeJobStatusUpdate {
 
 impl GeocodeJobStatusUpdate {
     pub fn new(job_id: Uuid, status: GeocodeJobStatus) -> Self {
+        Self {
+            job_id,
+            timestamp: chrono::Utc::now(),
+            status,
+        }
+    }
+}
+
+/// Request to geocode a single address (preview)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeocodeAddressJobRequest {
+    pub street: String,
+    pub city: String,
+    pub postal_code: String,
+}
+
+/// Status of a geocode address job
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum GeocodeAddressJobStatus {
+    #[serde(rename_all = "camelCase")]
+    Queued { position: u32 },
+    #[serde(rename_all = "camelCase")]
+    Processing,
+    #[serde(rename_all = "camelCase")]
+    Completed {
+        coordinates: Coordinates,
+        display_name: Option<String>,
+    },
+    #[serde(rename_all = "camelCase")]
+    Failed { error: String },
+}
+
+/// Status update for geocode address job
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeocodeAddressJobStatusUpdate {
+    pub job_id: Uuid,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    pub status: GeocodeAddressJobStatus,
+}
+
+impl GeocodeAddressJobStatusUpdate {
+    pub fn new(job_id: Uuid, status: GeocodeAddressJobStatus) -> Self {
+        Self {
+            job_id,
+            timestamp: chrono::Utc::now(),
+            status,
+        }
+    }
+}
+
+/// Request to reverse geocode a point for a customer
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReverseGeocodeJobRequest {
+    pub customer_id: Uuid,
+    pub lat: f64,
+    pub lng: f64,
+}
+
+/// Status of a reverse geocode job
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum ReverseGeocodeJobStatus {
+    #[serde(rename_all = "camelCase")]
+    Queued { position: u32 },
+    #[serde(rename_all = "camelCase")]
+    Processing,
+    #[serde(rename_all = "camelCase")]
+    Completed {
+        street: String,
+        city: String,
+        postal_code: String,
+        display_name: Option<String>,
+    },
+    #[serde(rename_all = "camelCase")]
+    Failed { error: String },
+}
+
+/// Status update for reverse geocode job
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReverseGeocodeJobStatusUpdate {
+    pub job_id: Uuid,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    pub status: ReverseGeocodeJobStatus,
+}
+
+impl ReverseGeocodeJobStatusUpdate {
+    pub fn new(job_id: Uuid, status: ReverseGeocodeJobStatus) -> Self {
         Self {
             job_id,
             timestamp: chrono::Utc::now(),
