@@ -1,0 +1,196 @@
+/* JobStatusTimeline - Visual timeline for job progress */
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+/* Size variants */
+.sm {
+  --dot-size: 1.25rem;
+  --font-size: 0.75rem;
+  --connector-height: 2px;
+}
+
+.md {
+  --dot-size: 1.5rem;
+  --font-size: 0.875rem;
+  --connector-height: 2px;
+}
+
+.lg {
+  --dot-size: 2rem;
+  --font-size: 1rem;
+  --connector-height: 3px;
+}
+
+/* Steps container */
+.steps {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  position: relative;
+}
+
+/* Individual step */
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  position: relative;
+  flex: 1;
+}
+
+/* Connector line between steps */
+.connector {
+  position: absolute;
+  top: calc(var(--dot-size) / 2 - var(--connector-height) / 2);
+  right: 50%;
+  width: 100%;
+  height: var(--connector-height);
+  background: var(--color-border);
+  z-index: 0;
+}
+
+.connectorDone {
+  background: var(--color-primary);
+}
+
+/* Step dot */
+.dot {
+  width: var(--dot-size);
+  height: var(--dot-size);
+  border-radius: 50%;
+  background: var(--color-bg);
+  border: 2px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+  transition: all 0.2s ease;
+}
+
+/* State: pending */
+.pending .dot {
+  border-color: var(--color-border);
+  background: var(--color-bg);
+}
+
+/* State: active */
+.active .dot {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+}
+
+/* State: done */
+.done .dot {
+  border-color: var(--color-success, #22c55e);
+  background: var(--color-success, #22c55e);
+}
+
+/* State: error */
+.error .dot {
+  border-color: var(--color-danger, #ef4444);
+  background: var(--color-danger, #ef4444);
+}
+
+/* Checkmark icon */
+.checkmark {
+  width: 60%;
+  height: 60%;
+  fill: white;
+}
+
+/* Error icon */
+.errorIcon {
+  width: 60%;
+  height: 60%;
+  fill: white;
+}
+
+/* Pulsing animation for active step */
+.pulse {
+  width: 50%;
+  height: 50%;
+  border-radius: 50%;
+  background: white;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.8);
+    opacity: 0.7;
+  }
+}
+
+/* Step label */
+.label {
+  font-size: var(--font-size);
+  color: var(--color-text-secondary);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.pending .label {
+  color: var(--color-text-secondary);
+}
+
+.active .label {
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+.done .label {
+  color: var(--color-success, #22c55e);
+}
+
+.error .label {
+  color: var(--color-danger, #ef4444);
+}
+
+/* Progress bar */
+.progressContainer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  height: 0.5rem;
+  background: var(--color-border);
+  border-radius: 0.25rem;
+  overflow: hidden;
+}
+
+.progressBar {
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: 0.25rem;
+  transition: width 0.3s ease;
+}
+
+.progressText {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  min-width: 3rem;
+  text-align: right;
+}
+
+/* Info message */
+.info {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  text-align: center;
+  padding: 0.25rem 0;
+}
+
+.infoError {
+  color: var(--color-danger, #ef4444);
+}
