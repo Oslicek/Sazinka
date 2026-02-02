@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-01-30 (v0.12.1)
+> **Last Updated:** 2026-02-02 (v0.13.0 - Job Status System)
 
 ## Overview
 
@@ -128,7 +128,6 @@ sazinka.customer.update         # Update customer
 sazinka.customer.delete         # Delete customer
 sazinka.customer.get            # Get single customer by ID
 sazinka.customer.list           # List customers (with filters)
-sazinka.customer.geocode        # Geocode customer address
 
 # Devices
 sazinka.device.create           # Add device to customer
@@ -162,8 +161,12 @@ sazinka.admin.jetstream.status  # Check JetStream job queue status
 sazinka.admin.logs              # Get recent logs from all sources
 
 # Job Queue (JetStream)
-sazinka.jobs.route              # Submit route planning job to queue
-sazinka.job.status.<job_id>     # Real-time job status updates (pub/sub)
+sazinka.geocode.submit          # Submit geocoding job to queue
+sazinka.route.submit            # Submit route planning job to queue
+sazinka.import.submit           # Submit import job to queue
+sazinka.job.geocode.status.<job_id>  # Geocoding job status updates (pub/sub)
+sazinka.job.route.status.<job_id>    # Route job status updates (pub/sub)
+sazinka.job.import.status.<job_id>   # Import job status updates (pub/sub)
 
 # Settings
 sazinka.settings.get            # Get all user settings including depots
@@ -188,6 +191,8 @@ sazinka/
 │       ├── public/
 │       ├── src/
 │       │   ├── components/
+│       │   │   ├── common/         # Reusable components
+│       │   │   │   └── JobStatusTimeline.tsx
 │       │   │   ├── map/            # MapLibre components
 │       │   │   ├── calendar/       # Calendar components
 │       │   │   ├── customers/      # Customer list/detail
@@ -195,6 +200,7 @@ sazinka/
 │       │   │   └── ui/             # Generic UI components
 │       │   ├── hooks/
 │       │   │   ├── useNats.ts      # NATS connection hook
+│       │   │   ├── useJobStatus.ts # Job status subscription hook
 │       │   │   └── ...
 │       │   ├── stores/
 │       │   │   ├── authStore.ts
@@ -212,6 +218,7 @@ sazinka/
 │       │   ├── lib/
 │       │   │   └── geo.ts          # Geo utilities
 │       │   └── types/
+│       │       ├── jobStatus.ts    # Generic job status types
 │       ├── index.html
 │       ├── package.json
 │       ├── tsconfig.json
@@ -437,11 +444,14 @@ pub struct RouteStop {
 | **Frontend** | | |
 | `NatsService` | apps/web/src/services/nats.ts | NATS WebSocket connection |
 | `useNatsStore` | apps/web/src/stores/natsStore.ts | Connection state |
+| `useJobStatus` | apps/web/src/hooks/useJobStatus.ts | Job status subscription hook |
+| `JobStatusTimeline` | apps/web/src/components/common/JobStatusTimeline.tsx | Visual job progress timeline |
 | `MapView` | apps/web/src/components/map/ | MapLibre map rendering |
 | `RoutePlanner` | apps/web/src/components/routes/ | Route planning UI |
 | `Calendar` | apps/web/src/components/calendar/ | Monthly revision calendar |
 | `Settings` | apps/web/src/pages/Settings.tsx | User settings page (depots, work, business) |
 | `settingsService` | apps/web/src/services/settingsService.ts | Settings and depot API |
+| `jobService` | apps/web/src/services/jobService.ts | Generic job submission and status |
 | **Backend** | | |
 | `CustomerHandler` | worker/src/handlers/customer.rs | Customer CRUD |
 | `SettingsHandler` | worker/src/handlers/settings.rs | Settings and depot CRUD |
@@ -488,9 +498,10 @@ pub fn optimize_route(stops: Vec<Stop>, start: Coordinates) -> OptimizedRoute {
 
 ## Geocoding Safety Architecture
 
-> **Status:** Provisional (may change in future)
+> **Status:** Updated for JetStream-based async flow
 
-The geocoding system is designed with multiple safety layers to **never risk getting blocked** by external services like Nominatim.
+All geocoding requests are submitted to **JetStream** and processed asynchronously.
+This provides built-in backpressure and avoids request bursts.
 
 ### Architecture Overview
 
@@ -500,15 +511,14 @@ The geocoding system is designed with multiple safety layers to **never risk get
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │   ┌─────────────┐   ┌─────────────────────────────────────┐    │
-│   │ MockGeocoder│   │ RateLimitedNominatimGeocoder        │    │
-│   │ (tests/dev) │   │ (production)                        │    │
-│   │             │   │  ├─ RateLimiter (1.5s interval)     │    │
-│   │ No network  │   │  └─ CircuitBreaker (3 failures)     │    │
+│   │ MockGeocoder│   │ NominatimGeocoder                   │    │
+│   │ (tests/dev) │   │ (local instance)                    │    │
+│   │             │   │  └─ CircuitBreaker (temporary)      │    │
 │   └─────────────┘   └─────────────────────────────────────┘    │
 │                                                                 │
 │   Selection via: GEOCODER_BACKEND env variable                  │
 │   - "mock"      → MockGeocoder (deterministic fake coords)      │
-│   - "nominatim" → RateLimitedNominatimGeocoder                  │
+│   - "nominatim" → NominatimGeocoder                             │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -516,11 +526,10 @@ The geocoding system is designed with multiple safety layers to **never risk get
 
 | Layer | Protection |
 |-------|------------|
+| **JetStream queue** | Backpressure and sequential processing |
 | **Environment variable** | Tests and dev NEVER use production geocoder |
 | **MockGeocoder** | Zero network requests for tests (deterministic) |
-| **RateLimiter** | Max 1 request per 1.5 seconds (Nominatim limit is 1/s) |
-| **CircuitBreaker** | After 3 failures, stops requests for 5 minutes |
-| **Queue for batch** | Sequential processing with enforced delays |
+| **CircuitBreaker** | Temporary fallback; may be removed once JetStream is stable |
 
 ### MockGeocoder
 
@@ -538,7 +547,6 @@ GEOCODER_BACKEND=mock
 
 # .env.production
 GEOCODER_BACKEND=nominatim
-NOMINATIM_RATE_LIMIT_MS=1500
 ```
 
 ### Future Plans
@@ -925,6 +933,242 @@ worker/src/
 └── handlers/jobs.rs          # JobProcessor, submit/process/stats handlers
 ```
 
+## Job Status System (Reusable)
+
+> **Status:** Implementation (v0.13.0)
+
+Unified job status tracking system for all async operations (geocoding, route optimization, import).
+Provides natural backpressure and horizontal scaling through JetStream message queue.
+
+### NATS JetStream Message Lifecycle
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    JetStream Message Lifecycle                           │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│   Producer                    Stream                     Consumer        │
+│   ────────                    ──────                     ────────        │
+│                                                                          │
+│   publish() ──────────────► [PENDING]                                   │
+│                                │                                         │
+│                                │  fetch/push                             │
+│                                ▼                                         │
+│                            [DELIVERED] ──────────────► received          │
+│                                │                            │            │
+│                                │                            │            │
+│              ┌─────────────────┼─────────────────┐          │            │
+│              │                 │                 │          │            │
+│              ▼                 ▼                 ▼          │            │
+│         [ACKED]          [IN_PROGRESS]      [NACKED]        │            │
+│         (+ACK)              (+WPI)           (-NAK)         │            │
+│            │                   │                │           │            │
+│            │                   │                │           │            │
+│            ▼                   │                ▼           │            │
+│         removed           reset timer      redelivery       │            │
+│         from stream           │             attempt         │            │
+│                               │                             │            │
+│                               ▼                             │            │
+│                         [TERMINATED]                        │            │
+│                            (+TERM)                          │            │
+│                               │                             │            │
+│                               ▼                             │            │
+│                         abandoned                           │            │
+│                         (dead letter)                       │            │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### JetStream Acknowledgment Types
+
+| Ack Type | Code | Description |
+|----------|------|-------------|
+| **Ack** | `+ACK` | Successfully processed, remove from stream |
+| **Nak** | `-NAK` | Failed, redeliver (with optional delay) |
+| **In Progress** | `+WPI` | Still processing, reset ack timeout |
+| **Term** | `+TERM` | Give up, move to dead letter queue |
+
+### UI Timeline States
+
+Mapping from JetStream states to user-facing timeline:
+
+| JetStream State | UI State | Czech Label | Description |
+|-----------------|----------|-------------|-------------|
+| PENDING | `queued` | Fronta | Job waiting in queue |
+| DELIVERED + WPI | `processing` | Zpracování | Job being processed |
+| ACKED | `completed` | Hotovo | Job finished successfully |
+| NACKED (max retries) | `failed` | Selhalo | Job failed after retries |
+| TERM | `failed` | Selhalo | Job abandoned |
+
+### Generic Job Status Types
+
+```typescript
+// apps/web/src/types/jobStatus.ts
+
+export type JobStatusType = 'queued' | 'processing' | 'completed' | 'failed';
+
+export interface JobStatusQueued {
+  type: 'queued';
+  position?: number;
+}
+
+export interface JobStatusProcessing {
+  type: 'processing';
+  progress?: number;      // 0-100
+  processed?: number;
+  total?: number;
+  message?: string;
+}
+
+export interface JobStatusCompleted {
+  type: 'completed';
+  result?: unknown;
+}
+
+export interface JobStatusFailed {
+  type: 'failed';
+  error: string;
+  retryable?: boolean;
+}
+
+export type JobStatus = 
+  | JobStatusQueued 
+  | JobStatusProcessing 
+  | JobStatusCompleted 
+  | JobStatusFailed;
+
+export interface JobStatusUpdate<T extends JobStatus = JobStatus> {
+  jobId: string;
+  timestamp: string;
+  status: T;
+}
+```
+
+### Reusable Components
+
+#### JobStatusTimeline Component
+
+Visual timeline showing job progress through states:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                                                              │
+│   ●────────────●────────────○                               │
+│  Fronta    Zpracování    Hotovo                             │
+│   (done)    (active)    (pending)                           │
+│                                                              │
+│  Optional progress bar:                                      │
+│  ████████████░░░░░░░░░░░  45%                               │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+Props:
+```typescript
+interface JobStatusTimelineProps {
+  status: JobStatus | null;
+  steps?: TimelineStep[];           // Custom steps or default
+  showProgress?: boolean;           // Show progress bar
+  size?: 'sm' | 'md' | 'lg';
+  className?: string;
+}
+
+// Default steps
+const DEFAULT_STEPS: TimelineStep[] = [
+  { id: 'queued', label: 'Fronta' },
+  { id: 'processing', label: 'Zpracování' },
+  { id: 'completed', label: 'Hotovo', failedLabel: 'Selhalo' },
+];
+```
+
+#### useJobStatus Hook
+
+React hook for job status subscription:
+
+```typescript
+interface UseJobStatusOptions {
+  jobType: string;        // 'geocode' | 'route' | 'import'
+  onCompleted?: () => void;
+  onFailed?: (error: string) => void;
+}
+
+interface UseJobStatusReturn {
+  status: JobStatus | null;
+  jobId: string | null;
+  isActive: boolean;
+  submit: (payload: unknown) => Promise<string>;
+  cancel: () => void;
+}
+
+// Usage
+const { status, submit, isActive } = useJobStatus({
+  jobType: 'route',
+  onCompleted: () => loadOptimizedRoute(),
+});
+```
+
+### Job Type Subjects
+
+| Job Type | Submit Subject | Status Subject |
+|----------|---------------|----------------|
+| Geocoding | `sazinka.geocode.submit` | `sazinka.job.geocode.status.{jobId}` |
+| Route | `sazinka.route.submit` | `sazinka.job.route.status.{jobId}` |
+| Import | `sazinka.import.submit` | `sazinka.job.import.status.{jobId}` |
+
+### Backend Status Publishing
+
+Worker publishes status updates as job progresses:
+
+```rust
+// worker/src/handlers/route.rs
+
+async fn process_route_job(&self, msg: jetstream::Message) -> Result<()> {
+    let job: QueuedRouteJob = serde_json::from_slice(&msg.payload)?;
+    
+    // Stage 1: Loading data
+    self.publish_status(job.id, RouteJobStatus::Processing {
+        stage: "loading".to_string(),
+        progress: 10,
+    }).await?;
+    
+    // Stage 2: Building matrix
+    self.publish_status(job.id, RouteJobStatus::Processing {
+        stage: "matrix".to_string(),
+        progress: 40,
+    }).await?;
+    
+    // Stage 3: Solving VRP
+    self.publish_status(job.id, RouteJobStatus::Processing {
+        stage: "solving".to_string(),
+        progress: 70,
+    }).await?;
+    
+    // Complete
+    self.publish_status(job.id, RouteJobStatus::Completed {
+        result: route_response,
+    }).await?;
+    
+    msg.ack().await?;
+    Ok(())
+}
+```
+
+### Usage Locations
+
+| Location | Job Type | Custom Steps |
+|----------|----------|--------------|
+| CustomerForm | geocode | Fronta → Zpracování → Hotovo |
+| Planner | route | Fronta → Načítání → Matice → Optimalizace → Hotovo |
+| ImportModal | import | Parsování → Odesílání → Geokódování → Hotovo |
+
+### Benefits
+
+1. **Backpressure** - JetStream naturally limits concurrent processing
+2. **Scalability** - Multiple workers can consume from same queue
+3. **Resilience** - Failed jobs are retried automatically
+4. **Visibility** - Real-time status updates to UI
+5. **Code Reuse** - Single component/hook for all job types
+
 ## Local Geocoding (Nominatim)
 
 > **Status:** Implementation (v0.9.0)
@@ -1037,11 +1281,12 @@ let base_url = std::env::var("NOMINATIM_URL")
   - 173 frontend tests passing
 
 **In Progress:**
-- [ ] Phase 2: Smart Planning (Calendar, Smart suggestions)
+- [ ] Phase 6F: Reusable Job Status System (JobStatusTimeline component, useJobStatus hook)
 
 **Pending:**
 - [ ] Phase 3: User authentication, CSV export, Email notifications
 - [ ] Phase 4: CRM Evidence (Communications, Visits, Timeline)
+- [ ] Route optimization conversion to async job queue
 
 ### Serialization Notes
 
@@ -1147,6 +1392,18 @@ cargo test
 - MVP focuses on core CRM + route planning
 - Email notifications deferred to later phase
 - Invoicing/billing architecture prepared but not implemented
+
+## Recent Changes (v0.13.0)
+
+- **Job Status System** - Reusable components for async job tracking:
+  - **JobStatusTimeline component** - Visual timeline (Fronta → Zpracování → Hotovo/Selhalo)
+  - **useJobStatus hook** - NATS subscription management with auto-cleanup
+  - **Generic job status types** - Unified types for all job types
+  - **JetStream message lifecycle** - Documented NATS acknowledgment types (+ACK, -NAK, +WPI, +TERM)
+- **Async everywhere** - Natural backpressure through JetStream queue
+- **Route optimization** - Converting to async job queue (like geocoding)
+- **Import geocoding** - Using JobStatusTimeline for progress display
+- **Planner merged with TechnicianDay** - Single unified "Plán dne" page
 
 ## Recent Changes (v0.12.1)
 
