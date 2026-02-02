@@ -1,9 +1,14 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useSearch, Link } from '@tanstack/react-router';
-import type { Customer, CreateCustomerRequest, ImportIssue } from '@shared/customer';
+import type { 
+  CreateCustomerRequest, 
+  CustomerListItem,
+  ListCustomersRequest,
+  GeocodeStatus,
+} from '@shared/customer';
 import { 
   createCustomer, 
-  listCustomers, 
+  listCustomersExtended,
   importCustomersBatch, 
   submitGeocodeJob, 
   subscribeToGeocodeJobStatus, 
@@ -17,21 +22,63 @@ import styles from './Customers.module.css';
 // Temporary user ID until auth is implemented
 const TEMP_USER_ID = '00000000-0000-0000-0000-000000000001';
 
+interface SearchParams {
+  action?: string;
+  geocodeStatus?: GeocodeStatus;
+  hasOverdue?: boolean;
+  sortBy?: ListCustomersRequest['sortBy'];
+  sortOrder?: ListCustomersRequest['sortOrder'];
+}
+
 export function Customers() {
-  const searchParams = useSearch({ strict: false }) as { action?: string };
+  const searchParams = useSearch({ strict: false }) as SearchParams;
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(searchParams?.action === 'new');
   const [showImport, setShowImport] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customers, setCustomers] = useState<CustomerListItem[]>([]);
+  const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [geocodeJob, setGeocodeJob] = useState<GeocodeJobStatusUpdate | null>(null);
   const geocodeUnsubscribeRef = useRef<(() => void) | null>(null);
   
+  // Filters
+  const [geocodeFilter, setGeocodeFilter] = useState<GeocodeStatus | ''>(searchParams?.geocodeStatus || '');
+  const [revisionFilter, setRevisionFilter] = useState<string>(searchParams?.hasOverdue ? 'overdue' : '');
+  const [sortBy, setSortBy] = useState<ListCustomersRequest['sortBy']>(searchParams?.sortBy || 'name');
+  const [sortOrder, setSortOrder] = useState<ListCustomersRequest['sortOrder']>(searchParams?.sortOrder || 'asc');
+  
   const isConnected = useNatsStore((s) => s.isConnected);
 
-  // Load customers when connected
+  // Build request options
+  const requestOptions = useMemo<ListCustomersRequest>(() => {
+    const options: ListCustomersRequest = {
+      limit: 100,
+      sortBy,
+      sortOrder,
+    };
+    
+    if (search) {
+      options.search = search;
+    }
+    
+    if (geocodeFilter) {
+      options.geocodeStatus = geocodeFilter;
+    }
+    
+    if (revisionFilter === 'overdue') {
+      options.hasOverdue = true;
+    } else if (revisionFilter === 'week') {
+      options.nextRevisionWithinDays = 7;
+    } else if (revisionFilter === 'month') {
+      options.nextRevisionWithinDays = 30;
+    }
+    
+    return options;
+  }, [search, geocodeFilter, revisionFilter, sortBy, sortOrder]);
+
+  // Load customers when connected or filters change
   const loadCustomers = useCallback(async () => {
     if (!isConnected) {
       setError('Není připojení k serveru');
@@ -41,15 +88,16 @@ export function Customers() {
     try {
       setIsLoading(true);
       setError(null);
-      const result = await listCustomers(TEMP_USER_ID, { limit: 100 });
+      const result = await listCustomersExtended(TEMP_USER_ID, requestOptions);
       setCustomers(result.items);
+      setTotal(result.total);
     } catch (err) {
       console.error('Failed to load customers:', err);
       setError(err instanceof Error ? err.message : 'Nepodařilo se načíst zákazníky');
     } finally {
       setIsLoading(false);
     }
-  }, [isConnected]);
+  }, [isConnected, requestOptions]);
 
   useEffect(() => {
     if (isConnected) {
@@ -67,7 +115,6 @@ export function Customers() {
       setIsSubmitting(true);
       setError(null);
       const newCustomer = await createCustomer(TEMP_USER_ID, data);
-      setCustomers((prev) => [...prev, newCustomer]);
       setShowForm(false);
 
       // Trigger async geocoding if coordinates are missing
@@ -93,6 +140,9 @@ export function Customers() {
           }
         });
         geocodeUnsubscribeRef.current = unsubscribe;
+      } else {
+        // Reload the list to show the new customer
+        loadCustomers();
       }
     } catch (err) {
       console.error('Failed to create customer:', err);
@@ -141,18 +191,53 @@ export function Customers() {
     return result;
   }, [isConnected]);
 
-  // Filter customers by search
-  const filteredCustomers = customers.filter((customer) => {
-    if (!search) return true;
-    const searchLower = search.toLowerCase();
-    return (
-      customer.name.toLowerCase().includes(searchLower) ||
-      customer.city.toLowerCase().includes(searchLower) ||
-      customer.street.toLowerCase().includes(searchLower) ||
-      customer.email?.toLowerCase().includes(searchLower) ||
-      customer.phone?.includes(search)
-    );
-  });
+  // Calculate stats from loaded customers
+  const stats = useMemo(() => {
+    let overdueCount = 0;
+    let geocodeFailed = 0;
+    
+    for (const customer of customers) {
+      if (customer.overdueCount > 0) overdueCount++;
+      if (customer.geocodeStatus === 'failed') geocodeFailed++;
+    }
+    
+    return { overdueCount, geocodeFailed, total };
+  }, [customers, total]);
+
+  // Format next revision date
+  const formatNextRevision = (date: string | null, overdueCount: number): { text: string; className: string } => {
+    if (!date) {
+      return { text: 'Bez revize', className: styles.revisionNone };
+    }
+    
+    const dueDate = new Date(date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const diffDays = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (overdueCount > 0 || diffDays < 0) {
+      return { 
+        text: `Po termínu (${Math.abs(diffDays)} dní)`, 
+        className: styles.revisionOverdue 
+      };
+    } else if (diffDays <= 7) {
+      return { 
+        text: `Za ${diffDays} dní`, 
+        className: styles.revisionSoon 
+      };
+    } else if (diffDays <= 30) {
+      return { 
+        text: dueDate.toLocaleDateString('cs-CZ'), 
+        className: styles.revisionUpcoming 
+      };
+    }
+    
+    return { 
+      text: dueDate.toLocaleDateString('cs-CZ'), 
+      className: '' 
+    };
+  };
 
   // Show connection error
   if (!isConnected) {
@@ -184,13 +269,36 @@ export function Customers() {
       <div className={styles.header}>
         <h1>Zákazníci</h1>
         <div className={styles.headerActions}>
+          <Link to="/customers/summary" className={styles.summaryButton}>
+            Souhrnné informace
+          </Link>
           <button className={styles.importButton} onClick={handleShowImport}>
-            📥 Import CSV
+            Import CSV
           </button>
           <button className="btn-primary" onClick={handleShowForm}>
             + Nový zákazník
           </button>
         </div>
+      </div>
+
+      {/* Quick Stats */}
+      <div className={styles.statsBar}>
+        <div className={styles.statItem}>
+          <span className={styles.statValue}>{stats.total}</span>
+          <span className={styles.statLabel}>celkem</span>
+        </div>
+        {stats.overdueCount > 0 && (
+          <div className={`${styles.statItem} ${styles.statDanger}`}>
+            <span className={styles.statValue}>{stats.overdueCount}</span>
+            <span className={styles.statLabel}>po termínu</span>
+          </div>
+        )}
+        {stats.geocodeFailed > 0 && (
+          <div className={`${styles.statItem} ${styles.statWarning}`}>
+            <span className={styles.statValue}>{stats.geocodeFailed}</span>
+            <span className={styles.statLabel}>bez adresy</span>
+          </div>
+        )}
       </div>
 
       <ImportCustomersModal
@@ -199,6 +307,7 @@ export function Customers() {
         onImportBatch={handleImportBatch}
       />
 
+      {/* Toolbar with search and filters */}
       <div className={styles.toolbar}>
         <input
           type="text"
@@ -207,6 +316,47 @@ export function Customers() {
           onChange={(e) => setSearch(e.target.value)}
           className={styles.search}
         />
+        
+        <select 
+          value={geocodeFilter} 
+          onChange={(e) => setGeocodeFilter(e.target.value as GeocodeStatus | '')}
+          className={styles.filterSelect}
+        >
+          <option value="">Adresa: vše</option>
+          <option value="success">Úspěšně ověřená</option>
+          <option value="failed">Nelze ověřit</option>
+          <option value="pending">Čeká na ověření</option>
+        </select>
+        
+        <select 
+          value={revisionFilter} 
+          onChange={(e) => setRevisionFilter(e.target.value)}
+          className={styles.filterSelect}
+        >
+          <option value="">Revize: vše</option>
+          <option value="overdue">Po termínu</option>
+          <option value="week">Do 7 dní</option>
+          <option value="month">Do 30 dní</option>
+        </select>
+        
+        <select 
+          value={`${sortBy}-${sortOrder}`} 
+          onChange={(e) => {
+            const [newSortBy, newSortOrder] = e.target.value.split('-') as [ListCustomersRequest['sortBy'], ListCustomersRequest['sortOrder']];
+            setSortBy(newSortBy);
+            setSortOrder(newSortOrder);
+          }}
+          className={styles.filterSelect}
+        >
+          <option value="name-asc">Název A-Z</option>
+          <option value="name-desc">Název Z-A</option>
+          <option value="nextRevision-asc">Revize (nejdříve)</option>
+          <option value="nextRevision-desc">Revize (nejpozději)</option>
+          <option value="deviceCount-desc">Zařízení (nejvíce)</option>
+          <option value="deviceCount-asc">Zařízení (nejméně)</option>
+          <option value="city-asc">Město A-Z</option>
+          <option value="createdAt-desc">Nejnovější</option>
+        </select>
       </div>
 
       {error && <div className={styles.error}>{error}</div>}
@@ -227,10 +377,10 @@ export function Customers() {
         <div className="card">
           <p className={styles.loading}>Načítám zákazníky...</p>
         </div>
-      ) : filteredCustomers.length === 0 ? (
+      ) : customers.length === 0 ? (
         <div className="card">
           <p className={styles.empty}>
-            {customers.length === 0 ? (
+            {total === 0 && !search && !geocodeFilter && !revisionFilter ? (
               <>
                 Zatím nemáte žádné zákazníky.
                 <br />
@@ -243,45 +393,63 @@ export function Customers() {
                 </button>
               </>
             ) : (
-              'Žádní zákazníci neodpovídají vyhledávání.'
+              'Žádní zákazníci neodpovídají zadaným filtrům.'
             )}
           </p>
         </div>
       ) : (
         <div className={styles.list}>
-          {filteredCustomers.map((customer) => (
-            <Link
-              key={customer.id}
-              to={`/customers/${customer.id}`}
-              className={`${styles.customerCard} ${customer.geocodeStatus === 'failed' ? styles.geocodeFailed : ''}`}
-            >
-              <div className={styles.customerInfo}>
-                <h3 className={styles.customerName}>
-                  {customer.name}
-                  {customer.geocodeStatus === 'failed' && (
-                    <span className={styles.geocodeWarning} title="Adresu nelze lokalizovat">
-                      ⚠️
-                    </span>
+          {customers.map((customer) => {
+            const revision = formatNextRevision(customer.nextRevisionDate, customer.overdueCount);
+            
+            return (
+              <Link
+                key={customer.id}
+                to="/customers/$customerId"
+                params={{ customerId: customer.id }}
+                className={`${styles.customerCard} ${customer.geocodeStatus === 'failed' ? styles.geocodeFailed : ''}`}
+              >
+                <div className={styles.customerMain}>
+                  <div className={styles.customerHeader}>
+                    <h3 className={styles.customerName}>
+                      {customer.name}
+                      <span className={styles.customerType}>
+                        {customer.type === 'company' ? 'Firma' : 'Osoba'}
+                      </span>
+                    </h3>
+                    {customer.geocodeStatus === 'failed' && (
+                      <span className={styles.geocodeWarning} title="Adresu nelze lokalizovat">
+                        ⚠️
+                      </span>
+                    )}
+                  </div>
+                  <p className={styles.customerAddress}>
+                    {customer.street}, {customer.city} {customer.postalCode}
+                  </p>
+                  {(customer.email || customer.phone) && (
+                    <p className={styles.customerContact}>
+                      {customer.phone && <span>{customer.phone}</span>}
+                      {customer.email && customer.phone && <span> • </span>}
+                      {customer.email && <span>{customer.email}</span>}
+                    </p>
                   )}
-                </h3>
-                <p className={styles.customerAddress}>
-                  {customer.street}, {customer.city} {customer.postalCode}
-                </p>
-                {customer.geocodeStatus === 'failed' && (
-                  <p className={styles.geocodeError}>
-                    ⚠️ Adresu nelze lokalizovat
-                  </p>
-                )}
-                {(customer.email || customer.phone) && (
-                  <p className={styles.customerContact}>
-                    {customer.email && <span>{customer.email}</span>}
-                    {customer.email && customer.phone && <span> • </span>}
-                    {customer.phone && <span>{customer.phone}</span>}
-                  </p>
-                )}
-              </div>
-            </Link>
-          ))}
+                </div>
+                
+                <div className={styles.customerMeta}>
+                  <div className={styles.metaItem}>
+                    <span className={styles.metaLabel}>Zařízení</span>
+                    <span className={styles.metaValue}>{customer.deviceCount}</span>
+                  </div>
+                  <div className={styles.metaItem}>
+                    <span className={styles.metaLabel}>Příští revize</span>
+                    <span className={`${styles.metaValue} ${revision.className}`}>
+                      {revision.text}
+                    </span>
+                  </div>
+                </div>
+              </Link>
+            );
+          })}
         </div>
       )}
     </div>

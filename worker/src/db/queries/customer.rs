@@ -3,8 +3,12 @@
 use sqlx::PgPool;
 use uuid::Uuid;
 use anyhow::Result;
+use chrono::Utc;
 
-use crate::types::customer::{Customer, CreateCustomerRequest, UpdateCustomerRequest, CustomerType};
+use crate::types::customer::{
+    Customer, CreateCustomerRequest, UpdateCustomerRequest, CustomerType,
+    CustomerListItem, ListCustomersRequest, CustomerSummaryResponse,
+};
 
 /// Create a new customer
 pub async fn create_customer(
@@ -279,4 +283,257 @@ pub async fn get_random_customers_with_coords(
     .await?;
 
     Ok(customers)
+}
+
+// ============================================================================
+// Extended Customer Queries with Aggregations
+// ============================================================================
+
+/// List customers with aggregated data (device count, next revision, overdue count)
+/// Supports filtering and sorting
+pub async fn list_customers_extended(
+    pool: &PgPool,
+    user_id: Uuid,
+    req: &ListCustomersRequest,
+) -> Result<(Vec<CustomerListItem>, i64)> {
+    let today = Utc::now().date_naive();
+    let limit = req.limit.unwrap_or(50) as i64;
+    let offset = req.offset.unwrap_or(0) as i64;
+
+    // Build WHERE conditions
+    let mut conditions = vec!["c.user_id = $1".to_string()];
+    let mut param_idx = 2;
+
+    // Search filter
+    let search_pattern = req.search.as_ref().map(|s| format!("%{}%", s.to_lowercase()));
+    if search_pattern.is_some() {
+        conditions.push(format!(
+            "(LOWER(c.name) LIKE ${0} OR LOWER(c.city) LIKE ${0} OR LOWER(c.street) LIKE ${0} OR LOWER(c.email) LIKE ${0} OR c.phone LIKE ${0})",
+            param_idx
+        ));
+        param_idx += 1;
+    }
+
+    // Geocode status filter
+    if let Some(ref status) = req.geocode_status {
+        conditions.push(format!("c.geocode_status = ${}", param_idx));
+        param_idx += 1;
+        let _ = status; // Used in binding
+    }
+
+    // Customer type filter
+    if let Some(ref ctype) = req.customer_type {
+        conditions.push(format!("c.customer_type = ${}", param_idx));
+        param_idx += 1;
+        let _ = ctype;
+    }
+
+    let where_clause = conditions.join(" AND ");
+
+    // Build HAVING clause for aggregated filters
+    let mut having_conditions: Vec<String> = vec![];
+    
+    if req.has_overdue == Some(true) {
+        having_conditions.push(
+            "COUNT(r.id) FILTER (WHERE r.due_date < CURRENT_DATE AND r.status NOT IN ('completed', 'cancelled')) > 0".to_string()
+        );
+    }
+
+    if let Some(days) = req.next_revision_within_days {
+        having_conditions.push(format!(
+            "MIN(r.due_date) FILTER (WHERE r.status NOT IN ('completed', 'cancelled')) <= CURRENT_DATE + {}",
+            days
+        ));
+    }
+
+    let having_clause = if having_conditions.is_empty() {
+        String::new()
+    } else {
+        format!("HAVING {}", having_conditions.join(" AND "))
+    };
+
+    // Build ORDER BY clause
+    let order_by = match req.sort_by.as_deref() {
+        Some("nextRevision") => "next_revision_date",
+        Some("deviceCount") => "device_count",
+        Some("city") => "c.city",
+        Some("createdAt") => "c.created_at",
+        _ => "c.name", // default
+    };
+
+    let order_dir = match req.sort_order.as_deref() {
+        Some("desc") => "DESC",
+        _ => "ASC",
+    };
+
+    // Handle NULL values in sorting (NULLs last for ASC, first for DESC)
+    let nulls_order = if order_dir == "ASC" { "NULLS LAST" } else { "NULLS FIRST" };
+
+    let query = format!(
+        r#"
+        SELECT
+            c.id,
+            c.user_id,
+            c.customer_type,
+            c.name,
+            c.email,
+            c.phone,
+            c.street,
+            c.city,
+            c.postal_code,
+            c.lat,
+            c.lng,
+            c.geocode_status,
+            c.created_at,
+            COALESCE(COUNT(DISTINCT d.id), 0) as device_count,
+            MIN(r.due_date) FILTER (WHERE r.status NOT IN ('completed', 'cancelled')) as next_revision_date,
+            COALESCE(COUNT(r.id) FILTER (WHERE r.due_date < CURRENT_DATE AND r.status NOT IN ('completed', 'cancelled')), 0) as overdue_count
+        FROM customers c
+        LEFT JOIN devices d ON c.id = d.customer_id
+        LEFT JOIN revisions r ON c.id = r.customer_id
+        WHERE {}
+        GROUP BY c.id, c.user_id, c.customer_type, c.name, c.email, c.phone,
+                 c.street, c.city, c.postal_code, c.lat, c.lng, c.geocode_status, c.created_at
+        {}
+        ORDER BY {} {} {}
+        LIMIT ${} OFFSET ${}
+        "#,
+        where_clause,
+        having_clause,
+        order_by,
+        order_dir,
+        nulls_order,
+        param_idx,
+        param_idx + 1
+    );
+
+    // Build the query with dynamic bindings
+    let mut query_builder = sqlx::query_as::<_, CustomerListItem>(&query)
+        .bind(user_id);
+
+    if let Some(ref pattern) = search_pattern {
+        query_builder = query_builder.bind(pattern);
+    }
+
+    if let Some(ref status) = req.geocode_status {
+        query_builder = query_builder.bind(status);
+    }
+
+    if let Some(ref ctype) = req.customer_type {
+        query_builder = query_builder.bind(ctype);
+    }
+
+    query_builder = query_builder.bind(limit).bind(offset);
+
+    let items = query_builder.fetch_all(pool).await?;
+
+    // Count total (without LIMIT/OFFSET but with same filters)
+    let count_query = format!(
+        r#"
+        SELECT COUNT(*) FROM (
+            SELECT c.id
+            FROM customers c
+            LEFT JOIN devices d ON c.id = d.customer_id
+            LEFT JOIN revisions r ON c.id = r.customer_id
+            WHERE {}
+            GROUP BY c.id
+            {}
+        ) AS filtered
+        "#,
+        where_clause,
+        having_clause
+    );
+
+    let mut count_builder = sqlx::query_as::<_, (i64,)>(&count_query)
+        .bind(user_id);
+
+    if let Some(ref pattern) = search_pattern {
+        count_builder = count_builder.bind(pattern);
+    }
+
+    if let Some(ref status) = req.geocode_status {
+        count_builder = count_builder.bind(status);
+    }
+
+    if let Some(ref ctype) = req.customer_type {
+        count_builder = count_builder.bind(ctype);
+    }
+
+    let (total,) = count_builder.fetch_one(pool).await?;
+
+    Ok((items, total))
+}
+
+/// Get customer summary statistics
+pub async fn get_customer_summary(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<CustomerSummaryResponse> {
+    let today = Utc::now().date_naive();
+    let week_from_now = today + chrono::Duration::days(7);
+
+    // We need multiple queries because PostgreSQL doesn't allow mixing
+    // row-level and aggregated FILTER in the same way easily
+    
+    // Customer counts
+    let customer_stats: (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+        r#"
+        SELECT
+            COUNT(*) as total_customers,
+            COUNT(*) FILTER (WHERE geocode_status = 'success') as geocode_success,
+            COUNT(*) FILTER (WHERE geocode_status = 'pending') as geocode_pending,
+            COUNT(*) FILTER (WHERE geocode_status = 'failed') as geocode_failed,
+            COUNT(*) FILTER (WHERE phone IS NULL OR phone = '') as customers_without_phone,
+            COUNT(*) FILTER (WHERE email IS NULL OR email = '') as customers_without_email
+        FROM customers
+        WHERE user_id = $1
+        "#
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+
+    // Device count
+    let (total_devices,): (i64,) = sqlx::query_as(
+        r#"
+        SELECT COUNT(*)
+        FROM devices d
+        INNER JOIN customers c ON d.customer_id = c.id
+        WHERE c.user_id = $1
+        "#
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+
+    // Revision counts
+    let revision_stats: (i64, i64, i64) = sqlx::query_as(
+        r#"
+        SELECT
+            COUNT(*) FILTER (WHERE r.due_date < $2 AND r.status NOT IN ('completed', 'cancelled')) as overdue,
+            COUNT(*) FILTER (WHERE r.due_date BETWEEN $2 AND $3 AND r.status NOT IN ('completed', 'cancelled')) as due_this_week,
+            COUNT(*) FILTER (WHERE r.status = 'scheduled') as scheduled
+        FROM revisions r
+        INNER JOIN customers c ON r.customer_id = c.id
+        WHERE c.user_id = $1
+        "#
+    )
+    .bind(user_id)
+    .bind(today)
+    .bind(week_from_now)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(CustomerSummaryResponse {
+        total_customers: customer_stats.0,
+        total_devices,
+        revisions_overdue: revision_stats.0,
+        revisions_due_this_week: revision_stats.1,
+        revisions_scheduled: revision_stats.2,
+        geocode_success: customer_stats.1,
+        geocode_pending: customer_stats.2,
+        geocode_failed: customer_stats.3,
+        customers_without_phone: customer_stats.4,
+        customers_without_email: customer_stats.5,
+    })
 }

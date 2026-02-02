@@ -3,6 +3,9 @@ import type {
   UpdateCustomerRequest,
   Customer, 
   ImportIssue,
+  CustomerListResponse,
+  CustomerSummary,
+  ListCustomersRequest,
 } from '@shared/customer';
 import type { ListRequest, ListResponse, SuccessResponse, ErrorResponse } from '@shared/messages';
 import { createRequest } from '@shared/messages';
@@ -72,6 +75,50 @@ export async function listCustomers(
 
   const response = await deps.request<typeof request, NatsResponse<ListResponse<Customer>>>(
     'sazinka.customer.list',
+    request
+  );
+
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+
+  return response.payload;
+}
+
+/**
+ * List customers with extended data (device count, next revision, overdue count)
+ * Supports filtering and sorting
+ */
+export async function listCustomersExtended(
+  userId: string,
+  options: ListCustomersRequest = {},
+  deps: CustomerServiceDeps = getDefaultDeps()
+): Promise<CustomerListResponse> {
+  const request = createRequest(userId, options);
+
+  const response = await deps.request<typeof request, NatsResponse<CustomerListResponse>>(
+    'sazinka.customer.list.extended',
+    request
+  );
+
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+
+  return response.payload;
+}
+
+/**
+ * Get customer summary statistics
+ */
+export async function getCustomerSummary(
+  userId: string,
+  deps: CustomerServiceDeps = getDefaultDeps()
+): Promise<CustomerSummary> {
+  const request = createRequest(userId, {});
+
+  const response = await deps.request<typeof request, NatsResponse<CustomerSummary>>(
+    'sazinka.customer.summary',
     request
   );
 

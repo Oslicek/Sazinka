@@ -11,6 +11,7 @@ use crate::db::queries;
 use crate::types::{
     CreateCustomerRequest, UpdateCustomerRequest, Customer, ErrorResponse, ListRequest, 
     ListResponse, Request, SuccessResponse,
+    ListCustomersRequest, CustomerListResponse, CustomerSummaryResponse,
 };
 
 /// Handle customer.create messages
@@ -408,6 +409,130 @@ pub async fn handle_delete(
             }
             Err(e) => {
                 error!("Failed to delete customer: {}", e);
+                let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// Extended Customer Handlers
+// ============================================================================
+
+/// Handle customer.list.extended messages - list customers with aggregated data
+pub async fn handle_list_extended(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received customer.list.extended message");
+
+        let reply = match msg.reply {
+            Some(ref reply) => reply.clone(),
+            None => {
+                warn!("Message without reply subject");
+                continue;
+            }
+        };
+
+        // Parse request
+        let request: Request<ListCustomersRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("Failed to parse request: {}", e);
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Check user_id
+        let user_id = match request.user_id {
+            Some(id) => id,
+            None => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // List customers with extended data
+        match queries::customer::list_customers_extended(&pool, user_id, &request.payload).await {
+            Ok((items, total)) => {
+                let response = SuccessResponse::new(
+                    request.id,
+                    CustomerListResponse { items, total },
+                );
+                let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+                debug!("Listed {} customers (total: {})", response.payload.items.len(), total);
+            }
+            Err(e) => {
+                error!("Failed to list customers extended: {}", e);
+                let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Handle customer.summary messages - get customer summary statistics
+pub async fn handle_summary(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+) -> Result<()> {
+    // Empty request payload
+    #[derive(serde::Deserialize, Default)]
+    struct SummaryRequest {}
+
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received customer.summary message");
+
+        let reply = match msg.reply {
+            Some(ref reply) => reply.clone(),
+            None => {
+                warn!("Message without reply subject");
+                continue;
+            }
+        };
+
+        // Parse request
+        let request: Request<SummaryRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("Failed to parse request: {}", e);
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Check user_id
+        let user_id = match request.user_id {
+            Some(id) => id,
+            None => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Get customer summary
+        match queries::customer::get_customer_summary(&pool, user_id).await {
+            Ok(summary) => {
+                let response = SuccessResponse::new(request.id, summary);
+                let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+                debug!("Got customer summary: {} customers, {} devices", 
+                    response.payload.total_customers, response.payload.total_devices);
+            }
+            Err(e) => {
+                error!("Failed to get customer summary: {}", e);
                 let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
             }

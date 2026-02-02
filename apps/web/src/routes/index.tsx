@@ -9,6 +9,7 @@ import { Layout } from '@/components/Layout';
 import { Dashboard } from '@/pages/Dashboard';
 import { Customers } from '@/pages/Customers';
 import { CustomerDetail } from '@/pages/CustomerDetail';
+import { CustomerSummary } from '@/pages/CustomerSummary';
 import { Calendar } from '@/pages/Calendar';
 import { Planner } from '@/pages/Planner';
 import { Admin } from '@/pages/Admin';
@@ -37,6 +38,13 @@ const customersRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/customers',
   component: Customers,
+});
+
+// Customer summary (static route - must be before dynamic $customerId route)
+const customerSummaryRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/customers/summary',
+  component: CustomerSummary,
 });
 
 // Customer detail
@@ -101,6 +109,7 @@ const revisionDetailRoute = createRoute({
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   customersRoute,
+  customerSummaryRoute,
   customerDetailRoute,
   calendarRoute,
   plannerRoute,

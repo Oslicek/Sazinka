@@ -131,3 +131,76 @@ export interface ImportBatchResponse {
   updatedCount: number;
   errors: ImportIssue[];
 }
+
+// ============================================================================
+// Extended Customer Types for List Views
+// ============================================================================
+
+/**
+ * Customer list item with aggregated data (device count, next revision, etc.)
+ */
+export interface CustomerListItem {
+  id: string;
+  userId: string;
+  type: CustomerType;
+  name: string;
+  email?: string;
+  phone?: string;
+  street: string;
+  city: string;
+  postalCode: string;
+  lat?: number;
+  lng?: number;
+  geocodeStatus: GeocodeStatus;
+  createdAt: string;
+  
+  // Aggregated fields
+  deviceCount: number;
+  nextRevisionDate: string | null;
+  overdueCount: number;
+}
+
+/**
+ * Request for listing customers with filters and sorting
+ */
+export interface ListCustomersRequest {
+  limit?: number;
+  offset?: number;
+  search?: string;
+  /** Filter by geocode status */
+  geocodeStatus?: GeocodeStatus;
+  /** Filter to customers with overdue revisions */
+  hasOverdue?: boolean;
+  /** Filter to customers with next revision within N days */
+  nextRevisionWithinDays?: number;
+  /** Filter by customer type */
+  customerType?: CustomerType;
+  /** Sort by field */
+  sortBy?: 'name' | 'nextRevision' | 'deviceCount' | 'city' | 'createdAt';
+  /** Sort order */
+  sortOrder?: 'asc' | 'desc';
+}
+
+/**
+ * Response for customer list with pagination
+ */
+export interface CustomerListResponse {
+  items: CustomerListItem[];
+  total: number;
+}
+
+/**
+ * Customer summary statistics
+ */
+export interface CustomerSummary {
+  totalCustomers: number;
+  totalDevices: number;
+  revisionsOverdue: number;
+  revisionsDueThisWeek: number;
+  revisionsScheduled: number;
+  geocodeSuccess: number;
+  geocodePending: number;
+  geocodeFailed: number;
+  customersWithoutPhone: number;
+  customersWithoutEmail: number;
+}

@@ -48,6 +48,8 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let customer_update_sub = client.subscribe("sazinka.customer.update").await?;
     let customer_delete_sub = client.subscribe("sazinka.customer.delete").await?;
     let customer_random_sub = client.subscribe("sazinka.customer.random").await?;
+    let customer_list_extended_sub = client.subscribe("sazinka.customer.list.extended").await?;
+    let customer_summary_sub = client.subscribe("sazinka.customer.summary").await?;
     let route_plan_sub = client.subscribe("sazinka.route.plan").await?;
     let route_save_sub = client.subscribe("sazinka.route.save").await?;
     let route_get_sub = client.subscribe("sazinka.route.get").await?;
@@ -124,6 +126,8 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let client_customer_update = client.clone();
     let client_customer_delete = client.clone();
     let client_customer_random = client.clone();
+    let client_customer_list_extended = client.clone();
+    let client_customer_summary = client.clone();
     let client_route_plan = client.clone();
     let client_route_save = client.clone();
     let client_route_get = client.clone();
@@ -156,6 +160,8 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_customer_update = pool.clone();
     let pool_customer_delete = pool.clone();
     let pool_customer_random = pool.clone();
+    let pool_customer_list_extended = pool.clone();
+    let pool_customer_summary = pool.clone();
     let pool_route_plan = pool.clone();
     let pool_route_save = pool.clone();
     let pool_route_get = pool.clone();
@@ -290,6 +296,14 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
 
     let customer_random_handle = tokio::spawn(async move {
         customer::handle_random(client_customer_random, customer_random_sub, pool_customer_random).await
+    });
+
+    let customer_list_extended_handle = tokio::spawn(async move {
+        customer::handle_list_extended(client_customer_list_extended, customer_list_extended_sub, pool_customer_list_extended).await
+    });
+
+    let customer_summary_handle = tokio::spawn(async move {
+        customer::handle_summary(client_customer_summary, customer_summary_sub, pool_customer_summary).await
     });
 
     let route_plan_handle = tokio::spawn(async move {
@@ -622,6 +636,12 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         }
         result = customer_random_handle => {
             error!("Customer random handler finished: {:?}", result);
+        }
+        result = customer_list_extended_handle => {
+            error!("Customer list extended handler finished: {:?}", result);
+        }
+        result = customer_summary_handle => {
+            error!("Customer summary handler finished: {:?}", result);
         }
         result = route_plan_handle => {
             error!("Route plan handler finished: {:?}", result);

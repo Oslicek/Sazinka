@@ -1,6 +1,6 @@
 //! Customer types
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Type};
 use uuid::Uuid;
@@ -106,4 +106,79 @@ pub struct UpdateCustomerRequest {
 pub struct Coordinates {
     pub lat: f64,
     pub lng: f64,
+}
+
+// ============================================================================
+// Extended Customer Types for List Views
+// ============================================================================
+
+/// Customer list item with aggregated data (device count, next revision, etc.)
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomerListItem {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    #[sqlx(rename = "customer_type")]
+    #[serde(rename = "type")]
+    pub customer_type: CustomerType,
+    pub name: String,
+    pub email: Option<String>,
+    pub phone: Option<String>,
+    pub street: String,
+    pub city: String,
+    pub postal_code: String,
+    pub lat: Option<f64>,
+    pub lng: Option<f64>,
+    pub geocode_status: String,
+    pub created_at: DateTime<Utc>,
+    
+    // Aggregated fields
+    pub device_count: i64,
+    pub next_revision_date: Option<NaiveDate>,
+    pub overdue_count: i64,
+}
+
+/// Request for listing customers with filters and sorting
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ListCustomersRequest {
+    pub limit: Option<i32>,
+    pub offset: Option<i32>,
+    pub search: Option<String>,
+    /// Filter by geocode status: "success", "pending", "failed"
+    pub geocode_status: Option<String>,
+    /// Filter to customers with overdue revisions
+    pub has_overdue: Option<bool>,
+    /// Filter to customers with next revision within N days
+    pub next_revision_within_days: Option<i32>,
+    /// Filter by customer type: "person", "company"
+    pub customer_type: Option<String>,
+    /// Sort by field: "name", "nextRevision", "deviceCount", "city", "createdAt"
+    pub sort_by: Option<String>,
+    /// Sort order: "asc", "desc"
+    pub sort_order: Option<String>,
+}
+
+/// Response for customer list with pagination
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomerListResponse {
+    pub items: Vec<CustomerListItem>,
+    pub total: i64,
+}
+
+/// Customer summary statistics
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomerSummaryResponse {
+    pub total_customers: i64,
+    pub total_devices: i64,
+    pub revisions_overdue: i64,
+    pub revisions_due_this_week: i64,
+    pub revisions_scheduled: i64,
+    pub geocode_success: i64,
+    pub geocode_pending: i64,
+    pub geocode_failed: i64,
+    pub customers_without_phone: i64,
+    pub customers_without_email: i64,
 }
