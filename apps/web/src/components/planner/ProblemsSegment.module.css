@@ -1,0 +1,128 @@
+.container {
+  background-color: rgba(245, 158, 11, 0.05);
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+/* Header */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.75rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.15s;
+}
+
+.header:hover {
+  background-color: rgba(245, 158, 11, 0.1);
+}
+
+.headerIcon {
+  font-size: 1rem;
+}
+
+.headerTitle {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-warning);
+}
+
+.headerDescription {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  margin-left: auto;
+}
+
+.chevron {
+  font-size: 0.625rem;
+  color: var(--color-text-secondary);
+  transition: transform 0.2s;
+}
+
+.chevron.collapsed {
+  transform: rotate(-90deg);
+}
+
+/* List */
+.list {
+  border-top: 1px solid var(--color-warning);
+  padding: 0.5rem;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  background-color: var(--color-bg);
+  border-radius: var(--radius-sm);
+  margin-bottom: 0.375rem;
+}
+
+.item:last-child {
+  margin-bottom: 0;
+}
+
+.itemMain {
+  flex: 1;
+  min-width: 0;
+}
+
+.itemName {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.itemCity {
+  display: block;
+  font-size: 0.6875rem;
+  color: var(--color-text-secondary);
+}
+
+/* Problem badges */
+.itemProblems {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.problemBadge {
+  font-size: 0.75rem;
+  cursor: help;
+}
+
+/* Actions */
+.itemActions {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.actionButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 0.6875rem;
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.actionButton:hover {
+  background-color: var(--color-border);
+  border-color: var(--color-primary);
+}

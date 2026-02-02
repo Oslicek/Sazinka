@@ -6,3 +6,5 @@ export { CandidateRow, type CandidateRowData, type SlotStatus } from './Candidat
 export { CandidateDetail, type CandidateDetailData } from './CandidateDetail';
 export { SlotSuggestions, type SlotSuggestion } from './SlotSuggestions';
 export { InsertionPreview, type InsertionInfo } from './InsertionPreview';
+export { VirtualizedInboxList, type VirtualizedInboxListRef } from './VirtualizedInboxList';
+export { ProblemsSegment, type ProblemCandidate, type ProblemType } from './ProblemsSegment';
