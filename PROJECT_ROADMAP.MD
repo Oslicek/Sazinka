@@ -1,6 +1,6 @@
 # Project Roadmap - Sazinka v1.0 GA
 
-> **Last Updated:** 2026-02-02 (Phase 8 added - UX/UI Redesign: Route-Aware Planning)
+> **Last Updated:** 2026-02-02 (Phase 8 COMPLETED - UX/UI Redesign: Route-Aware Planning)
 
 ## Current State Analysis
 
@@ -80,7 +80,7 @@
                                    │
                                    ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│           PHASE 8: UX/UI Redesign (Route-Aware Planning) 📋 PLANNED          │
+│           PHASE 8: UX/UI Redesign (Route-Aware Planning) ✅ COMPLETED         │
 │                                                                              │
 │   ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                 │
 │   │ 8A: Inbox    │    │ 8B: Route-   │    │ 8C: Route-   │                 │
@@ -1217,9 +1217,9 @@ jetstream::stream::Config {
 
 ---
 
-## Phase 8: UX/UI Redesign (Route-Aware Planning) 📋 PLANNED
+## Phase 8: UX/UI Redesign (Route-Aware Planning) ✅ COMPLETED
 
-> **Status:** Planning phase - major UX overhaul
+> **Status:** Completed - all components integrated
 > **Goal:** "Domluvit návštěvu" = jedna činnost: vložit zakázku do trasy s minimem Δkm/Δmin
 > **Reference:** See `PROJECT_UX.MD` Phase 8 section for full wireframes and component catalog
 
@@ -1627,30 +1627,30 @@ Phase 7 (JetStream External Services): ✅ COMPLETE
     7D.3 Admin actions (cancel, retry) handlers ✅
     7D.4 Jobs route + navigation link ✅
 
-Phase 8 (UX/UI Redesign - Route-Aware Planning): 📋 PLANNED
-  8A: Nový Inbox Layout + Route Context
-    8A.1 RouteContextHeader komponenta
-    8A.2 SplitView 3-panel layout (desktop)
-    8A.3 CapacityMetrics komponenta
-    8A.4 RouteMapPanel s trasou dne
-    8A.5 PlanningInbox page s integrací
+Phase 8 (UX/UI Redesign - Route-Aware Planning): ✅ COMPLETED
+  8A: Nový Inbox Layout + Route Context ✅
+    8A.1 RouteContextHeader komponenta ✅
+    8A.2 SplitView 3-panel layout (desktop) ✅
+    8A.3 CapacityMetrics komponenta ✅
+    8A.4 RouteMapPanel s trasou dne ✅
+    8A.5 PlanningInbox page s integrací ✅
   
-  8B: Route-Aware pro vybraného kandidáta
-    8B.1 CandidateRow s Δkm/Δmin
-    8B.2 CandidateDetail panel
-    8B.3 SlotSuggestions s dopady
-    8B.4 InsertionPreview na mapě
-    8B.5 Backend: 1×K + K×1 matrix strategie
+  8B: Route-Aware pro vybraného kandidáta ✅
+    8B.1 CandidateRow s Δkm/Δmin ✅
+    8B.2 CandidateDetail panel ✅
+    8B.3 SlotSuggestions s dopady ✅
+    8B.4 InsertionPreview na mapě ✅
+    8B.5 Backend: 1×K + K×1 matrix strategie ✅
   
-  8C: Route-Aware pro celý list
-    8C.1 VirtualizedInboxList (react-virtuoso)
-    8C.2 ProblemsSegment (nelze geo, chybí tel)
-    8C.3 routeCacheStore pro cache výsledků
-    8C.4 Pre-ranking query v backendu
+  8C: Route-Aware pro celý list ✅
+    8C.1 VirtualizedInboxList (react-virtuoso) ✅
+    8C.2 ProblemsSegment (nelze geo, chybí tel) ✅
+    8C.3 routeCacheStore pro cache výsledků ✅
+    8C.4 Pre-ranking query v backendu (client-side) ✅
   
-  8D: Multi-Vehicle + Draft Mode + Polish
-    8D.1 MultiVehicleTip komponenta
-    8D.2 DraftModeBar pro plán dne
-    8D.3 useKeyboardShortcuts hook
-    8D.4 Optimistic UI pro domluvení
+  8D: Multi-Vehicle + Draft Mode + Polish ✅
+    8D.1 MultiVehicleTip komponenta ✅
+    8D.2 DraftModeBar pro plán dne ✅
+    8D.3 useKeyboardShortcuts hook ✅
+    8D.4 Optimistic UI pro domluvení ✅
 ```

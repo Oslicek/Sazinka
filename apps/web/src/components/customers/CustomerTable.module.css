@@ -1,0 +1,232 @@
+/* CustomerTable styles */
+
+.tableContainer {
+  flex: 1;
+  overflow: auto;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #e5e5e5);
+  border-radius: 8px;
+}
+
+.tableContainer:focus {
+  outline: 2px solid var(--color-primary, #2563eb);
+  outline-offset: -2px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.table thead {
+  position: sticky;
+  top: 0;
+  background: var(--bg-secondary, #f9fafb);
+  z-index: 1;
+}
+
+.table th {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  color: var(--text-secondary, #666);
+  border-bottom: 1px solid var(--border-color, #e5e5e5);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.table th.sortable {
+  cursor: pointer;
+}
+
+.table th.sortable:hover {
+  background: var(--hover-bg, #f3f4f6);
+}
+
+.sortIndicator {
+  font-size: 0.75rem;
+  color: var(--color-primary, #2563eb);
+}
+
+.table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border-color, #e5e5e5);
+  vertical-align: middle;
+}
+
+.row {
+  cursor: pointer;
+  transition: background-color 0.1s;
+}
+
+.row:hover {
+  background: var(--hover-bg, #f9fafb);
+}
+
+.row.selected {
+  background: var(--selected-bg, #eff6ff);
+}
+
+.row.selected:hover {
+  background: var(--selected-hover-bg, #dbeafe);
+}
+
+/* Customer cell (rich cell) */
+.customerCell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.customerMain {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.customerName {
+  font-weight: 600;
+  color: var(--text-primary, #1a1a1a);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.customerType {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  padding: 0.125rem 0.375rem;
+  background: var(--bg-secondary, #f3f4f6);
+  color: var(--text-secondary, #666);
+  border-radius: 3px;
+}
+
+.customerAddress {
+  font-size: 0.8125rem;
+  color: var(--text-secondary, #666);
+}
+
+.customerContact {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--text-tertiary, #888);
+}
+
+.phone::before {
+  content: '📞 ';
+}
+
+.email::before {
+  content: '✉ ';
+}
+
+/* Device count */
+.deviceCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 0.375rem;
+  background: var(--bg-secondary, #f3f4f6);
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+/* Revision status */
+.revision {
+  font-size: 0.8125rem;
+}
+
+.revision-overdue {
+  color: #ef4444;
+  font-weight: 600;
+}
+
+.revision-soon {
+  color: #f97316;
+  font-weight: 500;
+}
+
+.revision-upcoming {
+  color: #22c55e;
+}
+
+.revision-none {
+  color: var(--text-tertiary, #888);
+}
+
+/* Status badge */
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  font-size: 0.875rem;
+  border-radius: 4px;
+}
+
+.statusSuccess {
+  background: #dcfce7;
+}
+
+.statusPending {
+  background: #fef3c7;
+}
+
+.statusFailed {
+  background: #fef2f2;
+}
+
+.statusMissing {
+  background: var(--bg-secondary, #f3f4f6);
+}
+
+/* Loading state */
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 3rem;
+  color: var(--text-secondary, #666);
+}
+
+.spinner {
+  width: 2rem;
+  height: 2rem;
+  border: 3px solid var(--border-color, #e5e5e5);
+  border-top-color: var(--color-primary, #2563eb);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Empty state */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 3rem;
+  color: var(--text-secondary, #666);
+}
+
+.emptyIcon {
+  font-size: 2rem;
+}
+
+.empty p {
+  margin: 0;
+}

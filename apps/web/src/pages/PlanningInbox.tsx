@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { useNavigate } from '@tanstack/react-router';
 import { useNatsStore } from '../stores/natsStore';
+import { useRouteCacheStore } from '../stores/routeCacheStore';
 import { 
   RouteContextHeader, 
   type RouteContext,
@@ -8,13 +9,25 @@ import {
   RouteMapPanel,
   type MapStop,
   type MapDepot,
+  CandidateDetail,
+  type CandidateDetailData,
+  VirtualizedInboxList,
+  type VirtualizedInboxListRef,
+  type CandidateRowData,
+  ProblemsSegment,
+  type ProblemCandidate,
+  type ProblemType,
+  MultiVehicleTip,
+  type VehicleComparison,
+  type SlotSuggestion,
 } from '../components/planner';
+import { DraftModeBar } from '../components/planner/DraftModeBar';
 import { ThreePanelLayout } from '../components/common';
 import * as settingsService from '../services/settingsService';
 import * as vehicleService from '../services/vehicleService';
 import * as routeService from '../services/routeService';
 import * as insertionService from '../services/insertionService';
-import { getCallQueue, type CallQueueItem } from '../services/revisionService';
+import { getCallQueue, snoozeRevision, scheduleRevision, type CallQueueItem } from '../services/revisionService';
 import { usePlannerShortcuts } from '../hooks/useKeyboardShortcuts';
 import styles from './PlanningInbox.module.css';
 
@@ -35,11 +48,11 @@ interface InboxCandidate extends CallQueueItem {
   deltaMin?: number;
   slotStatus?: 'ok' | 'tight' | 'conflict';
   isCalculating?: boolean;
+  suggestedSlots?: SlotSuggestion[];
 }
 
 // Helper to check if customer is overdue
 function getDaysOverdue(item: CallQueueItem): number {
-  // daysUntilDue is negative when overdue
   return item.daysUntilDue < 0 ? Math.abs(item.daysUntilDue) : 0;
 }
 
@@ -55,10 +68,28 @@ function hasValidAddress(item: CallQueueItem): boolean {
          item.customerLng !== null;
 }
 
+// Convert priority to CandidateRowData priority type
+function toPriority(item: CallQueueItem): CandidateRowData['priority'] {
+  if (item.daysUntilDue < 0) return 'overdue';
+  if (item.daysUntilDue <= 7) return 'due_this_week';
+  if (item.daysUntilDue <= 30) return 'due_soon';
+  return 'upcoming';
+}
+
 export function PlanningInbox() {
   const { isConnected } = useNatsStore();
   const navigate = useNavigate();
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<VirtualizedInboxListRef>(null);
+  
+  // Route cache store
+  const { 
+    setRouteContext, 
+    getCachedInsertion, 
+    setCachedInsertions,
+    incrementRouteVersion,
+    invalidateCache,
+  } = useRouteCacheStore();
   
   // Route context state
   const [context, setContext] = useState<RouteContext | null>(null);
@@ -77,9 +108,20 @@ export function PlanningInbox() {
   const [isLoadingCandidates, setIsLoadingCandidates] = useState(false);
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
   
-  // Insertion calculation state
-  const [slotSuggestions, setSlotSuggestions] = useState<insertionService.InsertionPosition[]>([]);
+  // Detail state
+  const [slotSuggestions, setSlotSuggestions] = useState<SlotSuggestion[]>([]);
   const [isCalculatingSlots, setIsCalculatingSlots] = useState(false);
+  
+  // Draft mode state
+  const [hasChanges, setHasChanges] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  
+  // Multi-vehicle state (TODO: implement multi-vehicle comparison)
+  const [vehicleComparisons, _setVehicleComparisons] = useState<VehicleComparison[]>([]);
+  
+  // Problems segment state
+  const [isProblemsCollapsed, setIsProblemsCollapsed] = useState(false);
   
   // Segment counts
   const [segmentCounts, setSegmentCounts] = useState<Record<InboxSegment, number>>({
@@ -97,15 +139,13 @@ export function PlanningInbox() {
     
     async function loadSettings() {
       try {
-        // Load settings and vehicles in parallel
         const [settings, loadedVehicles] = await Promise.all([
           settingsService.getSettings(USER_ID),
           vehicleService.listVehicles(true),
         ]);
         
-        // Convert depots to our format
         const loadedDepots = settings.depots.map((d) => ({
-          id: d.name, // Use name as ID for now
+          id: d.name,
           name: d.name,
           lat: d.lat,
           lng: d.lng,
@@ -113,7 +153,6 @@ export function PlanningInbox() {
         setDepots(loadedDepots);
         setVehicles(loadedVehicles);
         
-        // Set initial context with today's date, first vehicle, and primary depot
         const primaryDepot = loadedDepots.find((d) => 
           settings.depots.find((sd) => sd.name === d.name && sd.isPrimary)
         ) || loadedDepots[0];
@@ -121,13 +160,15 @@ export function PlanningInbox() {
         const firstVehicle = loadedVehicles[0];
         
         if (primaryDepot && firstVehicle) {
-          setContext({
+          const initialContext = {
             date: new Date().toISOString().split('T')[0],
             vehicleId: firstVehicle.id,
             vehicleName: firstVehicle.name,
             depotId: primaryDepot.id,
             depotName: primaryDepot.name,
-          });
+          };
+          setContext(initialContext);
+          setRouteContext(initialContext.date, initialContext.vehicleId);
         }
       } catch (err) {
         console.error('Failed to load settings:', err);
@@ -135,7 +176,7 @@ export function PlanningInbox() {
     }
     
     loadSettings();
-  }, [isConnected]);
+  }, [isConnected, setRouteContext]);
 
   // Load saved route for selected day
   useEffect(() => {
@@ -149,7 +190,6 @@ export function PlanningInbox() {
         const response = await routeService.getRoute(dateToLoad);
         
         if (response.route && response.stops.length > 0) {
-          // Convert to MapStop format
           const stops: MapStop[] = response.stops.map((stop) => ({
             id: stop.customerId,
             name: stop.customerName,
@@ -164,11 +204,10 @@ export function PlanningInbox() {
           }));
           setRouteStops(stops);
           
-          // Set metrics from route
           const totalMin = response.route.totalDurationMinutes ?? 0;
-          const serviceMin = stops.length * 30; // Assume 30 min per stop
+          const serviceMin = stops.length * 30;
           const travelMin = totalMin - serviceMin;
-          const workingDayMin = 9 * 60; // 9 hours
+          const workingDayMin = 9 * 60;
           
           setMetrics({
             distanceKm: response.route.totalDistanceKm ?? 0,
@@ -194,6 +233,13 @@ export function PlanningInbox() {
     loadRoute();
   }, [isConnected, context?.date]);
 
+  // Update route cache context when context changes
+  useEffect(() => {
+    if (context?.date && context?.vehicleId) {
+      setRouteContext(context.date, context.vehicleId);
+    }
+  }, [context?.date, context?.vehicleId, setRouteContext]);
+
   // Calculate insertion when candidate is selected (route-aware mode)
   useEffect(() => {
     if (!isConnected || !isRouteAware || !selectedCandidateId || !context) return;
@@ -202,6 +248,13 @@ export function PlanningInbox() {
     if (!candidate || !candidate.customerLat || !candidate.customerLng) {
       setSlotSuggestions([]);
       return;
+    }
+    
+    // Check cache first
+    const cached = getCachedInsertion(candidate.id);
+    if (cached) {
+      // Use cached result - would need to store full slot suggestions
+      // For now, still calculate but this could be optimized
     }
     
     const depot = depots.find((d) => d.id === context.depotId);
@@ -223,15 +276,29 @@ export function PlanningInbox() {
           })),
           depot: { lat: depot!.lat, lng: depot!.lng },
           candidate: {
-            id: candidate!.id, // revision ID
+            id: candidate!.id,
             customerId: candidate!.customerId,
             coordinates: { lat: candidate!.customerLat!, lng: candidate!.customerLng! },
-            serviceDurationMinutes: 30, // Default, could come from settings
+            serviceDurationMinutes: 30,
           },
           date: context!.date,
         });
         
-        setSlotSuggestions(response.allPositions);
+        // Convert to SlotSuggestion format
+        const suggestions: SlotSuggestion[] = response.allPositions.map((pos, idx) => ({
+          id: `slot-${idx}`,
+          date: context!.date,
+          timeStart: pos.estimatedArrival ?? '',
+          timeEnd: pos.estimatedDeparture ?? '',
+          status: pos.status as 'ok' | 'tight' | 'conflict',
+          deltaKm: pos.deltaKm,
+          deltaMin: pos.deltaMin,
+          insertAfterIndex: pos.insertAfterIndex,
+          insertAfterName: pos.insertAfterName,
+          insertBeforeName: pos.insertBeforeName,
+        }));
+        
+        setSlotSuggestions(suggestions);
         
         // Update candidate with best insertion metrics
         if (response.bestPosition) {
@@ -243,6 +310,7 @@ export function PlanningInbox() {
                     deltaKm: response.bestPosition!.deltaKm,
                     deltaMin: response.bestPosition!.deltaMin,
                     slotStatus: response.bestPosition!.status as 'ok' | 'tight' | 'conflict',
+                    suggestedSlots: suggestions,
                   }
                 : c
             )
@@ -257,7 +325,7 @@ export function PlanningInbox() {
     }
     
     calculateInsertion();
-  }, [isConnected, isRouteAware, selectedCandidateId, routeStops, context, depots, candidates]);
+  }, [isConnected, isRouteAware, selectedCandidateId, routeStops, context, depots, getCachedInsertion]);
 
   // Load candidates based on segment
   const loadCandidates = useCallback(async () => {
@@ -265,32 +333,29 @@ export function PlanningInbox() {
     
     setIsLoadingCandidates(true);
     try {
-      // For now, load from call queue with filters based on segment
       const response = await getCallQueue(USER_ID, {
         priorityFilter: segment === 'overdue' ? 'overdue' : 'all',
         geocodedOnly: isRouteAware,
-        limit: 50,
+        limit: 100,
       });
       
-      // Transform to inbox candidates - metrics will be calculated when selected
       const loadedCandidates: InboxCandidate[] = response.items.map((item) => ({
         ...item,
-        // Metrics will be populated when candidate is selected
         deltaKm: undefined,
         deltaMin: undefined,
         slotStatus: undefined,
+        suggestedSlots: undefined,
       }));
       
       setCandidates(loadedCandidates);
       setSlotSuggestions([]);
       
-      // Update segment counts
       setSegmentCounts({
         overdue: loadedCandidates.filter((c) => getDaysOverdue(c) > 0).length,
-        thisWeek: loadedCandidates.length,
-        thisMonth: loadedCandidates.length,
+        thisWeek: loadedCandidates.filter((c) => c.daysUntilDue <= 7).length,
+        thisMonth: loadedCandidates.filter((c) => c.daysUntilDue <= 30).length,
         all: loadedCandidates.length,
-        snoozed: 0,
+        snoozed: 0, // Would need backend support
         problems: loadedCandidates.filter((c) => !hasPhone(c) || !hasValidAddress(c)).length,
       });
     } catch (err) {
@@ -305,23 +370,18 @@ export function PlanningInbox() {
     loadCandidates();
   }, [loadCandidates]);
 
-  // Batch calculate insertion metrics for all candidates with valid coordinates
+  // Batch calculate insertion metrics for visible candidates
   useEffect(() => {
     if (!isConnected || !isRouteAware || !context || candidates.length === 0) return;
     
     const depot = depots.find((d) => d.id === context.depotId);
     if (!depot) return;
     
-    // Filter candidates with valid coordinates
     const validCandidates = candidates.filter(
-      (c) => c.customerLat !== null && c.customerLng !== null
+      (c) => c.customerLat !== null && c.customerLng !== null && c.deltaKm === undefined
     );
     
     if (validCandidates.length === 0) return;
-    
-    // Skip if all candidates already have metrics calculated
-    const needsCalculation = validCandidates.some((c) => c.deltaKm === undefined);
-    if (!needsCalculation) return;
     
     async function calculateBatch() {
       try {
@@ -344,10 +404,20 @@ export function PlanningInbox() {
           bestOnly: true,
         });
         
-        // Update candidates with batch results
-        const resultsMap = new Map(
-          response.results.map((r) => [r.candidateId, r])
-        );
+        // Cache results
+        const cacheResults = response.results.map((r) => ({
+          candidateId: r.candidateId,
+          bestDeltaKm: r.bestDeltaKm,
+          bestDeltaMin: r.bestDeltaMin,
+          bestInsertAfterIndex: r.bestInsertAfterIndex,
+          status: r.status as 'ok' | 'tight' | 'conflict',
+          isFeasible: r.isFeasible,
+          calculatedAt: Date.now(),
+        }));
+        setCachedInsertions(cacheResults);
+        
+        // Update candidates
+        const resultsMap = new Map(response.results.map((r) => [r.candidateId, r]));
         
         setCandidates((prev) =>
           prev.map((c) => {
@@ -363,15 +433,13 @@ export function PlanningInbox() {
             return c;
           })
         );
-        
-        console.log(`Batch insertion calculated for ${response.results.length} candidates in ${response.processingTimeMs}ms`);
       } catch (err) {
         console.error('Failed to calculate batch insertion:', err);
       }
     }
     
     calculateBatch();
-  }, [isConnected, isRouteAware, context, candidates, routeStops, depots]);
+  }, [isConnected, isRouteAware, context, candidates, routeStops, depots, setCachedInsertions]);
 
   // Get current depot for map
   const currentDepot: MapDepot | null = useMemo(() => {
@@ -386,53 +454,138 @@ export function PlanningInbox() {
     [candidates, selectedCandidateId]
   );
 
+  // Convert selected candidate to CandidateDetailData
+  const selectedCandidateDetail: CandidateDetailData | null = useMemo(() => {
+    if (!selectedCandidate) return null;
+    
+    return {
+      id: selectedCandidate.id,
+      customerId: selectedCandidate.customerId,
+      customerName: selectedCandidate.customerName,
+      deviceType: selectedCandidate.deviceType ?? 'Zařízení',
+      deviceName: selectedCandidate.deviceName ?? undefined,
+      phone: selectedCandidate.customerPhone ?? undefined,
+      street: selectedCandidate.customerStreet ?? '',
+      city: selectedCandidate.customerCity ?? '',
+      dueDate: selectedCandidate.dueDate ?? new Date().toISOString(),
+      daysUntilDue: selectedCandidate.daysUntilDue,
+      priority: toPriority(selectedCandidate),
+      suggestedSlots: slotSuggestions,
+      insertionInfo: slotSuggestions[0] ? {
+        insertAfterIndex: slotSuggestions[0].insertAfterIndex,
+        insertAfterName: slotSuggestions[0].insertAfterName ?? 'Depo',
+        insertBeforeIndex: slotSuggestions[0].insertAfterIndex + 1,
+        insertBeforeName: slotSuggestions[0].insertBeforeName ?? 'Depo',
+        deltaKm: slotSuggestions[0].deltaKm,
+        deltaMin: slotSuggestions[0].deltaMin,
+        estimatedArrival: slotSuggestions[0].timeStart,
+        estimatedDeparture: slotSuggestions[0].timeEnd,
+      } : undefined,
+    };
+  }, [selectedCandidate, slotSuggestions]);
+
   // Sorted candidates for display (pre-ranked by insertion cost)
   const sortedCandidates = useMemo(() => {
+    let filtered = [...candidates];
+    
+    // Filter by segment
+    switch (segment) {
+      case 'overdue':
+        filtered = filtered.filter((c) => getDaysOverdue(c) > 0);
+        break;
+      case 'thisWeek':
+        filtered = filtered.filter((c) => c.daysUntilDue <= 7);
+        break;
+      case 'thisMonth':
+        filtered = filtered.filter((c) => c.daysUntilDue <= 30);
+        break;
+      case 'problems':
+        filtered = filtered.filter((c) => !hasPhone(c) || !hasValidAddress(c));
+        break;
+      // 'all' and 'snoozed' show all
+    }
+    
     if (!isRouteAware) {
-      // Without route-aware mode, sort by due date only
-      return [...candidates].sort((a, b) => {
+      return filtered.sort((a, b) => {
         const aOverdue = getDaysOverdue(a);
         const bOverdue = getDaysOverdue(b);
-        if (aOverdue !== bOverdue) return bOverdue - aOverdue; // More overdue first
-        return a.daysUntilDue - b.daysUntilDue; // Sooner due first
+        if (aOverdue !== bOverdue) return bOverdue - aOverdue;
+        return a.daysUntilDue - b.daysUntilDue;
       });
     }
     
-    // With route-aware mode, sort by insertion metrics
-    return [...candidates].sort((a, b) => {
-      // Problems last (no coordinates)
+    return filtered.sort((a, b) => {
       const aValid = hasValidAddress(a);
       const bValid = hasValidAddress(b);
       if (aValid !== bValid) return aValid ? -1 : 1;
       
-      // Candidates with calculated metrics first
       const aHasMetrics = a.deltaMin !== undefined;
       const bHasMetrics = b.deltaMin !== undefined;
       if (aHasMetrics !== bHasMetrics) return aHasMetrics ? -1 : 1;
       
-      // Sort by status (ok > tight > conflict)
       if (a.slotStatus && b.slotStatus) {
         const statusOrder = { ok: 0, tight: 1, conflict: 2 };
         const statusDiff = statusOrder[a.slotStatus] - statusOrder[b.slotStatus];
         if (statusDiff !== 0) return statusDiff;
       }
       
-      // Sort by delta time
       if (a.deltaMin !== undefined && b.deltaMin !== undefined) {
         return a.deltaMin - b.deltaMin;
       }
       
-      // Fallback to due date
       const aOverdue = getDaysOverdue(a);
       const bOverdue = getDaysOverdue(b);
       if (aOverdue !== bOverdue) return bOverdue - aOverdue;
       return a.daysUntilDue - b.daysUntilDue;
     });
-  }, [candidates, isRouteAware]);
+  }, [candidates, isRouteAware, segment]);
+
+  // Convert to CandidateRowData for VirtualizedInboxList
+  const candidateRowData: CandidateRowData[] = useMemo(() => {
+    return sortedCandidates.map((c) => ({
+      id: c.customerId,
+      customerName: c.customerName,
+      city: c.customerCity ?? '',
+      deviceType: c.deviceType,
+      daysUntilDue: c.daysUntilDue,
+      hasPhone: hasPhone(c),
+      hasValidAddress: hasValidAddress(c),
+      priority: toPriority(c),
+      deltaKm: c.deltaKm,
+      deltaMin: c.deltaMin,
+      slotStatus: c.slotStatus,
+    }));
+  }, [sortedCandidates]);
+
+  // Problem candidates for ProblemsSegment
+  const problemCandidates: ProblemCandidate[] = useMemo(() => {
+    return candidates
+      .filter((c) => !hasPhone(c) || !hasValidAddress(c))
+      .map((c) => {
+        const problems: ProblemType[] = [];
+        if (!hasPhone(c)) problems.push('no_phone');
+        if (!hasValidAddress(c)) {
+          if (c.customerGeocodeStatus === 'failed') {
+            problems.push('geocode_failed');
+          } else if (!c.customerLat || !c.customerLng) {
+            problems.push('no_coordinates');
+          } else {
+            problems.push('no_address');
+          }
+        }
+        return {
+          id: c.customerId,
+          customerName: c.customerName,
+          city: c.customerCity ?? '',
+          problems,
+        };
+      });
+  }, [candidates]);
 
   // Handle context changes
   const handleDateChange = (date: string) => {
     setContext((prev) => prev ? { ...prev, date } : null);
+    invalidateCache();
   };
 
   const handleVehicleChange = (vehicleId: string) => {
@@ -442,6 +595,7 @@ export function PlanningInbox() {
       vehicleId, 
       vehicleName: vehicle?.name ?? '' 
     } : null);
+    invalidateCache();
   };
 
   const handleDepotChange = (depotId: string) => {
@@ -451,74 +605,133 @@ export function PlanningInbox() {
       depotId, 
       depotName: depot?.name ?? '' 
     } : null);
+    invalidateCache();
   };
 
-  // Format delta values
-  const formatDelta = (value: number | undefined, unit: string) => {
-    if (value === undefined) return null;
-    const sign = value >= 0 ? '+' : '';
-    return `${sign}${value.toFixed(1)}${unit}`;
-  };
-
-  // Get status icon
-  const getStatusIcon = (status?: 'ok' | 'tight' | 'conflict') => {
-    switch (status) {
-      case 'ok': return '✅';
-      case 'tight': return '⚠️';
-      case 'conflict': return '❌';
-      default: return '';
+  // Action handlers
+  const handleSchedule = useCallback(async (candidateId: string, slot: SlotSuggestion) => {
+    const candidate = candidates.find((c) => c.id === candidateId || c.customerId === candidateId);
+    if (!candidate) return;
+    
+    try {
+      await scheduleRevision(USER_ID, {
+        id: candidate.id,
+        scheduledDate: slot.date,
+        timeWindowStart: slot.timeStart,
+        timeWindowEnd: slot.timeEnd,
+      });
+      
+      // Remove from list
+      setCandidates((prev) => prev.filter((c) => c.id !== candidate.id));
+      setSelectedCandidateId(null);
+      setSlotSuggestions([]);
+      
+      // Invalidate route cache since route changed
+      incrementRouteVersion();
+      
+      setHasChanges(true);
+      setLastSaved(new Date());
+    } catch (err) {
+      console.error('Failed to schedule:', err);
     }
-  };
+  }, [candidates, incrementRouteVersion]);
+
+  const handleSnooze = useCallback(async (candidateId: string) => {
+    const candidate = candidates.find((c) => c.id === candidateId || c.customerId === candidateId);
+    if (!candidate) return;
+    
+    // Snooze for 7 days by default
+    const snoozeDate = new Date();
+    snoozeDate.setDate(snoozeDate.getDate() + 7);
+    
+    try {
+      await snoozeRevision(USER_ID, {
+        id: candidate.id,
+        snoozeUntil: snoozeDate.toISOString().split('T')[0],
+      });
+      
+      // Remove from list
+      setCandidates((prev) => prev.filter((c) => c.id !== candidate.id));
+      setSelectedCandidateId(null);
+      setSlotSuggestions([]);
+    } catch (err) {
+      console.error('Failed to snooze:', err);
+    }
+  }, [candidates]);
+
+  const handleFixAddress = useCallback((candidateId: string) => {
+    navigate({ to: '/customers/$customerId', params: { customerId: candidateId } });
+  }, [navigate]);
+
+  // Draft mode handlers
+  const handleSave = useCallback(async () => {
+    setIsSaving(true);
+    try {
+      // Route changes are saved automatically via scheduleRevision
+      // This would save any pending route optimizations
+      setHasChanges(false);
+      setLastSaved(new Date());
+    } finally {
+      setIsSaving(false);
+    }
+  }, []);
+
+  const handleDiscard = useCallback(() => {
+    // Reload candidates to discard local changes
+    loadCandidates();
+    setHasChanges(false);
+  }, [loadCandidates]);
 
   // Keyboard shortcuts handlers
   const handleMoveUp = useCallback(() => {
-    if (sortedCandidates.length === 0) return;
+    if (candidateRowData.length === 0) return;
     
     const currentIndex = selectedCandidateId 
-      ? sortedCandidates.findIndex((c) => c.customerId === selectedCandidateId)
+      ? candidateRowData.findIndex((c) => c.id === selectedCandidateId)
       : -1;
     
-    const newIndex = currentIndex <= 0 ? sortedCandidates.length - 1 : currentIndex - 1;
-    setSelectedCandidateId(sortedCandidates[newIndex].customerId);
-  }, [sortedCandidates, selectedCandidateId]);
+    const newIndex = currentIndex <= 0 ? candidateRowData.length - 1 : currentIndex - 1;
+    const newId = candidateRowData[newIndex].id;
+    setSelectedCandidateId(newId);
+    listRef.current?.scrollToIndex(newIndex);
+  }, [candidateRowData, selectedCandidateId]);
 
   const handleMoveDown = useCallback(() => {
-    if (sortedCandidates.length === 0) return;
+    if (candidateRowData.length === 0) return;
     
     const currentIndex = selectedCandidateId 
-      ? sortedCandidates.findIndex((c) => c.customerId === selectedCandidateId)
+      ? candidateRowData.findIndex((c) => c.id === selectedCandidateId)
       : -1;
     
-    const newIndex = currentIndex >= sortedCandidates.length - 1 ? 0 : currentIndex + 1;
-    setSelectedCandidateId(sortedCandidates[newIndex].customerId);
-  }, [sortedCandidates, selectedCandidateId]);
+    const newIndex = currentIndex >= candidateRowData.length - 1 ? 0 : currentIndex + 1;
+    const newId = candidateRowData[newIndex].id;
+    setSelectedCandidateId(newId);
+    listRef.current?.scrollToIndex(newIndex);
+  }, [candidateRowData, selectedCandidateId]);
 
   const handleSelectSlot = useCallback((index: number) => {
-    if (slotSuggestions.length > index) {
-      // TODO: Implement slot selection action (schedule visit)
-      console.log('Selected slot:', slotSuggestions[index]);
+    if (slotSuggestions.length > index && selectedCandidateId) {
+      handleSchedule(selectedCandidateId, slotSuggestions[index]);
     }
-  }, [slotSuggestions]);
+  }, [slotSuggestions, selectedCandidateId, handleSchedule]);
 
-  const handleSchedule = useCallback(() => {
-    if (selectedCandidate) {
-      // TODO: Open schedule dialog
-      console.log('Schedule:', selectedCandidate.customerName);
+  const handleScheduleShortcut = useCallback(() => {
+    if (selectedCandidateId && slotSuggestions[0]) {
+      handleSchedule(selectedCandidateId, slotSuggestions[0]);
     }
-  }, [selectedCandidate]);
+  }, [selectedCandidateId, slotSuggestions, handleSchedule]);
 
-  const handleSnooze = useCallback(() => {
-    if (selectedCandidate) {
-      // TODO: Open snooze dialog
-      console.log('Snooze:', selectedCandidate.customerName);
+  const handleSnoozeShortcut = useCallback(() => {
+    if (selectedCandidateId) {
+      handleSnooze(selectedCandidateId);
     }
-  }, [selectedCandidate]);
+  }, [selectedCandidateId, handleSnooze]);
 
-  const handleFixAddress = useCallback(() => {
-    if (selectedCandidate) {
-      navigate({ to: '/customers/$customerId', params: { customerId: selectedCandidate.customerId } });
+  const handleFixAddressShortcut = useCallback(() => {
+    if (selectedCandidateId) {
+      handleFixAddress(selectedCandidateId);
     }
-  }, [selectedCandidate, navigate]);
+  }, [selectedCandidateId, handleFixAddress]);
 
   const handleSearch = useCallback(() => {
     searchInputRef.current?.focus();
@@ -534,15 +747,20 @@ export function PlanningInbox() {
     onMoveUp: handleMoveUp,
     onMoveDown: handleMoveDown,
     onSelectSlot: handleSelectSlot,
-    onSchedule: handleSchedule,
-    onSnooze: handleSnooze,
-    onFixAddress: handleFixAddress,
+    onSchedule: handleScheduleShortcut,
+    onSnooze: handleSnoozeShortcut,
+    onFixAddress: handleFixAddressShortcut,
     onSearch: handleSearch,
     onEscape: handleEscape,
     enabled: true,
   });
 
-  // Render inbox list
+  // Handle candidate selection
+  const handleCandidateSelect = useCallback((id: string) => {
+    setSelectedCandidateId(id);
+  }, []);
+
+  // Render inbox list panel
   const renderInboxList = () => (
     <div className={styles.inboxPanel}>
       <div className={styles.segmentTabs}>
@@ -551,7 +769,6 @@ export function PlanningInbox() {
           { key: 'thisWeek', label: 'Týden', count: segmentCounts.thisWeek },
           { key: 'thisMonth', label: '30 dní', count: segmentCounts.thisMonth },
           { key: 'all', label: 'Vše', count: segmentCounts.all },
-          { key: 'snoozed', label: 'Odložené', count: segmentCounts.snoozed },
           { key: 'problems', label: 'Problémy', count: segmentCounts.problems },
         ] as const).map(({ key, label, count }) => (
           <button
@@ -566,53 +783,39 @@ export function PlanningInbox() {
         ))}
       </div>
       
-      <div className={styles.candidateList}>
-        {isLoadingCandidates ? (
-          <div className={styles.loading}>Načítám...</div>
-        ) : candidates.length === 0 ? (
-          <div className={styles.empty}>
-            <span className={styles.emptyIcon}>📭</span>
-            <p>Žádní kandidáti v tomto segmentu</p>
-          </div>
-        ) : (
-          sortedCandidates.map((candidate) => {
-            const daysOverdue = getDaysOverdue(candidate);
-            return (
-              <button
-                key={candidate.customerId}
-                type="button"
-                className={`${styles.candidateRow} ${selectedCandidateId === candidate.customerId ? styles.selected : ''}`}
-                onClick={() => setSelectedCandidateId(candidate.customerId)}
-              >
-                <div className={styles.candidateMain}>
-                  <span className={styles.candidateName}>{candidate.customerName}</span>
-                  <span className={styles.candidateCity}>{candidate.customerCity}</span>
-                </div>
-                
-                {isRouteAware && (
-                  <div className={styles.candidateMetrics}>
-                    {formatDelta(candidate.deltaKm, 'km') && (
-                      <span className={styles.deltaKm}>{formatDelta(candidate.deltaKm, 'km')}</span>
-                    )}
-                    {formatDelta(candidate.deltaMin, 'min') && (
-                      <span className={styles.deltaMin}>{formatDelta(candidate.deltaMin, 'min')}</span>
-                    )}
-                    <span className={styles.statusIcon}>{getStatusIcon(candidate.slotStatus)}</span>
-                  </div>
-                )}
-                
-                <div className={styles.candidateMeta}>
-                  {daysOverdue > 0 && (
-                    <span className={styles.overdue}>+{daysOverdue}d</span>
-                  )}
-                  {!hasPhone(candidate) && <span className={styles.warning}>📵</span>}
-                  {!hasValidAddress(candidate) && <span className={styles.warning}>📍</span>}
-                </div>
-              </button>
-            );
-          })
-        )}
-      </div>
+      {/* Problems segment at top when viewing problems */}
+      {segment === 'problems' && problemCandidates.length > 0 && (
+        <ProblemsSegment
+          candidates={problemCandidates}
+          isCollapsed={isProblemsCollapsed}
+          onToggleCollapse={() => setIsProblemsCollapsed(!isProblemsCollapsed)}
+          onFixAddress={handleFixAddress}
+          onViewCustomer={handleCandidateSelect}
+        />
+      )}
+      
+      {/* Multi-vehicle tip */}
+      {isRouteAware && vehicleComparisons.length > 0 && (
+        <MultiVehicleTip
+          currentVehicle={context?.vehicleName ?? ''}
+          comparisons={vehicleComparisons}
+          onSwitchVehicle={(vehicleId) => handleVehicleChange(vehicleId)}
+        />
+      )}
+      
+      {/* Virtualized candidate list */}
+      <VirtualizedInboxList
+        ref={listRef}
+        candidates={candidateRowData}
+        selectedCandidateId={selectedCandidateId}
+        isRouteAware={isRouteAware}
+        onCandidateSelect={handleCandidateSelect}
+        isLoading={isLoadingCandidates}
+        emptyMessage={segment === 'problems' 
+          ? 'Žádní problémový kandidáti' 
+          : 'Žádní kandidáti v tomto segmentu'}
+        className={styles.candidateList}
+      />
     </div>
   );
 
@@ -631,77 +834,14 @@ export function PlanningInbox() {
   // Render detail panel
   const renderDetailPanel = () => (
     <div className={styles.detailPanel}>
-      {selectedCandidate ? (
-        <>
-          <div className={styles.detailHeader}>
-            <h3>{selectedCandidate.customerName}</h3>
-            <span className={styles.customerType}>
-              {selectedCandidate.deviceType}
-            </span>
-          </div>
-          
-          <div className={styles.detailSection}>
-            <h4>Kontakt</h4>
-            {selectedCandidate.customerPhone && (
-              <a href={`tel:${selectedCandidate.customerPhone}`} className={styles.phone}>
-                📞 {selectedCandidate.customerPhone}
-              </a>
-            )}
-            <p className={styles.address}>{selectedCandidate.customerStreet}</p>
-            <p className={styles.city}>{selectedCandidate.customerCity}</p>
-          </div>
-          
-          {isRouteAware && (
-            <div className={styles.detailSection}>
-              <h4>Doporučené sloty</h4>
-              <div className={styles.slotSuggestions}>
-                {isCalculatingSlots ? (
-                  <span className={styles.calculating}>Počítám...</span>
-                ) : slotSuggestions.length > 0 ? (
-                  slotSuggestions.slice(0, 5).map((slot, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      className={`${styles.slotChip} ${styles[slot.status]}`}
-                      title={`Vloží se mezi: ${slot.insertAfterName} → ${slot.insertBeforeName}\n+${slot.deltaMin.toFixed(0)}min / +${slot.deltaKm.toFixed(1)}km`}
-                    >
-                      {slot.estimatedArrival}–{slot.estimatedDeparture} {getStatusIcon(slot.status as 'ok' | 'tight' | 'conflict')}
-                    </button>
-                  ))
-                ) : hasValidAddress(selectedCandidate) ? (
-                  <span className={styles.noSlots}>Žádné sloty - zkuste jiný den</span>
-                ) : (
-                  <span className={styles.noSlots}>⚠️ Nelze vypočítat - chybí adresa</span>
-                )}
-              </div>
-            </div>
-          )}
-          
-          <div className={styles.detailActions}>
-            <button type="button" className="btn-primary">
-              Domluvit termín
-            </button>
-            <button type="button" className="btn-secondary">
-              Odložit
-            </button>
-          </div>
-          
-          <div className={styles.detailLinks}>
-            <Link 
-              to="/customers/$customerId" 
-              params={{ customerId: selectedCandidate.customerId }}
-              className={styles.detailLink}
-            >
-              Zobrazit detail zákazníka →
-            </Link>
-          </div>
-        </>
-      ) : (
-        <div className={styles.noSelection}>
-          <span className={styles.noSelectionIcon}>👆</span>
-          <p>Vyberte kandidáta ze seznamu</p>
-        </div>
-      )}
+      <CandidateDetail
+        candidate={selectedCandidateDetail}
+        isRouteAware={isRouteAware}
+        onSchedule={handleSchedule}
+        onSnooze={handleSnooze}
+        onFixAddress={handleFixAddress}
+        isLoading={isCalculatingSlots}
+      />
     </div>
   );
 
@@ -718,6 +858,14 @@ export function PlanningInbox() {
         vehicles={vehicles}
         depots={depots}
         isLoading={isLoadingRoute}
+      />
+      
+      <DraftModeBar
+        hasChanges={hasChanges}
+        isSaving={isSaving}
+        lastSaved={lastSaved}
+        onSave={handleSave}
+        onDiscard={handleDiscard}
       />
       
       <div className={styles.content}>

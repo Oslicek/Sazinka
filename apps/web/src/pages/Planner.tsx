@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { Link } from '@tanstack/react-router';
+import { Link, useSearch, useNavigate } from '@tanstack/react-router';
 import maplibregl from 'maplibre-gl';
 import { useNatsStore } from '../stores/natsStore';
 import type { RoutePlanResponse, PlannedRouteStop } from '@sazinka/shared-types';
@@ -13,6 +13,7 @@ import {
   type CallQueueItem,
 } from '../services/revisionService';
 import * as routeService from '../services/routeService';
+import { listVehicles, type Vehicle } from '../services/vehicleService';
 import type { RouteJobStatusUpdate } from '../services/routeService';
 import {
   DndContext,
@@ -29,7 +30,9 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { SortableStopItem } from '../components/planner';
+import { SortableStopItem, DraftModeBar, AddFromInboxDrawer } from '../components/planner';
+import type { InboxCandidate } from '../types';
+import type { SlotSuggestion } from '../components/planner/SlotSuggestions';
 import styles from './Planner.module.css';
 
 // Mock user ID for development
@@ -37,6 +40,13 @@ const USER_ID = '00000000-0000-0000-0000-000000000001';
 
 // Default depot location (Prague center) - fallback if no depot configured
 const DEFAULT_DEPOT = { lat: 50.0755, lng: 14.4378 };
+
+// Search params interface for URL sync
+interface PlannerSearchParams {
+  date?: string;
+  vehicle?: string;
+  highlight?: string;
+}
 
 interface NatsSuccessResponse<T> {
   id: string;
@@ -67,6 +77,13 @@ interface StopWithRevision extends Revision {
 }
 
 export function Planner() {
+  const navigate = useNavigate();
+  const searchParams = useSearch({ strict: false }) as PlannerSearchParams;
+  
+  // Initialize date from URL or default to today
+  const today = new Date().toISOString().split('T')[0];
+  const initialDate = searchParams?.date || today;
+  
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
@@ -78,7 +95,7 @@ export function Planner() {
   const [totalDistance, setTotalDistance] = useState(0);
   const [totalDuration, setTotalDuration] = useState(0);
   const [optimizationScore, setOptimizationScore] = useState(0);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(initialDate);
   const [routeWarnings, setRouteWarnings] = useState<string[]>([]);
   // These values are set when optimizing but currently not displayed in UI
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -92,6 +109,11 @@ export function Planner() {
   const [depot, setDepot] = useState<{ lat: number; lng: number; name?: string } | null>(null);
   const [depotLoading, setDepotLoading] = useState(true);
   const depotMarkerRef = useRef<maplibregl.Marker | null>(null);
+  
+  // Vehicle state
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [vehiclesLoading, setVehiclesLoading] = useState(true);
+  const [selectedVehicle, setSelectedVehicle] = useState<string>(searchParams?.vehicle || '');
   
   // Scheduled revisions loading
   const [scheduledLoading, setScheduledLoading] = useState(false);
@@ -113,6 +135,11 @@ export function Planner() {
   // Route job state (async optimization)
   const [routeJob, setRouteJob] = useState<RouteJobStatusUpdate | null>(null);
   const routeJobUnsubscribeRef = useRef<(() => void) | null>(null);
+  
+  // Add from inbox drawer
+  const [showInboxDrawer, setShowInboxDrawer] = useState(false);
+  const [inboxCandidates, setInboxCandidates] = useState<InboxCandidate[]>([]);
+  const [loadingInboxCandidates, setLoadingInboxCandidates] = useState(false);
 
   const { request, isConnected } = useNatsStore();
   
@@ -128,6 +155,71 @@ export function Planner() {
     })
   );
   
+  // Sync date with URL
+  const handleDateChange = useCallback((newDate: string) => {
+    setSelectedDate(newDate);
+    // Update URL without full navigation
+    navigate({ 
+      to: '/planner',
+      search: { date: newDate, vehicle: selectedVehicle || undefined } as Record<string, string | undefined>,
+      replace: true,
+    });
+  }, [navigate, selectedVehicle]);
+
+  // Sync vehicle with URL
+  const handleVehicleChange = useCallback((vehicleId: string) => {
+    setSelectedVehicle(vehicleId);
+    navigate({ 
+      to: '/planner',
+      search: { date: selectedDate, vehicle: vehicleId } as Record<string, string | undefined>,
+      replace: true,
+    });
+  }, [navigate, selectedDate]);
+
+  // Update date when URL changes (e.g., from RevisionDetail "Open in planner" link)
+  useEffect(() => {
+    if (searchParams?.date && searchParams.date !== selectedDate) {
+      setSelectedDate(searchParams.date);
+    }
+  }, [searchParams?.date, selectedDate]);
+
+  // Update vehicle when URL changes
+  useEffect(() => {
+    if (searchParams?.vehicle && searchParams.vehicle !== selectedVehicle) {
+      setSelectedVehicle(searchParams.vehicle);
+    }
+  }, [searchParams?.vehicle, selectedVehicle]);
+
+  // Load vehicles
+  useEffect(() => {
+    if (!isConnected) return;
+    
+    async function loadVehiclesAsync() {
+      try {
+        setVehiclesLoading(true);
+        const vehicleList = await listVehicles(true);
+        setVehicles(vehicleList);
+        
+        // Auto-select first vehicle if none selected
+        if (!selectedVehicle && vehicleList.length > 0) {
+          const firstVehicleId = vehicleList[0].id;
+          setSelectedVehicle(firstVehicleId);
+          navigate({ 
+            to: '/planner',
+            search: { date: selectedDate, vehicle: firstVehicleId } as Record<string, string | undefined>,
+            replace: true,
+          });
+        }
+      } catch (err) {
+        console.warn('Failed to load vehicles:', err);
+        setVehicles([]);
+      } finally {
+        setVehiclesLoading(false);
+      }
+    }
+    loadVehiclesAsync();
+  }, [isConnected, selectedVehicle, navigate, selectedDate]);
+
   // Load user's primary depot from settings
   useEffect(() => {
     if (!isConnected) return;
@@ -450,6 +542,70 @@ export function Planner() {
     };
   }, []);
 
+  // Warn before leaving with unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isManuallyReordered && stops.length > 0) {
+        e.preventDefault();
+        e.returnValue = 'Máte neuložené změny. Opravdu chcete odejít?';
+        return e.returnValue;
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isManuallyReordered, stops.length]);
+
+  // Load inbox candidates for add from inbox drawer
+  const loadInboxCandidates = useCallback(async () => {
+    if (!isConnected) return;
+
+    setLoadingInboxCandidates(true);
+    try {
+      const response = await getCallQueue(USER_ID, {
+        priorityFilter: 'all',
+        geocodedOnly: true,
+        limit: 20,
+      });
+      // Map CallQueueItem to InboxCandidate
+      const candidates: InboxCandidate[] = response.items.map((item) => ({
+        id: item.id,
+        customerId: item.customerId,
+        customerName: item.customerName,
+        deviceId: item.deviceId || '',
+        deviceName: item.deviceName || '',
+        deviceType: item.deviceType || '',
+        dueDate: item.dueDate,
+        priority: item.priority,
+        lat: item.lat!,
+        lng: item.lng!,
+        status: 'upcoming',
+        snoozedUntil: null,
+      }));
+      setInboxCandidates(candidates);
+    } catch (err) {
+      console.error('Failed to load inbox candidates:', err);
+      setInboxCandidates([]);
+    } finally {
+      setLoadingInboxCandidates(false);
+    }
+  }, [isConnected]);
+
+  // Open inbox drawer
+  const handleOpenInboxDrawer = useCallback(() => {
+    loadInboxCandidates();
+    setShowInboxDrawer(true);
+  }, [loadInboxCandidates]);
+
+  // Add candidate to route (placeholder)
+  const handleAddFromInbox = useCallback(async (candidateId: string, _slot: SlotSuggestion) => {
+    console.log('Adding candidate to route:', candidateId, _slot);
+    // TODO: Implement actual add to route logic
+    // This would insert the candidate at the optimal position in the stops array
+    setShowInboxDrawer(false);
+    loadScheduledRevisions();
+  }, [loadScheduledRevisions]);
+
   // Mark revision as done
   const handleMarkDone = useCallback(async (revisionId: string) => {
     const result = prompt('Výsledek revize (passed/conditional/failed):', 'passed');
@@ -639,7 +795,7 @@ export function Planner() {
   }, [stops, scheduledRevisions, selectedDate, totalDistance, totalDuration]);
 
   // Clear route
-  const handleClearRoute = () => {
+  const handleClearRoute = useCallback(() => {
     clearMarkers();
     setStops([]);
     setTotalDistance(0);
@@ -652,7 +808,14 @@ export function Planner() {
     setError(null);
     setLockedStops(new Set());
     setIsManuallyReordered(false);
-  };
+  }, [clearMarkers]);
+
+  // Discard changes
+  const handleDiscardChanges = useCallback(() => {
+    if (confirm('Opravdu chcete zahodit změny?')) {
+      handleClearRoute();
+    }
+  }, [handleClearRoute]);
 
   // Handle drag end
   const handleDragEnd = useCallback((event: DragEndEvent) => {
@@ -813,12 +976,32 @@ export function Planner() {
         {/* Header */}
         <div className={styles.header}>
           <h2>Plán dne</h2>
-          <input 
-            type="date" 
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className={styles.dateInput}
-          />
+          <div className={styles.headerControls}>
+            <input 
+              type="date" 
+              value={selectedDate}
+              onChange={(e) => handleDateChange(e.target.value)}
+              className={styles.dateInput}
+            />
+            <select
+              value={selectedVehicle}
+              onChange={(e) => handleVehicleChange(e.target.value)}
+              className={styles.vehicleSelect}
+              disabled={vehiclesLoading}
+            >
+              {vehiclesLoading ? (
+                <option value="">Načítám...</option>
+              ) : vehicles.length === 0 ? (
+                <option value="">Žádná auta</option>
+              ) : (
+                vehicles.map((vehicle) => (
+                  <option key={vehicle.id} value={vehicle.id}>
+                    {vehicle.name}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
         </div>
 
         {/* Date info and progress */}
@@ -838,6 +1021,15 @@ export function Planner() {
             {depotLoading ? 'Načítám...' : (depot?.name || 'Praha (výchozí)')}
           </span>
         </div>
+
+        {/* Draft mode banner */}
+        <DraftModeBar
+          hasChanges={isManuallyReordered && stops.length > 0}
+          isSaving={isSaving}
+          lastSaved={lastSaved}
+          onSave={handleSaveRoute}
+          onDiscard={handleDiscardChanges}
+        />
 
         {/* Export buttons */}
         {hasStopsOrRevisions && (
@@ -1066,6 +1258,15 @@ export function Planner() {
 
         {/* Route actions */}
         <div className={styles.routeActions}>
+          {/* Add from inbox button */}
+          <button 
+            className={styles.addFromInboxButton}
+            onClick={handleOpenInboxDrawer}
+            disabled={!isConnected}
+          >
+            ➕ Přidat z fronty
+          </button>
+          
           {scheduledRevisions.length > 0 && stops.length === 0 && (
             <>
               <button 
@@ -1165,6 +1366,16 @@ export function Planner() {
       <div className={styles.mapWrapper}>
         <div ref={mapContainer} className={styles.map} />
       </div>
+
+      {/* Add from inbox drawer */}
+      <AddFromInboxDrawer
+        isOpen={showInboxDrawer}
+        onClose={() => setShowInboxDrawer(false)}
+        candidates={inboxCandidates}
+        selectedDate={selectedDate}
+        onAddToRoute={handleAddFromInbox}
+        isLoading={loadingInboxCandidates}
+      />
     </div>
   );
 }

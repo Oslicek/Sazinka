@@ -15,7 +15,6 @@ import { Planner } from '@/pages/Planner';
 import { PlanningInbox } from '@/pages/PlanningInbox';
 import { Admin } from '@/pages/Admin';
 import { Settings } from '@/pages/Settings';
-import { CallQueue } from '@/pages/CallQueue';
 import { RevisionDetail } from '@/pages/RevisionDetail';
 import { Jobs } from '@/pages/Jobs';
 
@@ -91,11 +90,13 @@ const settingsRoute = createRoute({
   component: Settings,
 });
 
-// Call Queue
+// Call Queue - redirect to new Planning Inbox
 const callQueueRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/queue',
-  component: CallQueue,
+  beforeLoad: () => {
+    throw redirect({ to: '/inbox' });
+  },
 });
 
 // Redirect /today to /planner (TechnicianDay merged into Planner)

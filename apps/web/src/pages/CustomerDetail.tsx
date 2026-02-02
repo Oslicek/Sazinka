@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, Link, useNavigate } from '@tanstack/react-router';
+import { useParams, useNavigate, useSearch } from '@tanstack/react-router';
 import type { Customer, UpdateCustomerRequest } from '@shared/customer';
 import { 
   getCustomer, 
@@ -9,9 +9,12 @@ import {
   subscribeToGeocodeJobStatus,
   type GeocodeJobStatusUpdate,
 } from '../services/customerService';
-import { AddressMap } from '../components/customers/AddressMap';
-import { CustomerForm } from '../components/customers/CustomerForm';
+import { CustomerWorkspace, type TabId } from '../components/customers/CustomerWorkspace';
+import { CustomerHeader } from '../components/customers/CustomerHeader';
+import { CustomerEditDrawer } from '../components/customers/CustomerEditDrawer';
 import { DeleteConfirmDialog } from '../components/customers/DeleteConfirmDialog';
+import { ScheduleDialog, type ScheduleTarget, type Vehicle } from '../components/common/ScheduleDialog';
+import type { SlotSuggestion } from '../components/planner/SlotSuggestions';
 import { DeviceList } from '../components/devices';
 import { CustomerTimeline } from '../components/timeline';
 import { useNatsStore } from '../stores/natsStore';
@@ -20,22 +23,36 @@ import styles from './CustomerDetail.module.css';
 // Temporary user ID until auth is implemented
 const TEMP_USER_ID = '00000000-0000-0000-0000-000000000001';
 
+interface SearchParams {
+  edit?: boolean;
+  tab?: TabId;
+}
+
 export function CustomerDetail() {
   const { customerId } = useParams({ strict: false }) as { customerId: string };
   const navigate = useNavigate();
+  const searchParams = useSearch({ strict: false }) as SearchParams;
+  
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [geocodeJob, setGeocodeJob] = useState<GeocodeJobStatusUpdate | null>(null);
   const geocodeUnsubscribeRef = useRef<(() => void) | null>(null);
   
-  // Edit mode
-  const [isEditing, setIsEditing] = useState(false);
+  // Edit drawer (replaces full-page form)
+  const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(searchParams?.edit ?? false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Active tab
+  const [activeTab, setActiveTab] = useState<TabId>(searchParams?.tab || 'devices');
   
   // Delete dialog
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  
+  // Schedule dialog
+  const [showScheduleDialog, setShowScheduleDialog] = useState(false);
+  const [isScheduling, setIsScheduling] = useState(false);
 
   const isConnected = useNatsStore((s) => s.isConnected);
 
@@ -78,13 +95,13 @@ export function CustomerDetail() {
     };
   }, []);
 
-  const handleEdit = useCallback(() => {
-    setIsEditing(true);
+  const handleOpenEditDrawer = useCallback(() => {
+    setIsEditDrawerOpen(true);
     setError(null);
   }, []);
 
-  const handleCancelEdit = useCallback(() => {
-    setIsEditing(false);
+  const handleCloseEditDrawer = useCallback(() => {
+    setIsEditDrawerOpen(false);
   }, []);
 
   const handleSubmitEdit = useCallback(async (data: UpdateCustomerRequest) => {
@@ -98,7 +115,7 @@ export function CustomerDetail() {
       setError(null);
       const updated = await updateCustomer(TEMP_USER_ID, data as UpdateCustomerRequest);
       setCustomer(updated);
-      setIsEditing(false);
+      setIsEditDrawerOpen(false);
 
       const addressChanged = Boolean(data.street || data.city || data.postalCode);
       const hasCoords = data.lat !== undefined && data.lng !== undefined;
@@ -150,7 +167,6 @@ export function CustomerDetail() {
       setIsDeleting(true);
       setError(null);
       await deleteCustomer(TEMP_USER_ID, customerId);
-      // Navigate back to customer list after successful deletion
       navigate({ to: '/customers' });
     } catch (err) {
       console.error('Failed to delete customer:', err);
@@ -161,23 +177,74 @@ export function CustomerDetail() {
     }
   }, [isConnected, customerId, navigate]);
 
+  // Handle "Add to Plan" action - open schedule dialog
+  const handleAddToPlan = useCallback(() => {
+    if (customer?.lat && customer?.lng) {
+      setShowScheduleDialog(true);
+    }
+  }, [customer?.lat, customer?.lng]);
+
+  // Mock vehicles for now (should be loaded from backend)
+  const mockVehicles: Vehicle[] = [
+    { id: '1', name: 'Auto 1', licensePlate: '1A1 1234' },
+    { id: '2', name: 'Auto 2', licensePlate: '2B2 5678' },
+  ];
+
+  // Handle schedule from dialog
+  const handleSchedule = useCallback(async (
+    _targetId: string,
+    _date: string,
+    _vehicleId: string,
+    _slot: SlotSuggestion
+  ) => {
+    setIsScheduling(true);
+    try {
+      // TODO: Call actual scheduling API
+      console.log('Scheduling visit:', { _targetId, _date, _vehicleId, _slot });
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 500));
+      setShowScheduleDialog(false);
+    } finally {
+      setIsScheduling(false);
+    }
+  }, []);
+
+  // Schedule target for dialog
+  const scheduleTarget: ScheduleTarget | null = customer ? {
+    id: customer.id,
+    name: 'Nová návštěva',
+    customerName: customer.name,
+    lat: customer.lat || 0,
+    lng: customer.lng || 0,
+  } : null;
+
+  // Handle tab change
+  const handleTabChange = useCallback((tab: TabId) => {
+    setActiveTab(tab);
+  }, []);
+
   if (isLoading) {
     return (
       <div className={styles.container}>
-        <div className={styles.loading}>Načítám zákazníka...</div>
+        <div className={styles.loading}>
+          <div className={styles.spinner} />
+          <span>Načítám zákazníka...</span>
+        </div>
       </div>
     );
   }
 
-  if (error) {
+  if (error && !customer) {
     return (
       <div className={styles.container}>
-        <div className={styles.header}>
-          <Link to="/customers" className={styles.backLink}>
+        <div className={styles.errorState}>
+          <span className={styles.errorIcon}>⚠️</span>
+          <h2>Chyba</h2>
+          <p>{error}</p>
+          <button onClick={() => navigate({ to: '/customers' })} className={styles.backButton}>
             ← Zpět na seznam
-          </Link>
+          </button>
         </div>
-        <div className={styles.error}>{error}</div>
       </div>
     );
   }
@@ -185,230 +252,86 @@ export function CustomerDetail() {
   if (!customer) {
     return (
       <div className={styles.container}>
-        <div className={styles.header}>
-          <Link to="/customers" className={styles.backLink}>
+        <div className={styles.errorState}>
+          <span className={styles.errorIcon}>🔍</span>
+          <h2>Zákazník nenalezen</h2>
+          <p>Požadovaný zákazník neexistuje nebo byl smazán.</p>
+          <button onClick={() => navigate({ to: '/customers' })} className={styles.backButton}>
             ← Zpět na seznam
-          </Link>
+          </button>
         </div>
-        <div className={styles.error}>Zákazník nenalezen</div>
       </div>
     );
   }
-
-  // Show edit form
-  if (isEditing) {
-    return (
-      <div className={styles.container}>
-        <div className={styles.header}>
-          <Link to="/customers" className={styles.backLink}>
-            ← Zpět na seznam
-          </Link>
-        </div>
-        <CustomerForm
-          customer={customer}
-          onSubmit={handleSubmitEdit}
-          onCancel={handleCancelEdit}
-          isSubmitting={isSubmitting}
-          onGeocodeCompleted={loadCustomer}
-        />
-        {error && <div className={styles.error}>{error}</div>}
-      </div>
-    );
-  }
-
-  const hasCoordinates = customer.lat !== undefined && customer.lng !== undefined;
-  const isCompany = customer.type === 'company';
 
   return (
     <div className={styles.container}>
-      <div className={styles.header}>
-        <Link to="/customers" className={styles.backLink}>
-          ← Zpět na seznam
-        </Link>
-        <div className={styles.titleRow}>
-          <h1 className={styles.title}>{customer.name}</h1>
-          <span className={`${styles.typeBadge} ${isCompany ? styles.companyBadge : styles.personBadge}`}>
-            {isCompany ? 'Firma' : 'Fyzická osoba'}
+      {/* Header with CTAs */}
+      <CustomerHeader
+        customer={customer}
+        onEdit={handleOpenEditDrawer}
+        onAddToPlan={handleAddToPlan}
+        onDelete={handleDeleteClick}
+      />
+
+      {/* Error banner */}
+      {error && (
+        <div className={styles.errorBanner}>
+          <span>⚠️</span>
+          <span>{error}</span>
+          <button onClick={() => setError(null)}>✕</button>
+        </div>
+      )}
+
+      {/* Geocoding progress */}
+      {geocodeJob && geocodeJob.status.type !== 'completed' && (
+        <div className={styles.infoBanner}>
+          <span>ℹ️</span>
+          <span>
+            {geocodeJob.status.type === 'queued' && 'Geokódování: čeká ve frontě'}
+            {geocodeJob.status.type === 'processing' &&
+              `Geokódování: ${geocodeJob.status.processed}/${geocodeJob.status.total}`}
+            {geocodeJob.status.type === 'failed' && `Geokódování selhalo: ${geocodeJob.status.error}`}
           </span>
         </div>
-      </div>
-
-      {error && <div className={styles.error}>{error}</div>}
-
-      {geocodeJob && (
-        <div className={styles.geocodeWarning}>
-          <span className={styles.warningIcon}>ℹ️</span>
-          <div className={styles.warningContent}>
-            <strong>Geokódování</strong>
-            <p>
-              {geocodeJob.status.type === 'queued' && 'Čeká ve frontě.'}
-              {geocodeJob.status.type === 'processing' &&
-                `Zpracování ${geocodeJob.status.processed}/${geocodeJob.status.total}.`}
-              {geocodeJob.status.type === 'completed' &&
-                `Hotovo (${geocodeJob.status.succeeded}/${geocodeJob.status.total} úspěšně).`}
-              {geocodeJob.status.type === 'failed' && `Selhalo: ${geocodeJob.status.error}`}
-            </p>
-          </div>
-        </div>
       )}
 
+      {/* Address warning */}
       {customer.geocodeStatus === 'failed' && (
-        <div className={styles.geocodeWarning}>
-          <span className={styles.warningIcon}>⚠️</span>
-          <div className={styles.warningContent}>
-            <strong>Adresu nelze lokalizovat</strong>
-            <p>Zadaná adresa nebyla nalezena. Zákazník nebude zahrnut do optimalizace tras.</p>
-          </div>
+        <div className={styles.warningBanner}>
+          <span>⚠️</span>
+          <span>Adresu nelze lokalizovat. Zákazník nebude zahrnut do optimalizace tras.</span>
+          <button onClick={handleOpenEditDrawer}>Opravit adresu</button>
         </div>
       )}
 
-      <div className={styles.content}>
-        {/* Left column - Customer info */}
-        <div className={styles.infoColumn}>
-          {/* Company info section */}
-          {isCompany && (customer.contactPerson || customer.ico || customer.dic) && (
-            <section className={styles.section}>
-              <h2 className={styles.sectionTitle}>Firemní údaje</h2>
-              <div className={styles.companyInfo}>
-                {customer.contactPerson && (
-                  <p>
-                    <span className={styles.label}>Kontaktní osoba:</span>
-                    {customer.contactPerson}
-                  </p>
-                )}
-                {customer.ico && (
-                  <p>
-                    <span className={styles.label}>IČO:</span>
-                    {customer.ico}
-                  </p>
-                )}
-                {customer.dic && (
-                  <p>
-                    <span className={styles.label}>DIČ:</span>
-                    {customer.dic}
-                  </p>
-                )}
-              </div>
-            </section>
-          )}
+      {/* Main workspace with sidebar and tabs */}
+      <CustomerWorkspace
+        customer={customer}
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+        tabs={{
+          devices: (
+            <DeviceList
+              customerId={customer.id}
+              userId={TEMP_USER_ID}
+            />
+          ),
+          revisions: (
+            <CustomerTimeline customerId={customer.id} />
+          ),
+        }}
+      />
 
-          {/* Address section */}
-          <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>Adresa</h2>
-            <div className={styles.address}>
-              <p>{customer.street}</p>
-              <p>{customer.city} {customer.postalCode}</p>
-              <p>{customer.country}</p>
-            </div>
-          </section>
-
-          {/* Contact section */}
-          {(customer.email || customer.phone) && (
-            <section className={styles.section}>
-              <h2 className={styles.sectionTitle}>Kontakt</h2>
-              <div className={styles.contact}>
-                {customer.email && (
-                  <p>
-                    <span className={styles.label}>Email:</span>
-                    <a href={`mailto:${customer.email}`} className={styles.link}>
-                      {customer.email}
-                    </a>
-                  </p>
-                )}
-                {customer.phone && (
-                  <p>
-                    <span className={styles.label}>Telefon:</span>
-                    <a href={`tel:${customer.phone}`} className={styles.link}>
-                      {customer.phone}
-                    </a>
-                  </p>
-                )}
-              </div>
-            </section>
-          )}
-
-          {/* Notes section */}
-          {customer.notes && (
-            <section className={styles.section}>
-              <h2 className={styles.sectionTitle}>Poznámky</h2>
-              <p className={styles.notes}>{customer.notes}</p>
-            </section>
-          )}
-
-          {/* Metadata section */}
-          <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>Informace</h2>
-            <div className={styles.metadata}>
-              <p>
-                <span className={styles.label}>Vytvořeno:</span>
-                {new Date(customer.createdAt).toLocaleDateString('cs-CZ')}
-              </p>
-              <p>
-                <span className={styles.label}>Aktualizováno:</span>
-                {new Date(customer.updatedAt).toLocaleDateString('cs-CZ')}
-              </p>
-            </div>
-          </section>
-        </div>
-
-        {/* Right column - Map */}
-        <div className={styles.mapColumn}>
-          <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>Poloha</h2>
-            {hasCoordinates ? (
-              <div className={styles.mapContainer}>
-                <AddressMap
-                  lat={customer.lat}
-                  lng={customer.lng}
-                  draggable={false}
-                  displayName={`${customer.street}, ${customer.city}`}
-                />
-              </div>
-            ) : (
-              <div className={styles.noMap}>
-                {customer.geocodeStatus === 'failed' ? (
-                  <>
-                    <p className={styles.noMapError}>⚠️ Adresu nelze lokalizovat</p>
-                    <p className={styles.hint}>
-                      Zkontrolujte a opravte adresu zákazníka.
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p>Poloha zákazníka není k dispozici.</p>
-                    <p className={styles.hint}>
-                      Upravte zákazníka a vyplňte adresu pro zobrazení na mapě.
-                    </p>
-                  </>
-                )}
-              </div>
-            )}
-          </section>
-        </div>
-      </div>
-
-      {/* Devices section - full width */}
-      <section className={styles.section} style={{ marginTop: '1.5rem' }}>
-        <DeviceList
-          customerId={customer.id}
-          userId={TEMP_USER_ID}
-        />
-      </section>
-
-      {/* Timeline section - full width */}
-      <section className={styles.section} style={{ marginTop: '1.5rem' }}>
-        <CustomerTimeline customerId={customer.id} />
-      </section>
-
-      {/* Action buttons */}
-      <div className={styles.actions}>
-        <button className={styles.editButton} onClick={handleEdit}>
-          Upravit zákazníka
-        </button>
-        <button className={styles.deleteButton} onClick={handleDeleteClick}>
-          Smazat
-        </button>
-      </div>
+      {/* Edit drawer (slides in from right) */}
+      <CustomerEditDrawer
+        customer={customer}
+        isOpen={isEditDrawerOpen}
+        onClose={handleCloseEditDrawer}
+        onSubmit={handleSubmitEdit}
+        isSubmitting={isSubmitting}
+        onGeocodeCompleted={loadCustomer}
+      />
 
       {/* Delete confirmation dialog */}
       <DeleteConfirmDialog
@@ -417,6 +340,16 @@ export function CustomerDetail() {
         onConfirm={handleConfirmDelete}
         onCancel={handleCancelDelete}
         isDeleting={isDeleting}
+      />
+
+      {/* Schedule dialog (route-aware) */}
+      <ScheduleDialog
+        isOpen={showScheduleDialog}
+        onClose={() => setShowScheduleDialog(false)}
+        target={scheduleTarget}
+        vehicles={mockVehicles}
+        onSchedule={handleSchedule}
+        isSubmitting={isScheduling}
       />
     </div>
   );

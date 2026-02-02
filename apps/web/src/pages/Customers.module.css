@@ -1,4 +1,62 @@
 .customers {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 60px);
+  overflow: hidden;
+}
+
+.content {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.tablePanel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding-right: 1rem;
+}
+
+/* View toggle */
+.viewToggle {
+  display: flex;
+  border: 1px solid var(--border-color, #d1d5db);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.viewButton {
+  padding: 0.5rem 0.75rem;
+  background: var(--card-bg, #fff);
+  border: none;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--text-secondary, #666);
+  transition: all 0.15s;
+}
+
+.viewButton:first-child {
+  border-right: 1px solid var(--border-color, #d1d5db);
+}
+
+.viewButton:hover {
+  background: var(--hover-bg, #f9fafb);
+}
+
+.viewButton.active {
+  background: var(--color-primary, #2563eb);
+  color: white;
+}
+
+/* Geocode status banner */
+.geocodeStatus {
+  padding: 0.75rem 1rem;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
 }
 
 .header {
