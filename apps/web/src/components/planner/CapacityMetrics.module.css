@@ -1,0 +1,91 @@
+.metrics {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.metric {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  cursor: default;
+}
+
+.label {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.value {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.separator {
+  color: var(--color-text-secondary);
+  opacity: 0.5;
+}
+
+.statusIcon {
+  font-size: 0.75rem;
+}
+
+/* Status colors */
+.ok .value {
+  color: var(--color-text);
+}
+
+.tight .value {
+  color: var(--color-warning);
+}
+
+.tight .statusIcon {
+  filter: none;
+}
+
+.overloaded .value {
+  color: var(--color-error);
+}
+
+/* Hover effect */
+.metric:hover {
+  background-color: var(--color-bg-secondary);
+  border-radius: var(--radius-sm);
+  padding: 0.125rem 0.375rem;
+  margin: -0.125rem -0.375rem;
+}
+
+/* Mobile */
+@media (max-width: 600px) {
+  .metrics {
+    gap: 0.5rem;
+  }
+
+  .separator {
+    display: none;
+  }
+
+  .metric {
+    padding: 0.25rem 0.5rem;
+    background-color: var(--color-bg-secondary);
+    border-radius: var(--radius-sm);
+  }
+
+  .metric:hover {
+    margin: 0;
+    padding: 0.25rem 0.5rem;
+  }
+
+  .label {
+    font-size: 0.625rem;
+  }
+
+  .value {
+    font-size: 0.75rem;
+  }
+}

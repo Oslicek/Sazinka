@@ -12,6 +12,7 @@ import { CustomerDetail } from '@/pages/CustomerDetail';
 import { CustomerSummary } from '@/pages/CustomerSummary';
 import { Calendar } from '@/pages/Calendar';
 import { Planner } from '@/pages/Planner';
+import { PlanningInbox } from '@/pages/PlanningInbox';
 import { Admin } from '@/pages/Admin';
 import { Settings } from '@/pages/Settings';
 import { CallQueue } from '@/pages/CallQueue';
@@ -69,6 +70,13 @@ const plannerRoute = createRoute({
   component: Planner,
 });
 
+// Planning Inbox (route-aware)
+const inboxRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/inbox',
+  component: PlanningInbox,
+});
+
 // Admin
 const adminRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -121,6 +129,7 @@ export const routeTree = rootRoute.addChildren([
   customerDetailRoute,
   calendarRoute,
   plannerRoute,
+  inboxRoute,
   callQueueRoute,
   todayRedirectRoute,
   revisionDetailRoute,
