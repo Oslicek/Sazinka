@@ -156,6 +156,8 @@ export interface CallQueueItem {
   customerStreet: string;
   customerCity: string;
   customerPostalCode: string;
+  customerLat: number | null;
+  customerLng: number | null;
   deviceName: string | null;
   deviceType: string;
   daysUntilDue: number;

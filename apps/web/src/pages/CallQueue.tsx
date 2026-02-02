@@ -8,6 +8,11 @@ import {
   type CallQueueRequest,
   type CallQueueResponse,
 } from '../services/revisionService';
+import {
+  suggestSlots,
+  formatSlotTime,
+  type SuggestedSlot,
+} from '../services/slotService';
 import styles from './CallQueue.module.css';
 
 // Mock user ID for now
@@ -58,6 +63,10 @@ export function CallQueue() {
   const [scheduleTimeStart, setScheduleTimeStart] = useState('');
   const [scheduleTimeEnd, setScheduleTimeEnd] = useState('');
   const [scheduleDuration, setScheduleDuration] = useState(30);
+  
+  // Slot suggestions
+  const [suggestedSlots, setSuggestedSlots] = useState<SuggestedSlot[]>([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
 
   const loadQueue = useCallback(async () => {
     if (!isConnected) return;
@@ -103,6 +112,32 @@ export function CallQueue() {
     }
   };
 
+  const loadSlotSuggestions = useCallback(async (date: string) => {
+    if (!selectedItem || !date) {
+      setSuggestedSlots([]);
+      return;
+    }
+    
+    setLoadingSlots(true);
+    try {
+      const response = await suggestSlots(USER_ID, {
+        date,
+        customerCoordinates: {
+          lat: selectedItem.customerLat || 50.0,
+          lng: selectedItem.customerLng || 14.4,
+        },
+        serviceDurationMinutes: scheduleDuration,
+        maxSuggestions: 5,
+      });
+      setSuggestedSlots(response.slots);
+    } catch (err) {
+      console.error('Failed to load slot suggestions:', err);
+      setSuggestedSlots([]);
+    } finally {
+      setLoadingSlots(false);
+    }
+  }, [selectedItem, scheduleDuration]);
+
   const handleSchedule = async () => {
     if (!selectedItem || !scheduleDate) return;
     
@@ -119,10 +154,16 @@ export function CallQueue() {
       setScheduleDate('');
       setScheduleTimeStart('');
       setScheduleTimeEnd('');
+      setSuggestedSlots([]);
       loadQueue();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to schedule revision');
     }
+  };
+
+  const selectSlot = (slot: SuggestedSlot) => {
+    setScheduleTimeStart(formatSlotTime(slot.startTime));
+    setScheduleTimeEnd(formatSlotTime(slot.endTime));
   };
 
   const formatDate = (dateStr: string) => {
@@ -364,10 +405,53 @@ export function CallQueue() {
               <input
                 type="date"
                 value={scheduleDate}
-                onChange={(e) => setScheduleDate(e.target.value)}
+                onChange={(e) => {
+                  setScheduleDate(e.target.value);
+                  loadSlotSuggestions(e.target.value);
+                }}
                 min={new Date().toISOString().split('T')[0]}
               />
             </div>
+
+            {/* Smart Slot Suggestions */}
+            {scheduleDate && (
+              <div className={styles.slotSuggestions}>
+                <label>Doporučené sloty:</label>
+                {loadingSlots ? (
+                  <div className={styles.loadingSlots}>Načítám...</div>
+                ) : suggestedSlots.length > 0 ? (
+                  <div className={styles.slotList}>
+                    {suggestedSlots.map((slot, index) => (
+                      <button
+                        key={index}
+                        type="button"
+                        className={styles.slotButton}
+                        onClick={() => selectSlot(slot)}
+                        title={slot.reason}
+                      >
+                        <span className={styles.slotTime}>
+                          {formatSlotTime(slot.startTime)} - {formatSlotTime(slot.endTime)}
+                        </span>
+                        <span 
+                          className={styles.slotScore}
+                          style={{ 
+                            color: slot.score >= 80 ? 'var(--color-success)' : 
+                                   slot.score >= 60 ? 'var(--color-warning)' : 'var(--color-error)'
+                          }}
+                        >
+                          {slot.score}%
+                        </span>
+                        {slot.deltaTravelMinutes > 0 && (
+                          <span className={styles.slotDelta}>+{slot.deltaTravelMinutes}min</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className={styles.noSlots}>Žádné návrhy pro tento den</div>
+                )}
+              </div>
+            )}
 
             <div className={styles.formRow}>
               <div className={styles.formGroup}>

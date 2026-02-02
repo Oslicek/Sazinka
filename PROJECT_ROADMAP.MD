@@ -894,24 +894,24 @@ CREATE TABLE vehicles (
 
 ---
 
-### 6E: Smart Slots (V2)
+### 6E: Smart Slots (V2) ✅
 
 **NATS subject:**
-- `sazinka.slots.suggest` - Get best slots for new appointment
+- [x] `sazinka.slots.suggest` - Get best slots for new appointment ✅
 
-**Algorithm (insertion heuristic):**
-1. Load existing route for day + vehicle
-2. For each possible time slot (e.g., 08-10, 10-12, 12-14...):
-   - Try inserting new stop at each position
-   - Calculate delta travel time using Valhalla
-   - Check feasibility (time windows)
-   - Score: 60% delta time + 25% slack + 15% area coherence
-3. Return top 3-5 slots with impact visualization
+**Algorithm (insertion heuristic) - TDD implemented:**
+1. [x] Load existing scheduled revisions for day ✅
+2. [x] Try inserting at each position in route ✅
+3. [x] Calculate delta travel time (Euclidean estimate) ✅
+4. [x] Check feasibility (work hours) ✅
+5. [x] Score: 60% delta time + 25% preferred time + 15% slack ✅
+6. [x] Return top N slots sorted by score ✅
 
-**Files to create:**
-- [ ] `worker/src/services/slot_suggester.rs` - NEW
-- [ ] `worker/src/handlers/slots.rs` - NEW
-- [ ] `apps/web/src/services/slotService.ts` - NEW
+**Files created:**
+- [x] `worker/src/services/slot_suggester.rs` - Algorithm with 8 unit tests ✅
+- [x] `worker/src/handlers/slots.rs` - NATS handler ✅
+- [x] `apps/web/src/services/slotService.ts` - Frontend service ✅
+- [x] CallQueue.tsx - Smart slot suggestions in schedule modal ✅
 
 ---
 

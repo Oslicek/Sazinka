@@ -424,3 +424,66 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Slot Suggestions */
+.slotSuggestions {
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+}
+
+.slotSuggestions label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+  color: #0369a1;
+  font-weight: 600;
+}
+
+.loadingSlots,
+.noSlots {
+  font-size: 0.85rem;
+  color: #6b7280;
+  padding: 0.5rem 0;
+}
+
+.slotList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.slotButton {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.2s;
+}
+
+.slotButton:hover {
+  border-color: var(--color-primary);
+  background: #eff6ff;
+}
+
+.slotTime {
+  font-weight: 500;
+  color: #1f2937;
+}
+
+.slotScore {
+  font-weight: 700;
+  font-size: 0.75rem;
+}
+
+.slotDelta {
+  font-size: 0.7rem;
+  color: #6b7280;
+}

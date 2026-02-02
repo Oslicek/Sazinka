@@ -11,6 +11,7 @@ pub mod ping;
 pub mod revision;
 pub mod route;
 pub mod settings;
+pub mod slots;
 pub mod vehicle;
 pub mod visit;
 
@@ -72,6 +73,9 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let revision_queue_sub = client.subscribe("sazinka.revision.queue").await?;
     let revision_snooze_sub = client.subscribe("sazinka.revision.snooze").await?;
     let revision_schedule_sub = client.subscribe("sazinka.revision.schedule").await?;
+    
+    // Slots subjects
+    let slots_suggest_sub = client.subscribe("sazinka.slots.suggest").await?;
     
     // Settings subjects
     let settings_get_sub = client.subscribe("sazinka.settings.get").await?;
@@ -146,6 +150,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let client_revision_queue = client.clone();
     let client_revision_snooze = client.clone();
     let client_revision_schedule = client.clone();
+    let client_slots_suggest = client.clone();
     
     let pool_customer_create = pool.clone();
     let pool_customer_list = pool.clone();
@@ -177,6 +182,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_revision_queue = pool.clone();
     let pool_revision_snooze = pool.clone();
     let pool_revision_schedule = pool.clone();
+    let pool_slots_suggest = pool.clone();
     
     // Settings handler clones
     let client_settings_get = client.clone();
@@ -374,6 +380,11 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     
     let revision_schedule_handle = tokio::spawn(async move {
         revision::handle_schedule(client_revision_schedule, revision_schedule_sub, pool_revision_schedule).await
+    });
+    
+    // Slots handlers
+    let slots_suggest_handle = tokio::spawn(async move {
+        slots::handle_suggest(client_slots_suggest, slots_suggest_sub, pool_slots_suggest).await
     });
     
     // Settings handlers
@@ -639,6 +650,10 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         }
         result = revision_schedule_handle => {
             error!("Revision schedule handler finished: {:?}", result);
+        }
+        // Slots handlers
+        result = slots_suggest_handle => {
+            error!("Slots suggest handler finished: {:?}", result);
         }
         // Settings handlers
         result = settings_get_handle => {

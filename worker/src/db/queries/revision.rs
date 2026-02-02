@@ -603,6 +603,8 @@ pub async fn get_call_queue(
             c.street as customer_street,
             c.city as customer_city,
             c.postal_code as customer_postal_code,
+            c.lat as customer_lat,
+            c.lng as customer_lng,
             d.model as device_name,
             d.device_type,
             (r.due_date - $2::date)::int as days_until_due,

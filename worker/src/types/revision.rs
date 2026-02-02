@@ -260,6 +260,8 @@ pub struct CallQueueItem {
     pub customer_street: String,
     pub customer_city: String,
     pub customer_postal_code: Option<String>,
+    pub customer_lat: Option<f64>,
+    pub customer_lng: Option<f64>,
     
     // Device fields
     pub device_name: String,

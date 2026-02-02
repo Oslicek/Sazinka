@@ -11,6 +11,7 @@
 > - ✅ Kalendář - přepínač Termíny/Naplánované
 > - ✅ Plánovač - záložky Doporučené/Naplánované
 > - ✅ Pohled technika (`/today`) - mobilní denní plán, Google Maps export, tisk
+> - ✅ Smart Slots - inteligentní návrhy časových slotů podle existující trasy
 
 ## Přehled
 
