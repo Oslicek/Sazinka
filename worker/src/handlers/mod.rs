@@ -21,10 +21,97 @@ use async_nats::Client;
 use sqlx::PgPool;
 use tracing::{info, error};
 use tokio::select;
+use futures::StreamExt;
+use uuid::Uuid;
 
 use crate::config::Config;
 use crate::services::geocoding::{create_geocoder, Geocoder};
 use crate::services::routing::{RoutingService, create_routing_service_with_fallback};
+use crate::services::valhalla_processor::ValhallaProcessor;
+use crate::types::{
+    Request, SuccessResponse, ErrorResponse,
+    MatrixJobRequest, GeometryJobRequest,
+};
+
+// ==========================================================================
+// Valhalla JetStream Handlers
+// ==========================================================================
+
+/// Handle valhalla.matrix.submit requests
+async fn handle_valhalla_matrix_submit(
+    client: Client,
+    mut subscriber: async_nats::Subscriber,
+    processor: Arc<ValhallaProcessor>,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        let reply = match msg.reply {
+            Some(ref r) => r.clone(),
+            None => continue,
+        };
+        
+        let request: Request<MatrixJobRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("Failed to parse valhalla matrix submit request: {}", e);
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+        
+        match processor.submit_matrix_job(request.payload.locations).await {
+            Ok(response) => {
+                let success = SuccessResponse::new(request.id, response);
+                let _ = client.publish(reply, serde_json::to_vec(&success)?.into()).await;
+            }
+            Err(e) => {
+                error!("Failed to submit matrix job: {}", e);
+                let error = ErrorResponse::new(request.id, "SUBMIT_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+    
+    Ok(())
+}
+
+/// Handle valhalla.geometry.submit requests
+async fn handle_valhalla_geometry_submit(
+    client: Client,
+    mut subscriber: async_nats::Subscriber,
+    processor: Arc<ValhallaProcessor>,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        let reply = match msg.reply {
+            Some(ref r) => r.clone(),
+            None => continue,
+        };
+        
+        let request: Request<GeometryJobRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("Failed to parse valhalla geometry submit request: {}", e);
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+        
+        match processor.submit_geometry_job(request.payload.locations).await {
+            Ok(response) => {
+                let success = SuccessResponse::new(request.id, response);
+                let _ = client.publish(reply, serde_json::to_vec(&success)?.into()).await;
+            }
+            Err(e) => {
+                error!("Failed to submit geometry job: {}", e);
+                let error = ErrorResponse::new(request.id, "SUBMIT_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+    
+    Ok(())
+}
 
 /// Start all message handlers
 pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Result<()> {
@@ -612,6 +699,145 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         }
     });
 
+    // Start Valhalla processor (JetStream-based routing)
+    if let Some(ref valhalla_url) = config.valhalla_url {
+        let client_valhalla = client.clone();
+        let valhalla_url_clone = valhalla_url.clone();
+        tokio::spawn(async move {
+            match crate::services::valhalla_processor::ValhallaProcessor::new(
+                client_valhalla.clone(),
+                &valhalla_url_clone,
+            ).await {
+                Ok(processor) => {
+                    let processor = Arc::new(processor);
+                    
+                    // Subscribe to Valhalla job subjects
+                    let matrix_submit_sub = match client_valhalla.subscribe("sazinka.valhalla.matrix.submit").await {
+                        Ok(sub) => sub,
+                        Err(e) => {
+                            error!("Failed to subscribe to valhalla.matrix.submit: {}", e);
+                            return;
+                        }
+                    };
+                    let geometry_submit_sub = match client_valhalla.subscribe("sazinka.valhalla.geometry.submit").await {
+                        Ok(sub) => sub,
+                        Err(e) => {
+                            error!("Failed to subscribe to valhalla.geometry.submit: {}", e);
+                            return;
+                        }
+                    };
+                    
+                    // Start submit handlers
+                    let client_matrix = client_valhalla.clone();
+                    let processor_matrix = Arc::clone(&processor);
+                    tokio::spawn(async move {
+                        if let Err(e) = handle_valhalla_matrix_submit(client_matrix, matrix_submit_sub, processor_matrix).await {
+                            error!("Valhalla matrix submit handler error: {}", e);
+                        }
+                    });
+                    
+                    let client_geometry = client_valhalla.clone();
+                    let processor_geometry = Arc::clone(&processor);
+                    tokio::spawn(async move {
+                        if let Err(e) = handle_valhalla_geometry_submit(client_geometry, geometry_submit_sub, processor_geometry).await {
+                            error!("Valhalla geometry submit handler error: {}", e);
+                        }
+                    });
+                    
+                    // Start job processors
+                    let processor_matrix_worker = Arc::clone(&processor);
+                    tokio::spawn(async move {
+                        if let Err(e) = processor_matrix_worker.start_matrix_processing().await {
+                            error!("Valhalla matrix processor error: {}", e);
+                        }
+                    });
+                    
+                    let processor_geometry_worker = Arc::clone(&processor);
+                    tokio::spawn(async move {
+                        if let Err(e) = processor_geometry_worker.start_geometry_processing().await {
+                            error!("Valhalla geometry processor error: {}", e);
+                        }
+                    });
+                    
+                    info!("Valhalla JetStream processor started");
+                }
+                Err(e) => {
+                    error!("Failed to create Valhalla processor: {}", e);
+                }
+            }
+        });
+    } else {
+        info!("Valhalla URL not configured, skipping Valhalla JetStream processor");
+    }
+
+    // Start route planning job processor (JetStream-based)
+    let client_route_jobs = client.clone();
+    let pool_route_jobs = pool.clone();
+    let routing_service_jobs = Arc::clone(&routing_service);
+    tokio::spawn(async move {
+        match jobs::JobProcessor::new(client_route_jobs.clone(), pool_route_jobs, routing_service_jobs).await {
+            Ok(processor) => {
+                let processor = Arc::new(processor);
+                
+                // Subscribe to route job submit
+                let route_submit_sub = match client_route_jobs.subscribe("sazinka.route.submit").await {
+                    Ok(sub) => sub,
+                    Err(e) => {
+                        error!("Failed to subscribe to route.submit: {}", e);
+                        return;
+                    }
+                };
+                
+                // Start submit handler
+                let client_submit = client_route_jobs.clone();
+                let processor_submit = Arc::clone(&processor);
+                tokio::spawn(async move {
+                    if let Err(e) = jobs::handle_job_submit(client_submit, route_submit_sub, processor_submit).await {
+                        error!("Route job submit handler error: {}", e);
+                    }
+                });
+                
+                // Start job processing
+                let processor_main = Arc::clone(&processor);
+                tokio::spawn(async move {
+                    if let Err(e) = processor_main.start_processing().await {
+                        error!("Route job processor error: {}", e);
+                    }
+                });
+                
+                info!("Route job processor started");
+            }
+            Err(e) => {
+                error!("Failed to create route job processor: {}", e);
+            }
+        }
+    });
+
+    // Start job management handlers (history, cancel, retry)
+    let client_job_history = client.clone();
+    let job_history_sub = client.subscribe("sazinka.jobs.history").await?;
+    let job_history_handle = tokio::spawn(async move {
+        if let Err(e) = jobs::handle_job_history(client_job_history, job_history_sub).await {
+            error!("Job history handler error: {}", e);
+        }
+    });
+    
+    let client_job_cancel = client.clone();
+    let job_cancel_sub = client.subscribe("sazinka.jobs.cancel").await?;
+    let job_cancel_handle = tokio::spawn(async move {
+        if let Err(e) = jobs::handle_job_cancel(client_job_cancel, job_cancel_sub).await {
+            error!("Job cancel handler error: {}", e);
+        }
+    });
+    
+    let client_job_retry = client.clone();
+    let job_retry_sub = client.subscribe("sazinka.jobs.retry").await?;
+    let job_retry_handle = tokio::spawn(async move {
+        if let Err(e) = jobs::handle_job_retry(client_job_retry, job_retry_sub).await {
+            error!("Job retry handler error: {}", e);
+        }
+    });
+
     info!("All handlers started, waiting for messages...");
 
     // Wait for any handler to finish (which means an error occurred)
@@ -792,6 +1018,16 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         }
         result = import_visit_handle => {
             error!("Import visit handler finished: {:?}", result);
+        }
+        // Job management handlers
+        result = job_history_handle => {
+            error!("Job history handler finished: {:?}", result);
+        }
+        result = job_cancel_handle => {
+            error!("Job cancel handler finished: {:?}", result);
+        }
+        result = job_retry_handle => {
+            error!("Job retry handler finished: {:?}", result);
         }
     }
 

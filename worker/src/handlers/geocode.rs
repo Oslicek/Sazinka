@@ -233,8 +233,11 @@ impl GeocodeProcessor {
     
     /// Process a single geocoding job
     async fn process_job(&self, msg: jetstream::Message) -> Result<()> {
+        use crate::services::job_history::JOB_HISTORY;
+        
         let job: QueuedGeocodeJob = serde_json::from_slice(&msg.payload)?;
         let job_id = job.id;
+        let started_at = job.submitted_at;
         let customer_ids = &job.request.customer_ids;
         let total = customer_ids.len() as u32;
         
@@ -292,6 +295,14 @@ impl GeocodeProcessor {
             error!("Failed to ack geocode job {}: {:?}", job_id, e);
         }
         
+        // Record in job history
+        JOB_HISTORY.record_completed(
+            job_id,
+            "geocode",
+            started_at,
+            Some(format!("{}/{} succeeded", succeeded, total)),
+        );
+        
         info!("Geocode job {} completed: {}/{} succeeded, {} failed", 
               job_id, succeeded, total, failed);
         
@@ -299,6 +310,8 @@ impl GeocodeProcessor {
     }
 
     async fn process_address_job(&self, msg: jetstream::Message) -> Result<()> {
+        use crate::services::job_history::JOB_HISTORY;
+        
         #[derive(serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct QueuedAddressJob {
@@ -309,6 +322,7 @@ impl GeocodeProcessor {
 
         let job: QueuedAddressJob = serde_json::from_slice(&msg.payload)?;
         let job_id = job.id;
+        let started_at = job.submitted_at;
 
         self.publish_address_status(job_id, GeocodeAddressJobStatus::Processing).await?;
 
@@ -322,15 +336,17 @@ impl GeocodeProcessor {
             Some(geo) => {
                 self.publish_address_status(job_id, GeocodeAddressJobStatus::Completed {
                     coordinates: geo.coordinates,
-                    display_name: Some(geo.display_name),
+                    display_name: Some(geo.display_name.clone()),
                 }).await?;
                 let _ = msg.ack().await;
+                JOB_HISTORY.record_completed(job_id, "geocode.address", started_at, Some(geo.display_name));
             }
             None => {
                 self.publish_address_status(job_id, GeocodeAddressJobStatus::Failed {
                     error: "Address not found".to_string(),
                 }).await?;
                 let _ = msg.ack().await;
+                JOB_HISTORY.record_failed(job_id, "geocode.address", started_at, "Address not found".to_string());
             }
         }
 
@@ -338,6 +354,8 @@ impl GeocodeProcessor {
     }
 
     async fn process_reverse_job(&self, msg: jetstream::Message) -> Result<()> {
+        use crate::services::job_history::JOB_HISTORY;
+        
         #[derive(serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct QueuedReverseJob {
@@ -348,6 +366,7 @@ impl GeocodeProcessor {
 
         let job: QueuedReverseJob = serde_json::from_slice(&msg.payload)?;
         let job_id = job.id;
+        let started_at = job.submitted_at;
 
         self.publish_reverse_status(job_id, ReverseGeocodeJobStatus::Processing).await?;
 
@@ -372,18 +391,20 @@ impl GeocodeProcessor {
                 .await?;
 
                 self.publish_reverse_status(job_id, ReverseGeocodeJobStatus::Completed {
-                    street: addr.street,
-                    city: addr.city,
-                    postal_code: addr.postal_code,
-                    display_name: Some(addr.display_name),
+                    street: addr.street.clone(),
+                    city: addr.city.clone(),
+                    postal_code: addr.postal_code.clone(),
+                    display_name: Some(addr.display_name.clone()),
                 }).await?;
                 let _ = msg.ack().await;
+                JOB_HISTORY.record_completed(job_id, "geocode.reverse", started_at, Some(addr.display_name));
             }
             None => {
                 self.publish_reverse_status(job_id, ReverseGeocodeJobStatus::Failed {
                     error: "Reverse geocode failed".to_string(),
                 }).await?;
                 let _ = msg.ack().await;
+                JOB_HISTORY.record_failed(job_id, "geocode.reverse", started_at, "Reverse geocode failed".to_string());
             }
         }
 

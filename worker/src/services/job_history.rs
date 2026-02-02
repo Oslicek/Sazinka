@@ -1,0 +1,222 @@
+//! Job history service
+//!
+//! Stores recent job completions in memory and provides API to query them.
+//! This enables the Jobs Dashboard to show historical data.
+
+use std::collections::VecDeque;
+use std::sync::Arc;
+use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+use chrono::{DateTime, Utc};
+
+/// Maximum number of jobs to keep in history
+const MAX_HISTORY_SIZE: usize = 100;
+
+/// Job entry in history
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobHistoryEntry {
+    pub id: Uuid,
+    pub job_type: String,
+    pub status: String,
+    pub started_at: DateTime<Utc>,
+    pub completed_at: DateTime<Utc>,
+    pub duration_ms: u64,
+    pub error: Option<String>,
+    pub details: Option<String>,
+}
+
+/// Response for listing job history
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobHistoryResponse {
+    pub jobs: Vec<JobHistoryEntry>,
+    pub total: usize,
+}
+
+/// In-memory job history storage
+pub struct JobHistoryService {
+    history: Arc<RwLock<VecDeque<JobHistoryEntry>>>,
+}
+
+impl JobHistoryService {
+    pub fn new() -> Self {
+        Self {
+            history: Arc::new(RwLock::new(VecDeque::with_capacity(MAX_HISTORY_SIZE))),
+        }
+    }
+    
+    /// Record a completed job
+    pub fn record_completed(
+        &self,
+        id: Uuid,
+        job_type: &str,
+        started_at: DateTime<Utc>,
+        details: Option<String>,
+    ) {
+        let completed_at = Utc::now();
+        let duration_ms = (completed_at - started_at).num_milliseconds() as u64;
+        
+        let entry = JobHistoryEntry {
+            id,
+            job_type: job_type.to_string(),
+            status: "completed".to_string(),
+            started_at,
+            completed_at,
+            duration_ms,
+            error: None,
+            details,
+        };
+        
+        self.add_entry(entry);
+    }
+    
+    /// Record a failed job
+    pub fn record_failed(
+        &self,
+        id: Uuid,
+        job_type: &str,
+        started_at: DateTime<Utc>,
+        error: String,
+    ) {
+        let completed_at = Utc::now();
+        let duration_ms = (completed_at - started_at).num_milliseconds() as u64;
+        
+        let entry = JobHistoryEntry {
+            id,
+            job_type: job_type.to_string(),
+            status: "failed".to_string(),
+            started_at,
+            completed_at,
+            duration_ms,
+            error: Some(error),
+            details: None,
+        };
+        
+        self.add_entry(entry);
+    }
+    
+    fn add_entry(&self, entry: JobHistoryEntry) {
+        let mut history = self.history.write();
+        
+        // Remove oldest if at capacity
+        if history.len() >= MAX_HISTORY_SIZE {
+            history.pop_back();
+        }
+        
+        // Add new entry at front (most recent first)
+        history.push_front(entry);
+    }
+    
+    /// Get recent job history
+    pub fn get_recent(&self, limit: usize) -> JobHistoryResponse {
+        let history = self.history.read();
+        let jobs: Vec<JobHistoryEntry> = history
+            .iter()
+            .take(limit)
+            .cloned()
+            .collect();
+        let total = history.len();
+        
+        JobHistoryResponse { jobs, total }
+    }
+    
+    /// Get jobs by type
+    pub fn get_by_type(&self, job_type: &str, limit: usize) -> JobHistoryResponse {
+        let history = self.history.read();
+        let jobs: Vec<JobHistoryEntry> = history
+            .iter()
+            .filter(|j| j.job_type == job_type)
+            .take(limit)
+            .cloned()
+            .collect();
+        let total = jobs.len();
+        
+        JobHistoryResponse { jobs, total }
+    }
+    
+    /// Get jobs by status
+    pub fn get_by_status(&self, status: &str, limit: usize) -> JobHistoryResponse {
+        let history = self.history.read();
+        let jobs: Vec<JobHistoryEntry> = history
+            .iter()
+            .filter(|j| j.status == status)
+            .take(limit)
+            .cloned()
+            .collect();
+        let total = jobs.len();
+        
+        JobHistoryResponse { jobs, total }
+    }
+}
+
+impl Default for JobHistoryService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// Global instance for easy access
+lazy_static::lazy_static! {
+    pub static ref JOB_HISTORY: JobHistoryService = JobHistoryService::new();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_record_completed_job() {
+        let service = JobHistoryService::new();
+        let id = Uuid::new_v4();
+        let started_at = Utc::now() - chrono::Duration::seconds(5);
+        
+        service.record_completed(id, "geocode", started_at, Some("5 addresses".to_string()));
+        
+        let history = service.get_recent(10);
+        assert_eq!(history.jobs.len(), 1);
+        assert_eq!(history.jobs[0].id, id);
+        assert_eq!(history.jobs[0].status, "completed");
+    }
+
+    #[test]
+    fn test_record_failed_job() {
+        let service = JobHistoryService::new();
+        let id = Uuid::new_v4();
+        let started_at = Utc::now();
+        
+        service.record_failed(id, "geocode", started_at, "Connection timeout".to_string());
+        
+        let history = service.get_recent(10);
+        assert_eq!(history.jobs.len(), 1);
+        assert_eq!(history.jobs[0].status, "failed");
+        assert_eq!(history.jobs[0].error, Some("Connection timeout".to_string()));
+    }
+
+    #[test]
+    fn test_history_limit() {
+        let service = JobHistoryService::new();
+        
+        // Add more than MAX_HISTORY_SIZE jobs
+        for i in 0..150 {
+            let id = Uuid::new_v4();
+            service.record_completed(id, "test", Utc::now(), Some(format!("Job {}", i)));
+        }
+        
+        let history = service.get_recent(200);
+        assert_eq!(history.jobs.len(), MAX_HISTORY_SIZE);
+    }
+
+    #[test]
+    fn test_get_by_type() {
+        let service = JobHistoryService::new();
+        
+        service.record_completed(Uuid::new_v4(), "geocode", Utc::now(), None);
+        service.record_completed(Uuid::new_v4(), "route", Utc::now(), None);
+        service.record_completed(Uuid::new_v4(), "geocode", Utc::now(), None);
+        
+        let geocode_jobs = service.get_by_type("geocode", 10);
+        assert_eq!(geocode_jobs.jobs.len(), 2);
+    }
+}

@@ -1927,6 +1927,8 @@ dependencies = [
  "chrono",
  "dotenvy",
  "futures",
+ "lazy_static",
+ "parking_lot",
  "reqwest",
  "serde",
  "serde_json",

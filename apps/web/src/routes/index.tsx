@@ -16,6 +16,7 @@ import { Admin } from '@/pages/Admin';
 import { Settings } from '@/pages/Settings';
 import { CallQueue } from '@/pages/CallQueue';
 import { RevisionDetail } from '@/pages/RevisionDetail';
+import { Jobs } from '@/pages/Jobs';
 
 // Root route with layout
 const rootRoute = createRootRoute({
@@ -105,6 +106,13 @@ const revisionDetailRoute = createRoute({
   component: RevisionDetail,
 });
 
+// Jobs Dashboard
+const jobsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/jobs',
+  component: Jobs,
+});
+
 // Route tree
 export const routeTree = rootRoute.addChildren([
   indexRoute,
@@ -116,6 +124,7 @@ export const routeTree = rootRoute.addChildren([
   callQueueRoute,
   todayRedirectRoute,
   revisionDetailRoute,
+  jobsRoute,
   adminRoute,
   settingsRoute,
 ]);

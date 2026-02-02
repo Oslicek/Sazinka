@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Link } from '@tanstack/react-router';
 import maplibregl from 'maplibre-gl';
 import { useNatsStore } from '../stores/natsStore';
-import { v4 as uuidv4 } from 'uuid';
 import type { RoutePlanResponse, PlannedRouteStop } from '@sazinka/shared-types';
 import * as settingsService from '../services/settingsService';
 import { 
@@ -14,6 +13,7 @@ import {
   type CallQueueItem,
 } from '../services/revisionService';
 import * as routeService from '../services/routeService';
+import type { RouteJobStatusUpdate } from '../services/routeService';
 import {
   DndContext,
   closestCenter,
@@ -109,6 +109,10 @@ export function Planner() {
   const [isLoadingSaved, setIsLoadingSaved] = useState(false);
   const [hasSavedRoute, setHasSavedRoute] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  
+  // Route job state (async optimization)
+  const [routeJob, setRouteJob] = useState<RouteJobStatusUpdate | null>(null);
+  const routeJobUnsubscribeRef = useRef<(() => void) | null>(null);
 
   const { request, isConnected } = useNatsStore();
   
@@ -337,7 +341,7 @@ export function Planner() {
     }
   }, [clearMarkers, depot]);
 
-  // Optimize route with VRP solver
+  // Optimize route with VRP solver (async via job queue)
   const handleOptimizeRoute = async () => {
     if (!isConnected) {
       setError('Není připojeno k serveru');
@@ -356,50 +360,95 @@ export function Planner() {
 
     setIsLoading(true);
     setError(null);
+    setRouteJob(null);
 
     try {
       const customerIds = [...new Set(scheduledRevisions.map(r => r.customerId))];
       
-      const planResponse = await request<any, NatsResponse<RoutePlanResponse>>(
-        'sazinka.route.plan',
-        {
-          id: uuidv4(),
-          timestamp: new Date().toISOString(),
-          userId: USER_ID,
-          payload: {
-            startLocation: { lat: depot.lat, lng: depot.lng },
-            customerIds,
-            date: selectedDate,
-          },
-        },
-        60000
-      );
-
-      if (isErrorResponse(planResponse)) {
-        throw new Error(planResponse.error.message || 'Nepodařilo se optimalizovat trasu');
-      }
-
-      const result = planResponse.payload;
-      const geometry = result.geometry || [];
+      // Submit job to queue
+      const jobResponse = await routeService.submitRoutePlanJob({
+        customerIds,
+        date: selectedDate,
+        startLocation: { lat: depot.lat, lng: depot.lng },
+      });
       
-      setStops(result.stops);
-      setTotalDistance(result.totalDistanceKm);
-      setTotalDuration(result.totalDurationMinutes);
-      setOptimizationScore(result.optimizationScore);
-      setAlgorithmName(result.algorithm);
-      setSolveTimeMs(result.solveTimeMs);
-      setRouteWarnings(result.warnings.map((w: { message: string }) => w.message));
-      setRouteGeometry(geometry);
-      setIsManuallyReordered(false);
-
-      addStopMarkers(result.stops, geometry);
-
+      // Set initial queued status
+      setRouteJob({
+        jobId: jobResponse.jobId,
+        timestamp: new Date().toISOString(),
+        status: { 
+          type: 'queued', 
+          position: jobResponse.position,
+          estimatedWaitSeconds: jobResponse.estimatedWaitSeconds,
+        },
+      });
+      
+      // Cleanup previous subscription
+      if (routeJobUnsubscribeRef.current) {
+        routeJobUnsubscribeRef.current();
+      }
+      
+      // Subscribe to status updates
+      const unsubscribe = await routeService.subscribeToRouteJobStatus(
+        jobResponse.jobId,
+        (update) => {
+          setRouteJob(update);
+          
+          // Handle completion
+          if (update.status.type === 'completed') {
+            const result = update.status.result;
+            const geometry = result.geometry || [];
+            
+            setStops(result.stops);
+            setTotalDistance(result.totalDistanceKm);
+            setTotalDuration(result.totalDurationMinutes);
+            setOptimizationScore(result.optimizationScore);
+            setAlgorithmName(result.algorithm);
+            setSolveTimeMs(result.solveTimeMs);
+            setRouteWarnings(result.warnings.map((w: { message: string }) => w.message));
+            setRouteGeometry(geometry);
+            setIsManuallyReordered(false);
+            
+            addStopMarkers(result.stops, geometry);
+            setIsLoading(false);
+            
+            // Cleanup subscription
+            if (routeJobUnsubscribeRef.current) {
+              routeJobUnsubscribeRef.current();
+              routeJobUnsubscribeRef.current = null;
+            }
+          }
+          
+          // Handle failure
+          if (update.status.type === 'failed') {
+            setError(update.status.error);
+            setIsLoading(false);
+            
+            // Cleanup subscription
+            if (routeJobUnsubscribeRef.current) {
+              routeJobUnsubscribeRef.current();
+              routeJobUnsubscribeRef.current = null;
+            }
+          }
+        }
+      );
+      
+      routeJobUnsubscribeRef.current = unsubscribe;
+      
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Neznámá chyba');
-    } finally {
       setIsLoading(false);
     }
   };
+  
+  // Cleanup route job subscription on unmount
+  useEffect(() => {
+    return () => {
+      if (routeJobUnsubscribeRef.current) {
+        routeJobUnsubscribeRef.current();
+      }
+    };
+  }, []);
 
   // Mark revision as done
   const handleMarkDone = useCallback(async (revisionId: string) => {
@@ -1018,13 +1067,25 @@ export function Planner() {
         {/* Route actions */}
         <div className={styles.routeActions}>
           {scheduledRevisions.length > 0 && stops.length === 0 && (
-            <button 
-              className={styles.optimizeButton}
-              onClick={handleOptimizeRoute}
-              disabled={isLoading || !isConnected || !depot}
-            >
-              {isLoading ? 'Optimalizuji...' : '🚀 Optimalizovat trasu'}
-            </button>
+            <>
+              <button 
+                className={styles.optimizeButton}
+                onClick={handleOptimizeRoute}
+                disabled={isLoading || !isConnected || !depot}
+              >
+                {isLoading ? 'Optimalizuji...' : '🚀 Optimalizovat trasu'}
+              </button>
+              {routeJob && isLoading && (
+                <div className={styles.jobProgress}>
+                  {routeJob.status.type === 'queued' && (
+                    <span>Ve frontě (pozice {routeJob.status.position})...</span>
+                  )}
+                  {routeJob.status.type === 'processing' && (
+                    <span>{routeJob.status.message} ({routeJob.status.progress}%)</span>
+                  )}
+                </div>
+              )}
+            </>
           )}
           
           {stops.length > 0 && (

@@ -2,12 +2,26 @@
  * Route persistence service
  * 
  * Handles saving and loading planned routes from the backend
+ * Also handles async route planning via JetStream job queue
  */
 
 import { useNatsStore } from '../stores/natsStore';
-import type { PlannedRouteStop } from '@sazinka/shared-types';
+import { createRequest, type SuccessResponse, type ErrorResponse } from '@shared/messages';
+import type { PlannedRouteStop, Coordinates, RoutePlanResponse } from '@sazinka/shared-types';
 
 const TEMP_USER_ID = '00000000-0000-0000-0000-000000000001';
+
+/**
+ * Response type that can be either success or error
+ */
+type NatsResponse<T> = SuccessResponse<T> | ErrorResponse;
+
+/**
+ * Type guard to check if response is an error
+ */
+function isErrorResponse(response: NatsResponse<unknown>): response is ErrorResponse {
+  return 'error' in response;
+}
 
 export interface SaveRouteStop {
   customerId: string;
@@ -137,4 +151,78 @@ export async function hasRouteForDate(
 ): Promise<boolean> {
   const response = await getRoute(date, deps);
   return response.route !== null;
+}
+
+// ==========================================================================
+// Route Planning Job Queue (async)
+// ==========================================================================
+
+/** Request to submit a route planning job */
+export interface RoutePlanJobRequest {
+  customerIds: string[];
+  date: string;  // YYYY-MM-DD format
+  startLocation: Coordinates;
+}
+
+/** Response from submitting a route planning job */
+export interface RoutePlanJobSubmitResponse {
+  jobId: string;
+  position: number;
+  estimatedWaitSeconds: number;
+}
+
+/** Route job status types */
+export type RouteJobStatus =
+  | { type: 'queued'; position: number; estimatedWaitSeconds: number }
+  | { type: 'processing'; progress: number; message: string }
+  | { type: 'completed'; result: RoutePlanResponse }
+  | { type: 'failed'; error: string };
+
+/** Status update message for route job */
+export interface RouteJobStatusUpdate {
+  jobId: string;
+  timestamp: string;
+  status: RouteJobStatus;
+}
+
+/**
+ * Submit a route planning job to the async queue
+ */
+export async function submitRoutePlanJob(
+  request: RoutePlanJobRequest,
+  deps = { request: useNatsStore.getState().request }
+): Promise<RoutePlanJobSubmitResponse> {
+  const req = createRequest(TEMP_USER_ID, {
+    userId: TEMP_USER_ID,
+    customerIds: request.customerIds,
+    date: request.date,
+    startLocation: request.startLocation,
+  });
+  
+  const response = await deps.request<typeof req, NatsResponse<RoutePlanJobSubmitResponse>>(
+    'sazinka.route.submit',
+    req
+  );
+  
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+  
+  return response.payload;
+}
+
+/**
+ * Subscribe to route job status updates
+ */
+export async function subscribeToRouteJobStatus(
+  jobId: string,
+  callback: (update: RouteJobStatusUpdate) => void,
+  deps = { subscribe: useNatsStore.getState().subscribe }
+): Promise<() => void> {
+  if (!deps.subscribe) {
+    throw new Error('subscribe is not available');
+  }
+  
+  const subject = `sazinka.job.status.${jobId}`;
+  return deps.subscribe<RouteJobStatusUpdate>(subject, callback);
 }

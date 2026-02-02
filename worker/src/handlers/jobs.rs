@@ -10,16 +10,19 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use anyhow::Result;
 use async_nats::Client;
 use async_nats::jetstream::{self, Context as JsContext};
+use chrono::{DateTime, Utc};
 use futures::StreamExt;
 use sqlx::PgPool;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-use crate::services::routing::RoutingService;
+use crate::db::queries;
+use crate::services::routing::{RoutingService, MockRoutingService};
+use crate::services::vrp::{VrpSolver, VrpProblem, VrpStop, Depot, SolverConfig};
 use crate::types::{
     Coordinates, ErrorResponse, Request, SuccessResponse,
     JobSubmitResponse, JobStatus, JobStatusUpdate, QueuedJob, RoutePlanJobRequest,
-    RoutePlanRequest, RoutePlanResponse,
+    RoutePlanResponse, PlannedRouteStop, RouteWarning,
 };
 
 // Stream and consumer names
@@ -170,33 +173,51 @@ impl JobProcessor {
     
     /// Process a single job
     async fn process_job(&self, msg: jetstream::Message) -> Result<()> {
+        use crate::services::job_history::JOB_HISTORY;
+        
         let job: QueuedJob = serde_json::from_slice(&msg.payload)?;
         let job_id = job.id;
+        let started_at = Utc::now();
         
-        info!("Processing job {}", job_id);
+        info!("Processing route job {} with {} customers", job_id, job.request.customer_ids.len());
         self.pending_count.fetch_sub(1, Ordering::Relaxed);
         
         // Publish processing status
         self.publish_status(job_id, JobStatus::Processing {
             progress: 0,
-            message: "Loading customers...".to_string(),
+            message: "Načítání zákazníků...".to_string(),
         }).await?;
         
         // Execute route planning
         match self.execute_route_plan(job_id, &job.request).await {
             Ok(result) => {
-                self.publish_status(job_id, JobStatus::Completed { result }).await?;
+                self.publish_status(job_id, JobStatus::Completed { result: result.clone() }).await?;
                 if let Err(e) = msg.ack().await {
                     error!("Failed to ack job {}: {:?}", job_id, e);
                 }
-                info!("Job {} completed successfully", job_id);
+                
+                // Record in job history
+                JOB_HISTORY.record_completed(
+                    job_id,
+                    "route",
+                    started_at,
+                    Some(format!("{} zastávek, {:.1} km", result.stops.len(), result.total_distance_km)),
+                );
+                
+                info!("Route job {} completed: {} stops, {:.1} km", 
+                      job_id, result.stops.len(), result.total_distance_km);
             }
             Err(e) => {
                 self.publish_status(job_id, JobStatus::Failed { 
                     error: e.to_string() 
                 }).await?;
-                // Don't ack - let it retry
-                warn!("Job {} failed: {}", job_id, e);
+                
+                // Record failure in job history
+                JOB_HISTORY.record_failed(job_id, "route", started_at, e.to_string());
+                
+                // Ack to prevent infinite retries for permanent failures
+                let _ = msg.ack().await;
+                warn!("Route job {} failed: {}", job_id, e);
             }
         }
         
@@ -207,36 +228,287 @@ impl JobProcessor {
     async fn execute_route_plan(
         &self,
         job_id: Uuid,
-        _request: &RoutePlanJobRequest,
+        request: &RoutePlanJobRequest,
     ) -> Result<RoutePlanResponse> {
-        // This would call the same logic as handle_plan in route.rs
-        // For now, we'll import and reuse that logic
+        let user_id = request.user_id;
+        let solver = VrpSolver::new(SolverConfig::fast());
         
+        // Validate request
+        if request.customer_ids.is_empty() {
+            return Ok(RoutePlanResponse {
+                stops: vec![],
+                total_distance_km: 0.0,
+                total_duration_minutes: 0,
+                algorithm: "none".to_string(),
+                solve_time_ms: 0,
+                solver_log: vec![],
+                optimization_score: 100,
+                warnings: vec![],
+                unassigned: vec![],
+                geometry: vec![],
+            });
+        }
+        
+        // Load customers from database
         self.publish_status(job_id, JobStatus::Processing {
-            progress: 25,
-            message: "Fetching distance matrix...".to_string(),
+            progress: 10,
+            message: "Načítání zákazníků z databáze...".to_string(),
         }).await?;
         
-        // TODO: Extract route planning logic into a service
-        // For now, return a placeholder
+        let customers = self.load_customers_for_route(user_id, &request.customer_ids).await?;
+        
+        // Filter customers with valid coordinates
+        let (valid_customers, invalid_ids): (Vec<_>, Vec<_>) = customers
+            .into_iter()
+            .partition(|c| c.lat.is_some() && c.lng.is_some());
+        
+        let mut warnings = Vec::new();
+        for customer in &invalid_ids {
+            warnings.push(RouteWarning {
+                stop_index: None,
+                warning_type: "MISSING_COORDINATES".to_string(),
+                message: format!("Zákazník {} nemá souřadnice", customer.name),
+            });
+        }
+        
+        if valid_customers.is_empty() {
+            return Ok(RoutePlanResponse {
+                stops: vec![],
+                total_distance_km: 0.0,
+                total_duration_minutes: 0,
+                algorithm: "none".to_string(),
+                solve_time_ms: 0,
+                solver_log: vec![],
+                optimization_score: 0,
+                warnings,
+                unassigned: request.customer_ids.clone(),
+                geometry: vec![],
+            });
+        }
+        
+        // Load user settings
         self.publish_status(job_id, JobStatus::Processing {
-            progress: 75,
-            message: "Solving VRP...".to_string(),
+            progress: 20,
+            message: "Načítání nastavení...".to_string(),
         }).await?;
+        
+        let (shift_start, shift_end, service_duration) = match queries::settings::get_user_settings(&self.pool, user_id).await {
+            Ok(Some(settings)) => {
+                (settings.working_hours_start, settings.working_hours_end, settings.default_service_duration_minutes as u32)
+            }
+            _ => {
+                (
+                    chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
+                    chrono::NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+                    30u32,
+                )
+            }
+        };
+        
+        // Build VRP problem
+        let vrp_problem = self.build_vrp_problem(
+            &request.start_location,
+            &valid_customers,
+            shift_start,
+            shift_end,
+            service_duration,
+        );
+        
+        // Build location list for matrix
+        let mut locations = vec![request.start_location];
+        for customer in &valid_customers {
+            locations.push(Coordinates {
+                lat: customer.lat.unwrap(),
+                lng: customer.lng.unwrap(),
+            });
+        }
+        
+        // Get distance/time matrices
+        self.publish_status(job_id, JobStatus::Processing {
+            progress: 40,
+            message: "Výpočet vzdáleností...".to_string(),
+        }).await?;
+        
+        let (matrices, routing_fallback_used) = match self.routing_service.get_matrices(&locations).await {
+            Ok(m) => (m, false),
+            Err(e) => {
+                warn!("Primary routing failed: {}. Using fallback.", e);
+                let mock_service = MockRoutingService::new();
+                match mock_service.get_matrices(&locations).await {
+                    Ok(m) => (m, true),
+                    Err(e2) => {
+                        return Err(anyhow::anyhow!("Routing failed: {}", e2));
+                    }
+                }
+            }
+        };
+        
+        // Solve VRP
+        self.publish_status(job_id, JobStatus::Processing {
+            progress: 60,
+            message: "Optimalizace trasy...".to_string(),
+        }).await?;
+        
+        let solution = solver.solve(&vrp_problem, &matrices, request.date)?;
+        
+        // Build response
+        self.publish_status(job_id, JobStatus::Processing {
+            progress: 80,
+            message: "Sestavování výsledku...".to_string(),
+        }).await?;
+        
+        let mut planned_stops: Vec<PlannedRouteStop> = Vec::new();
+        for stop in &solution.stops {
+            if let Some(customer) = valid_customers.iter().find(|c| c.id.to_string() == stop.stop_id) {
+                planned_stops.push(PlannedRouteStop {
+                    customer_id: customer.id,
+                    customer_name: customer.name.clone(),
+                    address: format!("{}, {} {}", customer.street, customer.city, customer.postal_code),
+                    coordinates: Coordinates {
+                        lat: customer.lat.unwrap(),
+                        lng: customer.lng.unwrap(),
+                    },
+                    order: stop.order as i32,
+                    eta: stop.arrival_time,
+                    etd: stop.departure_time,
+                    service_duration_minutes: service_duration as i32,
+                    time_window: None,
+                });
+            }
+        }
+        
+        // Add solver warnings
+        for w in &solution.warnings {
+            warnings.push(RouteWarning {
+                stop_index: None,
+                warning_type: w.warning_type.clone(),
+                message: w.message.clone(),
+            });
+        }
+        
+        if routing_fallback_used {
+            warnings.push(RouteWarning {
+                stop_index: None,
+                warning_type: "ROUTING_FALLBACK".to_string(),
+                message: "Valhalla nedostupná - použity odhadované vzdálenosti".to_string(),
+            });
+        }
+        
+        // Collect unassigned
+        let mut unassigned: Vec<Uuid> = invalid_ids.iter().map(|c| c.id).collect();
+        for stop_id in &solution.unassigned {
+            if let Ok(id) = Uuid::parse_str(stop_id) {
+                unassigned.push(id);
+            }
+        }
+        
+        // Build geometry
+        self.publish_status(job_id, JobStatus::Processing {
+            progress: 90,
+            message: "Generování geometrie trasy...".to_string(),
+        }).await?;
+        
+        let geometry = if !planned_stops.is_empty() {
+            let mut route_coords: Vec<Coordinates> = vec![request.start_location];
+            for stop in &planned_stops {
+                route_coords.push(stop.coordinates);
+            }
+            route_coords.push(request.start_location);
+            
+            if !routing_fallback_used {
+                if let Some(valhalla) = self.routing_service.as_any().downcast_ref::<crate::services::routing::ValhallaClient>() {
+                    match valhalla.get_route_geometry(&route_coords).await {
+                        Ok(geom) => geom.coordinates,
+                        Err(_) => route_coords.iter().map(|c| [c.lng, c.lat]).collect(),
+                    }
+                } else {
+                    route_coords.iter().map(|c| [c.lng, c.lat]).collect()
+                }
+            } else {
+                route_coords.iter().map(|c| [c.lng, c.lat]).collect()
+            }
+        } else {
+            vec![]
+        };
         
         Ok(RoutePlanResponse {
-            stops: vec![],
-            total_distance_km: 0.0,
-            total_duration_minutes: 0,
-            algorithm: "queued-vrp".to_string(),
-            solve_time_ms: 0,
-            solver_log: vec!["Processed via job queue".to_string()],
-            optimization_score: 0,
-            warnings: vec![],
-            unassigned: vec![],
-            geometry: vec![],
+            stops: planned_stops,
+            total_distance_km: solution.total_distance_meters as f64 / 1000.0,
+            total_duration_minutes: (solution.total_duration_seconds / 60) as i32,
+            algorithm: solution.algorithm,
+            solve_time_ms: solution.solve_time_ms,
+            solver_log: solution.solver_log,
+            optimization_score: solution.optimization_score as i32,
+            warnings,
+            unassigned,
+            geometry,
         })
     }
+    
+    /// Load customers for route planning
+    async fn load_customers_for_route(&self, user_id: Uuid, customer_ids: &[Uuid]) -> Result<Vec<CustomerForRoute>> {
+        let mut customers = Vec::new();
+        
+        for customer_id in customer_ids {
+            if let Some(customer) = queries::customer::get_customer(&self.pool, user_id, *customer_id).await? {
+                customers.push(CustomerForRoute {
+                    id: customer.id,
+                    name: customer.name,
+                    street: customer.street,
+                    city: customer.city,
+                    postal_code: customer.postal_code,
+                    lat: customer.lat,
+                    lng: customer.lng,
+                });
+            }
+        }
+        
+        Ok(customers)
+    }
+    
+    /// Build VRP problem from customers
+    fn build_vrp_problem(
+        &self,
+        start: &Coordinates,
+        customers: &[CustomerForRoute],
+        shift_start: chrono::NaiveTime,
+        shift_end: chrono::NaiveTime,
+        service_duration_minutes: u32,
+    ) -> VrpProblem {
+        let stops: Vec<VrpStop> = customers
+            .iter()
+            .map(|c| VrpStop {
+                id: c.id.to_string(),
+                customer_id: c.id,
+                customer_name: c.name.clone(),
+                coordinates: Coordinates {
+                    lat: c.lat.unwrap(),
+                    lng: c.lng.unwrap(),
+                },
+                service_duration_minutes,
+                time_window: None,
+                priority: 1,
+            })
+            .collect();
+        
+        VrpProblem {
+            depot: Depot { coordinates: *start },
+            stops,
+            shift_start,
+            shift_end,
+        }
+    }
+}
+
+/// Simple customer data for route planning
+struct CustomerForRoute {
+    id: Uuid,
+    name: String,
+    street: String,
+    city: String,
+    postal_code: String,
+    lat: Option<f64>,
+    lng: Option<f64>,
 }
 
 // ==========================================================================
@@ -325,6 +597,191 @@ fn extract_request_id(payload: &[u8]) -> Uuid {
         }
     }
     Uuid::new_v4()
+}
+
+// ==========================================================================
+// Job History Handler
+// ==========================================================================
+
+/// Request to get job history
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListJobHistoryRequest {
+    pub limit: Option<usize>,
+    pub job_type: Option<String>,
+    pub status: Option<String>,
+}
+
+/// Handle jobs.history requests
+pub async fn handle_job_history(
+    client: Client,
+    mut subscriber: async_nats::Subscriber,
+) -> Result<()> {
+    use crate::services::job_history::{JOB_HISTORY, JobHistoryResponse};
+    
+    while let Some(msg) = subscriber.next().await {
+        let reply = match msg.reply {
+            Some(ref r) => r.clone(),
+            None => continue,
+        };
+        
+        let request: Request<ListJobHistoryRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("Failed to parse job history request: {}", e);
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+        
+        let limit = request.payload.limit.unwrap_or(50);
+        
+        let history: JobHistoryResponse = match (&request.payload.job_type, &request.payload.status) {
+            (Some(job_type), _) => JOB_HISTORY.get_by_type(job_type, limit),
+            (_, Some(status)) => JOB_HISTORY.get_by_status(status, limit),
+            _ => JOB_HISTORY.get_recent(limit),
+        };
+        
+        let success = SuccessResponse::new(request.id, history);
+        let _ = client.publish(reply, serde_json::to_vec(&success)?.into()).await;
+    }
+    
+    Ok(())
+}
+
+// ==========================================================================
+// Job Management Handlers (Cancel, Retry)
+// ==========================================================================
+
+/// Request to cancel a job
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CancelJobRequest {
+    pub job_id: Uuid,
+    pub job_type: String,
+}
+
+/// Request to retry a failed job
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RetryJobRequest {
+    pub job_id: Uuid,
+    pub job_type: String,
+}
+
+/// Response from job action (cancel/retry)
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobActionResponse {
+    pub success: bool,
+    pub message: String,
+    pub job_id: Uuid,
+}
+
+/// Handle jobs.cancel requests
+pub async fn handle_job_cancel(
+    client: Client,
+    mut subscriber: async_nats::Subscriber,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        let reply = match msg.reply {
+            Some(ref r) => r.clone(),
+            None => continue,
+        };
+        
+        let request: Request<CancelJobRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("Failed to parse cancel job request: {}", e);
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+        
+        let job_id = request.payload.job_id;
+        let job_type = &request.payload.job_type;
+        
+        info!("Attempting to cancel job {} of type {}", job_id, job_type);
+        
+        // For now, we publish a "cancelled" status to notify subscribers
+        // In a full implementation, we would remove the job from JetStream queue
+        let status_subject = format!("sazinka.job.{}.status.{}", job_type, job_id);
+        let cancel_status = serde_json::json!({
+            "jobId": job_id.to_string(),
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "status": {
+                "type": "failed",
+                "error": "Job cancelled by user"
+            }
+        });
+        
+        if let Err(e) = client.publish(status_subject, serde_json::to_vec(&cancel_status)?.into()).await {
+            warn!("Failed to publish cancel status: {}", e);
+            let response = JobActionResponse {
+                success: false,
+                message: format!("Failed to cancel job: {}", e),
+                job_id,
+            };
+            let success = SuccessResponse::new(request.id, response);
+            let _ = client.publish(reply, serde_json::to_vec(&success)?.into()).await;
+            continue;
+        }
+        
+        let response = JobActionResponse {
+            success: true,
+            message: "Job cancellation requested".to_string(),
+            job_id,
+        };
+        let success = SuccessResponse::new(request.id, response);
+        let _ = client.publish(reply, serde_json::to_vec(&success)?.into()).await;
+    }
+    
+    Ok(())
+}
+
+/// Handle jobs.retry requests
+pub async fn handle_job_retry(
+    client: Client,
+    mut subscriber: async_nats::Subscriber,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        let reply = match msg.reply {
+            Some(ref r) => r.clone(),
+            None => continue,
+        };
+        
+        let request: Request<RetryJobRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("Failed to parse retry job request: {}", e);
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+        
+        let job_id = request.payload.job_id;
+        let job_type = &request.payload.job_type;
+        
+        info!("Attempting to retry job {} of type {}", job_id, job_type);
+        
+        // In a full implementation, we would:
+        // 1. Look up the original job request
+        // 2. Re-submit it to the appropriate queue
+        // For now, return a placeholder response
+        
+        let response = JobActionResponse {
+            success: false,
+            message: "Job retry not yet implemented - please re-submit the job manually".to_string(),
+            job_id,
+        };
+        let success = SuccessResponse::new(request.id, response);
+        let _ = client.publish(reply, serde_json::to_vec(&success)?.into()).await;
+    }
+    
+    Ok(())
 }
 
 // ==========================================================================

@@ -320,7 +320,7 @@ pub struct RoutePlanJobRequest {
     /// Customers to include in route
     pub customer_ids: Vec<Uuid>,
     /// Date for the route
-    pub date: String,
+    pub date: chrono::NaiveDate,
     /// Starting location (depot)
     pub start_location: crate::types::Coordinates,
 }

@@ -1,9 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
-  submitGeocodeJob,
-  submitRouteJob,
-  submitImportJob,
-  getJobQueueStats,
+  listJobHistory,
+  cancelJob,
+  retryJob,
 } from './jobService';
 
 // Mock natsStore
@@ -22,91 +21,81 @@ describe('jobService', () => {
     vi.clearAllMocks();
   });
 
-  describe('submitGeocodeJob', () => {
-    it('submits geocode job with correct subject', async () => {
-      mockRequest.mockResolvedValue({ jobId: 'geo-1', status: 'queued' });
-
-      const result = await submitGeocodeJob({
-        customerId: 'c-123',
-        address: 'Václavské náměstí 1, Praha',
-      });
-
-      expect(mockRequest).toHaveBeenCalledWith(
-        'sazinka.geocode.submit',
-        {
-          customerId: 'c-123',
-          address: 'Václavské náměstí 1, Praha',
-        },
-        expect.any(Number)
-      );
-      expect(result).toEqual({ jobId: 'geo-1', status: 'queued' });
-    });
-  });
-
-  describe('submitRouteJob', () => {
-    it('submits route job with correct subject', async () => {
-      mockRequest.mockResolvedValue({ jobId: 'route-1', status: 'queued', position: 2 });
-
-      const result = await submitRouteJob({
-        customerIds: ['c1', 'c2', 'c3'],
-        date: '2026-02-03',
-      });
-
-      expect(mockRequest).toHaveBeenCalledWith(
-        'sazinka.route.submit',
-        {
-          customerIds: ['c1', 'c2', 'c3'],
-          date: '2026-02-03',
-        },
-        expect.any(Number)
-      );
-      expect(result).toEqual({ jobId: 'route-1', status: 'queued', position: 2 });
-    });
-  });
-
-  describe('submitImportJob', () => {
-    it('submits import job with correct subject', async () => {
-      mockRequest.mockResolvedValue({ jobId: 'import-1', status: 'queued' });
-
-      const result = await submitImportJob({
-        type: 'customers',
-        data: [{ name: 'Test' }],
-      });
-
-      expect(mockRequest).toHaveBeenCalledWith(
-        'sazinka.import.submit',
-        {
-          type: 'customers',
-          data: [{ name: 'Test' }],
-        },
-        expect.any(Number)
-      );
-      expect(result).toEqual({ jobId: 'import-1', status: 'queued' });
-    });
-  });
-
-  describe('getJobQueueStats', () => {
-    it('requests queue stats with correct subject', async () => {
+  describe('listJobHistory', () => {
+    it('requests job history with default options', async () => {
       mockRequest.mockResolvedValue({
-        pendingJobs: 5,
-        processingJobs: 2,
-        completedLast24h: 150,
-        failedLast24h: 3,
+        jobs: [
+          { id: 'j1', jobType: 'geocode', status: 'completed', durationMs: 1000 },
+        ],
+        total: 1,
       });
 
-      const result = await getJobQueueStats();
+      const result = await listJobHistory();
 
       expect(mockRequest).toHaveBeenCalledWith(
-        'sazinka.admin.jetstream.status',
-        {},
-        expect.any(Number)
+        'sazinka.jobs.history',
+        {}
       );
-      expect(result).toEqual({
-        pendingJobs: 5,
-        processingJobs: 2,
-        completedLast24h: 150,
-        failedLast24h: 3,
+      expect(result.jobs).toHaveLength(1);
+      expect(result.jobs[0].jobType).toBe('geocode');
+    });
+
+    it('requests job history with limit', async () => {
+      mockRequest.mockResolvedValue({ jobs: [], total: 0 });
+
+      await listJobHistory({ limit: 10 });
+
+      expect(mockRequest).toHaveBeenCalledWith(
+        'sazinka.jobs.history',
+        { limit: 10 }
+      );
+    });
+
+    it('requests job history filtered by type', async () => {
+      mockRequest.mockResolvedValue({ jobs: [], total: 0 });
+
+      await listJobHistory({ jobType: 'geocode' });
+
+      expect(mockRequest).toHaveBeenCalledWith(
+        'sazinka.jobs.history',
+        { jobType: 'geocode' }
+      );
+    });
+  });
+
+  describe('cancelJob', () => {
+    it('sends cancel request with correct subject', async () => {
+      mockRequest.mockResolvedValue({
+        success: true,
+        message: 'Job cancelled',
+        jobId: 'job-123',
       });
+
+      const result = await cancelJob('job-123', 'geocode');
+
+      expect(mockRequest).toHaveBeenCalledWith(
+        'sazinka.jobs.cancel',
+        { jobId: 'job-123', jobType: 'geocode' }
+      );
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe('retryJob', () => {
+    it('sends retry request with correct subject', async () => {
+      mockRequest.mockResolvedValue({
+        success: true,
+        message: 'Job retried',
+        jobId: 'job-456',
+      });
+
+      const result = await retryJob('job-456', 'geocode');
+
+      expect(mockRequest).toHaveBeenCalledWith(
+        'sazinka.jobs.retry',
+        { jobId: 'job-456', jobType: 'geocode' }
+      );
+      expect(result.success).toBe(true);
     });
   });
 });

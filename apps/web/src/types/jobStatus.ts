@@ -78,7 +78,15 @@ export interface JobSubmitResponse {
 }
 
 /** Supported job types */
-export type JobType = 'geocode' | 'route' | 'import';
+export type JobType = 
+  | 'geocode' 
+  | 'route' 
+  | 'import' 
+  | 'export' 
+  | 'valhalla.matrix' 
+  | 'valhalla.geometry'
+  | 'email'
+  | 'sms';
 
 /** Get the NATS subject for job status updates */
 export function getJobStatusSubject(jobType: JobType, jobId: string): string {
@@ -88,6 +96,36 @@ export function getJobStatusSubject(jobType: JobType, jobId: string): string {
 /** Get the NATS subject for job submission */
 export function getJobSubmitSubject(jobType: JobType): string {
   return `sazinka.${jobType}.submit`;
+}
+
+/** Get human-readable job type name */
+export function getJobTypeName(jobType: JobType): string {
+  const names: Record<JobType, string> = {
+    'geocode': 'Geokódování',
+    'route': 'Plánování trasy',
+    'import': 'Import dat',
+    'export': 'Export dat',
+    'valhalla.matrix': 'Výpočet matice vzdáleností',
+    'valhalla.geometry': 'Výpočet geometrie trasy',
+    'email': 'Odesílání emailu',
+    'sms': 'Odesílání SMS',
+  };
+  return names[jobType] || jobType;
+}
+
+/** Get icon for job type */
+export function getJobTypeIcon(jobType: JobType): string {
+  const icons: Record<JobType, string> = {
+    'geocode': '📍',
+    'route': '🗺️',
+    'import': '📥',
+    'export': '📤',
+    'valhalla.matrix': '📊',
+    'valhalla.geometry': '📐',
+    'email': '📧',
+    'sms': '📱',
+  };
+  return icons[jobType] || '⚙️';
 }
 
 /** Type guard for JobStatusQueued */

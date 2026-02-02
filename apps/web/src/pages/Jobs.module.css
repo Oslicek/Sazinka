@@ -1,0 +1,353 @@
+.jobs {
+  padding: 1rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.jobs h1 {
+  margin-bottom: 1.5rem;
+  color: var(--text);
+}
+
+/* Warning banner */
+.warning {
+  background: var(--warning-bg, #fef3cd);
+  color: var(--warning-text, #856404);
+  border: 1px solid var(--warning-border, #ffc107);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+/* Section styling */
+.section {
+  background: var(--card-bg, white);
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,0.1));
+}
+
+.section h2 {
+  margin: 0 0 1rem;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.sectionHeader h2 {
+  margin: 0;
+}
+
+/* Badge */
+.badge {
+  background: var(--primary, #3b82f6);
+  color: white;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+  font-weight: normal;
+}
+
+/* Empty state */
+.empty {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-muted, #666);
+}
+
+/* Jobs list (active jobs) */
+.jobsList {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.jobCard {
+  background: var(--card-nested-bg, #f8f9fa);
+  border-radius: 8px;
+  padding: 1rem;
+  border: 1px solid var(--border, #e5e7eb);
+}
+
+.jobHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.jobIcon {
+  font-size: 1.25rem;
+}
+
+.jobType {
+  font-weight: 500;
+}
+
+.jobId {
+  font-family: monospace;
+  font-size: 0.875rem;
+  color: var(--text-muted, #666);
+  margin-left: auto;
+}
+
+.jobMeta {
+  font-size: 0.75rem;
+  color: var(--text-muted, #666);
+  margin-top: 0.5rem;
+}
+
+/* Filter tabs */
+.filterTabs {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.filterTabs button {
+  padding: 0.5rem 1rem;
+  border: none;
+  background: var(--card-nested-bg, #f1f5f9);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--text);
+  transition: all 0.2s;
+}
+
+.filterTabs button:hover {
+  background: var(--hover-bg, #e2e8f0);
+}
+
+.activeTab {
+  background: var(--primary, #3b82f6) !important;
+  color: white !important;
+}
+
+/* Recent jobs table */
+.recentList {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.table th,
+.table td {
+  padding: 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+}
+
+.table th {
+  font-weight: 500;
+  color: var(--text-muted, #666);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.table tbody tr:hover {
+  background: var(--hover-bg, #f8f9fa);
+}
+
+.failedRow {
+  background: var(--error-bg, #fef2f2);
+}
+
+.failedRow:hover {
+  background: var(--error-bg-hover, #fee2e2) !important;
+}
+
+.tableIcon {
+  margin-right: 0.5rem;
+}
+
+.mono {
+  font-family: monospace;
+  font-size: 0.8rem;
+}
+
+/* Status badges */
+.statusBadge {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.statusBadge.completed {
+  background: var(--success-bg, #dcfce7);
+  color: var(--success-text, #166534);
+}
+
+.statusBadge.failed {
+  background: var(--error-bg, #fee2e2);
+  color: var(--error-text, #dc2626);
+}
+
+/* Stats grid */
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.statCard {
+  background: var(--card-nested-bg, #f8f9fa);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.statHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.statIcon {
+  font-size: 1.25rem;
+}
+
+.statType {
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+.statNumbers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+}
+
+.statActive {
+  background: var(--primary-bg, #dbeafe);
+  color: var(--primary, #3b82f6);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+
+.statCompleted {
+  background: var(--success-bg, #dcfce7);
+  color: var(--success-text, #166534);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+
+.statFailed {
+  background: var(--error-bg, #fee2e2);
+  color: var(--error-text, #dc2626);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+
+/* Error banner */
+.error {
+  background: var(--error-bg, #fee2e2);
+  color: var(--error-text, #dc2626);
+  border: 1px solid var(--error-border, #f87171);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dismissBtn {
+  background: none;
+  border: none;
+  font-size: 1.25rem;
+  cursor: pointer;
+  color: var(--error-text, #dc2626);
+  padding: 0 0.5rem;
+}
+
+.dismissBtn:hover {
+  opacity: 0.7;
+}
+
+/* Cancel button in job card */
+.cancelBtn {
+  margin-left: auto;
+  background: var(--error-bg, #fee2e2);
+  color: var(--error-text, #dc2626);
+  border: none;
+  border-radius: 4px;
+  width: 24px;
+  height: 24px;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.cancelBtn:hover:not(:disabled) {
+  background: var(--error-text, #dc2626);
+  color: white;
+}
+
+.cancelBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Retry button */
+.retryBtn {
+  background: var(--primary, #3b82f6);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.retryBtn:hover:not(:disabled) {
+  background: var(--primary-dark, #2563eb);
+}
+
+.retryBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .sectionHeader {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .filterTabs {
+    justify-content: center;
+  }
+  
+  .table {
+    font-size: 0.75rem;
+  }
+  
+  .table th,
+  .table td {
+    padding: 0.5rem;
+  }
+}
