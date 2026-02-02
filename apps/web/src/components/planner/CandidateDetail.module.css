@@ -1,0 +1,234 @@
+.container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+/* Loading state */
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  gap: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Empty state */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--color-text-secondary);
+  text-align: center;
+  padding: 1rem;
+}
+
+.emptyIcon {
+  font-size: 2.5rem;
+  opacity: 0.5;
+  margin-bottom: 0.5rem;
+}
+
+.empty p {
+  margin: 0;
+}
+
+.emptyHint {
+  font-size: 0.75rem;
+  margin-top: 0.5rem !important;
+  opacity: 0.7;
+}
+
+/* Header */
+.header {
+  padding-bottom: 0.75rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.name {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem 0;
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.deviceBadge {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  background-color: var(--color-bg-secondary);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+}
+
+.overdueBadge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.25rem 0.5rem;
+  background-color: var(--color-error);
+  color: white;
+  border-radius: var(--radius-sm);
+}
+
+/* Sections */
+.section {
+  margin-bottom: 1rem;
+}
+
+.sectionTitle {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 0.375rem 0;
+}
+
+/* Contact */
+.phoneLink,
+.emailLink {
+  display: block;
+  font-size: 0.875rem;
+  color: var(--color-primary);
+  text-decoration: none;
+  margin-bottom: 0.25rem;
+}
+
+.phoneLink:hover,
+.emailLink:hover {
+  text-decoration: underline;
+}
+
+.missingInfo {
+  font-size: 0.875rem;
+  color: var(--color-warning);
+}
+
+/* Address */
+.address {
+  font-size: 0.875rem;
+  color: var(--color-text);
+  margin: 0 0 0.125rem 0;
+}
+
+.fixAddressButton {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  margin-top: 0.375rem;
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-primary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.fixAddressButton:hover {
+  background-color: var(--color-border);
+}
+
+/* Due date */
+.dueDate {
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.overdueText {
+  color: var(--color-error);
+  font-weight: 600;
+}
+
+.daysRemaining {
+  color: var(--color-text-secondary);
+  margin-left: 0.25rem;
+}
+
+/* Notes */
+.notes {
+  font-size: 0.8125rem;
+  color: var(--color-text);
+  background-color: var(--color-bg-secondary);
+  padding: 0.5rem;
+  border-radius: var(--radius-sm);
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+/* Actions */
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: auto;
+  padding-top: 0.75rem;
+}
+
+.actions button {
+  flex: 1;
+}
+
+/* Links */
+.links {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.link {
+  font-size: 0.8125rem;
+  color: var(--color-primary);
+}
+
+/* Keyboard shortcuts */
+.shortcuts {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-border);
+  font-size: 0.6875rem;
+  color: var(--color-text-secondary);
+}
+
+.shortcuts kbd {
+  display: inline-block;
+  padding: 0.125rem 0.375rem;
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 0.625rem;
+  margin-right: 0.25rem;
+}
+
+/* Mobile */
+@media (max-width: 600px) {
+  .shortcuts {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+}

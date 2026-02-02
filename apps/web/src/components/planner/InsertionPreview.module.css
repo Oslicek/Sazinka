@@ -1,0 +1,130 @@
+.container {
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.75rem;
+}
+
+.header {
+  margin-bottom: 0.5rem;
+}
+
+.label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Flow visualization */
+.flow {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.stop {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.stop.newStop {
+  border-color: var(--color-primary);
+  background-color: rgba(37, 99, 235, 0.05);
+}
+
+.stopNumber {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background-color: var(--color-primary);
+  color: white;
+  border-radius: 50%;
+  font-size: 0.625rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.newStop .stopNumber {
+  background-color: var(--color-warning);
+}
+
+.stopName {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-text);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stopTime {
+  font-size: 0.6875rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+/* Arrow */
+.arrow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.25rem 0;
+}
+
+.arrowLine {
+  width: 2px;
+  height: 8px;
+  background-color: var(--color-border);
+}
+
+.arrowIcon {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  line-height: 1;
+}
+
+/* Impact summary */
+.impact {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.impactLabel {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.impactValue {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.125rem 0.375rem;
+  background-color: var(--color-bg);
+  border-radius: var(--radius-sm);
+}
+
+/* Mobile */
+@media (max-width: 600px) {
+  .stop {
+    flex-wrap: wrap;
+  }
+
+  .stopTime {
+    flex-basis: 100%;
+    padding-left: calc(20px + 0.5rem);
+    margin-top: 0.125rem;
+  }
+}

@@ -628,6 +628,266 @@ pub async fn handle_get(
     Ok(())
 }
 
+// ============================================================================
+// Insertion Calculation Handlers (1×K + K×1 Matrix Strategy)
+// ============================================================================
+
+/// Request to calculate insertion cost for a candidate
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CalculateInsertionRequest {
+    pub route_stops: Vec<RouteStopInput>,
+    pub depot: Coordinates,
+    pub candidate: InsertionCandidateInput,
+    pub date: String,
+    pub workday_start: Option<String>,
+    pub workday_end: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RouteStopInput {
+    pub id: String,
+    pub name: String,
+    pub coordinates: Coordinates,
+    pub arrival_time: Option<String>,
+    pub departure_time: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InsertionCandidateInput {
+    pub id: String,
+    pub customer_id: String,
+    pub coordinates: Coordinates,
+    pub service_duration_minutes: u32,
+}
+
+/// Response for insertion calculation
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CalculateInsertionResponse {
+    pub candidate_id: String,
+    pub best_position: Option<InsertionPosition>,
+    pub all_positions: Vec<InsertionPosition>,
+    pub is_feasible: bool,
+    pub infeasible_reason: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct InsertionPosition {
+    pub insert_after_index: i32,
+    pub insert_after_name: String,
+    pub insert_before_name: String,
+    pub delta_km: f64,
+    pub delta_min: f64,
+    pub estimated_arrival: String,
+    pub estimated_departure: String,
+    pub status: String,
+    pub conflict_reason: Option<String>,
+}
+
+/// Handle route.insertion.calculate messages
+/// Calculates best insertion position for a single candidate using 1×K + K×1 matrix strategy
+pub async fn handle_insertion_calculate(
+    client: Client,
+    mut subscriber: Subscriber,
+    _pool: PgPool,
+    routing_service: Arc<dyn RoutingService>,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received route.insertion.calculate message");
+
+        let reply = match msg.reply {
+            Some(ref reply) => reply.clone(),
+            None => {
+                warn!("Message without reply subject");
+                continue;
+            }
+        };
+
+        // Parse request
+        let request: Request<CalculateInsertionRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("Failed to parse request: {}", e);
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        let calc_req = &request.payload;
+
+        // If no route stops, insertion is trivially at position 0
+        if calc_req.route_stops.is_empty() {
+            let response = SuccessResponse::new(request.id, CalculateInsertionResponse {
+                candidate_id: calc_req.candidate.id.clone(),
+                best_position: Some(InsertionPosition {
+                    insert_after_index: -1,
+                    insert_after_name: "Depo".to_string(),
+                    insert_before_name: "Depo".to_string(),
+                    delta_km: 0.0,
+                    delta_min: 0.0,
+                    estimated_arrival: "08:00".to_string(),
+                    estimated_departure: "08:30".to_string(),
+                    status: "ok".to_string(),
+                    conflict_reason: None,
+                }),
+                all_positions: vec![],
+                is_feasible: true,
+                infeasible_reason: None,
+            });
+            let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+            continue;
+        }
+
+        // Build location list: candidate (index 0), then route stops, then depot
+        // We'll compute the full matrix and extract relevant values
+        let candidate_coord = calc_req.candidate.coordinates;
+        let mut all_locations: Vec<Coordinates> = vec![candidate_coord]; // Index 0 = candidate
+        all_locations.push(calc_req.depot); // Index 1 = depot
+        for stop in &calc_req.route_stops {
+            all_locations.push(stop.coordinates); // Index 2+ = route stops
+        }
+
+        // Get full matrix (will optimize to 1×K + K×1 later)
+        let matrices = match routing_service.get_matrices(&all_locations).await {
+            Ok(m) => m,
+            Err(e) => {
+                warn!("Routing service failed: {}. Using estimates.", e);
+                // Fallback to mock routing
+                let mock = MockRoutingService::new();
+                match mock.get_matrices(&all_locations).await {
+                    Ok(m) => m,
+                    Err(e2) => {
+                        error!("Mock routing also failed: {}", e2);
+                        let error = ErrorResponse::new(request.id, "ROUTING_ERROR", e.to_string());
+                        let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                        continue;
+                    }
+                }
+            }
+        };
+
+        // Matrix indices:
+        // 0 = candidate
+        // 1 = depot
+        // 2+ = route stops (index i in route_stops = matrix index i+2)
+        let candidate_idx = 0;
+        let depot_idx = 1;
+
+        // Calculate insertion cost at each position
+        // Position i means: insert between stop[i] and stop[i+1]
+        // Position -1 means: insert after depot (first position)
+        let mut positions: Vec<InsertionPosition> = Vec::new();
+        let num_stops = calc_req.route_stops.len();
+
+        for insert_idx in 0..=num_stops {
+            // Current route order: depot -> stop[0] -> stop[1] -> ... -> stop[n-1] -> depot
+            // Insert position insert_idx means:
+            //   - insert_idx = 0: insert after depot, before stop[0]
+            //   - insert_idx = k: insert after stop[k-1], before stop[k]
+            //   - insert_idx = num_stops: insert after stop[n-1], before return to depot
+            
+            // Matrix indices for "from" and "to" nodes
+            let from_matrix_idx = if insert_idx == 0 { depot_idx } else { insert_idx + 1 }; // +1 because depot is at index 1
+            let to_matrix_idx = if insert_idx >= num_stops { depot_idx } else { insert_idx + 2 }; // +2 because first stop is at index 2
+
+            // Current edge cost (from -> to without candidate)
+            let current_distance_m = matrices.distances[from_matrix_idx][to_matrix_idx] as f64;
+            let current_time_s = matrices.durations[from_matrix_idx][to_matrix_idx] as f64;
+            let current_distance_km = current_distance_m / 1000.0;
+            let current_time_min = current_time_s / 60.0;
+
+            // New costs with candidate insertion:
+            // from -> candidate: matrices[from_matrix_idx][candidate_idx]
+            // candidate -> to: matrices[candidate_idx][to_matrix_idx]
+            let dist_from_to_candidate = matrices.distances[from_matrix_idx][candidate_idx] as f64;
+            let dist_candidate_to_next = matrices.distances[candidate_idx][to_matrix_idx] as f64;
+            let time_from_to_candidate = matrices.durations[from_matrix_idx][candidate_idx] as f64;
+            let time_candidate_to_next = matrices.durations[candidate_idx][to_matrix_idx] as f64;
+
+            let new_distance_km = (dist_from_to_candidate + dist_candidate_to_next) / 1000.0;
+            let new_time_min = (time_from_to_candidate + time_candidate_to_next) / 60.0;
+
+            let delta_km = new_distance_km - current_distance_km;
+            let delta_min = new_time_min - current_time_min + calc_req.candidate.service_duration_minutes as f64;
+
+            // Determine names
+            let insert_after_name = if insert_idx == 0 {
+                "Depo".to_string()
+            } else {
+                calc_req.route_stops[insert_idx - 1].name.clone()
+            };
+
+            let insert_before_name = if insert_idx >= num_stops {
+                "Depo".to_string()
+            } else {
+                calc_req.route_stops[insert_idx].name.clone()
+            };
+
+            // Estimate arrival/departure times (simplified)
+            let base_time = chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap();
+            let accumulated_min = (insert_idx as f64) * 45.0 + delta_min / 2.0; // Rough estimate
+            let arrival = base_time + chrono::Duration::minutes(accumulated_min as i64);
+            let departure = arrival + chrono::Duration::minutes(calc_req.candidate.service_duration_minutes as i64);
+
+            // Determine status based on delta
+            let status = if delta_min < 15.0 {
+                "ok"
+            } else if delta_min < 30.0 {
+                "tight"
+            } else {
+                "conflict"
+            };
+
+            positions.push(InsertionPosition {
+                insert_after_index: (insert_idx as i32) - 1,
+                insert_after_name,
+                insert_before_name,
+                delta_km,
+                delta_min,
+                estimated_arrival: arrival.format("%H:%M").to_string(),
+                estimated_departure: departure.format("%H:%M").to_string(),
+                status: status.to_string(),
+                conflict_reason: if status == "conflict" { Some("Vysoký časový dopad".to_string()) } else { None },
+            });
+        }
+
+        // Sort by delta_min to find best
+        positions.sort_by(|a, b| a.delta_min.partial_cmp(&b.delta_min).unwrap_or(std::cmp::Ordering::Equal));
+
+        let best_position = positions.first().cloned();
+        let is_feasible = best_position.as_ref().map(|p| p.status != "conflict").unwrap_or(false);
+
+        let response = SuccessResponse::new(request.id, CalculateInsertionResponse {
+            candidate_id: calc_req.candidate.id.clone(),
+            best_position,
+            all_positions: positions,
+            is_feasible,
+            infeasible_reason: if !is_feasible { Some("Všechny pozice mají konflikt".to_string()) } else { None },
+        });
+
+        let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+    }
+
+    Ok(())
+}
+
+/// Haversine distance in km
+fn haversine_km(a: Coordinates, b: Coordinates) -> f64 {
+    const R: f64 = 6371.0; // Earth radius in km
+    let d_lat = (b.lat - a.lat).to_radians();
+    let d_lng = (b.lng - a.lng).to_radians();
+    let lat1 = a.lat.to_radians();
+    let lat2 = b.lat.to_radians();
+
+    let h = (d_lat / 2.0).sin().powi(2) + lat1.cos() * lat2.cos() * (d_lng / 2.0).sin().powi(2);
+    2.0 * R * h.sqrt().asin()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

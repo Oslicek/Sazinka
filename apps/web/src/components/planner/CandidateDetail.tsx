@@ -1,0 +1,208 @@
+import { Link } from '@tanstack/react-router';
+import { SlotSuggestions, type SlotSuggestion } from './SlotSuggestions';
+import { InsertionPreview, type InsertionInfo } from './InsertionPreview';
+import styles from './CandidateDetail.module.css';
+
+export interface CandidateDetailData {
+  id: string;
+  customerId: string;
+  customerName: string;
+  deviceType: string;
+  deviceName?: string;
+  phone?: string;
+  email?: string;
+  street: string;
+  city: string;
+  postalCode?: string;
+  notes?: string;
+  dueDate: string;
+  daysUntilDue: number;
+  priority: 'overdue' | 'due_this_week' | 'due_soon' | 'upcoming';
+  // Route-aware data
+  suggestedSlots?: SlotSuggestion[];
+  insertionInfo?: InsertionInfo;
+}
+
+interface CandidateDetailProps {
+  candidate: CandidateDetailData | null;
+  isRouteAware?: boolean;
+  onSchedule?: (candidateId: string, slot: SlotSuggestion) => void;
+  onSnooze?: (candidateId: string) => void;
+  onFixAddress?: (candidateId: string) => void;
+  isLoading?: boolean;
+}
+
+export function CandidateDetail({
+  candidate,
+  isRouteAware = true,
+  onSchedule,
+  onSnooze,
+  onFixAddress,
+  isLoading,
+}: CandidateDetailProps) {
+  if (isLoading) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.loading}>
+          <div className={styles.spinner} />
+          <span>Načítám...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!candidate) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.empty}>
+          <span className={styles.emptyIcon}>👆</span>
+          <p>Vyberte kandidáta ze seznamu</p>
+          <p className={styles.emptyHint}>
+            Použijte klávesy ↑↓ pro navigaci
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const daysOverdue = candidate.daysUntilDue < 0 ? Math.abs(candidate.daysUntilDue) : 0;
+  const dueDateFormatted = new Date(candidate.dueDate).toLocaleDateString('cs-CZ', {
+    day: 'numeric',
+    month: 'numeric',
+    year: 'numeric',
+  });
+
+  return (
+    <div className={styles.container}>
+      {/* Header */}
+      <div className={styles.header}>
+        <h3 className={styles.name}>{candidate.customerName}</h3>
+        <div className={styles.badges}>
+          <span className={styles.deviceBadge}>{candidate.deviceType}</span>
+          {candidate.priority === 'overdue' && (
+            <span className={styles.overdueBadge}>+{daysOverdue}d po termínu</span>
+          )}
+        </div>
+      </div>
+
+      {/* Contact section */}
+      <section className={styles.section}>
+        <h4 className={styles.sectionTitle}>Kontakt</h4>
+        
+        {candidate.phone ? (
+          <a href={`tel:${candidate.phone}`} className={styles.phoneLink}>
+            📞 {candidate.phone}
+          </a>
+        ) : (
+          <span className={styles.missingInfo}>📵 Chybí telefon</span>
+        )}
+
+        {candidate.email && (
+          <a href={`mailto:${candidate.email}`} className={styles.emailLink}>
+            ✉️ {candidate.email}
+          </a>
+        )}
+      </section>
+
+      {/* Address section */}
+      <section className={styles.section}>
+        <h4 className={styles.sectionTitle}>Adresa</h4>
+        <p className={styles.address}>{candidate.street}</p>
+        <p className={styles.address}>
+          {candidate.postalCode && `${candidate.postalCode} `}{candidate.city}
+        </p>
+        {onFixAddress && (
+          <button
+            type="button"
+            className={styles.fixAddressButton}
+            onClick={() => onFixAddress(candidate.id)}
+          >
+            Opravit adresu
+          </button>
+        )}
+      </section>
+
+      {/* Due date section */}
+      <section className={styles.section}>
+        <h4 className={styles.sectionTitle}>Termín</h4>
+        <p className={styles.dueDate}>
+          <span className={candidate.priority === 'overdue' ? styles.overdueText : ''}>
+            {dueDateFormatted}
+          </span>
+          {candidate.daysUntilDue > 0 && (
+            <span className={styles.daysRemaining}>
+              (za {candidate.daysUntilDue} dní)
+            </span>
+          )}
+        </p>
+      </section>
+
+      {/* Slot suggestions (route-aware) */}
+      {isRouteAware && candidate.suggestedSlots && candidate.suggestedSlots.length > 0 && (
+        <section className={styles.section}>
+          <h4 className={styles.sectionTitle}>Doporučené sloty</h4>
+          <SlotSuggestions
+            slots={candidate.suggestedSlots}
+            onSelect={(slot) => onSchedule?.(candidate.id, slot)}
+          />
+        </section>
+      )}
+
+      {/* Insertion preview (route-aware) */}
+      {isRouteAware && candidate.insertionInfo && (
+        <section className={styles.section}>
+          <InsertionPreview info={candidate.insertionInfo} />
+        </section>
+      )}
+
+      {/* Notes */}
+      {candidate.notes && (
+        <section className={styles.section}>
+          <h4 className={styles.sectionTitle}>Poznámky</h4>
+          <p className={styles.notes}>{candidate.notes}</p>
+        </section>
+      )}
+
+      {/* Actions */}
+      <div className={styles.actions}>
+        <button
+          type="button"
+          className="btn-primary"
+          onClick={() => {
+            if (candidate.suggestedSlots?.[0]) {
+              onSchedule?.(candidate.id, candidate.suggestedSlots[0]);
+            }
+          }}
+          disabled={!candidate.suggestedSlots?.length}
+        >
+          Domluvit termín
+        </button>
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={() => onSnooze?.(candidate.id)}
+        >
+          Odložit
+        </button>
+      </div>
+
+      {/* Links */}
+      <div className={styles.links}>
+        <Link
+          to="/customers/$customerId"
+          params={{ customerId: candidate.customerId }}
+          className={styles.link}
+        >
+          Zobrazit detail zákazníka →
+        </Link>
+      </div>
+
+      {/* Keyboard shortcuts hint */}
+      <div className={styles.shortcuts}>
+        <span><kbd>D</kbd> Domluvit</span>
+        <span><kbd>O</kbd> Odložit</span>
+        <span><kbd>1-5</kbd> Vybrat slot</span>
+      </div>
+    </div>
+  );
+}

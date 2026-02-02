@@ -1,0 +1,160 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.slot {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.625rem 0.75rem;
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: left;
+}
+
+.slot:hover:not(:disabled) {
+  border-color: var(--color-primary);
+}
+
+.slot:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.slot:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.slot.selected {
+  border-color: var(--color-primary);
+  background-color: rgba(37, 99, 235, 0.05);
+}
+
+/* Status variants */
+.slot.ok {
+  border-left: 3px solid var(--color-success);
+}
+
+.slot.tight {
+  border-left: 3px solid var(--color-warning);
+}
+
+.slot.conflict {
+  border-left: 3px solid var(--color-error);
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Slot main row */
+.slotMain {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.keyHint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.date {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.time {
+  font-size: 0.8125rem;
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+.statusIcon {
+  font-size: 0.875rem;
+  margin-left: auto;
+}
+
+/* Slot meta row */
+.slotMeta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-left: calc(18px + 0.5rem);
+}
+
+.delta {
+  font-size: 0.6875rem;
+  color: var(--color-text-secondary);
+}
+
+/* Show more */
+.showMore {
+  font-size: 0.75rem;
+  padding: 0.375rem;
+  background: none;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.showMore:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+/* Empty state */
+.empty {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  text-align: center;
+  padding: 1rem;
+  background-color: var(--color-bg-secondary);
+  border-radius: var(--radius-md);
+}
+
+/* Mobile */
+@media (max-width: 600px) {
+  .slotMain {
+    flex-wrap: wrap;
+  }
+
+  .time {
+    flex-basis: 100%;
+    padding-left: calc(18px + 0.5rem);
+    margin-top: 0.125rem;
+  }
+
+  .statusIcon {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    margin-left: 0;
+  }
+
+  .slot {
+    position: relative;
+  }
+}
