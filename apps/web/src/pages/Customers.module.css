@@ -326,6 +326,11 @@
   font-weight: 600 !important;
 }
 
+.revisionWarning {
+  color: #d97706 !important;
+  font-weight: 600 !important;
+}
+
 .revisionSoon {
   color: #f97316 !important;
 }

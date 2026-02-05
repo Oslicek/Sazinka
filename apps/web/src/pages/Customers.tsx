@@ -237,18 +237,30 @@ export function Customers() {
   // Calculate stats from loaded customers
   const stats = useMemo(() => {
     let overdueCount = 0;
+    let neverServicedCount = 0;
     let geocodeFailed = 0;
     
     for (const customer of customers) {
       if (customer.overdueCount > 0) overdueCount++;
+      if (customer.neverServicedCount > 0) neverServicedCount++;
       if (customer.geocodeStatus === 'failed') geocodeFailed++;
     }
     
-    return { overdueCount, geocodeFailed, total };
+    return { overdueCount, neverServicedCount, geocodeFailed, total };
   }, [customers, total]);
 
-  // Format next revision date (for cards view)
-  const formatNextRevision = (date: string | null, overdueCount: number): { text: string; className: string } => {
+  // Format revision status for cards view
+  const formatRevisionStatus = (date: string | null, overdueCount: number, neverServicedCount: number): { text: string; className: string } => {
+    // Never serviced takes priority
+    if (neverServicedCount > 0) {
+      return { text: `Bez revize (${neverServicedCount} zař.)`, className: styles.revisionWarning };
+    }
+    
+    // Has overdue devices
+    if (overdueCount > 0) {
+      return { text: `Po termínu (${overdueCount} zař.)`, className: styles.revisionOverdue };
+    }
+    
     if (!date) {
       return { text: 'Bez revize', className: styles.revisionNone };
     }
@@ -259,7 +271,7 @@ export function Customers() {
     
     const diffDays = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
     
-    if (overdueCount > 0 || diffDays < 0) {
+    if (diffDays < 0) {
       return { 
         text: `Po termínu (${Math.abs(diffDays)} dní)`, 
         className: styles.revisionOverdue 
@@ -423,7 +435,7 @@ export function Customers() {
             </div>
           ) : (
             customers.map((customer) => {
-              const revision = formatNextRevision(customer.nextRevisionDate, customer.overdueCount);
+              const revision = formatRevisionStatus(customer.nextRevisionDate, customer.overdueCount, customer.neverServicedCount);
               
               return (
                 <Link
@@ -511,6 +523,12 @@ export function Customers() {
           <span className={styles.statValue}>{stats.total}</span>
           <span className={styles.statLabel}>celkem</span>
         </div>
+        {stats.neverServicedCount > 0 && (
+          <div className={`${styles.statItem} ${styles.statWarning}`}>
+            <span className={styles.statValue}>{stats.neverServicedCount}</span>
+            <span className={styles.statLabel}>bez revize</span>
+          </div>
+        )}
         {stats.overdueCount > 0 && (
           <div className={`${styles.statItem} ${styles.statDanger}`}>
             <span className={styles.statValue}>{stats.overdueCount}</span>

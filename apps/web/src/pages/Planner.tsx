@@ -961,7 +961,7 @@ export function Planner() {
       overdue: 'Po termínu',
       due_this_week: 'Tento týden',
       due_soon: 'Brzy',
-      upcoming: 'Nadcházející',
+      upcoming: 'Plánovaná',
     };
     return labels[priority] || priority;
   };

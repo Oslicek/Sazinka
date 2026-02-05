@@ -34,7 +34,7 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
   overdue: { label: 'Po termínu', color: '#ef4444' },
   due_this_week: { label: 'Tento týden', color: '#f97316' },
   due_soon: { label: 'Brzy', color: '#eab308' },
-  upcoming: { label: 'Nadcházející', color: '#22c55e' },
+  upcoming: { label: 'Plánovaná', color: '#22c55e' },
 };
 
 export function CallQueue() {
@@ -241,7 +241,7 @@ export function CallQueue() {
           <option value="all">Všechny</option>
           <option value="overdue">Po termínu</option>
           <option value="due_soon">Tento týden</option>
-          <option value="upcoming">Nadcházející</option>
+          <option value="upcoming">Plánovaná</option>
         </select>
         <label className={styles.checkboxLabel}>
           <input

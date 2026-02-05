@@ -28,7 +28,7 @@ interface FormData {
 }
 
 const STATUSES = [
-  { value: 'upcoming', label: 'Nadcházející' },
+  { value: 'upcoming', label: 'Plánovaná' },
   { value: 'scheduled', label: 'Naplánováno' },
   { value: 'confirmed', label: 'Potvrzeno' },
 ];

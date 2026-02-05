@@ -136,6 +136,7 @@ pub struct CustomerListItem {
     pub device_count: i64,
     pub next_revision_date: Option<NaiveDate>,
     pub overdue_count: i64,
+    pub never_serviced_count: i64,
 }
 
 /// Request for listing customers with filters and sorting

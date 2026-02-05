@@ -156,6 +156,12 @@ export function CustomerPreviewPanel({
             <span className={styles.statValue}>{customer.deviceCount}</span>
             <span className={styles.statLabel}>zařízení</span>
           </div>
+          {customer.neverServicedCount > 0 && (
+            <div className={`${styles.statItem} ${styles.statWarning}`}>
+              <span className={styles.statValue}>{customer.neverServicedCount}</span>
+              <span className={styles.statLabel}>bez revize</span>
+            </div>
+          )}
           {customer.overdueCount > 0 && (
             <div className={`${styles.statItem} ${styles.statDanger}`}>
               <span className={styles.statValue}>{customer.overdueCount}</span>

@@ -1,8 +1,8 @@
 # Sazinka - Workflow & UI Koncept
 
 > **Status:** MVP kompletní + Phase 7 plánována  
-> **Verze:** 0.4  
-> **Datum:** 2026-02-02
+> **Verze:** 0.5  
+> **Datum:** 2026-02-05
 > 
 > **Implementováno:**
 > - ✅ Fronta k obvolání (`/queue`) - filtry, statistiky, akce
@@ -542,13 +542,18 @@ Cíl: Uživatel nesmí "přeskakovat" mezi izolovanými stránkami. Každá obra
 
 | UX stav | Mapování | Implementace |
 |---------|----------|--------------|
-| Čeká na kontakt | `upcoming` | `status='upcoming' AND scheduled_date IS NULL` |
+| Plánovaná (dříve Nadcházející) | `upcoming` | `status='upcoming' AND scheduled_date IS NULL` |
 | Domluveno | `scheduled` | `status='scheduled'` (má termín, nepotvrzeno) |
 | Potvrzeno | `confirmed` | `status='confirmed'` |
 | Naplánováno v trase | `confirmed` | + `route_order IS NOT NULL` |
-| Dokončeno | `completed` | `status='completed'` |
+| Dokončeno | `completed` | `status='completed'` - **pouze dokončené revize zakládají výpočet "po termínu"** |
 | Odloženo | `upcoming` | + nové pole `snooze_until` |
 | Zrušeno | `cancelled` | `status='cancelled'` |
+
+> **Změna v0.16.0:** Stav "Nadcházející" přejmenován na "Plánovaná" (lépe vystihuje význam).
+> Pouze dokončené revize (`status='completed'`) se používají pro výpočet zpoždění.
+> Zpoždění = (last_completed_at + interval_months) < today.
+> Pro zařízení bez provedené revize se použije installation_date jako základ.
 
 **Nová pole pro Revision (schema change):**
 ```sql

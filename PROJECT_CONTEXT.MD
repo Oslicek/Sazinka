@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-02-05 (v0.15.1 - Import processor reliability fixes)
+> **Last Updated:** 2026-02-05 (v0.16.0 - Overdue calculation logic)
 
 ## Overview
 
@@ -400,12 +400,12 @@ pub struct Revision {
 }
 
 pub enum RevisionStatus {
-    Upcoming,
+    Upcoming,       // "Plánovaná" in Czech UI (not yet completed)
     DueSoon,
     Overdue,
     Scheduled,
     Confirmed,
-    Completed,
+    Completed,      // Only completed revisions count for overdue calculation
     Cancelled,
 }
 
@@ -1524,6 +1524,21 @@ cargo test
 - MVP focuses on core CRM + route planning
 - Email notifications deferred to later phase
 - Invoicing/billing architecture prepared but not implemented
+
+## Recent Changes (v0.16.0)
+
+- **Overdue Calculation Logic** - Complete redesign of overdue/due calculation:
+  - **Renamed "Nadcházející" to "Plánovaná"** - Better reflects the meaning (planned, not just upcoming)
+  - **Overdue based on completed revisions** - Only completed revisions establish the starting point for calculating overdue time
+    - If device has completed revisions: `overdue = (last_completed_at + interval_months) < today`
+    - If device has no completed revisions but has installation_date: `overdue = (installation_date + interval_months) < today`
+  - **"Never serviced" tracking** - New `neverServicedCount` field in `CustomerListItem`
+    - Devices without any completed revision are tracked separately
+    - Displayed prominently in customer list with warning styling
+  - **Overdue display in years/months/days** - Czech-language formatting with proper declensions
+    - Example: "2 roky, 3 měsíce, 15 dní"
+  - **TDD implementation** - 14 new tests for `formatOverdueDuration` and `calculateOverdueInfo` utilities
+  - **Backend SQL query rewrite** - CTE-based calculation for accurate per-device overdue status
 
 ## Recent Changes (v0.15.1)
 

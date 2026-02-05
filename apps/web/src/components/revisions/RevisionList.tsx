@@ -177,7 +177,7 @@ export function RevisionList({
             onChange={(e) => setStatusFilter(e.target.value)}
           >
             <option value="">Všechny stavy</option>
-            <option value="upcoming">Nadcházející</option>
+            <option value="upcoming">Plánovaná</option>
             <option value="due_soon">Brzy</option>
             <option value="overdue">Po termínu</option>
             <option value="scheduled">Naplánováno</option>

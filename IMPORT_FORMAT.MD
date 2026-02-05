@@ -1,7 +1,7 @@
 # CSV Import – Specifikace (v2.0.0)
 
-> **Verze:** 2.2.1  
-> **Datum:** 2026-01-25
+> **Verze:** 2.3.0  
+> **Datum:** 2026-02-05
 
 ## Obsah
 
@@ -817,18 +817,22 @@ device_ref;customer_ref;due_date;status;scheduled_date;scheduled_time_start;sche
 
 | Hodnota | Popis |
 |---------|-------|
-| `upcoming` | Nadcházející (výchozí) |
+| `upcoming` | Plánovaná (výchozí) - dříve "Nadcházející" |
 | `scheduled` | Naplánováno |
 | `confirmed` | Potvrzeno |
-| `completed` | Dokončeno |
+| `completed` | Dokončeno - **pouze dokončené revize zakládají výpočet "po termínu"** |
 | `cancelled` | Zrušeno |
 
 **Aliasy:**
-- `nadcházející`, `budoucí` → `upcoming`
-- `naplánováno`, `plánováno` → `scheduled`
-- `potvrzeno` → `confirmed`
-- `dokončeno`, `hotovo`, `provedeno` → `completed`
-- `zrušeno`, `storno` → `cancelled`
+- `plánovaná`, `nadcházející`, `budoucí` → `upcoming`
+- `naplánováno`, `naplánovaná` → `scheduled`
+- `potvrzeno`, `potvrzená` → `confirmed`
+- `dokončeno`, `dokončená`, `hotovo`, `provedeno` → `completed`
+- `zrušeno`, `zrušená`, `storno` → `cancelled`
+
+> **Změna v2.3.0:** Stav "Nadcházející" přejmenován na "Plánovaná". 
+> Pouze dokončené revize (`completed`) se používají pro výpočet zpoždění ("po termínu").
+> Zpoždění = (datum poslední dokončené revize + interval zařízení) < dnes.
 
 ### 12.5 Výsledky revize
 

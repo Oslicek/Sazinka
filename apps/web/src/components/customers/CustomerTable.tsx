@@ -30,8 +30,28 @@ interface CustomerTableProps {
   isLoading?: boolean;
 }
 
-// Format next revision date
-function formatNextRevision(date: string | null, overdueCount: number): { text: string; status: 'overdue' | 'soon' | 'upcoming' | 'none' } {
+// Format revision status for display
+function formatRevisionStatus(
+  date: string | null, 
+  overdueCount: number,
+  neverServicedCount: number
+): { text: string; status: 'overdue' | 'never-serviced' | 'soon' | 'upcoming' | 'none' } {
+  // Never serviced takes priority - show warning
+  if (neverServicedCount > 0) {
+    return { 
+      text: `Dosud nerevidováno (${neverServicedCount})`, 
+      status: 'never-serviced'
+    };
+  }
+  
+  // Has overdue devices
+  if (overdueCount > 0) {
+    return { 
+      text: `Po termínu (${overdueCount} zař.)`, 
+      status: 'overdue'
+    };
+  }
+
   if (!date) {
     return { text: 'Bez revize', status: 'none' };
   }
@@ -42,7 +62,7 @@ function formatNextRevision(date: string | null, overdueCount: number): { text: 
   
   const diffDays = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
   
-  if (overdueCount > 0 || diffDays < 0) {
+  if (diffDays < 0) {
     return { 
       text: `Po termínu (${Math.abs(diffDays)} dní)`, 
       status: 'overdue'
@@ -132,11 +152,12 @@ export function CustomerTable({
       size: 80,
     }),
     columnHelper.accessor('nextRevisionDate', {
-      header: 'Příští revize',
+      header: 'Stav revizí',
       cell: ({ row }) => {
-        const { text, status } = formatNextRevision(
+        const { text, status } = formatRevisionStatus(
           row.original.nextRevisionDate,
-          row.original.overdueCount
+          row.original.overdueCount,
+          row.original.neverServicedCount
         );
         return (
           <span className={`${styles.revision} ${styles[`revision-${status}`]}`}>
@@ -144,7 +165,7 @@ export function CustomerTable({
           </span>
         );
       },
-      size: 130,
+      size: 170,
     }),
     columnHelper.accessor('geocodeStatus', {
       header: 'Adresa',

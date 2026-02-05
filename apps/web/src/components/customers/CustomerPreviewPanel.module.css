@@ -220,6 +220,10 @@
   color: #ef4444;
 }
 
+.statWarning .statValue {
+  color: #d97706;
+}
+
 .nextRevision {
   margin: 0;
   font-size: 0.875rem;

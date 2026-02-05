@@ -49,7 +49,7 @@ function getPriorityLabel(priority: CandidateRowData['priority']): string {
     case 'overdue': return 'Po termínu';
     case 'due_this_week': return 'Tento týden';
     case 'due_soon': return 'Brzy';
-    case 'upcoming': return 'Nadcházející';
+    case 'upcoming': return 'Plánovaná';
   }
 }
 

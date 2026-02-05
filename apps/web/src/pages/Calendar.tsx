@@ -301,7 +301,7 @@ export function Calendar() {
 
 function getStatusLabel(status: string): string {
   const labels: Record<string, string> = {
-    upcoming: 'Nadcházející',
+    upcoming: 'Plánovaná',
     due_soon: 'Brzy',
     overdue: 'Po termínu',
     scheduled: 'Naplánováno',

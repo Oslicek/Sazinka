@@ -158,6 +158,7 @@ export interface CustomerListItem {
   deviceCount: number;
   nextRevisionDate: string | null;
   overdueCount: number;
+  neverServicedCount: number;
 }
 
 /**

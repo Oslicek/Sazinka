@@ -334,8 +334,9 @@ pub async fn list_customers_extended(
     let mut having_conditions: Vec<String> = vec![];
     
     if req.has_overdue == Some(true) {
+        // Filter customers that have at least one overdue or never-serviced device
         having_conditions.push(
-            "COUNT(r.id) FILTER (WHERE r.due_date < CURRENT_DATE AND r.status NOT IN ('completed', 'cancelled')) > 0".to_string()
+            "COUNT(DISTINCT ds.device_id) FILTER (WHERE ds.is_overdue OR ds.is_never_serviced) > 0".to_string()
         );
     }
 
@@ -369,8 +370,34 @@ pub async fn list_customers_extended(
     // Handle NULL values in sorting (NULLs last for ASC, first for DESC)
     let nulls_order = if order_dir == "ASC" { "NULLS LAST" } else { "NULLS FIRST" };
 
+    // Subquery to calculate device overdue status based on last completed revision
+    // A device is overdue if: (last_completed_date + interval_months) < today
+    // A device is never_serviced if: no completed revisions exist
     let query = format!(
         r#"
+        WITH device_status AS (
+            SELECT 
+                d.id as device_id,
+                d.customer_id,
+                d.revision_interval_months,
+                d.installation_date,
+                MAX(r.completed_at) FILTER (WHERE r.status = 'completed') as last_completed,
+                CASE 
+                    -- Has completed revision: check if last_completed + interval < today
+                    WHEN MAX(r.completed_at) FILTER (WHERE r.status = 'completed') IS NOT NULL THEN
+                        (MAX(r.completed_at) FILTER (WHERE r.status = 'completed'))::date + 
+                        (d.revision_interval_months || ' months')::interval < CURRENT_DATE
+                    -- No completed revision but has installation date: check installation + interval < today
+                    WHEN d.installation_date IS NOT NULL THEN
+                        d.installation_date + (d.revision_interval_months || ' months')::interval < CURRENT_DATE
+                    ELSE FALSE
+                END as is_overdue,
+                -- Never serviced = no completed revisions
+                MAX(r.completed_at) FILTER (WHERE r.status = 'completed') IS NULL as is_never_serviced
+            FROM devices d
+            LEFT JOIN revisions r ON d.id = r.device_id
+            GROUP BY d.id, d.customer_id, d.revision_interval_months, d.installation_date
+        )
         SELECT
             c.id,
             c.user_id,
@@ -385,11 +412,12 @@ pub async fn list_customers_extended(
             c.lng,
             c.geocode_status,
             c.created_at,
-            COALESCE(COUNT(DISTINCT d.id), 0) as device_count,
+            COALESCE(COUNT(DISTINCT ds.device_id), 0) as device_count,
             MIN(r.due_date) FILTER (WHERE r.status NOT IN ('completed', 'cancelled')) as next_revision_date,
-            COALESCE(COUNT(r.id) FILTER (WHERE r.due_date < CURRENT_DATE AND r.status NOT IN ('completed', 'cancelled')), 0) as overdue_count
+            COALESCE(COUNT(DISTINCT ds.device_id) FILTER (WHERE ds.is_overdue), 0) as overdue_count,
+            COALESCE(COUNT(DISTINCT ds.device_id) FILTER (WHERE ds.is_never_serviced), 0) as never_serviced_count
         FROM customers c
-        LEFT JOIN devices d ON c.id = d.customer_id
+        LEFT JOIN device_status ds ON c.id = ds.customer_id
         LEFT JOIN revisions r ON c.id = r.customer_id
         WHERE {}
         GROUP BY c.id, c.user_id, c.customer_type, c.name, c.email, c.phone,
