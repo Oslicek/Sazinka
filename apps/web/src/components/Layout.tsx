@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import { useNatsStore } from '@/stores/natsStore';
+import { useActiveJobsStore } from '@/stores/activeJobsStore';
 import styles from './Layout.module.css';
 
 interface LayoutProps {
@@ -8,6 +9,7 @@ interface LayoutProps {
 
 export function Layout({ children }: LayoutProps) {
   const isConnected = useNatsStore((s) => s.isConnected);
+  const activeJobsCount = useActiveJobsStore((s) => s.activeCount);
 
   return (
     <div className={styles.layout}>
@@ -27,12 +29,21 @@ export function Layout({ children }: LayoutProps) {
           <NavLink to="/admin">Admin</NavLink>
         </nav>
 
-        <div className={styles.status}>
-          <span
-            className={styles.statusDot}
-            style={{ backgroundColor: isConnected ? 'var(--color-success)' : 'var(--color-error)' }}
-          />
-          {isConnected ? 'Online' : 'Offline'}
+        <div className={styles.headerRight}>
+          {activeJobsCount > 0 && (
+            <Link to="/jobs" className={styles.activeJobs}>
+              <span className={styles.activeJobsIndicator} />
+              Aktivní úlohy: {activeJobsCount}
+            </Link>
+          )}
+          
+          <div className={styles.status}>
+            <span
+              className={styles.statusDot}
+              style={{ backgroundColor: isConnected ? 'var(--color-success)' : 'var(--color-error)' }}
+            />
+            {isConnected ? 'Online' : 'Offline'}
+          </div>
         </div>
       </header>
 

@@ -1,12 +1,11 @@
 /**
  * Modal for importing customers from CSV file
+ * Submits import as a background job and closes immediately
  */
 
-import { useCallback, useRef, useState, useEffect } from 'react';
-import { useImport } from '../../services/import';
-import { submitGeocodeAllPending } from '../../services/customerService';
-import { useNatsStore } from '../../stores/natsStore';
-import type { CreateCustomerRequest, ImportIssue } from '@shared/customer';
+import { useCallback, useRef, useState } from 'react';
+import { submitCustomerImportJob } from '../../services/importJobService';
+import { useActiveJobsStore } from '../../stores/activeJobsStore';
 import styles from './ImportCustomersModal.module.css';
 
 // Mock user ID for development
@@ -15,56 +14,107 @@ const USER_ID = '00000000-0000-0000-0000-000000000001';
 interface ImportCustomersModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onImportBatch?: (customers: CreateCustomerRequest[]) => Promise<{
-    importedCount: number;
-    updatedCount: number;
-    errors: ImportIssue[];
-  }>;
+}
+
+type ModalState = 'idle' | 'parsing' | 'preview' | 'submitting' | 'submitted' | 'error';
+
+interface CsvPreview {
+  filename: string;
+  totalRows: number;
+  sampleRows: string[][];
+  headers: string[];
+  csvContent: string;
 }
 
 export function ImportCustomersModal({ 
   isOpen, 
   onClose,
-  onImportBatch,
 }: ImportCustomersModalProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [geocodeStatus, setGeocodeStatus] = useState<'idle' | 'submitting' | 'submitted' | 'skipped' | 'error'>('idle');
-  const [geocodeJobId, setGeocodeJobId] = useState<string | null>(null);
-  const [geocodeError, setGeocodeError] = useState<string | null>(null);
+  const [state, setState] = useState<ModalState>('idle');
+  const [preview, setPreview] = useState<CsvPreview | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [submittedJobId, setSubmittedJobId] = useState<string | null>(null);
   
-  const { state, startImport, reset } = useImport({
-    onBatchReady: onImportBatch,
-  });
+  const addJob = useActiveJobsStore((s) => s.addJob);
 
-  // Trigger geocoding when import completes
-  useEffect(() => {
-    if (state.status === 'complete' && geocodeStatus === 'idle') {
-      setGeocodeStatus('submitting');
+  const parseCSVPreview = useCallback(async (file: File): Promise<CsvPreview> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
       
-      submitGeocodeAllPending(USER_ID)
-        .then((result) => {
-          if (result) {
-            setGeocodeJobId(result.jobId);
-            setGeocodeStatus('submitted');
-          } else {
-            setGeocodeStatus('skipped'); // No customers to geocode - use 'skipped' to avoid loop
+      reader.onload = (e) => {
+        try {
+          const text = e.target?.result as string;
+          const lines = text.split(/\r?\n/).filter(line => line.trim());
+          
+          if (lines.length < 2) {
+            reject(new Error('CSV soubor musí obsahovat alespoň hlavičku a jeden řádek dat'));
+            return;
           }
-        })
-        .catch((err) => {
-          setGeocodeError(err.message);
-          setGeocodeStatus('error');
-        });
-    }
-  }, [state.status, geocodeStatus]);
+          
+          // Parse using semicolon delimiter (Czech format)
+          const delimiter = text.includes(';') ? ';' : ',';
+          const parseLine = (line: string) => {
+            const result: string[] = [];
+            let current = '';
+            let inQuotes = false;
+            
+            for (let i = 0; i < line.length; i++) {
+              const char = line[i];
+              if (char === '"') {
+                inQuotes = !inQuotes;
+              } else if (char === delimiter && !inQuotes) {
+                result.push(current.trim());
+                current = '';
+              } else {
+                current += char;
+              }
+            }
+            result.push(current.trim());
+            return result;
+          };
+          
+          const headers = parseLine(lines[0]);
+          const sampleRows = lines.slice(1, 6).map(parseLine); // First 5 data rows
+          const totalRows = lines.length - 1; // Excluding header
+          
+          resolve({
+            filename: file.name,
+            totalRows,
+            sampleRows,
+            headers,
+            csvContent: text,
+          });
+        } catch (err) {
+          reject(err);
+        }
+      };
+      
+      reader.onerror = () => reject(new Error('Nepodařilo se načíst soubor'));
+      reader.readAsText(file, 'utf-8');
+    });
+  }, []);
 
-  const handleFileSelect = useCallback((file: File) => {
-    if (file.name.endsWith('.csv') || file.type === 'text/csv') {
-      startImport(file);
-    } else {
-      alert('Prosím vyberte soubor CSV.');
+  const handleFileSelect = useCallback(async (file: File) => {
+    if (!file.name.endsWith('.csv') && file.type !== 'text/csv') {
+      setError('Prosím vyberte soubor CSV.');
+      setState('error');
+      return;
     }
-  }, [startImport]);
+    
+    setState('parsing');
+    setError(null);
+    
+    try {
+      const csvPreview = await parseCSVPreview(file);
+      setPreview(csvPreview);
+      setState('preview');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nepodařilo se zpracovat soubor');
+      setState('error');
+    }
+  }, [parseCSVPreview]);
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -93,39 +143,64 @@ export function ImportCustomersModal({
     setDragOver(false);
   }, []);
 
-  const handleCopyReport = useCallback(() => {
-    if (state.textReport) {
-      navigator.clipboard.writeText(state.textReport);
+  const handleSubmitImport = useCallback(async () => {
+    if (!preview) return;
+    
+    setState('submitting');
+    setError(null);
+    
+    try {
+      const result = await submitCustomerImportJob(
+        USER_ID,
+        preview.csvContent,
+        preview.filename
+      );
+      
+      // Add job to active jobs store for immediate tracking
+      addJob({
+        id: result.jobId,
+        type: 'import.customer',
+        name: `Import: ${preview.filename}`,
+        status: 'queued',
+        progressText: 'Čeká ve frontě...',
+        startedAt: new Date(),
+      });
+      
+      setSubmittedJobId(result.jobId);
+      setState('submitted');
+      
+      // Close modal after a brief moment to show success
+      setTimeout(() => {
+        handleClose();
+      }, 1500);
+      
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nepodařilo se spustit import');
+      setState('error');
     }
-  }, [state.textReport]);
-
-  const handleSaveReport = useCallback(() => {
-    if (state.textReport && state.report) {
-      const blob = new Blob([state.textReport], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `import-report-${state.report.filename.replace('.csv', '')}-${new Date().toISOString().slice(0, 10)}.txt`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }
-  }, [state.textReport, state.report]);
+  }, [preview, addJob]);
 
   const handleClose = useCallback(() => {
-    reset();
-    setGeocodeStatus('idle');
-    setGeocodeJobId(null);
-    setGeocodeError(null);
+    setState('idle');
+    setPreview(null);
+    setError(null);
+    setSubmittedJobId(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
     onClose();
-  }, [reset, onClose]);
+  }, [onClose]);
+
+  const handleReset = useCallback(() => {
+    setState('idle');
+    setPreview(null);
+    setError(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, []);
 
   if (!isOpen) return null;
-
-  const progressPercent = state.total > 0 
-    ? Math.round((state.progress / state.total) * 100) 
-    : 0;
 
   return (
     <div className={styles.overlay} onClick={handleClose}>
@@ -137,7 +212,7 @@ export function ImportCustomersModal({
 
         <div className={styles.content}>
           {/* Idle state - file selection */}
-          {state.status === 'idle' && (
+          {state === 'idle' && (
             <div 
               className={`${styles.dropZone} ${dragOver ? styles.dragOver : ''}`}
               onDrop={handleDrop}
@@ -162,131 +237,97 @@ export function ImportCustomersModal({
             </div>
           )}
 
-          {/* Processing state */}
-          {(state.status === 'processing' || state.status === 'sending') && (
+          {/* Parsing state */}
+          {state === 'parsing' && (
             <div className={styles.processing}>
               <div className={styles.spinner} />
-              <p className={styles.processingText}>
-                {state.status === 'processing' 
-                  ? 'Zpracovávám CSV...' 
-                  : 'Ukládám zákazníky...'}
-              </p>
-              <div className={styles.progressBar}>
-                <div 
-                  className={styles.progressFill} 
-                  style={{ width: `${progressPercent}%` }}
-                />
+              <p className={styles.processingText}>Načítám soubor...</p>
+            </div>
+          )}
+
+          {/* Preview state */}
+          {state === 'preview' && preview && (
+            <div className={styles.previewContainer}>
+              <div className={styles.previewHeader}>
+                <div className={styles.previewInfo}>
+                  <span className={styles.filename}>{preview.filename}</span>
+                  <span className={styles.rowCount}>{preview.totalRows.toLocaleString('cs-CZ')} zákazníků</span>
+                </div>
               </div>
-              <p className={styles.progressText}>
-                {state.progress.toLocaleString('cs-CZ')} / {state.total.toLocaleString('cs-CZ')} ({progressPercent}%)
+              
+              <div className={styles.previewTable}>
+                <table>
+                  <thead>
+                    <tr>
+                      {preview.headers.map((header, i) => (
+                        <th key={i}>{header}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.sampleRows.map((row, i) => (
+                      <tr key={i}>
+                        {row.map((cell, j) => (
+                          <td key={j}>{cell}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {preview.totalRows > 5 && (
+                  <div className={styles.previewMore}>
+                    ...a dalších {(preview.totalRows - 5).toLocaleString('cs-CZ')} řádků
+                  </div>
+                )}
+              </div>
+              
+              <div className={styles.previewActions}>
+                <button className={styles.cancelButton} onClick={handleReset}>
+                  Vybrat jiný soubor
+                </button>
+                <button className={styles.importButton} onClick={handleSubmitImport}>
+                  Spustit import
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Submitting state */}
+          {state === 'submitting' && (
+            <div className={styles.processing}>
+              <div className={styles.spinner} />
+              <p className={styles.processingText}>Odesílám úlohu importu...</p>
+            </div>
+          )}
+
+          {/* Submitted state */}
+          {state === 'submitted' && (
+            <div className={styles.submitted}>
+              <div className={styles.successIcon}>✓</div>
+              <p className={styles.successText}>Import byl spuštěn</p>
+              <p className={styles.successHint}>
+                Průběh můžete sledovat v sekci Úlohy nebo v horní liště.
               </p>
+              {submittedJobId && (
+                <small className={styles.jobId}>Job ID: {submittedJobId.slice(0, 8)}...</small>
+              )}
             </div>
           )}
 
           {/* Error state */}
-          {state.status === 'error' && (
+          {state === 'error' && (
             <div className={styles.error}>
               <div className={styles.errorIcon}>❌</div>
-              <p className={styles.errorText}>{state.error}</p>
-              <button className={styles.retryButton} onClick={reset}>
+              <p className={styles.errorText}>{error}</p>
+              <button className={styles.retryButton} onClick={handleReset}>
                 Zkusit znovu
               </button>
-            </div>
-          )}
-
-          {/* Complete state - report */}
-          {state.status === 'complete' && state.report && (
-            <div className={styles.complete}>
-              <div className={styles.summary}>
-                <div className={styles.summaryItem}>
-                  <span className={styles.summaryLabel}>Celkem řádků</span>
-                  <span className={styles.summaryValue}>
-                    {state.report.totalRows.toLocaleString('cs-CZ')}
-                  </span>
-                </div>
-                <div className={styles.summaryItem}>
-                  <span className={styles.summaryLabel}>Importováno</span>
-                  <span className={`${styles.summaryValue} ${styles.success}`}>
-                    {state.report.importedCount.toLocaleString('cs-CZ')} ✓
-                  </span>
-                </div>
-                <div className={styles.summaryItem}>
-                  <span className={styles.summaryLabel}>Aktualizováno</span>
-                  <span className={styles.summaryValue}>
-                    {state.report.updatedCount.toLocaleString('cs-CZ')} ↻
-                  </span>
-                </div>
-                <div className={styles.summaryItem}>
-                  <span className={styles.summaryLabel}>Přeskočeno</span>
-                  <span className={styles.summaryValue}>
-                    {state.report.skippedCount.toLocaleString('cs-CZ')} ○
-                  </span>
-                </div>
-                <div className={styles.summaryItem}>
-                  <span className={styles.summaryLabel}>Varování</span>
-                  <span className={`${styles.summaryValue} ${state.report.issues.filter(i => i.level === 'warning').length > 0 ? styles.warning : ''}`}>
-                    {state.report.issues.filter(i => i.level === 'warning').length}
-                  </span>
-                </div>
-              </div>
-
-              <div className={styles.reportSection}>
-                <h3>Podrobný report</h3>
-                <pre className={styles.reportText}>{state.textReport}</pre>
-              </div>
-
-              <div className={styles.reportActions}>
-                <button className={styles.copyButton} onClick={handleCopyReport}>
-                  📋 Kopírovat
-                </button>
-                <button className={styles.saveButton} onClick={handleSaveReport}>
-                  💾 Uložit
-                </button>
-              </div>
-
-              {/* Geocoding status */}
-              <div className={styles.geocodeSection}>
-                <h3>Geokódování adres</h3>
-                {geocodeStatus === 'submitting' && (
-                  <div className={styles.geocodeSubmitting}>
-                    <div className={styles.spinner} />
-                    <span>Odesílám úlohu geokódování...</span>
-                  </div>
-                )}
-                {geocodeStatus === 'submitted' && (
-                  <div className={styles.geocodeSubmitted}>
-                    <span className={styles.successIcon}>✓</span>
-                    <span>Geokódování spuštěno na pozadí</span>
-                    {geocodeJobId && (
-                      <small className={styles.jobId}>Job ID: {geocodeJobId.slice(0, 8)}...</small>
-                    )}
-                    <p className={styles.geocodeHint}>
-                      Průběh můžete sledovat na stránce Admin.
-                    </p>
-                  </div>
-                )}
-                {geocodeStatus === 'error' && (
-                  <div className={styles.geocodeError}>
-                    <span className={styles.errorIcon}>⚠</span>
-                    <span>Nepodařilo se spustit geokódování: {geocodeError}</span>
-                  </div>
-                )}
-                {geocodeStatus === 'skipped' && (
-                  <div className={styles.geocodeIdle}>
-                    <span>Všichni zákazníci již mají souřadnice.</span>
-                  </div>
-                )}
-              </div>
             </div>
           )}
         </div>
 
         <div className={styles.footer}>
-          {state.status === 'complete' ? (
-            <button className={styles.doneButton} onClick={handleClose}>
-              Hotovo
-            </button>
-          ) : state.status === 'idle' ? (
+          {state === 'idle' && (
             <a 
               href="/IMPORT_FORMAT.MD" 
               target="_blank" 
@@ -295,7 +336,7 @@ export function ImportCustomersModal({
             >
               Nápověda k formátu CSV
             </a>
-          ) : null}
+          )}
         </div>
       </div>
     </div>

@@ -110,7 +110,7 @@ if (-not $NoBuild) {
     $cargoCmd = @"
 call "$vcvars" > nul 2>&1
 cd /d "$scriptDir\worker"
-cargo build --release
+cargo build
 "@
     
     # Write temp batch file and execute
@@ -135,14 +135,14 @@ cargo build --release
 # 3. Start Worker in new terminal
 Write-Host "[3/4] Spoustim Worker..." -ForegroundColor Yellow
 
-$workerPath = "$scriptDir\worker\target\release\sazinka-worker.exe"
+$workerPath = "$scriptDir\worker\target\debug\sazinka-worker.exe"
 if (-not (Test-Path $workerPath)) {
-    $workerPath = "$scriptDir\worker\target\debug\sazinka-worker.exe"
+    $workerPath = "$scriptDir\worker\target\release\sazinka-worker.exe"
 }
 
 if (-not (Test-Path $workerPath)) {
     Write-Host "CHYBA: Worker executable nenalezen!" -ForegroundColor Red
-    Write-Host "      Spustte 'cargo build --release' v adresari worker/" -ForegroundColor Gray
+    Write-Host "      Spustte 'cargo build' v adresari worker/" -ForegroundColor Gray
     exit 1
 }
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNatsStore } from '@/stores/natsStore';
+import { useActiveJobsStore } from '@/stores/activeJobsStore';
 import { JobStatusTimeline } from '../components/common';
 import { 
   type JobType, 
@@ -11,6 +12,7 @@ import {
   isTerminal,
 } from '../types/jobStatus';
 import { cancelJob, retryJob, listJobHistory, type JobHistoryEntry } from '../services/jobService';
+import type { CustomerImportJobStatusUpdate } from '@shared/import';
 import styles from './Jobs.module.css';
 
 /** Active job entry in the dashboard */
@@ -44,12 +46,34 @@ export function Jobs() {
   const isConnected = useNatsStore((s) => s.isConnected);
   const subscribe = useNatsStore((s) => s.subscribe);
   
-  const [activeJobs, setActiveJobs] = useState<Map<string, ActiveJob>>(new Map());
+  // Get jobs from the global active jobs store
+  const globalActiveJobs = useActiveJobsStore((s) => s.jobs);
+  
+  const [localActiveJobs, setLocalActiveJobs] = useState<Map<string, ActiveJob>>(new Map());
   const [recentJobs, setRecentJobs] = useState<CompletedJob[]>([]);
   const [filter, setFilter] = useState<'all' | 'active' | 'completed' | 'failed'>('all');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  
+  // Merge local active jobs with global active jobs from store
+  const activeJobs = new Map(localActiveJobs);
+  for (const [id, job] of globalActiveJobs) {
+    if (!activeJobs.has(id) && (job.status === 'queued' || job.status === 'processing')) {
+      activeJobs.set(id, {
+        id: job.id,
+        type: job.type as JobType,
+        status: job.status === 'queued' 
+          ? { type: 'queued' } 
+          : { type: 'processing', progress: job.progress, message: job.progressText },
+        startedAt: job.startedAt,
+        lastUpdate: new Date(),
+      });
+    }
+  }
+  
+  // Setter for local active jobs to match existing code pattern
+  const setActiveJobs = setLocalActiveJobs;
   
   // Load job history on mount
   useEffect(() => {
@@ -173,6 +197,38 @@ export function Jobs() {
     });
   }, []);
   
+  // Convert customer import status to generic JobStatus
+  const convertImportStatus = useCallback((update: CustomerImportJobStatusUpdate): JobStatusUpdate => {
+    const status = update.status;
+    let jobStatus: JobStatus;
+    
+    if (status.type === 'queued') {
+      jobStatus = { type: 'queued', position: status.position };
+    } else if (status.type === 'parsing') {
+      jobStatus = { type: 'processing', progress: status.progress, message: 'Parsování CSV...' };
+    } else if (status.type === 'importing') {
+      jobStatus = { 
+        type: 'processing', 
+        progress: Math.round((status.processed / status.total) * 100),
+        processed: status.processed,
+        total: status.total,
+        message: `${status.succeeded} úspěšně, ${status.failed} chyb`
+      };
+    } else if (status.type === 'completed') {
+      jobStatus = { type: 'completed', result: { succeeded: status.succeeded, failed: status.failed, total: status.total } };
+    } else if (status.type === 'failed') {
+      jobStatus = { type: 'failed', error: status.error };
+    } else {
+      jobStatus = { type: 'processing' };
+    }
+    
+    return {
+      jobId: update.jobId,
+      timestamp: update.timestamp,
+      status: jobStatus,
+    };
+  }, []);
+
   // Subscribe to all job status streams
   useEffect(() => {
     if (!isConnected) return;
@@ -194,6 +250,20 @@ export function Jobs() {
           console.error(`Failed to subscribe to ${jobType} jobs:`, err);
         }
       }
+      
+      // Also subscribe to customer import jobs with different subject pattern
+      try {
+        const unsub = await subscribe<CustomerImportJobStatusUpdate>(
+          'sazinka.job.import.status.*',
+          (update) => {
+            const converted = convertImportStatus(update);
+            handleStatusUpdate('import', converted);
+          }
+        );
+        unsubscribes.push(unsub);
+      } catch (err) {
+        console.error('Failed to subscribe to customer import jobs:', err);
+      }
     };
     
     setupSubscriptions();
@@ -201,7 +271,7 @@ export function Jobs() {
     return () => {
       unsubscribes.forEach(unsub => unsub());
     };
-  }, [isConnected, subscribe, handleStatusUpdate]);
+  }, [isConnected, subscribe, handleStatusUpdate, convertImportStatus]);
   
   // Filter jobs for display
   const activeJobsList = Array.from(activeJobs.values());

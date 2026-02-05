@@ -6,6 +6,7 @@ pub mod customer;
 pub mod device;
 pub mod geocode;
 pub mod import;
+pub mod import_processors;
 pub mod jobs;
 pub mod ping;
 pub mod revision;
@@ -199,11 +200,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let vehicle_update_sub = client.subscribe("sazinka.vehicle.update").await?;
     let vehicle_delete_sub = client.subscribe("sazinka.vehicle.delete").await?;
     
-    // Import subjects
-    let import_device_sub = client.subscribe("sazinka.import.device").await?;
-    let import_revision_sub = client.subscribe("sazinka.import.revision").await?;
-    let import_communication_sub = client.subscribe("sazinka.import.communication").await?;
-    let import_visit_sub = client.subscribe("sazinka.import.visit").await?;
+    // Old sync import subjects removed - now using async processors
 
     info!("Subscribed to NATS subjects");
 
@@ -344,17 +341,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_vehicle_update = pool.clone();
     let pool_vehicle_delete = pool.clone();
     
-    // Import handler clones
-    let client_import_device = client.clone();
-    let client_import_revision = client.clone();
-    let client_import_communication = client.clone();
-    let client_import_visit = client.clone();
-    
-    // Import pool clones
-    let pool_import_device = pool.clone();
-    let pool_import_revision = pool.clone();
-    let pool_import_communication = pool.clone();
-    let pool_import_visit = pool.clone();
+    // Old sync import handler clones removed - now using async processors
     
     let geocoder_depot_create = Arc::clone(&geocoder);
     let geocoder_depot_geocode = Arc::clone(&geocoder);
@@ -589,22 +576,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         vehicle::handle_delete(client_vehicle_delete, vehicle_delete_sub, pool_vehicle_delete).await
     });
     
-    // Import handlers
-    let import_device_handle = tokio::spawn(async move {
-        import::handle_device_import(client_import_device, import_device_sub, pool_import_device).await
-    });
-    
-    let import_revision_handle = tokio::spawn(async move {
-        import::handle_revision_import(client_import_revision, import_revision_sub, pool_import_revision).await
-    });
-    
-    let import_communication_handle = tokio::spawn(async move {
-        import::handle_communication_import(client_import_communication, import_communication_sub, pool_import_communication).await
-    });
-    
-    let import_visit_handle = tokio::spawn(async move {
-        import::handle_visit_import(client_import_visit, import_visit_sub, pool_import_visit).await
-    });
+    // Old sync import handlers removed - replaced by async processors below
 
     // Start admin handlers
     let client_admin = client.clone();
@@ -614,6 +586,243 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     tokio::spawn(async move {
         if let Err(e) = admin::start_admin_handlers(client_admin, pool_admin, valhalla_url, nominatim_url).await {
             error!("Admin handlers error: {}", e);
+        }
+    });
+
+    // Start customer import processor
+    let client_customer_import = client.clone();
+    let pool_customer_import = pool.clone();
+    tokio::spawn(async move {
+        match import::CustomerImportProcessor::new(client_customer_import.clone(), pool_customer_import).await {
+            Ok(processor) => {
+                let processor = Arc::new(processor);
+                
+                // Subscribe to customer import submit
+                let customer_import_submit_sub = match client_customer_import.subscribe("sazinka.import.customer.submit").await {
+                    Ok(sub) => sub,
+                    Err(e) => {
+                        error!("Failed to subscribe to import.customer.submit: {}", e);
+                        return;
+                    }
+                };
+                
+                // Start submit handler
+                let client_submit = client_customer_import.clone();
+                let processor_submit = Arc::clone(&processor);
+                tokio::spawn(async move {
+                    if let Err(e) = import::handle_customer_import_submit(client_submit, customer_import_submit_sub, processor_submit).await {
+                        error!("Customer import submit handler error: {}", e);
+                    }
+                });
+                
+                // Start job processor
+                let processor_main = Arc::clone(&processor);
+                tokio::spawn(async move {
+                    if let Err(e) = processor_main.start_processing().await {
+                        error!("Customer import processor error: {}", e);
+                    }
+                });
+                
+                info!("Customer import processor started");
+            }
+            Err(e) => {
+                error!("Failed to create customer import processor: {}", e);
+            }
+        }
+    });
+
+    // Start device import processor
+    let client_device_import = client.clone();
+    let pool_device_import = pool.clone();
+    tokio::spawn(async move {
+        match import_processors::DeviceImportProcessor::new(client_device_import.clone(), pool_device_import).await {
+            Ok(processor) => {
+                let processor = Arc::new(processor);
+                
+                let device_import_submit_sub = match client_device_import.subscribe("sazinka.import.device.submit").await {
+                    Ok(sub) => sub,
+                    Err(e) => {
+                        error!("Failed to subscribe to import.device.submit: {}", e);
+                        return;
+                    }
+                };
+                
+                let client_submit = client_device_import.clone();
+                let processor_submit = Arc::clone(&processor);
+                tokio::spawn(async move {
+                    if let Err(e) = import_processors::handle_device_import_submit(client_submit, device_import_submit_sub, processor_submit).await {
+                        error!("Device import submit handler error: {}", e);
+                    }
+                });
+                
+                let processor_main = Arc::clone(&processor);
+                tokio::spawn(async move {
+                    if let Err(e) = processor_main.start_processing().await {
+                        error!("Device import processor error: {}", e);
+                    }
+                });
+                
+                info!("Device import processor started");
+            }
+            Err(e) => {
+                error!("Failed to create device import processor: {}", e);
+            }
+        }
+    });
+
+    // Start revision import processor
+    let client_revision_import = client.clone();
+    let pool_revision_import = pool.clone();
+    tokio::spawn(async move {
+        match import_processors::RevisionImportProcessor::new(client_revision_import.clone(), pool_revision_import).await {
+            Ok(processor) => {
+                let processor = Arc::new(processor);
+                
+                let revision_import_submit_sub = match client_revision_import.subscribe("sazinka.import.revision.submit").await {
+                    Ok(sub) => sub,
+                    Err(e) => {
+                        error!("Failed to subscribe to import.revision.submit: {}", e);
+                        return;
+                    }
+                };
+                
+                let client_submit = client_revision_import.clone();
+                let processor_submit = Arc::clone(&processor);
+                tokio::spawn(async move {
+                    if let Err(e) = import_processors::handle_revision_import_submit(client_submit, revision_import_submit_sub, processor_submit).await {
+                        error!("Revision import submit handler error: {}", e);
+                    }
+                });
+                
+                let processor_main = Arc::clone(&processor);
+                tokio::spawn(async move {
+                    if let Err(e) = processor_main.start_processing().await {
+                        error!("Revision import processor error: {}", e);
+                    }
+                });
+                
+                info!("Revision import processor started");
+            }
+            Err(e) => {
+                error!("Failed to create revision import processor: {}", e);
+            }
+        }
+    });
+
+    // Start communication import processor
+    let client_communication_import = client.clone();
+    let pool_communication_import = pool.clone();
+    tokio::spawn(async move {
+        match import_processors::CommunicationImportProcessor::new(client_communication_import.clone(), pool_communication_import).await {
+            Ok(processor) => {
+                let processor = Arc::new(processor);
+                
+                let communication_import_submit_sub = match client_communication_import.subscribe("sazinka.import.communication.submit").await {
+                    Ok(sub) => sub,
+                    Err(e) => {
+                        error!("Failed to subscribe to import.communication.submit: {}", e);
+                        return;
+                    }
+                };
+                
+                let client_submit = client_communication_import.clone();
+                let processor_submit = Arc::clone(&processor);
+                tokio::spawn(async move {
+                    if let Err(e) = import_processors::handle_communication_import_submit(client_submit, communication_import_submit_sub, processor_submit).await {
+                        error!("Communication import submit handler error: {}", e);
+                    }
+                });
+                
+                let processor_main = Arc::clone(&processor);
+                tokio::spawn(async move {
+                    if let Err(e) = processor_main.start_processing().await {
+                        error!("Communication import processor error: {}", e);
+                    }
+                });
+                
+                info!("Communication import processor started");
+            }
+            Err(e) => {
+                error!("Failed to create communication import processor: {}", e);
+            }
+        }
+    });
+
+    // Start visit import processor
+    let client_visit_import = client.clone();
+    let pool_visit_import = pool.clone();
+    tokio::spawn(async move {
+        match import_processors::VisitImportProcessor::new(client_visit_import.clone(), pool_visit_import).await {
+            Ok(processor) => {
+                let processor = Arc::new(processor);
+                
+                let visit_import_submit_sub = match client_visit_import.subscribe("sazinka.import.visit.submit").await {
+                    Ok(sub) => sub,
+                    Err(e) => {
+                        error!("Failed to subscribe to import.visit.submit: {}", e);
+                        return;
+                    }
+                };
+                
+                let client_submit = client_visit_import.clone();
+                let processor_submit = Arc::clone(&processor);
+                tokio::spawn(async move {
+                    if let Err(e) = import_processors::handle_visit_import_submit(client_submit, visit_import_submit_sub, processor_submit).await {
+                        error!("Visit import submit handler error: {}", e);
+                    }
+                });
+                
+                let processor_main = Arc::clone(&processor);
+                tokio::spawn(async move {
+                    if let Err(e) = processor_main.start_processing().await {
+                        error!("Visit import processor error: {}", e);
+                    }
+                });
+                
+                info!("Visit import processor started");
+            }
+            Err(e) => {
+                error!("Failed to create visit import processor: {}", e);
+            }
+        }
+    });
+
+    // Start ZIP import processor
+    let client_zip_import = client.clone();
+    let pool_zip_import = pool.clone();
+    tokio::spawn(async move {
+        match import_processors::ZipImportProcessor::new(client_zip_import.clone(), pool_zip_import).await {
+            Ok(processor) => {
+                let processor = Arc::new(processor);
+                
+                let zip_import_submit_sub = match client_zip_import.subscribe("sazinka.import.zip.submit").await {
+                    Ok(sub) => sub,
+                    Err(e) => {
+                        error!("Failed to subscribe to import.zip.submit: {}", e);
+                        return;
+                    }
+                };
+                
+                let client_submit = client_zip_import.clone();
+                let processor_submit = Arc::clone(&processor);
+                tokio::spawn(async move {
+                    if let Err(e) = import_processors::handle_zip_import_submit(client_submit, zip_import_submit_sub, processor_submit).await {
+                        error!("ZIP import submit handler error: {}", e);
+                    }
+                });
+                
+                let processor_main = Arc::clone(&processor);
+                tokio::spawn(async move {
+                    if let Err(e) = processor_main.start_processing().await {
+                        error!("ZIP import processor error: {}", e);
+                    }
+                });
+                
+                info!("ZIP import processor started");
+            }
+            Err(e) => {
+                error!("Failed to create ZIP import processor: {}", e);
+            }
         }
     });
 
@@ -1028,19 +1237,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         result = vehicle_delete_handle => {
             error!("Vehicle delete handler finished: {:?}", result);
         }
-        // Import handlers
-        result = import_device_handle => {
-            error!("Import device handler finished: {:?}", result);
-        }
-        result = import_revision_handle => {
-            error!("Import revision handler finished: {:?}", result);
-        }
-        result = import_communication_handle => {
-            error!("Import communication handler finished: {:?}", result);
-        }
-        result = import_visit_handle => {
-            error!("Import visit handler finished: {:?}", result);
-        }
+        // Old sync import handlers removed - now using async processors
         // Job management handlers
         result = job_history_handle => {
             error!("Job history handler finished: {:?}", result);

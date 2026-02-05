@@ -537,3 +537,33 @@ pub async fn get_customer_summary(
         customers_without_email: customer_stats.5,
     })
 }
+
+// ============================================================================
+// GEOCODING HELPERS
+// ============================================================================
+
+/// Simple struct for customers pending geocoding
+#[derive(Debug, sqlx::FromRow)]
+pub struct CustomerIdOnly {
+    pub id: Uuid,
+}
+
+/// List customers pending geocoding for a user
+pub async fn list_pending_geocode(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<Vec<CustomerIdOnly>> {
+    let customers = sqlx::query_as::<_, CustomerIdOnly>(
+        r#"
+        SELECT id
+        FROM customers
+        WHERE user_id = $1 AND geocode_status = 'pending'
+        ORDER BY created_at DESC
+        "#
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(customers)
+}

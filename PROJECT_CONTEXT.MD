@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-02-02 (v0.14.0 - Phase 7 JetStream External Services planned)
+> **Last Updated:** 2026-02-05 (v0.15.0 - Async import system for all entity types + ZIP)
 
 ## Overview
 
@@ -161,12 +161,22 @@ sazinka.admin.jetstream.status  # Check JetStream job queue status
 sazinka.admin.logs              # Get recent logs from all sources
 
 # Job Queue (JetStream)
-sazinka.geocode.submit          # Submit geocoding job to queue
-sazinka.route.submit            # Submit route planning job to queue
-sazinka.import.submit           # Submit import job to queue
-sazinka.job.geocode.status.<job_id>  # Geocoding job status updates (pub/sub)
-sazinka.job.route.status.<job_id>    # Route job status updates (pub/sub)
-sazinka.job.import.status.<job_id>   # Import job status updates (pub/sub)
+sazinka.geocode.submit                # Submit geocoding job to queue
+sazinka.route.submit                  # Submit route planning job to queue
+sazinka.import.customer.submit        # Submit customer import job
+sazinka.import.device.submit          # Submit device import job
+sazinka.import.revision.submit        # Submit revision import job
+sazinka.import.communication.submit   # Submit communication import job
+sazinka.import.visit.submit           # Submit visit import job
+sazinka.import.zip.submit             # Submit ZIP multi-file import job
+sazinka.job.geocode.status.<job_id>   # Geocoding job status updates (pub/sub)
+sazinka.job.route.status.<job_id>     # Route job status updates (pub/sub)
+sazinka.job.import.customer.status.<job_id>      # Customer import status
+sazinka.job.import.device.status.<job_id>        # Device import status
+sazinka.job.import.revision.status.<job_id>      # Revision import status
+sazinka.job.import.communication.status.<job_id> # Communication import status
+sazinka.job.import.visit.status.<job_id>         # Visit import status
+sazinka.job.import.zip.status.<job_id>           # ZIP import status
 
 # Settings
 sazinka.settings.get            # Get all user settings including depots
@@ -906,9 +916,14 @@ NATS JetStream provides persistent job queuing for ALL external service communic
 │   ├─ SAZINKA_GEOCODE_JOBS        (Nominatim) ✅ Implemented                 │
 │   ├─ SAZINKA_GEOCODE_ADDRESS_JOBS (Nominatim) ✅ Implemented                │
 │   ├─ SAZINKA_REVERSE_GEOCODE_JOBS (Nominatim) ✅ Implemented                │
+│   ├─ SAZINKA_CUSTOMER_IMPORT_JOBS (DB imports) ✅ Implemented               │
+│   ├─ SAZINKA_DEVICE_IMPORT_JOBS   (DB imports) ✅ Implemented               │
+│   ├─ SAZINKA_REVISION_IMPORT_JOBS (DB imports) ✅ Implemented               │
+│   ├─ SAZINKA_COMMUNICATION_IMPORT_JOBS (DB imports) ✅ Implemented          │
+│   ├─ SAZINKA_VISIT_IMPORT_JOBS    (DB imports) ✅ Implemented               │
+│   ├─ SAZINKA_ZIP_IMPORT_JOBS      (ZIP multi-CSV) ✅ Implemented            │
 │   ├─ SAZINKA_ROUTING_MATRIX_JOBS  (Valhalla) 📋 Phase 7                    │
 │   ├─ SAZINKA_ROUTING_GEOMETRY_JOBS (Valhalla) 📋 Phase 7                   │
-│   ├─ SAZINKA_IMPORT_JOBS          (DB imports) 📋 Phase 7                  │
 │   ├─ SAZINKA_EXPORT_JOBS          (CSV exports) 📋 Phase 7                 │
 │   ├─ SAZINKA_EMAIL_JOBS           (Resend API) 📋 Phase 7                  │
 │   └─ SAZINKA_SMS_JOBS             (Twilio) 📋 Phase 7                      │
@@ -923,9 +938,14 @@ NATS JetStream provides persistent job queuing for ALL external service communic
 | `SAZINKA_GEOCODE_JOBS` | `sazinka.jobs.geocode` | Nominatim | ✅ Implemented |
 | `SAZINKA_GEOCODE_ADDRESS_JOBS` | `sazinka.jobs.geocode.address` | Nominatim | ✅ Implemented |
 | `SAZINKA_REVERSE_GEOCODE_JOBS` | `sazinka.jobs.geocode.reverse` | Nominatim | ✅ Implemented |
+| `SAZINKA_CUSTOMER_IMPORT_JOBS` | `sazinka.jobs.import.customer` | PostgreSQL | ✅ Implemented |
+| `SAZINKA_DEVICE_IMPORT_JOBS` | `sazinka.jobs.import.device` | PostgreSQL | ✅ Implemented |
+| `SAZINKA_REVISION_IMPORT_JOBS` | `sazinka.jobs.import.revision` | PostgreSQL | ✅ Implemented |
+| `SAZINKA_COMMUNICATION_IMPORT_JOBS` | `sazinka.jobs.import.communication` | PostgreSQL | ✅ Implemented |
+| `SAZINKA_VISIT_IMPORT_JOBS` | `sazinka.jobs.import.visit` | PostgreSQL | ✅ Implemented |
+| `SAZINKA_ZIP_IMPORT_JOBS` | `sazinka.jobs.import.zip` | PostgreSQL | ✅ Implemented |
 | `SAZINKA_ROUTING_MATRIX_JOBS` | `sazinka.jobs.valhalla.matrix` | Valhalla | 📋 Phase 7A |
 | `SAZINKA_ROUTING_GEOMETRY_JOBS` | `sazinka.jobs.valhalla.geometry` | Valhalla | 📋 Phase 7A |
-| `SAZINKA_IMPORT_JOBS` | `sazinka.jobs.import.*` | PostgreSQL | 📋 Phase 7B |
 | `SAZINKA_EXPORT_JOBS` | `sazinka.jobs.export.*` | PostgreSQL | 📋 Phase 7B |
 | `SAZINKA_EMAIL_JOBS` | `sazinka.jobs.email.*` | Resend API | 📋 Phase 7C |
 | `SAZINKA_SMS_JOBS` | `sazinka.jobs.sms.*` | Twilio | 📋 Phase 7C |
@@ -1185,7 +1205,12 @@ const { status, submit, isActive } = useJobStatus({
 |----------|---------------|----------------|
 | Geocoding | `sazinka.geocode.submit` | `sazinka.job.geocode.status.{jobId}` |
 | Route | `sazinka.route.submit` | `sazinka.job.route.status.{jobId}` |
-| Import | `sazinka.import.submit` | `sazinka.job.import.status.{jobId}` |
+| Customer Import | `sazinka.import.customer.submit` | `sazinka.job.import.customer.status.{jobId}` |
+| Device Import | `sazinka.import.device.submit` | `sazinka.job.import.device.status.{jobId}` |
+| Revision Import | `sazinka.import.revision.submit` | `sazinka.job.import.revision.status.{jobId}` |
+| Communication Import | `sazinka.import.communication.submit` | `sazinka.job.import.communication.status.{jobId}` |
+| Visit Import | `sazinka.import.visit.submit` | `sazinka.job.import.visit.status.{jobId}` |
+| ZIP Import | `sazinka.import.zip.submit` | `sazinka.job.import.zip.status.{jobId}` |
 
 ### Backend Status Publishing
 
@@ -1353,12 +1378,18 @@ let base_url = std::env::var("NOMINATIM_URL")
   - 173 frontend tests passing
 
 **In Progress:**
-- [ ] Phase 6F: Reusable Job Status System (JobStatusTimeline component, useJobStatus hook)
+- [ ] Phase 7B: Async import system frontend integration (services, stores, UI updates)
 
 **Pending:**
 - [ ] Phase 3: User authentication, CSV export, Email notifications
 - [ ] Phase 4: CRM Evidence (Communications, Visits, Timeline)
 - [ ] Route optimization conversion to async job queue
+
+**Recently Completed:**
+- [x] Phase 7B Backend: Async import processors for all entity types (v0.15.0)
+  - CustomerImportProcessor, DeviceImportProcessor, RevisionImportProcessor
+  - CommunicationImportProcessor, VisitImportProcessor, ZipImportProcessor
+  - All imports now use JetStream job queue with status updates
 
 ### Serialization Notes
 
@@ -1464,6 +1495,22 @@ cargo test
 - MVP focuses on core CRM + route planning
 - Email notifications deferred to later phase
 - Invoicing/billing architecture prepared but not implemented
+
+## Recent Changes (v0.15.0)
+
+- **Async Import System** - All entity imports now use JetStream job queue:
+  - **CustomerImportProcessor** - Async customer import with status tracking
+  - **DeviceImportProcessor** - Async device import with progress updates
+  - **RevisionImportProcessor** - Async revision import with error reporting
+  - **CommunicationImportProcessor** - Async communication import
+  - **VisitImportProcessor** - Async visit import
+  - **ZipImportProcessor** - Multi-file ZIP import with automatic file type detection
+    - Detects file types from filenames (customers, devices, revisions, communications, visits)
+    - Imports files in correct dependency order: Customers → Devices → Revisions → Communications → Visits
+  - All processors publish status updates via NATS pub/sub
+- **New Shared Types** - TypeScript types for all import job types in `packages/shared-types/src/import.ts`
+- **New Rust Types** - Rust equivalents in `worker/src/types/import.rs`
+- **Dependencies** - Added `zip` and `base64` crates for ZIP file handling
 
 ## Recent Changes (v0.13.0)
 

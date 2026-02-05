@@ -7,6 +7,229 @@
 export type { ImportIssue, ImportIssueLevel, ImportReport } from './customer';
 
 // =============================================================================
+// IMPORT JOB TYPES (for async background processing)
+// =============================================================================
+
+/**
+ * Request to submit a customer import job
+ */
+export interface CustomerImportJobRequest {
+  csvContent: string;
+  filename: string;
+}
+
+/**
+ * Status of a customer import job
+ */
+export type CustomerImportJobStatus =
+  | { type: 'queued'; position: number }
+  | { type: 'parsing'; progress: number }
+  | { type: 'importing'; processed: number; total: number; succeeded: number; failed: number }
+  | { type: 'completed'; total: number; succeeded: number; failed: number; report: string }
+  | { type: 'failed'; error: string };
+
+/**
+ * Status update message for import job
+ */
+export interface CustomerImportJobStatusUpdate {
+  jobId: string;
+  timestamp: string;
+  status: CustomerImportJobStatus;
+}
+
+/**
+ * Response when submitting an import job
+ */
+export interface CustomerImportJobSubmitResponse {
+  jobId: string;
+  message: string;
+}
+
+// =============================================================================
+// GEOCODE JOB TYPES (for async background processing)
+// =============================================================================
+
+/**
+ * Status of a geocoding batch job
+ */
+export type GeocodeJobStatus =
+  | { type: 'queued'; position: number }
+  | { type: 'processing'; processed: number; total: number; succeeded: number; failed: number }
+  | { type: 'completed'; total: number; succeeded: number; failed: number; failedAddresses: string[] }
+  | { type: 'failed'; error: string };
+
+/**
+ * Status update message for geocode job
+ */
+export interface GeocodeJobStatusUpdate {
+  jobId: string;
+  timestamp: string;
+  status: GeocodeJobStatus;
+}
+
+// =============================================================================
+// DEVICE IMPORT JOB TYPES
+// =============================================================================
+
+export interface DeviceImportJobRequest {
+  csvContent: string;
+  filename: string;
+}
+
+export type DeviceImportJobStatus =
+  | { type: 'queued'; position: number }
+  | { type: 'parsing'; progress: number }
+  | { type: 'importing'; processed: number; total: number; succeeded: number; failed: number }
+  | { type: 'completed'; total: number; succeeded: number; failed: number; report: string }
+  | { type: 'failed'; error: string };
+
+export interface DeviceImportJobStatusUpdate {
+  jobId: string;
+  timestamp: string;
+  status: DeviceImportJobStatus;
+}
+
+export interface DeviceImportJobSubmitResponse {
+  jobId: string;
+  message: string;
+}
+
+// =============================================================================
+// REVISION IMPORT JOB TYPES
+// =============================================================================
+
+export interface RevisionImportJobRequest {
+  csvContent: string;
+  filename: string;
+}
+
+export type RevisionImportJobStatus =
+  | { type: 'queued'; position: number }
+  | { type: 'parsing'; progress: number }
+  | { type: 'importing'; processed: number; total: number; succeeded: number; failed: number }
+  | { type: 'completed'; total: number; succeeded: number; failed: number; report: string }
+  | { type: 'failed'; error: string };
+
+export interface RevisionImportJobStatusUpdate {
+  jobId: string;
+  timestamp: string;
+  status: RevisionImportJobStatus;
+}
+
+export interface RevisionImportJobSubmitResponse {
+  jobId: string;
+  message: string;
+}
+
+// =============================================================================
+// COMMUNICATION IMPORT JOB TYPES
+// =============================================================================
+
+export interface CommunicationImportJobRequest {
+  csvContent: string;
+  filename: string;
+}
+
+export type CommunicationImportJobStatus =
+  | { type: 'queued'; position: number }
+  | { type: 'parsing'; progress: number }
+  | { type: 'importing'; processed: number; total: number; succeeded: number; failed: number }
+  | { type: 'completed'; total: number; succeeded: number; failed: number; report: string }
+  | { type: 'failed'; error: string };
+
+export interface CommunicationImportJobStatusUpdate {
+  jobId: string;
+  timestamp: string;
+  status: CommunicationImportJobStatus;
+}
+
+export interface CommunicationImportJobSubmitResponse {
+  jobId: string;
+  message: string;
+}
+
+// =============================================================================
+// VISIT IMPORT JOB TYPES
+// =============================================================================
+
+export interface VisitImportJobRequest {
+  csvContent: string;
+  filename: string;
+}
+
+export type VisitImportJobStatus =
+  | { type: 'queued'; position: number }
+  | { type: 'parsing'; progress: number }
+  | { type: 'importing'; processed: number; total: number; succeeded: number; failed: number }
+  | { type: 'completed'; total: number; succeeded: number; failed: number; report: string }
+  | { type: 'failed'; error: string };
+
+export interface VisitImportJobStatusUpdate {
+  jobId: string;
+  timestamp: string;
+  status: VisitImportJobStatus;
+}
+
+export interface VisitImportJobSubmitResponse {
+  jobId: string;
+  message: string;
+}
+
+// =============================================================================
+// ZIP IMPORT JOB TYPES
+// =============================================================================
+
+export type ZipImportFileType = 'customers' | 'devices' | 'revisions' | 'communications' | 'visits';
+
+export interface ZipImportFileInfo {
+  filename: string;
+  type: ZipImportFileType;
+  size: number;
+}
+
+export interface ZipImportJobRequest {
+  /** Base64 encoded ZIP content */
+  zipContentBase64: string;
+  filename: string;
+}
+
+export type ZipImportJobStatus =
+  | { type: 'queued'; position: number }
+  | { type: 'extracting'; progress: number }
+  | { type: 'analyzing'; files: ZipImportFileInfo[] }
+  | { 
+      type: 'importing'; 
+      currentFile: string;
+      currentFileType: ZipImportFileType;
+      fileProgress: number;
+      totalFiles: number;
+      completedFiles: number;
+    }
+  | { 
+      type: 'completed'; 
+      totalFiles: number;
+      results: Array<{
+        filename: string;
+        type: ZipImportFileType;
+        succeeded: number;
+        failed: number;
+      }>;
+    }
+  | { type: 'failed'; error: string };
+
+export interface ZipImportJobStatusUpdate {
+  jobId: string;
+  timestamp: string;
+  status: ZipImportJobStatus;
+}
+
+export interface ZipImportJobSubmitResponse {
+  jobId: string;
+  message: string;
+  detectedFiles: ZipImportFileInfo[];
+}
+
+// =============================================================================
 // CSV ROW TYPES
 // =============================================================================
 

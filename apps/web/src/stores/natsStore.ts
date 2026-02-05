@@ -79,17 +79,31 @@ export const useNatsStore = create<NatsState>((set, get) => ({
     const { connection, isConnected } = get();
 
     if (!connection || !isConnected) {
-      throw new Error('Not connected to NATS');
+      throw new Error('Není připojení k serveru');
     }
 
-    const msg = await connection.request(
-      subject,
-      codec.encode(payload),
-      { timeout: timeoutMs }
-    );
+    try {
+      const msg = await connection.request(
+        subject,
+        codec.encode(payload),
+        { timeout: timeoutMs }
+      );
 
-    const response = codec.decode(msg.data) as TRes;
-    return response;
+      const response = codec.decode(msg.data) as TRes;
+      return response;
+    } catch (error) {
+      // Handle NATS-specific errors with user-friendly messages
+      if (error instanceof Error) {
+        const message = error.message.toLowerCase();
+        if (message.includes('503') || message.includes('no responders')) {
+          throw new Error('Server není dostupný. Zkuste to prosím za chvíli.');
+        }
+        if (message.includes('timeout') || message.includes('timed out')) {
+          throw new Error('Požadavek vypršel. Server neodpovídá.');
+        }
+      }
+      throw error;
+    }
   },
 
   subscribe: async <T>(
