@@ -313,3 +313,197 @@
   color: var(--primary-color, #2563eb);
   text-decoration: underline;
 }
+
+/* Preview Container */
+.previewContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.previewHeader {
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border-color, #e5e5e5);
+}
+
+.previewInfo {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.filename {
+  font-weight: 600;
+  color: var(--text-primary, #1a1a1a);
+}
+
+.fileSize {
+  font-size: 0.875rem;
+  color: var(--text-secondary, #666);
+  padding: 0.25rem 0.5rem;
+  background: var(--hover-bg, #f3f4f6);
+  border-radius: 4px;
+}
+
+.rowCount {
+  font-size: 0.875rem;
+  color: var(--primary-color, #2563eb);
+  font-weight: 500;
+}
+
+.previewTable {
+  overflow-x: auto;
+  max-height: 300px;
+  border: 1px solid var(--border-color, #e5e5e5);
+  border-radius: 8px;
+}
+
+.previewTable table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+
+.previewTable th,
+.previewTable td {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color, #e5e5e5);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.previewTable th {
+  font-weight: 600;
+  background: var(--hover-bg, #f9fafb);
+  color: var(--text-secondary, #666);
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  position: sticky;
+  top: 0;
+}
+
+.previewTable tr:hover td {
+  background: var(--hover-bg, #f9fafb);
+}
+
+.previewMore {
+  padding: 0.75rem;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-secondary, #666);
+  background: var(--hover-bg, #f9fafb);
+}
+
+.previewActions {
+  display: flex;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color, #e5e5e5);
+}
+
+.cancelButton {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-primary, #1a1a1a);
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #d1d5db);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.cancelButton:hover {
+  background: var(--hover-bg, #f9fafb);
+}
+
+.importButton {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #fff;
+  background: var(--primary-color, #2563eb);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.importButton:hover {
+  background: var(--primary-color-hover, #1d4ed8);
+}
+
+/* Submitted State */
+.submitted {
+  text-align: center;
+  padding: 2rem;
+}
+
+.successIcon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 1rem;
+  background: var(--success-color, #16a34a);
+  color: #fff;
+  font-size: 2rem;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.successText {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary, #1a1a1a);
+  margin: 0 0 0.5rem 0;
+}
+
+.successHint {
+  font-size: 0.875rem;
+  color: var(--text-secondary, #666);
+  margin: 0 0 1rem 0;
+}
+
+.jobId {
+  font-size: 0.75rem;
+  color: var(--text-tertiary, #999);
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+
+/* ZIP Info */
+.zipInfo {
+  padding: 1.5rem;
+  background: var(--hover-bg, #f9fafb);
+  border-radius: 8px;
+}
+
+.zipInfo p {
+  margin: 0 0 1rem 0;
+  color: var(--text-primary, #1a1a1a);
+}
+
+.importOrder {
+  margin: 0 0 1rem 1.5rem;
+  padding: 0;
+}
+
+.importOrder li {
+  margin-bottom: 0.5rem;
+  color: var(--text-secondary, #666);
+}
+
+.zipNote {
+  font-size: 0.875rem;
+  color: var(--text-secondary, #666);
+  font-style: italic;
+  margin: 0;
+}

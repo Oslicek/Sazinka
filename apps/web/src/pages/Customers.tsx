@@ -528,7 +528,6 @@ export function Customers() {
       <ImportCustomersModal
         isOpen={showImport}
         onClose={handleCloseImport}
-        onImportBatch={handleImportBatch}
       />
 
       {/* Split view: Table + Preview Panel */}

@@ -738,7 +738,6 @@ export function Admin() {
       <ImportCustomersModal
         isOpen={showCustomerImport}
         onClose={handleCloseCustomerImport}
-        onImportBatch={handleCustomerImportBatch}
       />
 
       {/* Logs Section */}

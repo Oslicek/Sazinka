@@ -1,38 +1,34 @@
 /**
  * Universal Modal for importing entities from CSV files
- * Supports: customers, devices, revisions, communications, visits
+ * Supports: devices, revisions, communications, visits
+ * Also supports ZIP files containing multiple CSV files
+ * 
+ * All imports are processed asynchronously via job queue.
  */
 
 import { useCallback, useRef, useState } from 'react';
-import type { ImportIssue, ImportReport } from '@shared/customer';
-import type {
-  ImportDeviceRequest,
-  ImportRevisionRequest,
-  ImportCommunicationRequest,
-  ImportVisitRequest,
-} from '@shared/import';
 import {
-  processDeviceCsv,
-  processRevisionCsv,
-  processCommunicationCsv,
-  processVisitCsv,
-  generateTextReport,
-} from '../../services/import';
-import {
-  importDevicesBatch,
-  importRevisionsBatch,
-  importCommunicationsBatch,
-  importVisitsBatch,
-} from '../../services/import/importBatchService';
+  submitDeviceImportJob,
+  submitRevisionImportJob,
+  submitCommunicationImportJob,
+  submitVisitImportJob,
+  submitZipImportJob,
+} from '../../services/importJobService';
+import { useActiveJobsStore } from '../../stores/activeJobsStore';
+import type { JobType } from '../../stores/activeJobsStore';
 import styles from './ImportModal.module.css';
 
-export type ImportEntityType = 'device' | 'revision' | 'communication' | 'visit';
+// Mock user ID for development
+const USER_ID = '00000000-0000-0000-0000-000000000001';
+
+export type ImportEntityType = 'device' | 'revision' | 'communication' | 'visit' | 'zip';
 
 const ENTITY_LABELS: Record<ImportEntityType, string> = {
   device: 'zařízení',
   revision: 'revizí',
   communication: 'komunikace',
   visit: 'návštěv',
+  zip: 'souborů',
 };
 
 const ENTITY_TITLES: Record<ImportEntityType, string> = {
@@ -40,6 +36,23 @@ const ENTITY_TITLES: Record<ImportEntityType, string> = {
   revision: 'Import revizí',
   communication: 'Import komunikace',
   visit: 'Import návštěv',
+  zip: 'Import ZIP',
+};
+
+const JOB_TYPES: Record<ImportEntityType, JobType> = {
+  device: 'import.device',
+  revision: 'import.revision',
+  communication: 'import.communication',
+  visit: 'import.visit',
+  zip: 'import.zip',
+};
+
+const ACCEPTED_FILES: Record<ImportEntityType, string> = {
+  device: '.csv,text/csv',
+  revision: '.csv,text/csv',
+  communication: '.csv,text/csv',
+  visit: '.csv,text/csv',
+  zip: '.zip,application/zip,application/x-zip-compressed',
 };
 
 interface ImportModalProps {
@@ -49,169 +62,158 @@ interface ImportModalProps {
   onComplete?: () => void;
 }
 
-type ImportStatus = 'idle' | 'parsing' | 'sending' | 'complete' | 'error';
+type ModalState = 'idle' | 'parsing' | 'preview' | 'submitting' | 'submitted' | 'error';
+
+interface FilePreview {
+  filename: string;
+  totalRows?: number;       // For CSV files
+  sampleRows?: string[][];  // For CSV files
+  headers?: string[];       // For CSV files
+  fileSize: number;
+  content: string;          // Raw content (text for CSV, base64 for ZIP)
+  isZip: boolean;
+}
 
 export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportModalProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [status, setStatus] = useState<ImportStatus>('idle');
-  const [progress, setProgress] = useState(0);
-  const [total, setTotal] = useState(0);
+  const [state, setState] = useState<ModalState>('idle');
+  const [preview, setPreview] = useState<FilePreview | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [report, setReport] = useState<ImportReport | null>(null);
-  const [textReport, setTextReport] = useState<string | null>(null);
+  const [submittedJobId, setSubmittedJobId] = useState<string | null>(null);
 
-  const reset = useCallback(() => {
-    setStatus('idle');
-    setProgress(0);
-    setTotal(0);
-    setError(null);
-    setReport(null);
-    setTextReport(null);
+  const addJob = useActiveJobsStore((s) => s.addJob);
+
+  const parseCSVPreview = useCallback(async (file: File): Promise<FilePreview> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+
+      reader.onload = (e) => {
+        try {
+          const text = e.target?.result as string;
+          const lines = text.split(/\r?\n/).filter(line => line.trim());
+
+          if (lines.length < 2) {
+            reject(new Error('CSV soubor musí obsahovat alespoň hlavičku a jeden řádek dat'));
+            return;
+          }
+
+          // Parse using semicolon delimiter (Czech format)
+          const delimiter = text.includes(';') ? ';' : ',';
+          const parseLine = (line: string) => {
+            const result: string[] = [];
+            let current = '';
+            let inQuotes = false;
+
+            for (let i = 0; i < line.length; i++) {
+              const char = line[i];
+              if (char === '"') {
+                inQuotes = !inQuotes;
+              } else if (char === delimiter && !inQuotes) {
+                result.push(current.trim());
+                current = '';
+              } else {
+                current += char;
+              }
+            }
+            result.push(current.trim());
+            return result;
+          };
+
+          const headers = parseLine(lines[0]);
+          const sampleRows = lines.slice(1, 6).map(parseLine); // First 5 data rows
+          const totalRows = lines.length - 1; // Excluding header
+
+          resolve({
+            filename: file.name,
+            totalRows,
+            sampleRows,
+            headers,
+            fileSize: file.size,
+            content: text,
+            isZip: false,
+          });
+        } catch (err) {
+          reject(err);
+        }
+      };
+
+      reader.onerror = () => reject(new Error('Nepodařilo se načíst soubor'));
+      reader.readAsText(file, 'utf-8');
+    });
+  }, []);
+
+  const parseZipPreview = useCallback(async (file: File): Promise<FilePreview> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+
+      reader.onload = (e) => {
+        try {
+          const arrayBuffer = e.target?.result as ArrayBuffer;
+          const base64 = btoa(
+            new Uint8Array(arrayBuffer).reduce(
+              (data, byte) => data + String.fromCharCode(byte),
+              ''
+            )
+          );
+
+          resolve({
+            filename: file.name,
+            fileSize: file.size,
+            content: base64,
+            isZip: true,
+          });
+        } catch (err) {
+          reject(err);
+        }
+      };
+
+      reader.onerror = () => reject(new Error('Nepodařilo se načíst ZIP soubor'));
+      reader.readAsArrayBuffer(file);
+    });
   }, []);
 
   const handleFileSelect = useCallback(async (file: File) => {
-    if (!file.name.endsWith('.csv') && file.type !== 'text/csv') {
-      alert('Prosím vyberte soubor CSV.');
+    const isZip = file.name.endsWith('.zip') || file.type.includes('zip');
+    const expectsZip = entityType === 'zip';
+
+    if (expectsZip && !isZip) {
+      setError('Prosím vyberte soubor ZIP.');
+      setState('error');
       return;
     }
 
-    reset();
-    setStatus('parsing');
+    if (!expectsZip && isZip) {
+      setError('Prosím vyberte soubor CSV, ne ZIP.');
+      setState('error');
+      return;
+    }
+
+    if (!expectsZip && !file.name.endsWith('.csv') && file.type !== 'text/csv') {
+      setError('Prosím vyberte soubor CSV.');
+      setState('error');
+      return;
+    }
+
+    setState('parsing');
+    setError(null);
 
     try {
-      const csvContent = await file.text();
-      const startTime = Date.now();
-
-      let parsedEntities: any[] = [];
-      let parsingIssues: ImportIssue[] = [];
-      let totalRows = 0;
-      let skippedCount = 0;
-
-      // Parse based on entity type
-      switch (entityType) {
-        case 'device': {
-          const result = processDeviceCsv(csvContent);
-          parsedEntities = result.devices;
-          parsingIssues = result.issues;
-          totalRows = result.totalRows;
-          skippedCount = result.skippedCount;
-          break;
-        }
-        case 'revision': {
-          const result = processRevisionCsv(csvContent);
-          parsedEntities = result.revisions;
-          parsingIssues = result.issues;
-          totalRows = result.totalRows;
-          skippedCount = result.skippedCount;
-          break;
-        }
-        case 'communication': {
-          const result = processCommunicationCsv(csvContent);
-          parsedEntities = result.communications;
-          parsingIssues = result.issues;
-          totalRows = result.totalRows;
-          skippedCount = result.skippedCount;
-          break;
-        }
-        case 'visit': {
-          const result = processVisitCsv(csvContent);
-          parsedEntities = result.visits;
-          parsingIssues = result.issues;
-          totalRows = result.totalRows;
-          skippedCount = result.skippedCount;
-          break;
-        }
-      }
-
-      if (parsedEntities.length === 0) {
-        setStatus('error');
-        setError('Soubor neobsahuje žádná validní data.');
-        return;
-      }
-
-      // Send to backend
-      setStatus('sending');
-      setTotal(parsedEntities.length);
-      setProgress(0);
-
-      let importedCount = 0;
-      let updatedCount = 0;
-      const allIssues = [...parsingIssues];
-
-      // Send in batches
-      const batchSize = 100;
-      for (let i = 0; i < parsedEntities.length; i += batchSize) {
-        const batch = parsedEntities.slice(i, i + batchSize);
-
-        try {
-          let response;
-          switch (entityType) {
-            case 'device':
-              response = await importDevicesBatch(batch as ImportDeviceRequest[]);
-              break;
-            case 'revision':
-              response = await importRevisionsBatch(batch as ImportRevisionRequest[]);
-              break;
-            case 'communication':
-              response = await importCommunicationsBatch(batch as ImportCommunicationRequest[]);
-              break;
-            case 'visit':
-              response = await importVisitsBatch(batch as ImportVisitRequest[]);
-              break;
-          }
-
-          if (response) {
-            importedCount += response.importedCount;
-            updatedCount += response.updatedCount;
-            response.errors.forEach(err => {
-              allIssues.push({
-                rowNumber: err.rowNumber,
-                level: 'error',
-                field: err.field,
-                message: err.message,
-                originalValue: err.originalValue,
-              });
-            });
-          }
-        } catch (e) {
-          allIssues.push({
-            rowNumber: i + 2,
-            level: 'error',
-            field: 'server',
-            message: e instanceof Error ? e.message : 'Chyba serveru',
-          });
-        }
-
-        setProgress(Math.min(i + batchSize, parsedEntities.length));
-      }
-
-      const durationMs = Date.now() - startTime;
-
-      // Generate report
-      const finalReport: ImportReport = {
-        filename: file.name,
-        importedAt: new Date().toISOString(),
-        durationMs,
-        totalRows,
-        importedCount,
-        updatedCount,
-        skippedCount: skippedCount + (totalRows - importedCount - updatedCount - skippedCount),
-        issues: allIssues,
-      };
-
-      setReport(finalReport);
-      setTextReport(generateTextReport(finalReport));
-      setStatus('complete');
+      let filePreview: FilePreview;
       
-      if (onComplete) {
-        onComplete();
+      if (isZip) {
+        filePreview = await parseZipPreview(file);
+      } else {
+        filePreview = await parseCSVPreview(file);
       }
-    } catch (e) {
-      setStatus('error');
-      setError(e instanceof Error ? e.message : 'Neočekávaná chyba');
+
+      setPreview(filePreview);
+      setState('preview');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nepodařilo se zpracovat soubor');
+      setState('error');
     }
-  }, [entityType, reset, onComplete]);
+  }, [entityType, parseCSVPreview, parseZipPreview]);
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -223,6 +225,7 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
+
     const file = e.dataTransfer.files[0];
     if (file) {
       handleFileSelect(file);
@@ -239,34 +242,91 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
     setDragOver(false);
   }, []);
 
-  const handleCopyReport = useCallback(() => {
-    if (textReport) {
-      navigator.clipboard.writeText(textReport);
-    }
-  }, [textReport]);
+  const handleSubmitImport = useCallback(async () => {
+    if (!preview) return;
 
-  const handleSaveReport = useCallback(() => {
-    if (textReport && report) {
-      const blob = new Blob([textReport], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `import-${entityType}-${new Date().toISOString().slice(0, 10)}.txt`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+    setState('submitting');
+    setError(null);
+
+    try {
+      let result: { jobId: string; message: string };
+
+      switch (entityType) {
+        case 'device':
+          result = await submitDeviceImportJob(USER_ID, preview.content, preview.filename);
+          break;
+        case 'revision':
+          result = await submitRevisionImportJob(USER_ID, preview.content, preview.filename);
+          break;
+        case 'communication':
+          result = await submitCommunicationImportJob(USER_ID, preview.content, preview.filename);
+          break;
+        case 'visit':
+          result = await submitVisitImportJob(USER_ID, preview.content, preview.filename);
+          break;
+        case 'zip':
+          result = await submitZipImportJob(USER_ID, preview.content, preview.filename);
+          break;
+        default:
+          throw new Error(`Nepodporovaný typ importu: ${entityType}`);
+      }
+
+      // Add job to active jobs store for immediate tracking
+      addJob({
+        id: result.jobId,
+        type: JOB_TYPES[entityType],
+        name: `Import: ${preview.filename}`,
+        status: 'queued',
+        progressText: 'Čeká ve frontě...',
+        startedAt: new Date(),
+      });
+
+      setSubmittedJobId(result.jobId);
+      setState('submitted');
+
+      // Notify parent component
+      if (onComplete) {
+        onComplete();
+      }
+
+      // Close modal after a brief moment to show success
+      setTimeout(() => {
+        handleClose();
+      }, 1500);
+
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Nepodařilo se spustit import');
+      setState('error');
     }
-  }, [textReport, report, entityType]);
+  }, [preview, entityType, addJob, onComplete]);
 
   const handleClose = useCallback(() => {
-    reset();
+    setState('idle');
+    setPreview(null);
+    setError(null);
+    setSubmittedJobId(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
     onClose();
-  }, [reset, onClose]);
+  }, [onClose]);
+
+  const handleReset = useCallback(() => {
+    setState('idle');
+    setPreview(null);
+    setError(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, []);
 
   if (!isOpen) return null;
 
-  const progressPercent = total > 0 ? Math.round((progress / total) * 100) : 0;
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
 
   return (
     <div className={styles.overlay} onClick={handleClose}>
@@ -278,7 +338,7 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
 
         <div className={styles.content}>
           {/* Idle state - file selection */}
-          {status === 'idle' && (
+          {state === 'idle' && (
             <div
               className={`${styles.dropZone} ${dragOver ? styles.dragOver : ''}`}
               onDrop={handleDrop}
@@ -286,9 +346,9 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
               onDragLeave={handleDragLeave}
               onClick={() => fileInputRef.current?.click()}
             >
-              <div className={styles.dropIcon}>📄</div>
+              <div className={styles.dropIcon}>{entityType === 'zip' ? '📦' : '📄'}</div>
               <p className={styles.dropText}>
-                Přetáhněte CSV soubor sem
+                Přetáhněte {entityType === 'zip' ? 'ZIP' : 'CSV'} soubor sem
               </p>
               <p className={styles.dropHint}>
                 nebo klikněte pro výběr souboru
@@ -296,117 +356,140 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".csv,text/csv"
+                accept={ACCEPTED_FILES[entityType]}
                 onChange={handleFileChange}
                 className={styles.fileInput}
               />
             </div>
           )}
 
-          {/* Processing state */}
-          {(status === 'parsing' || status === 'sending') && (
+          {/* Parsing state */}
+          {state === 'parsing' && (
             <div className={styles.processing}>
               <div className={styles.spinner} />
-              <p className={styles.processingText}>
-                {status === 'parsing'
-                  ? 'Zpracovávám CSV...'
-                  : `Ukládám ${ENTITY_LABELS[entityType]}...`}
-              </p>
-              {status === 'sending' && (
-                <>
-                  <div className={styles.progressBar}>
-                    <div
-                      className={styles.progressFill}
-                      style={{ width: `${progressPercent}%` }}
-                    />
-                  </div>
-                  <p className={styles.progressText}>
-                    {progress.toLocaleString('cs-CZ')} / {total.toLocaleString('cs-CZ')} ({progressPercent}%)
+              <p className={styles.processingText}>Načítám soubor...</p>
+            </div>
+          )}
+
+          {/* Preview state */}
+          {state === 'preview' && preview && (
+            <div className={styles.previewContainer}>
+              <div className={styles.previewHeader}>
+                <div className={styles.previewInfo}>
+                  <span className={styles.filename}>{preview.filename}</span>
+                  <span className={styles.fileSize}>{formatFileSize(preview.fileSize)}</span>
+                  {preview.totalRows && (
+                    <span className={styles.rowCount}>
+                      {preview.totalRows.toLocaleString('cs-CZ')} {ENTITY_LABELS[entityType]}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* CSV preview table */}
+              {!preview.isZip && preview.headers && preview.sampleRows && (
+                <div className={styles.previewTable}>
+                  <table>
+                    <thead>
+                      <tr>
+                        {preview.headers.map((header, i) => (
+                          <th key={i}>{header}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {preview.sampleRows.map((row, i) => (
+                        <tr key={i}>
+                          {row.map((cell, j) => (
+                            <td key={j}>{cell}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {preview.totalRows && preview.totalRows > 5 && (
+                    <div className={styles.previewMore}>
+                      ...a dalších {(preview.totalRows - 5).toLocaleString('cs-CZ')} řádků
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ZIP file info */}
+              {preview.isZip && (
+                <div className={styles.zipInfo}>
+                  <p>
+                    ZIP soubor bude rozbalen a soubory budou importovány v pořadí:
                   </p>
-                </>
+                  <ol className={styles.importOrder}>
+                    <li>Zákazníci (customers)</li>
+                    <li>Zařízení (devices)</li>
+                    <li>Revize (revisions)</li>
+                    <li>Komunikace (communications)</li>
+                    <li>Návštěvy (visits)</li>
+                  </ol>
+                  <p className={styles.zipNote}>
+                    Typy souborů jsou automaticky rozpoznány podle názvu souboru.
+                  </p>
+                </div>
+              )}
+
+              <div className={styles.previewActions}>
+                <button className={styles.cancelButton} onClick={handleReset}>
+                  Vybrat jiný soubor
+                </button>
+                <button className={styles.importButton} onClick={handleSubmitImport}>
+                  Spustit import
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Submitting state */}
+          {state === 'submitting' && (
+            <div className={styles.processing}>
+              <div className={styles.spinner} />
+              <p className={styles.processingText}>Odesílám úlohu importu...</p>
+            </div>
+          )}
+
+          {/* Submitted state */}
+          {state === 'submitted' && (
+            <div className={styles.submitted}>
+              <div className={styles.successIcon}>✓</div>
+              <p className={styles.successText}>Import byl spuštěn</p>
+              <p className={styles.successHint}>
+                Průběh můžete sledovat v sekci Úlohy nebo v horní liště.
+              </p>
+              {submittedJobId && (
+                <small className={styles.jobId}>Job ID: {submittedJobId.slice(0, 8)}...</small>
               )}
             </div>
           )}
 
           {/* Error state */}
-          {status === 'error' && (
+          {state === 'error' && (
             <div className={styles.error}>
               <div className={styles.errorIcon}>❌</div>
               <p className={styles.errorText}>{error}</p>
-              <button className={styles.retryButton} onClick={reset}>
+              <button className={styles.retryButton} onClick={handleReset}>
                 Zkusit znovu
               </button>
-            </div>
-          )}
-
-          {/* Complete state - report */}
-          {status === 'complete' && report && (
-            <div className={styles.complete}>
-              <div className={styles.summary}>
-                <div className={styles.summaryItem}>
-                  <span className={styles.summaryLabel}>Celkem řádků</span>
-                  <span className={styles.summaryValue}>
-                    {report.totalRows.toLocaleString('cs-CZ')}
-                  </span>
-                </div>
-                <div className={styles.summaryItem}>
-                  <span className={styles.summaryLabel}>Importováno</span>
-                  <span className={`${styles.summaryValue} ${styles.success}`}>
-                    {report.importedCount.toLocaleString('cs-CZ')} ✓
-                  </span>
-                </div>
-                <div className={styles.summaryItem}>
-                  <span className={styles.summaryLabel}>Aktualizováno</span>
-                  <span className={styles.summaryValue}>
-                    {report.updatedCount.toLocaleString('cs-CZ')} ↻
-                  </span>
-                </div>
-                <div className={styles.summaryItem}>
-                  <span className={styles.summaryLabel}>Přeskočeno</span>
-                  <span className={styles.summaryValue}>
-                    {report.skippedCount.toLocaleString('cs-CZ')} ○
-                  </span>
-                </div>
-                <div className={styles.summaryItem}>
-                  <span className={styles.summaryLabel}>Chyby</span>
-                  <span className={`${styles.summaryValue} ${report.issues.filter(i => i.level === 'error').length > 0 ? styles.warning : ''}`}>
-                    {report.issues.filter(i => i.level === 'error').length}
-                  </span>
-                </div>
-              </div>
-
-              <div className={styles.reportSection}>
-                <h3>Podrobný report</h3>
-                <pre className={styles.reportText}>{textReport}</pre>
-              </div>
-
-              <div className={styles.reportActions}>
-                <button className={styles.copyButton} onClick={handleCopyReport}>
-                  📋 Kopírovat
-                </button>
-                <button className={styles.saveButton} onClick={handleSaveReport}>
-                  💾 Uložit
-                </button>
-              </div>
             </div>
           )}
         </div>
 
         <div className={styles.footer}>
-          {status === 'complete' ? (
-            <button className={styles.doneButton} onClick={handleClose}>
-              Hotovo
-            </button>
-          ) : status === 'idle' ? (
+          {state === 'idle' && (
             <a
               href="/IMPORT_FORMAT.MD"
               target="_blank"
               rel="noopener noreferrer"
               className={styles.helpLink}
             >
-              Nápověda k formátu CSV
+              Nápověda k formátu {entityType === 'zip' ? 'ZIP' : 'CSV'}
             </a>
-          ) : null}
+          )}
         </div>
       </div>
     </div>
