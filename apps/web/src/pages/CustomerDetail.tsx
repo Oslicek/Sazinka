@@ -9,6 +9,10 @@ import {
   subscribeToGeocodeJobStatus,
   type GeocodeJobStatusUpdate,
 } from '../services/customerService';
+import { listVehicles, type Vehicle as VehicleData } from '../services/vehicleService';
+import { listDepots, type Depot } from '../services/settingsService';
+import * as routeService from '../services/routeService';
+import * as insertionService from '../services/insertionService';
 import { CustomerWorkspace, type TabId } from '../components/customers/CustomerWorkspace';
 import { CustomerHeader } from '../components/customers/CustomerHeader';
 import { CustomerEditDrawer } from '../components/customers/CustomerEditDrawer';
@@ -53,6 +57,8 @@ export function CustomerDetail() {
   // Schedule dialog
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [isScheduling, setIsScheduling] = useState(false);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [depots, setDepots] = useState<Depot[]>([]);
 
   const isConnected = useNatsStore((s) => s.isConnected);
 
@@ -178,17 +184,101 @@ export function CustomerDetail() {
   }, [isConnected, customerId, navigate]);
 
   // Handle "Add to Plan" action - open schedule dialog
-  const handleAddToPlan = useCallback(() => {
+  const handleAddToPlan = useCallback(async () => {
     if (customer?.lat && customer?.lng) {
+      // Load vehicles and depots when opening dialog
+      try {
+        const [vehicleList, depotList] = await Promise.all([
+          listVehicles(true),
+          listDepots(),
+        ]);
+        setVehicles(vehicleList.map((v: VehicleData) => ({
+          id: v.id,
+          name: v.name,
+          licensePlate: v.licensePlate || undefined,
+        })));
+        setDepots(depotList);
+      } catch (err) {
+        console.error('Failed to load vehicles/depots:', err);
+      }
       setShowScheduleDialog(true);
     }
   }, [customer?.lat, customer?.lng]);
 
-  // Mock vehicles for now (should be loaded from backend)
-  const mockVehicles: Vehicle[] = [
-    { id: '1', name: 'Auto 1', licensePlate: '1A1 1234' },
-    { id: '2', name: 'Auto 2', licensePlate: '2B2 5678' },
-  ];
+  // Fetch slot suggestions for the schedule dialog
+  const handleFetchSlots = useCallback(async (
+    _targetId: string,
+    date: string,
+    _vehicleId: string
+  ): Promise<SlotSuggestion[]> => {
+    if (!customer?.lat || !customer?.lng) {
+      return [];
+    }
+
+    try {
+      // Get the current route for the selected date
+      const routeResponse = await routeService.getRoute(date);
+      
+      // Get depot coordinates (use first depot or default)
+      const depot = depots[0];
+      const depotCoords = depot 
+        ? { lat: depot.lat, lng: depot.lng }
+        : { lat: 49.1951, lng: 16.6068 }; // Default: Brno
+
+      // Convert route stops to insertion format
+      const routeStops: insertionService.RouteStop[] = routeResponse.stops?.map(stop => ({
+        id: stop.customerId || stop.id,
+        name: stop.customerName || 'Unknown',
+        coordinates: { lat: stop.customerLat ?? 0, lng: stop.customerLng ?? 0 },
+        arrivalTime: stop.estimatedArrival ?? undefined,
+        departureTime: stop.estimatedDeparture ?? undefined,
+      })) || [];
+
+      // Calculate insertion positions
+      const insertionResponse = await insertionService.calculateInsertion({
+        routeStops,
+        depot: depotCoords,
+        candidate: {
+          id: customer.id,
+          customerId: customer.id,
+          coordinates: { lat: customer.lat, lng: customer.lng },
+          serviceDurationMinutes: 30,
+        },
+        date,
+      });
+
+      // Convert to SlotSuggestion format
+      const suggestions: SlotSuggestion[] = insertionResponse.allPositions.map((pos, idx) => ({
+        id: `slot-${idx}`,
+        date,
+        timeStart: pos.estimatedArrival ?? '',
+        timeEnd: pos.estimatedDeparture ?? '',
+        status: pos.status as 'ok' | 'tight' | 'conflict',
+        deltaKm: pos.deltaKm,
+        deltaMin: pos.deltaMin,
+        insertAfterIndex: pos.insertAfterIndex,
+        insertAfterName: pos.insertAfterName,
+        insertBeforeName: pos.insertBeforeName,
+      }));
+
+      return suggestions;
+    } catch (err) {
+      console.error('Failed to fetch slots:', err);
+      // Return a default slot if route calculation fails
+      return [{
+        id: 'default-slot',
+        date,
+        timeStart: '08:00',
+        timeEnd: '08:30',
+        status: 'ok',
+        deltaKm: 0,
+        deltaMin: 0,
+        insertAfterIndex: -1,
+        insertAfterName: 'Start',
+        insertBeforeName: 'Konec',
+      }];
+    }
+  }, [customer?.id, customer?.lat, customer?.lng, depots]);
 
   // Handle schedule from dialog
   const handleSchedule = useCallback(async (
@@ -347,8 +437,9 @@ export function CustomerDetail() {
         isOpen={showScheduleDialog}
         onClose={() => setShowScheduleDialog(false)}
         target={scheduleTarget}
-        vehicles={mockVehicles}
+        vehicles={vehicles}
         onSchedule={handleSchedule}
+        onFetchSlots={handleFetchSlots}
         isSubmitting={isScheduling}
       />
     </div>
