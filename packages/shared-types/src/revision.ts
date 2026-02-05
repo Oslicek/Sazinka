@@ -37,7 +37,7 @@ export type RevisionStatus =
   | 'cancelled';
 
 export const REVISION_STATUS_LABELS: Record<RevisionStatus, string> = {
-  upcoming: 'Nadcházející',
+  upcoming: 'Plánovaná',
   due_soon: 'Brzy',
   overdue: 'Po termínu',
   scheduled: 'Naplánováno',

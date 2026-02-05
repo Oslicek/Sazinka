@@ -413,7 +413,7 @@ pub async fn list_customers_extended(
             c.geocode_status,
             c.created_at,
             COALESCE(COUNT(DISTINCT ds.device_id), 0) as device_count,
-            MIN(r.due_date) FILTER (WHERE r.status NOT IN ('completed', 'cancelled')) as next_revision_date,
+            MIN(r.due_date) FILTER (WHERE r.status NOT IN ('completed', 'cancelled') AND r.due_date >= CURRENT_DATE) as next_revision_date,
             COALESCE(COUNT(DISTINCT ds.device_id) FILTER (WHERE ds.is_overdue), 0) as overdue_count,
             COALESCE(COUNT(DISTINCT ds.device_id) FILTER (WHERE ds.is_never_serviced), 0) as never_serviced_count
         FROM customers c

@@ -1539,6 +1539,7 @@ cargo test
     - Example: "2 roky, 3 měsíce, 15 dní"
   - **TDD implementation** - 14 new tests for `formatOverdueDuration` and `calculateOverdueInfo` utilities
   - **Backend SQL query rewrite** - CTE-based calculation for accurate per-device overdue status
+  - **"Příští revize" fix** - Next revision date only shows future dates (`due_date >= CURRENT_DATE`)
 
 ## Recent Changes (v0.15.1)
 

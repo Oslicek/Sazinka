@@ -83,7 +83,7 @@ fn parse_device_type(s: &str) -> Option<DeviceType> {
 
 fn parse_revision_status(s: &str) -> Option<RevisionStatus> {
     match s.to_lowercase().as_str() {
-        "upcoming" | "nadcházející" | "nadchazejici" | "budoucí" | "budouci" => Some(RevisionStatus::Upcoming),
+        "upcoming" | "nadcházející" | "nadchazejici" | "budoucí" | "budouci" | "plánovaná" | "planovana" => Some(RevisionStatus::Upcoming),
         "scheduled" | "naplánováno" | "naplanovano" | "plánováno" | "planovano" => Some(RevisionStatus::Scheduled),
         "confirmed" | "potvrzeno" => Some(RevisionStatus::Confirmed),
         "completed" | "dokončeno" | "dokonceno" | "hotovo" | "provedeno" => Some(RevisionStatus::Completed),

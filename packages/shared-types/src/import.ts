@@ -433,6 +433,7 @@ export const DEVICE_TYPE_ALIASES: Record<string, string> = {
 
 export const REVISION_STATUS_ALIASES: Record<string, string> = {
   'nadcházející': 'upcoming',
+  'plánovaná': 'upcoming',
   'nadchazejici': 'upcoming',
   'budoucí': 'upcoming',
   'budouci': 'upcoming',
