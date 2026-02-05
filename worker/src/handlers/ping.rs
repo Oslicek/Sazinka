@@ -8,7 +8,10 @@ use tracing::{debug, error};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct PingRequest {
-    message: String,
+    #[serde(default)]
+    message: Option<String>,
+    #[serde(default)]
+    timestamp: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -48,7 +51,7 @@ pub async fn handle_ping(client: Client, mut subscriber: Subscriber) -> Result<(
 
         // Create response
         let response = PongResponse {
-            message: format!("Pong: {}", request.message),
+            message: request.message.map(|m| format!("Pong: {}", m)).unwrap_or_else(|| "Pong".to_string()),
             timestamp: chrono::Utc::now().to_rfc3339(),
         };
 

@@ -267,7 +267,7 @@ pub struct CallQueueItem {
     pub customer_geocode_status: String,
     
     // Device fields
-    pub device_name: String,
+    pub device_name: Option<String>,
     pub device_type: String,
     
     // Computed fields
