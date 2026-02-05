@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-02-05 (v0.15.0 - Async import system for all entity types + ZIP)
+> **Last Updated:** 2026-02-05 (v0.15.1 - Import processor reliability fixes)
 
 ## Overview
 
@@ -992,6 +992,35 @@ jetstream::consumer::pull::Config {
 }
 ```
 
+### Early ACK Pattern (v0.15.1)
+
+**Problem:** Default `ack_wait` is 30 seconds. Long-running jobs (e.g., importing 1000+ customers) 
+cause JetStream to redeliver the message, resulting in duplicate processing.
+
+**Solution:** ACK immediately after parsing the job payload, before starting processing:
+
+```rust
+async fn process_job(&self, msg: jetstream::Message) -> Result<()> {
+    let job: QueuedImportJob = serde_json::from_slice(&msg.payload)?;
+    
+    // ACK immediately to prevent redelivery during long processing
+    // Import jobs should not be retried automatically - failures are reported via status
+    if let Err(e) = msg.ack().await {
+        error!("Failed to ack job {}: {:?}", job.id, e);
+    }
+    
+    // Now process the job (can take minutes for large imports)
+    // Status updates inform UI of progress/completion/failure
+    ...
+}
+```
+
+**Trade-off:** If processing fails after ACK, the job won't be automatically retried. 
+This is acceptable for imports because:
+1. Failures are reported via status updates to the UI
+2. Duplicate imports would create data inconsistencies
+3. User can retry manually with corrected data
+
 ### Module Structure
 
 ```
@@ -1495,6 +1524,17 @@ cargo test
 - MVP focuses on core CRM + route planning
 - Email notifications deferred to later phase
 - Invoicing/billing architecture prepared but not implemented
+
+## Recent Changes (v0.15.1)
+
+- **Import Processor Reliability** - Fixed issues with JetStream message handling:
+  - **Early ACK pattern** - All import processors now ACK messages immediately after parsing
+    - Prevents message redelivery when processing takes longer than 30-second timeout
+    - Applied to: Customer, Device, Revision, Communication, Visit, ZIP import processors
+  - **ZIP import geocoding** - Added automatic geocoding trigger after ZIP import
+    - Checks if customers were imported and triggers geocoding for pending addresses
+    - Uses same pattern as `CustomerImportProcessor`
+  - **Fixed duplicate imports** - ZIP import no longer processes files multiple times
 
 ## Recent Changes (v0.15.0)
 

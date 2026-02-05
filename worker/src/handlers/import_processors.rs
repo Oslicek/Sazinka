@@ -246,6 +246,11 @@ impl DeviceImportProcessor {
         info!("Processing device import job {} from file '{}'", job_id, job.request.filename);
         self.pending_count.fetch_sub(1, Ordering::Relaxed);
         
+        // ACK immediately to prevent redelivery during long processing
+        if let Err(e) = msg.ack().await {
+            error!("Failed to ack device import job {}: {:?}", job_id, e);
+        }
+        
         self.publish_status(job_id, DeviceImportJobStatus::Parsing { progress: 0 }).await?;
         
         let rows = match self.parse_csv(&job.request.csv_content).await {
@@ -254,7 +259,6 @@ impl DeviceImportProcessor {
                 let error_msg = format!("Chyba při parsování CSV: {}", e);
                 self.publish_status(job_id, DeviceImportJobStatus::Failed { error: error_msg.clone() }).await?;
                 JOB_HISTORY.record_failed(job_id, "import.device", started_at, error_msg);
-                let _ = msg.ack().await;
                 return Ok(());
             }
         };
@@ -264,7 +268,6 @@ impl DeviceImportProcessor {
             let error_msg = "CSV soubor neobsahuje žádné záznamy".to_string();
             self.publish_status(job_id, DeviceImportJobStatus::Failed { error: error_msg.clone() }).await?;
             JOB_HISTORY.record_failed(job_id, "import.device", started_at, error_msg);
-            let _ = msg.ack().await;
             return Ok(());
         }
         
@@ -304,10 +307,6 @@ impl DeviceImportProcessor {
             failed,
             report: report.clone(),
         }).await?;
-        
-        if let Err(e) = msg.ack().await {
-            error!("Failed to ack device import job {}: {:?}", job_id, e);
-        }
         
         JOB_HISTORY.record_completed(
             job_id,
@@ -548,6 +547,11 @@ impl RevisionImportProcessor {
         info!("Processing revision import job {} from file '{}'", job_id, job.request.filename);
         self.pending_count.fetch_sub(1, Ordering::Relaxed);
         
+        // ACK immediately to prevent redelivery during long processing
+        if let Err(e) = msg.ack().await {
+            error!("Failed to ack revision import job {}: {:?}", job_id, e);
+        }
+        
         self.publish_status(job_id, RevisionImportJobStatus::Parsing { progress: 0 }).await?;
         
         let rows = match self.parse_csv(&job.request.csv_content).await {
@@ -556,7 +560,6 @@ impl RevisionImportProcessor {
                 let error_msg = format!("Chyba při parsování CSV: {}", e);
                 self.publish_status(job_id, RevisionImportJobStatus::Failed { error: error_msg.clone() }).await?;
                 JOB_HISTORY.record_failed(job_id, "import.revision", started_at, error_msg);
-                let _ = msg.ack().await;
                 return Ok(());
             }
         };
@@ -566,7 +569,6 @@ impl RevisionImportProcessor {
             let error_msg = "CSV soubor neobsahuje žádné záznamy".to_string();
             self.publish_status(job_id, RevisionImportJobStatus::Failed { error: error_msg.clone() }).await?;
             JOB_HISTORY.record_failed(job_id, "import.revision", started_at, error_msg);
-            let _ = msg.ack().await;
             return Ok(());
         }
         
@@ -606,10 +608,6 @@ impl RevisionImportProcessor {
             failed,
             report: report.clone(),
         }).await?;
-        
-        if let Err(e) = msg.ack().await {
-            error!("Failed to ack revision import job {}: {:?}", job_id, e);
-        }
         
         JOB_HISTORY.record_completed(
             job_id,
@@ -863,6 +861,11 @@ impl CommunicationImportProcessor {
         info!("Processing communication import job {} from file '{}'", job_id, job.request.filename);
         self.pending_count.fetch_sub(1, Ordering::Relaxed);
         
+        // ACK immediately to prevent redelivery during long processing
+        if let Err(e) = msg.ack().await {
+            error!("Failed to ack communication import job {}: {:?}", job_id, e);
+        }
+        
         self.publish_status(job_id, CommunicationImportJobStatus::Parsing { progress: 0 }).await?;
         
         let rows = match self.parse_csv(&job.request.csv_content).await {
@@ -871,7 +874,6 @@ impl CommunicationImportProcessor {
                 let error_msg = format!("Chyba při parsování CSV: {}", e);
                 self.publish_status(job_id, CommunicationImportJobStatus::Failed { error: error_msg.clone() }).await?;
                 JOB_HISTORY.record_failed(job_id, "import.communication", started_at, error_msg);
-                let _ = msg.ack().await;
                 return Ok(());
             }
         };
@@ -881,7 +883,6 @@ impl CommunicationImportProcessor {
             let error_msg = "CSV soubor neobsahuje žádné záznamy".to_string();
             self.publish_status(job_id, CommunicationImportJobStatus::Failed { error: error_msg.clone() }).await?;
             JOB_HISTORY.record_failed(job_id, "import.communication", started_at, error_msg);
-            let _ = msg.ack().await;
             return Ok(());
         }
         
@@ -921,10 +922,6 @@ impl CommunicationImportProcessor {
             failed,
             report: report.clone(),
         }).await?;
-        
-        if let Err(e) = msg.ack().await {
-            error!("Failed to ack communication import job {}: {:?}", job_id, e);
-        }
         
         JOB_HISTORY.record_completed(
             job_id,
@@ -1160,6 +1157,11 @@ impl VisitImportProcessor {
         info!("Processing visit import job {} from file '{}'", job_id, job.request.filename);
         self.pending_count.fetch_sub(1, Ordering::Relaxed);
         
+        // ACK immediately to prevent redelivery during long processing
+        if let Err(e) = msg.ack().await {
+            error!("Failed to ack visit import job {}: {:?}", job_id, e);
+        }
+        
         self.publish_status(job_id, VisitImportJobStatus::Parsing { progress: 0 }).await?;
         
         let rows = match self.parse_csv(&job.request.csv_content).await {
@@ -1168,7 +1170,6 @@ impl VisitImportProcessor {
                 let error_msg = format!("Chyba při parsování CSV: {}", e);
                 self.publish_status(job_id, VisitImportJobStatus::Failed { error: error_msg.clone() }).await?;
                 JOB_HISTORY.record_failed(job_id, "import.visit", started_at, error_msg);
-                let _ = msg.ack().await;
                 return Ok(());
             }
         };
@@ -1178,7 +1179,6 @@ impl VisitImportProcessor {
             let error_msg = "CSV soubor neobsahuje žádné záznamy".to_string();
             self.publish_status(job_id, VisitImportJobStatus::Failed { error: error_msg.clone() }).await?;
             JOB_HISTORY.record_failed(job_id, "import.visit", started_at, error_msg);
-            let _ = msg.ack().await;
             return Ok(());
         }
         
@@ -1218,10 +1218,6 @@ impl VisitImportProcessor {
             failed,
             report: report.clone(),
         }).await?;
-        
-        if let Err(e) = msg.ack().await {
-            error!("Failed to ack visit import job {}: {:?}", job_id, e);
-        }
         
         JOB_HISTORY.record_completed(
             job_id,
@@ -1512,6 +1508,12 @@ impl ZipImportProcessor {
               job_id, job.request.filename, total_files);
         self.pending_count.fetch_sub(1, Ordering::Relaxed);
         
+        // ACK immediately to prevent redelivery during long processing
+        // Import jobs should not be retried automatically - failures are reported via status
+        if let Err(e) = msg.ack().await {
+            error!("Failed to ack ZIP import job {}: {:?}", job_id, e);
+        }
+        
         // Extract ZIP
         self.publish_status(job_id, ZipImportJobStatus::Extracting { progress: 0 }).await?;
         
@@ -1524,7 +1526,6 @@ impl ZipImportProcessor {
                 let error_msg = format!("Chyba při dekódování ZIP: {}", e);
                 self.publish_status(job_id, ZipImportJobStatus::Failed { error: error_msg.clone() }).await?;
                 JOB_HISTORY.record_failed(job_id, "import.zip", started_at, error_msg);
-                let _ = msg.ack().await;
                 return Ok(());
             }
         };
@@ -1536,7 +1537,6 @@ impl ZipImportProcessor {
                 let error_msg = format!("Chyba při otevření ZIP: {}", e);
                 self.publish_status(job_id, ZipImportJobStatus::Failed { error: error_msg.clone() }).await?;
                 JOB_HISTORY.record_failed(job_id, "import.zip", started_at, error_msg);
-                let _ = msg.ack().await;
                 return Ok(());
             }
         };
@@ -1610,12 +1610,20 @@ impl ZipImportProcessor {
             results: results.clone(),
         }).await?;
         
-        if let Err(e) = msg.ack().await {
-            error!("Failed to ack ZIP import job {}: {:?}", job_id, e);
-        }
-        
         let total_succeeded: u32 = results.iter().map(|r| r.succeeded).sum();
         let total_failed: u32 = results.iter().map(|r| r.failed).sum();
+        
+        // Check if customers were imported and trigger geocoding
+        let customers_imported = results.iter()
+            .find(|r| r.file_type == ZipImportFileType::Customers)
+            .map(|r| r.succeeded)
+            .unwrap_or(0);
+        
+        if customers_imported > 0 {
+            if let Err(e) = self.trigger_geocoding(user_id).await {
+                warn!("Failed to trigger geocoding after ZIP import: {}", e);
+            }
+        }
         
         JOB_HISTORY.record_completed(
             job_id,
@@ -1971,6 +1979,45 @@ impl ZipImportProcessor {
         ).await?;
         
         Ok(visit.id)
+    }
+    
+    /// Trigger geocoding for all pending customers after import
+    async fn trigger_geocoding(&self, user_id: Uuid) -> Result<()> {
+        use crate::types::{GeocodeJobRequest, QueuedGeocodeJob, GeocodeJobStatus, GeocodeJobStatusUpdate};
+        
+        // Get customers with pending geocode status
+        let pending_customers = queries::customer::list_pending_geocode(&self.pool, user_id).await?;
+        
+        if pending_customers.is_empty() {
+            info!("No customers pending geocoding after ZIP import");
+            return Ok(());
+        }
+        
+        let customer_ids: Vec<Uuid> = pending_customers.iter().map(|c| c.id).collect();
+        let count = customer_ids.len();
+        
+        // Create geocode job request
+        let request = GeocodeJobRequest {
+            user_id,
+            customer_ids,
+        };
+        
+        let job = QueuedGeocodeJob::new(request);
+        let job_id = job.id;
+        
+        // Publish to geocode queue
+        let payload = serde_json::to_vec(&job)?;
+        self.js.publish("sazinka.jobs.geocode", payload.into()).await?.await?;
+        
+        info!("Triggered geocoding job {} for {} customers after ZIP import", job_id, count);
+        
+        // Publish initial status
+        let status_update = GeocodeJobStatusUpdate::new(job_id, GeocodeJobStatus::Queued { position: 1 });
+        let status_subject = format!("sazinka.job.geocode.status.{}", job_id);
+        let status_payload = serde_json::to_vec(&status_update)?;
+        self.client.publish(status_subject, status_payload.into()).await?;
+        
+        Ok(())
     }
 }
 

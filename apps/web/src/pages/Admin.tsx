@@ -712,6 +712,23 @@ export function Admin() {
               📤 Importovat návštěvy
             </button>
           </div>
+
+          {/* ZIP Import */}
+          <div className={styles.exportCard}>
+            <h3>📦 Import ZIP</h3>
+            <p className={styles.exportDescription}>
+              Importujte více souborů najednou z jednoho ZIP archivu. Automaticky rozpozná typy souborů
+              a importuje je ve správném pořadí.
+            </p>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={() => handleOpenImport('zip')}
+              disabled={!connected}
+            >
+              📦 Importovat ZIP
+            </button>
+          </div>
         </div>
 
         <div className={styles.importHint}>

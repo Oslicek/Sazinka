@@ -971,6 +971,11 @@ impl CustomerImportProcessor {
         info!("Processing customer import job {} from file '{}'", job_id, job.request.filename);
         self.pending_count.fetch_sub(1, Ordering::Relaxed);
         
+        // ACK immediately to prevent redelivery during long processing
+        if let Err(e) = msg.ack().await {
+            error!("Failed to ack customer import job {}: {:?}", job_id, e);
+        }
+        
         // Publish parsing status
         self.publish_status(job_id, CustomerImportJobStatus::Parsing { progress: 0 }).await?;
         
@@ -982,7 +987,6 @@ impl CustomerImportProcessor {
                 let error_msg = format!("Chyba při parsování CSV: {}", e);
                 self.publish_status(job_id, CustomerImportJobStatus::Failed { error: error_msg.clone() }).await?;
                 JOB_HISTORY.record_failed(job_id, "import.customer", started_at, error_msg);
-                let _ = msg.ack().await;
                 return Ok(());
             }
         };
@@ -992,7 +996,6 @@ impl CustomerImportProcessor {
             let error_msg = "CSV soubor neobsahuje žádné záznamy".to_string();
             self.publish_status(job_id, CustomerImportJobStatus::Failed { error: error_msg.clone() }).await?;
             JOB_HISTORY.record_failed(job_id, "import.customer", started_at, error_msg);
-            let _ = msg.ack().await;
             return Ok(());
         }
         
@@ -1037,11 +1040,6 @@ impl CustomerImportProcessor {
             failed,
             report: report.clone(),
         }).await?;
-        
-        // Acknowledge the message
-        if let Err(e) = msg.ack().await {
-            error!("Failed to ack customer import job {}: {:?}", job_id, e);
-        }
         
         // Record in job history
         JOB_HISTORY.record_completed(
