@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Link, useSearch, useNavigate } from '@tanstack/react-router';
 import maplibregl from 'maplibre-gl';
 import { useNatsStore } from '../stores/natsStore';
-import type { RoutePlanResponse, PlannedRouteStop } from '@sazinka/shared-types';
+import type { PlannedRouteStop } from '@shared/route';
 import * as settingsService from '../services/settingsService';
 import { 
   listRevisions, 
@@ -46,27 +46,6 @@ interface PlannerSearchParams {
   date?: string;
   crew?: string;
   highlight?: string;
-}
-
-interface NatsSuccessResponse<T> {
-  id: string;
-  timestamp: string;
-  payload: T;
-}
-
-interface NatsErrorResponse {
-  id: string;
-  timestamp: string;
-  error: {
-    code: string;
-    message: string;
-  };
-}
-
-type NatsResponse<T> = NatsSuccessResponse<T> | NatsErrorResponse;
-
-function isErrorResponse<T>(response: NatsResponse<T>): response is NatsErrorResponse {
-  return 'error' in response;
 }
 
 // Extended stop with revision details
@@ -141,7 +120,7 @@ export function Planner() {
   const [inboxCandidates, setInboxCandidates] = useState<InboxCandidate[]>([]);
   const [loadingInboxCandidates, setLoadingInboxCandidates] = useState(false);
 
-  const { request, isConnected } = useNatsStore();
+  const { isConnected } = useNatsStore();
   
   // DnD sensors
   const sensors = useSensors(
@@ -577,8 +556,8 @@ export function Planner() {
         deviceType: item.deviceType || '',
         dueDate: item.dueDate,
         priority: item.priority,
-        lat: item.lat!,
-        lng: item.lng!,
+        lat: item.customerLat!,
+        lng: item.customerLng!,
         status: 'upcoming',
         snoozedUntil: null,
       }));
