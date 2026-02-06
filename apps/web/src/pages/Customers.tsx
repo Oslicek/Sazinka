@@ -5,10 +5,12 @@ import type {
   CustomerListItem,
   ListCustomersRequest,
   GeocodeStatus,
+  CustomerSummary,
 } from '@shared/customer';
 import { 
   createCustomer, 
   listCustomersExtended,
+  getCustomerSummary,
   importCustomersBatch, 
   submitGeocodeJob, 
   subscribeToGeocodeJobStatus, 
@@ -25,6 +27,9 @@ import styles from './Customers.module.css';
 
 // Temporary user ID until auth is implemented
 const TEMP_USER_ID = '00000000-0000-0000-0000-000000000001';
+
+/** Page size for infinite scroll */
+const PAGE_SIZE = 100;
 
 interface SearchParams {
   action?: string;
@@ -45,9 +50,13 @@ export function Customers() {
   const [customers, setCustomers] = useState<CustomerListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [geocodeJob, setGeocodeJob] = useState<GeocodeJobStatusUpdate | null>(null);
   const geocodeUnsubscribeRef = useRef<(() => void) | null>(null);
+  
+  // Server-side summary stats (accurate across all customers)
+  const [summary, setSummary] = useState<CustomerSummary | null>(null);
   
   // Selected customer for preview panel
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerListItem | null>(null);
@@ -64,10 +73,10 @@ export function Customers() {
   
   const isConnected = useNatsStore((s) => s.isConnected);
 
-  // Build request options
+  // Build request options (without offset — managed separately)
   const requestOptions = useMemo<ListCustomersRequest>(() => {
     const options: ListCustomersRequest = {
-      limit: 100,
+      limit: PAGE_SIZE,
       sortBy,
       sortOrder,
     };
@@ -91,7 +100,7 @@ export function Customers() {
     return options;
   }, [search, geocodeFilter, revisionFilter, sortBy, sortOrder]);
 
-  // Load customers when connected or filters change
+  // Load first page + summary when connected or filters change
   const loadCustomers = useCallback(async () => {
     if (!isConnected) {
       setError('Není připojení k serveru');
@@ -101,9 +110,16 @@ export function Customers() {
     try {
       setIsLoading(true);
       setError(null);
-      const result = await listCustomersExtended(TEMP_USER_ID, requestOptions);
+      
+      // Fetch first page and summary in parallel
+      const [result, summaryResult] = await Promise.all([
+        listCustomersExtended(TEMP_USER_ID, { ...requestOptions, offset: 0 }),
+        getCustomerSummary(TEMP_USER_ID).catch(() => null),
+      ]);
+      
       setCustomers(result.items);
       setTotal(result.total);
+      if (summaryResult) setSummary(summaryResult);
       
       // Clear selection if the selected customer is no longer in the list
       if (selectedCustomer && !result.items.some(c => c.id === selectedCustomer.id)) {
@@ -122,6 +138,25 @@ export function Customers() {
       loadCustomers();
     }
   }, [isConnected, loadCustomers]);
+
+  // Load next page (infinite scroll)
+  const loadMore = useCallback(async () => {
+    if (!isConnected || isLoadingMore || customers.length >= total) return;
+    
+    try {
+      setIsLoadingMore(true);
+      const result = await listCustomersExtended(TEMP_USER_ID, {
+        ...requestOptions,
+        offset: customers.length,
+      });
+      setCustomers(prev => [...prev, ...result.items]);
+      setTotal(result.total);
+    } catch (err) {
+      console.error('Failed to load more customers:', err);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [isConnected, isLoadingMore, customers.length, total, requestOptions]);
 
   const handleAddCustomer = useCallback(async (data: CreateCustomerRequest) => {
     if (!isConnected) {
@@ -234,20 +269,30 @@ export function Customers() {
     setTypeFilter(view.filters.type || '');
   }, []);
 
-  // Calculate stats from loaded customers
+  // Stats: use server summary when available, fall back to loaded data
   const stats = useMemo(() => {
+    // Always compute from loaded data as baseline
     let overdueCount = 0;
     let neverServicedCount = 0;
     let geocodeFailed = 0;
+    let geocodePending = 0;
     
     for (const customer of customers) {
       if (customer.overdueCount > 0) overdueCount++;
       if (customer.neverServicedCount > 0) neverServicedCount++;
       if (customer.geocodeStatus === 'failed') geocodeFailed++;
+      if (customer.geocodeStatus === 'pending') geocodePending++;
     }
     
-    return { overdueCount, neverServicedCount, geocodeFailed, total };
-  }, [customers, total]);
+    return {
+      total: summary?.totalCustomers ?? total,
+      // Use server counts when available (exact), otherwise loaded-data counts
+      overdueCount: summary?.customersWithOverdue ?? overdueCount,
+      neverServicedCount: summary?.customersNeverServiced ?? neverServicedCount,
+      geocodeFailed: summary?.geocodeFailed ?? geocodeFailed,
+      geocodePending: summary?.geocodePending ?? geocodePending,
+    };
+  }, [summary, customers, total]);
 
   // Format revision status for cards view
   const formatRevisionStatus = (date: string | null, overdueCount: number, neverServicedCount: number): { text: string; className: string } => {
@@ -341,27 +386,29 @@ export function Customers() {
           onSelectView={handleSelectView}
         />
         
-        <select 
-          value={geocodeFilter} 
-          onChange={(e) => setGeocodeFilter(e.target.value as GeocodeStatus | '')}
-          className={styles.filterSelect}
-        >
-          <option value="">Adresa: vše</option>
-          <option value="success">Úspěšně ověřená</option>
-          <option value="failed">Nelze ověřit</option>
-          <option value="pending">Čeká na ověření</option>
-        </select>
-        
-        <select 
-          value={revisionFilter} 
-          onChange={(e) => setRevisionFilter(e.target.value)}
-          className={styles.filterSelect}
-        >
-          <option value="">Revize: vše</option>
-          <option value="overdue">Po termínu</option>
-          <option value="week">Do 7 dní</option>
-          <option value="month">Do 30 dní</option>
-        </select>
+        <div className={styles.filterRow}>
+          <select 
+            value={geocodeFilter} 
+            onChange={(e) => setGeocodeFilter(e.target.value as GeocodeStatus | '')}
+            className={styles.filterSelect}
+          >
+            <option value="">Adresa: vše</option>
+            <option value="success">Úspěšně ověřená</option>
+            <option value="failed">Nelze ověřit</option>
+            <option value="pending">Čeká na ověření</option>
+          </select>
+          
+          <select 
+            value={revisionFilter} 
+            onChange={(e) => setRevisionFilter(e.target.value)}
+            className={styles.filterSelect}
+          >
+            <option value="">Revize: vše</option>
+            <option value="overdue">Po termínu</option>
+            <option value="week">Do 7 dní</option>
+            <option value="month">Do 30 dní</option>
+          </select>
+        </div>
         
         <div className={styles.viewToggle}>
           <button 
@@ -382,6 +429,13 @@ export function Customers() {
           </button>
         </div>
       </div>
+
+      {/* Loaded / total count */}
+      {!isLoading && customers.length > 0 && customers.length < total && (
+        <div className={styles.loadedCount}>
+          Zobrazeno {customers.length} z {total} zákazníků
+        </div>
+      )}
 
       {error && <div className={styles.error}>{error}</div>}
 
@@ -405,6 +459,9 @@ export function Customers() {
           onSelectCustomer={handleSelectCustomer}
           onDoubleClick={handleOpenDetail}
           isLoading={isLoading}
+          onEndReached={loadMore}
+          isLoadingMore={isLoadingMore}
+          totalCount={total}
         />
       ) : (
         // Cards view (mobile-friendly)
@@ -434,57 +491,69 @@ export function Customers() {
               </p>
             </div>
           ) : (
-            customers.map((customer) => {
-              const revision = formatRevisionStatus(customer.nextRevisionDate, customer.overdueCount, customer.neverServicedCount);
-              
-              return (
-                <Link
-                  key={customer.id}
-                  to="/customers/$customerId"
-                  params={{ customerId: customer.id }}
-                  className={`${styles.customerCard} ${customer.geocodeStatus === 'failed' ? styles.geocodeFailed : ''}`}
-                >
-                  <div className={styles.customerMain}>
-                    <div className={styles.customerHeader}>
-                      <h3 className={styles.customerName}>
-                        {customer.name}
-                        <span className={styles.customerType}>
-                          {customer.type === 'company' ? 'Firma' : 'Osoba'}
-                        </span>
-                      </h3>
-                      {customer.geocodeStatus === 'failed' && (
-                        <span className={styles.geocodeWarning} title="Adresu nelze lokalizovat">
-                          ⚠️
-                        </span>
+            <>
+              {customers.map((customer) => {
+                const revision = formatRevisionStatus(customer.nextRevisionDate, customer.overdueCount, customer.neverServicedCount);
+                
+                return (
+                  <Link
+                    key={customer.id}
+                    to="/customers/$customerId"
+                    params={{ customerId: customer.id }}
+                    className={`${styles.customerCard} ${customer.geocodeStatus === 'failed' ? styles.geocodeFailed : ''}`}
+                  >
+                    <div className={styles.customerMain}>
+                      <div className={styles.customerHeader}>
+                        <h3 className={styles.customerName}>
+                          {customer.name}
+                          <span className={styles.customerType}>
+                            {customer.type === 'company' ? 'Firma' : 'Osoba'}
+                          </span>
+                        </h3>
+                        {customer.geocodeStatus === 'failed' && (
+                          <span className={styles.geocodeWarning} title="Adresu nelze lokalizovat">
+                            ⚠️
+                          </span>
+                        )}
+                      </div>
+                      <p className={styles.customerAddress}>
+                        {customer.street}, {customer.city} {customer.postalCode}
+                      </p>
+                      {(customer.email || customer.phone) && (
+                        <p className={styles.customerContact}>
+                          {customer.phone && <span>{customer.phone}</span>}
+                          {customer.email && customer.phone && <span> • </span>}
+                          {customer.email && <span>{customer.email}</span>}
+                        </p>
                       )}
                     </div>
-                    <p className={styles.customerAddress}>
-                      {customer.street}, {customer.city} {customer.postalCode}
-                    </p>
-                    {(customer.email || customer.phone) && (
-                      <p className={styles.customerContact}>
-                        {customer.phone && <span>{customer.phone}</span>}
-                        {customer.email && customer.phone && <span> • </span>}
-                        {customer.email && <span>{customer.email}</span>}
-                      </p>
-                    )}
-                  </div>
-                  
-                  <div className={styles.customerMeta}>
-                    <div className={styles.metaItem}>
-                      <span className={styles.metaLabel}>Zařízení</span>
-                      <span className={styles.metaValue}>{customer.deviceCount}</span>
+                    
+                    <div className={styles.customerMeta}>
+                      <div className={styles.metaItem}>
+                        <span className={styles.metaLabel}>Zařízení</span>
+                        <span className={styles.metaValue}>{customer.deviceCount}</span>
+                      </div>
+                      <div className={styles.metaItem}>
+                        <span className={styles.metaLabel}>Příští revize</span>
+                        <span className={`${styles.metaValue} ${revision.className}`}>
+                          {revision.text}
+                        </span>
+                      </div>
                     </div>
-                    <div className={styles.metaItem}>
-                      <span className={styles.metaLabel}>Příští revize</span>
-                      <span className={`${styles.metaValue} ${revision.className}`}>
-                        {revision.text}
-                      </span>
-                    </div>
-                  </div>
-                </Link>
-              );
-            })
+                  </Link>
+                );
+              })}
+              {customers.length < total && (
+                <button
+                  type="button"
+                  className={styles.loadMoreButton}
+                  onClick={loadMore}
+                  disabled={isLoadingMore}
+                >
+                  {isLoadingMore ? 'Načítám...' : `Načíst další (${total - customers.length} zbývá)`}
+                </button>
+              )}
+            </>
           )}
         </div>
       )}
@@ -517,7 +586,7 @@ export function Customers() {
         </div>
       </div>
 
-      {/* Quick Stats */}
+      {/* Quick Stats (from server summary) */}
       <div className={styles.statsBar}>
         <div className={styles.statItem}>
           <span className={styles.statValue}>{stats.total}</span>
@@ -538,7 +607,13 @@ export function Customers() {
         {stats.geocodeFailed > 0 && (
           <div className={`${styles.statItem} ${styles.statWarning}`}>
             <span className={styles.statValue}>{stats.geocodeFailed}</span>
-            <span className={styles.statLabel}>bez adresy</span>
+            <span className={styles.statLabel}>adresa bez polohy na mapě</span>
+          </div>
+        )}
+        {stats.geocodePending > 0 && (
+          <div className={`${styles.statItem} ${styles.statInfo}`}>
+            <span className={styles.statValue}>{stats.geocodePending}</span>
+            <span className={styles.statLabel}>adresa neověřená</span>
           </div>
         )}
       </div>

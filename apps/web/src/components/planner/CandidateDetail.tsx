@@ -29,6 +29,7 @@ interface CandidateDetailProps {
   onSchedule?: (candidateId: string, slot: SlotSuggestion) => void;
   onSnooze?: (candidateId: string) => void;
   onFixAddress?: (candidateId: string) => void;
+  onManualSchedule?: (candidateId: string) => void;
   isLoading?: boolean;
 }
 
@@ -38,6 +39,7 @@ export function CandidateDetail({
   onSchedule,
   onSnooze,
   onFixAddress,
+  onManualSchedule,
   isLoading,
 }: CandidateDetailProps) {
   if (isLoading) {
@@ -165,18 +167,32 @@ export function CandidateDetail({
 
       {/* Actions */}
       <div className={styles.actions}>
-        <button
-          type="button"
-          className="btn-primary"
-          onClick={() => {
-            if (candidate.suggestedSlots?.[0]) {
-              onSchedule?.(candidate.id, candidate.suggestedSlots[0]);
-            }
-          }}
-          disabled={!candidate.suggestedSlots?.length}
-        >
-          Domluvit termín
-        </button>
+        {candidate.suggestedSlots?.length ? (
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => {
+              onSchedule?.(candidate.id, candidate.suggestedSlots![0]);
+            }}
+          >
+            Domluvit termín
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => {
+              if (onManualSchedule) {
+                onManualSchedule(candidate.id);
+              } else {
+                // Fallback: navigate to revision detail
+                window.location.href = `/revisions/${candidate.id}`;
+              }
+            }}
+          >
+            Domluvit termín
+          </button>
+        )}
         <button
           type="button"
           className="btn-secondary"

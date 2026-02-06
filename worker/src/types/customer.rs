@@ -182,4 +182,8 @@ pub struct CustomerSummaryResponse {
     pub geocode_failed: i64,
     pub customers_without_phone: i64,
     pub customers_without_email: i64,
+    /// Number of customers with at least one overdue device
+    pub customers_with_overdue: i64,
+    /// Number of customers with at least one never-serviced device
+    pub customers_never_serviced: i64,
 }

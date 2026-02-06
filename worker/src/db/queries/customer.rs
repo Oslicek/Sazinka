@@ -456,21 +456,60 @@ pub async fn list_customers_extended(
     let items = query_builder.fetch_all(pool).await?;
 
     // Count total (without LIMIT/OFFSET but with same filters)
-    let count_query = format!(
-        r#"
-        SELECT COUNT(*) FROM (
-            SELECT c.id
-            FROM customers c
-            LEFT JOIN devices d ON c.id = d.customer_id
-            LEFT JOIN revisions r ON c.id = r.customer_id
-            WHERE {}
-            GROUP BY c.id
-            {}
-        ) AS filtered
-        "#,
-        where_clause,
-        having_clause
-    );
+    // When has_overdue filter is active, we need the device_status CTE for the HAVING clause
+    let count_query = if req.has_overdue == Some(true) {
+        format!(
+            r#"
+            SELECT COUNT(*) FROM (
+                WITH device_status AS (
+                    SELECT 
+                        d.id as device_id,
+                        d.customer_id,
+                        d.revision_interval_months,
+                        d.installation_date,
+                        MAX(r.completed_at) FILTER (WHERE r.status = 'completed') as last_completed,
+                        CASE 
+                            WHEN MAX(r.completed_at) FILTER (WHERE r.status = 'completed') IS NOT NULL THEN
+                                (MAX(r.completed_at) FILTER (WHERE r.status = 'completed'))::date + 
+                                (d.revision_interval_months || ' months')::interval < CURRENT_DATE
+                            WHEN d.installation_date IS NOT NULL THEN
+                                d.installation_date + (d.revision_interval_months || ' months')::interval < CURRENT_DATE
+                            ELSE FALSE
+                        END as is_overdue,
+                        MAX(r.completed_at) FILTER (WHERE r.status = 'completed') IS NULL as is_never_serviced
+                    FROM devices d
+                    LEFT JOIN revisions r ON d.id = r.device_id
+                    GROUP BY d.id, d.customer_id, d.revision_interval_months, d.installation_date
+                )
+                SELECT c.id
+                FROM customers c
+                LEFT JOIN device_status ds ON c.id = ds.customer_id
+                LEFT JOIN revisions r ON c.id = r.customer_id
+                WHERE {}
+                GROUP BY c.id
+                {}
+            ) AS filtered
+            "#,
+            where_clause,
+            having_clause
+        )
+    } else {
+        format!(
+            r#"
+            SELECT COUNT(*) FROM (
+                SELECT c.id
+                FROM customers c
+                LEFT JOIN devices d ON c.id = d.customer_id
+                LEFT JOIN revisions r ON c.id = r.customer_id
+                WHERE {}
+                GROUP BY c.id
+                {}
+            ) AS filtered
+            "#,
+            where_clause,
+            having_clause
+        )
+    };
 
     let mut count_builder = sqlx::query_as::<_, (i64,)>(&count_query)
         .bind(user_id);
@@ -552,6 +591,38 @@ pub async fn get_customer_summary(
     .fetch_one(pool)
     .await?;
 
+    // Customer-level overdue / never-serviced counts
+    // Uses the same device_status logic as the list query
+    let overdue_stats: (i64, i64) = sqlx::query_as(
+        r#"
+        WITH device_status AS (
+            SELECT 
+                d.customer_id,
+                CASE 
+                    WHEN MAX(r.completed_at) FILTER (WHERE r.status = 'completed') IS NOT NULL THEN
+                        (MAX(r.completed_at) FILTER (WHERE r.status = 'completed'))::date + 
+                        (d.revision_interval_months || ' months')::interval < CURRENT_DATE
+                    WHEN d.installation_date IS NOT NULL THEN
+                        d.installation_date + (d.revision_interval_months || ' months')::interval < CURRENT_DATE
+                    ELSE FALSE
+                END as is_overdue,
+                MAX(r.completed_at) FILTER (WHERE r.status = 'completed') IS NULL as is_never_serviced
+            FROM devices d
+            INNER JOIN customers c ON d.customer_id = c.id
+            LEFT JOIN revisions r ON d.id = r.device_id
+            WHERE c.user_id = $1
+            GROUP BY d.id, d.customer_id, d.revision_interval_months, d.installation_date
+        )
+        SELECT
+            COUNT(DISTINCT customer_id) FILTER (WHERE is_overdue) as customers_with_overdue,
+            COUNT(DISTINCT customer_id) FILTER (WHERE is_never_serviced) as customers_never_serviced
+        FROM device_status
+        "#
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+
     Ok(CustomerSummaryResponse {
         total_customers: customer_stats.0,
         total_devices,
@@ -563,6 +634,8 @@ pub async fn get_customer_summary(
         geocode_failed: customer_stats.3,
         customers_without_phone: customer_stats.4,
         customers_without_email: customer_stats.5,
+        customers_with_overdue: overdue_stats.0,
+        customers_never_serviced: overdue_stats.1,
     })
 }
 

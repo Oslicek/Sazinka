@@ -19,14 +19,14 @@
   font-size: 0.875rem;
 }
 
-.table thead {
+.thead {
   position: sticky;
   top: 0;
   background: var(--bg-secondary, #f9fafb);
   z-index: 1;
 }
 
-.table th {
+.th {
   padding: 0.75rem 1rem;
   text-align: left;
   font-weight: 600;
@@ -39,11 +39,11 @@
   user-select: none;
 }
 
-.table th.sortable {
+.th.sortable {
   cursor: pointer;
 }
 
-.table th.sortable:hover {
+.th.sortable:hover {
   background: var(--hover-bg, #f3f4f6);
 }
 
@@ -237,4 +237,12 @@
 
 .empty p {
   margin: 0;
+}
+
+/* Loading more indicator */
+.loadingMore {
+  text-align: center;
+  padding: 1rem;
+  color: var(--text-secondary, #666);
+  font-size: 0.875rem;
 }

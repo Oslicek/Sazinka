@@ -139,39 +139,60 @@ export function PlanningInbox() {
     
     async function loadSettings() {
       try {
-        const [settings, loadedVehicles] = await Promise.all([
+        // Load settings and crews independently - don't let one failure block the other
+        const [settingsResult, crewsResult] = await Promise.allSettled([
           settingsService.getSettings(USER_ID),
           crewService.listCrews(true),
         ]);
         
-        const loadedDepots = settings.depots.map((d) => ({
+        const settings = settingsResult.status === 'fulfilled' ? settingsResult.value : null;
+        const loadedVehicles = crewsResult.status === 'fulfilled' ? crewsResult.value : [];
+        
+        if (settingsResult.status === 'rejected') {
+          console.warn('Failed to load settings:', settingsResult.reason);
+        }
+        if (crewsResult.status === 'rejected') {
+          console.warn('Failed to load crews (worker may not be running):', crewsResult.reason);
+        }
+        
+        const loadedDepots = settings ? settings.depots.map((d) => ({
           id: d.name,
           name: d.name,
           lat: d.lat,
           lng: d.lng,
-        }));
+        })) : [];
         setDepots(loadedDepots);
         setCrews(loadedVehicles);
         
+        // Build initial context with whatever data we have
         const primaryDepot = loadedDepots.find((d) => 
-          settings.depots.find((sd) => sd.name === d.name && sd.isPrimary)
+          settings?.depots.find((sd) => sd.name === d.name && sd.isPrimary)
         ) || loadedDepots[0];
         
         const firstCrew = loadedVehicles[0];
         
-        if (primaryDepot && firstCrew) {
-          const initialContext = {
-            date: new Date().toISOString().split('T')[0],
-            crewId: firstCrew.id,
-            crewName: firstCrew.name,
-            depotId: primaryDepot.id,
-            depotName: primaryDepot.name,
-          };
-          setContext(initialContext);
+        const initialContext: RouteContext = {
+          date: new Date().toISOString().split('T')[0],
+          crewId: firstCrew?.id ?? '',
+          crewName: firstCrew?.name ?? '',
+          depotId: primaryDepot?.id ?? '',
+          depotName: primaryDepot?.name ?? '',
+        };
+        setContext(initialContext);
+        
+        if (initialContext.crewId) {
           setRouteContext(initialContext.date, initialContext.crewId);
         }
       } catch (err) {
         console.error('Failed to load settings:', err);
+        // Still set a minimal context so the page is usable
+        setContext({
+          date: new Date().toISOString().split('T')[0],
+          crewId: '',
+          crewName: '',
+          depotId: '',
+          depotName: '',
+        });
       }
     }
     
@@ -840,6 +861,9 @@ export function PlanningInbox() {
         onSchedule={handleSchedule}
         onSnooze={handleSnooze}
         onFixAddress={handleFixAddress}
+        onManualSchedule={(candidateId) => {
+          navigate({ to: '/revisions/$revisionId', params: { revisionId: candidateId } });
+        }}
         isLoading={isCalculatingSlots}
       />
     </div>

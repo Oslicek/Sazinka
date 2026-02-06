@@ -24,6 +24,7 @@
   border: 1px solid var(--border-color, #d1d5db);
   border-radius: 6px;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .viewButton {
@@ -151,6 +152,10 @@
   color: #f97316;
 }
 
+.statInfo .statValue {
+  color: #3b82f6;
+}
+
 /* Toolbar with filters */
 .toolbar {
   display: flex;
@@ -176,6 +181,12 @@
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
+.filterRow {
+  display: flex;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
 .filterSelect {
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--border-color, #d1d5db);
@@ -190,6 +201,37 @@
 .filterSelect:focus {
   outline: none;
   border-color: var(--color-primary, #2563eb);
+}
+
+/* Loaded count indicator */
+.loadedCount {
+  font-size: 0.8125rem;
+  color: var(--text-secondary, #666);
+  margin-bottom: 0.5rem;
+}
+
+/* Load more button (cards view) */
+.loadMoreButton {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: var(--card-bg, #fff);
+  border: 1px dashed var(--border-color, #d1d5db);
+  border-radius: 8px;
+  color: var(--color-primary, #2563eb);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.loadMoreButton:hover:not(:disabled) {
+  background: var(--hover-bg, #f9fafb);
+  border-color: var(--color-primary, #2563eb);
+}
+
+.loadMoreButton:disabled {
+  color: var(--text-secondary, #666);
+  cursor: default;
 }
 
 .empty {
@@ -392,6 +434,10 @@
     max-width: none;
   }
   
+  .filterRow {
+    flex-direction: column;
+  }
+
   .filterSelect {
     width: 100%;
   }

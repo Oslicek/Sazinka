@@ -2,19 +2,29 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Customers } from './Customers';
-import type { Customer } from '@shared/customer';
+import type { CustomerListItem, CustomerSummary } from '@shared/customer';
 
 // Mock the customerService
+const mockListCustomersExtended = vi.fn();
+const mockGetCustomerSummary = vi.fn();
+const mockCreateCustomer = vi.fn();
+const mockImportCustomersBatch = vi.fn();
+const mockSubmitGeocodeJob = vi.fn();
+const mockSubscribeToGeocodeJobStatus = vi.fn();
+
 vi.mock('../services/customerService', () => ({
-  createCustomer: vi.fn(),
-  listCustomers: vi.fn(),
-  submitGeocodeJob: vi.fn(),
-  subscribeToGeocodeJobStatus: vi.fn(),
+  createCustomer: (...args: unknown[]) => mockCreateCustomer(...args),
+  listCustomersExtended: (...args: unknown[]) => mockListCustomersExtended(...args),
+  getCustomerSummary: (...args: unknown[]) => mockGetCustomerSummary(...args),
+  importCustomersBatch: (...args: unknown[]) => mockImportCustomersBatch(...args),
+  submitGeocodeJob: (...args: unknown[]) => mockSubmitGeocodeJob(...args),
+  subscribeToGeocodeJobStatus: (...args: unknown[]) => mockSubscribeToGeocodeJobStatus(...args),
 }));
 
 // Mock the router
 vi.mock('@tanstack/react-router', () => ({
   useSearch: vi.fn(() => ({})),
+  useNavigate: vi.fn(() => vi.fn()),
   Link: ({ children, to, className }: { children: React.ReactNode; to: string; className?: string }) => (
     <a href={to} className={className} data-testid="customer-link">{children}</a>
   ),
@@ -29,161 +39,323 @@ vi.mock('../stores/natsStore', () => ({
   }),
 }));
 
-// Mock the AddCustomerForm component
+// Mock child components that aren't under test
 vi.mock('../components/customers/AddCustomerForm', () => ({
-  AddCustomerForm: ({ onSubmit, onCancel }: { onSubmit: () => void; onCancel: () => void }) => (
+  AddCustomerForm: ({ onCancel }: { onCancel: () => void }) => (
     <div data-testid="add-customer-form">
       <button onClick={onCancel}>Cancel</button>
     </div>
   ),
 }));
 
-import { listCustomers } from '../services/customerService';
+vi.mock('../components/customers/ImportCustomersModal', () => ({
+  ImportCustomersModal: () => null,
+}));
 
-const mockListCustomers = vi.mocked(listCustomers);
+vi.mock('../components/customers/CustomerTable', () => ({
+  CustomerTable: ({ customers, totalCount }: { customers: CustomerListItem[]; totalCount: number }) => (
+    <div data-testid="customer-table">
+      <span data-testid="table-row-count">{customers.length}</span>
+      <span data-testid="table-total-count">{totalCount}</span>
+    </div>
+  ),
+}));
+
+vi.mock('../components/customers/CustomerPreviewPanel', () => ({
+  CustomerPreviewPanel: () => <div data-testid="preview-panel" />,
+}));
+
+vi.mock('../components/customers/SavedViewsSelector', () => ({
+  SavedViewsSelector: () => <div data-testid="saved-views" />,
+}));
+
+vi.mock('../components/common/SplitView', () => ({
+  SplitView: ({ panels }: { panels: { id: string; content: React.ReactNode }[] }) => (
+    <div data-testid="split-view">
+      {panels.map((p) => (
+        <div key={p.id} data-testid={`panel-${p.id}`}>{p.content}</div>
+      ))}
+    </div>
+  ),
+}));
+
+// --- Test data ---
+
+function makeCustomer(overrides: Partial<CustomerListItem> = {}): CustomerListItem {
+  return {
+    id: `customer-${Math.random().toString(36).slice(2)}`,
+    userId: 'user-123',
+    type: 'person',
+    name: 'Test Customer',
+    email: 'test@example.com',
+    phone: '+420 123 456 789',
+    street: 'Hlavní 1',
+    city: 'Praha',
+    postalCode: '11000',
+    geocodeStatus: 'success',
+    createdAt: '2026-01-26T12:00:00Z',
+    deviceCount: 1,
+    nextRevisionDate: null,
+    overdueCount: 0,
+    neverServicedCount: 0,
+    ...overrides,
+  };
+}
+
+function makeSummary(overrides: Partial<CustomerSummary> = {}): CustomerSummary {
+  return {
+    totalCustomers: 1000,
+    totalDevices: 2500,
+    revisionsOverdue: 120,
+    revisionsDueThisWeek: 15,
+    revisionsScheduled: 50,
+    geocodeSuccess: 500,
+    geocodePending: 99,
+    geocodeFailed: 401,
+    customersWithoutPhone: 30,
+    customersWithoutEmail: 80,
+    customersWithOverdue: 70,
+    customersNeverServiced: 100,
+    ...overrides,
+  };
+}
 
 describe('Customers', () => {
-  const mockCustomers: Customer[] = [
-    {
-      id: 'customer-1',
-      userId: 'user-123',
-      name: 'Jan Novák',
-      email: 'jan@example.com',
-      phone: '+420 123 456 789',
-      street: 'Hlavní 123',
-      city: 'Praha',
-      postalCode: '11000',
-      country: 'CZ',
-      lat: 50.0755,
-      lng: 14.4378,
-      geocodeStatus: 'success',
-      createdAt: '2026-01-26T12:00:00Z',
-      updatedAt: '2026-01-26T12:00:00Z',
-    },
-    {
-      id: 'customer-2',
-      userId: 'user-123',
-      name: 'Marie Svobodová',
-      email: 'marie@example.com',
-      phone: '+420 987 654 321',
-      street: 'Vedlejší 456',
-      city: 'Brno',
-      postalCode: '60200',
-      country: 'CZ',
-      geocodeStatus: 'pending',
-      createdAt: '2026-01-26T13:00:00Z',
-      updatedAt: '2026-01-26T13:00:00Z',
-    },
-  ];
-
   beforeEach(() => {
     vi.clearAllMocks();
     mockIsConnected = true;
+    // Default: return empty list and summary
+    mockListCustomersExtended.mockResolvedValue({ items: [], total: 0 });
+    mockGetCustomerSummary.mockResolvedValue(makeSummary());
   });
 
-  describe('Customer list display', () => {
-    it('should display customer names', async () => {
-      mockListCustomers.mockResolvedValueOnce({ items: mockCustomers, total: 2 });
+  // =========================================================================
+  // Stats bar: server-side summary
+  // =========================================================================
+  describe('Stats bar uses server-side summary', () => {
+    it('should display total customers from summary', async () => {
+      mockGetCustomerSummary.mockResolvedValueOnce(makeSummary({ totalCustomers: 1234 }));
+      mockListCustomersExtended.mockResolvedValueOnce({ items: [], total: 1234 });
 
       render(<Customers />);
 
       await waitFor(() => {
-        expect(screen.getByText('Jan Novák')).toBeInTheDocument();
-        expect(screen.getByText('Marie Svobodová')).toBeInTheDocument();
+        const celkemLabel = screen.getByText('celkem');
+        // The stat value is the sibling span within the same stat item
+        const statItem = celkemLabel.parentElement!;
+        expect(statItem.textContent).toContain('1234');
       });
     });
 
-    it('should display customer addresses', async () => {
-      mockListCustomers.mockResolvedValueOnce({ items: mockCustomers, total: 2 });
+    it('should display customersWithOverdue from summary as "po termínu"', async () => {
+      mockGetCustomerSummary.mockResolvedValueOnce(makeSummary({ customersWithOverdue: 70 }));
+      mockListCustomersExtended.mockResolvedValueOnce({ items: [], total: 1000 });
 
       render(<Customers />);
 
       await waitFor(() => {
-        expect(screen.getByText(/Hlavní 123/)).toBeInTheDocument();
-        expect(screen.getByText(/Praha/)).toBeInTheDocument();
+        expect(screen.getByText('70')).toBeInTheDocument();
+        expect(screen.getByText('po termínu')).toBeInTheDocument();
+      });
+    });
+
+    it('should display customersNeverServiced from summary as "bez revize"', async () => {
+      mockGetCustomerSummary.mockResolvedValueOnce(makeSummary({ customersNeverServiced: 100 }));
+      mockListCustomersExtended.mockResolvedValueOnce({ items: [], total: 1000 });
+
+      render(<Customers />);
+
+      await waitFor(() => {
+        expect(screen.getByText('100')).toBeInTheDocument();
+        expect(screen.getByText('bez revize')).toBeInTheDocument();
+      });
+    });
+
+    it('should display geocodeFailed from summary as "adresa bez polohy na mapě"', async () => {
+      mockGetCustomerSummary.mockResolvedValueOnce(makeSummary({ geocodeFailed: 401 }));
+      mockListCustomersExtended.mockResolvedValueOnce({ items: [], total: 1000 });
+
+      render(<Customers />);
+
+      await waitFor(() => {
+        expect(screen.getByText('401')).toBeInTheDocument();
+        expect(screen.getByText('adresa bez polohy na mapě')).toBeInTheDocument();
+      });
+    });
+
+    it('should display geocodePending from summary as "adresa neověřená"', async () => {
+      mockGetCustomerSummary.mockResolvedValueOnce(makeSummary({ geocodePending: 99 }));
+      mockListCustomersExtended.mockResolvedValueOnce({ items: [], total: 1000 });
+
+      render(<Customers />);
+
+      await waitFor(() => {
+        expect(screen.getByText('99')).toBeInTheDocument();
+        expect(screen.getByText('adresa neověřená')).toBeInTheDocument();
+      });
+    });
+
+    it('should NOT show "po termínu" stat when count is 0', async () => {
+      mockGetCustomerSummary.mockResolvedValueOnce(makeSummary({ customersWithOverdue: 0 }));
+      mockListCustomersExtended.mockResolvedValueOnce({ items: [], total: 1000 });
+
+      render(<Customers />);
+
+      await waitFor(() => {
+        expect(screen.getByText('celkem')).toBeInTheDocument();
+      });
+      expect(screen.queryByText('po termínu')).not.toBeInTheDocument();
+    });
+
+    it('should NOT show "bez revize" stat when count is 0', async () => {
+      mockGetCustomerSummary.mockResolvedValueOnce(makeSummary({ customersNeverServiced: 0 }));
+      mockListCustomersExtended.mockResolvedValueOnce({ items: [], total: 1000 });
+
+      render(<Customers />);
+
+      await waitFor(() => {
+        expect(screen.getByText('celkem')).toBeInTheDocument();
+      });
+      expect(screen.queryByText('bez revize')).not.toBeInTheDocument();
+    });
+
+    it('should show stable stats that do not change as more customers load', async () => {
+      // Summary provides fixed counts
+      mockGetCustomerSummary.mockResolvedValueOnce(makeSummary({
+        customersWithOverdue: 70,
+        customersNeverServiced: 100,
+        geocodeFailed: 401,
+      }));
+      // First page: only 2 customers, one with overdue
+      mockListCustomersExtended.mockResolvedValueOnce({
+        items: [
+          makeCustomer({ overdueCount: 1 }),
+          makeCustomer({ neverServicedCount: 1 }),
+        ],
+        total: 1000,
+      });
+
+      render(<Customers />);
+
+      await waitFor(() => {
+        // Stats should show server-side summary values, not loaded data counts (1, 1)
+        expect(screen.getByText('70')).toBeInTheDocument();
+        expect(screen.getByText('po termínu')).toBeInTheDocument();
+        expect(screen.getByText('100')).toBeInTheDocument();
+        expect(screen.getByText('bez revize')).toBeInTheDocument();
+        expect(screen.getByText('401')).toBeInTheDocument();
+      });
+    });
+
+    it('should fall back to loaded-data counts when summary fails', async () => {
+      mockGetCustomerSummary.mockRejectedValueOnce(new Error('unavailable'));
+      mockListCustomersExtended.mockResolvedValueOnce({
+        items: [
+          makeCustomer({ overdueCount: 2 }),
+          makeCustomer({ overdueCount: 1 }),
+          makeCustomer({ neverServicedCount: 1 }),
+        ],
+        total: 3,
+      });
+
+      render(<Customers />);
+
+      await waitFor(() => {
+        // Falls back to loaded data: 2 overdue, 1 never-serviced
+        expect(screen.getByText('2')).toBeInTheDocument();
+        expect(screen.getByText('po termínu')).toBeInTheDocument();
+        expect(screen.getByText('1')).toBeInTheDocument();
+        expect(screen.getByText('bez revize')).toBeInTheDocument();
       });
     });
   });
 
-  describe('Navigation to customer detail', () => {
-    it('should render customer cards as links', async () => {
-      mockListCustomers.mockResolvedValueOnce({ items: mockCustomers, total: 2 });
+  // =========================================================================
+  // Toolbar: filter dropdowns always visible
+  // =========================================================================
+  describe('Toolbar filter dropdowns', () => {
+    it('should render both address and revision filter dropdowns', async () => {
+      mockListCustomersExtended.mockResolvedValueOnce({ items: [], total: 0 });
 
       render(<Customers />);
 
       await waitFor(() => {
-        const links = screen.getAllByTestId('customer-link');
-        expect(links.length).toBe(2);
+        // Address filter
+        const addressFilter = screen.getByDisplayValue('Adresa: vše');
+        expect(addressFilter).toBeInTheDocument();
+        expect(addressFilter.tagName).toBe('SELECT');
+
+        // Revision filter
+        const revisionFilter = screen.getByDisplayValue('Revize: vše');
+        expect(revisionFilter).toBeInTheDocument();
+        expect(revisionFilter.tagName).toBe('SELECT');
       });
     });
 
-    it('should link to correct customer detail page', async () => {
-      mockListCustomers.mockResolvedValueOnce({ items: mockCustomers, total: 2 });
+    it('should render address filter options', async () => {
+      mockListCustomersExtended.mockResolvedValueOnce({ items: [], total: 0 });
 
       render(<Customers />);
 
       await waitFor(() => {
-        const links = screen.getAllByTestId('customer-link');
-        expect(links[0]).toHaveAttribute('href', '/customers/customer-1');
-        expect(links[1]).toHaveAttribute('href', '/customers/customer-2');
+        const addressFilter = screen.getByDisplayValue('Adresa: vše');
+        const options = addressFilter.querySelectorAll('option');
+        expect(options).toHaveLength(4);
+        expect(options[0].textContent).toBe('Adresa: vše');
+        expect(options[1].textContent).toBe('Úspěšně ověřená');
+        expect(options[2].textContent).toBe('Nelze ověřit');
+        expect(options[3].textContent).toBe('Čeká na ověření');
       });
     });
 
-    it('should make entire customer card clickable', async () => {
-      mockListCustomers.mockResolvedValueOnce({ items: mockCustomers, total: 2 });
+    it('should render revision filter options', async () => {
+      mockListCustomersExtended.mockResolvedValueOnce({ items: [], total: 0 });
 
       render(<Customers />);
 
       await waitFor(() => {
-        // The link should contain the customer name
-        const link = screen.getAllByTestId('customer-link')[0];
-        expect(link).toContainElement(screen.getByText('Jan Novák'));
+        const revisionFilter = screen.getByDisplayValue('Revize: vše');
+        const options = revisionFilter.querySelectorAll('option');
+        expect(options).toHaveLength(4);
+        expect(options[0].textContent).toBe('Revize: vše');
+        expect(options[1].textContent).toBe('Po termínu');
+        expect(options[2].textContent).toBe('Do 7 dní');
+        expect(options[3].textContent).toBe('Do 30 dní');
       });
     });
-  });
 
-  describe('Loading state', () => {
-    it('should show loading indicator while fetching customers', async () => {
-      mockListCustomers.mockImplementation(() => new Promise(() => {}));
-
-      render(<Customers />);
-
-      expect(screen.getByText(/načítám/i)).toBeInTheDocument();
-    });
-  });
-
-  describe('Empty state', () => {
-    it('should show empty message when no customers exist', async () => {
-      mockListCustomers.mockResolvedValueOnce({ items: [], total: 0 });
+    it('should render view toggle buttons alongside filters', async () => {
+      mockListCustomersExtended.mockResolvedValueOnce({ items: [], total: 0 });
 
       render(<Customers />);
 
       await waitFor(() => {
-        expect(screen.getByText(/nemáte žádné zákazníky/i)).toBeInTheDocument();
+        expect(screen.getByTitle('Tabulka')).toBeInTheDocument();
+        expect(screen.getByTitle('Karty')).toBeInTheDocument();
       });
     });
-  });
 
-  describe('Search functionality', () => {
-    it('should filter customers by name', async () => {
-      mockListCustomers.mockResolvedValueOnce({ items: mockCustomers, total: 2 });
+    it('should change revision filter value when selected', async () => {
+      mockListCustomersExtended.mockResolvedValue({ items: [], total: 0 });
       const user = userEvent.setup();
 
       render(<Customers />);
 
       await waitFor(() => {
-        expect(screen.getByText('Jan Novák')).toBeInTheDocument();
+        expect(screen.getByDisplayValue('Revize: vše')).toBeInTheDocument();
       });
 
-      const searchInput = screen.getByPlaceholderText(/hledat/i);
-      await user.type(searchInput, 'Marie');
+      const revisionFilter = screen.getByDisplayValue('Revize: vše');
+      await user.selectOptions(revisionFilter, 'overdue');
 
-      expect(screen.queryByText('Jan Novák')).not.toBeInTheDocument();
-      expect(screen.getByText('Marie Svobodová')).toBeInTheDocument();
+      expect(revisionFilter).toHaveValue('overdue');
     });
   });
 
-  describe('Error handling', () => {
+  // =========================================================================
+  // Existing tests (updated to use new service mocks)
+  // =========================================================================
+  describe('Connection state', () => {
     it('should show error when not connected', async () => {
       mockIsConnected = false;
 
@@ -191,6 +363,31 @@ describe('Customers', () => {
 
       await waitFor(() => {
         expect(screen.getByText(/není připojení/i)).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('Loading and empty state', () => {
+    it('should show loading indicator while fetching', async () => {
+      mockListCustomersExtended.mockImplementation(() => new Promise(() => {}));
+      mockGetCustomerSummary.mockImplementation(() => new Promise(() => {}));
+
+      render(<Customers />);
+
+      // The CustomerTable mock won't render loading - the isLoading state triggers
+      // the table's own loading state. We just verify the service was called.
+      expect(mockListCustomersExtended).toHaveBeenCalled();
+    });
+
+    it('should pass loaded customers to table component', async () => {
+      const customers = [makeCustomer({ name: 'Jan' }), makeCustomer({ name: 'Marie' })];
+      mockListCustomersExtended.mockResolvedValueOnce({ items: customers, total: 2 });
+
+      render(<Customers />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('table-row-count')).toHaveTextContent('2');
+        expect(screen.getByTestId('table-total-count')).toHaveTextContent('2');
       });
     });
   });

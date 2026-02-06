@@ -1,14 +1,16 @@
 /**
- * CustomerTable - TanStack Table implementation for customer list
+ * CustomerTable - Virtualized table for customer list
  * 
  * Features:
+ * - Virtualized rendering via react-virtuoso (handles 1000+ rows)
  * - Rich cells with name + contact + address
  * - Sortable columns
  * - Row selection for preview panel
  * - Keyboard navigation
+ * - Infinite scroll (endReached callback)
  */
 
-import { useMemo, useCallback, useRef, useEffect, useState } from 'react';
+import { useMemo, useCallback, useState } from 'react';
 import {
   createColumnHelper,
   flexRender,
@@ -17,6 +19,7 @@ import {
   useReactTable,
   type SortingState,
 } from '@tanstack/react-table';
+import { TableVirtuoso } from 'react-virtuoso';
 import type { CustomerListItem } from '@shared/customer';
 import styles from './CustomerTable.module.css';
 
@@ -28,6 +31,12 @@ interface CustomerTableProps {
   onSelectCustomer: (customer: CustomerListItem | null) => void;
   onDoubleClick: (customer: CustomerListItem) => void;
   isLoading?: boolean;
+  /** Called when user scrolls near the bottom; load more data */
+  onEndReached?: () => void;
+  /** True when a new page is currently being fetched */
+  isLoadingMore?: boolean;
+  /** Total number of customers on the server */
+  totalCount?: number;
 }
 
 // Format revision status for display
@@ -108,9 +117,10 @@ export function CustomerTable({
   onSelectCustomer,
   onDoubleClick,
   isLoading,
+  onEndReached,
+  isLoadingMore,
+  totalCount,
 }: CustomerTableProps) {
-  const tableRef = useRef<HTMLTableElement>(null);
-
   const columns = useMemo(() => [
     columnHelper.accessor('name', {
       id: 'customer',
@@ -185,6 +195,8 @@ export function CustomerTable({
     getSortedRowModel: getSortedRowModel(),
   });
 
+  const rows = table.getRowModel().rows;
+
   // Handle row click
   const handleRowClick = useCallback((customer: CustomerListItem) => {
     if (selectedId === customer.id) {
@@ -196,7 +208,6 @@ export function CustomerTable({
 
   // Handle keyboard navigation
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    const rows = table.getRowModel().rows;
     if (rows.length === 0) return;
 
     const currentIndex = selectedId 
@@ -206,13 +217,17 @@ export function CustomerTable({
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
-        const nextIndex = currentIndex < rows.length - 1 ? currentIndex + 1 : 0;
-        onSelectCustomer(rows[nextIndex].original);
+        {
+          const nextIndex = currentIndex < rows.length - 1 ? currentIndex + 1 : 0;
+          onSelectCustomer(rows[nextIndex].original);
+        }
         break;
       case 'ArrowUp':
         e.preventDefault();
-        const prevIndex = currentIndex > 0 ? currentIndex - 1 : rows.length - 1;
-        onSelectCustomer(rows[prevIndex].original);
+        {
+          const prevIndex = currentIndex > 0 ? currentIndex - 1 : rows.length - 1;
+          onSelectCustomer(rows[prevIndex].original);
+        }
         break;
       case 'Enter':
         if (currentIndex >= 0) {
@@ -223,17 +238,10 @@ export function CustomerTable({
         onSelectCustomer(null);
         break;
     }
-  }, [table, selectedId, onSelectCustomer, onDoubleClick]);
+  }, [rows, selectedId, onSelectCustomer, onDoubleClick]);
 
-  // Scroll selected row into view
-  useEffect(() => {
-    if (!selectedId || !tableRef.current) return;
-    
-    const selectedRow = tableRef.current.querySelector(`[data-customer-id="${selectedId}"]`);
-    if (selectedRow) {
-      selectedRow.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    }
-  }, [selectedId]);
+  // Whether all data has been loaded
+  const allLoaded = totalCount !== undefined && customers.length >= totalCount;
 
   if (isLoading) {
     return (
@@ -255,15 +263,23 @@ export function CustomerTable({
 
   return (
     <div className={styles.tableContainer} tabIndex={0} onKeyDown={handleKeyDown}>
-      <table ref={tableRef} className={styles.table}>
-        <thead>
-          {table.getHeaderGroups().map(headerGroup => (
+      <TableVirtuoso
+        style={{ height: '100%' }}
+        data={rows}
+        endReached={() => {
+          if (onEndReached && !isLoadingMore && !allLoaded) {
+            onEndReached();
+          }
+        }}
+        overscan={20}
+        fixedHeaderContent={() =>
+          table.getHeaderGroups().map(headerGroup => (
             <tr key={headerGroup.id}>
               {headerGroup.headers.map(header => (
                 <th
                   key={header.id}
                   style={{ width: header.getSize() }}
-                  className={header.column.getCanSort() ? styles.sortable : ''}
+                  className={`${styles.th} ${header.column.getCanSort() ? styles.sortable : ''}`}
                   onClick={header.column.getToggleSortingHandler()}
                 >
                   {flexRender(header.column.columnDef.header, header.getContext())}
@@ -275,26 +291,41 @@ export function CustomerTable({
                 </th>
               ))}
             </tr>
-          ))}
-        </thead>
-        <tbody>
-          {table.getRowModel().rows.map(row => (
+          ))
+        }
+        itemContent={(_index, row) => (
+          <>
+            {row.getVisibleCells().map(cell => (
+              <td key={cell.id} style={{ width: cell.column.getSize() }}>
+                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+              </td>
+            ))}
+          </>
+        )}
+        components={{
+          Table: (props) => <table {...props} className={styles.table} />,
+          TableHead: (props) => <thead {...props} className={styles.thead} />,
+          TableRow: ({ item: row, ...props }) => (
             <tr
-              key={row.id}
+              {...props}
               data-customer-id={row.original.id}
               className={`${styles.row} ${selectedId === row.original.id ? styles.selected : ''}`}
               onClick={() => handleRowClick(row.original)}
               onDoubleClick={() => onDoubleClick(row.original)}
-            >
-              {row.getVisibleCells().map(cell => (
-                <td key={cell.id} style={{ width: cell.column.getSize() }}>
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+            />
+          ),
+          TableFoot: () =>
+            isLoadingMore ? (
+              <tfoot>
+                <tr>
+                  <td colSpan={columns.length} className={styles.loadingMore}>
+                    Načítám další zákazníky...
+                  </td>
+                </tr>
+              </tfoot>
+            ) : null,
+        }}
+      />
     </div>
   );
 }

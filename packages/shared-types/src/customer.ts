@@ -204,4 +204,8 @@ export interface CustomerSummary {
   geocodeFailed: number;
   customersWithoutPhone: number;
   customersWithoutEmail: number;
+  /** Number of customers with at least one overdue device */
+  customersWithOverdue: number;
+  /** Number of customers with at least one never-serviced device */
+  customersNeverServiced: number;
 }

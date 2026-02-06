@@ -66,6 +66,11 @@ export function Planner() {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
+  // Store map event handler refs so we can remove them on cleanup
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const segmentClickHandlerRef = useRef<((e: any) => void) | null>(null);
+  const segmentEnterHandlerRef = useRef<(() => void) | null>(null);
+  const segmentLeaveHandlerRef = useRef<(() => void) | null>(null);
   
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -83,6 +88,9 @@ export function Planner() {
   const [_solveTimeMs, setSolveTimeMs] = useState(0);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [_routeGeometry, setRouteGeometry] = useState<[number, number][]>([]);
+  
+  // Segment highlight state (index of highlighted segment, or null)
+  const [highlightedSegment, setHighlightedSegment] = useState<number | null>(null);
   
   // Depot state
   const [depot, setDepot] = useState<{ lat: number; lng: number; name?: string } | null>(null);
@@ -327,18 +335,105 @@ export function Planner() {
     };
   }, [depot]);
 
+  // Split route geometry into segments between consecutive stops (incl. depot)
+  const splitGeometryIntoSegments = useCallback((
+    geometry: [number, number][],
+    plannedStops: PlannedRouteStop[],
+    depotCoord: { lat: number; lng: number },
+  ): [number, number][][] => {
+    // Build waypoints: depot -> stops -> depot
+    const waypoints: [number, number][] = [
+      [depotCoord.lng, depotCoord.lat],
+      ...plannedStops.map(s => [s.coordinates.lng, s.coordinates.lat] as [number, number]),
+      [depotCoord.lng, depotCoord.lat],
+    ];
+
+    if (geometry.length === 0 || waypoints.length < 2) return [];
+
+    // For each waypoint, find the closest point index in the geometry (monotonically forward)
+    const waypointIndices: number[] = [];
+    let searchStart = 0;
+
+    for (const wp of waypoints) {
+      let minDist = Infinity;
+      let minIdx = searchStart;
+
+      // Search forward from last matched index to avoid going backwards
+      for (let i = searchStart; i < geometry.length; i++) {
+        const dx = geometry[i][0] - wp[0];
+        const dy = geometry[i][1] - wp[1];
+        const dist = dx * dx + dy * dy;
+        if (dist < minDist) {
+          minDist = dist;
+          minIdx = i;
+        }
+      }
+
+      waypointIndices.push(minIdx);
+      searchStart = minIdx;
+    }
+
+    // Split geometry into segments
+    const segments: [number, number][][] = [];
+    for (let i = 0; i < waypointIndices.length - 1; i++) {
+      const start = waypointIndices[i];
+      const end = waypointIndices[i + 1];
+      // Ensure each segment has at least 2 points
+      if (end > start) {
+        segments.push(geometry.slice(start, end + 1));
+      } else {
+        // Same index - create a minimal segment
+        segments.push([geometry[start], geometry[Math.min(start + 1, geometry.length - 1)]]);
+      }
+    }
+
+    return segments;
+  }, []);
+
   // Clear markers helper
   const clearMarkers = useCallback(() => {
     markersRef.current.forEach(marker => marker.remove());
     markersRef.current = [];
     
-    if (map.current?.getLayer('route-line')) {
-      map.current.removeLayer('route-line');
+    if (map.current) {
+      // Remove event handlers before removing layers
+      if (segmentClickHandlerRef.current) {
+        map.current.off('click', 'route-hit-area', segmentClickHandlerRef.current);
+        segmentClickHandlerRef.current = null;
+      }
+      if (segmentEnterHandlerRef.current) {
+        map.current.off('mouseenter', 'route-hit-area', segmentEnterHandlerRef.current);
+        segmentEnterHandlerRef.current = null;
+      }
+      if (segmentLeaveHandlerRef.current) {
+        map.current.off('mouseleave', 'route-hit-area', segmentLeaveHandlerRef.current);
+        segmentLeaveHandlerRef.current = null;
+      }
+
+      // Remove route layers and sources
+      for (const layerId of ['route-highlight', 'route-hit-area', 'route-line']) {
+        if (map.current.getLayer(layerId)) {
+          map.current.removeLayer(layerId);
+        }
+      }
+      if (map.current.getSource('route-segments')) {
+        map.current.removeSource('route-segments');
+      }
     }
-    if (map.current?.getSource('route')) {
-      map.current.removeSource('route');
-    }
+    setHighlightedSegment(null);
   }, []);
+
+  // Build segment label for depot/stop names
+  const getSegmentLabel = useCallback((segmentIndex: number, plannedStops: PlannedRouteStop[]) => {
+    // Segments: 0 = depot→stop1, 1 = stop1→stop2, ..., N = stopN→depot
+    const fromName = segmentIndex === 0 
+      ? (depot?.name || 'Depo')
+      : plannedStops[segmentIndex - 1]?.customerName || `Bod ${segmentIndex}`;
+    const toName = segmentIndex >= plannedStops.length
+      ? (depot?.name || 'Depo')
+      : plannedStops[segmentIndex]?.customerName || `Bod ${segmentIndex + 1}`;
+    return { fromName, toName };
+  }, [depot]);
 
   // Add markers for stops
   const addStopMarkers = useCallback((plannedStops: PlannedRouteStop[], geometry: [number, number][] = []) => {
@@ -369,32 +464,49 @@ export function Planner() {
       markersRef.current.push(marker);
     });
 
-    // Draw route line
+    // Draw route as segmented lines
     if (plannedStops.length > 0 && depot) {
-      const coordinates: [number, number][] = geometry.length > 0
-        ? geometry
-        : [
-            [depot.lng, depot.lat],
-            ...plannedStops.map(s => [s.coordinates.lng, s.coordinates.lat] as [number, number]),
-            [depot.lng, depot.lat],
-          ];
+      let segments: [number, number][][];
 
-      map.current.addSource('route', {
+      if (geometry.length > 0) {
+        // Split real geometry into segments
+        segments = splitGeometryIntoSegments(geometry, plannedStops, depot);
+      } else {
+        // Fallback: straight-line segments between waypoints
+        const waypoints: [number, number][] = [
+          [depot.lng, depot.lat],
+          ...plannedStops.map(s => [s.coordinates.lng, s.coordinates.lat] as [number, number]),
+          [depot.lng, depot.lat],
+        ];
+        segments = [];
+        for (let i = 0; i < waypoints.length - 1; i++) {
+          segments.push([waypoints[i], waypoints[i + 1]]);
+        }
+      }
+
+      // Build GeoJSON FeatureCollection with each segment as a Feature
+      const features = segments.map((coords, index) => ({
+        type: 'Feature' as const,
+        properties: { segmentIndex: index },
+        geometry: {
+          type: 'LineString' as const,
+          coordinates: coords,
+        },
+      }));
+
+      map.current.addSource('route-segments', {
         type: 'geojson',
         data: {
-          type: 'Feature',
-          properties: {},
-          geometry: {
-            type: 'LineString',
-            coordinates,
-          },
+          type: 'FeatureCollection',
+          features,
         },
       });
 
+      // Base route line (all segments)
       map.current.addLayer({
         id: 'route-line',
         type: 'line',
-        source: 'route',
+        source: 'route-segments',
         layout: {
           'line-join': 'round',
           'line-cap': 'round',
@@ -406,11 +518,81 @@ export function Planner() {
         },
       });
 
+      // Wider invisible hit area for easier clicking
+      map.current.addLayer({
+        id: 'route-hit-area',
+        type: 'line',
+        source: 'route-segments',
+        layout: {
+          'line-join': 'round',
+          'line-cap': 'round',
+        },
+        paint: {
+          'line-color': 'transparent',
+          'line-width': 20,
+          'line-opacity': 0,
+        },
+      });
+
+      // Highlight layer (only shows the selected segment)
+      map.current.addLayer({
+        id: 'route-highlight',
+        type: 'line',
+        source: 'route-segments',
+        layout: {
+          'line-join': 'round',
+          'line-cap': 'round',
+        },
+        paint: {
+          'line-color': '#f59e0b',
+          'line-width': 6,
+          'line-opacity': 0.9,
+        },
+        // Initially hide all segments (no segment selected)
+        filter: ['==', ['get', 'segmentIndex'], -1],
+      });
+
+      // Click handler: toggle segment highlight
+      segmentClickHandlerRef.current = (e) => {
+        const feat = e.features;
+        if (feat && feat.length > 0) {
+          const clickedIndex = feat[0].properties?.segmentIndex;
+          if (typeof clickedIndex === 'number') {
+            setHighlightedSegment(prev => prev === clickedIndex ? null : clickedIndex);
+          }
+        }
+      };
+      map.current.on('click', 'route-hit-area', segmentClickHandlerRef.current);
+
+      // Cursor pointer on hover
+      segmentEnterHandlerRef.current = () => {
+        if (map.current) map.current.getCanvas().style.cursor = 'pointer';
+      };
+      segmentLeaveHandlerRef.current = () => {
+        if (map.current) map.current.getCanvas().style.cursor = '';
+      };
+      map.current.on('mouseenter', 'route-hit-area', segmentEnterHandlerRef.current);
+      map.current.on('mouseleave', 'route-hit-area', segmentLeaveHandlerRef.current);
+
+      // Fit bounds
+      const allCoords = segments.flat();
       const bounds = new maplibregl.LngLatBounds();
-      coordinates.forEach(coord => bounds.extend(coord));
+      allCoords.forEach(coord => bounds.extend(coord));
       map.current.fitBounds(bounds, { padding: 50 });
     }
-  }, [clearMarkers, depot]);
+  }, [clearMarkers, depot, splitGeometryIntoSegments]);
+
+  // Update highlight layer filter when selected segment changes
+  useEffect(() => {
+    if (!map.current) return;
+    if (!map.current.getLayer('route-highlight')) return;
+
+    if (highlightedSegment !== null) {
+      map.current.setFilter('route-highlight', ['==', ['get', 'segmentIndex'], highlightedSegment]);
+    } else {
+      map.current.setFilter('route-highlight', ['==', ['get', 'segmentIndex'], -1]);
+    }
+  }, [highlightedSegment]);
 
   // Optimize route with VRP solver (async via job queue)
   const handleOptimizeRoute = async () => {
@@ -1344,6 +1526,23 @@ export function Planner() {
 
       <div className={styles.mapWrapper}>
         <div ref={mapContainer} className={styles.map} />
+        {highlightedSegment !== null && stops.length > 0 && (
+          <div className={styles.segmentInfo}>
+            <span className={styles.segmentInfoLabel}>
+              Segment: {(() => {
+                const { fromName, toName } = getSegmentLabel(highlightedSegment, stops);
+                return `${fromName} → ${toName}`;
+              })()}
+            </span>
+            <button 
+              className={styles.segmentInfoClose} 
+              onClick={() => setHighlightedSegment(null)}
+              title="Zrušit zvýraznění"
+            >
+              ✕
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Add from inbox drawer */}
