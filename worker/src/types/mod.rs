@@ -15,6 +15,7 @@ pub mod user;
 pub mod valhalla_job;
 pub mod crew;
 pub mod visit;
+pub mod work_item;
 
 pub use communication::*;
 pub use customer::*;
@@ -31,3 +32,4 @@ pub use user::*;
 pub use valhalla_job::*;
 pub use crew::*;
 pub use visit::*;
+pub use work_item::*;

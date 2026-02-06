@@ -1,4 +1,4 @@
-//! Device message handlers
+//! Work item message handlers
 
 use anyhow::Result;
 use async_nats::{Client, Subscriber};
@@ -11,33 +11,20 @@ use crate::db::queries;
 use crate::types::{
     ErrorResponse, Request, SuccessResponse,
 };
-use crate::types::device::{
-    CreateDeviceRequest, UpdateDeviceRequest, ListDevicesRequest, DeviceIdRequest, Device,
+use crate::types::work_item::{
+    CreateWorkItemRequest, CompleteWorkItemRequest,
+    ListWorkItemsRequest, ListWorkItemsResponse,
+    WorkItemIdRequest, VisitWorkItem,
 };
 
-/// Response for list of devices
-#[derive(Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DeviceListResponse {
-    pub items: Vec<Device>,
-    pub total: i64,
-}
-
-/// Response for delete operation
-#[derive(Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DeleteResponse {
-    pub deleted: bool,
-}
-
-/// Handle device.create messages
+/// Handle work_item.create messages
 pub async fn handle_create(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
-        debug!("Received device.create message");
+        debug!("Received work_item.create message");
 
         let reply = match msg.reply {
             Some(ref reply) => reply.clone(),
@@ -47,8 +34,7 @@ pub async fn handle_create(
             }
         };
 
-        // Parse request
-        let request: Request<CreateDeviceRequest> = match serde_json::from_slice(&msg.payload) {
+        let request: Request<CreateWorkItemRequest> = match serde_json::from_slice(&msg.payload) {
             Ok(req) => req,
             Err(e) => {
                 error!("Failed to parse request: {}", e);
@@ -59,7 +45,7 @@ pub async fn handle_create(
         };
 
         // Check user_id
-        let user_id = match request.user_id {
+        let _user_id = match request.user_id {
             Some(id) => id,
             None => {
                 let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
@@ -68,15 +54,14 @@ pub async fn handle_create(
             }
         };
 
-        // Create device
-        match queries::device::create_device(&pool, user_id, request.payload.customer_id, &request.payload).await {
-            Ok(device) => {
-                let response = SuccessResponse::new(request.id, device);
+        match queries::work_item::create_work_item(&pool, &request.payload).await {
+            Ok(item) => {
+                let response = SuccessResponse::new(request.id, item);
                 let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
-                debug!("Created device: {}", response.payload.id);
+                debug!("Created work item: {}", response.payload.id);
             }
             Err(e) => {
-                error!("Failed to create device: {}", e);
+                error!("Failed to create work item: {}", e);
                 let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
             }
@@ -86,14 +71,14 @@ pub async fn handle_create(
     Ok(())
 }
 
-/// Handle device.list messages
+/// Handle work_item.list messages
 pub async fn handle_list(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
-        debug!("Received device.list message");
+        debug!("Received work_item.list message");
 
         let reply = match msg.reply {
             Some(ref reply) => reply.clone(),
@@ -103,8 +88,7 @@ pub async fn handle_list(
             }
         };
 
-        // Parse request
-        let request: Request<ListDevicesRequest> = match serde_json::from_slice(&msg.payload) {
+        let request: Request<ListWorkItemsRequest> = match serde_json::from_slice(&msg.payload) {
             Ok(req) => req,
             Err(e) => {
                 error!("Failed to parse request: {}", e);
@@ -114,7 +98,6 @@ pub async fn handle_list(
             }
         };
 
-        // Check user_id
         let _user_id = match request.user_id {
             Some(id) => id,
             None => {
@@ -124,21 +107,24 @@ pub async fn handle_list(
             }
         };
 
-        // List devices
-        match queries::device::list_devices(&pool, request.payload.customer_id).await {
-            Ok(devices) => {
-                let response = SuccessResponse::new(
-                    request.id,
-                    DeviceListResponse {
-                        total: devices.len() as i64,
-                        items: devices,
-                    },
-                );
+        let payload = &request.payload;
+        let items = if let Some(visit_id) = payload.visit_id {
+            queries::work_item::list_work_items_for_visit(&pool, visit_id).await
+        } else if let Some(revision_id) = payload.revision_id {
+            queries::work_item::list_work_items_for_revision(&pool, revision_id).await
+        } else {
+            // No filter specified - return empty
+            Ok(vec![])
+        };
+
+        match items {
+            Ok(items) => {
+                let total = items.len() as i64;
+                let response = SuccessResponse::new(request.id, ListWorkItemsResponse { items, total });
                 let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
-                debug!("Listed {} devices", response.payload.items.len());
             }
             Err(e) => {
-                error!("Failed to list devices: {}", e);
+                error!("Failed to list work items: {}", e);
                 let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
             }
@@ -148,21 +134,14 @@ pub async fn handle_list(
     Ok(())
 }
 
-/// Handle device.get messages
+/// Handle work_item.get messages
 pub async fn handle_get(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
 ) -> Result<()> {
-    #[derive(serde::Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct GetDeviceRequest {
-        id: Uuid,
-        customer_id: Uuid,
-    }
-
     while let Some(msg) = subscriber.next().await {
-        debug!("Received device.get message");
+        debug!("Received work_item.get message");
 
         let reply = match msg.reply {
             Some(ref reply) => reply.clone(),
@@ -172,8 +151,7 @@ pub async fn handle_get(
             }
         };
 
-        // Parse request
-        let request: Request<GetDeviceRequest> = match serde_json::from_slice(&msg.payload) {
+        let request: Request<WorkItemIdRequest> = match serde_json::from_slice(&msg.payload) {
             Ok(req) => req,
             Err(e) => {
                 error!("Failed to parse request: {}", e);
@@ -183,7 +161,6 @@ pub async fn handle_get(
             }
         };
 
-        // Check user_id
         let _user_id = match request.user_id {
             Some(id) => id,
             None => {
@@ -193,19 +170,17 @@ pub async fn handle_get(
             }
         };
 
-        // Get device
-        match queries::device::get_device(&pool, request.payload.id, request.payload.customer_id).await {
-            Ok(Some(device)) => {
-                let response = SuccessResponse::new(request.id, device);
+        match queries::work_item::get_work_item(&pool, request.payload.id).await {
+            Ok(Some(item)) => {
+                let response = SuccessResponse::new(request.id, item);
                 let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
-                debug!("Got device: {}", response.payload.id);
             }
             Ok(None) => {
-                let error = ErrorResponse::new(request.id, "NOT_FOUND", "Device not found");
+                let error = ErrorResponse::new(request.id, "NOT_FOUND", "Work item not found");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
             }
             Err(e) => {
-                error!("Failed to get device: {}", e);
+                error!("Failed to get work item: {}", e);
                 let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
             }
@@ -215,22 +190,14 @@ pub async fn handle_get(
     Ok(())
 }
 
-/// Handle device.update messages
-pub async fn handle_update(
+/// Handle work_item.complete messages
+pub async fn handle_complete(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
 ) -> Result<()> {
-    #[derive(serde::Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct UpdateRequest {
-        #[serde(flatten)]
-        update: UpdateDeviceRequest,
-        customer_id: Uuid,
-    }
-
     while let Some(msg) = subscriber.next().await {
-        debug!("Received device.update message");
+        debug!("Received work_item.complete message");
 
         let reply = match msg.reply {
             Some(ref reply) => reply.clone(),
@@ -240,8 +207,7 @@ pub async fn handle_update(
             }
         };
 
-        // Parse request
-        let request: Request<UpdateRequest> = match serde_json::from_slice(&msg.payload) {
+        let request: Request<CompleteWorkItemRequest> = match serde_json::from_slice(&msg.payload) {
             Ok(req) => req,
             Err(e) => {
                 error!("Failed to parse request: {}", e);
@@ -251,7 +217,6 @@ pub async fn handle_update(
             }
         };
 
-        // Check user_id
         let _user_id = match request.user_id {
             Some(id) => id,
             None => {
@@ -261,24 +226,28 @@ pub async fn handle_update(
             }
         };
 
-        // Update device
-        match queries::device::update_device(
+        let payload = &request.payload;
+        match queries::work_item::complete_work_item(
             &pool,
-            request.payload.update.id,
-            request.payload.customer_id,
-            &request.payload.update,
+            payload.id,
+            payload.result,
+            payload.duration_minutes,
+            payload.result_notes.as_deref(),
+            payload.findings.as_deref(),
+            payload.requires_follow_up.unwrap_or(false),
+            payload.follow_up_reason.as_deref(),
         ).await {
-            Ok(Some(device)) => {
-                let response = SuccessResponse::new(request.id, device);
+            Ok(Some(item)) => {
+                let response = SuccessResponse::new(request.id, item);
                 let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
-                debug!("Updated device: {}", response.payload.id);
+                debug!("Completed work item: {}", payload.id);
             }
             Ok(None) => {
-                let error = ErrorResponse::new(request.id, "NOT_FOUND", "Device not found");
+                let error = ErrorResponse::new(request.id, "NOT_FOUND", "Work item not found");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
             }
             Err(e) => {
-                error!("Failed to update device: {}", e);
+                error!("Failed to complete work item: {}", e);
                 let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
             }
@@ -288,70 +257,57 @@ pub async fn handle_update(
     Ok(())
 }
 
-/// Handle device.delete messages
-pub async fn handle_delete(
-    client: Client,
-    mut subscriber: Subscriber,
-    pool: PgPool,
-) -> Result<()> {
-    #[derive(serde::Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct DeleteRequest {
-        id: Uuid,
-        customer_id: Uuid,
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::work_item::{WorkType, WorkResult};
+
+    #[test]
+    fn test_create_request_deserialization() {
+        let json = r#"{
+            "id": "00000000-0000-0000-0000-000000000001",
+            "userId": "00000000-0000-0000-0000-000000000002",
+            "payload": {
+                "visitId": "00000000-0000-0000-0000-000000000003",
+                "workType": "revision"
+            }
+        }"#;
+
+        let req: Request<CreateWorkItemRequest> = serde_json::from_str(json).unwrap();
+        assert_eq!(req.payload.work_type, WorkType::Revision);
+        assert!(req.payload.device_id.is_none());
     }
 
-    while let Some(msg) = subscriber.next().await {
-        debug!("Received device.delete message");
+    #[test]
+    fn test_complete_request_deserialization() {
+        let json = r#"{
+            "id": "00000000-0000-0000-0000-000000000001",
+            "userId": "00000000-0000-0000-0000-000000000002",
+            "payload": {
+                "id": "00000000-0000-0000-0000-000000000003",
+                "result": "successful",
+                "durationMinutes": 45,
+                "findings": "Bez závad"
+            }
+        }"#;
 
-        let reply = match msg.reply {
-            Some(ref reply) => reply.clone(),
-            None => {
-                warn!("Message without reply subject");
-                continue;
-            }
-        };
-
-        // Parse request
-        let request: Request<DeleteRequest> = match serde_json::from_slice(&msg.payload) {
-            Ok(req) => req,
-            Err(e) => {
-                error!("Failed to parse request: {}", e);
-                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
-                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
-                continue;
-            }
-        };
-
-        // Check user_id
-        let _user_id = match request.user_id {
-            Some(id) => id,
-            None => {
-                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
-                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
-                continue;
-            }
-        };
-
-        // Delete device
-        match queries::device::delete_device(&pool, request.payload.id, request.payload.customer_id).await {
-            Ok(deleted) => {
-                if deleted {
-                    let response = SuccessResponse::new(request.id, DeleteResponse { deleted: true });
-                    let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
-                    debug!("Deleted device: {}", request.payload.id);
-                } else {
-                    let error = ErrorResponse::new(request.id, "NOT_FOUND", "Device not found");
-                    let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
-                }
-            }
-            Err(e) => {
-                error!("Failed to delete device: {}", e);
-                let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
-                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
-            }
-        }
+        let req: Request<CompleteWorkItemRequest> = serde_json::from_str(json).unwrap();
+        assert_eq!(req.payload.result, WorkResult::Successful);
+        assert_eq!(req.payload.duration_minutes, Some(45));
     }
 
-    Ok(())
+    #[test]
+    fn test_list_request_with_visit_id() {
+        let json = r#"{
+            "id": "00000000-0000-0000-0000-000000000001",
+            "userId": "00000000-0000-0000-0000-000000000002",
+            "payload": {
+                "visitId": "00000000-0000-0000-0000-000000000003"
+            }
+        }"#;
+
+        let req: Request<ListWorkItemsRequest> = serde_json::from_str(json).unwrap();
+        assert!(req.payload.visit_id.is_some());
+        assert!(req.payload.revision_id.is_none());
+    }
 }

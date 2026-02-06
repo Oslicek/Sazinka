@@ -15,6 +15,7 @@ pub mod settings;
 pub mod slots;
 pub mod crew;
 pub mod visit;
+pub mod work_item;
 
 use std::sync::Arc;
 use anyhow::Result;
@@ -200,6 +201,12 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let crew_update_sub = client.subscribe("sazinka.crew.update").await?;
     let crew_delete_sub = client.subscribe("sazinka.crew.delete").await?;
     
+    // Work item subjects
+    let work_item_create_sub = client.subscribe("sazinka.work_item.create").await?;
+    let work_item_list_sub = client.subscribe("sazinka.work_item.list").await?;
+    let work_item_get_sub = client.subscribe("sazinka.work_item.get").await?;
+    let work_item_complete_sub = client.subscribe("sazinka.work_item.complete").await?;
+    
     // Old sync import subjects removed - now using async processors
 
     info!("Subscribed to NATS subjects");
@@ -340,6 +347,18 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_crew_list = pool.clone();
     let pool_crew_update = pool.clone();
     let pool_crew_delete = pool.clone();
+    
+    // Work item handler clones
+    let client_work_item_create = client.clone();
+    let client_work_item_list = client.clone();
+    let client_work_item_get = client.clone();
+    let client_work_item_complete = client.clone();
+    
+    // Work item pool clones
+    let pool_work_item_create = pool.clone();
+    let pool_work_item_list = pool.clone();
+    let pool_work_item_get = pool.clone();
+    let pool_work_item_complete = pool.clone();
     
     // Old sync import handler clones removed - now using async processors
     
@@ -576,6 +595,23 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         crew::handle_delete(client_crew_delete, crew_delete_sub, pool_crew_delete).await
     });
     
+    // Work item handlers
+    let work_item_create_handle = tokio::spawn(async move {
+        work_item::handle_create(client_work_item_create, work_item_create_sub, pool_work_item_create).await
+    });
+    
+    let work_item_list_handle = tokio::spawn(async move {
+        work_item::handle_list(client_work_item_list, work_item_list_sub, pool_work_item_list).await
+    });
+    
+    let work_item_get_handle = tokio::spawn(async move {
+        work_item::handle_get(client_work_item_get, work_item_get_sub, pool_work_item_get).await
+    });
+    
+    let work_item_complete_handle = tokio::spawn(async move {
+        work_item::handle_complete(client_work_item_complete, work_item_complete_sub, pool_work_item_complete).await
+    });
+    
     // Old sync import handlers removed - replaced by async processors below
 
     // Start admin handlers
@@ -752,7 +788,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let client_visit_import = client.clone();
     let pool_visit_import = pool.clone();
     tokio::spawn(async move {
-        match import_processors::VisitImportProcessor::new(client_visit_import.clone(), pool_visit_import).await {
+        match import_processors::WorkLogImportProcessor::new(client_visit_import.clone(), pool_visit_import).await {
             Ok(processor) => {
                 let processor = Arc::new(processor);
                 
@@ -767,7 +803,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
                 let client_submit = client_visit_import.clone();
                 let processor_submit = Arc::clone(&processor);
                 tokio::spawn(async move {
-                    if let Err(e) = import_processors::handle_visit_import_submit(client_submit, visit_import_submit_sub, processor_submit).await {
+                    if let Err(e) = import_processors::handle_work_log_import_submit(client_submit, visit_import_submit_sub, processor_submit).await {
                         error!("Visit import submit handler error: {}", e);
                     }
                 });
@@ -1236,6 +1272,19 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         }
         result = crew_delete_handle => {
             error!("Crew delete handler finished: {:?}", result);
+        }
+        // Work item handlers
+        result = work_item_create_handle => {
+            error!("Work item create handler finished: {:?}", result);
+        }
+        result = work_item_list_handle => {
+            error!("Work item list handler finished: {:?}", result);
+        }
+        result = work_item_get_handle => {
+            error!("Work item get handler finished: {:?}", result);
+        }
+        result = work_item_complete_handle => {
+            error!("Work item complete handler finished: {:?}", result);
         }
         // Old sync import handlers removed - now using async processors
         // Job management handlers

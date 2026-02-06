@@ -28,15 +28,15 @@ pub async fn create_communication(
             id, user_id, customer_id, revision_id,
             comm_type, direction, subject, content,
             contact_name, contact_phone, duration_minutes,
-            follow_up_date, follow_up_completed, created_at
+            follow_up_date, follow_up_completed, created_at, updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, FALSE, NOW())
+        VALUES ($1, $2, $3, $4, $5::comm_type, $6::comm_direction, $7, $8, $9, $10, $11, $12, FALSE, NOW(), NOW())
         RETURNING
             id, user_id, customer_id, revision_id,
-            comm_type, direction, subject, content,
+            comm_type::text, direction::text, subject, content,
             contact_name, contact_phone, email_status,
             duration_minutes, follow_up_date, follow_up_completed,
-            created_at
+            created_at, updated_at
         "#,
     )
     .bind(Uuid::new_v4())
@@ -67,10 +67,10 @@ pub async fn get_communication(
         r#"
         SELECT
             id, user_id, customer_id, revision_id,
-            comm_type, direction, subject, content,
+            comm_type::text, direction::text, subject, content,
             contact_name, contact_phone, email_status,
             duration_minutes, follow_up_date, follow_up_completed,
-            created_at
+            created_at, updated_at
         FROM communications
         WHERE id = $1 AND user_id = $2
         "#,
@@ -120,10 +120,10 @@ pub async fn list_communications(
         r#"
         SELECT
             id, user_id, customer_id, revision_id,
-            comm_type, direction, subject, content,
+            comm_type::text, direction::text, subject, content,
             contact_name, contact_phone, email_status,
             duration_minutes, follow_up_date, follow_up_completed,
-            created_at
+            created_at, updated_at
         FROM communications
         WHERE {}
         ORDER BY created_at DESC
@@ -185,10 +185,10 @@ pub async fn update_communication(
         WHERE id = $1 AND user_id = $2
         RETURNING
             id, user_id, customer_id, revision_id,
-            comm_type, direction, subject, content,
+            comm_type::text, direction::text, subject, content,
             contact_name, contact_phone, email_status,
             duration_minutes, follow_up_date, follow_up_completed,
-            created_at
+            created_at, updated_at
         "#,
     )
     .bind(id)
@@ -225,10 +225,10 @@ pub async fn get_customer_communications(
         r#"
         SELECT
             id, user_id, customer_id, revision_id,
-            comm_type, direction, subject, content,
+            comm_type::text, direction::text, subject, content,
             contact_name, contact_phone, email_status,
             duration_minutes, follow_up_date, follow_up_completed,
-            created_at
+            created_at, updated_at
         FROM communications
         WHERE customer_id = $1 AND user_id = $2
         ORDER BY created_at DESC

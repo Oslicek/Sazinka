@@ -9,9 +9,11 @@ use super::{Coordinates, TimeWindow};
 
 /// Route entity (a day's planned visits)
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct Route {
     pub id: Uuid,
     pub user_id: Uuid,
+    pub crew_id: Option<Uuid>,
     pub date: NaiveDate,
     pub status: String,
     pub total_distance_km: Option<f64>,
@@ -34,11 +36,13 @@ pub enum RouteStatus {
 
 /// A stop on the route
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RouteStop {
     pub order: i32,
-    pub revision_id: Uuid,
     pub customer_id: Uuid,
-    pub customer_name: String,
+    pub visit_id: Option<Uuid>,
+    pub revision_id: Option<Uuid>,
+    pub customer_name: Option<String>,
     pub address: String,
     pub lat: f64,
     pub lng: f64,

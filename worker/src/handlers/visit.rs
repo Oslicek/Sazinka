@@ -63,11 +63,13 @@ pub async fn handle_create(
             &pool,
             user_id,
             payload.customer_id,
-            payload.revision_id,
+            payload.crew_id,
+            payload.device_id,
             payload.scheduled_date,
             payload.scheduled_time_start,
             payload.scheduled_time_end,
-            &payload.visit_type,
+            payload.visit_type.as_deref().unwrap_or("revision"),
+            payload.status.as_deref(),
         )
         .await
         {

@@ -22,6 +22,8 @@ pub struct Revision {
     pub duration_minutes: Option<i32>,
     pub result: Option<String>,
     pub findings: Option<String>,
+    #[sqlx(default)]
+    pub fulfilled_by_work_item_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     // Snooze fields (for call queue)
@@ -53,13 +55,13 @@ pub struct Revision {
 }
 
 /// Revision status
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
+/// Note: DueSoon and Overdue are COMPUTED states (based on due_date vs today),
+/// they are NOT stored in the database.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[serde(rename_all = "snake_case")]
 #[sqlx(type_name = "revision_status", rename_all = "snake_case")]
 pub enum RevisionStatus {
     Upcoming,
-    DueSoon,
-    Overdue,
     Scheduled,
     Confirmed,
     Completed,
@@ -70,18 +72,27 @@ impl RevisionStatus {
     pub fn as_str(&self) -> &'static str {
         match self {
             RevisionStatus::Upcoming => "upcoming",
-            RevisionStatus::DueSoon => "due_soon",
-            RevisionStatus::Overdue => "overdue",
             RevisionStatus::Scheduled => "scheduled",
             RevisionStatus::Confirmed => "confirmed",
             RevisionStatus::Completed => "completed",
             RevisionStatus::Cancelled => "cancelled",
         }
     }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "upcoming" => Some(RevisionStatus::Upcoming),
+            "scheduled" => Some(RevisionStatus::Scheduled),
+            "confirmed" => Some(RevisionStatus::Confirmed),
+            "completed" => Some(RevisionStatus::Completed),
+            "cancelled" => Some(RevisionStatus::Cancelled),
+            _ => None,
+        }
+    }
 }
 
 /// Revision result
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[serde(rename_all = "snake_case")]
 #[sqlx(type_name = "revision_result", rename_all = "snake_case")]
 pub enum RevisionResult {
@@ -106,9 +117,13 @@ pub struct CreateRevisionRequest {
     pub device_id: Uuid,
     pub customer_id: Uuid,
     pub due_date: NaiveDate,
+    pub status: Option<String>,
     pub scheduled_date: Option<NaiveDate>,
     pub scheduled_time_start: Option<NaiveTime>,
     pub scheduled_time_end: Option<NaiveTime>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub duration_minutes: Option<i32>,
+    pub result: Option<String>,
     pub findings: Option<String>,
 }
 
@@ -199,9 +214,9 @@ pub struct RevisionSuggestion {
     pub scheduled_time_end: Option<NaiveTime>,
     
     // Customer fields for display and geographic clustering
-    pub customer_name: String,
-    pub customer_street: String,
-    pub customer_city: String,
+    pub customer_name: Option<String>,
+    pub customer_street: Option<String>,
+    pub customer_city: Option<String>,
     pub customer_lat: Option<f64>,
     pub customer_lng: Option<f64>,
     
@@ -256,11 +271,11 @@ pub struct CallQueueItem {
     pub snooze_reason: Option<String>,
     
     // Customer fields
-    pub customer_name: String,
+    pub customer_name: Option<String>,
     pub customer_phone: Option<String>,
     pub customer_email: Option<String>,
-    pub customer_street: String,
-    pub customer_city: String,
+    pub customer_street: Option<String>,
+    pub customer_city: Option<String>,
     pub customer_postal_code: Option<String>,
     pub customer_lat: Option<f64>,
     pub customer_lng: Option<f64>,
@@ -312,6 +327,82 @@ pub struct ScheduleRevisionRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_revision_status_no_due_soon_overdue() {
+        // DueSoon and Overdue are computed, NOT stored in DB
+        assert!(RevisionStatus::from_str("due_soon").is_none());
+        assert!(RevisionStatus::from_str("overdue").is_none());
+    }
+
+    #[test]
+    fn test_revision_status_roundtrip() {
+        let statuses = vec![
+            RevisionStatus::Upcoming,
+            RevisionStatus::Scheduled,
+            RevisionStatus::Confirmed,
+            RevisionStatus::Completed,
+            RevisionStatus::Cancelled,
+        ];
+        for status in statuses {
+            let json = serde_json::to_string(&status).unwrap();
+            let deserialized: RevisionStatus = serde_json::from_str(&json).unwrap();
+            assert_eq!(status, deserialized);
+            assert_eq!(RevisionStatus::from_str(status.as_str()), Some(status));
+        }
+    }
+
+    #[test]
+    fn test_revision_result_roundtrip() {
+        let results = vec![
+            RevisionResult::Passed,
+            RevisionResult::Conditional,
+            RevisionResult::Failed,
+        ];
+        for result in results {
+            let json = serde_json::to_string(&result).unwrap();
+            let deserialized: RevisionResult = serde_json::from_str(&json).unwrap();
+            assert_eq!(result, deserialized);
+        }
+    }
+
+    #[test]
+    fn test_create_revision_request_with_all_fields() {
+        let json = r#"{
+            "deviceId": "123e4567-e89b-12d3-a456-426614174000",
+            "customerId": "223e4567-e89b-12d3-a456-426614174000",
+            "dueDate": "2026-03-15",
+            "status": "completed",
+            "scheduledDate": "2026-03-10",
+            "scheduledTimeStart": "10:00:00",
+            "scheduledTimeEnd": "12:00:00",
+            "completedAt": "2026-03-10T11:30:00Z",
+            "durationMinutes": 60,
+            "result": "passed",
+            "findings": "Bez závad"
+        }"#;
+
+        let req: CreateRevisionRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.status, Some("completed".to_string()));
+        assert!(req.completed_at.is_some());
+        assert_eq!(req.duration_minutes, Some(60));
+        assert_eq!(req.result, Some("passed".to_string()));
+    }
+
+    #[test]
+    fn test_create_revision_request_minimal() {
+        let json = r#"{
+            "deviceId": "123e4567-e89b-12d3-a456-426614174000",
+            "customerId": "223e4567-e89b-12d3-a456-426614174000",
+            "dueDate": "2026-03-15"
+        }"#;
+
+        let req: CreateRevisionRequest = serde_json::from_str(json).unwrap();
+        assert!(req.status.is_none());
+        assert!(req.completed_at.is_none());
+        assert!(req.duration_minutes.is_none());
+        assert!(req.result.is_none());
+    }
 
     #[test]
     fn test_snooze_request_deserialize() {

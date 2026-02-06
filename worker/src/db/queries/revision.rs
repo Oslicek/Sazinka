@@ -7,35 +7,65 @@ use anyhow::Result;
 
 use crate::types::revision::{Revision, CreateRevisionRequest, UpdateRevisionRequest, RevisionStats};
 
+// Common column list for Revision queries
+const REVISION_COLS: &str = r#"
+    r.id, r.device_id, r.customer_id, r.user_id,
+    r.status::text, r.due_date, r.scheduled_date,
+    r.scheduled_time_start, r.scheduled_time_end,
+    r.completed_at, r.duration_minutes, r.result::text,
+    r.findings, r.fulfilled_by_work_item_id,
+    r.created_at, r.updated_at,
+    r.snooze_until, r.snooze_reason,
+    r.assigned_crew_id, r.route_order
+"#;
+
+// Simpler column list without table alias (for single-table queries)
+const REVISION_COLS_SIMPLE: &str = r#"
+    id, device_id, customer_id, user_id,
+    status::text, due_date, scheduled_date,
+    scheduled_time_start, scheduled_time_end,
+    completed_at, duration_minutes, result::text,
+    findings, fulfilled_by_work_item_id,
+    created_at, updated_at,
+    snooze_until, snooze_reason,
+    assigned_crew_id, route_order
+"#;
+
 /// Create a new revision
 pub async fn create_revision(
     pool: &PgPool,
     user_id: Uuid,
     req: &CreateRevisionRequest,
 ) -> Result<Revision> {
-    let revision = sqlx::query_as::<_, Revision>(
+    let status = req.status.as_deref().unwrap_or("upcoming");
+    
+    let query = format!(
         r#"
         INSERT INTO revisions (
             id, device_id, customer_id, user_id, status,
             due_date, scheduled_date, scheduled_time_start, scheduled_time_end,
+            completed_at, duration_minutes, result,
             findings, created_at, updated_at
         )
-        VALUES ($1, $2, $3, $4, 'upcoming', $5, $6, $7, $8, $9, NOW(), NOW())
-        RETURNING
-            id, device_id, customer_id, user_id, status,
-            due_date, scheduled_date, scheduled_time_start, scheduled_time_end,
-            completed_at, duration_minutes, result, findings,
-            created_at, updated_at
-        "#
-    )
+        VALUES ($1, $2, $3, $4, $5::revision_status, $6, $7, $8, $9, $10, $11, $12::revision_result, $13, NOW(), NOW())
+        RETURNING {}
+        "#,
+        REVISION_COLS_SIMPLE
+    );
+    
+    let revision = sqlx::query_as::<_, Revision>(&query)
     .bind(Uuid::new_v4())
     .bind(req.device_id)
     .bind(req.customer_id)
     .bind(user_id)
+    .bind(status)
     .bind(req.due_date)
     .bind(req.scheduled_date)
     .bind(req.scheduled_time_start)
     .bind(req.scheduled_time_end)
+    .bind(req.completed_at)
+    .bind(req.duration_minutes)
+    .bind(req.result.as_deref())
     .bind(&req.findings)
     .fetch_one(pool)
     .await?;
@@ -45,17 +75,12 @@ pub async fn create_revision(
 
 /// Get a single revision by ID
 pub async fn get_revision(pool: &PgPool, revision_id: Uuid, user_id: Uuid) -> Result<Option<Revision>> {
-    let revision = sqlx::query_as::<_, Revision>(
-        r#"
-        SELECT
-            id, device_id, customer_id, user_id, status,
-            due_date, scheduled_date, scheduled_time_start, scheduled_time_end,
-            completed_at, duration_minutes, result, findings,
-            created_at, updated_at
-        FROM revisions
-        WHERE id = $1 AND user_id = $2
-        "#
-    )
+    let query = format!(
+        "SELECT {} FROM revisions r WHERE r.id = $1 AND r.user_id = $2",
+        REVISION_COLS
+    );
+    
+    let revision = sqlx::query_as::<_, Revision>(&query)
     .bind(revision_id)
     .bind(user_id)
     .fetch_optional(pool)
@@ -71,10 +96,10 @@ pub async fn update_revision(
     user_id: Uuid,
     req: &UpdateRevisionRequest,
 ) -> Result<Option<Revision>> {
-    let revision = sqlx::query_as::<_, Revision>(
+    let query = format!(
         r#"
         UPDATE revisions SET
-            status = COALESCE($3, status),
+            status = COALESCE($3::revision_status, status),
             due_date = COALESCE($4, due_date),
             scheduled_date = COALESCE($5, scheduled_date),
             scheduled_time_start = COALESCE($6, scheduled_time_start),
@@ -82,13 +107,12 @@ pub async fn update_revision(
             duration_minutes = COALESCE($8, duration_minutes),
             updated_at = NOW()
         WHERE id = $1 AND user_id = $2
-        RETURNING
-            id, device_id, customer_id, user_id, status,
-            due_date, scheduled_date, scheduled_time_start, scheduled_time_end,
-            completed_at, duration_minutes, result, findings,
-            created_at, updated_at
-        "#
-    )
+        RETURNING {}
+        "#,
+        REVISION_COLS_SIMPLE
+    );
+    
+    let revision = sqlx::query_as::<_, Revision>(&query)
     .bind(revision_id)
     .bind(user_id)
     .bind(&req.status)
@@ -112,23 +136,22 @@ pub async fn complete_revision(
     findings: Option<&str>,
     duration_minutes: Option<i32>,
 ) -> Result<Option<Revision>> {
-    let revision = sqlx::query_as::<_, Revision>(
+    let query = format!(
         r#"
         UPDATE revisions SET
             status = 'completed',
-            result = $3,
+            result = $3::revision_result,
             findings = $4,
             duration_minutes = COALESCE($5, duration_minutes),
             completed_at = NOW(),
             updated_at = NOW()
         WHERE id = $1 AND user_id = $2
-        RETURNING
-            id, device_id, customer_id, user_id, status,
-            due_date, scheduled_date, scheduled_time_start, scheduled_time_end,
-            completed_at, duration_minutes, result, findings,
-            created_at, updated_at
-        "#
-    )
+        RETURNING {}
+        "#,
+        REVISION_COLS_SIMPLE
+    );
+    
+    let revision = sqlx::query_as::<_, Revision>(&query)
     .bind(revision_id)
     .bind(user_id)
     .bind(result)
@@ -143,10 +166,7 @@ pub async fn complete_revision(
 /// Delete a revision
 pub async fn delete_revision(pool: &PgPool, revision_id: Uuid, user_id: Uuid) -> Result<bool> {
     let result = sqlx::query(
-        r#"
-        DELETE FROM revisions
-        WHERE id = $1 AND user_id = $2
-        "#
+        r#"DELETE FROM revisions WHERE id = $1 AND user_id = $2"#
     )
     .bind(revision_id)
     .bind(user_id)
@@ -163,23 +183,20 @@ pub async fn list_upcoming_revisions(
     from_date: NaiveDate,
     to_date: NaiveDate,
 ) -> Result<Vec<Revision>> {
-    let revisions = sqlx::query_as::<_, Revision>(
+    let query = format!(
         r#"
-        SELECT
-            r.id, r.device_id, r.customer_id, r.user_id,
-            r.status, r.due_date, r.scheduled_date,
-            r.scheduled_time_start, r.scheduled_time_end,
-            r.completed_at, r.duration_minutes, r.result,
-            r.findings, r.created_at, r.updated_at
+        SELECT {}
         FROM revisions r
         WHERE r.user_id = $1
           AND r.due_date >= $2
           AND r.due_date <= $3
-          AND r.status != 'completed'
-          AND r.status != 'cancelled'
+          AND r.status NOT IN ('completed', 'cancelled')
         ORDER BY r.due_date ASC
-        "#
-    )
+        "#,
+        REVISION_COLS
+    );
+    
+    let revisions = sqlx::query_as::<_, Revision>(&query)
     .bind(user_id)
     .bind(from_date)
     .bind(to_date)
@@ -195,19 +212,17 @@ pub async fn list_revisions_for_date(
     user_id: Uuid,
     date: NaiveDate,
 ) -> Result<Vec<Revision>> {
-    let revisions = sqlx::query_as::<_, Revision>(
+    let query = format!(
         r#"
-        SELECT
-            r.id, r.device_id, r.customer_id, r.user_id,
-            r.status, r.due_date, r.scheduled_date,
-            r.scheduled_time_start, r.scheduled_time_end,
-            r.completed_at, r.duration_minutes, r.result,
-            r.findings, r.created_at, r.updated_at
+        SELECT {}
         FROM revisions r
         WHERE r.user_id = $1 AND r.scheduled_date = $2
         ORDER BY r.scheduled_time_start ASC NULLS LAST
-        "#
-    )
+        "#,
+        REVISION_COLS
+    );
+    
+    let revisions = sqlx::query_as::<_, Revision>(&query)
     .bind(user_id)
     .bind(date)
     .fetch_all(pool)
@@ -217,10 +232,6 @@ pub async fn list_revisions_for_date(
 }
 
 /// List revisions with optional filters
-/// 
-/// `date_type` can be:
-/// - "due" (default): filter by due_date
-/// - "scheduled": filter by scheduled_date
 pub async fn list_revisions(
     pool: &PgPool,
     user_id: Uuid,
@@ -237,7 +248,6 @@ pub async fn list_revisions(
     let offset = offset.unwrap_or(0);
     let use_scheduled = date_type == Some("scheduled");
     
-    // Build dynamic date filter and order
     let (date_field, order_field) = if use_scheduled {
         ("r.scheduled_date", "r.scheduled_date ASC, r.scheduled_time_start ASC NULLS LAST")
     } else {
@@ -247,11 +257,8 @@ pub async fn list_revisions(
     let query = format!(
         r#"
         SELECT
-            r.id, r.device_id, r.customer_id, r.user_id, r.status,
-            r.due_date, r.scheduled_date, r.scheduled_time_start, r.scheduled_time_end,
-            r.completed_at, r.duration_minutes, r.result, r.findings,
-            r.created_at, r.updated_at,
-            d.model as device_name, d.device_type,
+            {revision_cols},
+            d.device_name, d.device_type::text as device_type,
             c.name as customer_name, c.phone as customer_phone,
             c.street as customer_street, c.city as customer_city, 
             c.postal_code as customer_postal_code
@@ -261,13 +268,15 @@ pub async fn list_revisions(
         WHERE r.user_id = $1
           AND ($2::uuid IS NULL OR r.customer_id = $2)
           AND ($3::uuid IS NULL OR r.device_id = $3)
-          AND ($4::text IS NULL OR r.status = $4)
-          AND ($5::date IS NULL OR {} >= $5)
-          AND ($6::date IS NULL OR {} <= $6)
-        ORDER BY {}
+          AND ($4::text IS NULL OR r.status::text = $4)
+          AND ($5::date IS NULL OR {date_field} >= $5)
+          AND ($6::date IS NULL OR {date_field} <= $6)
+        ORDER BY {order_field}
         LIMIT $7 OFFSET $8
         "#,
-        date_field, date_field, order_field
+        revision_cols = REVISION_COLS,
+        date_field = date_field,
+        order_field = order_field
     );
     
     let revisions = sqlx::query_as::<_, Revision>(&query)
@@ -285,24 +294,23 @@ pub async fn list_revisions(
     Ok(revisions)
 }
 
-/// List overdue revisions (due_date < today, not completed/cancelled)
+/// List overdue revisions
 pub async fn list_overdue_revisions(pool: &PgPool, user_id: Uuid) -> Result<Vec<Revision>> {
     let today = Utc::now().date_naive();
     
-    let revisions = sqlx::query_as::<_, Revision>(
+    let query = format!(
         r#"
-        SELECT
-            id, device_id, customer_id, user_id, status,
-            due_date, scheduled_date, scheduled_time_start, scheduled_time_end,
-            completed_at, duration_minutes, result, findings,
-            created_at, updated_at
-        FROM revisions
-        WHERE user_id = $1
-          AND due_date < $2
-          AND status NOT IN ('completed', 'cancelled')
-        ORDER BY due_date ASC
-        "#
-    )
+        SELECT {}
+        FROM revisions r
+        WHERE r.user_id = $1
+          AND r.due_date < $2
+          AND r.status NOT IN ('completed', 'cancelled')
+        ORDER BY r.due_date ASC
+        "#,
+        REVISION_COLS
+    );
+    
+    let revisions = sqlx::query_as::<_, Revision>(&query)
     .bind(user_id)
     .bind(today)
     .fetch_all(pool)
@@ -311,26 +319,25 @@ pub async fn list_overdue_revisions(pool: &PgPool, user_id: Uuid) -> Result<Vec<
     Ok(revisions)
 }
 
-/// List revisions due soon (within N days from today)
+/// List revisions due soon
 pub async fn list_due_soon_revisions(pool: &PgPool, user_id: Uuid, days: i32) -> Result<Vec<Revision>> {
     let today = Utc::now().date_naive();
     let end_date = today + chrono::Duration::days(days as i64);
     
-    let revisions = sqlx::query_as::<_, Revision>(
+    let query = format!(
         r#"
-        SELECT
-            id, device_id, customer_id, user_id, status,
-            due_date, scheduled_date, scheduled_time_start, scheduled_time_end,
-            completed_at, duration_minutes, result, findings,
-            created_at, updated_at
-        FROM revisions
-        WHERE user_id = $1
-          AND due_date >= $2
-          AND due_date <= $3
-          AND status NOT IN ('completed', 'cancelled')
-        ORDER BY due_date ASC
-        "#
-    )
+        SELECT {}
+        FROM revisions r
+        WHERE r.user_id = $1
+          AND r.due_date >= $2
+          AND r.due_date <= $3
+          AND r.status NOT IN ('completed', 'cancelled')
+        ORDER BY r.due_date ASC
+        "#,
+        REVISION_COLS
+    );
+    
+    let revisions = sqlx::query_as::<_, Revision>(&query)
     .bind(user_id)
     .bind(today)
     .bind(end_date)
@@ -346,54 +353,21 @@ pub async fn get_revision_stats(pool: &PgPool, user_id: Uuid) -> Result<Revision
     let week_end = today + chrono::Duration::days(7);
     let month_start = NaiveDate::from_ymd_opt(today.year(), today.month(), 1).unwrap_or(today);
     
-    // Count overdue
     let overdue: (i64,) = sqlx::query_as(
-        r#"
-        SELECT COUNT(*) FROM revisions
-        WHERE user_id = $1 AND due_date < $2 AND status NOT IN ('completed', 'cancelled')
-        "#
-    )
-    .bind(user_id)
-    .bind(today)
-    .fetch_one(pool)
-    .await?;
+        "SELECT COUNT(*) FROM revisions WHERE user_id = $1 AND due_date < $2 AND status NOT IN ('completed', 'cancelled')"
+    ).bind(user_id).bind(today).fetch_one(pool).await?;
     
-    // Count due this week
     let due_this_week: (i64,) = sqlx::query_as(
-        r#"
-        SELECT COUNT(*) FROM revisions
-        WHERE user_id = $1 AND due_date >= $2 AND due_date <= $3 AND status NOT IN ('completed', 'cancelled')
-        "#
-    )
-    .bind(user_id)
-    .bind(today)
-    .bind(week_end)
-    .fetch_one(pool)
-    .await?;
+        "SELECT COUNT(*) FROM revisions WHERE user_id = $1 AND due_date >= $2 AND due_date <= $3 AND status NOT IN ('completed', 'cancelled')"
+    ).bind(user_id).bind(today).bind(week_end).fetch_one(pool).await?;
     
-    // Count scheduled today
     let scheduled_today: (i64,) = sqlx::query_as(
-        r#"
-        SELECT COUNT(*) FROM revisions
-        WHERE user_id = $1 AND scheduled_date = $2 AND status NOT IN ('completed', 'cancelled')
-        "#
-    )
-    .bind(user_id)
-    .bind(today)
-    .fetch_one(pool)
-    .await?;
+        "SELECT COUNT(*) FROM revisions WHERE user_id = $1 AND scheduled_date = $2 AND status NOT IN ('completed', 'cancelled')"
+    ).bind(user_id).bind(today).fetch_one(pool).await?;
     
-    // Count completed this month
     let completed_this_month: (i64,) = sqlx::query_as(
-        r#"
-        SELECT COUNT(*) FROM revisions
-        WHERE user_id = $1 AND status = 'completed' AND completed_at >= $2
-        "#
-    )
-    .bind(user_id)
-    .bind(month_start)
-    .fetch_one(pool)
-    .await?;
+        "SELECT COUNT(*) FROM revisions WHERE user_id = $1 AND status = 'completed' AND completed_at >= $2"
+    ).bind(user_id).bind(month_start).fetch_one(pool).await?;
     
     Ok(RevisionStats {
         overdue: overdue.0,
@@ -405,18 +379,17 @@ pub async fn get_revision_stats(pool: &PgPool, user_id: Uuid) -> Result<Revision
 
 /// List revisions by device
 pub async fn list_revisions_by_device(pool: &PgPool, device_id: Uuid, user_id: Uuid) -> Result<Vec<Revision>> {
-    let revisions = sqlx::query_as::<_, Revision>(
+    let query = format!(
         r#"
-        SELECT
-            id, device_id, customer_id, user_id, status,
-            due_date, scheduled_date, scheduled_time_start, scheduled_time_end,
-            completed_at, duration_minutes, result, findings,
-            created_at, updated_at
-        FROM revisions
-        WHERE device_id = $1 AND user_id = $2
-        ORDER BY due_date DESC
-        "#
-    )
+        SELECT {}
+        FROM revisions r
+        WHERE r.device_id = $1 AND r.user_id = $2
+        ORDER BY r.due_date DESC
+        "#,
+        REVISION_COLS
+    );
+    
+    let revisions = sqlx::query_as::<_, Revision>(&query)
     .bind(device_id)
     .bind(user_id)
     .fetch_all(pool)
@@ -428,13 +401,6 @@ pub async fn list_revisions_by_device(pool: &PgPool, device_id: Uuid, user_id: U
 use crate::types::revision::RevisionSuggestion;
 
 /// Get suggested revisions for route planning with priority scoring
-/// 
-/// Priority algorithm:
-/// - Overdue: 100 points
-/// - Due within 7 days: 80 points  
-/// - Due within 14 days: 60 points
-/// - Due within 30 days: 40 points
-/// - Due later: 20 points
 pub async fn get_revision_suggestions(
     pool: &PgPool,
     user_id: Uuid,
@@ -444,7 +410,6 @@ pub async fn get_revision_suggestions(
 ) -> Result<(Vec<RevisionSuggestion>, i64)> {
     let today = Utc::now().date_naive();
     
-    // Build exclusion clause
     let exclude_clause = if exclude_ids.is_empty() {
         "TRUE".to_string()
     } else {
@@ -452,20 +417,13 @@ pub async fn get_revision_suggestions(
         format!("r.id NOT IN ({})", ids.join(","))
     };
     
-    // Query with priority scoring
     let query = format!(
         r#"
         WITH scored_revisions AS (
             SELECT
-                r.id,
-                r.device_id,
-                r.customer_id,
-                r.user_id,
-                r.status,
-                r.due_date,
-                r.scheduled_date,
-                r.scheduled_time_start,
-                r.scheduled_time_end,
+                r.id, r.device_id, r.customer_id, r.user_id,
+                r.status::text, r.due_date, r.scheduled_date,
+                r.scheduled_time_start, r.scheduled_time_end,
                 c.name as customer_name,
                 c.street as customer_street,
                 c.city as customer_city,
@@ -473,11 +431,11 @@ pub async fn get_revision_suggestions(
                 c.lng as customer_lng,
                 (r.due_date - $2::date)::int as days_until_due,
                 CASE
-                    WHEN r.due_date < $2 THEN 100  -- Overdue
-                    WHEN r.due_date <= $2 + INTERVAL '7 days' THEN 80  -- Due within week
-                    WHEN r.due_date <= $2 + INTERVAL '14 days' THEN 60  -- Due within 2 weeks
-                    WHEN r.due_date <= $2 + INTERVAL '30 days' THEN 40  -- Due within month
-                    ELSE 20  -- Due later
+                    WHEN r.due_date < $2 THEN 100
+                    WHEN r.due_date <= $2 + INTERVAL '7 days' THEN 80
+                    WHEN r.due_date <= $2 + INTERVAL '14 days' THEN 60
+                    WHEN r.due_date <= $2 + INTERVAL '30 days' THEN 40
+                    ELSE 20
                 END as priority_score,
                 CASE
                     WHEN r.due_date < $2 THEN 'overdue'
@@ -491,8 +449,7 @@ pub async fn get_revision_suggestions(
             WHERE r.user_id = $1
               AND r.status NOT IN ('completed', 'cancelled')
               AND (r.scheduled_date IS NULL OR r.scheduled_date = $3)
-              AND c.lat IS NOT NULL
-              AND c.lng IS NOT NULL
+              AND c.lat IS NOT NULL AND c.lng IS NOT NULL
               AND {}
         )
         SELECT * FROM scored_revisions
@@ -503,34 +460,22 @@ pub async fn get_revision_suggestions(
     );
     
     let suggestions = sqlx::query_as::<_, RevisionSuggestion>(&query)
-        .bind(user_id)
-        .bind(today)
-        .bind(target_date)
-        .bind(max_count as i64)
-        .fetch_all(pool)
-        .await?;
+        .bind(user_id).bind(today).bind(target_date).bind(max_count as i64)
+        .fetch_all(pool).await?;
     
-    // Get total count of candidates
     let count_query = format!(
         r#"
-        SELECT COUNT(*)
-        FROM revisions r
+        SELECT COUNT(*) FROM revisions r
         INNER JOIN customers c ON r.customer_id = c.id
-        WHERE r.user_id = $1
-          AND r.status NOT IN ('completed', 'cancelled')
+        WHERE r.user_id = $1 AND r.status NOT IN ('completed', 'cancelled')
           AND (r.scheduled_date IS NULL OR r.scheduled_date = $2)
-          AND c.lat IS NOT NULL
-          AND c.lng IS NOT NULL
-          AND {}
+          AND c.lat IS NOT NULL AND c.lng IS NOT NULL AND {}
         "#,
         exclude_clause
     );
     
     let total: (i64,) = sqlx::query_as(&count_query)
-        .bind(user_id)
-        .bind(target_date)
-        .fetch_one(pool)
-        .await?;
+        .bind(user_id).bind(target_date).fetch_one(pool).await?;
     
     Ok((suggestions, total.0))
 }
@@ -541,13 +486,7 @@ pub async fn get_revision_suggestions(
 
 use crate::types::revision::{CallQueueItem, CallQueueRequest, CallQueueResponse};
 
-/// Get the call queue - revisions needing customer contact
-/// 
-/// Returns revisions that:
-/// - Are not yet scheduled (scheduled_date IS NULL)
-/// - Are not completed or cancelled
-/// - Are not snoozed (snooze_until IS NULL or snooze_until <= today)
-/// - Have due_date within a reasonable window (past 30 days to future 60 days)
+/// Get the call queue
 pub async fn get_call_queue(
     pool: &PgPool,
     user_id: Uuid,
@@ -557,7 +496,6 @@ pub async fn get_call_queue(
     let limit = request.limit.unwrap_or(50) as i64;
     let offset = request.offset.unwrap_or(0) as i64;
 
-    // Build WHERE clause for filters
     let mut conditions = vec![
         "r.user_id = $1".to_string(),
         "r.status IN ('upcoming', 'scheduled')".to_string(),
@@ -569,22 +507,17 @@ pub async fn get_call_queue(
     if let Some(ref area) = request.area {
         conditions.push(format!("c.postal_code LIKE '{}%'", area));
     }
-
     if let Some(ref device_type) = request.device_type {
-        conditions.push(format!("d.device_type = '{}'", device_type));
+        conditions.push(format!("d.device_type::text = '{}'", device_type));
     }
-
-    // Priority filter
     if let Some(ref priority) = request.priority_filter {
         match priority.as_str() {
             "overdue" => conditions.push("r.due_date < $2".to_string()),
             "due_soon" => conditions.push("r.due_date BETWEEN $2 AND $2 + INTERVAL '7 days'".to_string()),
             "upcoming" => conditions.push("r.due_date > $2 + INTERVAL '7 days'".to_string()),
-            _ => {} // "all" or unknown - no filter
+            _ => {}
         }
     }
-
-    // Geocoded only filter - only include customers with valid coordinates
     if request.geocoded_only.unwrap_or(false) {
         conditions.push("c.geocode_status = 'success'".to_string());
     }
@@ -594,25 +527,14 @@ pub async fn get_call_queue(
     let query = format!(
         r#"
         SELECT
-            r.id,
-            r.device_id,
-            r.customer_id,
-            r.user_id,
-            r.status,
-            r.due_date,
-            r.snooze_until,
-            r.snooze_reason,
-            c.name as customer_name,
-            c.phone as customer_phone,
-            c.email as customer_email,
-            c.street as customer_street,
-            c.city as customer_city,
-            c.postal_code as customer_postal_code,
-            c.lat as customer_lat,
-            c.lng as customer_lng,
-            c.geocode_status as customer_geocode_status,
-            d.model as device_name,
-            d.device_type,
+            r.id, r.device_id, r.customer_id, r.user_id,
+            r.status::text, r.due_date, r.snooze_until, r.snooze_reason,
+            c.name as customer_name, c.phone as customer_phone,
+            c.email as customer_email, c.street as customer_street,
+            c.city as customer_city, c.postal_code as customer_postal_code,
+            c.lat as customer_lat, c.lng as customer_lng,
+            c.geocode_status::text as customer_geocode_status,
+            d.device_name, d.device_type::text,
             (r.due_date - $2::date)::int as days_until_due,
             CASE
                 WHEN r.due_date < $2 THEN 'overdue'
@@ -626,68 +548,29 @@ pub async fn get_call_queue(
         INNER JOIN customers c ON r.customer_id = c.id
         INNER JOIN devices d ON r.device_id = d.id
         WHERE {}
-        ORDER BY
-            CASE WHEN r.due_date < $2 THEN 0 ELSE 1 END,
-            r.due_date ASC
+        ORDER BY CASE WHEN r.due_date < $2 THEN 0 ELSE 1 END, r.due_date ASC
         LIMIT $3 OFFSET $4
         "#,
         where_clause
     );
 
     let items = sqlx::query_as::<_, CallQueueItem>(&query)
-        .bind(user_id)
-        .bind(today)
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(pool)
-        .await?;
+        .bind(user_id).bind(today).bind(limit).bind(offset)
+        .fetch_all(pool).await?;
 
-    // Get counts
     let count_query = format!(
-        "SELECT COUNT(*) FROM revisions r 
-         INNER JOIN customers c ON r.customer_id = c.id 
-         INNER JOIN devices d ON r.device_id = d.id
-         WHERE {}",
+        "SELECT COUNT(*) FROM revisions r INNER JOIN customers c ON r.customer_id = c.id INNER JOIN devices d ON r.device_id = d.id WHERE {}",
         where_clause
     );
+    let total: (i64,) = sqlx::query_as(&count_query).bind(user_id).bind(today).fetch_one(pool).await?;
 
-    let total: (i64,) = sqlx::query_as(&count_query)
-        .bind(user_id)
-        .bind(today)
-        .fetch_one(pool)
-        .await?;
-
-    // Get overdue count
     let overdue_count: (i64,) = sqlx::query_as(
-        r#"
-        SELECT COUNT(*) FROM revisions r
-        WHERE r.user_id = $1
-          AND r.status IN ('upcoming', 'scheduled')
-          AND r.scheduled_date IS NULL
-          AND (r.snooze_until IS NULL OR r.snooze_until <= $2)
-          AND r.due_date < $2
-        "#
-    )
-    .bind(user_id)
-    .bind(today)
-    .fetch_one(pool)
-    .await?;
+        "SELECT COUNT(*) FROM revisions r WHERE r.user_id = $1 AND r.status IN ('upcoming', 'scheduled') AND r.scheduled_date IS NULL AND (r.snooze_until IS NULL OR r.snooze_until <= $2) AND r.due_date < $2"
+    ).bind(user_id).bind(today).fetch_one(pool).await?;
 
-    // Get due soon count (within 7 days)
     let due_soon_count: (i64,) = sqlx::query_as(
-        r#"
-        SELECT COUNT(*) FROM revisions r
-        WHERE r.user_id = $1
-          AND r.status IN ('upcoming', 'scheduled')
-          AND r.scheduled_date IS NULL
-          AND (r.snooze_until IS NULL OR r.snooze_until <= $2)
-          AND r.due_date BETWEEN $2 AND $2 + INTERVAL '7 days'
-        "#
-    )
-    .bind(user_id)
-    .bind(today)
-    .fetch_one(pool)
-    .await?;
+        "SELECT COUNT(*) FROM revisions r WHERE r.user_id = $1 AND r.status IN ('upcoming', 'scheduled') AND r.scheduled_date IS NULL AND (r.snooze_until IS NULL OR r.snooze_until <= $2) AND r.due_date BETWEEN $2 AND $2 + INTERVAL '7 days'"
+    ).bind(user_id).bind(today).fetch_one(pool).await?;
 
     Ok(CallQueueResponse {
         items,
@@ -697,7 +580,7 @@ pub async fn get_call_queue(
     })
 }
 
-/// Snooze a revision (postpone contact until a future date)
+/// Snooze a revision
 pub async fn snooze_revision(
     pool: &PgPool,
     user_id: Uuid,
@@ -705,55 +588,48 @@ pub async fn snooze_revision(
     snooze_until: NaiveDate,
     reason: Option<String>,
 ) -> Result<Option<Revision>> {
-    let revision = sqlx::query_as::<_, Revision>(
+    let query = format!(
         r#"
         UPDATE revisions
         SET snooze_until = $1, snooze_reason = $2, updated_at = NOW()
         WHERE id = $3 AND user_id = $4
-        RETURNING id, device_id, customer_id, user_id, status,
-                  due_date, scheduled_date, scheduled_time_start, scheduled_time_end,
-                  completed_at, duration_minutes, result, findings,
-                  created_at, updated_at, snooze_until, snooze_reason,
-                  assigned_crew_id, route_order
-        "#
-    )
-    .bind(snooze_until)
-    .bind(reason)
-    .bind(revision_id)
-    .bind(user_id)
-    .fetch_optional(pool)
-    .await?;
+        RETURNING {}
+        "#,
+        REVISION_COLS_SIMPLE
+    );
+    
+    let revision = sqlx::query_as::<_, Revision>(&query)
+    .bind(snooze_until).bind(reason)
+    .bind(revision_id).bind(user_id)
+    .fetch_optional(pool).await?;
 
     Ok(revision)
 }
 
-/// Clear snooze from a revision
+/// Clear snooze
 pub async fn clear_snooze(
     pool: &PgPool,
     user_id: Uuid,
     revision_id: Uuid,
 ) -> Result<Option<Revision>> {
-    let revision = sqlx::query_as::<_, Revision>(
+    let query = format!(
         r#"
         UPDATE revisions
         SET snooze_until = NULL, snooze_reason = NULL, updated_at = NOW()
-        WHERE id = $3 AND user_id = $4
-        RETURNING id, device_id, customer_id, user_id, status,
-                  due_date, scheduled_date, scheduled_time_start, scheduled_time_end,
-                  completed_at, duration_minutes, result, findings,
-                  created_at, updated_at, snooze_until, snooze_reason,
-                  assigned_crew_id, route_order
-        "#
-    )
-    .bind(revision_id)
-    .bind(user_id)
-    .fetch_optional(pool)
-    .await?;
+        WHERE id = $1 AND user_id = $2
+        RETURNING {}
+        "#,
+        REVISION_COLS_SIMPLE
+    );
+    
+    let revision = sqlx::query_as::<_, Revision>(&query)
+    .bind(revision_id).bind(user_id)
+    .fetch_optional(pool).await?;
 
     Ok(revision)
 }
 
-/// Schedule a revision (set date, time window, and optionally crew)
+/// Schedule a revision
 pub async fn schedule_revision(
     pool: &PgPool,
     user_id: Uuid,
@@ -764,35 +640,23 @@ pub async fn schedule_revision(
     crew_id: Option<Uuid>,
     duration_minutes: Option<i32>,
 ) -> Result<Option<Revision>> {
-    let revision = sqlx::query_as::<_, Revision>(
+    let query = format!(
         r#"
         UPDATE revisions
-        SET scheduled_date = $1,
-            scheduled_time_start = $2,
-            scheduled_time_end = $3,
-            assigned_crew_id = $4,
-            duration_minutes = COALESCE($5, duration_minutes),
-            status = 'scheduled',
-            snooze_until = NULL,
-            snooze_reason = NULL,
-            updated_at = NOW()
+        SET scheduled_date = $1, scheduled_time_start = $2, scheduled_time_end = $3,
+            assigned_crew_id = $4, duration_minutes = COALESCE($5, duration_minutes),
+            status = 'scheduled', snooze_until = NULL, snooze_reason = NULL, updated_at = NOW()
         WHERE id = $6 AND user_id = $7
-        RETURNING id, device_id, customer_id, user_id, status,
-                  due_date, scheduled_date, scheduled_time_start, scheduled_time_end,
-                  completed_at, duration_minutes, result, findings,
-                  created_at, updated_at, snooze_until, snooze_reason,
-                  assigned_crew_id, route_order
-        "#
-    )
-    .bind(scheduled_date)
-    .bind(time_start)
-    .bind(time_end)
-    .bind(crew_id)
-    .bind(duration_minutes)
-    .bind(revision_id)
-    .bind(user_id)
-    .fetch_optional(pool)
-    .await?;
+        RETURNING {}
+        "#,
+        REVISION_COLS_SIMPLE
+    );
+    
+    let revision = sqlx::query_as::<_, Revision>(&query)
+    .bind(scheduled_date).bind(time_start).bind(time_end)
+    .bind(crew_id).bind(duration_minutes)
+    .bind(revision_id).bind(user_id)
+    .fetch_optional(pool).await?;
 
     Ok(revision)
 }

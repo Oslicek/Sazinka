@@ -92,6 +92,7 @@ pub struct Communication {
     pub follow_up_completed: Option<bool>,
     
     pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 /// Request to create a communication

@@ -41,6 +41,7 @@ pub struct ImportBatchResponse {
 pub struct ImportDeviceRequest {
     pub customer_ref: String,
     pub device_type: String,
+    pub device_name: Option<String>,
     pub manufacturer: Option<String>,
     pub model: Option<String>,
     pub serial_number: Option<String>,
@@ -111,31 +112,34 @@ pub struct ImportCommunicationBatchRequest {
 }
 
 // =============================================================================
-// VISIT IMPORT
+// WORK LOG IMPORT (replaces visit import)
 // =============================================================================
 
-/// Request to import a single visit
+/// Request to import a single work log entry
+/// Rows with same customer_ref + scheduled_date are grouped into one visit.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ImportVisitRequest {
+pub struct ImportWorkLogRequest {
     pub customer_ref: String,
-    pub device_ref: Option<String>,
     pub scheduled_date: String,
     pub scheduled_time_start: Option<String>,
     pub scheduled_time_end: Option<String>,
-    pub visit_type: String,
+    pub device_ref: Option<String>,
+    pub work_type: String,
     pub status: Option<String>,
     pub result: Option<String>,
+    pub duration_minutes: Option<i32>,
     pub result_notes: Option<String>,
+    pub findings: Option<String>,
     pub requires_follow_up: Option<bool>,
     pub follow_up_reason: Option<String>,
 }
 
-/// Request to import visits in batch
+/// Request to import work log entries in batch
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ImportVisitBatchRequest {
-    pub visits: Vec<ImportVisitRequest>,
+pub struct ImportWorkLogBatchRequest {
+    pub entries: Vec<ImportWorkLogRequest>,
 }
 
 // =============================================================================
@@ -446,21 +450,21 @@ impl QueuedCommunicationImportJob {
 }
 
 // =============================================================================
-// VISIT IMPORT JOB (async background processing)
+// WORK LOG IMPORT JOB (async background processing)
 // =============================================================================
 
-/// Request to submit a visit import job
+/// Request to submit a work log import job
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct VisitImportJobRequest {
+pub struct WorkLogImportJobRequest {
     pub csv_content: String,
     pub filename: String,
 }
 
-/// Status of a visit import job
+/// Status of a work log import job
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
-pub enum VisitImportJobStatus {
+pub enum WorkLogImportJobStatus {
     #[serde(rename_all = "camelCase")]
     Queued { position: u32 },
     #[serde(rename_all = "camelCase")]
@@ -473,17 +477,17 @@ pub enum VisitImportJobStatus {
     Failed { error: String },
 }
 
-/// Status update message for visit import job
+/// Status update message for work log import job
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct VisitImportJobStatusUpdate {
+pub struct WorkLogImportJobStatusUpdate {
     pub job_id: Uuid,
     pub timestamp: DateTime<Utc>,
-    pub status: VisitImportJobStatus,
+    pub status: WorkLogImportJobStatus,
 }
 
-impl VisitImportJobStatusUpdate {
-    pub fn new(job_id: Uuid, status: VisitImportJobStatus) -> Self {
+impl WorkLogImportJobStatusUpdate {
+    pub fn new(job_id: Uuid, status: WorkLogImportJobStatus) -> Self {
         Self {
             job_id,
             timestamp: Utc::now(),
@@ -492,26 +496,26 @@ impl VisitImportJobStatusUpdate {
     }
 }
 
-/// Response when submitting a visit import job
+/// Response when submitting a work log import job
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct VisitImportJobSubmitResponse {
+pub struct WorkLogImportJobSubmitResponse {
     pub job_id: Uuid,
     pub message: String,
 }
 
-/// Queued visit import job
+/// Queued work log import job
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct QueuedVisitImportJob {
+pub struct QueuedWorkLogImportJob {
     pub id: Uuid,
     pub user_id: Uuid,
     pub submitted_at: DateTime<Utc>,
-    pub request: VisitImportJobRequest,
+    pub request: WorkLogImportJobRequest,
 }
 
-impl QueuedVisitImportJob {
-    pub fn new(user_id: Uuid, request: VisitImportJobRequest) -> Self {
+impl QueuedWorkLogImportJob {
+    pub fn new(user_id: Uuid, request: WorkLogImportJobRequest) -> Self {
         Self {
             id: Uuid::new_v4(),
             user_id,
@@ -533,7 +537,7 @@ pub enum ZipImportFileType {
     Devices,
     Revisions,
     Communications,
-    Visits,
+    WorkLog,
 }
 
 impl ZipImportFileType {
@@ -544,7 +548,7 @@ impl ZipImportFileType {
             ZipImportFileType::Devices => 2,
             ZipImportFileType::Revisions => 3,
             ZipImportFileType::Communications => 4,
-            ZipImportFileType::Visits => 5,
+            ZipImportFileType::WorkLog => 5,
         }
     }
     
@@ -559,8 +563,8 @@ impl ZipImportFileType {
             Some(ZipImportFileType::Revisions)
         } else if lower.contains("communication") || lower.contains("komunik") {
             Some(ZipImportFileType::Communications)
-        } else if lower.contains("visit") || lower.contains("navstev") {
-            Some(ZipImportFileType::Visits)
+        } else if lower.contains("work_log") || lower.contains("worklog") || lower.contains("pracovni") {
+            Some(ZipImportFileType::WorkLog)
         } else {
             None
         }

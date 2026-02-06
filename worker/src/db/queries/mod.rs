@@ -10,3 +10,4 @@ pub mod settings;
 pub mod user;
 pub mod crew;
 pub mod visit;
+pub mod work_item;

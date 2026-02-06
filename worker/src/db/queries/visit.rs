@@ -12,25 +12,29 @@ pub async fn create_visit(
     pool: &PgPool,
     user_id: Uuid,
     customer_id: Uuid,
-    revision_id: Option<Uuid>,
+    crew_id: Option<Uuid>,
+    device_id: Option<Uuid>,
     scheduled_date: NaiveDate,
     scheduled_time_start: Option<NaiveTime>,
     scheduled_time_end: Option<NaiveTime>,
     visit_type: &str,
+    status: Option<&str>,
 ) -> Result<Visit> {
+    let status = status.unwrap_or("planned");
+    
     let visit = sqlx::query_as::<_, Visit>(
         r#"
         INSERT INTO visits (
-            id, user_id, customer_id, revision_id,
+            id, user_id, customer_id, crew_id, device_id,
             scheduled_date, scheduled_time_start, scheduled_time_end,
             status, visit_type, requires_follow_up,
             created_at, updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, 'planned', $8, FALSE, NOW(), NOW())
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::visit_status, $10, FALSE, NOW(), NOW())
         RETURNING
-            id, user_id, customer_id, revision_id,
+            id, user_id, customer_id, crew_id, device_id,
             scheduled_date, scheduled_time_start, scheduled_time_end,
-            status, visit_type,
+            status::text, visit_type,
             actual_arrival, actual_departure,
             result, result_notes,
             requires_follow_up, follow_up_reason,
@@ -40,10 +44,12 @@ pub async fn create_visit(
     .bind(Uuid::new_v4())
     .bind(user_id)
     .bind(customer_id)
-    .bind(revision_id)
+    .bind(crew_id)
+    .bind(device_id)
     .bind(scheduled_date)
     .bind(scheduled_time_start)
     .bind(scheduled_time_end)
+    .bind(status)
     .bind(visit_type)
     .fetch_one(pool)
     .await?;
@@ -56,9 +62,9 @@ pub async fn get_visit(pool: &PgPool, id: Uuid, user_id: Uuid) -> Result<Option<
     let visit = sqlx::query_as::<_, Visit>(
         r#"
         SELECT
-            id, user_id, customer_id, revision_id,
+            id, user_id, customer_id, crew_id, device_id,
             scheduled_date, scheduled_time_start, scheduled_time_end,
-            status, visit_type,
+            status::text, visit_type,
             actual_arrival, actual_departure,
             result, result_notes,
             requires_follow_up, follow_up_reason,
@@ -87,39 +93,23 @@ pub async fn list_visits(
     limit: i64,
     offset: i64,
 ) -> Result<(Vec<VisitWithCustomer>, i64)> {
-    // Build WHERE conditions dynamically
     let mut conditions = vec!["v.user_id = $1".to_string()];
     let mut param_idx = 1;
 
-    if customer_id.is_some() {
-        param_idx += 1;
-        conditions.push(format!("v.customer_id = ${}", param_idx));
-    }
-    if date_from.is_some() {
-        param_idx += 1;
-        conditions.push(format!("v.scheduled_date >= ${}", param_idx));
-    }
-    if date_to.is_some() {
-        param_idx += 1;
-        conditions.push(format!("v.scheduled_date <= ${}", param_idx));
-    }
-    if status.is_some() {
-        param_idx += 1;
-        conditions.push(format!("v.status = ${}", param_idx));
-    }
-    if visit_type.is_some() {
-        param_idx += 1;
-        conditions.push(format!("v.visit_type = ${}", param_idx));
-    }
+    if customer_id.is_some() { param_idx += 1; conditions.push(format!("v.customer_id = ${}", param_idx)); }
+    if date_from.is_some() { param_idx += 1; conditions.push(format!("v.scheduled_date >= ${}", param_idx)); }
+    if date_to.is_some() { param_idx += 1; conditions.push(format!("v.scheduled_date <= ${}", param_idx)); }
+    if status.is_some() { param_idx += 1; conditions.push(format!("v.status::text = ${}", param_idx)); }
+    if visit_type.is_some() { param_idx += 1; conditions.push(format!("v.visit_type = ${}", param_idx)); }
 
     let where_clause = conditions.join(" AND ");
 
     let query = format!(
         r#"
         SELECT
-            v.id, v.user_id, v.customer_id, v.revision_id,
+            v.id, v.user_id, v.customer_id, v.crew_id, v.device_id,
             v.scheduled_date, v.scheduled_time_start, v.scheduled_time_end,
-            v.status, v.visit_type,
+            v.status::text, v.visit_type,
             v.actual_arrival, v.actual_departure,
             v.result, v.result_notes,
             v.requires_follow_up, v.follow_up_reason,
@@ -140,33 +130,17 @@ pub async fn list_visits(
 
     let count_query = format!(
         "SELECT COUNT(*) FROM visits v WHERE {}",
-        where_clause.replace("c.", "")
+        where_clause
     );
 
-    // Build query with bindings
     let mut query_builder = sqlx::query_as::<_, VisitWithCustomer>(&query).bind(user_id);
     let mut count_builder = sqlx::query_scalar::<_, i64>(&count_query).bind(user_id);
 
-    if let Some(cid) = customer_id {
-        query_builder = query_builder.bind(cid);
-        count_builder = count_builder.bind(cid);
-    }
-    if let Some(df) = date_from {
-        query_builder = query_builder.bind(df);
-        count_builder = count_builder.bind(df);
-    }
-    if let Some(dt) = date_to {
-        query_builder = query_builder.bind(dt);
-        count_builder = count_builder.bind(dt);
-    }
-    if let Some(s) = status {
-        query_builder = query_builder.bind(s);
-        count_builder = count_builder.bind(s);
-    }
-    if let Some(vt) = visit_type {
-        query_builder = query_builder.bind(vt);
-        count_builder = count_builder.bind(vt);
-    }
+    if let Some(cid) = customer_id { query_builder = query_builder.bind(cid); count_builder = count_builder.bind(cid); }
+    if let Some(df) = date_from { query_builder = query_builder.bind(df); count_builder = count_builder.bind(df); }
+    if let Some(dt) = date_to { query_builder = query_builder.bind(dt); count_builder = count_builder.bind(dt); }
+    if let Some(s) = status { query_builder = query_builder.bind(s); count_builder = count_builder.bind(s); }
+    if let Some(vt) = visit_type { query_builder = query_builder.bind(vt); count_builder = count_builder.bind(vt); }
 
     query_builder = query_builder.bind(limit).bind(offset);
 
@@ -189,19 +163,18 @@ pub async fn update_visit(
 ) -> Result<Option<Visit>> {
     let visit = sqlx::query_as::<_, Visit>(
         r#"
-        UPDATE visits
-        SET
+        UPDATE visits SET
             scheduled_date = COALESCE($3, scheduled_date),
             scheduled_time_start = COALESCE($4, scheduled_time_start),
             scheduled_time_end = COALESCE($5, scheduled_time_end),
-            status = COALESCE($6, status),
+            status = COALESCE($6::visit_status, status),
             visit_type = COALESCE($7, visit_type),
             updated_at = NOW()
         WHERE id = $1 AND user_id = $2
         RETURNING
-            id, user_id, customer_id, revision_id,
+            id, user_id, customer_id, crew_id, device_id,
             scheduled_date, scheduled_time_start, scheduled_time_end,
-            status, visit_type,
+            status::text, visit_type,
             actual_arrival, actual_departure,
             result, result_notes,
             requires_follow_up, follow_up_reason,
@@ -235,8 +208,7 @@ pub async fn complete_visit(
 ) -> Result<Option<Visit>> {
     let visit = sqlx::query_as::<_, Visit>(
         r#"
-        UPDATE visits
-        SET
+        UPDATE visits SET
             status = 'completed',
             result = $3,
             result_notes = $4,
@@ -247,9 +219,9 @@ pub async fn complete_visit(
             updated_at = NOW()
         WHERE id = $1 AND user_id = $2
         RETURNING
-            id, user_id, customer_id, revision_id,
+            id, user_id, customer_id, crew_id, device_id,
             scheduled_date, scheduled_time_start, scheduled_time_end,
-            status, visit_type,
+            status::text, visit_type,
             actual_arrival, actual_departure,
             result, result_notes,
             requires_follow_up, follow_up_reason,
@@ -273,11 +245,7 @@ pub async fn complete_visit(
 /// Delete a visit
 pub async fn delete_visit(pool: &PgPool, id: Uuid, user_id: Uuid) -> Result<bool> {
     let result = sqlx::query("DELETE FROM visits WHERE id = $1 AND user_id = $2")
-        .bind(id)
-        .bind(user_id)
-        .execute(pool)
-        .await?;
-
+        .bind(id).bind(user_id).execute(pool).await?;
     Ok(result.rows_affected() > 0)
 }
 
@@ -291,9 +259,9 @@ pub async fn get_customer_visits(
     let visits = sqlx::query_as::<_, Visit>(
         r#"
         SELECT
-            id, user_id, customer_id, revision_id,
+            id, user_id, customer_id, crew_id, device_id,
             scheduled_date, scheduled_time_start, scheduled_time_end,
-            status, visit_type,
+            status::text, visit_type,
             actual_arrival, actual_departure,
             result, result_notes,
             requires_follow_up, follow_up_reason,
@@ -304,11 +272,8 @@ pub async fn get_customer_visits(
         LIMIT $3
         "#,
     )
-    .bind(customer_id)
-    .bind(user_id)
-    .bind(limit)
-    .fetch_all(pool)
-    .await?;
+    .bind(customer_id).bind(user_id).bind(limit)
+    .fetch_all(pool).await?;
 
     Ok(visits)
 }

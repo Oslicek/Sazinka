@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use super::{
     ImportDeviceBatchRequest, ImportRevisionBatchRequest,
-    ImportCommunicationBatchRequest, ImportVisitBatchRequest,
+    ImportCommunicationBatchRequest, ImportWorkLogBatchRequest,
     ImportIssue,
 };
 
@@ -143,9 +143,9 @@ pub enum ImportJobRequest {
     /// Communication batch import
     #[serde(rename_all = "camelCase")]
     Communication(ImportCommunicationBatchRequest),
-    /// Visit batch import
+    /// Work log batch import (replaces visit import)
     #[serde(rename_all = "camelCase")]
-    Visit(ImportVisitBatchRequest),
+    WorkLog(ImportWorkLogBatchRequest),
 }
 
 impl ImportJobRequest {
@@ -155,7 +155,7 @@ impl ImportJobRequest {
             ImportJobRequest::Device(r) => r.devices.len(),
             ImportJobRequest::Revision(r) => r.revisions.len(),
             ImportJobRequest::Communication(r) => r.communications.len(),
-            ImportJobRequest::Visit(r) => r.visits.len(),
+            ImportJobRequest::WorkLog(r) => r.entries.len(),
         }
     }
     
@@ -165,7 +165,7 @@ impl ImportJobRequest {
             ImportJobRequest::Device(_) => "device",
             ImportJobRequest::Revision(_) => "revision",
             ImportJobRequest::Communication(_) => "communication",
-            ImportJobRequest::Visit(_) => "visit",
+            ImportJobRequest::WorkLog(_) => "work_log",
         }
     }
 }

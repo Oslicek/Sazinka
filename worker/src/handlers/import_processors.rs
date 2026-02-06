@@ -26,9 +26,9 @@ use crate::types::{
     // Communication import types
     CommunicationImportJobRequest, CommunicationImportJobStatus, CommunicationImportJobStatusUpdate,
     CommunicationImportJobSubmitResponse, QueuedCommunicationImportJob,
-    // Visit import types
-    VisitImportJobRequest, VisitImportJobStatus, VisitImportJobStatusUpdate,
-    VisitImportJobSubmitResponse, QueuedVisitImportJob,
+    // Work log import types (formerly visit import)
+    WorkLogImportJobRequest, WorkLogImportJobStatus, WorkLogImportJobStatusUpdate,
+    WorkLogImportJobSubmitResponse, QueuedWorkLogImportJob,
     // ZIP import types
     ZipImportJobRequest, ZipImportJobStatus, ZipImportJobStatusUpdate,
     ZipImportJobSubmitResponse, QueuedZipImportJob, ZipImportFileInfo, ZipImportFileType,
@@ -354,6 +354,7 @@ impl DeviceImportProcessor {
         let request = CreateDeviceRequest {
             customer_id,
             device_type: device_type.to_string(),
+            device_name: None,
             manufacturer: row.manufacturer.clone(),
             model: row.model.clone(),
             serial_number: row.serial_number.clone(),
@@ -364,6 +365,7 @@ impl DeviceImportProcessor {
         
         let device = queries::device::create_device(
             &self.pool,
+            user_id,
             customer_id,
             &request,
         ).await?;
@@ -666,13 +668,27 @@ impl RevisionImportProcessor {
             .and_then(|t| NaiveTime::parse_from_str(t, "%H:%M").ok()
                 .or_else(|| NaiveTime::parse_from_str(t, "%H:%M:%S").ok()));
         
+        // Parse completed_at from row
+        let completed_at = row.completed_at.as_ref().and_then(|s| {
+            chrono::DateTime::parse_from_rfc3339(s).ok()
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+                .or_else(|| {
+                    chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S").ok()
+                        .map(|ndt| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(ndt, chrono::Utc))
+                })
+        });
+
         let request = CreateRevisionRequest {
             device_id,
             customer_id,
             due_date,
+            status: row.status.clone(),
             scheduled_date,
             scheduled_time_start,
             scheduled_time_end,
+            completed_at,
+            duration_minutes: row.duration_minutes,
+            result: row.result.clone(),
             findings: row.findings.clone(),
         };
         
@@ -1056,14 +1072,14 @@ const VISIT_IMPORT_CONSUMER: &str = "visit_import_workers";
 const VISIT_IMPORT_SUBJECT: &str = "sazinka.jobs.import.visit";
 const VISIT_IMPORT_STATUS_PREFIX: &str = "sazinka.job.import.visit.status";
 
-pub struct VisitImportProcessor {
+pub struct WorkLogImportProcessor {
     client: Client,
     js: JsContext,
     pool: PgPool,
     pending_count: AtomicU32,
 }
 
-impl VisitImportProcessor {
+impl WorkLogImportProcessor {
     pub async fn new(client: Client, pool: PgPool) -> Result<Self> {
         let js = jetstream::new(client.clone());
         
@@ -1087,8 +1103,8 @@ impl VisitImportProcessor {
         })
     }
     
-    pub async fn submit_job(&self, user_id: Uuid, request: VisitImportJobRequest) -> Result<VisitImportJobSubmitResponse> {
-        let job = QueuedVisitImportJob::new(user_id, request);
+    pub async fn submit_job(&self, user_id: Uuid, request: WorkLogImportJobRequest) -> Result<WorkLogImportJobSubmitResponse> {
+        let job = QueuedWorkLogImportJob::new(user_id, request);
         let job_id = job.id;
         
         let payload = serde_json::to_vec(&job)?;
@@ -1098,16 +1114,16 @@ impl VisitImportProcessor {
         
         info!("Visit import job {} submitted, position {} in queue", job_id, pending);
         
-        self.publish_status(job_id, VisitImportJobStatus::Queued { position: pending }).await?;
+        self.publish_status(job_id, WorkLogImportJobStatus::Queued { position: pending }).await?;
         
-        Ok(VisitImportJobSubmitResponse {
+        Ok(WorkLogImportJobSubmitResponse {
             job_id,
             message: "Import úloha byla zařazena do fronty".to_string(),
         })
     }
     
-    pub async fn publish_status(&self, job_id: Uuid, status: VisitImportJobStatus) -> Result<()> {
-        let update = VisitImportJobStatusUpdate::new(job_id, status);
+    pub async fn publish_status(&self, job_id: Uuid, status: WorkLogImportJobStatus) -> Result<()> {
+        let update = WorkLogImportJobStatusUpdate::new(job_id, status);
         let subject = format!("{}.{}", VISIT_IMPORT_STATUS_PREFIX, job_id);
         let payload = serde_json::to_vec(&update)?;
         self.client.publish(subject, payload.into()).await?;
@@ -1149,7 +1165,7 @@ impl VisitImportProcessor {
     }
     
     async fn process_job(&self, msg: jetstream::Message) -> Result<()> {
-        let job: QueuedVisitImportJob = serde_json::from_slice(&msg.payload)?;
+        let job: QueuedWorkLogImportJob = serde_json::from_slice(&msg.payload)?;
         let job_id = job.id;
         let user_id = job.user_id;
         let started_at = job.submitted_at;
@@ -1162,13 +1178,13 @@ impl VisitImportProcessor {
             error!("Failed to ack visit import job {}: {:?}", job_id, e);
         }
         
-        self.publish_status(job_id, VisitImportJobStatus::Parsing { progress: 0 }).await?;
+        self.publish_status(job_id, WorkLogImportJobStatus::Parsing { progress: 0 }).await?;
         
         let rows = match self.parse_csv(&job.request.csv_content).await {
             Ok(rows) => rows,
             Err(e) => {
                 let error_msg = format!("Chyba při parsování CSV: {}", e);
-                self.publish_status(job_id, VisitImportJobStatus::Failed { error: error_msg.clone() }).await?;
+                self.publish_status(job_id, WorkLogImportJobStatus::Failed { error: error_msg.clone() }).await?;
                 JOB_HISTORY.record_failed(job_id, "import.visit", started_at, error_msg);
                 return Ok(());
             }
@@ -1177,12 +1193,12 @@ impl VisitImportProcessor {
         let total = rows.len() as u32;
         if total == 0 {
             let error_msg = "CSV soubor neobsahuje žádné záznamy".to_string();
-            self.publish_status(job_id, VisitImportJobStatus::Failed { error: error_msg.clone() }).await?;
+            self.publish_status(job_id, WorkLogImportJobStatus::Failed { error: error_msg.clone() }).await?;
             JOB_HISTORY.record_failed(job_id, "import.visit", started_at, error_msg);
             return Ok(());
         }
         
-        self.publish_status(job_id, VisitImportJobStatus::Parsing { progress: 100 }).await?;
+        self.publish_status(job_id, WorkLogImportJobStatus::Parsing { progress: 100 }).await?;
         
         let mut succeeded = 0u32;
         let mut failed = 0u32;
@@ -1192,7 +1208,7 @@ impl VisitImportProcessor {
             let processed = (idx + 1) as u32;
             
             if processed % 10 == 0 || processed == total {
-                self.publish_status(job_id, VisitImportJobStatus::Importing {
+                self.publish_status(job_id, WorkLogImportJobStatus::Importing {
                     processed,
                     total,
                     succeeded,
@@ -1212,7 +1228,7 @@ impl VisitImportProcessor {
         
         let report = self.generate_report(&job.request.filename, total, succeeded, failed, &errors);
         
-        self.publish_status(job_id, VisitImportJobStatus::Completed {
+        self.publish_status(job_id, WorkLogImportJobStatus::Completed {
             total,
             succeeded,
             failed,
@@ -1273,11 +1289,13 @@ impl VisitImportProcessor {
             &self.pool,
             user_id,
             customer_id,
-            None, // revision_id
+            None, // crew_id
+            None, // device_id
             scheduled_date,
             scheduled_time_start,
             scheduled_time_end,
             visit_type,
+            None, // status - defaults to planned
         ).await?;
         
         Ok(visit.id)
@@ -1303,10 +1321,10 @@ impl VisitImportProcessor {
     }
 }
 
-pub async fn handle_visit_import_submit(
+pub async fn handle_work_log_import_submit(
     client: Client,
     mut subscriber: Subscriber,
-    processor: Arc<VisitImportProcessor>,
+    processor: Arc<WorkLogImportProcessor>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
         let reply = match msg.reply {
@@ -1314,7 +1332,7 @@ pub async fn handle_visit_import_submit(
             None => continue,
         };
         
-        let request: Request<VisitImportJobRequest> = match serde_json::from_slice(&msg.payload) {
+        let request: Request<WorkLogImportJobRequest> = match serde_json::from_slice(&msg.payload) {
             Ok(req) => req,
             Err(e) => {
                 error!("Failed to parse visit import submit request: {}", e);
@@ -1660,7 +1678,7 @@ impl ZipImportProcessor {
             ZipImportFileType::Communications => {
                 self.import_communications(user_id, csv_content).await
             }
-            ZipImportFileType::Visits => {
+            ZipImportFileType::WorkLog => {
                 self.import_visits(user_id, csv_content).await
             }
         }
@@ -1717,16 +1735,16 @@ impl ZipImportProcessor {
         
         let request = CreateCustomerRequest {
             customer_type: Some(customer_type),
-            name: row.name.clone(),
+            name: Some(row.name.clone()),
             contact_person: row.contact_person.clone(),
             ico: row.ico.clone(),
             dic: row.dic.clone(),
             email,
             phone,
             phone_raw: row.phone.clone(),
-            street: row.street.clone().unwrap_or_default(),
-            city: row.city.clone().unwrap_or_default(),
-            postal_code: row.postal_code.clone().unwrap_or_default(),
+            street: row.street.clone(),
+            city: row.city.clone(),
+            postal_code: row.postal_code.clone(),
             country: row.country.clone(),
             lat: None,
             lng: None,
@@ -1779,6 +1797,7 @@ impl ZipImportProcessor {
         let request = CreateDeviceRequest {
             customer_id,
             device_type: device_type.to_string(),
+            device_name: None,
             manufacturer: row.manufacturer.clone(),
             model: row.model.clone(),
             serial_number: row.serial_number.clone(),
@@ -1789,6 +1808,7 @@ impl ZipImportProcessor {
         
         let device = queries::device::create_device(
             &self.pool,
+            user_id,
             customer_id,
             &request,
         ).await?;
@@ -1847,13 +1867,27 @@ impl ZipImportProcessor {
         let scheduled_time_end = row.scheduled_time_end.as_ref()
             .and_then(|t| NaiveTime::parse_from_str(t, "%H:%M").ok());
         
+        // Parse completed_at from row
+        let completed_at = row.completed_at.as_ref().and_then(|s| {
+            chrono::DateTime::parse_from_rfc3339(s).ok()
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+                .or_else(|| {
+                    chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S").ok()
+                        .map(|ndt| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(ndt, chrono::Utc))
+                })
+        });
+
         let request = CreateRevisionRequest {
             device_id,
             customer_id,
             due_date,
+            status: row.status.clone(),
             scheduled_date,
             scheduled_time_start,
             scheduled_time_end,
+            completed_at,
+            duration_minutes: row.duration_minutes,
+            result: row.result.clone(),
             findings: row.findings.clone(),
         };
         
@@ -1971,11 +2005,13 @@ impl ZipImportProcessor {
             &self.pool,
             user_id,
             customer_id,
-            None, // revision_id
+            None, // crew_id
+            None, // device_id
             scheduled_date,
             scheduled_time_start,
             scheduled_time_end,
             visit_type,
+            None, // status - defaults to planned
         ).await?;
         
         Ok(visit.id)

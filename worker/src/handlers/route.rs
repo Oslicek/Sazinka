@@ -101,7 +101,7 @@ pub async fn handle_plan(
             warnings.push(RouteWarning {
                 stop_index: None,
                 warning_type: "MISSING_COORDINATES".to_string(),
-                message: format!("Customer {} has no coordinates and was excluded", customer.name),
+                message: format!("Customer {} has no coordinates and was excluded", customer.name.as_deref().unwrap_or("(unnamed)")),
             });
         }
 
@@ -209,10 +209,12 @@ pub async fn handle_plan(
             if let Some(customer) = valid_customers.iter().find(|c| c.id.to_string() == stop.stop_id) {
                 planned_stops.push(PlannedRouteStop {
                     customer_id: customer.id,
-                    customer_name: customer.name.clone(),
+                    customer_name: customer.name.clone().unwrap_or_default(),
                     address: format!(
                         "{}, {} {}",
-                        customer.street, customer.city, customer.postal_code
+                        customer.street.as_deref().unwrap_or(""),
+                        customer.city.as_deref().unwrap_or(""),
+                        customer.postal_code.as_deref().unwrap_or("")
                     ),
                     coordinates: Coordinates {
                         lat: customer.lat.unwrap(),
@@ -314,10 +316,10 @@ pub async fn handle_plan(
 /// Simple customer data for route planning
 struct CustomerForRoute {
     id: Uuid,
-    name: String,
-    street: String,
-    city: String,
-    postal_code: String,
+    name: Option<String>,
+    street: Option<String>,
+    city: Option<String>,
+    postal_code: Option<String>,
     lat: Option<f64>,
     lng: Option<f64>,
 }
@@ -334,10 +336,10 @@ async fn load_customers(
         if let Some(customer) = queries::customer::get_customer(pool, user_id, *customer_id).await? {
             customers.push(CustomerForRoute {
                 id: customer.id,
-                name: customer.name,
-                street: customer.street,
-                city: customer.city,
-                postal_code: customer.postal_code,
+                name: customer.name.clone(),
+                street: customer.street.clone(),
+                city: customer.city.clone(),
+                postal_code: customer.postal_code.clone(),
                 lat: customer.lat,
                 lng: customer.lng,
             });
@@ -360,7 +362,7 @@ fn build_vrp_problem(
         .map(|c| VrpStop {
             id: c.id.to_string(),
             customer_id: c.id,
-            customer_name: c.name.clone(),
+            customer_name: c.name.clone().unwrap_or_default(),
             coordinates: Coordinates {
                 lat: c.lat.unwrap(),
                 lng: c.lng.unwrap(),
@@ -484,6 +486,7 @@ pub async fn handle_save(
         match queries::route::upsert_route(
             &pool,
             user_id,
+            None, // crew_id - not specified in save request yet
             payload.date,
             "saved",
             Some(payload.total_distance_km),
@@ -499,24 +502,24 @@ pub async fn handle_save(
                     continue;
                 }
 
-                // Insert new stops (only those with revision_id)
+                // Insert new stops
                 let mut saved_count = 0;
                 for stop in &payload.stops {
-                    if let Some(revision_id) = stop.revision_id {
-                        if let Err(e) = queries::route::insert_route_stop(
-                            &pool,
-                            route.id,
-                            revision_id,
-                            stop.order,
-                            stop.eta,
-                            stop.etd,
-                            None, // distance
-                            None, // duration
-                        ).await {
-                            warn!("Failed to insert stop: {}", e);
-                        } else {
-                            saved_count += 1;
-                        }
+                    if let Err(e) = queries::route::insert_route_stop(
+                        &pool,
+                        route.id,
+                        stop.customer_id,
+                        None, // visit_id
+                        stop.revision_id,
+                        stop.order,
+                        stop.eta,
+                        stop.etd,
+                        None, // distance
+                        None, // duration
+                    ).await {
+                        warn!("Failed to insert stop: {}", e);
+                    } else {
+                        saved_count += 1;
                     }
                 }
 
@@ -1125,19 +1128,19 @@ mod tests {
         let customers = vec![
             CustomerForRoute {
                 id: Uuid::new_v4(),
-                name: "Customer A".to_string(),
-                street: "Street 1".to_string(),
-                city: "Prague".to_string(),
-                postal_code: "11000".to_string(),
+                name: Some("Customer A".to_string()),
+                street: Some("Street 1".to_string()),
+                city: Some("Prague".to_string()),
+                postal_code: Some("11000".to_string()),
                 lat: Some(50.1),
                 lng: Some(14.5),
             },
             CustomerForRoute {
                 id: Uuid::new_v4(),
-                name: "Customer B".to_string(),
-                street: "Street 2".to_string(),
-                city: "Brno".to_string(),
-                postal_code: "60200".to_string(),
+                name: Some("Customer B".to_string()),
+                street: Some("Street 2".to_string()),
+                city: Some("Brno".to_string()),
+                postal_code: Some("60200".to_string()),
                 lat: Some(49.2),
                 lng: Some(16.6),
             },
@@ -1161,10 +1164,10 @@ mod tests {
         let customers = vec![
             CustomerForRoute {
                 id: Uuid::new_v4(),
-                name: "Customer A".to_string(),
-                street: "Street 1".to_string(),
-                city: "Prague".to_string(),
-                postal_code: "11000".to_string(),
+                name: Some("Customer A".to_string()),
+                street: Some("Street 1".to_string()),
+                city: Some("Prague".to_string()),
+                postal_code: Some("11000".to_string()),
                 lat: Some(50.1),
                 lng: Some(14.5),
             },
@@ -1188,10 +1191,10 @@ mod tests {
         let customers = vec![
             CustomerForRoute {
                 id: Uuid::new_v4(),
-                name: "Customer A".to_string(),
-                street: "Street 1".to_string(),
-                city: "Prague".to_string(),
-                postal_code: "11000".to_string(),
+                name: Some("Customer A".to_string()),
+                street: Some("Street 1".to_string()),
+                city: Some("Prague".to_string()),
+                postal_code: Some("11000".to_string()),
                 lat: Some(50.1),
                 lng: Some(14.5),
             },

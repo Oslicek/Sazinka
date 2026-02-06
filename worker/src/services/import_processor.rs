@@ -166,8 +166,8 @@ impl ImportProcessor {
             ImportJobRequest::Communication(batch) => {
                 self.process_communication_import(job_id, user_id, batch).await
             }
-            ImportJobRequest::Visit(batch) => {
-                self.process_visit_import(job_id, user_id, batch).await
+            ImportJobRequest::WorkLog(batch) => {
+                self.process_work_log_import(job_id, user_id, batch).await
             }
         };
         
@@ -280,16 +280,16 @@ impl ImportProcessor {
         Ok((0, 0, vec![]))
     }
     
-    async fn process_visit_import(
+    async fn process_work_log_import(
         &self,
         job_id: Uuid,
         _user_id: Uuid,
-        batch: crate::types::ImportVisitBatchRequest,
+        batch: crate::types::ImportWorkLogBatchRequest,
     ) -> Result<(u32, u32, Vec<ImportIssue>)> {
-        let total = batch.visits.len() as u32;
-        info!("Visit import job {} would process {} visits", job_id, total);
+        let total = batch.entries.len() as u32;
+        info!("Work log import job {} would process {} entries", job_id, total);
         
-        // TODO: Implement actual visit import processing
+        // TODO: Implement actual work log import processing
         Ok((0, 0, vec![]))
     }
 }

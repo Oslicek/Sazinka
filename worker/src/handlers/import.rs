@@ -18,10 +18,11 @@ use crate::types::{
     ImportDeviceBatchRequest, ImportDeviceRequest,
     ImportRevisionBatchRequest, ImportRevisionRequest,
     ImportCommunicationBatchRequest, ImportCommunicationRequest,
-    ImportVisitBatchRequest, ImportVisitRequest,
+    ImportWorkLogBatchRequest, ImportWorkLogRequest,
     DeviceType, RevisionStatus, RevisionResult,
     CommunicationType, CommunicationDirection,
     VisitType, VisitStatus, VisitResult,
+    WorkType, WorkResult,
     CustomerImportJobRequest, CustomerImportJobStatus, CustomerImportJobStatusUpdate,
     CustomerImportJobSubmitResponse, QueuedCustomerImportJob,
     CreateCustomerRequest, CustomerType,
@@ -60,9 +61,22 @@ pub async fn resolve_customer_ref(pool: &PgPool, user_id: Uuid, customer_ref: &s
     Ok(None)
 }
 
-/// Find device by serial number for a customer
+/// Find device by reference for a customer.
+/// Resolution order: serial_number → device_name → device_type (if unique)
 pub async fn resolve_device_ref(pool: &PgPool, _user_id: Uuid, customer_id: Uuid, device_ref: &str) -> Result<Option<Uuid>> {
-    queries::import::find_device_by_serial(pool, customer_id, device_ref).await
+    // 1. Try serial_number
+    if let Some(id) = queries::import::find_device_by_serial(pool, customer_id, device_ref).await? {
+        return Ok(Some(id));
+    }
+    // 2. Try device_name
+    if let Some(id) = queries::import::find_device_by_name(pool, customer_id, device_ref).await? {
+        return Ok(Some(id));
+    }
+    // 3. Try device_type (only if customer has exactly 1 device of that type)
+    if let Some(id) = queries::import::find_device_by_type_single(pool, customer_id, device_ref).await? {
+        return Ok(Some(id));
+    }
+    Ok(None)
 }
 
 // =============================================================================
@@ -149,6 +163,28 @@ fn parse_visit_result(s: &str) -> Option<VisitResult> {
         "failed" | "neúspěšná" | "neuspesna" | "nok" => Some(VisitResult::Failed),
         "customer_absent" | "nepřítomen" | "nepritomen" | "nikdo doma" => Some(VisitResult::CustomerAbsent),
         "rescheduled" | "přeplánováno" | "preplanovano" | "odloženo" | "odlozeno" => Some(VisitResult::Rescheduled),
+        _ => None,
+    }
+}
+
+fn parse_work_type(s: &str) -> Option<WorkType> {
+    match s.to_lowercase().as_str() {
+        "revision" | "revize" | "kontrola" => Some(WorkType::Revision),
+        "repair" | "oprava" | "servis" => Some(WorkType::Repair),
+        "installation" | "instalace" | "montáž" | "montaz" => Some(WorkType::Installation),
+        "consultation" | "konzultace" | "poradenství" | "poradenstvi" => Some(WorkType::Consultation),
+        "follow_up" | "následná" | "nasledna" | "follow-up" => Some(WorkType::FollowUp),
+        _ => None,
+    }
+}
+
+fn parse_work_result(s: &str) -> Option<WorkResult> {
+    match s.to_lowercase().as_str() {
+        "successful" | "úspěšná" | "uspesna" | "ok" => Some(WorkResult::Successful),
+        "partial" | "částečná" | "castecna" => Some(WorkResult::Partial),
+        "failed" | "neúspěšná" | "neuspesna" | "nok" => Some(WorkResult::Failed),
+        "customer_absent" | "nepřítomen" | "nepritomen" => Some(WorkResult::CustomerAbsent),
+        "rescheduled" | "přeplánováno" | "preplanovano" => Some(WorkResult::Rescheduled),
         _ => None,
     }
 }
@@ -281,6 +317,7 @@ pub async fn handle_device_import(
                     &pool, 
                     device_id,
                     device_type,
+                    device_req.device_name.as_deref(),
                     device_req.manufacturer.as_deref(),
                     device_req.model.as_deref(),
                     installation_date,
@@ -302,8 +339,10 @@ pub async fn handle_device_import(
                 // Create new device
                 match queries::import::create_device_import(
                     &pool,
+                    user_id,
                     customer_id,
                     device_type,
+                    device_req.device_name.as_deref(),
                     device_req.manufacturer.as_deref(),
                     device_req.model.as_deref(),
                     device_req.serial_number.as_deref(),
@@ -460,6 +499,17 @@ pub async fn handle_revision_import(
             let scheduled_time_start = rev_req.scheduled_time_start.as_ref().and_then(|t| parse_time(t));
             let scheduled_time_end = rev_req.scheduled_time_end.as_ref().and_then(|t| parse_time(t));
 
+            // Parse completed_at from the CSV field
+            let completed_at = rev_req.completed_at.as_ref().and_then(|s| {
+                chrono::DateTime::parse_from_rfc3339(s).ok()
+                    .map(|dt| dt.with_timezone(&chrono::Utc))
+                    .or_else(|| {
+                        // Try YYYY-MM-DDTHH:MM:SS format
+                        chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S").ok()
+                            .map(|ndt| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(ndt, chrono::Utc))
+                    })
+            });
+
             // Check for existing revision (by device + due_date)
             let existing = queries::import::find_revision_by_device_and_date(&pool, device_id, due_date).await.ok().flatten();
 
@@ -471,6 +521,7 @@ pub async fn handle_revision_import(
                     scheduled_date,
                     scheduled_time_start,
                     scheduled_time_end,
+                    completed_at,
                     rev_req.duration_minutes,
                     result,
                     rev_req.findings.as_deref(),
@@ -497,6 +548,7 @@ pub async fn handle_revision_import(
                     scheduled_date,
                     scheduled_time_start,
                     scheduled_time_end,
+                    completed_at,
                     rev_req.duration_minutes,
                     result,
                     rev_req.findings.as_deref(),
@@ -684,16 +736,25 @@ pub async fn handle_communication_import(
 }
 
 // =============================================================================
-// VISIT IMPORT HANDLER
+// WORK LOG IMPORT HANDLER (replaces old visit import)
 // =============================================================================
 
-pub async fn handle_visit_import(
+/// Group key for work log entries that belong to the same visit
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct VisitGroupKey {
+    customer_ref: String,
+    scheduled_date: String,
+}
+
+pub async fn handle_work_log_import(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
 ) -> Result<()> {
+    use std::collections::HashMap;
+
     while let Some(msg) = subscriber.next().await {
-        debug!("Received import.visit message");
+        debug!("Received import.worklog message");
 
         let reply = match msg.reply {
             Some(ref reply) => reply.clone(),
@@ -703,7 +764,7 @@ pub async fn handle_visit_import(
             }
         };
 
-        let request: Request<ImportVisitBatchRequest> = match serde_json::from_slice(&msg.payload) {
+        let request: Request<ImportWorkLogBatchRequest> = match serde_json::from_slice(&msg.payload) {
             Ok(req) => req,
             Err(e) => {
                 error!("Failed to parse request: {}", e);
@@ -725,19 +786,30 @@ pub async fn handle_visit_import(
         let mut imported_count = 0;
         let mut errors = Vec::new();
 
-        for (idx, visit_req) in request.payload.visits.iter().enumerate() {
-            let row_number = (idx + 2) as i32;
+        // Group entries by (customer_ref, scheduled_date) to create one visit per group
+        let mut groups: HashMap<VisitGroupKey, Vec<(usize, &ImportWorkLogRequest)>> = HashMap::new();
+        for (idx, entry) in request.payload.entries.iter().enumerate() {
+            let key = VisitGroupKey {
+                customer_ref: entry.customer_ref.clone(),
+                scheduled_date: entry.scheduled_date.clone(),
+            };
+            groups.entry(key).or_default().push((idx, entry));
+        }
+
+        for (key, entries) in &groups {
+            let first_idx = entries[0].0;
+            let row_number = (first_idx + 2) as i32;
 
             // Resolve customer
-            let customer_id = match resolve_customer_ref(&pool, user_id, &visit_req.customer_ref).await {
+            let customer_id = match resolve_customer_ref(&pool, user_id, &key.customer_ref).await {
                 Ok(Some(id)) => id,
                 Ok(None) => {
                     errors.push(ImportIssue {
                         row_number,
                         level: ImportIssueLevel::Error,
                         field: "customer_ref".to_string(),
-                        message: format!("Zákazník nenalezen: {}", visit_req.customer_ref),
-                        original_value: Some(visit_req.customer_ref.clone()),
+                        message: format!("Zákazník nenalezen: {}", key.customer_ref),
+                        original_value: Some(key.customer_ref.clone()),
                     });
                     continue;
                 }
@@ -747,91 +819,128 @@ pub async fn handle_visit_import(
                         level: ImportIssueLevel::Error,
                         field: "customer_ref".to_string(),
                         message: format!("Chyba: {}", e),
-                        original_value: Some(visit_req.customer_ref.clone()),
+                        original_value: Some(key.customer_ref.clone()),
                     });
                     continue;
                 }
             };
 
-            // Resolve device (optional)
-            let device_id = if let Some(ref device_ref) = visit_req.device_ref {
-                match resolve_device_ref(&pool, user_id, customer_id, device_ref).await {
-                    Ok(id) => id,
-                    Err(_) => None,
-                }
-            } else {
-                None
-            };
-
             // Parse scheduled_date
-            let scheduled_date = match parse_date(&visit_req.scheduled_date) {
+            let scheduled_date = match parse_date(&key.scheduled_date) {
                 Some(d) => d,
                 None => {
                     errors.push(ImportIssue {
                         row_number,
                         level: ImportIssueLevel::Error,
                         field: "scheduled_date".to_string(),
-                        message: format!("Neplatné datum: {}", visit_req.scheduled_date),
-                        original_value: Some(visit_req.scheduled_date.clone()),
+                        message: format!("Neplatné datum: {}", key.scheduled_date),
+                        original_value: Some(key.scheduled_date.clone()),
                     });
                     continue;
                 }
             };
 
-            // Parse visit_type
-            let visit_type = match parse_visit_type(&visit_req.visit_type) {
-                Some(vt) => vt,
-                None => {
-                    errors.push(ImportIssue {
-                        row_number,
-                        level: ImportIssueLevel::Error,
-                        field: "visit_type".to_string(),
-                        message: format!("Neznámý typ: {}", visit_req.visit_type),
-                        original_value: Some(visit_req.visit_type.clone()),
-                    });
-                    continue;
-                }
-            };
+            // Use time from first entry
+            let first_entry = entries[0].1;
+            let scheduled_time_start = first_entry.scheduled_time_start.as_ref().and_then(|t| parse_time(t));
+            let scheduled_time_end = first_entry.scheduled_time_end.as_ref().and_then(|t| parse_time(t));
 
-            let status = visit_req.status.as_ref()
+            // Determine overall visit status from entries
+            let visit_status = first_entry.status.as_ref()
                 .and_then(|s| parse_visit_status(s))
                 .unwrap_or(VisitStatus::Planned);
 
-            let result = visit_req.result.as_ref()
-                .and_then(|r| parse_visit_result(r));
+            // Determine visit_type from first entry's work_type
+            let visit_type_str = first_entry.work_type.as_str();
 
-            let scheduled_time_start = visit_req.scheduled_time_start.as_ref().and_then(|t| parse_time(t));
-            let scheduled_time_end = visit_req.scheduled_time_end.as_ref().and_then(|t| parse_time(t));
-
-            match queries::import::create_visit_import(
+            // Create the visit
+            let visit_id = match queries::import::create_visit_from_work_log(
                 &pool,
                 user_id,
                 customer_id,
-                device_id,
+                None, // crew_id
                 scheduled_date,
                 scheduled_time_start,
                 scheduled_time_end,
-                visit_type,
-                status,
-                result,
-                visit_req.result_notes.as_deref(),
-                visit_req.requires_follow_up.unwrap_or(false),
-                visit_req.follow_up_reason.as_deref(),
+                visit_status,
+                visit_type_str,
             ).await {
-                Ok(_) => imported_count += 1,
+                Ok(id) => id,
                 Err(e) => {
                     errors.push(ImportIssue {
                         row_number,
                         level: ImportIssueLevel::Error,
                         field: "database".to_string(),
-                        message: format!("Chyba: {}", e),
+                        message: format!("Chyba při vytváření návštěvy: {}", e),
                         original_value: None,
                     });
+                    continue;
+                }
+            };
+
+            // Create work items for each entry in the group
+            for (idx, entry) in entries {
+                let entry_row = (*idx + 2) as i32;
+
+                // Parse work_type
+                let work_type = match parse_work_type(&entry.work_type) {
+                    Some(wt) => wt,
+                    None => {
+                        errors.push(ImportIssue {
+                            row_number: entry_row,
+                            level: ImportIssueLevel::Error,
+                            field: "work_type".to_string(),
+                            message: format!("Neznámý typ práce: {}", entry.work_type),
+                            original_value: Some(entry.work_type.clone()),
+                        });
+                        continue;
+                    }
+                };
+
+                // Resolve device (optional)
+                let device_id = if let Some(ref device_ref) = entry.device_ref {
+                    match resolve_device_ref(&pool, user_id, customer_id, device_ref).await {
+                        Ok(id) => id,
+                        Err(_) => None,
+                    }
+                } else {
+                    None
+                };
+
+                let result = entry.result.as_ref().and_then(|r| parse_work_result(r));
+                let requires_follow_up = entry.requires_follow_up.unwrap_or(false);
+
+                match queries::import::create_work_item_from_import(
+                    &pool,
+                    visit_id,
+                    device_id,
+                    None, // revision_id - linked later if work_type=revision
+                    None, // crew_id
+                    work_type,
+                    entry.duration_minutes,
+                    result,
+                    entry.result_notes.as_deref(),
+                    entry.findings.as_deref(),
+                    requires_follow_up,
+                    entry.follow_up_reason.as_deref(),
+                ).await {
+                    Ok(_) => {}
+                    Err(e) => {
+                        errors.push(ImportIssue {
+                            row_number: entry_row,
+                            level: ImportIssueLevel::Error,
+                            field: "database".to_string(),
+                            message: format!("Chyba při vytváření úkonu: {}", e),
+                            original_value: None,
+                        });
+                    }
                 }
             }
+
+            imported_count += 1;
         }
 
-        info!("Visit import: {} imported, {} errors", imported_count, errors.len());
+        info!("Work log import: {} visits imported, {} errors", imported_count, errors.len());
 
         let response = SuccessResponse::new(request.id, ImportBatchResponse {
             imported_count,
@@ -1170,7 +1279,7 @@ impl CustomerImportProcessor {
             &self.pool,
             user_id,
             &CreateCustomerRequest {
-                name: row.name.clone(),
+                name: Some(row.name.clone()),
                 customer_type: Some(customer_type),
                 contact_person: row.contact_person.clone(),
                 ico,
@@ -1178,9 +1287,9 @@ impl CustomerImportProcessor {
                 email,
                 phone: phone.clone(),
                 phone_raw: row.phone.clone(),
-                street: row.street.clone().unwrap_or_default(),
-                city: row.city.clone().unwrap_or_default(),
-                postal_code,
+                street: row.street.clone(),
+                city: row.city.clone(),
+                postal_code: Some(postal_code),
                 country: row.country.clone(),
                 lat: None,
                 lng: None,

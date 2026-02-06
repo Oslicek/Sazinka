@@ -267,7 +267,7 @@ impl JobProcessor {
             warnings.push(RouteWarning {
                 stop_index: None,
                 warning_type: "MISSING_COORDINATES".to_string(),
-                message: format!("Zákazník {} nemá souřadnice", customer.name),
+                message: format!("Zákazník {} nemá souřadnice", customer.name.as_deref().unwrap_or("(unnamed)")),
             });
         }
         
@@ -362,8 +362,8 @@ impl JobProcessor {
             if let Some(customer) = valid_customers.iter().find(|c| c.id.to_string() == stop.stop_id) {
                 planned_stops.push(PlannedRouteStop {
                     customer_id: customer.id,
-                    customer_name: customer.name.clone(),
-                    address: format!("{}, {} {}", customer.street, customer.city, customer.postal_code),
+                    customer_name: customer.name.clone().unwrap_or_default(),
+                    address: format!("{}, {} {}", customer.street.as_deref().unwrap_or(""), customer.city.as_deref().unwrap_or(""), customer.postal_code.as_deref().unwrap_or("")),
                     coordinates: Coordinates {
                         lat: customer.lat.unwrap(),
                         lng: customer.lng.unwrap(),
@@ -453,10 +453,10 @@ impl JobProcessor {
             if let Some(customer) = queries::customer::get_customer(&self.pool, user_id, *customer_id).await? {
                 customers.push(CustomerForRoute {
                     id: customer.id,
-                    name: customer.name,
-                    street: customer.street,
-                    city: customer.city,
-                    postal_code: customer.postal_code,
+                    name: customer.name.clone(),
+                    street: customer.street.clone(),
+                    city: customer.city.clone(),
+                    postal_code: customer.postal_code.clone(),
                     lat: customer.lat,
                     lng: customer.lng,
                 });
@@ -480,7 +480,7 @@ impl JobProcessor {
             .map(|c| VrpStop {
                 id: c.id.to_string(),
                 customer_id: c.id,
-                customer_name: c.name.clone(),
+                customer_name: c.name.clone().unwrap_or_default(),
                 coordinates: Coordinates {
                     lat: c.lat.unwrap(),
                     lng: c.lng.unwrap(),
@@ -503,10 +503,10 @@ impl JobProcessor {
 /// Simple customer data for route planning
 struct CustomerForRoute {
     id: Uuid,
-    name: String,
-    street: String,
-    city: String,
-    postal_code: String,
+    name: Option<String>,
+    street: Option<String>,
+    city: Option<String>,
+    postal_code: Option<String>,
     lat: Option<f64>,
     lng: Option<f64>,
 }

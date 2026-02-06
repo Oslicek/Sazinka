@@ -37,13 +37,13 @@ pub async fn create_customer(
             $1, $2, $3, $4, $5, $6, $7,
             $8, $9, $10,
             $11, $12, $13, $14,
-            $15, $16, $17, $18, NOW(), NOW()
+            $15, $16, $17::geocode_status_enum, $18, NOW(), NOW()
         )
         RETURNING
             id, user_id, customer_type, name, contact_person, ico, dic,
             email, phone, phone_raw,
             street, city, postal_code, country,
-            lat, lng, geocode_status, notes, created_at, updated_at
+            lat, lng, geocode_status::text, notes, created_at, updated_at
         "#
     )
     .bind(Uuid::new_v4())
@@ -82,7 +82,7 @@ pub async fn get_customer(
             id, user_id, customer_type, name, contact_person, ico, dic,
             email, phone, phone_raw,
             street, city, postal_code, country,
-            lat, lng, geocode_status, notes, created_at, updated_at
+            lat, lng, geocode_status::text, notes, created_at, updated_at
         FROM customers
         WHERE id = $1 AND user_id = $2
         "#
@@ -108,7 +108,7 @@ pub async fn list_customers(
             id, user_id, customer_type, name, contact_person, ico, dic,
             email, phone, phone_raw,
             street, city, postal_code, country,
-            lat, lng, geocode_status, notes, created_at, updated_at
+            lat, lng, geocode_status::text, notes, created_at, updated_at
         FROM customers
         WHERE user_id = $1
         ORDER BY name ASC
@@ -203,7 +203,7 @@ pub async fn update_customer(
             country = COALESCE($14, country),
             lat = COALESCE($15, lat),
             lng = COALESCE($16, lng),
-            geocode_status = COALESCE($17, geocode_status),
+            geocode_status = COALESCE($17::geocode_status_enum, geocode_status),
             notes = COALESCE($18, notes),
             updated_at = NOW()
         WHERE id = $1 AND user_id = $2
@@ -211,7 +211,7 @@ pub async fn update_customer(
             id, user_id, customer_type, name, contact_person, ico, dic,
             email, phone, phone_raw,
             street, city, postal_code, country,
-            lat, lng, geocode_status, notes, created_at, updated_at
+            lat, lng, geocode_status::text, notes, created_at, updated_at
         "#
     )
     .bind(req.id)
@@ -270,7 +270,7 @@ pub async fn get_random_customers_with_coords(
             id, user_id, customer_type, name, contact_person, ico, dic,
             email, phone, phone_raw,
             street, city, postal_code, country,
-            lat, lng, geocode_status, notes, created_at, updated_at
+            lat, lng, geocode_status::text, notes, created_at, updated_at
         FROM customers
         WHERE user_id = $1 AND lat IS NOT NULL AND lng IS NOT NULL
         ORDER BY RANDOM()
@@ -316,7 +316,7 @@ pub async fn list_customers_extended(
 
     // Geocode status filter
     if let Some(ref status) = req.geocode_status {
-        conditions.push(format!("c.geocode_status = ${}", param_idx));
+        conditions.push(format!("c.geocode_status::text = ${}", param_idx));
         param_idx += 1;
         let _ = status; // Used in binding
     }
@@ -410,7 +410,7 @@ pub async fn list_customers_extended(
             c.postal_code,
             c.lat,
             c.lng,
-            c.geocode_status,
+            c.geocode_status::text,
             c.created_at,
             COALESCE(COUNT(DISTINCT ds.device_id), 0) as device_count,
             MIN(r.due_date) FILTER (WHERE r.status NOT IN ('completed', 'cancelled') AND r.due_date >= CURRENT_DATE) as next_revision_date,
