@@ -9,15 +9,16 @@ import {
   subscribeToGeocodeJobStatus,
   type GeocodeJobStatusUpdate,
 } from '../services/customerService';
-import { listVehicles, type Vehicle as VehicleData } from '../services/vehicleService';
-import { listDepots, type Depot } from '../services/settingsService';
+import { listCrews, type Crew as CrewData } from '../services/crewService';
+import { listDepots } from '../services/settingsService';
+import type { Depot } from '@shared/settings';
 import * as routeService from '../services/routeService';
 import * as insertionService from '../services/insertionService';
 import { CustomerWorkspace, type TabId } from '../components/customers/CustomerWorkspace';
 import { CustomerHeader } from '../components/customers/CustomerHeader';
 import { CustomerEditDrawer } from '../components/customers/CustomerEditDrawer';
 import { DeleteConfirmDialog } from '../components/customers/DeleteConfirmDialog';
-import { ScheduleDialog, type ScheduleTarget, type Vehicle } from '../components/common/ScheduleDialog';
+import { ScheduleDialog, type ScheduleTarget, type Crew } from '../components/common/ScheduleDialog';
 import type { SlotSuggestion } from '../components/planner/SlotSuggestions';
 import { DeviceList } from '../components/devices';
 import { CustomerTimeline } from '../components/timeline';
@@ -26,6 +27,12 @@ import styles from './CustomerDetail.module.css';
 
 // Temporary user ID until auth is implemented
 const TEMP_USER_ID = '00000000-0000-0000-0000-000000000001';
+
+// Default mock crews (fallback when none in database)
+const DEFAULT_CREWS: Crew[] = [
+  { id: 'default-1', name: 'Posádka 1', licensePlate: '1A1 1234' },
+  { id: 'default-2', name: 'Posádka 2', licensePlate: '2B2 5678' },
+];
 
 interface SearchParams {
   edit?: boolean;
@@ -57,7 +64,7 @@ export function CustomerDetail() {
   // Schedule dialog
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
   const [isScheduling, setIsScheduling] = useState(false);
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [crews, setCrews] = useState<Crew[]>([]);
   const [depots, setDepots] = useState<Depot[]>([]);
 
   const isConnected = useNatsStore((s) => s.isConnected);
@@ -186,20 +193,27 @@ export function CustomerDetail() {
   // Handle "Add to Plan" action - open schedule dialog
   const handleAddToPlan = useCallback(async () => {
     if (customer?.lat && customer?.lng) {
-      // Load vehicles and depots when opening dialog
+      // Always start with default crews, then try to fetch from backend
+      setCrews(DEFAULT_CREWS);
+      
+      // Load crews and depots when opening dialog
       try {
-        const [vehicleList, depotList] = await Promise.all([
-          listVehicles(true),
-          listDepots(),
+        const [crewList, depotList] = await Promise.all([
+          listCrews(true),
+          listDepots(TEMP_USER_ID),
         ]);
-        setVehicles(vehicleList.map((v: VehicleData) => ({
-          id: v.id,
-          name: v.name,
-          licensePlate: v.licensePlate || undefined,
-        })));
+        // Use fetched crews if available, otherwise keep defaults
+        if (crewList.length > 0) {
+          setCrews(crewList.map((crew: CrewData) => ({
+            id: crew.id,
+            name: crew.name,
+            licensePlate: undefined,
+          })));
+        }
         setDepots(depotList);
       } catch (err) {
-        console.error('Failed to load vehicles/depots:', err);
+        console.error('Failed to load crews/depots:', err);
+        // Keep defaults on error (already set above)
       }
       setShowScheduleDialog(true);
     }
@@ -209,7 +223,7 @@ export function CustomerDetail() {
   const handleFetchSlots = useCallback(async (
     _targetId: string,
     date: string,
-    _vehicleId: string
+    _crewId: string
   ): Promise<SlotSuggestion[]> => {
     if (!customer?.lat || !customer?.lng) {
       return [];
@@ -261,7 +275,17 @@ export function CustomerDetail() {
         insertBeforeName: pos.insertBeforeName,
       }));
 
-      return suggestions;
+      // Return suggestions or default slots if empty
+      if (suggestions.length > 0) {
+        return suggestions;
+      }
+      
+      // Return default time slots when no route exists
+      return [
+        { id: 'slot-morning', date, timeStart: '08:00', timeEnd: '08:30', status: 'ok' as const, deltaKm: 0, deltaMin: 0, insertAfterIndex: -1, insertAfterName: 'Start', insertBeforeName: 'Konec' },
+        { id: 'slot-midmorning', date, timeStart: '10:00', timeEnd: '10:30', status: 'ok' as const, deltaKm: 0, deltaMin: 0, insertAfterIndex: -1, insertAfterName: 'Start', insertBeforeName: 'Konec' },
+        { id: 'slot-afternoon', date, timeStart: '14:00', timeEnd: '14:30', status: 'ok' as const, deltaKm: 0, deltaMin: 0, insertAfterIndex: -1, insertAfterName: 'Start', insertBeforeName: 'Konec' },
+      ];
     } catch (err) {
       console.error('Failed to fetch slots:', err);
       // Return a default slot if route calculation fails
@@ -284,13 +308,13 @@ export function CustomerDetail() {
   const handleSchedule = useCallback(async (
     _targetId: string,
     _date: string,
-    _vehicleId: string,
+    _crewId: string,
     _slot: SlotSuggestion
   ) => {
     setIsScheduling(true);
     try {
       // TODO: Call actual scheduling API
-      console.log('Scheduling visit:', { _targetId, _date, _vehicleId, _slot });
+      console.log('Scheduling visit:', { _targetId, _date, _crewId, _slot });
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 500));
       setShowScheduleDialog(false);
@@ -437,7 +461,7 @@ export function CustomerDetail() {
         isOpen={showScheduleDialog}
         onClose={() => setShowScheduleDialog(false)}
         target={scheduleTarget}
-        vehicles={vehicles}
+        crews={crews}
         onSchedule={handleSchedule}
         onFetchSlots={handleFetchSlots}
         isSubmitting={isScheduling}

@@ -221,6 +221,22 @@
   text-transform: uppercase;
 }
 
+.depotCard.inactive {
+  opacity: 0.6;
+  border-color: var(--color-border);
+  background: var(--color-bg-secondary);
+}
+
+.inactiveBadge {
+  font-size: 0.625rem;
+  padding: 0.125rem 0.375rem;
+  background: var(--color-text-secondary);
+  color: white;
+  border-radius: 9999px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
 .depotActions {
   display: flex;
   gap: 0.375rem;

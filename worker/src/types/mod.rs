@@ -13,7 +13,7 @@ pub mod route;
 pub mod settings;
 pub mod user;
 pub mod valhalla_job;
-pub mod vehicle;
+pub mod crew;
 pub mod visit;
 
 pub use communication::*;
@@ -29,5 +29,5 @@ pub use route::*;
 pub use settings::*;
 pub use user::*;
 pub use valhalla_job::*;
-pub use vehicle::*;
+pub use crew::*;
 pub use visit::*;

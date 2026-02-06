@@ -43,7 +43,7 @@
   font-size: 0.875rem;
 }
 
-.vehicleSelect {
+.crewSelect {
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -53,7 +53,7 @@
   cursor: pointer;
 }
 
-.vehicleSelect:disabled {
+.crewSelect:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }

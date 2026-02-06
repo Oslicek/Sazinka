@@ -1,4 +1,4 @@
-//! Vehicle handlers for NATS messages
+//! Crew handlers for NATS messages
 
 use anyhow::Result;
 use async_nats::{Client, Subscriber};
@@ -10,18 +10,18 @@ use uuid::Uuid;
 use crate::db::queries;
 use crate::types::{
     ErrorResponse, Request, SuccessResponse,
-    CreateVehicleRequest, UpdateVehicleRequest, ListVehiclesRequest, 
-    DeleteVehicleRequest, Vehicle, VehicleListResponse,
+    CreateCrewRequest, UpdateCrewRequest, ListCrewsRequest, 
+    DeleteCrewRequest, Crew, CrewListResponse,
 };
 
-/// Handle vehicle.create messages
+/// Handle crew.create messages
 pub async fn handle_create(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
-        debug!("Received vehicle.create message");
+        debug!("Received crew.create message");
 
         let reply = match msg.reply {
             Some(ref reply) => reply.clone(),
@@ -31,7 +31,7 @@ pub async fn handle_create(
             }
         };
 
-        let request: Request<CreateVehicleRequest> = match serde_json::from_slice(&msg.payload) {
+        let request: Request<CreateCrewRequest> = match serde_json::from_slice(&msg.payload) {
             Ok(req) => req,
             Err(e) => {
                 error!("Failed to parse request: {}", e);
@@ -50,13 +50,13 @@ pub async fn handle_create(
             }
         };
 
-        match queries::vehicle::create_vehicle(&pool, user_id, request.payload).await {
-            Ok(vehicle) => {
-                let response = SuccessResponse::new(request.id, vehicle);
+        match queries::crew::create_crew(&pool, user_id, request.payload).await {
+            Ok(crew) => {
+                let response = SuccessResponse::new(request.id, crew);
                 let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
             }
             Err(e) => {
-                error!("Failed to create vehicle: {}", e);
+                error!("Failed to create crew: {}", e);
                 let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
             }
@@ -66,14 +66,14 @@ pub async fn handle_create(
     Ok(())
 }
 
-/// Handle vehicle.list messages
+/// Handle crew.list messages
 pub async fn handle_list(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
-        debug!("Received vehicle.list message");
+        debug!("Received crew.list message");
 
         let reply = match msg.reply {
             Some(ref reply) => reply.clone(),
@@ -83,7 +83,7 @@ pub async fn handle_list(
             }
         };
 
-        let request: Request<ListVehiclesRequest> = match serde_json::from_slice(&msg.payload) {
+        let request: Request<ListCrewsRequest> = match serde_json::from_slice(&msg.payload) {
             Ok(req) => req,
             Err(e) => {
                 error!("Failed to parse request: {}", e);
@@ -104,17 +104,17 @@ pub async fn handle_list(
 
         let active_only = request.payload.active_only.unwrap_or(true);
 
-        match queries::vehicle::list_vehicles(&pool, user_id, active_only).await {
-            Ok(vehicles) => {
-                let total = vehicles.len() as i64;
-                let response = SuccessResponse::new(request.id, VehicleListResponse {
-                    items: vehicles,
+        match queries::crew::list_crews(&pool, user_id, active_only).await {
+            Ok(crews) => {
+                let total = crews.len() as i64;
+                let response = SuccessResponse::new(request.id, CrewListResponse {
+                    items: crews,
                     total,
                 });
                 let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
             }
             Err(e) => {
-                error!("Failed to list vehicles: {}", e);
+                error!("Failed to list crews: {}", e);
                 let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
             }
@@ -124,14 +124,14 @@ pub async fn handle_list(
     Ok(())
 }
 
-/// Handle vehicle.update messages
+/// Handle crew.update messages
 pub async fn handle_update(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
-        debug!("Received vehicle.update message");
+        debug!("Received crew.update message");
 
         let reply = match msg.reply {
             Some(ref reply) => reply.clone(),
@@ -141,7 +141,7 @@ pub async fn handle_update(
             }
         };
 
-        let request: Request<UpdateVehicleRequest> = match serde_json::from_slice(&msg.payload) {
+        let request: Request<UpdateCrewRequest> = match serde_json::from_slice(&msg.payload) {
             Ok(req) => req,
             Err(e) => {
                 error!("Failed to parse request: {}", e);
@@ -160,17 +160,17 @@ pub async fn handle_update(
             }
         };
 
-        match queries::vehicle::update_vehicle(&pool, user_id, request.payload).await {
-            Ok(Some(vehicle)) => {
-                let response = SuccessResponse::new(request.id, vehicle);
+        match queries::crew::update_crew(&pool, user_id, request.payload).await {
+            Ok(Some(crew)) => {
+                let response = SuccessResponse::new(request.id, crew);
                 let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
             }
             Ok(None) => {
-                let error = ErrorResponse::new(request.id, "NOT_FOUND", "Vehicle not found");
+                let error = ErrorResponse::new(request.id, "NOT_FOUND", "Crew not found");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
             }
             Err(e) => {
-                error!("Failed to update vehicle: {}", e);
+                error!("Failed to update crew: {}", e);
                 let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
             }
@@ -180,14 +180,14 @@ pub async fn handle_update(
     Ok(())
 }
 
-/// Handle vehicle.delete messages
+/// Handle crew.delete messages
 pub async fn handle_delete(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
-        debug!("Received vehicle.delete message");
+        debug!("Received crew.delete message");
 
         let reply = match msg.reply {
             Some(ref reply) => reply.clone(),
@@ -197,7 +197,7 @@ pub async fn handle_delete(
             }
         };
 
-        let request: Request<DeleteVehicleRequest> = match serde_json::from_slice(&msg.payload) {
+        let request: Request<DeleteCrewRequest> = match serde_json::from_slice(&msg.payload) {
             Ok(req) => req,
             Err(e) => {
                 error!("Failed to parse request: {}", e);
@@ -216,17 +216,17 @@ pub async fn handle_delete(
             }
         };
 
-        match queries::vehicle::delete_vehicle(&pool, request.payload.id, user_id).await {
+        match queries::crew::delete_crew(&pool, request.payload.id, user_id).await {
             Ok(true) => {
                 let response = SuccessResponse::new(request.id, serde_json::json!({ "deleted": true }));
                 let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
             }
             Ok(false) => {
-                let error = ErrorResponse::new(request.id, "NOT_FOUND", "Vehicle not found");
+                let error = ErrorResponse::new(request.id, "NOT_FOUND", "Crew not found");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
             }
             Err(e) => {
-                error!("Failed to delete vehicle: {}", e);
+                error!("Failed to delete crew: {}", e);
                 let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
             }

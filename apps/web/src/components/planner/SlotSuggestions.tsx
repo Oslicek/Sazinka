@@ -54,7 +54,7 @@ export function SlotSuggestions({
   if (visibleSlots.length === 0) {
     return (
       <div className={styles.empty}>
-        Žádné dostupné sloty pro tento den/auto.
+        Žádné dostupné sloty pro tento den/posádku.
       </div>
     );
   }

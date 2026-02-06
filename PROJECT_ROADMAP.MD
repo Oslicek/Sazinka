@@ -90,7 +90,7 @@
 │                                                  │                          │
 │                                                  ▼                          │
 │                                        ┌──────────────────┐                │
-│                                        │ 8D: Multi-Vehicle│                │
+│                                        │ 8D: Multi-Crew   │                │
 │                                        │   + Draft Mode   │                │
 │                                        └──────────────────┘                │
 │                                                                              │
@@ -760,7 +760,7 @@ CREATE TABLE user_consents (
 │   ┌──────────────────────────────────────────────────────────────────────┐  │
 │   │ 6B: Schedule Dialog (MVP)                                            │  │
 │   │  ├─ Výběr dne + časového okna                                       │  │
-│   │  ├─ Přiřazení vozidla/technika                                      │  │
+│   │  ├─ Přiřazení posádky/technika                                      │  │
 │   │  ├─ Délka úkonu (default z device type)                             │  │
 │   │  └─ Uložení do Revision (scheduled_date, time_window)               │  │
 │   └──────────────────────────────────────────────────────────────────────┘  │
@@ -770,7 +770,7 @@ CREATE TABLE user_consents (
 │   │ 6C: Enhanced Day Planner (MVP)                                       │  │
 │   │  ├─ Seznam zastávek s časovými okny                                 │  │
 │   │  ├─ Varování konfliktů (červené/žluté)                              │  │
-│   │  ├─ Vehicle tabs (multi-car)                                         │  │
+│   │  ├─ Crew tabs (multi-crew)                                           │  │
 │   │  └─ Day load indicator                                               │  │
 │   └──────────────────────────────────────────────────────────────────────┘  │
 │                                    │                                         │
@@ -786,7 +786,7 @@ CREATE TABLE user_consents (
 │   ┌──────────────────────────────────────────────────────────────────────┐  │
 │   │ 6E: Smart Slots (V2)                                                 │  │
 │   │  ├─ Insertion heuristic algoritmus                                   │  │
-│   │  ├─ Valhalla matrix cache per den/vozidlo                           │  │
+│   │  ├─ Valhalla matrix cache per den/posádka                           │  │
 │   │  ├─ 3-5 doporučených slotů při domluvě                              │  │
 │   │  └─ Vizualizace dopadu na trasu (+X min)                            │  │
 │   └──────────────────────────────────────────────────────────────────────┘  │
@@ -837,10 +837,10 @@ ORDER BY
 
 **Database changes:**
 ```sql
-ALTER TABLE revisions ADD COLUMN assigned_vehicle_id UUID;
+ALTER TABLE revisions ADD COLUMN assigned_crew_id UUID;
 ALTER TABLE revisions ADD COLUMN route_order INTEGER;
 
-CREATE TABLE vehicles (
+CREATE TABLE crews (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id),
   name VARCHAR(100) NOT NULL,
@@ -855,16 +855,16 @@ CREATE TABLE vehicles (
 ```
 
 **NATS subjects:**
-- `sazinka.vehicle.create` - Create vehicle
-- `sazinka.vehicle.list` - List vehicles
-- `sazinka.vehicle.update` - Update vehicle
-- `sazinka.vehicle.delete` - Delete vehicle
+- `sazinka.crew.create` - Create crew
+- `sazinka.crew.list` - List crews
+- `sazinka.crew.update` - Update crew
+- `sazinka.crew.delete` - Delete crew
 
 **Files to create:**
-- [x] `worker/src/types/vehicle.rs` - NEW ✅
-- [x] `worker/src/handlers/vehicle.rs` - NEW ✅
-- [x] `worker/src/db/queries/vehicle.rs` - NEW ✅
-- [ ] `apps/web/src/services/vehicleService.ts` - NEW (pending)
+- [x] `worker/src/types/crew.rs` - NEW ✅
+- [x] `worker/src/handlers/crew.rs` - NEW ✅
+- [x] `worker/src/db/queries/crew.rs` - NEW ✅
+- [x] `apps/web/src/services/crewService.ts` - NEW ✅
 - [x] Schedule dialog inline in CallQueue.tsx ✅
 
 ---
@@ -872,7 +872,7 @@ CREATE TABLE vehicles (
 ### 6C: Enhanced Day Planner
 
 **Enhancements to existing Planner:**
-- ~~Vehicle tabs (select which vehicle's route to view/edit)~~ (pending)
+- ~~Crew tabs (select which crew's route to view/edit)~~ (pending)
 - ~~Time window display per stop~~ (pending)
 - ~~Conflict warnings (time window violations)~~ (pending)
 - ~~Day load indicator (total service time + travel time)~~ (pending)
@@ -1236,7 +1236,7 @@ jetstream::stream::Config {
 │                                                                              │
 │   ┌──────────────────────────────────────────────────────────────────────┐  │
 │   │ 8A: Nový Inbox Layout + Route Context                                │  │
-│   │  ├─ RouteContextHeader komponenta (den/auto/depo + metriky)         │  │
+│   │  ├─ RouteContextHeader komponenta (den/posádka/depo + metriky)      │  │
 │   │  ├─ 3-panel layout (desktop), stack layout (mobil)                  │  │
 │   │  ├─ Mapa s trasou dne                                               │  │
 │   │  └─ Metriky kapacity (km, čas, load, slack)                         │  │
@@ -1255,15 +1255,15 @@ jetstream::stream::Config {
 │   ┌──────────────────────────────────────────────────────────────────────┐  │
 │   │ 8C: Route-Aware pro celý list                                        │  │
 │   │  ├─ Lazy loading pro viditelné řádky                                │  │
-│   │  ├─ Cache výsledků (klíč: den+auto+kandidát+verze_trasy)            │  │
+│   │  ├─ Cache výsledků (klíč: den+posádka+kandidát+verze_trasy)         │  │
 │   │  ├─ "Problémy" segment (nelze geo, chybí tel)                       │  │
 │   │  └─ Pre-ranking dle vzdálenosti k trase                             │  │
 │   └──────────────────────────────────────────────────────────────────────┘  │
 │                                    │                                         │
 │                                    ▼                                         │
 │   ┌──────────────────────────────────────────────────────────────────────┐  │
-│   │ 8D: Multi-Vehicle + Draft Mode + Polish                              │  │
-│   │  ├─ Tipy "Auto 2 je lepší o 10 min"                                 │  │
+│   │ 8D: Multi-Crew + Draft Mode + Polish                                 │  │
+│   │  ├─ Tipy "Posádka 2 je lepší o 10 min"                               │  │
 │   │  ├─ Draft mode pro plán dne                                         │  │
 │   │  ├─ Optimistic UI                                                   │  │
 │   │  └─ Klávesové zkratky pro dispečerku                                │  │
@@ -1282,7 +1282,7 @@ jetstream::stream::Config {
 
 | Komponenta | Popis | Umístění |
 |------------|-------|----------|
-| `RouteContextHeader` | Sticky header: Den/Auto/Depo + metriky | `components/planner/` |
+| `RouteContextHeader` | Sticky header: Den/Posádka/Depo + metriky | `components/planner/` |
 | `SplitView` | 3-panel layout pro desktop | `components/common/` |
 | `CapacityMetrics` | Zobrazení km/čas/load/slack | `components/planner/` |
 | `RouteMapPanel` | Mapa s trasou dne | `components/planner/` |
@@ -1307,7 +1307,7 @@ jetstream::stream::Config {
 **ASCII wireframe (desktop):**
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│ Plánovací inbox  Den[St 5.3] Auto[1] Depo[Brno]  Route-aware[ON]        │
+│ Plánovací inbox  Den[St 5.3] Posádka[1] Depo[Brno]  Route-aware[ON]     │
 │ 51 km • jízda 1h16 • vytížení 92%⚠ • rezerva 18m⚠                        │
 │ [Po termínu(12)] [Týden(18)] [30 dní(43)] [Vše] [Odložené] [Problémy]   │
 ├───────────────┬───────────────────────────────────────────┬─────────────┤
@@ -1379,7 +1379,7 @@ jetstream::stream::Config {
 ```typescript
 interface RouteCacheKey {
   date: string;
-  vehicleId: string;
+  crewId: string;
   candidateId: string;
   routeVersion: number;
 }
@@ -1396,18 +1396,18 @@ interface RouteCacheKey {
 
 ---
 
-### 8D: Multi-Vehicle + Draft Mode + Polish
+### 8D: Multi-Crew + Draft Mode + Polish
 
 **Cíl:** Finální polish pro GA release.
 
-**Multi-vehicle tipy:**
+**Multi-crew tipy:**
 ```
 Podmínky pro zobrazení:
 - Rozdíl > 10 min NEBO > 5 km
 - Jen pro vybraného kandidáta
-- Max 2 alternativní auta
+- Max 2 alternativní posádky
 
-UI: "Tip: Auto 2 (+2 min)" - ne spam
+UI: "Tip: Posádka 2 (+2 min)" - ne spam
 ```
 
 **Draft mode pro plán dne:**
@@ -1431,7 +1431,7 @@ UI: "Tip: Auto 2 (+2 min)" - ne spam
 | `Esc` | Zavřít panel |
 
 **Files to create:**
-- [ ] `apps/web/src/components/planner/MultiVehicleTip.tsx`
+- [ ] `apps/web/src/components/planner/MultiCrewTip.tsx`
 - [ ] `apps/web/src/components/planner/DraftModeBar.tsx`
 - [ ] `apps/web/src/hooks/useKeyboardShortcuts.ts`
 
@@ -1451,7 +1451,7 @@ UI: "Tip: Auto 2 (+2 min)" - ne spam
 │   Frontend                                                                   │
 │   ┌─────────────────────────────────────────────────────────────────────┐   │
 │   │  PlanningInbox                                                       │   │
-│   │  ├─ RouteContextHeader (den/auto/depo + metriky)                    │   │
+│   │  ├─ RouteContextHeader (den/posádka/depo + metriky)                 │   │
 │   │  ├─ VirtualizedInboxList (kandidáti s Δkm/Δmin)                     │   │
 │   │  ├─ RouteMapPanel (polyline + piny + insertion preview)             │   │
 │   │  └─ CandidateDetail (sloty + CTA)                                   │   │
@@ -1575,8 +1575,8 @@ Phase 6 (UX Workflow): ✅ COMPLETE
     6A.4 CallQueue page UI ✅
   
   6B: Schedule Dialog (MVP) ✅
-    6B.1 DB migration (vehicles table, assigned_vehicle_id) ✅
-    6B.2 Vehicle CRUD handlers (TDD) ✅
+    6B.1 DB migration (crews table, assigned_crew_id) ✅
+    6B.2 Crew CRUD handlers (TDD) ✅
     6B.3 ScheduleRevisionDialog component ✅
   
   6C: Enhanced Day Planner (MVP) ✅
@@ -1648,8 +1648,8 @@ Phase 8 (UX/UI Redesign - Route-Aware Planning): ✅ COMPLETED
     8C.3 routeCacheStore pro cache výsledků ✅
     8C.4 Pre-ranking query v backendu (client-side) ✅
   
-  8D: Multi-Vehicle + Draft Mode + Polish ✅
-    8D.1 MultiVehicleTip komponenta ✅
+  8D: Multi-Crew + Draft Mode + Polish ✅
+    8D.1 MultiCrewTip komponenta ✅
     8D.2 DraftModeBar pro plán dne ✅
     8D.3 useKeyboardShortcuts hook ✅
     8D.4 Optimistic UI pro domluvení ✅

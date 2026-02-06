@@ -8,6 +8,6 @@ export { SlotSuggestions, type SlotSuggestion } from './SlotSuggestions';
 export { InsertionPreview, type InsertionInfo } from './InsertionPreview';
 export { VirtualizedInboxList, type VirtualizedInboxListRef } from './VirtualizedInboxList';
 export { ProblemsSegment, type ProblemCandidate, type ProblemType } from './ProblemsSegment';
-export { MultiVehicleTip, type VehicleComparison } from './MultiVehicleTip';
+export { MultiCrewTip, type CrewComparison } from './MultiCrewTip';
 export { DraftModeBar } from './DraftModeBar';
 export { AddFromInboxDrawer } from './AddFromInboxDrawer';

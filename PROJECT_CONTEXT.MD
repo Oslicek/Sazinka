@@ -716,7 +716,7 @@ vrp-core = "1.25"        # Core solver algorithms
 - Guided local search metaheuristic
 - Hard and soft time window constraints
 - Service duration per stop
-- Single vehicle (tradesperson) model
+- Single crew (tradesperson) model
 
 **Performance:**
 - 10 stops: ~50ms solve time
@@ -1658,8 +1658,8 @@ cargo test
 | Zákazník | `Customer` | Osoba nebo firma |
 | Zařízení | `Device` | Kotel, komín, plynový spotřebič |
 | Zakázka | `Revision` | Co se má udělat (revize/servis) |
-| Návštěva | `Visit` | Domluvený termín + časové okno + auto |
-| Plán dne | `PlannedRoute` | Trasa pro den a auto |
+| Návštěva | `Visit` | Domluvený termín + časové okno + posádka |
+| Plán dne | `PlannedRoute` | Trasa pro den a posádku |
 
 #### Entity Relationships
 
@@ -1762,7 +1762,7 @@ Doporučené váhy:
 ```typescript
 interface RouteCacheKey {
   date: string;           // "2026-02-05"
-  vehicleId: string;      // UUID
+  crewId: string;         // UUID
   candidateId: string;    // UUID
   routeVersion: number;   // Inkrementuje při změně trasy
 }
@@ -1775,7 +1775,7 @@ interface RouteCacheKey {
 | Přidání/odebrání zastávky | Increment routeVersion |
 | Změna pořadí zastávek | Increment routeVersion |
 | Změna časového okna | Increment routeVersion |
-| Výběr jiného dne/auta | Nový cache key |
+| Výběr jiného dne/posádky | Nový cache key |
 
 ### Edge Cases
 
@@ -1844,19 +1844,19 @@ Přesný výpočet (lazy):
 └── Vybraný kandidát (vždy)
 ```
 
-### Multi-Vehicle Comparison
+### Multi-Crew Comparison
 
 ```
-Nepočítat pro všechny kandidáty × všechna auta.
+Nepočítat pro všechny kandidáty × všechny posádky.
 
 Strategie:
-1. Pro aktuální auto: plné slot suggestions
-2. Pro 1-2 další auta: jen "best insertion delta"
+1. Pro aktuální posádku: plné slot suggestions
+2. Pro 1-2 další posádky: jen "best insertion delta"
 3. Ukázat tip jen když rozdíl > práh:
    - >10 min lepší NEBO
    - >5 km lepší
 
-UI: "Tip: Auto 2 (+2 min)" - ne spam pro malé rozdíly
+UI: "Tip: Posádka 2 (+2 min)" - ne spam pro malé rozdíly
 ```
 
 ### Status Signals (Consistent)

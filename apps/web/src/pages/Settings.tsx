@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNatsStore } from '../stores/natsStore';
 import * as settingsService from '../services/settingsService';
+import * as crewService from '../services/crewService';
+import type { Crew } from '../services/crewService';
 import type {
   UserSettings,
   WorkConstraints,
@@ -12,18 +14,19 @@ import styles from './Settings.module.css';
 
 const TEMP_USER_ID = '00000000-0000-0000-0000-000000000001';
 
-type SettingsTab = 'work' | 'business' | 'email' | 'depots';
+type SettingsTab = 'work' | 'business' | 'email' | 'depots' | 'crews';
 
 export function Settings() {
   const { isConnected } = useNatsStore();
   const [activeTab, setActiveTab] = useState<SettingsTab>('work');
   const [settings, setSettings] = useState<UserSettings | null>(null);
+  const [crews, setCrews] = useState<Crew[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  // Load settings
+  // Load settings and crews
   const loadSettings = useCallback(async () => {
     if (!isConnected) return;
     
@@ -31,8 +34,12 @@ export function Settings() {
     setError(null);
     
     try {
-      const data = await settingsService.getSettings(TEMP_USER_ID);
+      const [data, crewList] = await Promise.all([
+        settingsService.getSettings(TEMP_USER_ID),
+        crewService.listCrews(false), // Load all crews, including inactive
+      ]);
       setSettings(data);
+      setCrews(crewList);
     } catch (e) {
       console.error('Failed to load settings:', e);
       setError('Nepodařilo se načíst nastavení');
@@ -57,6 +64,7 @@ export function Settings() {
     { id: 'business', label: 'Firemní údaje' },
     { id: 'email', label: 'E-mailové šablony' },
     { id: 'depots', label: 'Depa' },
+    { id: 'crews', label: 'Posádky' },
   ];
 
   if (loading) {
@@ -166,6 +174,15 @@ export function Settings() {
         {activeTab === 'depots' && settings && (
           <DepotsManager
             depots={settings.depots}
+            onUpdate={async () => {
+              await loadSettings();
+            }}
+          />
+        )}
+
+        {activeTab === 'crews' && (
+          <CrewsManager
+            crews={crews}
             onUpdate={async () => {
               await loadSettings();
             }}
@@ -729,6 +746,203 @@ function DepotForm({ depot, saving, onSave, onCancel }: DepotFormProps) {
         </button>
         <button type="submit" className="btn-primary" disabled={saving}>
           {saving ? 'Ukládám...' : (depot ? 'Uložit' : 'Vytvořit')}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// ============================================================================
+// Crews Manager
+// ============================================================================
+
+interface CrewsManagerProps {
+  crews: Crew[];
+  onUpdate: () => Promise<void>;
+}
+
+function CrewsManager({ crews, onUpdate }: CrewsManagerProps) {
+  const [showForm, setShowForm] = useState(false);
+  const [editingCrew, setEditingCrew] = useState<Crew | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleCreate = async (data: { name: string }) => {
+    setSaving(true);
+    setError(null);
+    
+    try {
+      await crewService.createCrew({ name: data.name });
+      setShowForm(false);
+      await onUpdate();
+    } catch (e) {
+      setError('Nepodařilo se vytvořit posádku');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleUpdate = async (data: { name: string }) => {
+    if (!editingCrew) return;
+    
+    setSaving(true);
+    setError(null);
+    
+    try {
+      await crewService.updateCrew({
+        id: editingCrew.id,
+        name: data.name,
+      });
+      setEditingCrew(null);
+      await onUpdate();
+    } catch (e) {
+      setError('Nepodařilo se aktualizovat posádku');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (crewId: string) => {
+    if (!confirm('Opravdu chcete smazat tuto posádku?')) return;
+    
+    try {
+      await crewService.deleteCrew(crewId);
+      await onUpdate();
+    } catch (e) {
+      setError('Nepodařilo se smazat posádku');
+    }
+  };
+
+  const handleToggleActive = async (crew: Crew) => {
+    try {
+      await crewService.updateCrew({
+        id: crew.id,
+        isActive: !crew.isActive,
+      });
+      await onUpdate();
+    } catch (e) {
+      setError('Nepodařilo se změnit stav posádky');
+    }
+  };
+
+  return (
+    <div className={styles.depotsManager}>
+      {error && <div className={styles.error}>{error}</div>}
+      
+      {/* Crew list */}
+      <div className={styles.depotList}>
+        {crews.length === 0 ? (
+          <p className={styles.empty}>Zatím nemáte žádné posádky. Vytvořte první.</p>
+        ) : (
+          crews.map((crew) => (
+            <div key={crew.id} className={`${styles.depotCard} ${!crew.isActive ? styles.inactive : ''}`}>
+              <div className={styles.depotInfo}>
+                <div className={styles.depotHeader}>
+                  <strong>{crew.name}</strong>
+                  {!crew.isActive && <span className={styles.inactiveBadge}>Neaktivní</span>}
+                </div>
+              </div>
+              <div className={styles.depotActions}>
+                <button
+                  type="button"
+                  className={styles.iconButton}
+                  onClick={() => handleToggleActive(crew)}
+                  title={crew.isActive ? 'Deaktivovat' : 'Aktivovat'}
+                >
+                  {crew.isActive ? '✓' : '○'}
+                </button>
+                <button
+                  type="button"
+                  className={styles.iconButton}
+                  onClick={() => setEditingCrew(crew)}
+                  title="Upravit"
+                >
+                  ✏️
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.iconButton} ${styles.danger}`}
+                  onClick={() => handleDelete(crew.id)}
+                  title="Smazat"
+                >
+                  🗑️
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Add/Edit form */}
+      {(showForm || editingCrew) && (
+        <CrewForm
+          crew={editingCrew}
+          saving={saving}
+          onSave={editingCrew ? handleUpdate : handleCreate}
+          onCancel={() => {
+            setShowForm(false);
+            setEditingCrew(null);
+          }}
+        />
+      )}
+
+      {/* Add button */}
+      {!showForm && !editingCrew && (
+        <button
+          type="button"
+          className="btn-primary"
+          onClick={() => setShowForm(true)}
+        >
+          + Přidat posádku
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// Crew Form
+// ============================================================================
+
+interface CrewFormProps {
+  crew: Crew | null;
+  saving: boolean;
+  onSave: (data: { name: string }) => Promise<void>;
+  onCancel: () => void;
+}
+
+function CrewForm({ crew, saving, onSave, onCancel }: CrewFormProps) {
+  const [formData, setFormData] = useState({
+    name: crew?.name || '',
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSave(formData);
+  };
+
+  return (
+    <form className={styles.depotForm} onSubmit={handleSubmit}>
+      <h4>{crew ? 'Upravit posádku' : 'Nová posádka'}</h4>
+      
+      <div className={styles.formGroup}>
+        <label htmlFor="crewName">Název</label>
+        <input
+          type="text"
+          id="crewName"
+          value={formData.name}
+          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+          required
+          placeholder="např. Posádka 1"
+        />
+      </div>
+      
+      <div className={styles.formActions}>
+        <button type="button" className="btn-secondary" onClick={onCancel}>
+          Zrušit
+        </button>
+        <button type="submit" className="btn-primary" disabled={saving}>
+          {saving ? 'Ukládám...' : (crew ? 'Uložit' : 'Vytvořit')}
         </button>
       </div>
     </form>

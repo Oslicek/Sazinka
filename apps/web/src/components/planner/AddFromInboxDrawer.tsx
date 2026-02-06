@@ -17,7 +17,7 @@ interface AddFromInboxDrawerProps {
   onClose: () => void;
   candidates: InboxCandidate[];
   selectedDate: string;
-  vehicleId?: string;
+  crewId?: string;
   onAddToRoute: (candidateId: string, slot: SlotSuggestion) => Promise<void>;
   onFetchSlots?: (candidateId: string) => Promise<SlotSuggestion[]>;
   isLoading?: boolean;
@@ -28,7 +28,7 @@ export function AddFromInboxDrawer({
   onClose,
   candidates,
   selectedDate,
-  vehicleId,
+  crewId,
   onAddToRoute,
   onFetchSlots,
   isLoading = false,

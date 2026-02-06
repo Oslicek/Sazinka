@@ -1,8 +1,8 @@
-import styles from './MultiVehicleTip.module.css';
+import styles from './MultiCrewTip.module.css';
 
-export interface VehicleComparison {
-  vehicleId: string;
-  vehicleName: string;
+export interface CrewComparison {
+  crewId: string;
+  crewName: string;
   deltaMin: number;
   deltaKm: number;
   isBetter: boolean;
@@ -10,27 +10,27 @@ export interface VehicleComparison {
   savingsKm?: number;
 }
 
-interface MultiVehicleTipProps {
-  currentVehicle: string;
-  comparisons: VehicleComparison[];
-  onSwitchVehicle?: (vehicleId: string) => void;
+interface MultiCrewTipProps {
+  currentCrew: string;
+  comparisons: CrewComparison[];
+  onSwitchCrew?: (crewId: string) => void;
   minSavingsMin?: number;
   minSavingsKm?: number;
 }
 
 /**
- * Shows a tip when another vehicle would be significantly better for insertion.
+ * Shows a tip when another crew would be significantly better for insertion.
  * Only displays if savings exceed the configured thresholds.
  */
-export function MultiVehicleTip({
-  currentVehicle,
+export function MultiCrewTip({
+  currentCrew,
   comparisons,
-  onSwitchVehicle,
+  onSwitchCrew,
   minSavingsMin = 10,
   minSavingsKm = 5,
-}: MultiVehicleTipProps) {
-  // Find the best alternative vehicle
-  const betterVehicles = comparisons.filter((c) => {
+}: MultiCrewTipProps) {
+  // Find the best alternative crew
+  const betterCrews = comparisons.filter((c) => {
     if (!c.isBetter) return false;
     const savingsMin = c.savingsMin ?? 0;
     const savingsKm = c.savingsKm ?? 0;
@@ -38,13 +38,13 @@ export function MultiVehicleTip({
   });
 
   // Sort by biggest savings
-  betterVehicles.sort((a, b) => {
+  betterCrews.sort((a, b) => {
     const savingsA = (a.savingsMin ?? 0) + (a.savingsKm ?? 0) * 2;
     const savingsB = (b.savingsMin ?? 0) + (b.savingsKm ?? 0) * 2;
     return savingsB - savingsA;
   });
 
-  const bestAlternative = betterVehicles[0];
+  const bestAlternative = betterCrews[0];
 
   if (!bestAlternative) {
     return null;
@@ -67,15 +67,15 @@ export function MultiVehicleTip({
       <div className={styles.content}>
         <span className={styles.label}>Tip:</span>
         <span className={styles.message}>
-          <strong>{bestAlternative.vehicleName}</strong> je lepší o{' '}
+          <strong>{bestAlternative.crewName}</strong> je lepší o{' '}
           <strong>{formatSavings()}</strong>
         </span>
       </div>
-      {onSwitchVehicle && (
+      {onSwitchCrew && (
         <button
           type="button"
           className={styles.switchButton}
-          onClick={() => onSwitchVehicle(bestAlternative.vehicleId)}
+          onClick={() => onSwitchCrew(bestAlternative.crewId)}
         >
           Přepnout
         </button>

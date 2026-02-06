@@ -2,7 +2,7 @@
  * ScheduleDialog - Route-aware scheduling dialog
  * 
  * Used from CustomerDetail and RevisionDetail for:
- * - Selecting date and vehicle
+ * - Selecting date and crew (posádka)
  * - Viewing slot suggestions with insertion costs
  * - Scheduling a visit/revision
  */
@@ -19,7 +19,7 @@ export interface ScheduleTarget {
   lng: number;
 }
 
-export interface Vehicle {
+export interface Crew {
   id: string;
   name: string;
   licensePlate?: string;
@@ -29,10 +29,10 @@ interface ScheduleDialogProps {
   isOpen: boolean;
   onClose: () => void;
   target: ScheduleTarget | null;
-  vehicles: Vehicle[];
-  onSchedule: (targetId: string, date: string, vehicleId: string, slot: SlotSuggestion) => Promise<void>;
+  crews: Crew[];
+  onSchedule: (targetId: string, date: string, crewId: string, slot: SlotSuggestion) => Promise<void>;
   /** Optional function to fetch slot suggestions */
-  onFetchSlots?: (targetId: string, date: string, vehicleId: string) => Promise<SlotSuggestion[]>;
+  onFetchSlots?: (targetId: string, date: string, crewId: string) => Promise<SlotSuggestion[]>;
   isSubmitting?: boolean;
 }
 
@@ -64,13 +64,13 @@ export function ScheduleDialog({
   isOpen,
   onClose,
   target,
-  vehicles,
+  crews,
   onSchedule,
   onFetchSlots,
   isSubmitting = false,
 }: ScheduleDialogProps) {
   const [selectedDate, setSelectedDate] = useState<string>('');
-  const [selectedVehicle, setSelectedVehicle] = useState<string>('');
+  const [selectedCrew, setSelectedCrew] = useState<string>('');
   const [selectedSlot, setSelectedSlot] = useState<SlotSuggestion | null>(null);
   const [slots, setSlots] = useState<SlotSuggestion[]>([]);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
@@ -82,16 +82,16 @@ export function ScheduleDialog({
   useEffect(() => {
     if (isOpen) {
       setSelectedDate(availableDays[0]?.date || '');
-      setSelectedVehicle(vehicles[0]?.id || '');
+      setSelectedCrew(crews[0]?.id || '');
       setSelectedSlot(null);
       setSlots([]);
       setError(null);
     }
-  }, [isOpen, availableDays, vehicles]);
+  }, [isOpen, availableDays, crews]);
 
-  // Fetch slots when date or vehicle changes
+  // Fetch slots when date or crew changes
   useEffect(() => {
-    if (!isOpen || !target || !selectedDate || !selectedVehicle || !onFetchSlots) {
+    if (!isOpen || !target || !selectedDate || !selectedCrew || !onFetchSlots) {
       return;
     }
 
@@ -100,7 +100,7 @@ export function ScheduleDialog({
         setIsLoadingSlots(true);
         setError(null);
         setSelectedSlot(null);
-        const fetchedSlots = await onFetchSlots(target.id, selectedDate, selectedVehicle);
+        const fetchedSlots = await onFetchSlots(target.id, selectedDate, selectedCrew);
         setSlots(fetchedSlots);
       } catch (err) {
         console.error('Failed to fetch slots:', err);
@@ -112,7 +112,7 @@ export function ScheduleDialog({
     };
 
     fetchSlots();
-  }, [isOpen, target, selectedDate, selectedVehicle, onFetchSlots]);
+  }, [isOpen, target, selectedDate, selectedCrew, onFetchSlots]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -146,13 +146,13 @@ export function ScheduleDialog({
 
     try {
       setError(null);
-      await onSchedule(target.id, selectedDate, selectedVehicle, selectedSlot);
+      await onSchedule(target.id, selectedDate, selectedCrew, selectedSlot);
       onClose();
     } catch (err) {
       console.error('Failed to schedule:', err);
       setError(err instanceof Error ? err.message : 'Nepodařilo se naplánovat');
     }
-  }, [target, selectedDate, selectedVehicle, selectedSlot, onSchedule, onClose]);
+  }, [target, selectedDate, selectedCrew, selectedSlot, onSchedule, onClose]);
 
   if (!isOpen || !target) return null;
 
@@ -204,25 +204,25 @@ export function ScheduleDialog({
             </div>
           </section>
 
-          {/* Vehicle selection */}
+          {/* Crew selection */}
           <section className={styles.section}>
-            <label className={styles.label}>Auto</label>
-            <div className={styles.vehicleGrid}>
-              {vehicles.map((vehicle) => (
+            <label className={styles.label}>Posádka</label>
+            <div className={styles.crewGrid}>
+              {crews.map((crew) => (
                 <button
-                  key={vehicle.id}
+                  key={crew.id}
                   type="button"
-                  className={`${styles.vehicleButton} ${selectedVehicle === vehicle.id ? styles.selected : ''}`}
-                  onClick={() => setSelectedVehicle(vehicle.id)}
+                  className={`${styles.crewButton} ${selectedCrew === crew.id ? styles.selected : ''}`}
+                  onClick={() => setSelectedCrew(crew.id)}
                 >
-                  <span className={styles.vehicleName}>{vehicle.name}</span>
-                  {vehicle.licensePlate && (
-                    <span className={styles.vehiclePlate}>{vehicle.licensePlate}</span>
+                  <span className={styles.crewName}>{crew.name}</span>
+                  {crew.licensePlate && (
+                    <span className={styles.crewPlate}>{crew.licensePlate}</span>
                   )}
                 </button>
               ))}
-              {vehicles.length === 0 && (
-                <p className={styles.noVehicles}>Žádná dostupná auta</p>
+              {crews.length === 0 && (
+                <p className={styles.noVehicles}>Žádné dostupné posádky</p>
               )}
             </div>
           </section>

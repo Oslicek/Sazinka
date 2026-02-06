@@ -17,14 +17,14 @@ import {
   ProblemsSegment,
   type ProblemCandidate,
   type ProblemType,
-  MultiVehicleTip,
-  type VehicleComparison,
+  MultiCrewTip,
+  type CrewComparison,
   type SlotSuggestion,
 } from '../components/planner';
 import { DraftModeBar } from '../components/planner/DraftModeBar';
 import { ThreePanelLayout } from '../components/common';
 import * as settingsService from '../services/settingsService';
-import * as vehicleService from '../services/vehicleService';
+import * as crewService from '../services/crewService';
 import * as routeService from '../services/routeService';
 import * as insertionService from '../services/insertionService';
 import { getCallQueue, snoozeRevision, scheduleRevision, type CallQueueItem } from '../services/revisionService';
@@ -94,7 +94,7 @@ export function PlanningInbox() {
   // Route context state
   const [context, setContext] = useState<RouteContext | null>(null);
   const [isRouteAware, setIsRouteAware] = useState(true);
-  const [vehicles, setVehicles] = useState<vehicleService.Vehicle[]>([]);
+  const [crews, setCrews] = useState<crewService.Crew[]>([]);
   const [depots, setDepots] = useState<Depot[]>([]);
   
   // Route state
@@ -117,8 +117,8 @@ export function PlanningInbox() {
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   
-  // Multi-vehicle state (TODO: implement multi-vehicle comparison)
-  const [vehicleComparisons, _setVehicleComparisons] = useState<VehicleComparison[]>([]);
+  // Multi-crew state (TODO: implement multi-crew comparison)
+  const [crewComparisons, _setCrewComparisons] = useState<CrewComparison[]>([]);
   
   // Problems segment state
   const [isProblemsCollapsed, setIsProblemsCollapsed] = useState(false);
@@ -133,7 +133,7 @@ export function PlanningInbox() {
     problems: 0,
   });
 
-  // Load settings (vehicles, depots)
+  // Load settings (crews, depots)
   useEffect(() => {
     if (!isConnected) return;
     
@@ -141,7 +141,7 @@ export function PlanningInbox() {
       try {
         const [settings, loadedVehicles] = await Promise.all([
           settingsService.getSettings(USER_ID),
-          vehicleService.listVehicles(true),
+          crewService.listCrews(true),
         ]);
         
         const loadedDepots = settings.depots.map((d) => ({
@@ -151,24 +151,24 @@ export function PlanningInbox() {
           lng: d.lng,
         }));
         setDepots(loadedDepots);
-        setVehicles(loadedVehicles);
+        setCrews(loadedVehicles);
         
         const primaryDepot = loadedDepots.find((d) => 
           settings.depots.find((sd) => sd.name === d.name && sd.isPrimary)
         ) || loadedDepots[0];
         
-        const firstVehicle = loadedVehicles[0];
+        const firstCrew = loadedVehicles[0];
         
-        if (primaryDepot && firstVehicle) {
+        if (primaryDepot && firstCrew) {
           const initialContext = {
             date: new Date().toISOString().split('T')[0],
-            vehicleId: firstVehicle.id,
-            vehicleName: firstVehicle.name,
+            crewId: firstCrew.id,
+            crewName: firstCrew.name,
             depotId: primaryDepot.id,
             depotName: primaryDepot.name,
           };
           setContext(initialContext);
-          setRouteContext(initialContext.date, initialContext.vehicleId);
+          setRouteContext(initialContext.date, initialContext.crewId);
         }
       } catch (err) {
         console.error('Failed to load settings:', err);
@@ -235,10 +235,10 @@ export function PlanningInbox() {
 
   // Update route cache context when context changes
   useEffect(() => {
-    if (context?.date && context?.vehicleId) {
-      setRouteContext(context.date, context.vehicleId);
+    if (context?.date && context?.crewId) {
+      setRouteContext(context.date, context.crewId);
     }
-  }, [context?.date, context?.vehicleId, setRouteContext]);
+  }, [context?.date, context?.crewId, setRouteContext]);
 
   // Calculate insertion when candidate is selected (route-aware mode)
   useEffect(() => {
@@ -588,12 +588,12 @@ export function PlanningInbox() {
     invalidateCache();
   };
 
-  const handleVehicleChange = (vehicleId: string) => {
-    const vehicle = vehicles.find((v) => v.id === vehicleId);
+  const handleCrewChange = (crewId: string) => {
+    const crew = crews.find((v) => v.id === crewId);
     setContext((prev) => prev ? { 
       ...prev, 
-      vehicleId, 
-      vehicleName: vehicle?.name ?? '' 
+      crewId, 
+      crewName: crew?.name ?? '' 
     } : null);
     invalidateCache();
   };
@@ -794,12 +794,12 @@ export function PlanningInbox() {
         />
       )}
       
-      {/* Multi-vehicle tip */}
-      {isRouteAware && vehicleComparisons.length > 0 && (
-        <MultiVehicleTip
-          currentVehicle={context?.vehicleName ?? ''}
-          comparisons={vehicleComparisons}
-          onSwitchVehicle={(vehicleId) => handleVehicleChange(vehicleId)}
+      {/* Multi-crew tip */}
+      {isRouteAware && crewComparisons.length > 0 && (
+        <MultiCrewTip
+          currentCrew={context?.crewName ?? ''}
+          comparisons={crewComparisons}
+          onSwitchCrew={(crewId) => handleCrewChange(crewId)}
         />
       )}
       
@@ -853,9 +853,9 @@ export function PlanningInbox() {
         isRouteAware={isRouteAware}
         onRouteAwareToggle={setIsRouteAware}
         onDateChange={handleDateChange}
-        onVehicleChange={handleVehicleChange}
+        onCrewChange={handleCrewChange}
         onDepotChange={handleDepotChange}
-        vehicles={vehicles}
+        crews={crews}
         depots={depots}
         isLoading={isLoadingRoute}
       />

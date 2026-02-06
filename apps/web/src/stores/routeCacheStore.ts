@@ -19,7 +19,7 @@ interface InsertionResult {
 
 interface RouteCacheKey {
   date: string;
-  vehicleId: string;
+  crewId: string;
   routeVersion: number;
 }
 
@@ -37,7 +37,7 @@ interface RouteCacheState {
   pendingCalculations: Set<string>;
   
   // Actions
-  setRouteContext: (date: string, vehicleId: string) => void;
+  setRouteContext: (date: string, crewId: string) => void;
   incrementRouteVersion: () => void;
   getCachedInsertion: (candidateId: string) => InsertionResult | null;
   setCachedInsertion: (result: InsertionResult) => void;
@@ -63,14 +63,14 @@ export const useRouteCacheStore = create<RouteCacheState>((set, get) => ({
   routeVersion: 0,
   pendingCalculations: new Set(),
 
-  setRouteContext: (date, vehicleId) => {
+  setRouteContext: (date, crewId) => {
     const current = get().currentKey;
     const routeVersion = get().routeVersion;
     
     // If context changed, invalidate cache
-    if (current?.date !== date || current?.vehicleId !== vehicleId) {
+    if (current?.date !== date || current?.crewId !== crewId) {
       set({
-        currentKey: { date, vehicleId, routeVersion },
+        currentKey: { date, crewId, routeVersion },
         insertionCache: new Map(),
         pendingCalculations: new Set(),
       });

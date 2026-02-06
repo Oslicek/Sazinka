@@ -31,7 +31,7 @@ Tento dokument popisuje workflow a UI koncept pro klíčovou část aplikace Saz
 ### Cílová skupina
 - Drobní řemeslníci (kominíci, plynaři, revizní technici)
 - Pravidelné revize v intervalech 11-12 měsíců
-- Jedno nebo více vozidel, jedno nebo více dep
+- Jedna nebo více posádek, jedno nebo více dep
 - Dispečerka + technici NEBO řemeslník sám
 
 ---
@@ -103,7 +103,7 @@ Hlavní pracovní obrazovka pro dispečerku i řemeslníka-sólistu.
 **Filtry:**
 - Oblast (město/PSČ/region)
 - Typ služby (kotel, komín, plyn...)
-- Depot/vozidlo
+- Depo/posádka
 - Priorita
 - "Nevolat dopoledne" a podobné preference
 
@@ -217,7 +217,7 @@ Zde se skládá denní plán a řeší multi-car a depa.
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ 📅 Plán dne: 30.01.2026              [◀ Předchozí] [Další ▶]               │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│ [Technik 1 - Petr]  [Technik 2 - Jan]  [+ Přidat vozidlo]                  │
+│ [Technik 1 - Petr]  [Technik 2 - Jan]  [+ Přidat posádku]                  │
 ├────────────────────────┬────────────────────────────────────────────────────┤
 │ ZASTÁVKY (9)           │                    MAPA                            │
 │ ┌────────────────────┐ │  ┌────────────────────────────────────────────┐   │
@@ -343,9 +343,9 @@ Bez mobilní aplikace potřebuje technik jednoduché webové rozhraní.
 | Customer | Zákazník | adresa, GPS, kontakt, poznámky |
 | Device | Zařízení k revizi | typ, revision_interval_months |
 | Revision | Plánovaná/provedená revize | due_date, scheduled_date, time_window, status |
-| Vehicle | Vozidlo/technik | depot_id, kapacita, pracovní doba |
+| Crew | Posádka/technik | depot_id, kapacita, pracovní doba |
 | Depot | Výchozí místo | adresa, GPS |
-| Route | Denní plán | datum, vehicle_id, zastávky[], statistiky |
+| Route | Denní plán | datum, crew_id, zastávky[], statistiky |
 
 ---
 
@@ -442,7 +442,7 @@ Cíl: Uživatel nesmí "přeskakovat" mezi izolovanými stránkami. Každá obra
 **1) Sticky header**
 - Název: `Revize - [typ zařízení]`
 - Status badge: `Čeká na kontakt / Domluveno / Naplánováno / Hotovo / Zrušeno`
-- Klíčové info: `Termín`, `Časové okno`, `Délka`, `Technik/vozidlo`
+- Klíčové info: `Termín`, `Časové okno`, `Délka`, `Technik/posádka`
 - Primární CTA (context-aware):
   - Čeká na kontakt → `Domluvit termín`
   - Domluveno → `Otevřít v plánovači (den)`
@@ -459,7 +459,7 @@ Cíl: Uživatel nesmí "přeskakovat" mezi izolovanými stránkami. Každá obra
 **3) Detail revize (card)**
 - Zařízení: typ, název, interval, poslední revize
 - Termín: datum + časové okno + délka
-- Přiřazení: technik/vozidlo/depo (pokud existuje)
+- Přiřazení: technik/posádka/depo (pokud existuje)
 - CTA: `Otevřít zařízení`
 
 **4) Workflow panel (pravý sloupec / side panel)**
@@ -559,7 +559,7 @@ Cíl: Uživatel nesmí "přeskakovat" mezi izolovanými stránkami. Každá obra
 ```sql
 ALTER TABLE revisions ADD COLUMN snooze_until DATE;
 ALTER TABLE revisions ADD COLUMN snooze_reason VARCHAR(255);
-ALTER TABLE revisions ADD COLUMN assigned_vehicle_id UUID REFERENCES vehicles(id);
+ALTER TABLE revisions ADD COLUMN assigned_crew_id UUID REFERENCES crews(id);
 ALTER TABLE revisions ADD COLUMN route_order INTEGER;
 ```
 
@@ -568,7 +568,7 @@ ALTER TABLE revisions ADD COLUMN route_order INTEGER;
 **Insertion Heuristic s Valhalla cache:**
 
 ```
-1. Pro zvolený den + vozidlo načti existující trasu:
+1. Pro zvolený den + posádku načti existující trasu:
    Depot → A → B → C → Depot
 
 2. Pro nového zákazníka X zkus vložit mezi každou dvojici:
@@ -593,17 +593,17 @@ ALTER TABLE revisions ADD COLUMN route_order INTEGER;
 - Cache travel times mezi existujícími body dne
 - Pro nový bod X dopočítat pouze: `t(X, všichni)` a `t(všichni, X)`
 
-### 4. Multi-vehicle a multi-depot (ROZHODNUTO)
+### 4. Multi-crew a multi-depot (ROZHODNUTO)
 
 **MVP:**
-- `Vehicle.home_depot_id` = default start/end
-- `Vehicle.preferred_area` = seznam PSČ prefixů / okresů
+- `Crew.home_depot_id` = default start/end
+- `Crew.preferred_area` = seznam PSČ prefixů / okresů
 - Ruční přiřazení + jednoduché regiony
-- UI: zobrazit "Day load" per vehicle
+- UI: zobrazit "Day load" per posádka
 
 **V2:**
-- Clustering zakázek do N clusterů (N = počet aut)
-- Auto-balance load mezi vozidly
+- Clustering zakázek do N clusterů (N = počet posádek)
+- Auto-balance load mezi posádkami
 - `RoutePlan.start_depot_id`, `RoutePlan.end_depot_id` pro přepsání
 
 ### 5. Export Google Maps (ROZHODNUTO)
@@ -629,11 +629,11 @@ ALTER TABLE revisions ADD COLUMN route_order INTEGER;
 -- Rozšíření revisions
 ALTER TABLE revisions ADD COLUMN snooze_until DATE;
 ALTER TABLE revisions ADD COLUMN snooze_reason VARCHAR(255);
-ALTER TABLE revisions ADD COLUMN assigned_vehicle_id UUID;
+ALTER TABLE revisions ADD COLUMN assigned_crew_id UUID;
 ALTER TABLE revisions ADD COLUMN route_order INTEGER;
 
--- Nová tabulka vehicles (pokud neexistuje)
-CREATE TABLE vehicles (
+-- Nová tabulka crews (pokud neexistuje)
+CREATE TABLE crews (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id),
   name VARCHAR(100) NOT NULL,
@@ -648,7 +648,7 @@ CREATE TABLE vehicles (
 
 **Backend:**
 - [ ] Migration pro nová pole
-- [ ] CRUD pro Vehicle entity
+- [ ] CRUD pro Crew entity
 - [ ] Endpoint: `revision.queue` - fronta k obvolání
 
 ### Fáze 2: Fronta k obvolání (1 týden)
@@ -659,7 +659,7 @@ interface QueueFilters {
   status: 'overdue' | 'due_soon' | 'upcoming';
   area?: string;      // PSČ prefix
   deviceType?: string;
-  vehicleId?: string;
+  crewId?: string;
 }
 
 interface QueueItem {
@@ -686,7 +686,7 @@ interface ScheduleRequest {
   timeWindowStart: string;
   timeWindowEnd: string;
   serviceDuration: number;
-  vehicleId?: string;
+  crewId?: string;
   notes?: string;
 }
 ```
@@ -698,11 +698,11 @@ interface ScheduleRequest {
 
 ### Fáze 4: Plán dne - základní (1-2 týdny)
 
-**Endpoint:** `GET /api/routes/{date}/{vehicleId}`
+**Endpoint:** `GET /api/routes/{date}/{crewId}`
 ```typescript
 interface DayPlan {
   date: string;
-  vehicle: Vehicle;
+  crew: Crew;
   stops: PlannedStop[];
   totalDistance: number;
   totalDuration: number;
@@ -728,7 +728,7 @@ interface DayPlan {
 
 **Backend:**
 - [ ] Insertion heuristic algoritmus
-- [ ] Valhalla matrix cache per den/vozidlo
+- [ ] Valhalla matrix cache per den/posádka
 - [ ] Endpoint: `GET /api/slots/suggest`
 
 **UI:**
@@ -744,14 +744,14 @@ interface DayPlan {
 | `/api/revisions/queue` | GET | Fronta k obvolání |
 | `/api/revisions/{id}/schedule` | POST | Domluvit termín |
 | `/api/revisions/{id}/snooze` | POST | Odložit revizi |
-| `/api/vehicles` | CRUD | Správa vozidel |
-| `/api/routes/{date}` | GET | Plán dne (všechna vozidla) |
-| `/api/routes/{date}/{vehicleId}` | GET | Plán dne (konkrétní vozidlo) |
-| `/api/routes/{date}/{vehicleId}/reorder` | POST | Změna pořadí |
-| `/api/routes/{date}/{vehicleId}/optimize` | POST | Re-optimalizace |
+| `/api/crews` | CRUD | Správa posádek |
+| `/api/routes/{date}` | GET | Plán dne (všechny posádky) |
+| `/api/routes/{date}/{crewId}` | GET | Plán dne (konkrétní posádka) |
+| `/api/routes/{date}/{crewId}/reorder` | POST | Změna pořadí |
+| `/api/routes/{date}/{crewId}/optimize` | POST | Re-optimalizace |
 | `/api/slots/suggest` | POST | Doporučené sloty (V2) |
-| `/api/export/googlemaps/{date}/{vehicleId}` | GET | Google Maps linky |
-| `/api/export/pdf/{date}/{vehicleId}` | GET | PDF export |
+| `/api/export/googlemaps/{date}/{crewId}` | GET | Google Maps linky |
+| `/api/export/pdf/{date}/{crewId}` | GET | PDF export |
 
 ---
 
@@ -762,7 +762,7 @@ interface DayPlan {
 | Entity | Nezavádět Job/Appointment, `Revision` je obojí |
 | Stavy | Zachovat enum, „čeká na kontakt" = derived, „odloženo" = snooze_until |
 | Sloty | Insertion heuristic + Valhalla cache (V2) |
-| Multi-vehicle | MVP = ruční + PSČ regiony, V2 = clustering |
+| Multi-crew | MVP = ruční + PSČ regiony, V2 = clustering |
 | Export | Segmentované Google Maps (8-10 bodů) + PDF |
 | MVP pořadí | Queue → Schedule → DayPlan → TechView |
 
@@ -944,7 +944,7 @@ Admin
 
 **Kontext:** PC, telefon, často přepíná mezi hovorem, mapou, seznamem a plánem dne.
 
-**Cíl:** Domluvit termíny a průběžně skládat denní trasy pro 1–N aut tak, aby byl minimální čas/kilometry a přitom byla splněna okna a kapacita dne.
+**Cíl:** Domluvit termíny a průběžně skládat denní trasy pro 1–N posádek tak, aby byl minimální čas/kilometry a přitom byla splněna okna a kapacita dne.
 
 **Klíčové potřeby:**
 - Rychle vidět kdo je na řadě a proč (due, priorita)
@@ -954,9 +954,9 @@ Admin
 - Minimum scrollu, maximum informační hustoty, klávesové zkratky
 
 **Typické chování:**
-- Vybere den + auto + depo → vybírá zákazníky z inboxu tak, aby "seděli" do trasy
+- Vybere den + posádku + depo → vybírá zákazníky z inboxu tak, aby "seděli" do trasy
 - V hovoru nabídne 3 nejlepší sloty, ne celý kalendář
-- Když něco "nesedí", odloží nebo přehodí na jiný den/auto
+- Když něco "nesedí", odloží nebo přehodí na jiný den/posádku
 
 #### 1.2 Řemeslník (primárně mobil)
 
@@ -979,8 +979,8 @@ Admin
 | **Zákazník** | Osoba nebo firma | `Customer` |
 | **Zařízení** | Kotel, komín, plynový spotřebič | `Device` |
 | **Zakázka** | Co se má udělat (revize/servis/čištění) | `Revision` |
-| **Návštěva** | Domluvené datum + časové okno + délka + auto | `Visit` |
-| **Plán dne** | Konkrétní trasa pro den a auto (sekvence návštěv + metriky) | `PlannedRoute` |
+| **Návštěva** | Domluvené datum + časové okno + délka + posádka | `Visit` |
+| **Plán dne** | Konkrétní trasa pro den a posádku (sekvence návštěv + metriky) | `PlannedRoute` |
 | **Plánovací inbox** | Seznam zakázek k domluvení/vložení do trasy | Query over `Revision` |
 
 ---
@@ -1055,7 +1055,7 @@ Když je **OFF**:
 
 | Komponenta | Popis |
 |------------|-------|
-| `RouteContextHeader` | Sticky nahoře: Den, Auto, Depo + souhrn metrik |
+| `RouteContextHeader` | Sticky nahoře: Den, Posádka, Depo + souhrn metrik |
 | `CandidateRow` | Řádek v inboxu: jméno, město, due, Δkm, Δmin, slot chips |
 | `RouteMap` | Mapa s číslovanými piny + polyline + insertion preview |
 | `SlotSuggestions` | Nabídka 3–5 slotů s metrikami a stavy |
@@ -1147,7 +1147,7 @@ Když je **OFF**:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│ Plánovací inbox  Den[St 5.3] Auto[1] Depo[Brno]  Route-aware[ON] [Filtry]│
+│ Plánovací inbox  Den[St 5.3] Posádka[1] Depo[Brno]  Route-aware[ON] [Filtry]│
 │ 51 km • jízda 1h16 • servis 5h30 • vytížení 92%⚠ • rezerva 18m⚠          │
 │ [Po termínu(12)] [Týden(18)] [30 dní(43)] [Vše] [Odložené] [Problémy]   │
 ├───────────────┬───────────────────────────────────────────┬─────────────┤
@@ -1166,7 +1166,7 @@ Když je **OFF**:
 
 ```
 ┌──────────────────────────────┐
-│ Inbox  Den [..] Auto [1]     │
+│ Inbox  Den [..] Posádka [1]     │
 │ Kapacita 92% ⚠               │
 │ [Seznam] [Mapa]              │
 ├──────────────────────────────┤
@@ -1180,7 +1180,7 @@ Když je **OFF**:
 - Po termínu / Tento týden / Do 30 dní / Vše / Odložené / Problémy
 
 **UI stavy:**
-1. `context=missing` - Vyžaduje výběr dne+auta
+1. `context=missing` - Vyžaduje výběr dne+posádky
 2. `context=ready, route=loading` - Skeleton metrik a mapy
 3. `route=ready, inbox=ready` - Kandidáti seřazení dle "nejlepší vložení"
 4. `candidate=selected, suggestions=loading` - Dotekají sloty
@@ -1197,7 +1197,7 @@ Když je **OFF**:
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ Plán dne  Den[..] Auto[1] Depo[..]  51km • 92%⚠ • slack 18m⚠    │
+│ Plán dne  Den[..] Posádka[1] Depo[..]  51km • 92%⚠ • slack 18m⚠    │
 │ [Přidat z inboxu] [Export ▾] [Tisk] [Uložit]                     │
 ├───────────────┬──────────────────────────────────────────────────┤
 │ Stops (DND)   │ MAPA + TRASA                                      │
@@ -1284,7 +1284,7 @@ Když je **OFF**:
 ```
 Domluvit termín
 Doporučené: [Út 10–12 ✅ +6m/+3.2km] [St 8–10 ✅ +0m] [Čt 12–14 ❌]
-Datum [..]  Okno [10:00]–[12:00]  Doba [30m]  (Auto/Depo dle kontextu)
+Datum [..]  Okno [10:00]–[12:00]  Doba [30m]  (Posádka/Depo dle kontextu)
 Stav: ✅ OK (rezerva 18 min)
 [Zrušit]                         [Domluvit]
 ```
@@ -1333,7 +1333,7 @@ Poznámka: [__________]
 │ Due: 26.2.2026   [Domluvit termín] [Odložit] [Zrušit ⋯]       │
 ├─────────────────────────┬────────────────────────────────────┤
 │ Zákazník + Zařízení      │ Návštěva                           │
-│ Hustopeče… ✅ adresa      │ St 5.3. 10–12  Doba 30m  Auto 1     │
+│ Hustopeče… ✅ adresa      │ St 5.3. 10–12  Doba 30m  Posádka 1     │
 │ Kontakt…                 │ [Změnit] [Otevřít plán dne]         │
 ├──────────────────────────────────────────────────────────────┤
 │ [Průběh/Výsledek] [Komunikace] [Historie]                     │
@@ -1354,12 +1354,12 @@ Poznámka: [__________]
 
 | Stav | UI | Akce | Fallback |
 |------|-----|------|----------|
-| `context=missing` | Vyžaduje výběr dne+auta | Vybrat | - |
+| `context=missing` | Vyžaduje výběr dne+posádky | Vybrat | - |
 | `route=loading` | Skeleton metrik | Čekat | - |
 | `route=ready` | Kandidáti seřazení | Vybrat kandidáta | - |
 | `suggestions=loading` | Skeleton slotů | Čekat | - |
 | `routeAware=forcedOff` | Banner "bez optimalizace" | Opravit adresu | Domluvit bez Δ |
-| `capacity=warn` | Chip v headeru | Přepnout auto/den | - |
+| `capacity=warn` | Chip v headeru | Přepnout posádku/den | - |
 
 #### 9.2 Optimistic UI
 
@@ -1415,7 +1415,7 @@ Inbox je prázdný – na tento den nejsou žádné položky k domluvení.
 | React Query | Cachování, optimistic updates |
 | React Hook Form + Zod | Formuláře + validace |
 | date-fns | Data/časy |
-| Zustand | UI stav (den/auto, panely, filtry) |
+| Zustand | UI stav (den/posádka, panely, filtry) |
 | react-virtuoso | Virtualizace dlouhých seznamů |
 
 ---

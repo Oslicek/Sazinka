@@ -13,7 +13,7 @@ pub mod revision;
 pub mod route;
 pub mod settings;
 pub mod slots;
-pub mod vehicle;
+pub mod crew;
 pub mod visit;
 
 use std::sync::Arc;
@@ -194,11 +194,11 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let visit_complete_sub = client.subscribe("sazinka.visit.complete").await?;
     let visit_delete_sub = client.subscribe("sazinka.visit.delete").await?;
     
-    // Vehicle subjects
-    let vehicle_create_sub = client.subscribe("sazinka.vehicle.create").await?;
-    let vehicle_list_sub = client.subscribe("sazinka.vehicle.list").await?;
-    let vehicle_update_sub = client.subscribe("sazinka.vehicle.update").await?;
-    let vehicle_delete_sub = client.subscribe("sazinka.vehicle.delete").await?;
+    // Crew subjects
+    let crew_create_sub = client.subscribe("sazinka.crew.create").await?;
+    let crew_list_sub = client.subscribe("sazinka.crew.list").await?;
+    let crew_update_sub = client.subscribe("sazinka.crew.update").await?;
+    let crew_delete_sub = client.subscribe("sazinka.crew.delete").await?;
     
     // Old sync import subjects removed - now using async processors
 
@@ -329,17 +329,17 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_visit_complete = pool.clone();
     let pool_visit_delete = pool.clone();
     
-    // Vehicle handler clones
-    let client_vehicle_create = client.clone();
-    let client_vehicle_list = client.clone();
-    let client_vehicle_update = client.clone();
-    let client_vehicle_delete = client.clone();
+    // Crew handler clones
+    let client_crew_create = client.clone();
+    let client_crew_list = client.clone();
+    let client_crew_update = client.clone();
+    let client_crew_delete = client.clone();
     
-    // Vehicle pool clones
-    let pool_vehicle_create = pool.clone();
-    let pool_vehicle_list = pool.clone();
-    let pool_vehicle_update = pool.clone();
-    let pool_vehicle_delete = pool.clone();
+    // Crew pool clones
+    let pool_crew_create = pool.clone();
+    let pool_crew_list = pool.clone();
+    let pool_crew_update = pool.clone();
+    let pool_crew_delete = pool.clone();
     
     // Old sync import handler clones removed - now using async processors
     
@@ -559,21 +559,21 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         visit::handle_delete(client_visit_delete, visit_delete_sub, pool_visit_delete).await
     });
     
-    // Vehicle handlers
-    let vehicle_create_handle = tokio::spawn(async move {
-        vehicle::handle_create(client_vehicle_create, vehicle_create_sub, pool_vehicle_create).await
+    // Crew handlers
+    let crew_create_handle = tokio::spawn(async move {
+        crew::handle_create(client_crew_create, crew_create_sub, pool_crew_create).await
     });
     
-    let vehicle_list_handle = tokio::spawn(async move {
-        vehicle::handle_list(client_vehicle_list, vehicle_list_sub, pool_vehicle_list).await
+    let crew_list_handle = tokio::spawn(async move {
+        crew::handle_list(client_crew_list, crew_list_sub, pool_crew_list).await
     });
     
-    let vehicle_update_handle = tokio::spawn(async move {
-        vehicle::handle_update(client_vehicle_update, vehicle_update_sub, pool_vehicle_update).await
+    let crew_update_handle = tokio::spawn(async move {
+        crew::handle_update(client_crew_update, crew_update_sub, pool_crew_update).await
     });
     
-    let vehicle_delete_handle = tokio::spawn(async move {
-        vehicle::handle_delete(client_vehicle_delete, vehicle_delete_sub, pool_vehicle_delete).await
+    let crew_delete_handle = tokio::spawn(async move {
+        crew::handle_delete(client_crew_delete, crew_delete_sub, pool_crew_delete).await
     });
     
     // Old sync import handlers removed - replaced by async processors below
@@ -1224,18 +1224,18 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         result = visit_delete_handle => {
             error!("Visit delete handler finished: {:?}", result);
         }
-        // Vehicle handlers
-        result = vehicle_create_handle => {
-            error!("Vehicle create handler finished: {:?}", result);
+        // Crew handlers
+        result = crew_create_handle => {
+            error!("Crew create handler finished: {:?}", result);
         }
-        result = vehicle_list_handle => {
-            error!("Vehicle list handler finished: {:?}", result);
+        result = crew_list_handle => {
+            error!("Crew list handler finished: {:?}", result);
         }
-        result = vehicle_update_handle => {
-            error!("Vehicle update handler finished: {:?}", result);
+        result = crew_update_handle => {
+            error!("Crew update handler finished: {:?}", result);
         }
-        result = vehicle_delete_handle => {
-            error!("Vehicle delete handler finished: {:?}", result);
+        result = crew_delete_handle => {
+            error!("Crew delete handler finished: {:?}", result);
         }
         // Old sync import handlers removed - now using async processors
         // Job management handlers

@@ -798,7 +798,7 @@ pub async fn handle_schedule(
             request.payload.scheduled_date,
             request.payload.time_window_start,
             request.payload.time_window_end,
-            request.payload.assigned_vehicle_id,
+            request.payload.assigned_crew_id,
             request.payload.duration_minutes,
         ).await {
             Ok(Some(revision)) => {

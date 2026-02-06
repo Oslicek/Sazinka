@@ -3,8 +3,8 @@ import styles from './RouteContextHeader.module.css';
 
 export interface RouteContext {
   date: string;
-  vehicleId: string;
-  vehicleName: string;
+  crewId: string;
+  crewName: string;
   depotId: string;
   depotName: string;
 }
@@ -15,9 +15,9 @@ interface RouteContextHeaderProps {
   isRouteAware: boolean;
   onRouteAwareToggle: (enabled: boolean) => void;
   onDateChange: (date: string) => void;
-  onVehicleChange: (vehicleId: string) => void;
+  onCrewChange: (crewId: string) => void;
   onDepotChange: (depotId: string) => void;
-  vehicles: Array<{ id: string; name: string }>;
+  crews: Array<{ id: string; name: string }>;
   depots: Array<{ id: string; name: string }>;
   isLoading?: boolean;
 }
@@ -28,9 +28,9 @@ export function RouteContextHeader({
   isRouteAware,
   onRouteAwareToggle,
   onDateChange,
-  onVehicleChange,
+  onCrewChange,
   onDepotChange,
-  vehicles,
+  crews,
   depots,
   isLoading,
 }: RouteContextHeaderProps) {
@@ -62,16 +62,16 @@ export function RouteContextHeader({
           </div>
 
           <div className={styles.selector}>
-            <label htmlFor="route-vehicle">Auto</label>
+            <label htmlFor="route-crew">Posádka</label>
             <select
-              id="route-vehicle"
-              value={context?.vehicleId ?? ''}
-              onChange={(e) => onVehicleChange(e.target.value)}
+              id="route-crew"
+              value={context?.crewId ?? ''}
+              onChange={(e) => onCrewChange(e.target.value)}
               className={styles.select}
             >
-              <option value="">Vyberte auto</option>
-              {vehicles.map((v) => (
-                <option key={v.id} value={v.id}>{v.name}</option>
+              <option value="">Vyberte posádku</option>
+              {crews.map((crew) => (
+                <option key={crew.id} value={crew.id}>{crew.name}</option>
               ))}
             </select>
           </div>
@@ -118,7 +118,7 @@ export function RouteContextHeader({
           <CapacityMetrics metrics={metrics} />
         ) : (
           <span className={styles.noContext}>
-            Vyberte den, auto a depo pro zobrazení kapacity
+            Vyberte den, posádku a depo pro zobrazení kapacity
           </span>
         )}
       </div>

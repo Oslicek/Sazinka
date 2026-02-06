@@ -8,5 +8,5 @@ pub mod revision;
 pub mod route;
 pub mod settings;
 pub mod user;
-pub mod vehicle;
+pub mod crew;
 pub mod visit;

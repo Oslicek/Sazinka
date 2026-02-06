@@ -714,7 +714,7 @@ pub async fn snooze_revision(
                   due_date, scheduled_date, scheduled_time_start, scheduled_time_end,
                   completed_at, duration_minutes, result, findings,
                   created_at, updated_at, snooze_until, snooze_reason,
-                  assigned_vehicle_id, route_order
+                  assigned_crew_id, route_order
         "#
     )
     .bind(snooze_until)
@@ -742,7 +742,7 @@ pub async fn clear_snooze(
                   due_date, scheduled_date, scheduled_time_start, scheduled_time_end,
                   completed_at, duration_minutes, result, findings,
                   created_at, updated_at, snooze_until, snooze_reason,
-                  assigned_vehicle_id, route_order
+                  assigned_crew_id, route_order
         "#
     )
     .bind(revision_id)
@@ -753,7 +753,7 @@ pub async fn clear_snooze(
     Ok(revision)
 }
 
-/// Schedule a revision (set date, time window, and optionally vehicle)
+/// Schedule a revision (set date, time window, and optionally crew)
 pub async fn schedule_revision(
     pool: &PgPool,
     user_id: Uuid,
@@ -761,7 +761,7 @@ pub async fn schedule_revision(
     scheduled_date: NaiveDate,
     time_start: Option<NaiveTime>,
     time_end: Option<NaiveTime>,
-    vehicle_id: Option<Uuid>,
+    crew_id: Option<Uuid>,
     duration_minutes: Option<i32>,
 ) -> Result<Option<Revision>> {
     let revision = sqlx::query_as::<_, Revision>(
@@ -770,7 +770,7 @@ pub async fn schedule_revision(
         SET scheduled_date = $1,
             scheduled_time_start = $2,
             scheduled_time_end = $3,
-            assigned_vehicle_id = $4,
+            assigned_crew_id = $4,
             duration_minutes = COALESCE($5, duration_minutes),
             status = 'scheduled',
             snooze_until = NULL,
@@ -781,13 +781,13 @@ pub async fn schedule_revision(
                   due_date, scheduled_date, scheduled_time_start, scheduled_time_end,
                   completed_at, duration_minutes, result, findings,
                   created_at, updated_at, snooze_until, snooze_reason,
-                  assigned_vehicle_id, route_order
+                  assigned_crew_id, route_order
         "#
     )
     .bind(scheduled_date)
     .bind(time_start)
     .bind(time_end)
-    .bind(vehicle_id)
+    .bind(crew_id)
     .bind(duration_minutes)
     .bind(revision_id)
     .bind(user_id)

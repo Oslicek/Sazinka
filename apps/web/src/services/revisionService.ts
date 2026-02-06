@@ -187,7 +187,7 @@ export interface ScheduleRevisionRequest {
   scheduledDate: string;
   timeWindowStart?: string;
   timeWindowEnd?: string;
-  assignedVehicleId?: string;
+  assignedCrewId?: string;
   durationMinutes?: number;
   notes?: string;
 }
@@ -450,7 +450,7 @@ export async function snoozeRevision(
 }
 
 /**
- * Schedule a revision - set date, time window, and optionally vehicle
+ * Schedule a revision - set date, time window, and optionally crew
  */
 export async function scheduleRevision(
   userId: string,

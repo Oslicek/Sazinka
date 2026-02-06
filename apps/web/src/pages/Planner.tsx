@@ -13,7 +13,7 @@ import {
   type CallQueueItem,
 } from '../services/revisionService';
 import * as routeService from '../services/routeService';
-import { listVehicles, type Vehicle } from '../services/vehicleService';
+import { listCrews, type Crew } from '../services/crewService';
 import type { RouteJobStatusUpdate } from '../services/routeService';
 import {
   DndContext,
@@ -44,7 +44,7 @@ const DEFAULT_DEPOT = { lat: 50.0755, lng: 14.4378 };
 // Search params interface for URL sync
 interface PlannerSearchParams {
   date?: string;
-  vehicle?: string;
+  crew?: string;
   highlight?: string;
 }
 
@@ -110,10 +110,10 @@ export function Planner() {
   const [depotLoading, setDepotLoading] = useState(true);
   const depotMarkerRef = useRef<maplibregl.Marker | null>(null);
   
-  // Vehicle state
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [vehiclesLoading, setVehiclesLoading] = useState(true);
-  const [selectedVehicle, setSelectedVehicle] = useState<string>(searchParams?.vehicle || '');
+  // Crew state
+  const [crews, setCrews] = useState<Crew[]>([]);
+  const [crewsLoading, setCrewsLoading] = useState(true);
+  const [selectedCrew, setSelectedCrew] = useState<string>(searchParams?.crew || '');
   
   // Scheduled revisions loading
   const [scheduledLoading, setScheduledLoading] = useState(false);
@@ -161,17 +161,17 @@ export function Planner() {
     // Update URL without full navigation
     navigate({ 
       to: '/planner',
-      search: { date: newDate, vehicle: selectedVehicle || undefined } as Record<string, string | undefined>,
+      search: { date: newDate, crew: selectedCrew || undefined } as Record<string, string | undefined>,
       replace: true,
     });
-  }, [navigate, selectedVehicle]);
+  }, [navigate, selectedCrew]);
 
-  // Sync vehicle with URL
-  const handleVehicleChange = useCallback((vehicleId: string) => {
-    setSelectedVehicle(vehicleId);
+  // Sync crew with URL
+  const handleCrewChange = useCallback((crewId: string) => {
+    setSelectedCrew(crewId);
     navigate({ 
       to: '/planner',
-      search: { date: selectedDate, vehicle: vehicleId } as Record<string, string | undefined>,
+      search: { date: selectedDate, crew: crewId } as Record<string, string | undefined>,
       replace: true,
     });
   }, [navigate, selectedDate]);
@@ -183,42 +183,42 @@ export function Planner() {
     }
   }, [searchParams?.date, selectedDate]);
 
-  // Update vehicle when URL changes
+  // Update crew when URL changes
   useEffect(() => {
-    if (searchParams?.vehicle && searchParams.vehicle !== selectedVehicle) {
-      setSelectedVehicle(searchParams.vehicle);
+    if (searchParams?.crew && searchParams.crew !== selectedCrew) {
+      setSelectedCrew(searchParams.crew);
     }
-  }, [searchParams?.vehicle, selectedVehicle]);
+  }, [searchParams?.crew, selectedCrew]);
 
-  // Load vehicles
+  // Load crews
   useEffect(() => {
     if (!isConnected) return;
     
-    async function loadVehiclesAsync() {
+    async function loadCrewsAsync() {
       try {
-        setVehiclesLoading(true);
-        const vehicleList = await listVehicles(true);
-        setVehicles(vehicleList);
+        setCrewsLoading(true);
+        const crewList = await listCrews(true);
+        setCrews(crewList);
         
-        // Auto-select first vehicle if none selected
-        if (!selectedVehicle && vehicleList.length > 0) {
-          const firstVehicleId = vehicleList[0].id;
-          setSelectedVehicle(firstVehicleId);
+        // Auto-select first crew if none selected
+        if (!selectedCrew && crewList.length > 0) {
+          const firstCrewId = crewList[0].id;
+          setSelectedCrew(firstCrewId);
           navigate({ 
             to: '/planner',
-            search: { date: selectedDate, vehicle: firstVehicleId } as Record<string, string | undefined>,
+            search: { date: selectedDate, crew: firstCrewId } as Record<string, string | undefined>,
             replace: true,
           });
         }
       } catch (err) {
-        console.warn('Failed to load vehicles:', err);
-        setVehicles([]);
+        console.warn('Failed to load crews:', err);
+        setCrews([]);
       } finally {
-        setVehiclesLoading(false);
+        setCrewsLoading(false);
       }
     }
-    loadVehiclesAsync();
-  }, [isConnected, selectedVehicle, navigate, selectedDate]);
+    loadCrewsAsync();
+  }, [isConnected, selectedCrew, navigate, selectedDate]);
 
   // Load user's primary depot from settings
   useEffect(() => {
@@ -984,19 +984,19 @@ export function Planner() {
               className={styles.dateInput}
             />
             <select
-              value={selectedVehicle}
-              onChange={(e) => handleVehicleChange(e.target.value)}
-              className={styles.vehicleSelect}
-              disabled={vehiclesLoading}
+              value={selectedCrew}
+              onChange={(e) => handleCrewChange(e.target.value)}
+              className={styles.crewSelect}
+              disabled={crewsLoading}
             >
-              {vehiclesLoading ? (
+              {crewsLoading ? (
                 <option value="">Načítám...</option>
-              ) : vehicles.length === 0 ? (
-                <option value="">Žádná auta</option>
+              ) : crews.length === 0 ? (
+                <option value="">Žádné posádky</option>
               ) : (
-                vehicles.map((vehicle) => (
-                  <option key={vehicle.id} value={vehicle.id}>
-                    {vehicle.name}
+                crews.map((crew) => (
+                  <option key={crew.id} value={crew.id}>
+                    {crew.name}
                   </option>
                 ))
               )}

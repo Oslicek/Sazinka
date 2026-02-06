@@ -142,14 +142,14 @@
   color: white;
 }
 
-/* Vehicle grid */
-.vehicleGrid {
+/* Crew grid */
+.crewGrid {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
 }
 
-.vehicleButton {
+.crewButton {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -161,31 +161,31 @@
   transition: all 0.15s;
 }
 
-.vehicleButton:hover {
+.crewButton:hover {
   border-color: var(--color-primary, #2563eb);
 }
 
-.vehicleButton.selected {
+.crewButton.selected {
   background: var(--color-primary, #2563eb);
   border-color: var(--color-primary, #2563eb);
 }
 
-.vehicleName {
+.crewName {
   font-size: 0.875rem;
   font-weight: 500;
   color: var(--text-primary, #1a1a1a);
 }
 
-.vehicleButton.selected .vehicleName {
+.crewButton.selected .crewName {
   color: white;
 }
 
-.vehiclePlate {
+.crewPlate {
   font-size: 0.75rem;
   color: var(--text-tertiary, #888);
 }
 
-.vehicleButton.selected .vehiclePlate {
+.crewButton.selected .crewPlate {
   color: rgba(255, 255, 255, 0.8);
 }
 

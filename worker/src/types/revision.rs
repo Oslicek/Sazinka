@@ -29,9 +29,9 @@ pub struct Revision {
     pub snooze_until: Option<NaiveDate>,
     #[sqlx(default)]
     pub snooze_reason: Option<String>,
-    // Vehicle assignment
+    // Crew assignment
     #[sqlx(default)]
-    pub assigned_vehicle_id: Option<Uuid>,
+    pub assigned_crew_id: Option<Uuid>,
     #[sqlx(default)]
     pub route_order: Option<i32>,
     // Device info (joined from devices table)
@@ -304,7 +304,7 @@ pub struct ScheduleRevisionRequest {
     pub scheduled_date: NaiveDate,
     pub time_window_start: Option<NaiveTime>,
     pub time_window_end: Option<NaiveTime>,
-    pub assigned_vehicle_id: Option<Uuid>,
+    pub assigned_crew_id: Option<Uuid>,
     pub duration_minutes: Option<i32>,
     pub notes: Option<String>,
 }
