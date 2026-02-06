@@ -5,6 +5,7 @@ import { TimeWindow } from './revision';
 export interface Route {
   id: string;
   userId: string;
+  crewId?: string | null;
   date: string;
   status: RouteStatus;
   totalDistanceKm?: number;
@@ -31,8 +32,9 @@ export const ROUTE_STATUS_LABELS: Record<RouteStatus, string> = {
 
 export interface RouteStop {
   order: number;
-  revisionId: string;
   customerId: string;
+  visitId?: string | null;
+  revisionId?: string | null;
   customerName: string;
   address: string;
   lat: number;

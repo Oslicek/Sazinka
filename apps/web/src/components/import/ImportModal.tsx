@@ -11,7 +11,7 @@ import {
   submitDeviceImportJob,
   submitRevisionImportJob,
   submitCommunicationImportJob,
-  submitVisitImportJob,
+  submitWorkLogImportJob,
   submitZipImportJob,
 } from '../../services/importJobService';
 import { useActiveJobsStore } from '../../stores/activeJobsStore';
@@ -21,13 +21,13 @@ import styles from './ImportModal.module.css';
 // Mock user ID for development
 const USER_ID = '00000000-0000-0000-0000-000000000001';
 
-export type ImportEntityType = 'device' | 'revision' | 'communication' | 'visit' | 'zip';
+export type ImportEntityType = 'device' | 'revision' | 'communication' | 'work_log' | 'zip';
 
 const ENTITY_LABELS: Record<ImportEntityType, string> = {
   device: 'zařízení',
   revision: 'revizí',
   communication: 'komunikace',
-  visit: 'návštěv',
+  work_log: 'pracovního deníku',
   zip: 'souborů',
 };
 
@@ -35,7 +35,7 @@ const ENTITY_TITLES: Record<ImportEntityType, string> = {
   device: 'Import zařízení',
   revision: 'Import revizí',
   communication: 'Import komunikace',
-  visit: 'Import návštěv',
+  work_log: 'Import pracovního deníku',
   zip: 'Import ZIP',
 };
 
@@ -43,7 +43,7 @@ const JOB_TYPES: Record<ImportEntityType, JobType> = {
   device: 'import.device',
   revision: 'import.revision',
   communication: 'import.communication',
-  visit: 'import.visit',
+  work_log: 'import.work_log',
   zip: 'import.zip',
 };
 
@@ -51,7 +51,7 @@ const ACCEPTED_FILES: Record<ImportEntityType, string> = {
   device: '.csv,text/csv',
   revision: '.csv,text/csv',
   communication: '.csv,text/csv',
-  visit: '.csv,text/csv',
+  work_log: '.csv,text/csv',
   zip: '.zip,application/zip,application/x-zip-compressed',
 };
 
@@ -261,8 +261,8 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
         case 'communication':
           result = await submitCommunicationImportJob(USER_ID, preview.content, preview.filename);
           break;
-        case 'visit':
-          result = await submitVisitImportJob(USER_ID, preview.content, preview.filename);
+        case 'work_log':
+          result = await submitWorkLogImportJob(USER_ID, preview.content, preview.filename);
           break;
         case 'zip':
           result = await submitZipImportJob(USER_ID, preview.content, preview.filename);

@@ -14,9 +14,9 @@ import type {
   CommunicationImportJobRequest,
   CommunicationImportJobStatusUpdate,
   CommunicationImportJobSubmitResponse,
-  VisitImportJobRequest,
-  VisitImportJobStatusUpdate,
-  VisitImportJobSubmitResponse,
+  WorkLogImportJobRequest,
+  WorkLogImportJobStatusUpdate,
+  WorkLogImportJobSubmitResponse,
   ZipImportJobRequest,
   ZipImportJobStatusUpdate,
   ZipImportJobSubmitResponse,
@@ -277,26 +277,26 @@ export async function subscribeToCommunicationImportJobStatus(
 }
 
 // =============================================================================
-// VISIT IMPORT
+// WORK LOG IMPORT (replaces visit import)
 // =============================================================================
 
 /**
- * Submit a visit import job
+ * Submit a work log import job
  */
-export async function submitVisitImportJob(
+export async function submitWorkLogImportJob(
   userId: string,
   csvContent: string,
   filename: string,
   deps: ImportJobServiceDeps = getDefaultDeps()
-): Promise<VisitImportJobSubmitResponse> {
-  const payload: VisitImportJobRequest = {
+): Promise<WorkLogImportJobSubmitResponse> {
+  const payload: WorkLogImportJobRequest = {
     csvContent,
     filename,
   };
   
   const request = createRequest(userId, payload);
   
-  const response = await deps.request<typeof request, NatsResponse<VisitImportJobSubmitResponse>>(
+  const response = await deps.request<typeof request, NatsResponse<WorkLogImportJobSubmitResponse>>(
     SUBJECTS.visit.submit,
     request
   );
@@ -309,11 +309,11 @@ export async function submitVisitImportJob(
 }
 
 /**
- * Subscribe to status updates for a specific visit import job
+ * Subscribe to status updates for a specific work log import job
  */
-export async function subscribeToVisitImportJobStatus(
+export async function subscribeToWorkLogImportJobStatus(
   jobId: string,
-  callback: (update: VisitImportJobStatusUpdate) => void,
+  callback: (update: WorkLogImportJobStatusUpdate) => void,
   deps: ImportJobServiceDeps = getDefaultDeps()
 ): Promise<() => void> {
   if (!deps.subscribe) {
@@ -321,7 +321,7 @@ export async function subscribeToVisitImportJobStatus(
   }
   
   const subject = `${SUBJECTS.visit.status}.${jobId}`;
-  return deps.subscribe<VisitImportJobStatusUpdate>(subject, callback);
+  return deps.subscribe<WorkLogImportJobStatusUpdate>(subject, callback);
 }
 
 // =============================================================================
@@ -388,7 +388,7 @@ export const subscribeToImportJobStatus = subscribeToCustomerImportJobStatus;
  * Returns an array of unsubscribe functions
  */
 export async function subscribeToAllImportJobStatuses(
-  callback: (update: CustomerImportJobStatusUpdate | DeviceImportJobStatusUpdate | RevisionImportJobStatusUpdate | CommunicationImportJobStatusUpdate | VisitImportJobStatusUpdate | ZipImportJobStatusUpdate) => void,
+  callback: (update: CustomerImportJobStatusUpdate | DeviceImportJobStatusUpdate | RevisionImportJobStatusUpdate | CommunicationImportJobStatusUpdate | WorkLogImportJobStatusUpdate | ZipImportJobStatusUpdate) => void,
   deps: ImportJobServiceDeps = getDefaultDeps()
 ): Promise<(() => void)[]> {
   if (!deps.subscribe) {

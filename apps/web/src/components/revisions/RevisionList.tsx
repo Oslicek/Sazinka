@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Revision, RevisionStatus, RevisionResult } from '@shared/revision';
+import type { Revision, RevisionDisplayStatus, RevisionResult } from '@shared/revision';
 import { REVISION_STATUS_LABELS, REVISION_RESULT_LABELS } from '@shared/revision';
 import type { DeviceType } from '@shared/device';
 import { DEVICE_TYPE_LABELS } from '@shared/device';
@@ -131,7 +131,7 @@ export function RevisionList({
     return timeStr.substring(0, 5); // HH:MM
   };
 
-  const getStatusClass = (status: RevisionStatus) => {
+  const getStatusClass = (status: RevisionDisplayStatus) => {
     switch (status) {
       case 'overdue': return styles.statusOverdue;
       case 'due_soon': return styles.statusDueSoon;
@@ -218,8 +218,8 @@ export function RevisionList({
             >
               <div className={styles.revisionInfo}>
                 <div className={styles.revisionHeader}>
-                  <span className={`${styles.statusBadge} ${getStatusClass(revision.status as RevisionStatus)}`}>
-                    {REVISION_STATUS_LABELS[revision.status as RevisionStatus] || revision.status}
+                  <span className={`${styles.statusBadge} ${getStatusClass(revision.status as RevisionDisplayStatus)}`}>
+                    {REVISION_STATUS_LABELS[revision.status as RevisionDisplayStatus] || revision.status}
                   </span>
                   {revision.result && (
                     <span className={`${styles.resultBadge} ${getResultClass(revision.result as RevisionResult)}`}>

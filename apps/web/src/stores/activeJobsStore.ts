@@ -7,7 +7,7 @@ import type {
   DeviceImportJobStatusUpdate,
   RevisionImportJobStatusUpdate,
   CommunicationImportJobStatusUpdate,
-  VisitImportJobStatusUpdate,
+  WorkLogImportJobStatusUpdate,
   ZipImportJobStatusUpdate,
   GeocodeJobStatusUpdate,
 } from '@shared/import';
@@ -191,7 +191,7 @@ export const useActiveJobsStore = create<ActiveJobsState>((set, get) => ({
       unsubscribeFunctions.push(unsubCommunicationImport);
       
       // Subscribe to visit import job status updates
-      const unsubVisitImport = await natsState.subscribe<VisitImportJobStatusUpdate>(
+      const unsubVisitImport = await natsState.subscribe<WorkLogImportJobStatusUpdate>(
         'sazinka.job.import.visit.status.*',
         (update) => handleImportJobStatusUpdate(update, 'import.visit')
       );
@@ -249,7 +249,7 @@ export const useActiveJobsStore = create<ActiveJobsState>((set, get) => ({
 /**
  * Generic import job status update type
  */
-type GenericImportJobStatusUpdate = CustomerImportJobStatusUpdate | DeviceImportJobStatusUpdate | RevisionImportJobStatusUpdate | CommunicationImportJobStatusUpdate | VisitImportJobStatusUpdate;
+type GenericImportJobStatusUpdate = CustomerImportJobStatusUpdate | DeviceImportJobStatusUpdate | RevisionImportJobStatusUpdate | CommunicationImportJobStatusUpdate | WorkLogImportJobStatusUpdate;
 
 /**
  * Handle import job status updates for all standard import types

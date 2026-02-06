@@ -7,13 +7,18 @@ export interface Revision {
   userId: string;
   status: RevisionStatus;
   dueDate: string;
-  scheduledDate?: string;
-  scheduledTimeStart?: string;
-  scheduledTimeEnd?: string;
-  completedAt?: string;
-  durationMinutes?: number;
-  result?: RevisionResult;
-  findings?: string;
+  scheduledDate?: string | null;
+  scheduledTimeStart?: string | null;
+  scheduledTimeEnd?: string | null;
+  completedAt?: string | null;
+  durationMinutes?: number | null;
+  result?: RevisionResult | null;
+  findings?: string | null;
+  fulfilledByWorkItemId?: string | null;
+  snoozeUntil?: string | null;
+  snoozeReason?: string | null;
+  assignedCrewId?: string | null;
+  routeOrder?: number | null;
   createdAt: string;
   updatedAt: string;
   // Device info (joined from devices table)
@@ -27,16 +32,18 @@ export interface Revision {
   customerPostalCode?: string;
 }
 
+/** Status values stored in the database */
 export type RevisionStatus =
   | 'upcoming'
-  | 'due_soon'
-  | 'overdue'
   | 'scheduled'
   | 'confirmed'
   | 'completed'
   | 'cancelled';
 
-export const REVISION_STATUS_LABELS: Record<RevisionStatus, string> = {
+/** Extended status including computed display states (not stored in DB) */
+export type RevisionDisplayStatus = RevisionStatus | 'due_soon' | 'overdue';
+
+export const REVISION_STATUS_LABELS: Record<RevisionDisplayStatus, string> = {
   upcoming: 'Plánovaná',
   due_soon: 'Brzy',
   overdue: 'Po termínu',

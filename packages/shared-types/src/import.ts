@@ -149,28 +149,28 @@ export interface CommunicationImportJobSubmitResponse {
 }
 
 // =============================================================================
-// VISIT IMPORT JOB TYPES
+// WORK LOG IMPORT JOB TYPES (replaces visit import)
 // =============================================================================
 
-export interface VisitImportJobRequest {
+export interface WorkLogImportJobRequest {
   csvContent: string;
   filename: string;
 }
 
-export type VisitImportJobStatus =
+export type WorkLogImportJobStatus =
   | { type: 'queued'; position: number }
   | { type: 'parsing'; progress: number }
   | { type: 'importing'; processed: number; total: number; succeeded: number; failed: number }
   | { type: 'completed'; total: number; succeeded: number; failed: number; report: string }
   | { type: 'failed'; error: string };
 
-export interface VisitImportJobStatusUpdate {
+export interface WorkLogImportJobStatusUpdate {
   jobId: string;
   timestamp: string;
-  status: VisitImportJobStatus;
+  status: WorkLogImportJobStatus;
 }
 
-export interface VisitImportJobSubmitResponse {
+export interface WorkLogImportJobSubmitResponse {
   jobId: string;
   message: string;
 }
@@ -179,7 +179,7 @@ export interface VisitImportJobSubmitResponse {
 // ZIP IMPORT JOB TYPES
 // =============================================================================
 
-export type ZipImportFileType = 'customers' | 'devices' | 'revisions' | 'communications' | 'visits';
+export type ZipImportFileType = 'customers' | 'devices' | 'revisions' | 'communications' | 'work_log';
 
 export interface ZipImportFileInfo {
   filename: string;
@@ -280,18 +280,20 @@ export interface CsvCommunicationRow {
 }
 
 /**
- * Raw CSV row for visit import
+ * Raw CSV row for work log import
  */
-export interface CsvVisitRow {
+export interface CsvWorkLogRow {
   customer_ref?: string;
-  device_ref?: string;
   scheduled_date?: string;
   scheduled_time_start?: string;
   scheduled_time_end?: string;
-  visit_type?: string;
+  device_ref?: string;
+  work_type?: string;
   status?: string;
   result?: string;
+  duration_minutes?: string;
   result_notes?: string;
+  findings?: string;
   requires_follow_up?: string;
   follow_up_reason?: string;
 }
@@ -300,7 +302,7 @@ export interface CsvVisitRow {
 // IMPORT REQUEST/RESPONSE TYPES
 // =============================================================================
 
-export type ImportEntityType = 'customer' | 'device' | 'revision' | 'communication' | 'visit';
+export type ImportEntityType = 'customer' | 'device' | 'revision' | 'communication' | 'work_log';
 
 /**
  * Batch import request for devices
@@ -361,24 +363,27 @@ export interface ImportCommunicationBatchRequest {
 }
 
 /**
- * Batch import request for visits
+ * Batch import request for work log entries
+ * Rows with same customerRef + scheduledDate are grouped into one visit
  */
-export interface ImportVisitRequest {
+export interface ImportWorkLogRequest {
   customerRef: string;
-  deviceRef?: string;
   scheduledDate: string;
   scheduledTimeStart?: string;
   scheduledTimeEnd?: string;
-  visitType: string;
+  deviceRef?: string;
+  workType: string;
   status?: string;
   result?: string;
+  durationMinutes?: number;
   resultNotes?: string;
+  findings?: string;
   requiresFollowUp?: boolean;
   followUpReason?: string;
 }
 
-export interface ImportVisitBatchRequest {
-  visits: ImportVisitRequest[];
+export interface ImportWorkLogBatchRequest {
+  entries: ImportWorkLogRequest[];
 }
 
 /**
@@ -559,6 +564,49 @@ export const VISIT_STATUS_ALIASES: Record<string, string> = {
   'in_progress': 'in_progress',
   'completed': 'completed',
   'cancelled': 'cancelled',
+  'rescheduled': 'rescheduled',
+};
+
+export const WORK_TYPE_ALIASES: Record<string, string> = {
+  'revize': 'revision',
+  'kontrola': 'revision',
+  'oprava': 'repair',
+  'servis': 'repair',
+  'instalace': 'installation',
+  'montáž': 'installation',
+  'montaz': 'installation',
+  'konzultace': 'consultation',
+  'poradenství': 'consultation',
+  'poradenstvi': 'consultation',
+  'následná': 'follow_up',
+  'nasledna': 'follow_up',
+  'follow-up': 'follow_up',
+  // English passthrough
+  'revision': 'revision',
+  'repair': 'repair',
+  'installation': 'installation',
+  'consultation': 'consultation',
+  'follow_up': 'follow_up',
+};
+
+export const WORK_RESULT_ALIASES: Record<string, string> = {
+  'úspěšná': 'successful',
+  'uspesna': 'successful',
+  'ok': 'successful',
+  'částečná': 'partial',
+  'castecna': 'partial',
+  'neúspěšná': 'failed',
+  'neuspesna': 'failed',
+  'nok': 'failed',
+  'nepřítomen': 'customer_absent',
+  'nepritomen': 'customer_absent',
+  'přeplánováno': 'rescheduled',
+  'preplanovano': 'rescheduled',
+  // English passthrough
+  'successful': 'successful',
+  'partial': 'partial',
+  'failed': 'failed',
+  'customer_absent': 'customer_absent',
   'rescheduled': 'rescheduled',
 };
 

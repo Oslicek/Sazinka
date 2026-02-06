@@ -8,7 +8,8 @@ export interface Visit {
   id: string;
   userId: string;
   customerId: string;
-  revisionId?: string | null;
+  crewId?: string | null;
+  deviceId?: string | null;
   
   // Scheduling
   scheduledDate: string;
@@ -43,11 +44,13 @@ export interface Visit {
 
 export interface CreateVisitRequest {
   customerId: string;
-  revisionId?: string;
+  crewId?: string;
+  deviceId?: string;
   scheduledDate: string;
   scheduledTimeStart?: string;
   scheduledTimeEnd?: string;
   visitType: VisitType;
+  status?: VisitStatus;
 }
 
 export interface UpdateVisitRequest {

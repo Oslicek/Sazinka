@@ -706,7 +706,7 @@ export function Admin() {
             <button
               type="button"
               className={styles.primaryButton}
-              onClick={() => handleOpenImport('visit')}
+              onClick={() => handleOpenImport('work_log')}
               disabled={!connected}
             >
               📤 Importovat návštěvy

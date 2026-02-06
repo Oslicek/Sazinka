@@ -9,11 +9,11 @@ import type {
   CsvDeviceRow,
   CsvRevisionRow,
   CsvCommunicationRow,
-  CsvVisitRow,
+  CsvWorkLogRow,
   ImportDeviceRequest,
   ImportRevisionRequest,
   ImportCommunicationRequest,
-  ImportVisitRequest,
+  ImportWorkLogRequest,
 } from '@shared/import';
 import {
   DEVICE_TYPE_ALIASES as DeviceAliases,
@@ -21,9 +21,9 @@ import {
   REVISION_RESULT_ALIASES as RevisionResultAliases,
   COMMUNICATION_TYPE_ALIASES as CommTypeAliases,
   COMMUNICATION_DIRECTION_ALIASES as CommDirAliases,
-  VISIT_TYPE_ALIASES as VisitTypeAliases,
+  WORK_TYPE_ALIASES as WorkTypeAliases,
   VISIT_STATUS_ALIASES as VisitStatusAliases,
-  VISIT_RESULT_ALIASES as VisitResultAliases,
+  WORK_RESULT_ALIASES as WorkResultAliases,
 } from '@shared/import';
 import { normalizePhone, cleanValue } from './importService';
 
@@ -487,31 +487,34 @@ export function normalizeCommunicationRow(row: CsvCommunicationRow, rowNumber: n
 // VISIT PARSER
 // =============================================================================
 
-const VISIT_HEADER_MAP: Record<string, keyof CsvVisitRow> = {
+const WORK_LOG_HEADER_MAP: Record<string, keyof CsvWorkLogRow> = {
   'customer_ref': 'customer_ref',
   'customerref': 'customer_ref',
-  'device_ref': 'device_ref',
-  'deviceref': 'device_ref',
   'scheduled_date': 'scheduled_date',
   'scheduleddate': 'scheduled_date',
   'scheduled_time_start': 'scheduled_time_start',
   'scheduledtimestart': 'scheduled_time_start',
   'scheduled_time_end': 'scheduled_time_end',
   'scheduledtimeend': 'scheduled_time_end',
-  'visit_type': 'visit_type',
-  'visittype': 'visit_type',
-  'type': 'visit_type',
+  'device_ref': 'device_ref',
+  'deviceref': 'device_ref',
+  'work_type': 'work_type',
+  'worktype': 'work_type',
+  'type': 'work_type',
   'status': 'status',
   'result': 'result',
+  'duration_minutes': 'duration_minutes',
+  'durationminutes': 'duration_minutes',
   'result_notes': 'result_notes',
   'resultnotes': 'result_notes',
+  'findings': 'findings',
   'requires_follow_up': 'requires_follow_up',
   'requiresfollowup': 'requires_follow_up',
   'follow_up_reason': 'follow_up_reason',
   'followupreason': 'follow_up_reason',
 };
 
-export function parseVisitCsv(csvContent: string): { data: CsvVisitRow[]; errors: Papa.ParseError[] } {
+export function parseWorkLogCsv(csvContent: string): { data: CsvWorkLogRow[]; errors: Papa.ParseError[] } {
   const result = Papa.parse<Record<string, string>>(csvContent, {
     header: true,
     delimiter: ';',
@@ -519,10 +522,10 @@ export function parseVisitCsv(csvContent: string): { data: CsvVisitRow[]; errors
     transformHeader: (header) => header.trim().toLowerCase().replace(/\s+/g, '_'),
   });
 
-  const data: CsvVisitRow[] = result.data.map((row) => {
-    const cleaned: CsvVisitRow = {};
+  const data: CsvWorkLogRow[] = result.data.map((row) => {
+    const cleaned: CsvWorkLogRow = {};
     for (const [key, value] of Object.entries(row)) {
-      const propName = VISIT_HEADER_MAP[key];
+      const propName = WORK_LOG_HEADER_MAP[key];
       if (propName && value !== undefined && value !== '') {
         (cleaned as any)[propName] = value;
       }
@@ -533,8 +536,8 @@ export function parseVisitCsv(csvContent: string): { data: CsvVisitRow[]; errors
   return { data, errors: result.errors };
 }
 
-export function normalizeVisitRow(row: CsvVisitRow, rowNumber: number): {
-  visit: ImportVisitRequest | null;
+export function normalizeWorkLogRow(row: CsvWorkLogRow, rowNumber: number): {
+  entry: ImportWorkLogRequest | null;
   issues: ImportIssue[];
 } {
   const issues: ImportIssue[] = [];
@@ -548,7 +551,7 @@ export function normalizeVisitRow(row: CsvVisitRow, rowNumber: number): {
       field: 'customer_ref',
       message: 'Chybí reference na zákazníka',
     });
-    return { visit: null, issues };
+    return { entry: null, issues };
   }
 
   // Required: scheduled_date
@@ -561,25 +564,25 @@ export function normalizeVisitRow(row: CsvVisitRow, rowNumber: number): {
       message: row.scheduled_date ? `Neplatný formát data: "${row.scheduled_date}"` : 'Chybí naplánované datum',
       originalValue: row.scheduled_date,
     });
-    return { visit: null, issues };
+    return { entry: null, issues };
   }
 
-  // Required: visit_type
-  const visitType = normalizeAlias(row.visit_type, VisitTypeAliases);
-  if (!visitType) {
+  // Required: work_type
+  const workType = normalizeAlias(row.work_type, WorkTypeAliases);
+  if (!workType) {
     issues.push({
       rowNumber,
       level: 'error',
-      field: 'visit_type',
-      message: row.visit_type ? `Neznámý typ návštěvy: "${row.visit_type}"` : 'Chybí typ návštěvy',
-      originalValue: row.visit_type,
+      field: 'work_type',
+      message: row.work_type ? `Neznámý typ práce: "${row.work_type}"` : 'Chybí typ práce',
+      originalValue: row.work_type,
     });
-    return { visit: null, issues };
+    return { entry: null, issues };
   }
 
   // Optional: device_ref
   const deviceRef = cleanValue(row.device_ref) || undefined;
-  if (visitType === 'revision' && !deviceRef) {
+  if (workType === 'revision' && !deviceRef) {
     issues.push({
       rowNumber,
       level: 'warning',
@@ -590,7 +593,7 @@ export function normalizeVisitRow(row: CsvVisitRow, rowNumber: number): {
 
   // Optional: status
   let status = normalizeAlias(row.status, VisitStatusAliases);
-  const result = normalizeAlias(row.result, VisitResultAliases);
+  const result = normalizeAlias(row.result, WorkResultAliases);
   
   // Auto-set status to completed if result is provided
   if (result && !status) {
@@ -609,32 +612,46 @@ export function normalizeVisitRow(row: CsvVisitRow, rowNumber: number): {
       rowNumber,
       level: 'warning',
       field: 'result',
-      message: 'Dokončená návštěva bez výsledku',
+      message: 'Dokončená práce bez výsledku',
     });
   }
 
-  const visit: ImportVisitRequest = {
+  // Optional: duration_minutes
+  const durationMinutes = row.duration_minutes ? parseInt(row.duration_minutes, 10) : undefined;
+  if (row.duration_minutes && isNaN(durationMinutes!)) {
+    issues.push({
+      rowNumber,
+      level: 'warning',
+      field: 'duration_minutes',
+      message: `Neplatná délka trvání: "${row.duration_minutes}"`,
+      originalValue: row.duration_minutes,
+    });
+  }
+
+  const entry: ImportWorkLogRequest = {
     customerRef,
-    deviceRef,
     scheduledDate,
     scheduledTimeStart: parseTime(row.scheduled_time_start) || undefined,
     scheduledTimeEnd: parseTime(row.scheduled_time_end) || undefined,
-    visitType,
+    deviceRef,
+    workType,
     status: status || 'planned',
     result: result || undefined,
+    durationMinutes: durationMinutes && !isNaN(durationMinutes) ? durationMinutes : undefined,
     resultNotes: cleanValue(row.result_notes) || undefined,
+    findings: cleanValue(row.findings) || undefined,
     requiresFollowUp: parseBoolean(row.requires_follow_up) || undefined,
     followUpReason: cleanValue(row.follow_up_reason) || undefined,
   };
 
-  return { visit, issues };
+  return { entry, issues };
 }
 
 // =============================================================================
 // GENERIC PROCESSING
 // =============================================================================
 
-export type EntityType = 'customer' | 'device' | 'revision' | 'communication' | 'visit';
+export type EntityType = 'customer' | 'device' | 'revision' | 'communication' | 'work_log';
 
 export interface ParsedEntity<T> {
   entity: T | null;
@@ -766,14 +783,14 @@ export function processCommunicationCsv(csvContent: string): {
   };
 }
 
-export function processVisitCsv(csvContent: string): {
-  visits: ImportVisitRequest[];
+export function processWorkLogCsv(csvContent: string): {
+  entries: ImportWorkLogRequest[];
   issues: ImportIssue[];
   totalRows: number;
   skippedCount: number;
 } {
-  const { data, errors } = parseVisitCsv(csvContent);
-  const visits: ImportVisitRequest[] = [];
+  const { data, errors } = parseWorkLogCsv(csvContent);
+  const entries: ImportWorkLogRequest[] = [];
   const issues: ImportIssue[] = [];
   let skippedCount = 0;
 
@@ -788,19 +805,19 @@ export function processVisitCsv(csvContent: string): {
 
   data.forEach((row, index) => {
     const rowNumber = index + 2;
-    const result = normalizeVisitRow(row, rowNumber);
+    const result = normalizeWorkLogRow(row, rowNumber);
     
     issues.push(...result.issues);
     
-    if (result.visit) {
-      visits.push(result.visit);
+    if (result.entry) {
+      entries.push(result.entry);
     } else {
       skippedCount++;
     }
   });
 
   return {
-    visits,
+    entries,
     issues,
     totalRows: data.length,
     skippedCount,

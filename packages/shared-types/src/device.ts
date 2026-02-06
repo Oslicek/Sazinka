@@ -3,14 +3,18 @@
 export interface Device {
   id: string;
   customerId: string;
+  userId: string;
   deviceType: DeviceType;
-  manufacturer?: string;
-  model?: string;
-  serialNumber?: string;
-  installationDate?: string;
+  deviceName?: string | null;
+  manufacturer?: string | null;
+  model?: string | null;
+  serialNumber?: string | null;
+  installationDate?: string | null;
   revisionIntervalMonths: number;
-  notes?: string;
+  nextDueDate?: string | null;
+  notes?: string | null;
   createdAt: string;
+  updatedAt: string;
 }
 
 export type DeviceType =
@@ -32,7 +36,8 @@ export const DEVICE_TYPE_LABELS: Record<DeviceType, string> = {
 
 export interface CreateDeviceRequest {
   customerId: string;
-  deviceType: DeviceType;
+  deviceType: string;
+  deviceName?: string;
   manufacturer?: string;
   model?: string;
   serialNumber?: string;
