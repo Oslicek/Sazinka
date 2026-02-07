@@ -104,11 +104,16 @@ export function PlanningInbox() {
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   const geometryUnsubRef = useRef<(() => void) | null>(null);
   
-  // Inbox state
-  const [segment, setSegment] = useState<InboxSegment>('thisWeek');
+  // Inbox state - restore from sessionStorage
+  const [segment, setSegment] = useState<InboxSegment>(() => {
+    const saved = sessionStorage.getItem('planningInbox.segment');
+    return (saved as InboxSegment) || 'thisWeek';
+  });
   const [candidates, setCandidates] = useState<InboxCandidate[]>([]);
   const [isLoadingCandidates, setIsLoadingCandidates] = useState(false);
-  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(() => {
+    return sessionStorage.getItem('planningInbox.selectedId');
+  });
   
   // Detail state
   const [slotSuggestions, setSlotSuggestions] = useState<SlotSuggestion[]>([]);
@@ -1086,6 +1091,7 @@ export function PlanningInbox() {
   // Handle candidate selection
   const handleCandidateSelect = useCallback((id: string) => {
     setSelectedCandidateId(id);
+    sessionStorage.setItem('planningInbox.selectedId', id);
   }, []);
 
   // Render inbox list panel
@@ -1103,7 +1109,10 @@ export function PlanningInbox() {
             key={key}
             type="button"
             className={`${styles.segmentTab} ${segment === key ? styles.active : ''}`}
-            onClick={() => setSegment(key)}
+            onClick={() => {
+              setSegment(key);
+              sessionStorage.setItem('planningInbox.segment', key);
+            }}
           >
             {label}
             {count > 0 && <span className={styles.count}>({count})</span>}
