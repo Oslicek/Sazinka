@@ -407,6 +407,136 @@
   margin: 0;
 }
 
+/* Day overview in right panel */
+.dayOverviewHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  background-color: var(--color-bg-secondary);
+}
+
+.dayOverviewDate {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.dayOverviewDayNum {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  line-height: 1;
+  min-width: 2.5rem;
+  text-align: center;
+}
+
+.dayOverviewDateText {
+  display: flex;
+  flex-direction: column;
+}
+
+.dayOverviewWeekday {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-text);
+  text-transform: capitalize;
+}
+
+.dayOverviewMonthYear {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  text-transform: capitalize;
+}
+
+.dayOverviewCount {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  background-color: var(--color-bg);
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
+}
+
+.dayOverviewMap {
+  height: 300px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dayOverviewList {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem 0;
+}
+
+.dayOverviewLoading,
+.dayOverviewEmpty {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+.dayOverviewItem {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 1rem;
+  border-bottom: 1px solid var(--color-border-light, rgba(0,0,0,0.06));
+  transition: background-color 0.15s;
+}
+
+.dayOverviewItem:hover {
+  background-color: var(--color-bg-hover, rgba(0,0,0,0.02));
+}
+
+.dayOverviewItemHighlighted {
+  background-color: rgba(34, 197, 94, 0.08);
+  border-left: 3px solid var(--color-success);
+}
+
+.dayOverviewItemTime {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  min-width: 6.5rem;
+  white-space: nowrap;
+}
+
+.dayOverviewItemInfo {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.dayOverviewItemName {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dayOverviewItemType {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.dayOverviewItemBadge {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--color-success);
+  background-color: rgba(34, 197, 94, 0.12);
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
 /* Scheduling confirmation */
 .confirmation {
   display: flex;

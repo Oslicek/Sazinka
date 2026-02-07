@@ -31,6 +31,8 @@ import * as routeService from '../services/routeService';
 import * as insertionService from '../services/insertionService';
 import * as geometryService from '../services/geometryService';
 import { getCallQueue, snoozeRevision, scheduleRevision, type CallQueueItem } from '../services/revisionService';
+import { listCalendarItems } from '../services/calendarService';
+import type { CalendarItem } from '@shared/calendar';
 import { usePlannerShortcuts } from '../hooks/useKeyboardShortcuts';
 import styles from './PlanningInbox.module.css';
 
@@ -128,6 +130,16 @@ export function PlanningInbox() {
     timeStart: string;
     timeEnd: string;
   } | null>(null);
+  
+  // Day overview state - shows all visits for scheduled day in right panel
+  const [dayOverview, setDayOverview] = useState<{
+    date: string;
+    items: CalendarItem[];
+    isLoading: boolean;
+  } | null>(null);
+  const dayOverviewGeometryUnsubRef = useRef<(() => void) | null>(null);
+  const [dayOverviewGeometry, setDayOverviewGeometry] = useState<[number, number][]>([]);
+  const [dayOverviewStops, setDayOverviewStops] = useState<MapStop[]>([]);
   
   // Draft mode state
   const [hasChanges, setHasChanges] = useState(false);
@@ -349,6 +361,16 @@ export function PlanningInbox() {
       }
     };
   }, [isConnected, routeStops, context?.depotId, depots, fetchRouteGeometry]);
+
+  // Cleanup day overview geometry subscription on unmount
+  useEffect(() => {
+    return () => {
+      if (dayOverviewGeometryUnsubRef.current) {
+        dayOverviewGeometryUnsubRef.current();
+        dayOverviewGeometryUnsubRef.current = null;
+      }
+    };
+  }, []);
 
   // Update route cache context when context changes
   useEffect(() => {
@@ -757,6 +779,80 @@ export function PlanningInbox() {
     }
   }, []);
 
+  // Load day overview - all items scheduled for a specific day
+  const loadDayOverview = useCallback(async (date: string) => {
+    setDayOverview({ date, items: [], isLoading: true });
+    setDayOverviewStops([]);
+    setDayOverviewGeometry([]);
+    
+    try {
+      const response = await listCalendarItems({
+        startDate: date,
+        endDate: date,
+        viewMode: 'scheduled',
+        types: ['revision', 'visit'],
+        status: ['scheduled', 'in_progress'],
+      });
+      
+      setDayOverview({ date, items: response.items, isLoading: false });
+      
+      // Build map stops from items that have coordinates
+      // We need to look up coordinates from candidates list
+      const stops: MapStop[] = [];
+      for (const item of response.items) {
+        if (!item.customerId) continue;
+        // Try to find coordinates from candidates
+        const cand = candidates.find((c) => c.customerId === item.customerId);
+        if (cand?.customerLat && cand?.customerLng) {
+          stops.push({
+            id: item.customerId,
+            name: item.customerName || item.title,
+            address: cand.customerStreet ? `${cand.customerStreet}, ${cand.customerCity}` : (cand.customerCity || ''),
+            coordinates: { lat: cand.customerLat, lng: cand.customerLng },
+          });
+        }
+      }
+      setDayOverviewStops(stops);
+      
+      // Fetch route geometry if we have 2+ stops
+      if (stops.length >= 2) {
+        const locations = stops.map((s) => ({ lat: s.coordinates.lat, lng: s.coordinates.lng }));
+        
+        try {
+          if (dayOverviewGeometryUnsubRef.current) {
+            dayOverviewGeometryUnsubRef.current();
+            dayOverviewGeometryUnsubRef.current = null;
+          }
+          
+          const jobResponse = await geometryService.submitGeometryJob(locations);
+          const unsubscribe = await geometryService.subscribeToGeometryJobStatus(
+            jobResponse.jobId,
+            (update) => {
+              if (update.status.type === 'completed') {
+                setDayOverviewGeometry(update.status.coordinates);
+                if (dayOverviewGeometryUnsubRef.current) {
+                  dayOverviewGeometryUnsubRef.current();
+                  dayOverviewGeometryUnsubRef.current = null;
+                }
+              } else if (update.status.type === 'failed') {
+                if (dayOverviewGeometryUnsubRef.current) {
+                  dayOverviewGeometryUnsubRef.current();
+                  dayOverviewGeometryUnsubRef.current = null;
+                }
+              }
+            },
+          );
+          dayOverviewGeometryUnsubRef.current = unsubscribe;
+        } catch (err) {
+          console.warn('Failed to get day overview geometry:', err);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load day overview:', err);
+      setDayOverview({ date, items: [], isLoading: false });
+    }
+  }, [candidates]);
+
   // Action handlers
   const handleSchedule = useCallback(async (candidateId: string, slot: SlotSuggestion) => {
     const candidate = candidates.find((c) => c.id === candidateId || c.customerId === candidateId);
@@ -789,6 +885,9 @@ export function PlanningInbox() {
         )
       );
       
+      // Load day overview for the scheduled date (right panel)
+      loadDayOverview(slot.date);
+      
       // Invalidate route cache since route changed
       incrementRouteVersion();
       
@@ -797,12 +896,20 @@ export function PlanningInbox() {
     } catch (err) {
       console.error('Failed to schedule:', err);
     }
-  }, [candidates, incrementRouteVersion]);
+  }, [candidates, incrementRouteVersion, loadDayOverview]);
   
   // Dismiss confirmation and move on to next candidate
   const handleDismissConfirmation = useCallback(() => {
     const confirmedId = scheduledConfirmation?.candidateId;
     setScheduledConfirmation(null);
+    setDayOverview(null);
+    setDayOverviewStops([]);
+    setDayOverviewGeometry([]);
+    
+    if (dayOverviewGeometryUnsubRef.current) {
+      dayOverviewGeometryUnsubRef.current();
+      dayOverviewGeometryUnsubRef.current = null;
+    }
     
     if (confirmedId) {
       // Now select next and remove the scheduled candidate
@@ -1261,33 +1368,112 @@ export function PlanningInbox() {
   );
 
   // Render map panel with route stop list below
-  const renderMapPanel = () => (
-    <div className={styles.mapPanel}>
-      <div className={styles.mapSection}>
-        <RouteMapPanel
-          stops={routeStops}
-          depot={currentDepot}
-          routeGeometry={routeGeometry}
-          highlightedStopId={selectedCandidateId}
-          selectedCandidate={selectedCandidateForMap}
-          isLoading={isLoadingRoute}
-        />
+  const renderMapPanel = () => {
+    // When we have a day overview (after scheduling), show day overview instead
+    if (dayOverview && scheduledConfirmation) {
+      const overviewDate = new Date(dayOverview.date + 'T00:00:00');
+      return (
+        <div className={styles.mapPanel}>
+          <div className={styles.dayOverviewHeader}>
+            <div className={styles.dayOverviewDate}>
+              <span className={styles.dayOverviewDayNum}>{overviewDate.getDate()}</span>
+              <div className={styles.dayOverviewDateText}>
+                <span className={styles.dayOverviewWeekday}>
+                  {overviewDate.toLocaleDateString('cs-CZ', { weekday: 'long' })}
+                </span>
+                <span className={styles.dayOverviewMonthYear}>
+                  {overviewDate.toLocaleDateString('cs-CZ', { month: 'long', year: 'numeric' })}
+                </span>
+              </div>
+            </div>
+            <span className={styles.dayOverviewCount}>
+              {dayOverview.items.length} {dayOverview.items.length === 1 ? 'návštěva' : dayOverview.items.length >= 2 && dayOverview.items.length <= 4 ? 'návštěvy' : 'návštěv'}
+            </span>
+          </div>
+          
+          <div className={styles.dayOverviewMap}>
+            <RouteMapPanel
+              stops={dayOverviewStops}
+              depot={null}
+              routeGeometry={dayOverviewGeometry}
+              highlightedStopId={scheduledConfirmation.candidateId}
+              selectedCandidate={null}
+              isLoading={dayOverview.isLoading}
+            />
+          </div>
+          
+          <div className={styles.dayOverviewList}>
+            {dayOverview.isLoading ? (
+              <div className={styles.dayOverviewLoading}>Načítám přehled dne...</div>
+            ) : dayOverview.items.length === 0 ? (
+              <div className={styles.dayOverviewEmpty}>Na tento den nejsou naplánované žádné návštěvy.</div>
+            ) : (
+              dayOverview.items
+                .sort((a, b) => {
+                  // Sort by time, then by name
+                  const ta = a.timeStart || '99:99';
+                  const tb = b.timeStart || '99:99';
+                  if (ta !== tb) return ta.localeCompare(tb);
+                  return (a.customerName || '').localeCompare(b.customerName || '');
+                })
+                .map((item) => {
+                  const isJustScheduled = item.customerId === scheduledConfirmation.candidateId;
+                  return (
+                    <div 
+                      key={item.id}
+                      className={`${styles.dayOverviewItem} ${isJustScheduled ? styles.dayOverviewItemHighlighted : ''}`}
+                    >
+                      <div className={styles.dayOverviewItemTime}>
+                        {item.timeStart ? item.timeStart.substring(0, 5) : '--:--'}
+                        {item.timeEnd ? ` – ${item.timeEnd.substring(0, 5)}` : ''}
+                      </div>
+                      <div className={styles.dayOverviewItemInfo}>
+                        <span className={styles.dayOverviewItemName}>{item.customerName || item.title}</span>
+                        <span className={styles.dayOverviewItemType}>
+                          {item.type === 'revision' ? 'Revize' : 'Návštěva'}
+                          {item.subtitle ? ` · ${item.subtitle}` : ''}
+                        </span>
+                      </div>
+                      {isJustScheduled && (
+                        <span className={styles.dayOverviewItemBadge}>právě naplánováno</span>
+                      )}
+                    </div>
+                  );
+                })
+            )}
+          </div>
+        </div>
+      );
+    }
+    
+    return (
+      <div className={styles.mapPanel}>
+        <div className={styles.mapSection}>
+          <RouteMapPanel
+            stops={routeStops}
+            depot={currentDepot}
+            routeGeometry={routeGeometry}
+            highlightedStopId={selectedCandidateId}
+            selectedCandidate={selectedCandidateForMap}
+            isLoading={isLoadingRoute}
+          />
+        </div>
+        <div className={styles.routeStopSection}>
+          <RouteStopList
+            stops={routeStops}
+            metrics={metrics}
+            onRemoveStop={handleRemoveFromRoute}
+            onOptimize={handleOptimizeRoute}
+            onSave={handleSaveRoute}
+            onClear={handleClearRoute}
+            isOptimizing={isOptimizing}
+            isSaving={isSaving}
+            jobProgress={routeJobProgress}
+          />
+        </div>
       </div>
-      <div className={styles.routeStopSection}>
-        <RouteStopList
-          stops={routeStops}
-          metrics={metrics}
-          onRemoveStop={handleRemoveFromRoute}
-          onOptimize={handleOptimizeRoute}
-          onSave={handleSaveRoute}
-          onClear={handleClearRoute}
-          isOptimizing={isOptimizing}
-          isSaving={isSaving}
-          jobProgress={routeJobProgress}
-        />
-      </div>
-    </div>
-  );
+    );
+  };
 
   // Render detail panel
   const renderDetailPanel = () => (
