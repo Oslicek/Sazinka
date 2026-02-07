@@ -81,6 +81,7 @@ export function PlanningInbox() {
   const navigate = useNavigate();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<VirtualizedInboxListRef>(null);
+  const sortedCandidatesRef = useRef<InboxCandidate[]>([]);
   
   // Route cache store
   const { 
@@ -661,6 +662,9 @@ export function PlanningInbox() {
     });
   }, [candidates, isRouteAware, segment]);
 
+  // Keep ref in sync for use in callbacks
+  sortedCandidatesRef.current = sortedCandidates;
+
   // Convert to CandidateRowData for VirtualizedInboxList
   const candidateRowData: CandidateRowData[] = useMemo(() => {
     return sortedCandidates.map((c) => ({
@@ -729,6 +733,21 @@ export function PlanningInbox() {
     invalidateCache();
   };
 
+  // Helper: after removing a candidate, select the next one in the list
+  const selectNextCandidate = useCallback((removedId: string) => {
+    const currentList = sortedCandidatesRef.current;
+    const idx = currentList.findIndex((c) => c.customerId === removedId || c.id === removedId);
+    if (idx >= 0 && currentList.length > 1) {
+      const nextIdx = idx < currentList.length - 1 ? idx + 1 : idx - 1;
+      const nextId = currentList[nextIdx].customerId;
+      setSelectedCandidateId(nextId);
+      sessionStorage.setItem('planningInbox.selectedId', nextId);
+    } else {
+      setSelectedCandidateId(null);
+      sessionStorage.removeItem('planningInbox.selectedId');
+    }
+  }, []);
+
   // Action handlers
   const handleSchedule = useCallback(async (candidateId: string, slot: SlotSuggestion) => {
     const candidate = candidates.find((c) => c.id === candidateId || c.customerId === candidateId);
@@ -742,9 +761,22 @@ export function PlanningInbox() {
         timeWindowEnd: slot.timeEnd,
       });
       
-      // Remove from list
-      setCandidates((prev) => prev.filter((c) => c.id !== candidate.id));
-      setSelectedCandidateId(null);
+      // Select next before removing
+      selectNextCandidate(candidate.customerId);
+      
+      // Remove from list and update counts
+      setCandidates((prev) => {
+        const updated = prev.filter((c) => c.id !== candidate.id);
+        setSegmentCounts({
+          overdue: updated.filter((c) => getDaysOverdue(c) > 0).length,
+          thisWeek: updated.filter((c) => c.daysUntilDue <= 7).length,
+          thisMonth: updated.filter((c) => c.daysUntilDue <= 30).length,
+          all: updated.length,
+          snoozed: 0,
+          problems: updated.filter((c) => !hasPhone(c) || !hasValidAddress(c)).length,
+        });
+        return updated;
+      });
       setSlotSuggestions([]);
       
       // Invalidate route cache since route changed
@@ -755,7 +787,7 @@ export function PlanningInbox() {
     } catch (err) {
       console.error('Failed to schedule:', err);
     }
-  }, [candidates, incrementRouteVersion]);
+  }, [candidates, incrementRouteVersion, selectNextCandidate]);
 
   const handleSnooze = useCallback(async (candidateId: string) => {
     const candidate = candidates.find((c) => c.id === candidateId || c.customerId === candidateId);
@@ -771,9 +803,22 @@ export function PlanningInbox() {
         snoozeUntil: snoozeDate.toISOString().split('T')[0],
       });
       
-      // Remove from list
-      setCandidates((prev) => prev.filter((c) => c.id !== candidate.id));
-      setSelectedCandidateId(null);
+      // Select next before removing
+      selectNextCandidate(candidate.customerId);
+      
+      // Remove from list and update counts
+      setCandidates((prev) => {
+        const updated = prev.filter((c) => c.id !== candidate.id);
+        setSegmentCounts({
+          overdue: updated.filter((c) => getDaysOverdue(c) > 0).length,
+          thisWeek: updated.filter((c) => c.daysUntilDue <= 7).length,
+          thisMonth: updated.filter((c) => c.daysUntilDue <= 30).length,
+          all: updated.length,
+          snoozed: 0,
+          problems: updated.filter((c) => !hasPhone(c) || !hasValidAddress(c)).length,
+        });
+        return updated;
+      });
       setSlotSuggestions([]);
     } catch (err) {
       console.error('Failed to snooze:', err);
