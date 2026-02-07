@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { Link } from '@tanstack/react-router';
 import { SlotSuggestions, type SlotSuggestion } from './SlotSuggestions';
 import { InsertionPreview, type InsertionInfo } from './InsertionPreview';
@@ -29,7 +30,6 @@ interface CandidateDetailProps {
   onSchedule?: (candidateId: string, slot: SlotSuggestion) => void;
   onSnooze?: (candidateId: string) => void;
   onFixAddress?: (candidateId: string) => void;
-  onManualSchedule?: (candidateId: string) => void;
   isLoading?: boolean;
   /** Add candidate to the route */
   onAddToRoute?: (candidateId: string) => void;
@@ -37,6 +37,8 @@ interface CandidateDetailProps {
   onRemoveFromRoute?: (candidateId: string) => void;
   /** Whether this candidate is already in the route */
   isInRoute?: boolean;
+  /** Currently selected route date (for pre-filling the scheduling form) */
+  routeDate?: string;
 }
 
 export function CandidateDetail({
@@ -45,12 +47,27 @@ export function CandidateDetail({
   onSchedule,
   onSnooze,
   onFixAddress,
-  onManualSchedule,
   isLoading,
   onAddToRoute,
   onRemoveFromRoute,
   isInRoute = false,
+  routeDate,
 }: CandidateDetailProps) {
+  // Inline scheduling form state
+  const [isScheduling, setIsScheduling] = useState(false);
+  const [schedDate, setSchedDate] = useState('');
+  const [schedTimeStart, setSchedTimeStart] = useState('08:00');
+  const [schedTimeEnd, setSchedTimeEnd] = useState('12:00');
+  const [schedNotes, setSchedNotes] = useState('');
+
+  // Reset scheduling form when candidate changes
+  useEffect(() => {
+    setIsScheduling(false);
+    setSchedDate(routeDate ?? new Date().toISOString().split('T')[0]);
+    setSchedTimeStart('08:00');
+    setSchedTimeEnd('12:00');
+    setSchedNotes('');
+  }, [candidate?.id, routeDate]);
   if (isLoading) {
     return (
       <div className={styles.container}>
@@ -197,42 +214,114 @@ export function CandidateDetail({
         </section>
       )}
 
+      {/* Inline scheduling form */}
+      {isScheduling && (
+        <section className={styles.section}>
+          <h4 className={styles.sectionTitle}>Naplánovat termín</h4>
+          <div className={styles.scheduleForm}>
+            <label className={styles.scheduleLabel}>
+              Datum
+              <input
+                type="date"
+                className={styles.scheduleInput}
+                value={schedDate}
+                onChange={(e) => setSchedDate(e.target.value)}
+              />
+            </label>
+            <div className={styles.scheduleRow}>
+              <label className={styles.scheduleLabel}>
+                Od
+                <input
+                  type="time"
+                  className={styles.scheduleInput}
+                  value={schedTimeStart}
+                  onChange={(e) => setSchedTimeStart(e.target.value)}
+                />
+              </label>
+              <label className={styles.scheduleLabel}>
+                Do
+                <input
+                  type="time"
+                  className={styles.scheduleInput}
+                  value={schedTimeEnd}
+                  onChange={(e) => setSchedTimeEnd(e.target.value)}
+                />
+              </label>
+            </div>
+            <label className={styles.scheduleLabel}>
+              Poznámka
+              <input
+                type="text"
+                className={styles.scheduleInput}
+                placeholder="Volitelná poznámka"
+                value={schedNotes}
+                onChange={(e) => setSchedNotes(e.target.value)}
+              />
+            </label>
+            <div className={styles.scheduleActions}>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={!schedDate}
+                onClick={() => {
+                  const slot: SlotSuggestion = {
+                    id: `manual-${Date.now()}`,
+                    date: schedDate,
+                    timeStart: schedTimeStart,
+                    timeEnd: schedTimeEnd,
+                    status: 'ok',
+                    deltaKm: 0,
+                    deltaMin: 0,
+                  };
+                  onSchedule?.(candidate.id, slot);
+                  setIsScheduling(false);
+                }}
+              >
+                Potvrdit
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setIsScheduling(false)}
+              >
+                Zrušit
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Actions */}
-      <div className={styles.actions}>
-        {candidate.suggestedSlots?.length ? (
+      {!isScheduling && (
+        <div className={styles.actions}>
+          {candidate.suggestedSlots?.length ? (
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => {
+                onSchedule?.(candidate.id, candidate.suggestedSlots![0]);
+              }}
+            >
+              Domluvit termín
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => setIsScheduling(true)}
+            >
+              Domluvit termín
+            </button>
+          )}
           <button
             type="button"
-            className="btn-primary"
-            onClick={() => {
-              onSchedule?.(candidate.id, candidate.suggestedSlots![0]);
-            }}
+            className="btn-secondary"
+            onClick={() => onSnooze?.(candidate.id)}
           >
-            Domluvit termín
+            Odložit
           </button>
-        ) : (
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => {
-              if (onManualSchedule) {
-                onManualSchedule(candidate.id);
-              } else {
-                // Fallback: navigate to revision detail
-                window.location.href = `/revisions/${candidate.id}`;
-              }
-            }}
-          >
-            Domluvit termín
-          </button>
-        )}
-        <button
-          type="button"
-          className="btn-secondary"
-          onClick={() => onSnooze?.(candidate.id)}
-        >
-          Odložit
-        </button>
-      </div>
+        </div>
+      )}
 
       {/* Links */}
       <div className={styles.links}>

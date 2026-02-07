@@ -216,6 +216,58 @@
   background-color: rgba(239, 68, 68, 0.2);
 }
 
+/* Inline scheduling form */
+.scheduleForm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.scheduleRow {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.scheduleRow > .scheduleLabel {
+  flex: 1;
+}
+
+.scheduleLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1875rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.scheduleInput {
+  width: 100%;
+  padding: 0.375rem 0.5rem;
+  font-size: 0.8125rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  box-sizing: border-box;
+}
+
+.scheduleInput:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.scheduleActions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.scheduleActions button {
+  flex: 1;
+}
+
 /* Actions */
 .actions {
   display: flex;

@@ -985,18 +985,17 @@ export function PlanningInbox() {
     incrementRouteVersion();
   }, [incrementRouteVersion]);
 
-  // Draft mode handlers
+  // Draft mode handlers — delegates to handleSaveRoute for the route,
+  // then clears the unsaved-changes flag.
   const handleSave = useCallback(async () => {
-    setIsSaving(true);
-    try {
-      // Route changes are saved automatically via scheduleRevision
-      // This would save any pending route optimizations
+    if (routeStops.length > 0 && context) {
+      await handleSaveRoute();
+    } else {
+      // Nothing concrete to persist — just clear the flag
       setHasChanges(false);
       setLastSaved(new Date());
-    } finally {
-      setIsSaving(false);
     }
-  }, []);
+  }, [routeStops, context, handleSaveRoute]);
 
   const handleDiscard = useCallback(() => {
     // Reload candidates to discard local changes
@@ -1204,13 +1203,11 @@ export function PlanningInbox() {
         onSchedule={handleSchedule}
         onSnooze={handleSnooze}
         onFixAddress={handleFixAddress}
-        onManualSchedule={(candidateId) => {
-          navigate({ to: '/revisions/$revisionId', params: { revisionId: candidateId } });
-        }}
         isLoading={isCalculatingSlots}
         onAddToRoute={handleAddToRoute}
         onRemoveFromRoute={handleRemoveFromRoute}
         isInRoute={selectedCandidateId ? inRouteIds.has(selectedCandidateId) : false}
+        routeDate={context?.date}
       />
     </div>
   );
