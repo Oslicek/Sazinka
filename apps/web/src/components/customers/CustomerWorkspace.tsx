@@ -196,7 +196,7 @@ export function CustomerWorkspace({
             className={`${styles.tab} ${activeTab === 'revisions' ? styles.tabActive : ''}`}
             onClick={() => handleTabChange('revisions')}
           >
-            📋 Zakázky & Návštěvy
+            📋 Historie
           </button>
           {tabs.communication && (
             <button

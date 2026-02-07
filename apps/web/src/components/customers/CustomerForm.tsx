@@ -54,7 +54,7 @@ const createInitialFormData = (customer?: Customer): ExtendedFormData => ({
 });
 
 const normalizeAddressKey = (street: string, city: string, postalCode: string) => {
-  return `${street.trim()}|${city.trim()}|${postalCode.replace(/\s/g, '')}`;
+  return `${street.trim()}|${city.trim()}|${(postalCode ?? '').replace(/\s/g, '')}`;
 };
 
 export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = false, onGeocodeCompleted }: CustomerFormProps) {
@@ -301,8 +301,8 @@ export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = fals
         phone: formData.phone.trim() !== (customer.phone ?? '') ? formData.phone.trim() || undefined : undefined,
         street: formData.street.trim() !== customer.street ? formData.street.trim() : undefined,
         city: formData.city.trim() !== customer.city ? formData.city.trim() : undefined,
-        postalCode: formData.postalCode.replace(/\s/g, '') !== customer.postalCode 
-          ? formData.postalCode.replace(/\s/g, '') 
+        postalCode: (formData.postalCode ?? '').replace(/\s/g, '') !== (customer.postalCode ?? '')
+          ? (formData.postalCode ?? '').replace(/\s/g, '') 
           : undefined,
         notes: formData.notes.trim() !== (customer.notes ?? '') ? formData.notes.trim() || undefined : undefined,
         lat: coordinates?.lat !== customer.lat ? coordinates?.lat : undefined,

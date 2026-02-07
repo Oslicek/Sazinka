@@ -48,7 +48,7 @@ function formatRevisionStatus(
   // Never serviced takes priority - show warning
   if (neverServicedCount > 0) {
     return { 
-      text: `Dosud nerevidováno (${neverServicedCount})`, 
+      text: `Bez revize (${neverServicedCount} zař.)`, 
       status: 'never-serviced'
     };
   }
@@ -62,6 +62,10 @@ function formatRevisionStatus(
   }
 
   if (!date) {
+    // No upcoming revision date. If no warnings either, all devices are properly serviced.
+    if (neverServicedCount === 0 && overdueCount === 0) {
+      return { text: 'V pořádku', status: 'none' };
+    }
     return { text: 'Bez revize', status: 'none' };
   }
   

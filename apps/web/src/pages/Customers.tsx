@@ -1,14 +1,16 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useSearch, Link, useNavigate } from '@tanstack/react-router';
 import type { 
-  CreateCustomerRequest, 
+  CreateCustomerRequest,
+  Customer,
   CustomerListItem,
   ListCustomersRequest,
   GeocodeStatus,
   CustomerSummary,
 } from '@shared/customer';
 import { 
-  createCustomer, 
+  createCustomer,
+  getCustomer,
   listCustomersExtended,
   getCustomerSummary,
   importCustomersBatch, 
@@ -16,13 +18,16 @@ import {
   subscribeToGeocodeJobStatus, 
   type GeocodeJobStatusUpdate,
 } from '../services/customerService';
+import type { UpdateCustomerRequest } from '@shared/customer';
 import { AddCustomerForm } from '../components/customers/AddCustomerForm';
 import { ImportCustomersModal } from '../components/customers/ImportCustomersModal';
 import { CustomerTable } from '../components/customers/CustomerTable';
 import { CustomerPreviewPanel } from '../components/customers/CustomerPreviewPanel';
+import { CustomerEditDrawer } from '../components/customers/CustomerEditDrawer';
 import { SavedViewsSelector, type SavedView } from '../components/customers/SavedViewsSelector';
 import { SplitView } from '../components/common/SplitView';
 import { useNatsStore } from '../stores/natsStore';
+import { updateCustomer } from '../services/customerService';
 import styles from './Customers.module.css';
 
 // Temporary user ID until auth is implemented
@@ -60,6 +65,12 @@ export function Customers() {
   
   // Selected customer for preview panel
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerListItem | null>(null);
+  const [fullCustomer, setFullCustomer] = useState<Customer | null>(null);
+  const [isLoadingFull, setIsLoadingFull] = useState(false);
+  
+  // Edit drawer state
+  const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
   
   // View mode: table (desktop) or cards (mobile)
   const [viewMode, setViewMode] = useState<'table' | 'cards'>(searchParams?.view || 'table');
@@ -243,6 +254,35 @@ export function Customers() {
     return result;
   }, [isConnected]);
 
+  // Fetch full customer when selection changes
+  useEffect(() => {
+    if (!isConnected || !selectedCustomer) {
+      setFullCustomer(null);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingFull(true);
+
+    getCustomer(TEMP_USER_ID, selectedCustomer.id)
+      .then((data) => {
+        if (!cancelled) {
+          setFullCustomer(data);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load full customer:', err);
+        if (!cancelled) setFullCustomer(null);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingFull(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isConnected, selectedCustomer?.id]);
+
   // Handle customer selection
   const handleSelectCustomer = useCallback((customer: CustomerListItem | null) => {
     setSelectedCustomer(customer);
@@ -253,14 +293,70 @@ export function Customers() {
     navigate({ to: '/customers/$customerId', params: { customerId: customer.id } });
   }, [navigate]);
 
-  // Handle edit from preview panel
-  const handleEdit = useCallback((customer: CustomerListItem) => {
-    navigate({ 
-      to: '/customers/$customerId', 
-      params: { customerId: customer.id },
-      search: { edit: true }
-    });
-  }, [navigate]);
+  // Handle edit from preview panel — open drawer inline
+  const handleEdit = useCallback((_customer: CustomerListItem) => {
+    if (fullCustomer) {
+      setIsEditDrawerOpen(true);
+    }
+  }, [fullCustomer]);
+
+  // Handle edit submit
+  const handleEditSubmit = useCallback(async (data: UpdateCustomerRequest) => {
+    if (!isConnected || !fullCustomer) return;
+
+    try {
+      setIsEditSubmitting(true);
+      const updated = await updateCustomer(TEMP_USER_ID, data);
+      setFullCustomer(updated);
+      setIsEditDrawerOpen(false);
+
+      // Trigger geocoding if address changed
+      const addressChanged = Boolean(data.street || data.city || data.postalCode);
+      const hasCoords = data.lat !== undefined && data.lng !== undefined;
+      if (addressChanged && !hasCoords) {
+        const job = await submitGeocodeJob(TEMP_USER_ID, [updated.id]);
+        setGeocodeJob({
+          jobId: job.jobId,
+          timestamp: new Date().toISOString(),
+          status: { type: 'queued', position: 1 },
+        });
+        if (geocodeUnsubscribeRef.current) {
+          geocodeUnsubscribeRef.current();
+        }
+        const unsubscribe = await subscribeToGeocodeJobStatus(job.jobId, (update) => {
+          setGeocodeJob(update);
+          if (update.status.type === 'completed' || update.status.type === 'failed') {
+            loadCustomers();
+            // Refresh full customer
+            getCustomer(TEMP_USER_ID, updated.id)
+              .then(setFullCustomer)
+              .catch(console.error);
+            if (geocodeUnsubscribeRef.current) {
+              geocodeUnsubscribeRef.current();
+              geocodeUnsubscribeRef.current = null;
+            }
+          }
+        });
+        geocodeUnsubscribeRef.current = unsubscribe;
+      } else {
+        loadCustomers();
+      }
+    } catch (err) {
+      console.error('Failed to update customer:', err);
+      setError(err instanceof Error ? err.message : 'Nepodařilo se aktualizovat zákazníka');
+    } finally {
+      setIsEditSubmitting(false);
+    }
+  }, [isConnected, fullCustomer, loadCustomers]);
+
+  const handleEditGeocodeCompleted = useCallback(() => {
+    if (fullCustomer) {
+      getCustomer(TEMP_USER_ID, fullCustomer.id)
+        .then(setFullCustomer)
+        .catch(console.error);
+    }
+    loadCustomers();
+  }, [fullCustomer, loadCustomers]);
 
   // Handle saved view selection
   const handleSelectView = useCallback((view: SavedView) => {
@@ -307,6 +403,10 @@ export function Customers() {
     }
     
     if (!date) {
+      // No upcoming revision date. If no warnings either, all devices are properly serviced.
+      if (neverServicedCount === 0 && overdueCount === 0) {
+        return { text: 'V pořádku', className: styles.revisionNone };
+      }
       return { text: 'Bez revize', className: styles.revisionNone };
     }
     
@@ -564,7 +664,9 @@ export function Customers() {
   const previewContent = (
     <CustomerPreviewPanel
       customer={selectedCustomer}
-      onClose={() => setSelectedCustomer(null)}
+      fullCustomer={fullCustomer}
+      isLoadingFull={isLoadingFull}
+      onClose={() => { setSelectedCustomer(null); setFullCustomer(null); }}
       onEdit={handleEdit}
     />
   );
@@ -622,6 +724,18 @@ export function Customers() {
         isOpen={showImport}
         onClose={handleCloseImport}
       />
+
+      {/* Edit drawer (inline, no navigation) */}
+      {fullCustomer && (
+        <CustomerEditDrawer
+          customer={fullCustomer}
+          isOpen={isEditDrawerOpen}
+          onClose={() => setIsEditDrawerOpen(false)}
+          onSubmit={handleEditSubmit}
+          isSubmitting={isEditSubmitting}
+          onGeocodeCompleted={handleEditGeocodeCompleted}
+        />
+      )}
 
       {/* Split view: Table + Preview Panel */}
       <div className={styles.content}>

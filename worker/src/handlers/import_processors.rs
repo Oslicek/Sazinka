@@ -1378,6 +1378,9 @@ impl WorkLogImportProcessor {
         
         let visit_type = parse_visit_type(row.visit_type.as_deref().unwrap_or("revision"));
         
+        let status = row.status.as_deref()
+            .and_then(parse_visit_status_str);
+        
         let visit = queries::visit::create_visit(
             &self.pool,
             user_id,
@@ -1388,7 +1391,7 @@ impl WorkLogImportProcessor {
             scheduled_time_start,
             scheduled_time_end,
             visit_type,
-            None, // status - defaults to planned
+            status,
         ).await?;
         
         Ok(visit.id)
@@ -2196,6 +2199,9 @@ impl ZipImportProcessor {
         
         let visit_type = parse_visit_type(row.visit_type.as_deref().unwrap_or("revision"));
         
+        let status = row.status.as_deref()
+            .and_then(parse_visit_status_str);
+        
         let visit = queries::visit::create_visit(
             &self.pool,
             user_id,
@@ -2206,7 +2212,7 @@ impl ZipImportProcessor {
             scheduled_time_start,
             scheduled_time_end,
             visit_type,
-            None, // status - defaults to planned
+            status,
         ).await?;
         
         Ok(visit.id)
@@ -2342,5 +2348,16 @@ fn parse_visit_type(s: &str) -> &'static str {
         "konzultace" | "consultation" => "consultation",
         "follow_up" | "followup" | "navsteva" => "follow_up",
         _ => "revision",
+    }
+}
+
+fn parse_visit_status_str(s: &str) -> Option<&'static str> {
+    match s.to_lowercase().as_str() {
+        "planned" | "naplánováno" | "naplanovano" | "plánováno" | "planovano" => Some("planned"),
+        "in_progress" | "probíhá" | "probiha" => Some("in_progress"),
+        "completed" | "dokončeno" | "dokonceno" | "hotovo" => Some("completed"),
+        "cancelled" | "zrušeno" | "zruseno" => Some("cancelled"),
+        "rescheduled" | "přeplánováno" | "preplanovano" => Some("rescheduled"),
+        _ => None,
     }
 }

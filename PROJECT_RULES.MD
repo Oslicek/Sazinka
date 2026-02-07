@@ -390,6 +390,7 @@ sazinka/
 - Use feature branches for new work
 - Squash commits before merging when appropriate
 - Update PROJECT_CONTEXT.MD after significant changes
+- **Do not use heredoc syntax** (`<<'EOF'`) for commit messages — this project runs on Windows/PowerShell where heredoc is not supported. Use multiple `-m` flags instead (e.g., `git commit -m "title" -m "detail 1" -m "detail 2"`)
 
 ---
 

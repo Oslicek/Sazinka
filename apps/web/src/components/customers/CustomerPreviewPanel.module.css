@@ -10,6 +10,13 @@
   overflow: hidden;
 }
 
+/* Scrollable content area between header and actions */
+.scrollContent {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
 /* Empty state */
 .emptyState {
   display: flex;
@@ -42,26 +49,56 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  padding: 1rem;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border-color, #e5e5e5);
   background: var(--bg-secondary, #f9fafb);
+  flex-shrink: 0;
 }
 
 .headerMain {
   display: flex;
   flex-direction: column;
   gap: 0.375rem;
+  min-width: 0;
+}
+
+.nameRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .name {
   margin: 0;
-  font-size: 1.125rem;
+  font-size: 1.0625rem;
   font-weight: 600;
   color: var(--text-primary, #1a1a1a);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.openFullIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  font-size: 0.875rem;
+  color: var(--text-tertiary, #888);
+  text-decoration: none;
+  border-radius: 4px;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.openFullIcon:hover {
+  background: var(--hover-bg, #e5e5e5);
+  color: var(--color-primary, #2563eb);
 }
 
 .typeBadge {
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   font-weight: 500;
   padding: 0.125rem 0.5rem;
   background: var(--card-bg, #fff);
@@ -79,6 +116,7 @@
   font-size: 1rem;
   color: var(--text-tertiary, #888);
   border-radius: 4px;
+  flex-shrink: 0;
 }
 
 .closeButton:hover {
@@ -88,7 +126,7 @@
 
 /* Sections */
 .section {
-  padding: 1rem;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border-color, #e5e5e5);
 }
 
@@ -97,8 +135,8 @@
 }
 
 .sectionTitle {
-  margin: 0 0 0.75rem 0;
-  font-size: 0.75rem;
+  margin: 0 0 0.5rem 0;
+  font-size: 0.6875rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.025em;
@@ -110,11 +148,21 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.375rem;
 }
 
 .contactItem:last-child {
   margin-bottom: 0;
+}
+
+.contactIcon {
+  font-size: 0.875rem;
+  flex-shrink: 0;
+}
+
+.contactText {
+  font-size: 0.875rem;
+  color: var(--text-primary, #1a1a1a);
 }
 
 .contactLink {
@@ -153,10 +201,10 @@
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  font-size: 0.8125rem;
-  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  padding: 0.125rem 0.5rem;
   border-radius: 4px;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.375rem;
 }
 
 .statusSuccess {
@@ -186,17 +234,46 @@
 }
 
 .mapContainer {
-  margin-top: 0.75rem;
+  margin-top: 0.5rem;
   border-radius: 6px;
   overflow: hidden;
   border: 1px solid var(--border-color, #e5e5e5);
+}
+
+/* Info rows (IČO, DIČ, metadata) */
+.infoRow {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+  font-size: 0.8125rem;
+}
+
+.infoLabel {
+  color: var(--text-secondary, #666);
+  flex-shrink: 0;
+}
+
+.infoValue {
+  color: var(--text-primary, #1a1a1a);
+}
+
+/* Notes */
+.notes {
+  font-size: 0.8125rem;
+  color: var(--text-primary, #1a1a1a);
+  background-color: var(--bg-secondary, #f9fafb);
+  padding: 0.5rem;
+  border-radius: 4px;
+  margin: 0;
+  white-space: pre-wrap;
 }
 
 /* Stats */
 .stats {
   display: flex;
   gap: 1rem;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
 }
 
 .statItem {
@@ -206,13 +283,13 @@
 }
 
 .statValue {
-  font-size: 1.25rem;
+  font-size: 1.125rem;
   font-weight: 600;
   color: var(--text-primary, #1a1a1a);
 }
 
 .statLabel {
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   color: var(--text-secondary, #666);
 }
 
@@ -226,26 +303,92 @@
 
 .nextRevision {
   margin: 0;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   color: var(--text-secondary, #666);
+}
+
+/* Tabbed section (devices / revisions) */
+.tabSection {
+  border-top: 1px solid var(--border-color, #e5e5e5);
+}
+
+.tabNav {
+  display: flex;
+  border-bottom: 1px solid var(--border-color, #e5e5e5);
+  background: var(--bg-secondary, #f9fafb);
+}
+
+.tab {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-secondary, #666);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.tab:hover {
+  color: var(--text-primary, #1a1a1a);
+  background: var(--hover-bg, #f3f4f6);
+}
+
+.tabActive {
+  color: var(--color-primary, #2563eb);
+  border-bottom-color: var(--color-primary, #2563eb);
+}
+
+.tabContent {
+  padding: 0.5rem;
+  min-height: 120px;
+}
+
+/* Loading full customer */
+.loadingFull {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1.5rem;
+  color: var(--text-secondary, #666);
+  font-size: 0.8125rem;
+}
+
+.spinnerSmall {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border-color, #e5e5e5);
+  border-top-color: var(--color-primary, #2563eb);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Actions */
 .actions {
   display: flex;
-  flex-direction: column;
   gap: 0.5rem;
-  padding: 1rem;
-  margin-top: auto;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--border-color, #e5e5e5);
+  flex-shrink: 0;
 }
 
 .actionButton {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1rem;
-  font-size: 0.875rem;
+  gap: 0.375rem;
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8125rem;
   font-weight: 500;
   border: 1px solid var(--border-color, #d1d5db);
   border-radius: 6px;
@@ -261,26 +404,17 @@
   border-color: var(--color-primary, #2563eb);
 }
 
-.actionButton.primary {
-  background: var(--color-primary, #2563eb);
-  border-color: var(--color-primary, #2563eb);
-  color: white;
-}
-
-.actionButton.primary:hover {
-  background: var(--color-primary-dark, #1d4ed8);
-}
-
 /* Keyboard hint */
 .keyboardHint {
   display: flex;
   justify-content: center;
   gap: 1.5rem;
-  padding: 0.75rem;
+  padding: 0.5rem;
   border-top: 1px solid var(--border-color, #e5e5e5);
   background: var(--bg-secondary, #f9fafb);
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   color: var(--text-tertiary, #888);
+  flex-shrink: 0;
 }
 
 .keyboardHint kbd {
@@ -289,5 +423,5 @@
   border: 1px solid var(--border-color, #d1d5db);
   border-radius: 3px;
   font-family: inherit;
-  font-size: 0.6875rem;
+  font-size: 0.625rem;
 }

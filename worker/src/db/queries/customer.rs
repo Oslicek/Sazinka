@@ -370,9 +370,9 @@ pub async fn list_customers_extended(
     // Handle NULL values in sorting (NULLs last for ASC, first for DESC)
     let nulls_order = if order_dir == "ASC" { "NULLS LAST" } else { "NULLS FIRST" };
 
-    // Subquery to calculate device overdue status based on last completed revision
+    // Subquery to calculate device overdue status based on last completed revision or visit
     // A device is overdue if: (last_completed_date + interval_months) < today
-    // A device is never_serviced if: no completed revisions exist
+    // A device is never_serviced if: no completed revisions or completed revision visits exist
     let query = format!(
         r#"
         WITH device_status AS (
@@ -381,21 +381,34 @@ pub async fn list_customers_extended(
                 d.customer_id,
                 d.revision_interval_months,
                 d.installation_date,
-                MAX(r.completed_at) FILTER (WHERE r.status = 'completed') as last_completed,
+                GREATEST(
+                    MAX(r.completed_at) FILTER (WHERE r.status = 'completed'),
+                    MAX(COALESCE(v.actual_arrival, v.scheduled_date::timestamptz)) FILTER (WHERE v.status = 'completed' AND v.visit_type = 'revision')
+                ) as last_completed,
                 CASE 
-                    -- Has completed revision: check if last_completed + interval < today
-                    WHEN MAX(r.completed_at) FILTER (WHERE r.status = 'completed') IS NOT NULL THEN
-                        (MAX(r.completed_at) FILTER (WHERE r.status = 'completed'))::date + 
+                    -- Has completed revision or visit: check if last_completed + interval < today
+                    WHEN GREATEST(
+                        MAX(r.completed_at) FILTER (WHERE r.status = 'completed'),
+                        MAX(COALESCE(v.actual_arrival, v.scheduled_date::timestamptz)) FILTER (WHERE v.status = 'completed' AND v.visit_type = 'revision')
+                    ) IS NOT NULL THEN
+                        GREATEST(
+                            MAX(r.completed_at) FILTER (WHERE r.status = 'completed'),
+                            MAX(COALESCE(v.actual_arrival, v.scheduled_date::timestamptz)) FILTER (WHERE v.status = 'completed' AND v.visit_type = 'revision')
+                        )::date + 
                         (d.revision_interval_months || ' months')::interval < CURRENT_DATE
-                    -- No completed revision but has installation date: check installation + interval < today
+                    -- No completed revision/visit but has installation date: check installation + interval < today
                     WHEN d.installation_date IS NOT NULL THEN
                         d.installation_date + (d.revision_interval_months || ' months')::interval < CURRENT_DATE
                     ELSE FALSE
                 END as is_overdue,
-                -- Never serviced = no completed revisions
-                MAX(r.completed_at) FILTER (WHERE r.status = 'completed') IS NULL as is_never_serviced
+                -- Never serviced = no completed revisions AND no completed revision visits
+                GREATEST(
+                    MAX(r.completed_at) FILTER (WHERE r.status = 'completed'),
+                    MAX(COALESCE(v.actual_arrival, v.scheduled_date::timestamptz)) FILTER (WHERE v.status = 'completed' AND v.visit_type = 'revision')
+                ) IS NULL as is_never_serviced
             FROM devices d
             LEFT JOIN revisions r ON d.id = r.device_id
+            LEFT JOIN visits v ON (v.device_id = d.id OR (v.device_id IS NULL AND v.customer_id = d.customer_id))
             GROUP BY d.id, d.customer_id, d.revision_interval_months, d.installation_date
         )
         SELECT
@@ -467,18 +480,31 @@ pub async fn list_customers_extended(
                         d.customer_id,
                         d.revision_interval_months,
                         d.installation_date,
-                        MAX(r.completed_at) FILTER (WHERE r.status = 'completed') as last_completed,
+                        GREATEST(
+                            MAX(r.completed_at) FILTER (WHERE r.status = 'completed'),
+                            MAX(COALESCE(v.actual_arrival, v.scheduled_date::timestamptz)) FILTER (WHERE v.status = 'completed' AND v.visit_type = 'revision')
+                        ) as last_completed,
                         CASE 
-                            WHEN MAX(r.completed_at) FILTER (WHERE r.status = 'completed') IS NOT NULL THEN
-                                (MAX(r.completed_at) FILTER (WHERE r.status = 'completed'))::date + 
+                            WHEN GREATEST(
+                                MAX(r.completed_at) FILTER (WHERE r.status = 'completed'),
+                                MAX(COALESCE(v.actual_arrival, v.scheduled_date::timestamptz)) FILTER (WHERE v.status = 'completed' AND v.visit_type = 'revision')
+                            ) IS NOT NULL THEN
+                                GREATEST(
+                                    MAX(r.completed_at) FILTER (WHERE r.status = 'completed'),
+                                    MAX(COALESCE(v.actual_arrival, v.scheduled_date::timestamptz)) FILTER (WHERE v.status = 'completed' AND v.visit_type = 'revision')
+                                )::date + 
                                 (d.revision_interval_months || ' months')::interval < CURRENT_DATE
                             WHEN d.installation_date IS NOT NULL THEN
                                 d.installation_date + (d.revision_interval_months || ' months')::interval < CURRENT_DATE
                             ELSE FALSE
                         END as is_overdue,
-                        MAX(r.completed_at) FILTER (WHERE r.status = 'completed') IS NULL as is_never_serviced
+                        GREATEST(
+                            MAX(r.completed_at) FILTER (WHERE r.status = 'completed'),
+                            MAX(COALESCE(v.actual_arrival, v.scheduled_date::timestamptz)) FILTER (WHERE v.status = 'completed' AND v.visit_type = 'revision')
+                        ) IS NULL as is_never_serviced
                     FROM devices d
                     LEFT JOIN revisions r ON d.id = r.device_id
+                    LEFT JOIN visits v ON (v.device_id = d.id OR (v.device_id IS NULL AND v.customer_id = d.customer_id))
                     GROUP BY d.id, d.customer_id, d.revision_interval_months, d.installation_date
                 )
                 SELECT c.id
@@ -592,24 +618,34 @@ pub async fn get_customer_summary(
     .await?;
 
     // Customer-level overdue / never-serviced counts
-    // Uses the same device_status logic as the list query
+    // Uses the same device_status logic as the list query (considers both revisions and completed revision visits)
     let overdue_stats: (i64, i64) = sqlx::query_as(
         r#"
         WITH device_status AS (
             SELECT 
                 d.customer_id,
                 CASE 
-                    WHEN MAX(r.completed_at) FILTER (WHERE r.status = 'completed') IS NOT NULL THEN
-                        (MAX(r.completed_at) FILTER (WHERE r.status = 'completed'))::date + 
+                    WHEN GREATEST(
+                        MAX(r.completed_at) FILTER (WHERE r.status = 'completed'),
+                        MAX(COALESCE(v.actual_arrival, v.scheduled_date::timestamptz)) FILTER (WHERE v.status = 'completed' AND v.visit_type = 'revision')
+                    ) IS NOT NULL THEN
+                        GREATEST(
+                            MAX(r.completed_at) FILTER (WHERE r.status = 'completed'),
+                            MAX(COALESCE(v.actual_arrival, v.scheduled_date::timestamptz)) FILTER (WHERE v.status = 'completed' AND v.visit_type = 'revision')
+                        )::date + 
                         (d.revision_interval_months || ' months')::interval < CURRENT_DATE
                     WHEN d.installation_date IS NOT NULL THEN
                         d.installation_date + (d.revision_interval_months || ' months')::interval < CURRENT_DATE
                     ELSE FALSE
                 END as is_overdue,
-                MAX(r.completed_at) FILTER (WHERE r.status = 'completed') IS NULL as is_never_serviced
+                GREATEST(
+                    MAX(r.completed_at) FILTER (WHERE r.status = 'completed'),
+                    MAX(COALESCE(v.actual_arrival, v.scheduled_date::timestamptz)) FILTER (WHERE v.status = 'completed' AND v.visit_type = 'revision')
+                ) IS NULL as is_never_serviced
             FROM devices d
             INNER JOIN customers c ON d.customer_id = c.id
             LEFT JOIN revisions r ON d.id = r.device_id
+            LEFT JOIN visits v ON (v.device_id = d.id OR (v.device_id IS NULL AND v.customer_id = d.customer_id))
             WHERE c.user_id = $1
             GROUP BY d.id, d.customer_id, d.revision_interval_months, d.installation_date
         )

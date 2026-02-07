@@ -699,9 +699,9 @@ export function Admin() {
 
           {/* Visits Import */}
           <div className={styles.exportCard}>
-            <h3>5. Import návštěv</h3>
+            <h3>5. Import pracovního deníku</h3>
             <p className={styles.exportDescription}>
-              Importuje historii návštěv z CSV.
+              Importuje pracovní deník (work_log) z CSV.
             </p>
             <button
               type="button"
@@ -709,7 +709,7 @@ export function Admin() {
               onClick={() => handleOpenImport('work_log')}
               disabled={!connected}
             >
-              📤 Importovat návštěvy
+              📤 Importovat pracovní deník
             </button>
           </div>
 
