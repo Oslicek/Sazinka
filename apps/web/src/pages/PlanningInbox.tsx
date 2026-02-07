@@ -1372,25 +1372,80 @@ export function PlanningInbox() {
     // When we have a day overview (after scheduling), show day overview instead
     if (dayOverview && scheduledConfirmation) {
       const overviewDate = new Date(dayOverview.date + 'T00:00:00');
+      const sortedItems = [...dayOverview.items].sort((a, b) => {
+        const ta = a.timeStart || '99:99';
+        const tb = b.timeStart || '99:99';
+        if (ta !== tb) return ta.localeCompare(tb);
+        return (a.customerName || '').localeCompare(b.customerName || '');
+      });
+      
       return (
         <div className={styles.mapPanel}>
-          <div className={styles.dayOverviewHeader}>
-            <div className={styles.dayOverviewDate}>
-              <span className={styles.dayOverviewDayNum}>{overviewDate.getDate()}</span>
-              <div className={styles.dayOverviewDateText}>
-                <span className={styles.dayOverviewWeekday}>
-                  {overviewDate.toLocaleDateString('cs-CZ', { weekday: 'long' })}
-                </span>
-                <span className={styles.dayOverviewMonthYear}>
-                  {overviewDate.toLocaleDateString('cs-CZ', { month: 'long', year: 'numeric' })}
-                </span>
-              </div>
+          {/* Prominent date banner */}
+          <div className={styles.dayOverviewBanner}>
+            <div className={styles.dayOverviewCalendarCard}>
+              <span className={styles.dayOverviewCalMonth}>
+                {overviewDate.toLocaleDateString('cs-CZ', { month: 'long' })}
+              </span>
+              <span className={styles.dayOverviewCalDay}>
+                {overviewDate.getDate()}
+              </span>
+              <span className={styles.dayOverviewCalWeekday}>
+                {overviewDate.toLocaleDateString('cs-CZ', { weekday: 'long' })}
+              </span>
             </div>
-            <span className={styles.dayOverviewCount}>
-              {dayOverview.items.length} {dayOverview.items.length === 1 ? 'návštěva' : dayOverview.items.length >= 2 && dayOverview.items.length <= 4 ? 'návštěvy' : 'návštěv'}
-            </span>
+            <div className={styles.dayOverviewBannerInfo}>
+              <span className={styles.dayOverviewBannerYear}>
+                {overviewDate.getFullYear()}
+              </span>
+              <span className={styles.dayOverviewBannerCount}>
+                {dayOverview.items.length} {dayOverview.items.length === 1 ? 'návštěva' : dayOverview.items.length >= 2 && dayOverview.items.length <= 4 ? 'návštěvy' : 'návštěv'}
+              </span>
+            </div>
           </div>
           
+          {/* Visit list */}
+          <div className={styles.dayOverviewList}>
+            <div className={styles.dayOverviewListHeader}>Naplánované návštěvy</div>
+            {dayOverview.isLoading ? (
+              <div className={styles.dayOverviewLoading}>Načítám přehled dne...</div>
+            ) : sortedItems.length === 0 ? (
+              <div className={styles.dayOverviewEmpty}>Na tento den nejsou naplánované žádné návštěvy.</div>
+            ) : (
+              sortedItems.map((item) => {
+                const isJustScheduled = item.customerId === scheduledConfirmation.candidateId;
+                return (
+                  <div 
+                    key={item.id}
+                    className={`${styles.dayOverviewItem} ${isJustScheduled ? styles.dayOverviewItemHighlighted : ''}`}
+                  >
+                    <div className={styles.dayOverviewItemTimeBlock}>
+                      <span className={styles.dayOverviewItemTimeStart}>
+                        {item.timeStart ? item.timeStart.substring(0, 5) : '--:--'}
+                      </span>
+                      {item.timeEnd && (
+                        <span className={styles.dayOverviewItemTimeEnd}>
+                          {item.timeEnd.substring(0, 5)}
+                        </span>
+                      )}
+                    </div>
+                    <div className={styles.dayOverviewItemContent}>
+                      <span className={styles.dayOverviewItemName}>{item.customerName || item.title}</span>
+                      <span className={styles.dayOverviewItemType}>
+                        {item.type === 'revision' ? 'Revize' : 'Návštěva'}
+                        {item.subtitle ? ` · ${item.subtitle}` : ''}
+                      </span>
+                    </div>
+                    {isJustScheduled && (
+                      <span className={styles.dayOverviewItemBadge}>nově</span>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+          
+          {/* Map with day stops */}
           <div className={styles.dayOverviewMap}>
             <RouteMapPanel
               stops={dayOverviewStops}
@@ -1400,47 +1455,6 @@ export function PlanningInbox() {
               selectedCandidate={null}
               isLoading={dayOverview.isLoading}
             />
-          </div>
-          
-          <div className={styles.dayOverviewList}>
-            {dayOverview.isLoading ? (
-              <div className={styles.dayOverviewLoading}>Načítám přehled dne...</div>
-            ) : dayOverview.items.length === 0 ? (
-              <div className={styles.dayOverviewEmpty}>Na tento den nejsou naplánované žádné návštěvy.</div>
-            ) : (
-              dayOverview.items
-                .sort((a, b) => {
-                  // Sort by time, then by name
-                  const ta = a.timeStart || '99:99';
-                  const tb = b.timeStart || '99:99';
-                  if (ta !== tb) return ta.localeCompare(tb);
-                  return (a.customerName || '').localeCompare(b.customerName || '');
-                })
-                .map((item) => {
-                  const isJustScheduled = item.customerId === scheduledConfirmation.candidateId;
-                  return (
-                    <div 
-                      key={item.id}
-                      className={`${styles.dayOverviewItem} ${isJustScheduled ? styles.dayOverviewItemHighlighted : ''}`}
-                    >
-                      <div className={styles.dayOverviewItemTime}>
-                        {item.timeStart ? item.timeStart.substring(0, 5) : '--:--'}
-                        {item.timeEnd ? ` – ${item.timeEnd.substring(0, 5)}` : ''}
-                      </div>
-                      <div className={styles.dayOverviewItemInfo}>
-                        <span className={styles.dayOverviewItemName}>{item.customerName || item.title}</span>
-                        <span className={styles.dayOverviewItemType}>
-                          {item.type === 'revision' ? 'Revize' : 'Návštěva'}
-                          {item.subtitle ? ` · ${item.subtitle}` : ''}
-                        </span>
-                      </div>
-                      {isJustScheduled && (
-                        <span className={styles.dayOverviewItemBadge}>právě naplánováno</span>
-                      )}
-                    </div>
-                  );
-                })
-            )}
           </div>
         </div>
       );
