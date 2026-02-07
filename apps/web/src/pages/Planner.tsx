@@ -3,6 +3,11 @@ import { Link, useSearch, useNavigate } from '@tanstack/react-router';
 import maplibregl from 'maplibre-gl';
 import { useNatsStore } from '../stores/natsStore';
 import type { PlannedRouteStop } from '@shared/route';
+import {
+  splitGeometryIntoSegments,
+  buildStraightLineSegments,
+  getSegmentLabel,
+} from '../utils/routeGeometry';
 import * as settingsService from '../services/settingsService';
 import { 
   listRevisions, 
@@ -335,60 +340,8 @@ export function Planner() {
     };
   }, [depot]);
 
-  // Split route geometry into segments between consecutive stops (incl. depot)
-  const splitGeometryIntoSegments = useCallback((
-    geometry: [number, number][],
-    plannedStops: PlannedRouteStop[],
-    depotCoord: { lat: number; lng: number },
-  ): [number, number][][] => {
-    // Build waypoints: depot -> stops -> depot
-    const waypoints: [number, number][] = [
-      [depotCoord.lng, depotCoord.lat],
-      ...plannedStops.map(s => [s.coordinates.lng, s.coordinates.lat] as [number, number]),
-      [depotCoord.lng, depotCoord.lat],
-    ];
-
-    if (geometry.length === 0 || waypoints.length < 2) return [];
-
-    // For each waypoint, find the closest point index in the geometry (monotonically forward)
-    const waypointIndices: number[] = [];
-    let searchStart = 0;
-
-    for (const wp of waypoints) {
-      let minDist = Infinity;
-      let minIdx = searchStart;
-
-      // Search forward from last matched index to avoid going backwards
-      for (let i = searchStart; i < geometry.length; i++) {
-        const dx = geometry[i][0] - wp[0];
-        const dy = geometry[i][1] - wp[1];
-        const dist = dx * dx + dy * dy;
-        if (dist < minDist) {
-          minDist = dist;
-          minIdx = i;
-        }
-      }
-
-      waypointIndices.push(minIdx);
-      searchStart = minIdx;
-    }
-
-    // Split geometry into segments
-    const segments: [number, number][][] = [];
-    for (let i = 0; i < waypointIndices.length - 1; i++) {
-      const start = waypointIndices[i];
-      const end = waypointIndices[i + 1];
-      // Ensure each segment has at least 2 points
-      if (end > start) {
-        segments.push(geometry.slice(start, end + 1));
-      } else {
-        // Same index - create a minimal segment
-        segments.push([geometry[start], geometry[Math.min(start + 1, geometry.length - 1)]]);
-      }
-    }
-
-    return segments;
-  }, []);
+  // splitGeometryIntoSegments, buildStraightLineSegments, getSegmentLabel
+  // are imported from '../utils/routeGeometry' (shared with RouteMapPanel)
 
   // Clear markers helper
   const clearMarkers = useCallback(() => {
@@ -423,17 +376,7 @@ export function Planner() {
     setHighlightedSegment(null);
   }, []);
 
-  // Build segment label for depot/stop names
-  const getSegmentLabel = useCallback((segmentIndex: number, plannedStops: PlannedRouteStop[]) => {
-    // Segments: 0 = depot→stop1, 1 = stop1→stop2, ..., N = stopN→depot
-    const fromName = segmentIndex === 0 
-      ? (depot?.name || 'Depo')
-      : plannedStops[segmentIndex - 1]?.customerName || `Bod ${segmentIndex}`;
-    const toName = segmentIndex >= plannedStops.length
-      ? (depot?.name || 'Depo')
-      : plannedStops[segmentIndex]?.customerName || `Bod ${segmentIndex + 1}`;
-    return { fromName, toName };
-  }, [depot]);
+  // getSegmentLabel is imported from shared utility
 
   // Add markers for stops
   const addStopMarkers = useCallback((plannedStops: PlannedRouteStop[], geometry: [number, number][] = []) => {
@@ -468,20 +411,15 @@ export function Planner() {
     if (plannedStops.length > 0 && depot) {
       let segments: [number, number][][];
 
+      const waypoints = plannedStops.map(s => ({
+        coordinates: s.coordinates,
+        name: s.customerName,
+      }));
+
       if (geometry.length > 0) {
-        // Split real geometry into segments
-        segments = splitGeometryIntoSegments(geometry, plannedStops, depot);
+        segments = splitGeometryIntoSegments(geometry, waypoints, depot);
       } else {
-        // Fallback: straight-line segments between waypoints
-        const waypoints: [number, number][] = [
-          [depot.lng, depot.lat],
-          ...plannedStops.map(s => [s.coordinates.lng, s.coordinates.lat] as [number, number]),
-          [depot.lng, depot.lat],
-        ];
-        segments = [];
-        for (let i = 0; i < waypoints.length - 1; i++) {
-          segments.push([waypoints[i], waypoints[i + 1]]);
-        }
+        segments = buildStraightLineSegments(waypoints, depot);
       }
 
       // Build GeoJSON FeatureCollection with each segment as a Feature
@@ -580,7 +518,7 @@ export function Planner() {
       allCoords.forEach(coord => bounds.extend(coord));
       map.current.fitBounds(bounds, { padding: 50 });
     }
-  }, [clearMarkers, depot, splitGeometryIntoSegments]);
+  }, [clearMarkers, depot]);
 
   // Update highlight layer filter when selected segment changes
   useEffect(() => {
@@ -1530,7 +1468,11 @@ export function Planner() {
           <div className={styles.segmentInfo}>
             <span className={styles.segmentInfoLabel}>
               Segment: {(() => {
-                const { fromName, toName } = getSegmentLabel(highlightedSegment, stops);
+                const { fromName, toName } = getSegmentLabel(
+                  highlightedSegment,
+                  stops.map(s => ({ name: s.customerName })),
+                  depot?.name || 'Depo',
+                );
                 return `${fromName} → ${toName}`;
               })()}
             </span>

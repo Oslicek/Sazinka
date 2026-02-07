@@ -28,6 +28,7 @@ import * as settingsService from '../services/settingsService';
 import * as crewService from '../services/crewService';
 import * as routeService from '../services/routeService';
 import * as insertionService from '../services/insertionService';
+import * as geometryService from '../services/geometryService';
 import { getCallQueue, snoozeRevision, scheduleRevision, type CallQueueItem } from '../services/revisionService';
 import { usePlannerShortcuts } from '../hooks/useKeyboardShortcuts';
 import styles from './PlanningInbox.module.css';
@@ -100,8 +101,10 @@ export function PlanningInbox() {
   
   // Route state
   const [routeStops, setRouteStops] = useState<MapStop[]>([]);
+  const [routeGeometry, setRouteGeometry] = useState<[number, number][]>([]);
   const [metrics, setMetrics] = useState<RouteMetrics | null>(null);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
+  const geometryUnsubRef = useRef<(() => void) | null>(null);
   
   // Inbox state
   const [segment, setSegment] = useState<InboxSegment>('thisWeek');
@@ -259,6 +262,75 @@ export function PlanningInbox() {
     
     loadRoute();
   }, [isConnected, context?.date]);
+
+  // Fetch Valhalla route geometry when route stops change
+  const fetchRouteGeometry = useCallback(async (stops: MapStop[], depot: { lat: number; lng: number }) => {
+    if (stops.length < 1) {
+      setRouteGeometry([]);
+      return;
+    }
+
+    // Build locations: depot → stops → depot
+    const locations = [
+      { lat: depot.lat, lng: depot.lng },
+      ...stops.map((s) => ({ lat: s.coordinates.lat, lng: s.coordinates.lng })),
+      { lat: depot.lat, lng: depot.lng },
+    ];
+
+    try {
+      // Cancel previous subscription
+      if (geometryUnsubRef.current) {
+        geometryUnsubRef.current();
+        geometryUnsubRef.current = null;
+      }
+
+      const jobResponse = await geometryService.submitGeometryJob(locations);
+
+      const unsubscribe = await geometryService.subscribeToGeometryJobStatus(
+        jobResponse.jobId,
+        (update) => {
+          if (update.status.type === 'completed') {
+            setRouteGeometry(update.status.coordinates);
+            if (geometryUnsubRef.current) {
+              geometryUnsubRef.current();
+              geometryUnsubRef.current = null;
+            }
+          } else if (update.status.type === 'failed') {
+            console.warn('Geometry job failed:', update.status.error);
+            // Keep existing geometry or clear it
+            if (geometryUnsubRef.current) {
+              geometryUnsubRef.current();
+              geometryUnsubRef.current = null;
+            }
+          }
+        },
+      );
+
+      geometryUnsubRef.current = unsubscribe;
+    } catch (err) {
+      console.warn('Failed to submit geometry job:', err);
+    }
+  }, []);
+
+  // Trigger geometry fetch whenever route stops or depot change
+  useEffect(() => {
+    if (!isConnected || routeStops.length === 0) {
+      setRouteGeometry([]);
+      return;
+    }
+
+    const depot = depots.find((d) => d.id === context?.depotId);
+    if (!depot) return;
+
+    fetchRouteGeometry(routeStops, depot);
+
+    return () => {
+      if (geometryUnsubRef.current) {
+        geometryUnsubRef.current();
+        geometryUnsubRef.current = null;
+      }
+    };
+  }, [isConnected, routeStops, context?.depotId, depots, fetchRouteGeometry]);
 
   // Update route cache context when context changes
   useEffect(() => {
@@ -741,7 +813,7 @@ export function PlanningInbox() {
   }, [selectedIds, inRouteIds, candidates, routeStops.length, incrementRouteVersion]);
 
   // Route building: add single candidate from detail panel
-  const handleAddToRoute = useCallback((candidateId: string, _slot: SlotSuggestion) => {
+  const handleAddToRoute = useCallback((candidateId: string) => {
     const candidate = candidates.find((c) => c.id === candidateId || c.customerId === candidateId);
     if (!candidate || !candidate.customerLat || !candidate.customerLng) return;
     if (inRouteIds.has(candidate.customerId)) return;
@@ -818,6 +890,11 @@ export function PlanningInbox() {
                 }));
                 setRouteStops(optimizedStops);
 
+                // Capture Valhalla geometry from VRP result
+                if (result.geometry && result.geometry.length > 0) {
+                  setRouteGeometry(result.geometry);
+                }
+
                 // Update metrics
                 const totalMin = result.totalDurationMinutes ?? 0;
                 const serviceMin = optimizedStops.length * 30;
@@ -886,6 +963,7 @@ export function PlanningInbox() {
   // Route building: clear all stops
   const handleClearRoute = useCallback(() => {
     setRouteStops([]);
+    setRouteGeometry([]);
     setMetrics(null);
     setSelectedIds(new Set());
     setHasChanges(true);
@@ -1080,6 +1158,7 @@ export function PlanningInbox() {
         <RouteMapPanel
           stops={routeStops}
           depot={currentDepot}
+          routeGeometry={routeGeometry}
           highlightedStopId={selectedCandidateId}
           isLoading={isLoadingRoute}
         />

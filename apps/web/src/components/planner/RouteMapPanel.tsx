@@ -1,5 +1,10 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
+import {
+  splitGeometryIntoSegments,
+  buildStraightLineSegments,
+  getSegmentLabel,
+} from '../../utils/routeGeometry';
 import styles from './RouteMapPanel.module.css';
 
 export interface MapStop {
@@ -35,6 +40,10 @@ interface RouteMapPanelProps {
   onStopClick?: (stopId: string) => void;
   isLoading?: boolean;
   className?: string;
+  /** Called when a route segment is highlighted/unhighlighted */
+  onSegmentHighlight?: (segmentIndex: number | null) => void;
+  /** Currently highlighted segment (controlled mode) */
+  highlightedSegment?: number | null;
 }
 
 export function RouteMapPanel({
@@ -46,6 +55,8 @@ export function RouteMapPanel({
   onStopClick,
   isLoading,
   className,
+  onSegmentHighlight,
+  highlightedSegment: controlledHighlightedSegment,
 }: RouteMapPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -53,11 +64,32 @@ export function RouteMapPanel({
   const depotMarkerRef = useRef<maplibregl.Marker | null>(null);
   const previewMarkerRef = useRef<maplibregl.Marker | null>(null);
 
+  // Event handler refs for proper cleanup
+  const segmentClickHandlerRef = useRef<((e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => void) | null>(null);
+  const segmentEnterHandlerRef = useRef<(() => void) | null>(null);
+  const segmentLeaveHandlerRef = useRef<(() => void) | null>(null);
+
+  // Internal segment highlight state (used when not controlled)
+  const [internalHighlightedSegment, setInternalHighlightedSegment] = useState<number | null>(null);
+
+  // Use controlled or internal state
+  const highlightedSegment = controlledHighlightedSegment !== undefined
+    ? controlledHighlightedSegment
+    : internalHighlightedSegment;
+
+  const setHighlightedSegment = useCallback((value: number | null) => {
+    if (onSegmentHighlight) {
+      onSegmentHighlight(value);
+    } else {
+      setInternalHighlightedSegment(value);
+    }
+  }, [onSegmentHighlight]);
+
   // Initialize map
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
-    const initialCenter = depot 
+    const initialCenter = depot
       ? [depot.lng, depot.lat] as [number, number]
       : [14.4378, 50.0755] as [number, number]; // Prague default
 
@@ -111,11 +143,45 @@ export function RouteMapPanel({
     }
   }, [depot]);
 
-  // Clear all stop markers
+  // Clear all stop markers and route layers
   const clearMarkers = useCallback(() => {
     markersRef.current.forEach((marker) => marker.remove());
     markersRef.current.clear();
   }, []);
+
+  const clearRouteLayers = useCallback(() => {
+    if (!mapRef.current) return;
+
+    // Remove event handlers
+    if (segmentClickHandlerRef.current) {
+      mapRef.current.off('click', 'route-hit-area', segmentClickHandlerRef.current);
+      segmentClickHandlerRef.current = null;
+    }
+    if (segmentEnterHandlerRef.current) {
+      mapRef.current.off('mouseenter', 'route-hit-area', segmentEnterHandlerRef.current);
+      segmentEnterHandlerRef.current = null;
+    }
+    if (segmentLeaveHandlerRef.current) {
+      mapRef.current.off('mouseleave', 'route-hit-area', segmentLeaveHandlerRef.current);
+      segmentLeaveHandlerRef.current = null;
+    }
+
+    // Remove layers and sources
+    for (const layerId of ['route-highlight', 'route-hit-area', 'route-line']) {
+      if (mapRef.current.getLayer(layerId)) {
+        mapRef.current.removeLayer(layerId);
+      }
+    }
+    if (mapRef.current.getSource('route-segments')) {
+      mapRef.current.removeSource('route-segments');
+    }
+    // Legacy single-line source
+    if (mapRef.current.getSource('route')) {
+      mapRef.current.removeSource('route');
+    }
+
+    setHighlightedSegment(null);
+  }, [setHighlightedSegment]);
 
   // Update stop markers
   useEffect(() => {
@@ -155,44 +221,52 @@ export function RouteMapPanel({
     });
   }, [stops, highlightedStopId, onStopClick, clearMarkers]);
 
-  // Update route line
+  // Update route line as segmented GeoJSON with highlight support
   useEffect(() => {
     if (!mapRef.current) return;
 
-    // Remove existing route
-    if (mapRef.current.getLayer('route-line')) {
-      mapRef.current.removeLayer('route-line');
-    }
-    if (mapRef.current.getSource('route')) {
-      mapRef.current.removeSource('route');
-    }
+    clearRouteLayers();
 
     if (stops.length === 0 || !depot) return;
 
-    const coordinates: [number, number][] = routeGeometry && routeGeometry.length > 0
-      ? routeGeometry
-      : [
-          [depot.lng, depot.lat],
-          ...stops.map((s) => [s.coordinates.lng, s.coordinates.lat] as [number, number]),
-          [depot.lng, depot.lat],
-        ];
+    // Build segments using shared utilities
+    const waypoints = stops.map((s) => ({
+      coordinates: s.coordinates,
+      name: s.name,
+    }));
 
-    mapRef.current.addSource('route', {
+    let segments: [number, number][][];
+    if (routeGeometry && routeGeometry.length > 0) {
+      segments = splitGeometryIntoSegments(routeGeometry, waypoints, depot);
+    } else {
+      segments = buildStraightLineSegments(waypoints, depot);
+    }
+
+    if (segments.length === 0) return;
+
+    // Build GeoJSON FeatureCollection with segmentIndex property
+    const features = segments.map((coords, index) => ({
+      type: 'Feature' as const,
+      properties: { segmentIndex: index },
+      geometry: {
+        type: 'LineString' as const,
+        coordinates: coords,
+      },
+    }));
+
+    mapRef.current.addSource('route-segments', {
       type: 'geojson',
       data: {
-        type: 'Feature',
-        properties: {},
-        geometry: {
-          type: 'LineString',
-          coordinates,
-        },
+        type: 'FeatureCollection',
+        features,
       },
     });
 
+    // Base route line (all segments)
     mapRef.current.addLayer({
       id: 'route-line',
       type: 'line',
-      source: 'route',
+      source: 'route-segments',
       layout: {
         'line-join': 'round',
         'line-cap': 'round',
@@ -204,11 +278,80 @@ export function RouteMapPanel({
       },
     });
 
+    // Wider invisible hit area for clicking segments
+    mapRef.current.addLayer({
+      id: 'route-hit-area',
+      type: 'line',
+      source: 'route-segments',
+      layout: {
+        'line-join': 'round',
+        'line-cap': 'round',
+      },
+      paint: {
+        'line-color': 'transparent',
+        'line-width': 20,
+        'line-opacity': 0,
+      },
+    });
+
+    // Highlight layer (only shows the selected segment)
+    mapRef.current.addLayer({
+      id: 'route-highlight',
+      type: 'line',
+      source: 'route-segments',
+      layout: {
+        'line-join': 'round',
+        'line-cap': 'round',
+      },
+      paint: {
+        'line-color': '#f59e0b',
+        'line-width': 6,
+        'line-opacity': 0.9,
+      },
+      filter: ['==', ['get', 'segmentIndex'], -1], // Hide initially
+    });
+
+    // Click handler: toggle segment highlight
+    segmentClickHandlerRef.current = (e) => {
+      const feat = e.features;
+      if (feat && feat.length > 0) {
+        const clickedIndex = feat[0].properties?.segmentIndex;
+        if (typeof clickedIndex === 'number') {
+          const newValue = highlightedSegment === clickedIndex ? null : clickedIndex;
+          setHighlightedSegment(newValue);
+        }
+      }
+    };
+    mapRef.current.on('click', 'route-hit-area', segmentClickHandlerRef.current);
+
+    // Cursor pointer on hover
+    segmentEnterHandlerRef.current = () => {
+      if (mapRef.current) mapRef.current.getCanvas().style.cursor = 'pointer';
+    };
+    segmentLeaveHandlerRef.current = () => {
+      if (mapRef.current) mapRef.current.getCanvas().style.cursor = '';
+    };
+    mapRef.current.on('mouseenter', 'route-hit-area', segmentEnterHandlerRef.current);
+    mapRef.current.on('mouseleave', 'route-hit-area', segmentLeaveHandlerRef.current);
+
     // Fit bounds
+    const allCoords = segments.flat();
     const bounds = new maplibregl.LngLatBounds();
-    coordinates.forEach((coord) => bounds.extend(coord));
+    allCoords.forEach((coord) => bounds.extend(coord));
     mapRef.current.fitBounds(bounds, { padding: 50 });
-  }, [stops, depot, routeGeometry]);
+  }, [stops, depot, routeGeometry, clearRouteLayers]);
+
+  // Update highlight filter when highlightedSegment changes
+  useEffect(() => {
+    if (!mapRef.current) return;
+    if (!mapRef.current.getLayer('route-highlight')) return;
+
+    if (highlightedSegment !== null) {
+      mapRef.current.setFilter('route-highlight', ['==', ['get', 'segmentIndex'], highlightedSegment]);
+    } else {
+      mapRef.current.setFilter('route-highlight', ['==', ['get', 'segmentIndex'], -1]);
+    }
+  }, [highlightedSegment]);
 
   // Update insertion preview marker
   useEffect(() => {
@@ -285,6 +428,15 @@ export function RouteMapPanel({
     }
   }, [insertionPreview, stops, depot]);
 
+  // Build segment info overlay
+  const segmentInfo = highlightedSegment !== null && stops.length > 0
+    ? getSegmentLabel(
+        highlightedSegment,
+        stops.map((s) => ({ name: s.name })),
+        depot?.name || 'Depo',
+      )
+    : null;
+
   return (
     <div className={`${styles.container} ${className ?? ''}`}>
       {isLoading && (
@@ -297,6 +449,20 @@ export function RouteMapPanel({
         <div className={styles.emptyState}>
           <span className={styles.emptyIcon}>🗺️</span>
           <p>Zatím žádné zastávky v trase</p>
+        </div>
+      )}
+      {segmentInfo && (
+        <div className={styles.segmentInfo}>
+          <span className={styles.segmentInfoLabel}>
+            {segmentInfo.fromName} → {segmentInfo.toName}
+          </span>
+          <button
+            className={styles.segmentInfoClose}
+            onClick={() => setHighlightedSegment(null)}
+            title="Zrušit zvýraznění"
+          >
+            ✕
+          </button>
         </div>
       )}
     </div>

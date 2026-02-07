@@ -31,8 +31,8 @@ interface CandidateDetailProps {
   onFixAddress?: (candidateId: string) => void;
   onManualSchedule?: (candidateId: string) => void;
   isLoading?: boolean;
-  /** Add candidate to the route at the best slot */
-  onAddToRoute?: (candidateId: string, slot: SlotSuggestion) => void;
+  /** Add candidate to the route */
+  onAddToRoute?: (candidateId: string) => void;
   /** Remove candidate from the route */
   onRemoveFromRoute?: (candidateId: string) => void;
   /** Whether this candidate is already in the route */
@@ -181,12 +181,7 @@ export function CandidateDetail({
             <button
               type="button"
               className={styles.addRouteButton}
-              onClick={() => {
-                if (candidate.suggestedSlots?.length) {
-                  onAddToRoute?.(candidate.id, candidate.suggestedSlots[0]);
-                }
-              }}
-              disabled={!candidate.suggestedSlots?.length && !candidate.insertionInfo}
+              onClick={() => onAddToRoute?.(candidate.id)}
             >
               ➕ Přidat do trasy
             </button>
