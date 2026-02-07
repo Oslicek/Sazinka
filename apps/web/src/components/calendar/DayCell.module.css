@@ -13,8 +13,8 @@
 
 .weekCell {
   aspect-ratio: unset;
-  min-height: 200px;
-  max-height: 300px;
+  min-height: 250px;
+  max-height: 400px;
   overflow-y: auto;
 }
 
@@ -54,20 +54,25 @@
 }
 
 .weekItem {
-  display: grid;
-  grid-template-columns: 40px 1fr 20px;
-  gap: 0.25rem;
-  align-items: center;
-  padding: 0.25rem 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.35rem 0.45rem;
   background: var(--color-bg-secondary);
   border-radius: 4px;
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   border-left: 2px solid var(--color-border);
+  transition: border-color 0.15s;
+}
+
+.weekItem:hover {
+  border-left-color: var(--color-primary);
 }
 
 .weekItemTime {
-  font-weight: 600;
+  font-weight: 700;
   color: var(--color-text);
+  font-size: 0.7rem;
 }
 
 .weekItemTitle {
@@ -76,13 +81,14 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--color-text);
+  font-weight: 500;
 }
 
 .weekItemType {
-  font-weight: 700;
+  font-weight: 600;
   font-size: 0.65rem;
   color: var(--color-text-secondary);
-  text-align: center;
+  text-transform: uppercase;
 }
 
 .weekItemMore {
@@ -114,6 +120,45 @@
   font-size: 0.875rem;
   font-weight: 500;
   color: var(--color-text);
+}
+
+/* Month view items - very compact */
+.monthItems {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-top: 0.25rem;
+  flex: 1;
+  overflow: hidden;
+}
+
+.monthItem {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+  font-size: 0.65rem;
+  line-height: 1.2;
+}
+
+.monthItemTime {
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+}
+
+.monthItemTitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text);
+}
+
+.monthItemMore {
+  font-size: 0.6rem;
+  color: var(--color-text-secondary);
+  text-align: center;
+  padding: 0.1rem;
 }
 
 /* Revision count indicators */

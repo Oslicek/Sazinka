@@ -64,29 +64,42 @@ export function DayCell({ day, items, onClick, workloadMinutes, capacityMinutes,
       <span className={styles.dayNumber}>{day.dayNumber}</span>
       
       {variant === 'month' && items.length > 0 && (
-        <div className={styles.indicators}>
-          {hasScheduled && <span className={styles.scheduledDot} title="Naplánováno" />}
-          {hasOverdue && <span className={styles.overdueDot} title="Po termínu" />}
-          {hasInProgress && <span className={styles.inProgressDot} title="Probíhá" />}
-          <span className={styles.count}>
-            {revisionCount}/{visitCount}/{taskCount}
-          </span>
-        </div>
+        <>
+          <div className={styles.monthItems}>
+            {sortedItems.slice(0, 3).map((item) => (
+              <div key={`${item.type}-${item.id}`} className={styles.monthItem}>
+                <span className={styles.monthItemTime}>{item.timeStart?.substring(0, 5) || '--'}</span>
+                <span className={styles.monthItemTitle}>{item.customerName || item.title}</span>
+              </div>
+            ))}
+            {items.length > 3 && (
+              <div className={styles.monthItemMore}>+{items.length - 3}</div>
+            )}
+          </div>
+          <div className={styles.indicators}>
+            {hasScheduled && <span className={styles.scheduledDot} title="Naplánováno" />}
+            {hasOverdue && <span className={styles.overdueDot} title="Po termínu" />}
+            {hasInProgress && <span className={styles.inProgressDot} title="Probíhá" />}
+            <span className={styles.count}>
+              {revisionCount}/{visitCount}/{taskCount}
+            </span>
+          </div>
+        </>
       )}
 
       {variant === 'week' && (
         <div className={styles.weekItems}>
-          {sortedItems.slice(0, 8).map((item) => (
+          {sortedItems.slice(0, 10).map((item) => (
             <div key={`${item.type}-${item.id}`} className={styles.weekItem}>
               <span className={styles.weekItemTime}>{item.timeStart?.substring(0, 5) || '--:--'}</span>
               <span className={styles.weekItemTitle}>{item.customerName || item.title}</span>
               <span className={styles.weekItemType}>
-                {item.type === 'revision' ? 'R' : item.type === 'visit' ? 'N' : 'F'}
+                {item.type === 'revision' ? 'Revize' : item.type === 'visit' ? 'Návštěva' : 'Follow-up'}
               </span>
             </div>
           ))}
-          {items.length > 8 && (
-            <div className={styles.weekItemMore}>+{items.length - 8} dalších</div>
+          {items.length > 10 && (
+            <div className={styles.weekItemMore}>+{items.length - 10} dalších</div>
           )}
         </div>
       )}
