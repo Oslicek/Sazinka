@@ -1,7 +1,7 @@
 # CSV Import – Specifikace (v2.0.0)
 
-> **Verze:** 2.3.0  
-> **Datum:** 2026-02-05
+> **Verze:** 3.0.0  
+> **Datum:** 2026-02-07
 
 ## Obsah
 
@@ -21,7 +21,7 @@
 11. [Import zařízení (devices.csv)](#11-import-zařízení-devicescsv)
 12. [Import revizí (revisions.csv)](#12-import-revizí-revisionscsv)
 13. [Import komunikace (communications.csv)](#13-import-komunikace-communicationscsv)
-14. [Import návštěv (visits.csv)](#14-import-návštěv-visitscsv)
+14. [Import pracovního deníku (work_log.csv)](#14-import-pracovního-deníku-work_logcsv)
 15. [Pořadí importu a propojování záznamů](#15-pořadí-importu-a-propojování-záznamů)
 16. [Upřesnění a FAQ](#16-upřesnění-a-faq)
 
@@ -960,39 +960,43 @@ info@abc.cz;2025-01-18;email_received;inbound;Dotaz na cenu;Jaká je cena revize
 
 ---
 
-## 14. Import návštěv (visits.csv)
+## 14. Import pracovního deníku (work_log.csv)
 
 ### 14.1 Přehled
 
-Import plánovaných a uskutečněných návštěv u zákazníků.
+Import pracovního deníku – záznamy provedených i plánovaných prací u zákazníků. Každý řádek v CSV odpovídá jedné **pracovní položce** (VisitWorkItem). Řádky se stejným `customer_ref` + `scheduled_date` se automaticky seskupí do jedné **návštěvy** (Visit).
+
+> **Změna oproti v2.x:** Soubor `visits.csv` s polem `visit_type` byl nahrazen souborem `work_log.csv` s polem `work_type`. Návštěva (Visit) je nyní kontejner pro pracovní položky – nemá vlastní typ, typ je na úrovni práce.
 
 **Prerekvizity:**
 - Zákazníci musí být již importováni
-- Zařízení (volitelně) pro návštěvy typu revize
+- Zařízení (volitelně) pro práce typu revize
 
 ### 14.2 Hlavička
 
 ```csv
-customer_ref;device_ref;scheduled_date;scheduled_time_start;scheduled_time_end;visit_type;status;result;result_notes;requires_follow_up;follow_up_reason
+customer_ref;scheduled_date;scheduled_time_start;scheduled_time_end;device_ref;work_type;status;result;duration_minutes;result_notes;findings;requires_follow_up;follow_up_reason
 ```
 
 ### 14.3 Sloupce
 
 | Sloupec | Typ | Povinný | Popis |
 |---------|-----|---------|-------|
-| `customer_ref` | string | **ano** | Reference na zákazníka |
+| `customer_ref` | string | **ano** | Reference na zákazníka (IČO, email, telefon) |
+| `scheduled_date` | string | **ano** | Naplánované datum návštěvy (YYYY-MM-DD) |
+| `scheduled_time_start` | string | ne | Čas od (HH:MM) – na úrovni návštěvy |
+| `scheduled_time_end` | string | ne | Čas do (HH:MM) – na úrovni návštěvy |
 | `device_ref` | string | ne | Reference na zařízení: `serial_number`, `device_name`, nebo `device_type` (viz 15.3) |
-| `scheduled_date` | string | **ano** | Naplánované datum (YYYY-MM-DD) |
-| `scheduled_time_start` | string | ne | Čas od (HH:MM) |
-| `scheduled_time_end` | string | ne | Čas do (HH:MM) |
-| `visit_type` | string | **ano** | Typ návštěvy (viz tabulka) |
-| `status` | string | ne | Stav návštěvy (viz tabulka) |
-| `result` | string | ne | Výsledek návštěvy (viz tabulka) |
-| `result_notes` | string | ne | Poznámky k výsledku |
+| `work_type` | string | **ano** | Typ práce (viz tabulka) |
+| `status` | string | ne | Stav návštěvy (viz tabulka), výchozí `planned` |
+| `result` | string | ne | Výsledek práce (viz tabulka) |
+| `duration_minutes` | number | ne | Délka trvání práce v minutách |
+| `result_notes` | string | ne | Poznámky k výsledku práce |
+| `findings` | string | ne | Nálezy/zjištění (např. stav zařízení) |
 | `requires_follow_up` | boolean | ne | Vyžaduje následnou návštěvu (`true`/`false`) |
 | `follow_up_reason` | string | ne | Důvod následné návštěvy |
 
-### 14.4 Typy návštěv
+### 14.4 Typy práce (work_type)
 
 | Hodnota | Popis |
 |---------|-------|
@@ -1000,7 +1004,7 @@ customer_ref;device_ref;scheduled_date;scheduled_time_start;scheduled_time_end;v
 | `installation` | Instalace |
 | `repair` | Oprava |
 | `consultation` | Konzultace |
-| `follow_up` | Následná návštěva |
+| `follow_up` | Následná práce |
 
 **Aliasy:**
 - `revize`, `kontrola` → `revision`
@@ -1019,7 +1023,14 @@ customer_ref;device_ref;scheduled_date;scheduled_time_start;scheduled_time_end;v
 | `cancelled` | Zrušeno |
 | `rescheduled` | Přeplánováno |
 
-### 14.6 Výsledky návštěv
+**Aliasy:**
+- `naplánováno`, `plánováno` → `planned`
+- `probíhá` → `in_progress`
+- `dokončeno`, `hotovo` → `completed`
+- `zrušeno` → `cancelled`
+- `přeplánováno` → `rescheduled`
+
+### 14.6 Výsledky práce (work_result)
 
 | Hodnota | Popis |
 |---------|-------|
@@ -1031,43 +1042,65 @@ customer_ref;device_ref;scheduled_date;scheduled_time_start;scheduled_time_end;v
 
 **Aliasy:**
 - `úspěšná`, `ok` → `successful`
-- `částečná`, `částečně` → `partial`
+- `částečná` → `partial`
 - `neúspěšná`, `nok` → `failed`
-- `nepřítomen`, `nikdo doma` → `customer_absent`
-- `přeplánováno`, `odloženo` → `rescheduled`
+- `nepřítomen` → `customer_absent`
+- `přeplánováno` → `rescheduled`
 
-### 14.7 Validace
+### 14.7 Seskupení do návštěv
 
-- Pokud `visit_type=revision` a `device_ref` je prázdné → **varování** "Revize bez zařízení"
-- Pokud `status=completed` a `result` je prázdné → **varování** "Dokončená návštěva bez výsledku"
-- `requires_follow_up` přijímá: `true`, `false`, `ano`, `ne`, `1`, `0`
-
-### 14.8 Detekce duplicit
-
-**Duplicitní klíč návštěvy:**
+Řádky se **automaticky seskupí** do návštěv podle:
 
 ```
-customer_ref + scheduled_date + visit_type [+ device_ref pokud vyplněno]
+customer_ref + scheduled_date → jedna Visit
+```
+
+Každý řádek ve skupině vytvoří jednu **pracovní položku** (VisitWorkItem) pod touto návštěvou.
+
+**Příklad:** 3 řádky se stejným `customer_ref=12345678` a `scheduled_date=2025-01-20`:
+- → Vytvoří se 1 Visit + 3 VisitWorkItem
+
+Pole `scheduled_time_start`/`scheduled_time_end` a `status` se přebírají z **prvního řádku** skupiny (na úrovni návštěvy). Pole `work_type`, `device_ref`, `result`, `duration_minutes`, `result_notes`, `findings` jsou na úrovni jednotlivých pracovních položek.
+
+### 14.8 Validace
+
+- Pokud `work_type=revision` a `device_ref` je prázdné → **varování** "Revize bez zařízení"
+- Pokud `status=completed` a `result` je prázdné → **varování** "Dokončená práce bez výsledku"
+- `requires_follow_up` přijímá: `true`, `false`, `ano`, `ne`, `1`, `0`
+- `duration_minutes` musí být kladné celé číslo (pokud vyplněno)
+
+### 14.9 Detekce duplicit
+
+**Duplicitní klíč pracovní položky:**
+
+```
+customer_ref + scheduled_date + work_type [+ device_ref pokud vyplněno]
 ```
 
 | Situace | Klíč |
 |---------|------|
-| `device_ref` vyplněno | `customer + date + type + device` |
-| `device_ref` prázdné | `customer + date + type` |
+| `device_ref` vyplněno | `customer + date + work_type + device` |
+| `device_ref` prázdné | `customer + date + work_type` |
 
-Při duplicitě → **aktualizovat** existující záznam.
+Při duplicitě → **aktualizovat** existující pracovní položku.
 
-> **Omezení:** Pokud `device_ref` není vyplněno, více návštěv **stejného typu** v **jeden den** u **stejného zákazníka** bude považováno za duplicitní a sloučeno. Pro rozlišení použijte `device_ref` nebo rozdílné `scheduled_time_start`.
+> **Omezení:** Pokud `device_ref` není vyplněno, více prací **stejného typu** v **jeden den** u **stejného zákazníka** bude považováno za duplicitní a sloučeno. Pro rozlišení použijte `device_ref`.
 
-### 14.9 Příklady
+### 14.10 Příklady
 
 ```csv
-customer_ref;device_ref;scheduled_date;scheduled_time_start;scheduled_time_end;visit_type;status;result;result_notes;requires_follow_up;follow_up_reason
-12345678;VL123456;2025-01-20;09:00;11:00;revision;completed;successful;Revize proběhla bez problémů;false;
-info@abc.cz;;2025-01-22;14:00;;consultation;planned;;;;;
-+420602123456;JK789012;2025-01-25;10:00;12:00;repair;completed;partial;Opraveno, ale doporučuji výměnu ventilu;true;Objednat nový díl a vyměnit
-12345678;;2025-02-01;08:00;09:00;follow_up;planned;;;;false;
+customer_ref;scheduled_date;scheduled_time_start;scheduled_time_end;device_ref;work_type;status;result;duration_minutes;result_notes;findings;requires_follow_up;follow_up_reason
+12345678;2025-01-20;09:00;12:00;VL123456;revision;completed;successful;45;Revize proběhla bez problémů;Kotel v dobrém stavu;false;
+12345678;2025-01-20;09:00;12:00;Komín u kotelny;revision;completed;successful;30;OK;Čistý;false;
+12345678;2025-01-20;09:00;12:00;;consultation;completed;successful;15;Poradenství k novému kotli;;false;
+info@abc.cz;2025-01-22;14:00;;gas_water_heater;repair;completed;partial;60;Opraveno, ale doporučuji výměnu ventilu;Ventil opotřebený;true;Objednat nový díl a vyměnit
++420602123456;2025-01-25;10:00;11:00;JK789012;revision;planned;;;;;;;
 ```
+
+**Vysvětlení:**
+- Řádky 1–3: Tři práce u zákazníka `12345678` ve stejný den → **jedna návštěva** se **třemi pracovními položkami** (2× revize různých zařízení + 1× konzultace)
+- Řádek 4: Oprava se zařízením identifikovaným přes `device_type` (zákazník má jediný `gas_water_heater`)
+- Řádek 5: Plánovaná revize s konkrétním sériovým číslem
 
 ---
 
@@ -1082,11 +1115,11 @@ Import musí probíhat v tomto pořadí (kvůli závislostem mezi entitami):
        ↓
 2. devices.csv       → vytvoří zařízení (vyžaduje zákazníky)
        ↓
-3. revisions.csv     → vytvoří revize (vyžaduje zařízení)
+3. revisions.csv     → vytvoří revize / povinnosti (vyžaduje zařízení)
        ↓
 4. communications.csv → vytvoří komunikace (vyžaduje zákazníky)
        ↓
-5. visits.csv        → vytvoří návštěvy (vyžaduje zákazníky, volitelně zařízení)
+5. work_log.csv      → vytvoří návštěvy + pracovní položky (vyžaduje zákazníky, volitelně zařízení)
 ```
 
 ### 15.2 Mechanismus propojování (customer_ref)
@@ -1107,7 +1140,7 @@ customer_ref="+420602123456" → hledání dle telefonu
 
 ### 15.3 Mechanismus propojování (device_ref)
 
-Soubory `revisions.csv` a `visits.csv` používají `device_ref` pro identifikaci zařízení.
+Soubory `revisions.csv` a `work_log.csv` používají `device_ref` pro identifikaci zařízení.
 
 **Pořadí vyhledávání** (v kontextu zákazníka z `customer_ref`):
 
@@ -1165,7 +1198,7 @@ import_2026-01.zip
 ├── devices.csv
 ├── revisions.csv
 ├── communications.csv
-└── visits.csv
+└── work_log.csv
 ```
 
 Systém automaticky:
@@ -1207,12 +1240,12 @@ customer_ref;date;comm_type;direction;subject;content;contact_name;contact_phone
 +420602123456;2025-01-18;note;outbound;;Zákaznice preferuje odpolední hodiny;;;
 ```
 
-**visits.csv:**
+**work_log.csv:**
 ```csv
-customer_ref;device_ref;scheduled_date;scheduled_time_start;scheduled_time_end;visit_type;status;result;result_notes;requires_follow_up;follow_up_reason
-12345678;Hlavní kotel;2025-01-20;09:00;11:00;revision;planned;;;;;
-12345678;Komín u kotelny;2025-01-20;11:00;12:00;revision;planned;;;;;
-+420602123456;gas_water_heater;2025-01-22;14:00;;revision;planned;;;;;
+customer_ref;scheduled_date;scheduled_time_start;scheduled_time_end;device_ref;work_type;status;result;duration_minutes;result_notes;findings;requires_follow_up;follow_up_reason
+12345678;2025-01-20;09:00;12:00;Hlavní kotel;revision;planned;;;;;;
+12345678;2025-01-20;09:00;12:00;Komín u kotelny;revision;planned;;;;;;
++420602123456;2025-01-22;14:00;;gas_water_heater;revision;planned;;;;;;
 ```
 
 ---
@@ -1402,15 +1435,17 @@ Pokud `result` je vyplněn → `status` se automaticky nastaví na `completed`. 
 result="passed", status=(prázdné) → status=completed, completed_at=null
 ```
 
-#### visits.csv – duplicitní klíč
+#### work_log.csv – seskupení a duplicity
 
-Duplicitní klíč návštěvy je:
+**Seskupení do návštěv:** Řádky se stejným `customer_ref + scheduled_date` se automaticky seskupí do jedné návštěvy (Visit). Každý řádek = jedna pracovní položka (VisitWorkItem).
+
+**Duplicitní klíč pracovní položky:**
 
 ```
-customer_ref + scheduled_date + visit_type [+ device_ref pokud vyplněno]
+customer_ref + scheduled_date + work_type [+ device_ref pokud vyplněno]
 ```
 
-- Pokud `device_ref` je vyplněno → rozlišuje návštěvy pro různá zařízení
-- Pokud `device_ref` není vyplněno → více návštěv stejného typu ve stejný den u stejného zákazníka se považuje za duplicitní a sloučí se
+- Pokud `device_ref` je vyplněno → rozlišuje práce pro různá zařízení
+- Pokud `device_ref` není vyplněno → více prací stejného typu ve stejný den u stejného zákazníka se považuje za duplicitní a sloučí se
 
-> **Doporučení:** Pokud potřebujete více samostatných návštěv stejného typu v jeden den, vyplňte `device_ref` (pokud se vztahuje k zařízení) nebo použijte rozdílné `scheduled_time_start`.
+> **Doporučení:** Pokud potřebujete více samostatných prací stejného typu v jeden den, vyplňte `device_ref`.
