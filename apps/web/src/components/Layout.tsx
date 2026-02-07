@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useNatsStore } from '@/stores/natsStore';
 import { useActiveJobsStore } from '@/stores/activeJobsStore';
@@ -9,6 +10,7 @@ interface LayoutProps {
 }
 
 export function Layout({ children }: LayoutProps) {
+  const [menuOpen, setMenuOpen] = useState(false);
   const isConnected = useNatsStore((s) => s.isConnected);
   const activeJobsCount = useActiveJobsStore((s) => s.activeCount);
   const user = useAuthStore((s) => s.user);
@@ -17,10 +19,7 @@ export function Layout({ children }: LayoutProps) {
 
   const role = user?.role ?? 'worker';
 
-  // Role-based navigation:
-  // Admin: all pages
-  // Customer: all except Admin
-  // Worker: all except Admin and Settings
+  // Role-based navigation
   const showAdmin = role === 'admin';
   const showSettings = role === 'admin' || role === 'customer';
 
@@ -29,19 +28,34 @@ export function Layout({ children }: LayoutProps) {
     navigate({ to: '/login' });
   };
 
+  const handleMenuItemClick = () => {
+    setMenuOpen(false);
+  };
+
   return (
     <div className={styles.layout}>
       <header className={styles.header}>
-        <div className={styles.logo}>
-          <Link to="/">Sazinka</Link>
+        <div className={styles.headerLeft}>
+          <button 
+            className={styles.hamburger}
+            onClick={() => setMenuOpen(!menuOpen)}
+            aria-label="Menu"
+          >
+            <span className={styles.hamburgerLine}></span>
+            <span className={styles.hamburgerLine}></span>
+            <span className={styles.hamburgerLine}></span>
+          </button>
+          
+          <div className={styles.logo}>
+            <Link to="/">Sazinka</Link>
+          </div>
         </div>
         
         <nav className={styles.nav}>
-          <NavLink to="/">Dashboard</NavLink>
-          <NavLink to="/customers">Zákazníci</NavLink>
           <NavLink to="/calendar">Kalendář</NavLink>
           <NavLink to="/inbox">Fronta</NavLink>
           <NavLink to="/planner">Plán dne</NavLink>
+          <NavLink to="/customers">Zákazníci</NavLink>
           <NavLink to="/jobs">Úlohy</NavLink>
           {showSettings && <NavLink to="/settings">Nastavení</NavLink>}
           {showAdmin && <NavLink to="/admin">Admin</NavLink>}
@@ -74,6 +88,39 @@ export function Layout({ children }: LayoutProps) {
         </div>
       </header>
 
+      {/* Hamburger Menu Overlay */}
+      {menuOpen && (
+        <>
+          <div className={styles.menuOverlay} onClick={() => setMenuOpen(false)} />
+          <nav className={styles.menuDrawer}>
+            <div className={styles.menuHeader}>
+              <span className={styles.menuTitle}>Menu</span>
+              <button 
+                className={styles.menuClose}
+                onClick={() => setMenuOpen(false)}
+                aria-label="Zavřít menu"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className={styles.menuItems}>
+              <MenuLink to="/calendar" onClick={handleMenuItemClick}>Kalendář</MenuLink>
+              <MenuLink to="/inbox" onClick={handleMenuItemClick}>Fronta</MenuLink>
+              <MenuLink to="/planner" onClick={handleMenuItemClick}>Plán dne</MenuLink>
+              <MenuLink to="/customers" onClick={handleMenuItemClick}>Zákazníci</MenuLink>
+              <MenuLink to="/jobs" onClick={handleMenuItemClick}>Úlohy</MenuLink>
+              {showSettings && <MenuLink to="/settings" onClick={handleMenuItemClick}>Nastavení</MenuLink>}
+              {showAdmin && <MenuLink to="/admin" onClick={handleMenuItemClick}>Admin</MenuLink>}
+              
+              <div className={styles.menuDivider} />
+              
+              <MenuLink to="/about" onClick={handleMenuItemClick}>O službě</MenuLink>
+            </div>
+          </nav>
+        </>
+      )}
+
       <main className={styles.main}>
         {children}
       </main>
@@ -87,6 +134,19 @@ function NavLink({ to, children }: { to: string; children: React.ReactNode }) {
       to={to}
       className={styles.navLink}
       activeProps={{ className: styles.navLinkActive }}
+    >
+      {children}
+    </Link>
+  );
+}
+
+function MenuLink({ to, onClick, children }: { to: string; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <Link
+      to={to}
+      className={styles.menuLink}
+      activeProps={{ className: styles.menuLinkActive }}
+      onClick={onClick}
     >
       {children}
     </Link>

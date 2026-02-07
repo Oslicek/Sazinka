@@ -570,20 +570,34 @@ export function Calendar() {
             selectedDateKey={selectedDay?.dateKey}
           />
         ) : layoutMode === 'week' ? (
-          <div className={styles.weekGrid}>
-            {weekDays.map((day) => (
-              <DayCell
-                key={day.dateKey}
-                day={day}
-                items={groupedItems[day.dateKey] || []}
-                onClick={handleDayClick}
-                workloadMinutes={workloadByDay[day.dateKey]}
-                capacityMinutes={capacityByDay[day.dateKey]}
-                variant="week"
-                isSelected={selectedDay?.dateKey === day.dateKey}
-              />
-            ))}
-          </div>
+          <>
+            <div className={styles.weekHeader}>
+              {weekDays.map((day) => (
+                <div key={day.dateKey} className={styles.weekHeaderDay}>
+                  <span className={styles.weekHeaderDayName}>
+                    {['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'][day.date.getDay() === 0 ? 6 : day.date.getDay() - 1]}
+                  </span>
+                  <span className={styles.weekHeaderDate}>
+                    {day.dayNumber}.
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className={styles.weekGrid}>
+              {weekDays.map((day) => (
+                <DayCell
+                  key={day.dateKey}
+                  day={day}
+                  items={groupedItems[day.dateKey] || []}
+                  onClick={handleDayClick}
+                  workloadMinutes={workloadByDay[day.dateKey]}
+                  capacityMinutes={capacityByDay[day.dateKey]}
+                  variant="week"
+                  isSelected={selectedDay?.dateKey === day.dateKey}
+                />
+              ))}
+            </div>
+          </>
         ) : layoutMode === 'day' ? (
           <div className={styles.dayView}>
             <div className={`${styles.dayHeader} ${isWeekend(currentDate) ? styles.weekendDay : ''}`}>

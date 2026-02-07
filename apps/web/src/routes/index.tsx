@@ -20,6 +20,7 @@ import { RevisionDetail } from '@/pages/RevisionDetail';
 import { Jobs } from '@/pages/Jobs';
 import { Login } from '@/pages/Login';
 import { Register } from '@/pages/Register';
+import { About } from '@/pages/About';
 
 // Root route with layout (only for authenticated pages)
 const rootRoute = createRootRoute({
@@ -54,11 +55,13 @@ const layoutRoute = createRoute({
   ),
 });
 
-// Dashboard (home page)
+// Dashboard (home page) - redirect to calendar
 const indexRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: '/',
-  component: Dashboard,
+  beforeLoad: () => {
+    throw redirect({ to: '/calendar' });
+  },
 });
 
 // Customers
@@ -157,6 +160,13 @@ const jobsRoute = createRoute({
   component: Jobs,
 });
 
+// About page
+const aboutRoute = createRoute({
+  getParentRoute: () => layoutRoute,
+  path: '/about',
+  component: About,
+});
+
 // Route tree
 export const routeTree = rootRoute.addChildren([
   loginRoute,
@@ -175,5 +185,6 @@ export const routeTree = rootRoute.addChildren([
     jobsRoute,
     adminRoute,
     settingsRoute,
+    aboutRoute,
   ]),
 ]);
