@@ -144,7 +144,7 @@ devices
 | `updated_at` | **Chybí!** Ostatní tabulky mají `updated_at` s triggerem, devices ne. | Přidat `updated_at TIMESTAMPTZ` s triggerem |
 | Unikátní index | **Chybí!** Žádný unikátní index na `(customer_id, serial_number)` ani `(customer_id, device_type, device_name)`. Import duplikátní detekce spoléhá na aplikační logiku. | Přidat UNIQUE indexy |
 
-**Kritický problém – `device_name`:** Import specifikace (IMPORT_FORMAT.MD, sekce 11.6 a 15.3) definuje hierarchii identifikace zařízení: `serial_number` → `device_name` → `device_type` (pokud jen 1 zařízení typu). Navíc `device_name` je povinný, pokud má zákazník více zařízení, i když je vyplněn `serial_number`. Ale:
+**Kritický problém – `device_name`:** Import specifikace (PROJECT_IMPORT.MD, sekce 11.6 a 15.3) definuje hierarchii identifikace zařízení: `serial_number` → `device_name` → `device_type` (pokud jen 1 zařízení typu). Navíc `device_name` je povinný, pokud má zákazník více zařízení, i když je vyplněn `serial_number`. Ale:
 - Sloupec `device_name` v databázi **neexistuje**
 - `resolve_device_ref()` hledá **pouze** podle `serial_number`
 - Pokud zařízení nemá sériové číslo (komíny, krby), `device_ref` v CSV (např. `"Komín na chalupě"`) se nikdy nenajde
@@ -392,7 +392,7 @@ V aktuálním modelu:
 
 ### 3.3 Chybějící `device_name` v databázi
 
-Import specifikace (IMPORT_FORMAT.MD) definuje `device_name` jako lidsky čitelný identifikátor zařízení. Databáze tento sloupec nemá. `resolve_device_ref()` hledá pouze podle `serial_number`, takže reference typu `"Komín na chalupě"` nebo `"Ohřívač koupelna"` v CSV se nikdy nenajdou.
+Import specifikace (PROJECT_IMPORT.MD) definuje `device_name` jako lidsky čitelný identifikátor zařízení. Databáze tento sloupec nemá. `resolve_device_ref()` hledá pouze podle `serial_number`, takže reference typu `"Komín na chalupě"` nebo `"Ohřívač koupelna"` v CSV se nikdy nenajdou.
 
 ### 3.4 Volné stringy místo ENUM
 
@@ -758,7 +758,7 @@ Tyto změny opravují **aktuální bugy** bez změny datového modelu:
 3. **Refaktorovat `route_stops`** – `customer_id` místo `revision_id`
 4. **Vytvořit nový import formát** (`work_log.csv`)
 5. **Bez migrace dat** (DB se před změnou smaže)
-6. **Aktualizovat IMPORT_FORMAT.MD**
+6. **Aktualizovat PROJECT_IMPORT.MD**
 
 ### Priorita
 

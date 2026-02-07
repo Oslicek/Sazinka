@@ -10,6 +10,7 @@ import type {
   WorkLogImportJobStatusUpdate,
   ZipImportJobStatusUpdate,
   GeocodeJobStatusUpdate,
+  ImportReport,
 } from '@shared/import';
 import { useNatsStore } from './natsStore';
 
@@ -47,6 +48,8 @@ export interface ActiveJob {
   startedAt: Date;
   completedAt?: Date;
   error?: string;
+  /** Structured import report, available when job completes */
+  report?: ImportReport;
 }
 
 interface ActiveJobsState {
@@ -266,6 +269,7 @@ function handleImportJobStatusUpdate(update: GenericImportJobStatusUpdate, jobTy
   let progressText: string | undefined;
   let error: string | undefined;
   let completedAt: Date | undefined;
+  let report: ImportReport | undefined;
   
   if (status.type === 'queued') {
     jobStatus = 'queued';
@@ -282,7 +286,11 @@ function handleImportJobStatusUpdate(update: GenericImportJobStatusUpdate, jobTy
     jobStatus = 'completed';
     progress = 100;
     progressText = `Dokončeno: ${status.succeeded}/${status.total} úspěšně`;
+    if (status.failed > 0) {
+      progressText += ` (${status.failed} chyb)`;
+    }
     completedAt = new Date();
+    report = status.report;
   } else if (status.type === 'failed') {
     jobStatus = 'failed';
     error = status.error;
@@ -301,6 +309,7 @@ function handleImportJobStatusUpdate(update: GenericImportJobStatusUpdate, jobTy
       progressText,
       error,
       completedAt,
+      report,
     });
   } else {
     // Create new job entry
@@ -314,6 +323,7 @@ function handleImportJobStatusUpdate(update: GenericImportJobStatusUpdate, jobTy
       startedAt: new Date(update.timestamp),
       completedAt,
       error,
+      report,
     });
   }
 }
@@ -331,6 +341,7 @@ function handleZipImportJobStatusUpdate(update: ZipImportJobStatusUpdate) {
   let progressText: string | undefined;
   let error: string | undefined;
   let completedAt: Date | undefined;
+  let report: ImportReport | undefined;
   
   if (status.type === 'queued') {
     jobStatus = 'queued';
@@ -345,7 +356,6 @@ function handleZipImportJobStatusUpdate(update: ZipImportJobStatusUpdate) {
     progressText = `Nalezeno ${status.files.length} souborů k importu`;
   } else if (status.type === 'importing') {
     jobStatus = 'processing';
-    // Calculate progress based on completed files and current file progress
     const baseProgress = (status.completedFiles / status.totalFiles) * 100;
     const fileContribution = (status.fileProgress / 100) * (100 / status.totalFiles);
     progress = Math.round(baseProgress + fileContribution);
@@ -357,6 +367,20 @@ function handleZipImportJobStatusUpdate(update: ZipImportJobStatusUpdate) {
     const totalFailed = status.results.reduce((sum, r) => sum + r.failed, 0);
     progressText = `${status.totalFiles} souborů: ${totalSucceeded} úspěšně, ${totalFailed} chyb`;
     completedAt = new Date();
+    // Merge all file reports into a combined report
+    const allIssues = status.results.flatMap(r => r.report?.issues ?? []);
+    report = {
+      jobId,
+      jobType: 'import.zip',
+      filename: status.results.map(r => r.filename).join(', '),
+      importedAt: new Date().toISOString(),
+      durationMs: 0,
+      totalRows: totalSucceeded + totalFailed,
+      importedCount: totalSucceeded,
+      updatedCount: 0,
+      skippedCount: 0,
+      issues: allIssues,
+    };
   } else if (status.type === 'failed') {
     jobStatus = 'failed';
     error = status.error;
@@ -375,6 +399,7 @@ function handleZipImportJobStatusUpdate(update: ZipImportJobStatusUpdate) {
       progressText,
       error,
       completedAt,
+      report,
     });
   } else {
     store.addJob({
@@ -387,6 +412,7 @@ function handleZipImportJobStatusUpdate(update: ZipImportJobStatusUpdate) {
       startedAt: new Date(update.timestamp),
       completedAt,
       error,
+      report,
     });
   }
 }

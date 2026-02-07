@@ -1514,7 +1514,7 @@ cargo test
 
 ## Related Documentation
 
-- [CSV Import Format](./IMPORT_FORMAT.MD) – Specifikace importu zákazníků z CSV
+- [CSV Import Format](./PROJECT_IMPORT.MD) – Specifikace importu zákazníků z CSV
 
 ## Notes
 
@@ -1592,7 +1592,7 @@ cargo test
   - Added `nominatim` and `valhalla` to docker-compose startup
   - Added service URLs to final output (Nominatim :8080, Valhalla :8002)
   - Added note about warm-up time for geocoding services
-- **CSV Import Format** - Extended documentation (IMPORT_FORMAT.MD v2.2.1):
+- **CSV Import Format** - Extended documentation (PROJECT_IMPORT.MD v3.0.0):
   - Added sections for Devices, Revisions, Communications, Visits
   - Added FAQ section with detailed edge cases
   - Device matching by serial_number, device_name, or device_type

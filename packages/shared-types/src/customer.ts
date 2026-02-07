@@ -88,15 +88,36 @@ export interface GeocodeResponse {
 
 export type ImportIssueLevel = 'info' | 'warning' | 'error';
 
+/** Machine-readable error codes for import issues */
+export type ImportIssueCode =
+  | 'CUSTOMER_NOT_FOUND'    // customer_ref doesn't match any customer
+  | 'DEVICE_NOT_FOUND'      // device_ref doesn't match any device for the customer
+  | 'DUPLICATE_RECORD'      // record already exists (e.g. same device_id + due_date)
+  | 'MISSING_FIELD'         // required field is empty
+  | 'INVALID_DATE'          // date string can't be parsed
+  | 'INVALID_VALUE'         // value doesn't match expected format/enum
+  | 'INVALID_STATUS'        // status string not recognized (fallback used)
+  | 'INVALID_RESULT'        // result string not recognized
+  | 'DB_ERROR'              // unexpected database error
+  | 'PARSE_ERROR'           // CSV row can't be parsed
+  | 'UNKNOWN';              // catch-all
+
 export interface ImportIssue {
   rowNumber: number;
   level: ImportIssueLevel;
+  code: ImportIssueCode;
   field: string;
   message: string;
   originalValue?: string;
 }
 
+/**
+ * Structured import report generated after an import job completes.
+ * Persisted as JSON files in logs/import-reports/{jobId}.json
+ */
 export interface ImportReport {
+  jobId: string;
+  jobType: string;
   filename: string;
   importedAt: string;
   durationMs: number;
@@ -105,6 +126,17 @@ export interface ImportReport {
   updatedCount: number;
   skippedCount: number;
   issues: ImportIssue[];
+}
+
+/**
+ * Aggregated counts for each error code, for summary display
+ */
+export interface ImportIssueSummary {
+  code: ImportIssueCode;
+  level: ImportIssueLevel;
+  count: number;
+  /** Example message from the first occurrence */
+  exampleMessage: string;
 }
 
 export interface CsvCustomerRow {

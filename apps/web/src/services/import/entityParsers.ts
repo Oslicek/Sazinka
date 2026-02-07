@@ -1,6 +1,6 @@
 /**
  * Entity-specific CSV parsers and normalizers for import
- * See IMPORT_FORMAT.MD for full specification
+ * See PROJECT_IMPORT.MD for full specification
  */
 
 import Papa from 'papaparse';

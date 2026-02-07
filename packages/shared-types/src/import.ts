@@ -1,10 +1,11 @@
 /**
  * Import types for all entities
- * See IMPORT_FORMAT.MD for full specification
+ * See PROJECT_IMPORT.MD for full specification
  */
 
-// Re-export common import types from customer.ts
-export type { ImportIssue, ImportIssueLevel, ImportReport } from './customer';
+// Import and re-export common import types from customer.ts
+import type { ImportReport } from './customer';
+export type { ImportIssue, ImportIssueLevel, ImportIssueCode, ImportReport, ImportIssueSummary } from './customer';
 
 // =============================================================================
 // IMPORT JOB TYPES (for async background processing)
@@ -25,7 +26,7 @@ export type CustomerImportJobStatus =
   | { type: 'queued'; position: number }
   | { type: 'parsing'; progress: number }
   | { type: 'importing'; processed: number; total: number; succeeded: number; failed: number }
-  | { type: 'completed'; total: number; succeeded: number; failed: number; report: string }
+  | { type: 'completed'; total: number; succeeded: number; failed: number; report: ImportReport }
   | { type: 'failed'; error: string };
 
 /**
@@ -80,7 +81,7 @@ export type DeviceImportJobStatus =
   | { type: 'queued'; position: number }
   | { type: 'parsing'; progress: number }
   | { type: 'importing'; processed: number; total: number; succeeded: number; failed: number }
-  | { type: 'completed'; total: number; succeeded: number; failed: number; report: string }
+  | { type: 'completed'; total: number; succeeded: number; failed: number; report: ImportReport }
   | { type: 'failed'; error: string };
 
 export interface DeviceImportJobStatusUpdate {
@@ -107,7 +108,7 @@ export type RevisionImportJobStatus =
   | { type: 'queued'; position: number }
   | { type: 'parsing'; progress: number }
   | { type: 'importing'; processed: number; total: number; succeeded: number; failed: number }
-  | { type: 'completed'; total: number; succeeded: number; failed: number; report: string }
+  | { type: 'completed'; total: number; succeeded: number; failed: number; report: ImportReport }
   | { type: 'failed'; error: string };
 
 export interface RevisionImportJobStatusUpdate {
@@ -134,7 +135,7 @@ export type CommunicationImportJobStatus =
   | { type: 'queued'; position: number }
   | { type: 'parsing'; progress: number }
   | { type: 'importing'; processed: number; total: number; succeeded: number; failed: number }
-  | { type: 'completed'; total: number; succeeded: number; failed: number; report: string }
+  | { type: 'completed'; total: number; succeeded: number; failed: number; report: ImportReport }
   | { type: 'failed'; error: string };
 
 export interface CommunicationImportJobStatusUpdate {
@@ -161,7 +162,7 @@ export type WorkLogImportJobStatus =
   | { type: 'queued'; position: number }
   | { type: 'parsing'; progress: number }
   | { type: 'importing'; processed: number; total: number; succeeded: number; failed: number }
-  | { type: 'completed'; total: number; succeeded: number; failed: number; report: string }
+  | { type: 'completed'; total: number; succeeded: number; failed: number; report: ImportReport }
   | { type: 'failed'; error: string };
 
 export interface WorkLogImportJobStatusUpdate {
@@ -213,6 +214,7 @@ export type ZipImportJobStatus =
         type: ZipImportFileType;
         succeeded: number;
         failed: number;
+        report: ImportReport;
       }>;
     }
   | { type: 'failed'; error: string };

@@ -11,15 +11,50 @@ pub enum ImportIssueLevel {
     Error,
 }
 
+/// Machine-readable error codes for import issues
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ImportIssueCode {
+    CustomerNotFound,
+    DeviceNotFound,
+    DuplicateRecord,
+    MissingField,
+    InvalidDate,
+    InvalidValue,
+    InvalidStatus,
+    InvalidResult,
+    DbError,
+    ParseError,
+    Unknown,
+}
+
 /// Single import issue
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportIssue {
     pub row_number: i32,
     pub level: ImportIssueLevel,
+    pub code: ImportIssueCode,
     pub field: String,
     pub message: String,
     pub original_value: Option<String>,
+}
+
+/// Structured import report generated after an import job completes.
+/// Persisted as JSON files in logs/import-reports/{jobId}.json
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportReport {
+    pub job_id: Uuid,
+    pub job_type: String,
+    pub filename: String,
+    pub imported_at: String,
+    pub duration_ms: u64,
+    pub total_rows: u32,
+    pub imported_count: u32,
+    pub updated_count: u32,
+    pub skipped_count: u32,
+    pub issues: Vec<ImportIssue>,
 }
 
 /// Generic batch import response
@@ -168,7 +203,7 @@ pub enum CustomerImportJobStatus {
     #[serde(rename_all = "camelCase")]
     Importing { processed: u32, total: u32, succeeded: u32, failed: u32 },
     #[serde(rename_all = "camelCase")]
-    Completed { total: u32, succeeded: u32, failed: u32, report: String },
+    Completed { total: u32, succeeded: u32, failed: u32, report: ImportReport },
     #[serde(rename_all = "camelCase")]
     Failed { error: String },
 }
@@ -244,7 +279,7 @@ pub enum DeviceImportJobStatus {
     #[serde(rename_all = "camelCase")]
     Importing { processed: u32, total: u32, succeeded: u32, failed: u32 },
     #[serde(rename_all = "camelCase")]
-    Completed { total: u32, succeeded: u32, failed: u32, report: String },
+    Completed { total: u32, succeeded: u32, failed: u32, report: ImportReport },
     #[serde(rename_all = "camelCase")]
     Failed { error: String },
 }
@@ -320,7 +355,7 @@ pub enum RevisionImportJobStatus {
     #[serde(rename_all = "camelCase")]
     Importing { processed: u32, total: u32, succeeded: u32, failed: u32 },
     #[serde(rename_all = "camelCase")]
-    Completed { total: u32, succeeded: u32, failed: u32, report: String },
+    Completed { total: u32, succeeded: u32, failed: u32, report: ImportReport },
     #[serde(rename_all = "camelCase")]
     Failed { error: String },
 }
@@ -396,7 +431,7 @@ pub enum CommunicationImportJobStatus {
     #[serde(rename_all = "camelCase")]
     Importing { processed: u32, total: u32, succeeded: u32, failed: u32 },
     #[serde(rename_all = "camelCase")]
-    Completed { total: u32, succeeded: u32, failed: u32, report: String },
+    Completed { total: u32, succeeded: u32, failed: u32, report: ImportReport },
     #[serde(rename_all = "camelCase")]
     Failed { error: String },
 }
@@ -472,7 +507,7 @@ pub enum WorkLogImportJobStatus {
     #[serde(rename_all = "camelCase")]
     Importing { processed: u32, total: u32, succeeded: u32, failed: u32 },
     #[serde(rename_all = "camelCase")]
-    Completed { total: u32, succeeded: u32, failed: u32, report: String },
+    Completed { total: u32, succeeded: u32, failed: u32, report: ImportReport },
     #[serde(rename_all = "camelCase")]
     Failed { error: String },
 }
@@ -552,6 +587,17 @@ impl ZipImportFileType {
         }
     }
     
+    /// Get human-readable type name
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            ZipImportFileType::Customers => "customers",
+            ZipImportFileType::Devices => "devices",
+            ZipImportFileType::Revisions => "revisions",
+            ZipImportFileType::Communications => "communications",
+            ZipImportFileType::WorkLog => "work_log",
+        }
+    }
+    
     /// Try to detect file type from filename
     pub fn from_filename(filename: &str) -> Option<Self> {
         let lower = filename.to_lowercase();
@@ -597,6 +643,7 @@ pub struct ZipImportFileResult {
     pub file_type: ZipImportFileType,
     pub succeeded: u32,
     pub failed: u32,
+    pub report: ImportReport,
 }
 
 /// Status of a ZIP import job

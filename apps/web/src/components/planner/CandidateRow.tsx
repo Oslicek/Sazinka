@@ -27,6 +27,14 @@ interface CandidateRowProps {
   isRouteAware?: boolean;
   onClick?: () => void;
   onKeyDown?: (e: React.KeyboardEvent) => void;
+  /** Show a checkbox for batch selection */
+  selectable?: boolean;
+  /** Whether this row's checkbox is checked */
+  checked?: boolean;
+  /** Called when checkbox state changes */
+  onCheckChange?: (checked: boolean) => void;
+  /** Whether this candidate is already in the route */
+  isInRoute?: boolean;
 }
 
 function getStatusIcon(status?: SlotStatus): string {
@@ -59,6 +67,10 @@ export function CandidateRow({
   isRouteAware = true,
   onClick,
   onKeyDown,
+  selectable = false,
+  checked = false,
+  onCheckChange,
+  isInRoute = false,
 }: CandidateRowProps) {
   const daysOverdue = candidate.daysUntilDue < 0 ? Math.abs(candidate.daysUntilDue) : 0;
   const hasProblems = !candidate.hasPhone || !candidate.hasValidAddress;
@@ -66,11 +78,26 @@ export function CandidateRow({
   return (
     <button
       type="button"
-      className={`${styles.row} ${isSelected ? styles.selected : ''} ${hasProblems ? styles.hasProblems : ''}`}
+      className={`${styles.row} ${isSelected ? styles.selected : ''} ${hasProblems ? styles.hasProblems : ''} ${isInRoute ? styles.inRoute : ''}`}
       onClick={onClick}
       onKeyDown={onKeyDown}
       data-candidate-id={candidate.id}
     >
+      {selectable && (
+        <input
+          type="checkbox"
+          className={styles.checkbox}
+          checked={checked}
+          onChange={(e) => {
+            e.stopPropagation();
+            onCheckChange?.(e.target.checked);
+          }}
+          onClick={(e) => e.stopPropagation()}
+        />
+      )}
+      {isInRoute && (
+        <span className={styles.inRouteBadge} title="V trase">✓</span>
+      )}
       <div className={styles.main}>
         <div className={styles.nameRow}>
           <span className={styles.name}>{candidate.customerName}</span>

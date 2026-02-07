@@ -733,7 +733,7 @@ export function Admin() {
 
         <div className={styles.importHint}>
           <p>
-            📋 <a href="/IMPORT_FORMAT.MD" target="_blank" rel="noopener noreferrer">
+            📋 <a href="/PROJECT_IMPORT.MD" target="_blank" rel="noopener noreferrer">
               Dokumentace formátů CSV pro import
             </a>
           </p>

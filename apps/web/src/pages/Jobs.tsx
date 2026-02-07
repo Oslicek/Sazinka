@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNatsStore } from '@/stores/natsStore';
 import { useActiveJobsStore } from '@/stores/activeJobsStore';
 import { JobStatusTimeline } from '../components/common';
+import { ImportReportDialog } from '../components/import';
 import { 
   type JobType, 
   type JobStatus, 
@@ -12,7 +13,7 @@ import {
   isTerminal,
 } from '../types/jobStatus';
 import { cancelJob, retryJob, listJobHistory, type JobHistoryEntry } from '../services/jobService';
-import type { CustomerImportJobStatusUpdate } from '@shared/import';
+import type { CustomerImportJobStatusUpdate, ImportReport } from '@shared/import';
 import styles from './Jobs.module.css';
 
 /** Active job entry in the dashboard */
@@ -55,6 +56,7 @@ export function Jobs() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [reportDialogData, setReportDialogData] = useState<ImportReport | null>(null);
   
   // Merge local active jobs with global active jobs from store
   const activeJobs = new Map(localActiveJobs);
@@ -425,15 +427,32 @@ export function Jobs() {
                     <td>{formatDuration(job.duration)}</td>
                     <td>{formatTimeAgo(job.completedAt)}</td>
                     <td>
-                      {job.status.type === 'failed' && (
-                        <button
-                          className={styles.retryBtn}
-                          onClick={() => handleRetryJob(job.id, job.type)}
-                          disabled={actionLoading === job.id}
-                        >
-                          {actionLoading === job.id ? '...' : 'Opakovat'}
-                        </button>
-                      )}
+                      {(() => {
+                        // Check if this job has a report in the global store
+                        const globalJob = globalActiveJobs.get(job.id);
+                        const jobReport = globalJob?.report;
+                        return (
+                          <>
+                            {jobReport && (
+                              <button
+                                className={styles.reportBtn}
+                                onClick={() => setReportDialogData(jobReport)}
+                              >
+                                Zobrazit report
+                              </button>
+                            )}
+                            {job.status.type === 'failed' && (
+                              <button
+                                className={styles.retryBtn}
+                                onClick={() => handleRetryJob(job.id, job.type)}
+                                disabled={actionLoading === job.id}
+                              >
+                                {actionLoading === job.id ? '...' : 'Opakovat'}
+                              </button>
+                            )}
+                          </>
+                        );
+                      })()}
                     </td>
                   </tr>
                 ))}
@@ -476,6 +495,14 @@ export function Jobs() {
           })}
         </div>
       </section>
+
+      {/* Import Report Dialog */}
+      {reportDialogData && (
+        <ImportReportDialog
+          report={reportDialogData}
+          onClose={() => setReportDialogData(null)}
+        />
+      )}
     </div>
   );
 }

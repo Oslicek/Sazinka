@@ -329,7 +329,7 @@ export function ImportCustomersModal({
         <div className={styles.footer}>
           {state === 'idle' && (
             <a 
-              href="/IMPORT_FORMAT.MD" 
+              href="/PROJECT_IMPORT.MD" 
               target="_blank" 
               rel="noopener noreferrer"
               className={styles.helpLink}

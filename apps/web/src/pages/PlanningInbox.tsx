@@ -20,6 +20,7 @@ import {
   MultiCrewTip,
   type CrewComparison,
   type SlotSuggestion,
+  RouteStopList,
 } from '../components/planner';
 import { DraftModeBar } from '../components/planner/DraftModeBar';
 import { ThreePanelLayout } from '../components/common';
@@ -119,6 +120,11 @@ export function PlanningInbox() {
   
   // Multi-crew state (TODO: implement multi-crew comparison)
   const [crewComparisons, _setCrewComparisons] = useState<CrewComparison[]>([]);
+  
+  // Route building state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isOptimizing, setIsOptimizing] = useState(false);
+  const [routeJobProgress, setRouteJobProgress] = useState<string | null>(null);
   
   // Problems segment state
   const [isProblemsCollapsed, setIsProblemsCollapsed] = useState(false);
@@ -684,6 +690,208 @@ export function PlanningInbox() {
     navigate({ to: '/customers/$customerId', params: { customerId: candidateId } });
   }, [navigate]);
 
+  // Compute set of candidate IDs that are currently in the route
+  const inRouteIds = useMemo(() => {
+    return new Set(routeStops.map((s) => s.id));
+  }, [routeStops]);
+
+  // Route building: toggle checkbox selection
+  const handleSelectionChange = useCallback((id: string, selected: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (selected) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+  }, []);
+
+  // Route building: add selected candidates to route
+  const handleAddSelectedToRoute = useCallback(() => {
+    if (selectedIds.size === 0) return;
+
+    const newStops: MapStop[] = [];
+    selectedIds.forEach((customerId) => {
+      // Skip if already in route
+      if (inRouteIds.has(customerId)) return;
+
+      const candidate = candidates.find((c) => c.customerId === customerId);
+      if (!candidate || !candidate.customerLat || !candidate.customerLng) return;
+
+      newStops.push({
+        id: candidate.customerId,
+        name: candidate.customerName,
+        address: `${candidate.customerStreet ?? ''}, ${candidate.customerCity ?? ''}`.replace(/^, |, $/g, ''),
+        coordinates: {
+          lat: candidate.customerLat,
+          lng: candidate.customerLng,
+        },
+        order: routeStops.length + newStops.length + 1,
+      });
+    });
+
+    if (newStops.length > 0) {
+      setRouteStops((prev) => [...prev, ...newStops]);
+      setSelectedIds(new Set());
+      setHasChanges(true);
+      incrementRouteVersion();
+    }
+  }, [selectedIds, inRouteIds, candidates, routeStops.length, incrementRouteVersion]);
+
+  // Route building: add single candidate from detail panel
+  const handleAddToRoute = useCallback((candidateId: string, _slot: SlotSuggestion) => {
+    const candidate = candidates.find((c) => c.id === candidateId || c.customerId === candidateId);
+    if (!candidate || !candidate.customerLat || !candidate.customerLng) return;
+    if (inRouteIds.has(candidate.customerId)) return;
+
+    const newStop: MapStop = {
+      id: candidate.customerId,
+      name: candidate.customerName,
+      address: `${candidate.customerStreet ?? ''}, ${candidate.customerCity ?? ''}`.replace(/^, |, $/g, ''),
+      coordinates: {
+        lat: candidate.customerLat,
+        lng: candidate.customerLng,
+      },
+      order: routeStops.length + 1,
+    };
+
+    setRouteStops((prev) => [...prev, newStop]);
+    setHasChanges(true);
+    incrementRouteVersion();
+  }, [candidates, inRouteIds, routeStops.length, incrementRouteVersion]);
+
+  // Route building: remove stop from route
+  const handleRemoveFromRoute = useCallback((stopId: string) => {
+    setRouteStops((prev) => {
+      const filtered = prev.filter((s) => s.id !== stopId);
+      // Renumber
+      return filtered.map((s, i) => ({ ...s, order: i + 1 }));
+    });
+    setHasChanges(true);
+    incrementRouteVersion();
+  }, [incrementRouteVersion]);
+
+  // Route building: optimize route via VRP solver
+  const handleOptimizeRoute = useCallback(async () => {
+    if (routeStops.length < 2 || !context) return;
+
+    const depot = depots.find((d) => d.id === context.depotId);
+    if (!depot) return;
+
+    setIsOptimizing(true);
+    setRouteJobProgress('Odesílám do optimalizátoru...');
+
+    try {
+      const customerIds = routeStops.map((s) => s.id);
+      const jobResponse = await routeService.submitRoutePlanJob({
+        customerIds,
+        date: context.date,
+        startLocation: { lat: depot.lat, lng: depot.lng },
+      });
+
+      setRouteJobProgress('Ve frontě...');
+
+      // Subscribe to status updates
+      const unsubscribe = await routeService.subscribeToRouteJobStatus(
+        jobResponse.jobId,
+        (update) => {
+          switch (update.status.type) {
+            case 'queued':
+              setRouteJobProgress(`Ve frontě (pozice ${update.status.position})`);
+              break;
+            case 'processing':
+              setRouteJobProgress(`Optimalizuji... ${update.status.progress}%`);
+              break;
+            case 'completed': {
+              const result = update.status.result;
+              if (result.stops && result.stops.length > 0) {
+                const optimizedStops: MapStop[] = result.stops.map((s, i) => ({
+                  id: s.customerId,
+                  name: s.customerName,
+                  address: s.address,
+                  coordinates: s.coordinates,
+                  order: i + 1,
+                  eta: s.eta,
+                  etd: s.etd,
+                }));
+                setRouteStops(optimizedStops);
+
+                // Update metrics
+                const totalMin = result.totalDurationMinutes ?? 0;
+                const serviceMin = optimizedStops.length * 30;
+                const travelMin = totalMin - serviceMin;
+                const workingDayMin = 9 * 60;
+
+                setMetrics({
+                  distanceKm: result.totalDistanceKm ?? 0,
+                  travelTimeMin: Math.max(0, travelMin),
+                  serviceTimeMin: serviceMin,
+                  loadPercent: Math.round((totalMin / workingDayMin) * 100),
+                  slackMin: Math.max(0, workingDayMin - totalMin),
+                  stopCount: optimizedStops.length,
+                });
+              }
+              setRouteJobProgress(null);
+              setIsOptimizing(false);
+              setHasChanges(true);
+              unsubscribe();
+              break;
+            }
+            case 'failed':
+              setRouteJobProgress(`Chyba: ${update.status.error}`);
+              setIsOptimizing(false);
+              setTimeout(() => setRouteJobProgress(null), 5000);
+              unsubscribe();
+              break;
+          }
+        }
+      );
+    } catch (err) {
+      console.error('Failed to optimize route:', err);
+      setRouteJobProgress('Chyba při odesílání');
+      setIsOptimizing(false);
+      setTimeout(() => setRouteJobProgress(null), 3000);
+    }
+  }, [routeStops, context, depots]);
+
+  // Route building: save route to backend
+  const handleSaveRoute = useCallback(async () => {
+    if (routeStops.length === 0 || !context) return;
+
+    setIsSaving(true);
+    try {
+      await routeService.saveRoute({
+        date: context.date,
+        stops: routeStops.map((s) => ({
+          customerId: s.id,
+          order: s.order ?? 0,
+          eta: s.eta,
+          etd: s.etd,
+        })),
+        totalDistanceKm: metrics?.distanceKm ?? 0,
+        totalDurationMinutes: (metrics?.travelTimeMin ?? 0) + (metrics?.serviceTimeMin ?? 0),
+        optimizationScore: 0,
+      });
+      setHasChanges(false);
+      setLastSaved(new Date());
+    } catch (err) {
+      console.error('Failed to save route:', err);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [routeStops, context, metrics]);
+
+  // Route building: clear all stops
+  const handleClearRoute = useCallback(() => {
+    setRouteStops([]);
+    setMetrics(null);
+    setSelectedIds(new Set());
+    setHasChanges(true);
+    incrementRouteVersion();
+  }, [incrementRouteVersion]);
+
   // Draft mode handlers
   const handleSave = useCallback(async () => {
     setIsSaving(true);
@@ -824,6 +1032,27 @@ export function PlanningInbox() {
         />
       )}
       
+      {/* Add to route toolbar */}
+      {selectedIds.size > 0 && (
+        <div className={styles.selectionToolbar}>
+          <span className={styles.selectionCount}>{selectedIds.size} vybráno</span>
+          <button
+            type="button"
+            className={styles.addSelectedButton}
+            onClick={handleAddSelectedToRoute}
+          >
+            ➕ Přidat do trasy
+          </button>
+          <button
+            type="button"
+            className={styles.clearSelectionButton}
+            onClick={() => setSelectedIds(new Set())}
+          >
+            Zrušit výběr
+          </button>
+        </div>
+      )}
+      
       {/* Virtualized candidate list */}
       <VirtualizedInboxList
         ref={listRef}
@@ -836,19 +1065,38 @@ export function PlanningInbox() {
           ? 'Žádní problémový kandidáti' 
           : 'Žádní kandidáti v tomto segmentu'}
         className={styles.candidateList}
+        selectable={true}
+        selectedIds={selectedIds}
+        onSelectionChange={handleSelectionChange}
+        inRouteIds={inRouteIds}
       />
     </div>
   );
 
-  // Render map panel
+  // Render map panel with route stop list below
   const renderMapPanel = () => (
     <div className={styles.mapPanel}>
-      <RouteMapPanel
-        stops={routeStops}
-        depot={currentDepot}
-        highlightedStopId={selectedCandidateId}
-        isLoading={isLoadingRoute}
-      />
+      <div className={styles.mapSection}>
+        <RouteMapPanel
+          stops={routeStops}
+          depot={currentDepot}
+          highlightedStopId={selectedCandidateId}
+          isLoading={isLoadingRoute}
+        />
+      </div>
+      <div className={styles.routeStopSection}>
+        <RouteStopList
+          stops={routeStops}
+          metrics={metrics}
+          onRemoveStop={handleRemoveFromRoute}
+          onOptimize={handleOptimizeRoute}
+          onSave={handleSaveRoute}
+          onClear={handleClearRoute}
+          isOptimizing={isOptimizing}
+          isSaving={isSaving}
+          jobProgress={routeJobProgress}
+        />
+      </div>
     </div>
   );
 
@@ -865,6 +1113,9 @@ export function PlanningInbox() {
           navigate({ to: '/revisions/$revisionId', params: { revisionId: candidateId } });
         }}
         isLoading={isCalculatingSlots}
+        onAddToRoute={handleAddToRoute}
+        onRemoveFromRoute={handleRemoveFromRoute}
+        isInRoute={selectedCandidateId ? inRouteIds.has(selectedCandidateId) : false}
       />
     </div>
   );

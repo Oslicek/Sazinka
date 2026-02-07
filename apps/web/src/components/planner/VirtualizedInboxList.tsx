@@ -13,6 +13,14 @@ interface VirtualizedInboxListProps {
   isLoading?: boolean;
   emptyMessage?: string;
   className?: string;
+  /** Enable checkboxes for batch selection */
+  selectable?: boolean;
+  /** Currently checked candidate IDs */
+  selectedIds?: Set<string>;
+  /** Called when a checkbox is toggled */
+  onSelectionChange?: (id: string, selected: boolean) => void;
+  /** Candidate IDs already added to the route */
+  inRouteIds?: Set<string>;
 }
 
 export interface VirtualizedInboxListRef {
@@ -32,6 +40,10 @@ export const VirtualizedInboxList = forwardRef<VirtualizedInboxListRef, Virtuali
       isLoading,
       emptyMessage = 'Žádní kandidáti',
       className,
+      selectable = false,
+      selectedIds,
+      onSelectionChange,
+      inRouteIds,
     },
     ref
   ) {
@@ -95,10 +107,14 @@ export const VirtualizedInboxList = forwardRef<VirtualizedInboxListRef, Virtuali
             isRouteAware={isRouteAware}
             onClick={() => onCandidateSelect(candidate.id)}
             onKeyDown={(e) => handleKeyDown(e, index)}
+            selectable={selectable}
+            checked={selectedIds?.has(candidate.id) ?? false}
+            onCheckChange={onSelectionChange ? (checked) => onSelectionChange(candidate.id, checked) : undefined}
+            isInRoute={inRouteIds?.has(candidate.id) ?? false}
           />
         </div>
       ),
-      [selectedCandidateId, isRouteAware, onCandidateSelect, handleKeyDown]
+      [selectedCandidateId, isRouteAware, onCandidateSelect, handleKeyDown, selectable, selectedIds, onSelectionChange, inRouteIds]
     );
 
     // Footer component (loading / load more)

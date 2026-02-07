@@ -426,7 +426,7 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
                     <li>Zařízení (devices)</li>
                     <li>Revize (revisions)</li>
                     <li>Komunikace (communications)</li>
-                    <li>Návštěvy (visits)</li>
+                    <li>Pracovní deník (work_log)</li>
                   </ol>
                   <p className={styles.zipNote}>
                     Typy souborů jsou automaticky rozpoznány podle názvu souboru.
@@ -482,7 +482,7 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
         <div className={styles.footer}>
           {state === 'idle' && (
             <a
-              href="/IMPORT_FORMAT.MD"
+              href="/PROJECT_IMPORT.MD"
               target="_blank"
               rel="noopener noreferrer"
               className={styles.helpLink}

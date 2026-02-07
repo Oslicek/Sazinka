@@ -331,6 +331,23 @@
   cursor: not-allowed;
 }
 
+/* Report button */
+.reportBtn {
+  background: #059669;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-right: 0.5rem;
+}
+
+.reportBtn:hover {
+  background: #047857;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .sectionHeader {

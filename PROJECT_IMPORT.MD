@@ -400,31 +400,67 @@ CSV: { email: "info@abc.cz", ico: "87654321", name: "Firma B" }
 
 ```typescript
 interface ImportReport {
+  // Identifikace
+  jobId: string;          // UUID import jobu
+  jobType: string;        // typ importu (import.customer, import.device, ...)
+
   // Metadata
-  filename: string;
-  importedAt: string;
-  durationMs: number;
-  
+  filename: string;       // název importovaného souboru
+  importedAt: string;     // ISO 8601 timestamp
+  durationMs: number;     // doba zpracování v ms
+
   // Souhrnné statistiky
-  totalRows: number;
-  importedCount: number;
-  updatedCount: number;
-  skippedCount: number;
-  
+  totalRows: number;      // celkový počet řádků v CSV
+  importedCount: number;  // úspěšně nově vytvořené záznamy
+  updatedCount: number;   // aktualizované existující záznamy (upsert)
+  skippedCount: number;   // přeskočené záznamy
+
   // Detaily problémů
   issues: ImportIssue[];
 }
 
 interface ImportIssue {
-  rowNumber: number;      // číslo řádku v CSV včetně hlavičky
-  level: 'warning' | 'error';  // pouze tyto dva typy, info zprávy nejsou v issues
-  field: string;
-  message: string;
-  originalValue?: string; // vždy vyplněno při selhání normalizace (telefon, datum, ...)
+  rowNumber: number;                // číslo řádku v CSV včetně hlavičky
+  level: 'info' | 'warning' | 'error';  // závažnost problému
+  code: ImportIssueCode;           // strojově čitelný kód chyby
+  field: string;                   // název pole, kde k problému došlo
+  message: string;                 // lidsky čitelná zpráva
+  originalValue?: string;          // původní hodnota z CSV (při selhání normalizace)
 }
 ```
 
-**Číslování řádků (`rowNumber`):**
+### 8.2 Kódy chyb (ImportIssueCode)
+
+Každý problém má přiřazený strojově čitelný kód, který umožňuje filtrování a agregaci v UI:
+
+| Kód | Popis | Typická úroveň |
+|-----|-------|-----------------|
+| `CUSTOMER_NOT_FOUND` | Zákazník s daným `customer_ref` nenalezen v databázi | error |
+| `DEVICE_NOT_FOUND` | Zařízení s daným identifikátorem nenalezeno | error |
+| `DUPLICATE_RECORD` | Záznam již existuje (revize se stejným zařízením a datem) | warning |
+| `MISSING_FIELD` | Povinné pole chybí nebo je prázdné | error |
+| `INVALID_DATE` | Datum nelze parsovat nebo je neplatné | error |
+| `INVALID_VALUE` | Hodnota nesplňuje validační pravidla (telefon, e-mail, PSČ) | warning/error |
+| `INVALID_STATUS` | Neplatná hodnota stavu (status) | error |
+| `INVALID_RESULT` | Neplatná hodnota výsledku (result) | error |
+| `DB_ERROR` | Chyba databáze při ukládání | error |
+| `PARSE_ERROR` | CSV řádek nelze rozparsovat | error |
+| `UNKNOWN` | Neklasifikovaná chyba | error |
+
+### 8.3 Agregace a souhrn (ImportIssueSummary)
+
+```typescript
+interface ImportIssueSummary {
+  code: ImportIssueCode;                // kód chyby
+  level: 'info' | 'warning' | 'error'; // závažnost
+  count: number;                        // počet výskytů
+  exampleMessage: string;              // ukázková zpráva prvního výskytu
+}
+```
+
+V UI se problémy agregují dle `code + level` a zobrazují jako klikatelné filtrovací tlačítka.
+
+### 8.4 Číslování řádků
 
 | Řádek v CSV | rowNumber | Popis |
 |-------------|-----------|-------|
@@ -434,52 +470,39 @@ interface ImportIssue {
 
 > **Důležité:** `rowNumber` je index řádku v **původním CSV souboru včetně hlavičky**. Při hlášení "Řádek 15" jde o 15. řádek souboru = 14. datový záznam. Toto odpovídá tomu, co uživatel vidí v textovém editoru nebo Excelu.
 
-### 8.2 Formát textového reportu
+### 8.5 Persistování reportu
+
+Reporty se ukládají na server do souborového systému pro pozdější přístup:
+
+- **Cesta:** `logs/import-reports/{jobId}.json`
+- **Formát:** JSON (serializovaný `ImportReport`)
+- **Automaticky:** Každý dokončený import (úspěšný i částečně neúspěšný) generuje report
+- **ZIP import:** Každý soubor v ZIP archivu generuje samostatný report
 
 ```
-═══════════════════════════════════════════════════════════════
-                    IMPORT ZÁKAZNÍKŮ - REPORT
-═══════════════════════════════════════════════════════════════
-
-Soubor:     zakaznici_2026-01.csv
-Datum:      27.01.2026 14:35:22
-Doba:       45 sekund
-
-───────────────────────────────────────────────────────────────
-                         SOUHRN
-───────────────────────────────────────────────────────────────
-
-Celkem řádků:        20 000
-Importováno:         19 850  ✓
-Aktualizováno:          120  ↻
-Přeskočeno:              30  ○
-
-───────────────────────────────────────────────────────────────
-                       VAROVÁNÍ (47)
-───────────────────────────────────────────────────────────────
-
-Řádek 15: [phone] Číslo nelze normalizovat: "abc123"
-Řádek 42: [postalCode] CZ PSČ není 5 číslic: "1100"
-Řádek 156: [email] Chybí @: "jan.novak"
-Řádek 203: [phone] Odstraněna úvodní 0: "0602123456" → "+420602123456"
-Řádek 512: [ico] IČO u fyzické osoby: "12345678"
-Řádek 891: [type] Odvozeno z IČO: company
-...
-
-───────────────────────────────────────────────────────────────
-                        CHYBY (0)
-───────────────────────────────────────────────────────────────
-
-(žádné)
-
-═══════════════════════════════════════════════════════════════
+logs/import-reports/
+├── a1b2c3d4-e5f6-7890-abcd-ef1234567890.json   # customers.csv
+├── b2c3d4e5-f6a7-8901-bcde-f12345678901.json   # devices.csv
+└── c3d4e5f6-a7b8-9012-cdef-123456789012.json   # revisions.csv
 ```
 
-### 8.3 Zobrazení a export
+### 8.6 Zobrazení v UI
 
-- **Modal okno** s textovým reportem
-- **Tlačítko "Kopírovat"** → zkopíruje do clipboardu
-- **Tlačítko "Uložit"** → stáhne jako `.txt` soubor
+Report se zobrazuje v dialogovém okně `ImportReportDialog` (stránka Úlohy):
+
+1. **Stavová lišta** – barevný indikátor (zelená = OK, žlutá = varování, červená = chyby)
+2. **Souhrnné karty** – celkem řádků, importováno, aktualizováno, přeskočeno, chyby, varování
+3. **Metadata** – datum importu, doba trvání
+4. **Přehled problémů** – agregované kódy chyb jako klikatelné tagy (filtrování)
+5. **Detail chyb** – rozbalovací tabulka s detaily:
+   - Číslo řádku, úroveň (chyba/varování/info), kód, pole, zpráva, původní hodnota
+   - Maximálně 200 záznamů zobrazeno najednou
+   - Filtrování kliknutím na kód v přehledu
+
+**Přístup k reportu:**
+- Na stránce **Úlohy na pozadí** (Jobs)
+- Tlačítko **"Zobrazit report"** u dokončených importních úloh
+- Report je dostupný po dobu, co je úloha v historii (paměť) nebo z persistovaného souboru
 
 ---
 
@@ -1449,3 +1472,112 @@ customer_ref + scheduled_date + work_type [+ device_ref pokud vyplněno]
 - Pokud `device_ref` není vyplněno → více prací stejného typu ve stejný den u stejného zákazníka se považuje za duplicitní a sloučí se
 
 > **Doporučení:** Pokud potřebujete více samostatných prací stejného typu v jeden den, vyplňte `device_ref`.
+
+---
+
+## 17. Import Report System
+
+Po dokončení každého importu (zákazníci, zařízení, revize, komunikace, pracovní deník, ZIP) systém automaticky generuje strukturovaný **Import Report**. Report obsahuje kompletní informace o průběhu importu, včetně všech chyb a varování.
+
+### 17.1 Struktura reportu
+
+```typescript
+interface ImportReport {
+  jobId: string;           // UUID importní úlohy
+  jobType: string;         // Typ importu (import.customer, import.device, ...)
+  filename: string;        // Název importovaného souboru
+  importedAt: string;      // ISO 8601 timestamp dokončení
+  durationMs: number;      // Doba trvání importu v ms
+  totalRows: number;       // Celkový počet řádků v CSV
+  importedCount: number;   // Počet úspěšně importovaných záznamů
+  updatedCount: number;    // Počet aktualizovaných existujících záznamů
+  skippedCount: number;    // Počet přeskočených záznamů
+  issues: ImportIssue[];   // Seznam všech problémů
+}
+```
+
+### 17.2 Struktura problému (ImportIssue)
+
+Každý problém má strojově čitelný kód a lidsky srozumitelnou zprávu:
+
+```typescript
+interface ImportIssue {
+  rowNumber: number;          // Číslo řádku v CSV (1-based, včetně hlavičky)
+  level: 'error' | 'warning' | 'info';
+  code: ImportIssueCode;     // Strojově čitelný kód chyby
+  field: string;             // Název pole, ve kterém k chybě došlo
+  message: string;           // Lidsky čitelná zpráva (česky)
+  originalValue?: string;    // Původní hodnota z CSV (pokud relevantní)
+}
+```
+
+### 17.3 Kódy chyb (ImportIssueCode)
+
+| Kód | Popis | Úroveň | Příklad |
+|-----|-------|--------|---------|
+| `CUSTOMER_NOT_FOUND` | Reference zákazníka neodpovídá žádnému záznamu | error | `customer_ref="99999999"` nenalezen |
+| `DEVICE_NOT_FOUND` | Reference zařízení neodpovídá žádnému záznamu zákazníka | error | `device_ref="SN-XXX"` nenalezen |
+| `DUPLICATE_RECORD` | Záznam již existuje (stejný device_id + due_date apod.) | warning | Revize pro dané zařízení a termín již existuje |
+| `MISSING_FIELD` | Povinné pole je prázdné | error | Chybí `customer_ref` nebo `due_date` |
+| `INVALID_DATE` | Datum nelze rozparsovat | error | `due_date="32.13.2024"` |
+| `INVALID_VALUE` | Hodnota neodpovídá očekávanému formátu/enumu | error | `device_type="neznamy_typ"` |
+| `INVALID_STATUS` | Status nebyl rozpoznán (použit fallback) | warning | `status="xyz"` → fallback na default |
+| `INVALID_RESULT` | Výsledek nebyl rozpoznán | warning | `result="abc"` |
+| `DB_ERROR` | Neočekávaná chyba databáze | error | Constraint violation apod. |
+| `PARSE_ERROR` | Řádek CSV nelze přečíst | error | Špatný počet sloupců |
+| `UNKNOWN` | Neznámá chyba | error | Catch-all pro nezařaditelné chyby |
+
+### 17.4 Persistece reportů
+
+Reporty se ukládají jako JSON soubory do adresáře:
+
+```
+logs/import-reports/{jobId}.json
+```
+
+Každý soubor obsahuje kompletní `ImportReport` ve formátu JSON. Reporty jsou přístupné:
+
+1. **V reálném čase** — po dokončení importu je report odeslán přes NATS jako součást `Completed` statusu
+2. **Na stránce Úlohy** — tlačítko "Zobrazit report" u dokončených import úloh
+3. **Jako JSON soubor** — v adresáři `logs/import-reports/` pro archivaci a audit
+
+### 17.5 Zobrazení reportu v UI
+
+Import Report Dialog zobrazuje:
+
+- **Status bar** — zelený (úspěch), žlutý (varování), červený (chyby)
+- **Souhrn** — celkem řádků, importováno, aktualizováno, přeskočeno, chyby, varování
+- **Přehled problémů** — agregované počty podle kódu chyby (kliknutím filtruje detail)
+- **Detail chyb** — rozbalovací tabulka s řádkem, typem, kódem, polem a zprávou (max 200 řádků)
+
+### 17.6 Zpracování duplicit
+
+Import revizí kontroluje existující záznamy pomocí klíče `(device_id, due_date)`:
+
+- Pokud revize pro dané zařízení a termín **již existuje**, řádek se přeskočí a zapíše se **warning** s kódem `DUPLICATE_RECORD`
+- Tím se eliminují chyby z opakovaného importu stejných dat
+- Zákazník vidí přesný počet skutečně nových záznamů vs. přeskočených duplicit
+
+### 17.7 ZIP import
+
+Při importu ze ZIP archivu se generuje report pro **každý soubor** zvlášť. Na stránce Úlohy se zobrazuje sloučený report ze všech souborů v archivu.
+
+### 17.8 Datový tok
+
+```
+CSV soubor → Parsování → Řádek po řádku zpracování
+                              ↓
+                    Úspěch → importedCount++
+                    Chyba  → failed++, issues.push(ImportIssue)
+                    Duplicita → skippedCount++, issues.push(warning)
+                              ↓
+                    build_import_report() → ImportReport
+                              ↓
+                    ┌─ persist_report() → logs/import-reports/{id}.json
+                    ├─ NATS publish → Completed { report: ImportReport }
+                    └─ JOB_HISTORY.record_completed()
+                              ↓
+                    Frontend activeJobsStore → report field
+                              ↓
+                    ImportReportDialog (Jobs page)
+```

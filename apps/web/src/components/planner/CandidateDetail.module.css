@@ -179,6 +179,43 @@
   white-space: pre-wrap;
 }
 
+/* Route action buttons */
+.addRouteButton,
+.removeRouteButton {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.addRouteButton {
+  background-color: rgba(34, 197, 94, 0.1);
+  color: #15803d;
+  border: 1px solid var(--color-success);
+}
+
+.addRouteButton:hover:not(:disabled) {
+  background-color: rgba(34, 197, 94, 0.2);
+}
+
+.addRouteButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.removeRouteButton {
+  background-color: rgba(239, 68, 68, 0.1);
+  color: #b91c1c;
+  border: 1px solid var(--color-error);
+}
+
+.removeRouteButton:hover {
+  background-color: rgba(239, 68, 68, 0.2);
+}
+
 /* Actions */
 .actions {
   display: flex;

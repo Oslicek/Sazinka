@@ -7,7 +7,7 @@ use std::io::{Read as IoRead, Cursor};
 use anyhow::Result;
 use async_nats::{Client, Subscriber};
 use async_nats::jetstream::{self, Context as JsContext};
-use chrono::{NaiveDate, NaiveTime};
+use chrono::{NaiveDate, NaiveTime, Utc};
 use futures::StreamExt;
 use sqlx::PgPool;
 use tracing::{error, warn, info};
@@ -17,6 +17,7 @@ use crate::db::queries;
 use crate::types::{
     ErrorResponse, Request, SuccessResponse,
     CreateDeviceRequest, CreateRevisionRequest, CreateCustomerRequest, CustomerType,
+    ImportIssue, ImportIssueLevel, ImportIssueCode, ImportReport,
     // Device import types
     DeviceImportJobRequest, DeviceImportJobStatus, DeviceImportJobStatusUpdate,
     DeviceImportJobSubmitResponse, QueuedDeviceImportJob,
@@ -37,6 +38,83 @@ use crate::types::{
 use crate::services::job_history::JOB_HISTORY;
 
 use super::import::{resolve_customer_ref, resolve_device_ref};
+
+// =============================================================================
+// IMPORT REPORT HELPERS
+// =============================================================================
+
+/// Classify an error message into a machine-readable error code
+pub fn classify_error(error_msg: &str) -> (ImportIssueCode, &'static str) {
+    let lower = error_msg.to_lowercase();
+    if lower.contains("nenalezen") && lower.contains("zákazník") {
+        (ImportIssueCode::CustomerNotFound, "customer_ref")
+    } else if lower.contains("nenalezen") && lower.contains("zařízení") {
+        (ImportIssueCode::DeviceNotFound, "device_ref")
+    } else if lower.contains("not found") && lower.contains("customer") {
+        (ImportIssueCode::CustomerNotFound, "customer_ref")
+    } else if lower.contains("not found") && lower.contains("device") {
+        (ImportIssueCode::DeviceNotFound, "device_ref")
+    } else if lower.contains("duplicate") || lower.contains("unique") || lower.contains("already exists") || lower.contains("unique_violation") {
+        (ImportIssueCode::DuplicateRecord, "")
+    } else if lower.contains("chybí") || lower.contains("missing") {
+        (ImportIssueCode::MissingField, "")
+    } else if lower.contains("datum") || lower.contains("date") || lower.contains("neplatný formát data") {
+        (ImportIssueCode::InvalidDate, "")
+    } else if lower.contains("formát") || lower.contains("format") || lower.contains("invalid") {
+        (ImportIssueCode::InvalidValue, "")
+    } else if lower.contains("db") || lower.contains("database") || lower.contains("sqlx") || lower.contains("constraint") {
+        (ImportIssueCode::DbError, "")
+    } else {
+        (ImportIssueCode::Unknown, "")
+    }
+}
+
+/// Build a structured ImportReport
+pub fn build_import_report(
+    job_id: Uuid,
+    job_type: &str,
+    filename: &str,
+    started_at: chrono::DateTime<Utc>,
+    total: u32,
+    succeeded: u32,
+    failed: u32,
+    issues: Vec<ImportIssue>,
+) -> ImportReport {
+    let now = Utc::now();
+    let duration_ms = (now - started_at).num_milliseconds().max(0) as u64;
+    ImportReport {
+        job_id,
+        job_type: job_type.to_string(),
+        filename: filename.to_string(),
+        imported_at: now.to_rfc3339(),
+        duration_ms,
+        total_rows: total,
+        imported_count: succeeded,
+        updated_count: 0,
+        skipped_count: total - succeeded - failed,
+        issues,
+    }
+}
+
+/// Persist the report as a JSON file in logs/import-reports/
+pub fn persist_report(report: &ImportReport) {
+    let dir = std::path::Path::new("logs/import-reports");
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        warn!("Failed to create import reports directory: {}", e);
+        return;
+    }
+    let path = dir.join(format!("{}.json", report.job_id));
+    match serde_json::to_string_pretty(report) {
+        Ok(json) => {
+            if let Err(e) = std::fs::write(&path, json) {
+                warn!("Failed to write import report to {:?}: {}", path, e);
+            } else {
+                info!("Import report saved to {:?}", path);
+            }
+        }
+        Err(e) => warn!("Failed to serialize import report: {}", e),
+    }
+}
 
 // =============================================================================
 // CSV ROW TYPES
@@ -275,7 +353,7 @@ impl DeviceImportProcessor {
         
         let mut succeeded = 0u32;
         let mut failed = 0u32;
-        let mut errors: Vec<String> = Vec::new();
+        let mut issues: Vec<ImportIssue> = Vec::new();
         
         for (idx, row) in rows.iter().enumerate() {
             let processed = (idx + 1) as u32;
@@ -293,13 +371,26 @@ impl DeviceImportProcessor {
                 Ok(_) => succeeded += 1,
                 Err(e) => {
                     failed += 1;
-                    let row_num = idx + 2;
-                    errors.push(format!("Řádek {}: {}", row_num, e));
+                    let row_num = (idx + 2) as i32;
+                    let err_msg = e.to_string();
+                    let (code, field) = classify_error(&err_msg);
+                    issues.push(ImportIssue {
+                        row_number: row_num,
+                        level: ImportIssueLevel::Error,
+                        code,
+                        field: field.to_string(),
+                        message: err_msg,
+                        original_value: None,
+                    });
                 }
             }
         }
         
-        let report = self.generate_report(&job.request.filename, total, succeeded, failed, &errors);
+        let report = build_import_report(
+            job_id, "import.device", &job.request.filename,
+            started_at, total, succeeded, failed, issues,
+        );
+        persist_report(&report);
         
         self.publish_status(job_id, DeviceImportJobStatus::Completed {
             total,
@@ -371,25 +462,6 @@ impl DeviceImportProcessor {
         ).await?;
         
         Ok(device.id)
-    }
-    
-    fn generate_report(&self, filename: &str, total: u32, succeeded: u32, failed: u32, errors: &[String]) -> String {
-        let mut report = format!("Import zařízení ze souboru '{}'\n", filename);
-        report.push_str(&format!("Celkem záznamů: {}\n", total));
-        report.push_str(&format!("Úspěšně importováno: {}\n", succeeded));
-        report.push_str(&format!("Chyby: {}\n", failed));
-        
-        if !errors.is_empty() {
-            report.push_str("\nDetail chyb:\n");
-            for (i, err) in errors.iter().take(20).enumerate() {
-                report.push_str(&format!("{}. {}\n", i + 1, err));
-            }
-            if errors.len() > 20 {
-                report.push_str(&format!("... a dalších {} chyb\n", errors.len() - 20));
-            }
-        }
-        
-        report
     }
 }
 
@@ -578,7 +650,7 @@ impl RevisionImportProcessor {
         
         let mut succeeded = 0u32;
         let mut failed = 0u32;
-        let mut errors: Vec<String> = Vec::new();
+        let mut issues: Vec<ImportIssue> = Vec::new();
         
         for (idx, row) in rows.iter().enumerate() {
             let processed = (idx + 1) as u32;
@@ -592,17 +664,30 @@ impl RevisionImportProcessor {
                 }).await?;
             }
             
-            match self.create_revision(user_id, row).await {
+            match self.create_revision(user_id, row, (idx + 2) as i32, &mut issues).await {
                 Ok(_) => succeeded += 1,
                 Err(e) => {
                     failed += 1;
-                    let row_num = idx + 2;
-                    errors.push(format!("Řádek {}: {}", row_num, e));
+                    let row_num = (idx + 2) as i32;
+                    let err_msg = e.to_string();
+                    let (code, field) = classify_error(&err_msg);
+                    issues.push(ImportIssue {
+                        row_number: row_num,
+                        level: ImportIssueLevel::Error,
+                        code,
+                        field: field.to_string(),
+                        message: err_msg,
+                        original_value: None,
+                    });
                 }
             }
         }
         
-        let report = self.generate_report(&job.request.filename, total, succeeded, failed, &errors);
+        let report = build_import_report(
+            job_id, "import.revision", &job.request.filename,
+            started_at, total, succeeded, failed, issues,
+        );
+        persist_report(&report);
         
         self.publish_status(job_id, RevisionImportJobStatus::Completed {
             total,
@@ -638,7 +723,8 @@ impl RevisionImportProcessor {
         Ok(rows)
     }
     
-    async fn create_revision(&self, user_id: Uuid, row: &CsvRevisionRow) -> Result<Uuid> {
+    /// Create a revision from a CSV row. Uses upsert logic to handle duplicates gracefully.
+    async fn create_revision(&self, user_id: Uuid, row: &CsvRevisionRow, row_num: i32, issues: &mut Vec<ImportIssue>) -> Result<Uuid> {
         let customer_ref = row.customer_ref.as_ref()
             .ok_or_else(|| anyhow::anyhow!("Chybí reference zákazníka"))?;
         let device_ref = row.device_ref.as_ref()
@@ -678,6 +764,25 @@ impl RevisionImportProcessor {
                 })
         });
 
+        // Check for existing revision (same device + due_date) to handle duplicates
+        let existing = queries::import::find_revision_by_device_and_date(
+            &self.pool, device_id, due_date
+        ).await?;
+        
+        if existing.is_some() {
+            // Record as warning, not error - the revision already exists
+            issues.push(ImportIssue {
+                row_number: row_num,
+                level: ImportIssueLevel::Warning,
+                code: ImportIssueCode::DuplicateRecord,
+                field: "device_ref+due_date".to_string(),
+                message: format!("Revize pro zařízení '{}' s termínem {} již existuje, přeskakuji", 
+                    device_ref, due_date),
+                original_value: Some(format!("{} / {}", device_ref, due_date_str)),
+            });
+            return Ok(existing.unwrap());
+        }
+
         let request = CreateRevisionRequest {
             device_id,
             customer_id,
@@ -699,25 +804,6 @@ impl RevisionImportProcessor {
         ).await?;
         
         Ok(revision.id)
-    }
-    
-    fn generate_report(&self, filename: &str, total: u32, succeeded: u32, failed: u32, errors: &[String]) -> String {
-        let mut report = format!("Import revizí ze souboru '{}'\n", filename);
-        report.push_str(&format!("Celkem záznamů: {}\n", total));
-        report.push_str(&format!("Úspěšně importováno: {}\n", succeeded));
-        report.push_str(&format!("Chyby: {}\n", failed));
-        
-        if !errors.is_empty() {
-            report.push_str("\nDetail chyb:\n");
-            for (i, err) in errors.iter().take(20).enumerate() {
-                report.push_str(&format!("{}. {}\n", i + 1, err));
-            }
-            if errors.len() > 20 {
-                report.push_str(&format!("... a dalších {} chyb\n", errors.len() - 20));
-            }
-        }
-        
-        report
     }
 }
 
@@ -906,7 +992,7 @@ impl CommunicationImportProcessor {
         
         let mut succeeded = 0u32;
         let mut failed = 0u32;
-        let mut errors: Vec<String> = Vec::new();
+        let mut issues: Vec<ImportIssue> = Vec::new();
         
         for (idx, row) in rows.iter().enumerate() {
             let processed = (idx + 1) as u32;
@@ -924,13 +1010,26 @@ impl CommunicationImportProcessor {
                 Ok(_) => succeeded += 1,
                 Err(e) => {
                     failed += 1;
-                    let row_num = idx + 2;
-                    errors.push(format!("Řádek {}: {}", row_num, e));
+                    let row_num = (idx + 2) as i32;
+                    let err_msg = e.to_string();
+                    let (code, field) = classify_error(&err_msg);
+                    issues.push(ImportIssue {
+                        row_number: row_num,
+                        level: ImportIssueLevel::Error,
+                        code,
+                        field: field.to_string(),
+                        message: err_msg,
+                        original_value: None,
+                    });
                 }
             }
         }
         
-        let report = self.generate_report(&job.request.filename, total, succeeded, failed, &errors);
+        let report = build_import_report(
+            job_id, "import.communication", &job.request.filename,
+            started_at, total, succeeded, failed, issues,
+        );
+        persist_report(&report);
         
         self.publish_status(job_id, CommunicationImportJobStatus::Completed {
             total,
@@ -995,25 +1094,6 @@ impl CommunicationImportProcessor {
         ).await?;
         
         Ok(communication.id)
-    }
-    
-    fn generate_report(&self, filename: &str, total: u32, succeeded: u32, failed: u32, errors: &[String]) -> String {
-        let mut report = format!("Import komunikací ze souboru '{}'\n", filename);
-        report.push_str(&format!("Celkem záznamů: {}\n", total));
-        report.push_str(&format!("Úspěšně importováno: {}\n", succeeded));
-        report.push_str(&format!("Chyby: {}\n", failed));
-        
-        if !errors.is_empty() {
-            report.push_str("\nDetail chyb:\n");
-            for (i, err) in errors.iter().take(20).enumerate() {
-                report.push_str(&format!("{}. {}\n", i + 1, err));
-            }
-            if errors.len() > 20 {
-                report.push_str(&format!("... a dalších {} chyb\n", errors.len() - 20));
-            }
-        }
-        
-        report
     }
 }
 
@@ -1202,7 +1282,7 @@ impl WorkLogImportProcessor {
         
         let mut succeeded = 0u32;
         let mut failed = 0u32;
-        let mut errors: Vec<String> = Vec::new();
+        let mut issues: Vec<ImportIssue> = Vec::new();
         
         for (idx, row) in rows.iter().enumerate() {
             let processed = (idx + 1) as u32;
@@ -1220,13 +1300,26 @@ impl WorkLogImportProcessor {
                 Ok(_) => succeeded += 1,
                 Err(e) => {
                     failed += 1;
-                    let row_num = idx + 2;
-                    errors.push(format!("Řádek {}: {}", row_num, e));
+                    let row_num = (idx + 2) as i32;
+                    let err_msg = e.to_string();
+                    let (code, field) = classify_error(&err_msg);
+                    issues.push(ImportIssue {
+                        row_number: row_num,
+                        level: ImportIssueLevel::Error,
+                        code,
+                        field: field.to_string(),
+                        message: err_msg,
+                        original_value: None,
+                    });
                 }
             }
         }
         
-        let report = self.generate_report(&job.request.filename, total, succeeded, failed, &errors);
+        let report = build_import_report(
+            job_id, "import.visit", &job.request.filename,
+            started_at, total, succeeded, failed, issues,
+        );
+        persist_report(&report);
         
         self.publish_status(job_id, WorkLogImportJobStatus::Completed {
             total,
@@ -1299,25 +1392,6 @@ impl WorkLogImportProcessor {
         ).await?;
         
         Ok(visit.id)
-    }
-    
-    fn generate_report(&self, filename: &str, total: u32, succeeded: u32, failed: u32, errors: &[String]) -> String {
-        let mut report = format!("Import návštěv ze souboru '{}'\n", filename);
-        report.push_str(&format!("Celkem záznamů: {}\n", total));
-        report.push_str(&format!("Úspěšně importováno: {}\n", succeeded));
-        report.push_str(&format!("Chyby: {}\n", failed));
-        
-        if !errors.is_empty() {
-            report.push_str("\nDetail chyb:\n");
-            for (i, err) in errors.iter().take(20).enumerate() {
-                report.push_str(&format!("{}. {}\n", i + 1, err));
-            }
-            if errors.len() > 20 {
-                report.push_str(&format!("... a dalších {} chyb\n", errors.len() - 20));
-            }
-        }
-        
-        report
     }
 }
 
@@ -1580,11 +1654,24 @@ impl ZipImportProcessor {
                 Ok(content) => content,
                 Err(e) => {
                     warn!("Failed to read '{}' from ZIP: {}", file_info.filename, e);
+                    let error_report = build_import_report(
+                        job_id, &format!("import.zip.{}", file_info.file_type.type_name()),
+                        &file_info.filename, started_at, 0, 0, 1,
+                        vec![ImportIssue {
+                            row_number: 0,
+                            level: ImportIssueLevel::Error,
+                            code: ImportIssueCode::ParseError,
+                            field: String::new(),
+                            message: format!("Nepodařilo se přečíst soubor z ZIP: {}", e),
+                            original_value: None,
+                        }],
+                    );
                     results.push(ZipImportFileResult {
                         filename: file_info.filename.clone(),
                         file_type: file_info.file_type,
                         succeeded: 0,
                         failed: 1,
+                        report: error_report,
                     });
                     completed_files += 1;
                     continue;
@@ -1592,23 +1679,37 @@ impl ZipImportProcessor {
             };
             
             // Import the file based on type
-            let (succeeded, failed) = match self.import_csv_by_type(
+            let (succeeded, failed, file_issues) = match self.import_csv_by_type(
                 user_id, 
                 &csv_content, 
                 file_info.file_type
             ).await {
-                Ok((s, f)) => (s, f),
+                Ok((s, f, issues)) => (s, f, issues),
                 Err(e) => {
                     warn!("Failed to import '{}': {}", file_info.filename, e);
-                    (0, 1)
+                    (0, 1, vec![ImportIssue {
+                        row_number: 0,
+                        level: ImportIssueLevel::Error,
+                        code: ImportIssueCode::Unknown,
+                        field: String::new(),
+                        message: e.to_string(),
+                        original_value: None,
+                    }])
                 }
             };
+            
+            let file_report = build_import_report(
+                job_id, &format!("import.zip.{}", file_info.file_type.type_name()),
+                &file_info.filename, started_at, succeeded + failed, succeeded, failed, file_issues,
+            );
+            persist_report(&file_report);
             
             results.push(ZipImportFileResult {
                 filename: file_info.filename.clone(),
                 file_type: file_info.file_type,
                 succeeded,
                 failed,
+                report: file_report,
             });
             
             completed_files += 1;
@@ -1664,7 +1765,7 @@ impl ZipImportProcessor {
         Ok(content)
     }
     
-    async fn import_csv_by_type(&self, user_id: Uuid, csv_content: &str, file_type: ZipImportFileType) -> Result<(u32, u32)> {
+    async fn import_csv_by_type(&self, user_id: Uuid, csv_content: &str, file_type: ZipImportFileType) -> Result<(u32, u32, Vec<ImportIssue>)> {
         match file_type {
             ZipImportFileType::Customers => {
                 self.import_customers(user_id, csv_content).await
@@ -1684,7 +1785,7 @@ impl ZipImportProcessor {
         }
     }
     
-    async fn import_customers(&self, user_id: Uuid, csv_content: &str) -> Result<(u32, u32)> {
+    async fn import_customers(&self, user_id: Uuid, csv_content: &str) -> Result<(u32, u32, Vec<ImportIssue>)> {
         use super::import::CsvCustomerRow;
         
         let mut reader = csv::ReaderBuilder::new()
@@ -1695,20 +1796,42 @@ impl ZipImportProcessor {
         
         let mut succeeded = 0u32;
         let mut failed = 0u32;
+        let mut issues = Vec::new();
         
-        for result in reader.deserialize::<CsvCustomerRow>() {
+        for (idx, result) in reader.deserialize::<CsvCustomerRow>().enumerate() {
+            let row_num = (idx + 2) as i32;
             match result {
                 Ok(row) => {
                     match self.create_customer_from_row(user_id, &row).await {
                         Ok(_) => succeeded += 1,
-                        Err(_) => failed += 1,
+                        Err(e) => {
+                            failed += 1;
+                            let err_msg = e.to_string();
+                            let (code, field) = classify_error(&err_msg);
+                            issues.push(ImportIssue {
+                                row_number: row_num,
+                                level: ImportIssueLevel::Error,
+                                code, field: field.to_string(),
+                                message: err_msg, original_value: None,
+                            });
+                        }
                     }
                 }
-                Err(_) => failed += 1,
+                Err(e) => {
+                    failed += 1;
+                    issues.push(ImportIssue {
+                        row_number: row_num,
+                        level: ImportIssueLevel::Error,
+                        code: ImportIssueCode::ParseError,
+                        field: String::new(),
+                        message: e.to_string(),
+                        original_value: None,
+                    });
+                }
             }
         }
         
-        Ok((succeeded, failed))
+        Ok((succeeded, failed, issues))
     }
     
     async fn create_customer_from_row(&self, user_id: Uuid, row: &super::import::CsvCustomerRow) -> Result<Uuid> {
@@ -1755,7 +1878,7 @@ impl ZipImportProcessor {
         Ok(customer.id)
     }
     
-    async fn import_devices(&self, user_id: Uuid, csv_content: &str) -> Result<(u32, u32)> {
+    async fn import_devices(&self, user_id: Uuid, csv_content: &str) -> Result<(u32, u32, Vec<ImportIssue>)> {
         let mut reader = csv::ReaderBuilder::new()
             .delimiter(b';')
             .has_headers(true)
@@ -1764,20 +1887,38 @@ impl ZipImportProcessor {
         
         let mut succeeded = 0u32;
         let mut failed = 0u32;
+        let mut issues = Vec::new();
         
-        for result in reader.deserialize::<CsvDeviceRow>() {
+        for (idx, result) in reader.deserialize::<CsvDeviceRow>().enumerate() {
+            let row_num = (idx + 2) as i32;
             match result {
                 Ok(row) => {
                     match self.create_device_from_row(user_id, &row).await {
                         Ok(_) => succeeded += 1,
-                        Err(_) => failed += 1,
+                        Err(e) => {
+                            failed += 1;
+                            let err_msg = e.to_string();
+                            let (code, field) = classify_error(&err_msg);
+                            issues.push(ImportIssue {
+                                row_number: row_num, level: ImportIssueLevel::Error,
+                                code, field: field.to_string(),
+                                message: err_msg, original_value: None,
+                            });
+                        }
                     }
                 }
-                Err(_) => failed += 1,
+                Err(e) => {
+                    failed += 1;
+                    issues.push(ImportIssue {
+                        row_number: row_num, level: ImportIssueLevel::Error,
+                        code: ImportIssueCode::ParseError, field: String::new(),
+                        message: e.to_string(), original_value: None,
+                    });
+                }
             }
         }
         
-        Ok((succeeded, failed))
+        Ok((succeeded, failed, issues))
     }
     
     async fn create_device_from_row(&self, user_id: Uuid, row: &CsvDeviceRow) -> Result<Uuid> {
@@ -1816,7 +1957,7 @@ impl ZipImportProcessor {
         Ok(device.id)
     }
     
-    async fn import_revisions(&self, user_id: Uuid, csv_content: &str) -> Result<(u32, u32)> {
+    async fn import_revisions(&self, user_id: Uuid, csv_content: &str) -> Result<(u32, u32, Vec<ImportIssue>)> {
         let mut reader = csv::ReaderBuilder::new()
             .delimiter(b';')
             .has_headers(true)
@@ -1825,20 +1966,38 @@ impl ZipImportProcessor {
         
         let mut succeeded = 0u32;
         let mut failed = 0u32;
+        let mut issues = Vec::new();
         
-        for result in reader.deserialize::<CsvRevisionRow>() {
+        for (idx, result) in reader.deserialize::<CsvRevisionRow>().enumerate() {
+            let row_num = (idx + 2) as i32;
             match result {
                 Ok(row) => {
                     match self.create_revision_from_row(user_id, &row).await {
                         Ok(_) => succeeded += 1,
-                        Err(_) => failed += 1,
+                        Err(e) => {
+                            failed += 1;
+                            let err_msg = e.to_string();
+                            let (code, field) = classify_error(&err_msg);
+                            issues.push(ImportIssue {
+                                row_number: row_num, level: ImportIssueLevel::Error,
+                                code, field: field.to_string(),
+                                message: err_msg, original_value: None,
+                            });
+                        }
                     }
                 }
-                Err(_) => failed += 1,
+                Err(e) => {
+                    failed += 1;
+                    issues.push(ImportIssue {
+                        row_number: row_num, level: ImportIssueLevel::Error,
+                        code: ImportIssueCode::ParseError, field: String::new(),
+                        message: e.to_string(), original_value: None,
+                    });
+                }
             }
         }
         
-        Ok((succeeded, failed))
+        Ok((succeeded, failed, issues))
     }
     
     async fn create_revision_from_row(&self, user_id: Uuid, row: &CsvRevisionRow) -> Result<Uuid> {
@@ -1900,7 +2059,7 @@ impl ZipImportProcessor {
         Ok(revision.id)
     }
     
-    async fn import_communications(&self, user_id: Uuid, csv_content: &str) -> Result<(u32, u32)> {
+    async fn import_communications(&self, user_id: Uuid, csv_content: &str) -> Result<(u32, u32, Vec<ImportIssue>)> {
         let mut reader = csv::ReaderBuilder::new()
             .delimiter(b';')
             .has_headers(true)
@@ -1909,20 +2068,38 @@ impl ZipImportProcessor {
         
         let mut succeeded = 0u32;
         let mut failed = 0u32;
+        let mut issues = Vec::new();
         
-        for result in reader.deserialize::<CsvCommunicationRow>() {
+        for (idx, result) in reader.deserialize::<CsvCommunicationRow>().enumerate() {
+            let row_num = (idx + 2) as i32;
             match result {
                 Ok(row) => {
                     match self.create_communication_from_row(user_id, &row).await {
                         Ok(_) => succeeded += 1,
-                        Err(_) => failed += 1,
+                        Err(e) => {
+                            failed += 1;
+                            let err_msg = e.to_string();
+                            let (code, field) = classify_error(&err_msg);
+                            issues.push(ImportIssue {
+                                row_number: row_num, level: ImportIssueLevel::Error,
+                                code, field: field.to_string(),
+                                message: err_msg, original_value: None,
+                            });
+                        }
                     }
                 }
-                Err(_) => failed += 1,
+                Err(e) => {
+                    failed += 1;
+                    issues.push(ImportIssue {
+                        row_number: row_num, level: ImportIssueLevel::Error,
+                        code: ImportIssueCode::ParseError, field: String::new(),
+                        message: e.to_string(), original_value: None,
+                    });
+                }
             }
         }
         
-        Ok((succeeded, failed))
+        Ok((succeeded, failed, issues))
     }
     
     async fn create_communication_from_row(&self, user_id: Uuid, row: &CsvCommunicationRow) -> Result<Uuid> {
@@ -1956,7 +2133,7 @@ impl ZipImportProcessor {
         Ok(communication.id)
     }
     
-    async fn import_visits(&self, user_id: Uuid, csv_content: &str) -> Result<(u32, u32)> {
+    async fn import_visits(&self, user_id: Uuid, csv_content: &str) -> Result<(u32, u32, Vec<ImportIssue>)> {
         let mut reader = csv::ReaderBuilder::new()
             .delimiter(b';')
             .has_headers(true)
@@ -1965,20 +2142,38 @@ impl ZipImportProcessor {
         
         let mut succeeded = 0u32;
         let mut failed = 0u32;
+        let mut issues = Vec::new();
         
-        for result in reader.deserialize::<CsvVisitRow>() {
+        for (idx, result) in reader.deserialize::<CsvVisitRow>().enumerate() {
+            let row_num = (idx + 2) as i32;
             match result {
                 Ok(row) => {
                     match self.create_visit_from_row(user_id, &row).await {
                         Ok(_) => succeeded += 1,
-                        Err(_) => failed += 1,
+                        Err(e) => {
+                            failed += 1;
+                            let err_msg = e.to_string();
+                            let (code, field) = classify_error(&err_msg);
+                            issues.push(ImportIssue {
+                                row_number: row_num, level: ImportIssueLevel::Error,
+                                code, field: field.to_string(),
+                                message: err_msg, original_value: None,
+                            });
+                        }
                     }
                 }
-                Err(_) => failed += 1,
+                Err(e) => {
+                    failed += 1;
+                    issues.push(ImportIssue {
+                        row_number: row_num, level: ImportIssueLevel::Error,
+                        code: ImportIssueCode::ParseError, field: String::new(),
+                        message: e.to_string(), original_value: None,
+                    });
+                }
             }
         }
         
-        Ok((succeeded, failed))
+        Ok((succeeded, failed, issues))
     }
     
     async fn create_visit_from_row(&self, user_id: Uuid, row: &CsvVisitRow) -> Result<Uuid> {

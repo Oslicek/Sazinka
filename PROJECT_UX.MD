@@ -518,6 +518,82 @@ Cíl: Uživatel nesmí "přeskakovat" mezi izolovanými stránkami. Každá obra
 - [x] Po naplánování automatický návrat do kontextu (plán dne) ✅
 - [x] Sloučit Plánování + Můj den do jedné stránky "Plán dne" ✅
 
+### Tvorba denní trasy z Plánovacího inboxu
+
+**Cíl:** Uživatel vytváří denní trasu přímo na stránce Fronta (Plánovací inbox), aniž by musel přecházet na stránku Plán dne. Vybírá zákazníky ze seznamu, přidává je do trasy, optimalizuje a ukládá — vše na jedné obrazovce.
+
+**Stránka:** `/queue` — Plánovací inbox (třísloupcový layout)
+
+#### Workflow tvorby trasy
+
+1. Uživatel vybere datum, posádku a depo v header baru
+2. Uživatel prochází seznam kandidátů (levý panel)
+3. Kandidáty přidává do trasy buď:
+   - Jednotlivě: klik na kandidáta → detail (pravý panel) → tlačítko "Přidat do trasy"
+   - Hromadně: zaškrtne checkboxy → tlačítko "Přidat vybrané do trasy"
+4. Přidaní kandidáti se zobrazí ve středním panelu pod mapou jako seznam zastávek
+5. Mapa průběžně zobrazuje zastávky a propojení
+6. Uživatel klikne "Optimalizovat trasu" → VRP solver přepočítá pořadí a časy
+7. Uživatel uloží trasu → trasa je persistována v databázi
+
+#### Levý panel — Seznam kandidátů
+
+- U každého kandidáta je checkbox pro hromadný výběr
+- Kandidáti, kteří jsou již v trase, mají vizuální označení (barevný proužek vlevo)
+- Pod segmentovými záložkami je tlačítko "Přidat vybrané do trasy" (aktivní, když jsou zaškrtnuté checkboxy)
+- Klávesová zkratka `A` — přidat aktuálně vybraného kandidáta do trasy
+
+#### Střední panel — Mapa + Zastávky v trase
+
+- Horní část: mapa se zastávkami a trasou
+- Spodní část: kompaktní seznam zastávek v trase:
+  - Pořadové číslo, jméno zákazníka, adresa, ETA–ETD, tlačítko ✕ (odebrat)
+  - Souhrnné metriky: vzdálenost, čas, počet zastávek, zatížení dne (%)
+- Akční tlačítka: Optimalizovat trasu, Uložit trasu, Vyčistit
+- Prázdný stav: "Zatím žádné zastávky v trase. Vyberte kandidáty ze seznamu."
+
+#### Pravý panel — Detail kandidáta
+
+- Pod slot suggestions přidáno tlačítko "Přidat do trasy"
+- Pokud je kandidát již v trase, místo "Přidat" se zobrazí "Odebrat z trasy"
+- Klávesová zkratka `R` — odebrat aktuálně vybraného z trasy
+
+#### Wireframe
+
+```
+PLÁNOVACÍ INBOX — TVORBA TRASY
+=============================================================================
+Den: 07.02.2026  Posádka: Petr  Depo: Brno-střed  [Route-aware: ON]
+=============================================================================
+
+KANDIDÁTI (levý panel)        MAPA + TRASA (střed)         DETAIL (pravý)
++---------------------------+ +------------------------+ +------------------+
+| [x] Po termínu  Týden ... | |                        | | Jan Novák        |
+|                           | |    [MAPA S TRASOU]      | | Kotel 45min      |
+| [ ] Karel S.  Brno  +2min | |    1──2──3──Depo        | | Lesní 123, Brno  |
+| [x] Marie D.  Brno  +5min | |                        | |                  |
+| [ ] Petr Č.   Blank +8min | +------------------------+ | Slot suggestions:|
+| [x] Jana N.   Vyšk +12min | | ZASTÁVKY V TRASE (3)   | | 09:15 +2min  OK  |
+| ▌  Anna K. (v trase)      | | 1. Karel S. 08:30-09:15| | 10:45 +5min  OK  |
+|                           | | 2. Anna K.  09:45-10:15| | 14:00 +8min Tight|
+| [Přidat vybrané do trasy] | | 3. Jiří M.  10:45-11:30| |                  |
+|                           | |                    [✕]  | | [PŘIDAT DO TRASY]|
+|                           | | Vzdál: 45km  Čas: 3h   | | [Odložit]        |
+|                           | | Zatížení: 62%           | | [Detail zákazníka]|
+|                           | |                        | |                  |
+|                           | | [Optimalizovat] [Uložit]| | kbd: A přidat    |
+|                           | |           [Vyčistit]    | |      R odebrat   |
++---------------------------+ +------------------------+ +------------------+
+```
+
+#### Klávesové zkratky (rozšíření)
+
+| Klávesa | Akce |
+|---------|------|
+| `A` | Přidat vybraného kandidáta do trasy (best slot) |
+| `R` | Odebrat vybraného kandidáta z trasy |
+| `Shift+A` | Přidat všechny zaškrtnuté do trasy |
+
 ---
 
 ## Rozhodnutí a mapování na existující model

@@ -414,7 +414,8 @@ impl GeocodeProcessor {
     /// Geocode a single customer and update database
     async fn geocode_customer(&self, customer_id: Uuid) -> Result<bool> {
         // Get customer address from database
-        let customer: Option<(String, String, String, Option<f64>, Option<f64>)> = sqlx::query_as(
+        // Note: street, city, postal_code are nullable in the schema
+        let customer: Option<(Option<String>, Option<String>, Option<String>, Option<f64>, Option<f64>)> = sqlx::query_as(
             r#"
             SELECT street, city, postal_code, lat, lng
             FROM customers
@@ -425,7 +426,7 @@ impl GeocodeProcessor {
         .fetch_optional(&self.pool)
         .await?;
         
-        let (street, city, postal_code, lat, lng) = match customer {
+        let (street_opt, city_opt, postal_code_opt, lat, lng) = match customer {
             Some(c) => c,
             None => {
                 warn!("Customer {} not found", customer_id);
@@ -437,6 +438,17 @@ impl GeocodeProcessor {
         if lat.is_some() && lng.is_some() {
             return Ok(true);
         }
+
+        // Need at least street and city for geocoding
+        let street = match street_opt {
+            Some(s) if !s.is_empty() => s,
+            _ => {
+                warn!("Customer {} has no street address, skipping geocoding", customer_id);
+                return Ok(false);
+            }
+        };
+        let city = city_opt.unwrap_or_default();
+        let postal_code = postal_code_opt.unwrap_or_default();
         
         // Call geocoder
         let result = self.geocoder.geocode(&street, &city, &postal_code).await?;
@@ -484,7 +496,7 @@ impl GeocodeProcessor {
     
     /// Get customer address for error reporting
     async fn get_customer_address(&self, customer_id: Uuid) -> Option<String> {
-        let result: Option<(String, String, String)> = sqlx::query_as(
+        let result: Option<(Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
             "SELECT street, city, postal_code FROM customers WHERE id = $1"
         )
         .bind(customer_id)
@@ -492,7 +504,12 @@ impl GeocodeProcessor {
         .await
         .ok()?;
         
-        result.map(|(street, city, postal)| format!("{}, {} {}", street, postal, city))
+        result.map(|(street, city, postal)| {
+            format!("{}, {} {}", 
+                street.unwrap_or_default(), 
+                postal.unwrap_or_default(), 
+                city.unwrap_or_default())
+        })
     }
 }
 
@@ -679,7 +696,8 @@ pub async fn handle_geocode_pending(
         let request_id = extract_request_id(&msg.payload);
         
         // Query customers pending geocoding (not yet attempted)
-        let customers: Vec<(Uuid, String, String, String)> = sqlx::query_as(
+        // Note: name, street, city are nullable in the schema
+        let customers: Vec<(Uuid, Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
             r#"
             SELECT id, name, street, city
             FROM customers
@@ -712,8 +730,10 @@ pub async fn handle_geocode_pending(
             customers: customers.into_iter().map(|(id, name, street, city)| {
                 PendingCustomer {
                     id,
-                    name,
-                    address: format!("{}, {}", street, city),
+                    name: name.unwrap_or_default(),
+                    address: format!("{}, {}", 
+                        street.unwrap_or_default(), 
+                        city.unwrap_or_default()),
                 }
             }).collect(),
         };

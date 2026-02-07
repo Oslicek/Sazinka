@@ -248,6 +248,7 @@ impl ImportProcessor {
         Ok((0, 0, vec![ImportIssue {
             row_number: 0,
             level: crate::types::ImportIssueLevel::Info,
+            code: crate::types::ImportIssueCode::Unknown,
             field: "".to_string(),
             message: "JetStream import processor not yet fully implemented".to_string(),
             original_value: None,

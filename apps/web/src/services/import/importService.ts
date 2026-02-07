@@ -2,7 +2,7 @@
  * Customer Import Service
  * 
  * Handles CSV parsing, validation, and normalization for customer import.
- * See IMPORT_FORMAT.MD for full specification.
+ * See PROJECT_IMPORT.MD for full specification.
  */
 
 import Papa from 'papaparse';

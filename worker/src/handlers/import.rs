@@ -14,7 +14,7 @@ use uuid::Uuid;
 use crate::db::queries;
 use crate::types::{
     ErrorResponse, Request, SuccessResponse,
-    ImportBatchResponse, ImportIssue, ImportIssueLevel,
+    ImportBatchResponse, ImportIssue, ImportIssueLevel, ImportIssueCode, ImportReport,
     ImportDeviceBatchRequest, ImportDeviceRequest,
     ImportRevisionBatchRequest, ImportRevisionRequest,
     ImportCommunicationBatchRequest, ImportCommunicationRequest,
@@ -267,6 +267,7 @@ pub async fn handle_device_import(
                     errors.push(ImportIssue {
                         row_number,
                         level: ImportIssueLevel::Error,
+                        code: ImportIssueCode::CustomerNotFound,
                         field: "customer_ref".to_string(),
                         message: format!("Zákazník nenalezen: {}", device_req.customer_ref),
                         original_value: Some(device_req.customer_ref.clone()),
@@ -277,6 +278,7 @@ pub async fn handle_device_import(
                     errors.push(ImportIssue {
                         row_number,
                         level: ImportIssueLevel::Error,
+                        code: ImportIssueCode::Unknown,
                         field: "customer_ref".to_string(),
                         message: format!("Chyba při hledání zákazníka: {}", e),
                         original_value: Some(device_req.customer_ref.clone()),
@@ -292,6 +294,7 @@ pub async fn handle_device_import(
                     errors.push(ImportIssue {
                         row_number,
                         level: ImportIssueLevel::Error,
+                        code: ImportIssueCode::InvalidValue,
                         field: "device_type".to_string(),
                         message: format!("Neznámý typ zařízení: {}", device_req.device_type),
                         original_value: Some(device_req.device_type.clone()),
@@ -329,6 +332,7 @@ pub async fn handle_device_import(
                         errors.push(ImportIssue {
                             row_number,
                             level: ImportIssueLevel::Error,
+                            code: ImportIssueCode::DbError,
                             field: "database".to_string(),
                             message: format!("Chyba při aktualizaci: {}", e),
                             original_value: None,
@@ -355,6 +359,7 @@ pub async fn handle_device_import(
                         errors.push(ImportIssue {
                             row_number,
                             level: ImportIssueLevel::Error,
+                            code: ImportIssueCode::DbError,
                             field: "database".to_string(),
                             message: format!("Chyba při vytváření: {}", e),
                             original_value: None,
@@ -430,6 +435,7 @@ pub async fn handle_revision_import(
                     errors.push(ImportIssue {
                         row_number,
                         level: ImportIssueLevel::Error,
+                        code: ImportIssueCode::CustomerNotFound,
                         field: "customer_ref".to_string(),
                         message: format!("Zákazník nenalezen: {}", rev_req.customer_ref),
                         original_value: Some(rev_req.customer_ref.clone()),
@@ -440,6 +446,7 @@ pub async fn handle_revision_import(
                     errors.push(ImportIssue {
                         row_number,
                         level: ImportIssueLevel::Error,
+                        code: ImportIssueCode::Unknown,
                         field: "customer_ref".to_string(),
                         message: format!("Chyba: {}", e),
                         original_value: Some(rev_req.customer_ref.clone()),
@@ -455,6 +462,7 @@ pub async fn handle_revision_import(
                     errors.push(ImportIssue {
                         row_number,
                         level: ImportIssueLevel::Error,
+                        code: ImportIssueCode::DeviceNotFound,
                         field: "device_ref".to_string(),
                         message: format!("Zařízení nenalezeno: {}", rev_req.device_ref),
                         original_value: Some(rev_req.device_ref.clone()),
@@ -465,6 +473,7 @@ pub async fn handle_revision_import(
                     errors.push(ImportIssue {
                         row_number,
                         level: ImportIssueLevel::Error,
+                        code: ImportIssueCode::Unknown,
                         field: "device_ref".to_string(),
                         message: format!("Chyba: {}", e),
                         original_value: Some(rev_req.device_ref.clone()),
@@ -480,6 +489,7 @@ pub async fn handle_revision_import(
                     errors.push(ImportIssue {
                         row_number,
                         level: ImportIssueLevel::Error,
+                        code: ImportIssueCode::InvalidDate,
                         field: "due_date".to_string(),
                         message: format!("Neplatné datum: {}", rev_req.due_date),
                         original_value: Some(rev_req.due_date.clone()),
@@ -531,6 +541,7 @@ pub async fn handle_revision_import(
                         errors.push(ImportIssue {
                             row_number,
                             level: ImportIssueLevel::Error,
+                            code: ImportIssueCode::DbError,
                             field: "database".to_string(),
                             message: format!("Chyba při aktualizaci: {}", e),
                             original_value: None,
@@ -558,6 +569,7 @@ pub async fn handle_revision_import(
                         errors.push(ImportIssue {
                             row_number,
                             level: ImportIssueLevel::Error,
+                            code: ImportIssueCode::DbError,
                             field: "database".to_string(),
                             message: format!("Chyba při vytváření: {}", e),
                             original_value: None,
@@ -633,6 +645,7 @@ pub async fn handle_communication_import(
                     errors.push(ImportIssue {
                         row_number,
                         level: ImportIssueLevel::Error,
+                        code: ImportIssueCode::CustomerNotFound,
                         field: "customer_ref".to_string(),
                         message: format!("Zákazník nenalezen: {}", comm_req.customer_ref),
                         original_value: Some(comm_req.customer_ref.clone()),
@@ -643,6 +656,7 @@ pub async fn handle_communication_import(
                     errors.push(ImportIssue {
                         row_number,
                         level: ImportIssueLevel::Error,
+                        code: ImportIssueCode::Unknown,
                         field: "customer_ref".to_string(),
                         message: format!("Chyba: {}", e),
                         original_value: Some(comm_req.customer_ref.clone()),
@@ -658,6 +672,7 @@ pub async fn handle_communication_import(
                     errors.push(ImportIssue {
                         row_number,
                         level: ImportIssueLevel::Error,
+                        code: ImportIssueCode::InvalidDate,
                         field: "date".to_string(),
                         message: format!("Neplatné datum: {}", comm_req.date),
                         original_value: Some(comm_req.date.clone()),
@@ -673,6 +688,7 @@ pub async fn handle_communication_import(
                     errors.push(ImportIssue {
                         row_number,
                         level: ImportIssueLevel::Error,
+                        code: ImportIssueCode::InvalidValue,
                         field: "comm_type".to_string(),
                         message: format!("Neznámý typ: {}", comm_req.comm_type),
                         original_value: Some(comm_req.comm_type.clone()),
@@ -688,6 +704,7 @@ pub async fn handle_communication_import(
                     errors.push(ImportIssue {
                         row_number,
                         level: ImportIssueLevel::Error,
+                        code: ImportIssueCode::InvalidValue,
                         field: "direction".to_string(),
                         message: format!("Neznámý směr: {}", comm_req.direction),
                         original_value: Some(comm_req.direction.clone()),
@@ -714,6 +731,7 @@ pub async fn handle_communication_import(
                     errors.push(ImportIssue {
                         row_number,
                         level: ImportIssueLevel::Error,
+                        code: ImportIssueCode::DbError,
                         field: "database".to_string(),
                         message: format!("Chyba: {}", e),
                         original_value: None,
@@ -807,6 +825,7 @@ pub async fn handle_work_log_import(
                     errors.push(ImportIssue {
                         row_number,
                         level: ImportIssueLevel::Error,
+                        code: ImportIssueCode::CustomerNotFound,
                         field: "customer_ref".to_string(),
                         message: format!("Zákazník nenalezen: {}", key.customer_ref),
                         original_value: Some(key.customer_ref.clone()),
@@ -817,6 +836,7 @@ pub async fn handle_work_log_import(
                     errors.push(ImportIssue {
                         row_number,
                         level: ImportIssueLevel::Error,
+                        code: ImportIssueCode::Unknown,
                         field: "customer_ref".to_string(),
                         message: format!("Chyba: {}", e),
                         original_value: Some(key.customer_ref.clone()),
@@ -832,6 +852,7 @@ pub async fn handle_work_log_import(
                     errors.push(ImportIssue {
                         row_number,
                         level: ImportIssueLevel::Error,
+                        code: ImportIssueCode::InvalidDate,
                         field: "scheduled_date".to_string(),
                         message: format!("Neplatné datum: {}", key.scheduled_date),
                         original_value: Some(key.scheduled_date.clone()),
@@ -870,6 +891,7 @@ pub async fn handle_work_log_import(
                     errors.push(ImportIssue {
                         row_number,
                         level: ImportIssueLevel::Error,
+                        code: ImportIssueCode::DbError,
                         field: "database".to_string(),
                         message: format!("Chyba při vytváření návštěvy: {}", e),
                         original_value: None,
@@ -889,6 +911,7 @@ pub async fn handle_work_log_import(
                         errors.push(ImportIssue {
                             row_number: entry_row,
                             level: ImportIssueLevel::Error,
+                            code: ImportIssueCode::InvalidValue,
                             field: "work_type".to_string(),
                             message: format!("Neznámý typ práce: {}", entry.work_type),
                             original_value: Some(entry.work_type.clone()),
@@ -929,6 +952,7 @@ pub async fn handle_work_log_import(
                         errors.push(ImportIssue {
                             row_number: entry_row,
                             level: ImportIssueLevel::Error,
+                            code: ImportIssueCode::DbError,
                             field: "database".to_string(),
                             message: format!("Chyba při vytváření úkonu: {}", e),
                             original_value: None,
@@ -1113,7 +1137,7 @@ impl CustomerImportProcessor {
         // Import customers
         let mut succeeded = 0u32;
         let mut failed = 0u32;
-        let mut errors: Vec<String> = Vec::new();
+        let mut issues: Vec<ImportIssue> = Vec::new();
         
         for (idx, row) in rows.iter().enumerate() {
             let processed = (idx + 1) as u32;
@@ -1133,14 +1157,27 @@ impl CustomerImportProcessor {
                 Ok(_) => succeeded += 1,
                 Err(e) => {
                     failed += 1;
-                    let row_num = idx + 2; // +2 for header and 1-based indexing
-                    errors.push(format!("Řádek {}: {}", row_num, e));
+                    let row_num = (idx + 2) as i32; // +2 for header and 1-based indexing
+                    let err_msg = e.to_string();
+                    let (code, field) = super::import_processors::classify_error(&err_msg);
+                    issues.push(ImportIssue {
+                        row_number: row_num,
+                        level: ImportIssueLevel::Error,
+                        code,
+                        field: field.to_string(),
+                        message: err_msg,
+                        original_value: None,
+                    });
                 }
             }
         }
         
-        // Generate report
-        let report = self.generate_report(&job.request.filename, total, succeeded, failed, &errors);
+        // Generate structured report
+        let report = super::import_processors::build_import_report(
+            job_id, "import.customer", &job.request.filename,
+            started_at, total, succeeded, failed, issues,
+        );
+        super::import_processors::persist_report(&report);
         
         // Publish completion
         self.publish_status(job_id, CustomerImportJobStatus::Completed {
@@ -1300,28 +1337,6 @@ impl CustomerImportProcessor {
         Ok(customer.id)
     }
     
-    /// Generate import report
-    fn generate_report(&self, filename: &str, total: u32, succeeded: u32, failed: u32, errors: &[String]) -> String {
-        let mut report = String::new();
-        report.push_str(&format!("Import zákazníků: {}\n", filename));
-        report.push_str(&format!("Datum: {}\n", Utc::now().format("%d.%m.%Y %H:%M")));
-        report.push_str("─────────────────────────────────\n");
-        report.push_str(&format!("Celkem řádků: {}\n", total));
-        report.push_str(&format!("Úspěšně importováno: {}\n", succeeded));
-        report.push_str(&format!("Chyby: {}\n", failed));
-        
-        if !errors.is_empty() {
-            report.push_str("\nChyby:\n");
-            for (i, error) in errors.iter().take(50).enumerate() {
-                report.push_str(&format!("  {}. {}\n", i + 1, error));
-            }
-            if errors.len() > 50 {
-                report.push_str(&format!("  ... a dalších {} chyb\n", errors.len() - 50));
-            }
-        }
-        
-        report
-    }
 }
 
 /// CSV row for customer import
