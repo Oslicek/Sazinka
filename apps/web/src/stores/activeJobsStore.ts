@@ -19,7 +19,7 @@ export type JobType =
   | 'import.device'
   | 'import.revision'
   | 'import.communication'
-  | 'import.visit'
+  | 'import.work_log'
   | 'import.zip'
   | 'geocode' 
   | 'route';
@@ -30,7 +30,7 @@ const JOB_TYPE_NAMES: Record<JobType, string> = {
   'import.device': 'Import zařízení',
   'import.revision': 'Import revizí',
   'import.communication': 'Import komunikace',
-  'import.visit': 'Import návštěv',
+  'import.work_log': 'Import pracovního deníku',
   'import.zip': 'Import ZIP',
   'geocode': 'Geokódování',
   'route': 'Plánování trasy',
@@ -190,12 +190,12 @@ export const useActiveJobsStore = create<ActiveJobsState>((set, get) => ({
       );
       unsubscribeFunctions.push(unsubCommunicationImport);
       
-      // Subscribe to visit import job status updates
-      const unsubVisitImport = await natsState.subscribe<WorkLogImportJobStatusUpdate>(
-        'sazinka.job.import.visit.status.*',
-        (update) => handleImportJobStatusUpdate(update, 'import.visit')
+      // Subscribe to work log import job status updates
+      const unsubWorkLogImport = await natsState.subscribe<WorkLogImportJobStatusUpdate>(
+        'sazinka.job.import.worklog.status.*',
+        (update) => handleImportJobStatusUpdate(update, 'import.work_log')
       );
-      unsubscribeFunctions.push(unsubVisitImport);
+      unsubscribeFunctions.push(unsubWorkLogImport);
       
       // Subscribe to ZIP import job status updates
       const unsubZipImport = await natsState.subscribe<ZipImportJobStatusUpdate>(

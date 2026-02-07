@@ -9,7 +9,7 @@ import type {
   BusinessInfo,
   EmailTemplateSettings,
   Depot,
-} from '@sazinka/shared-types';
+} from '@shared/settings';
 import styles from './Settings.module.css';
 
 const TEMP_USER_ID = '00000000-0000-0000-0000-000000000001';

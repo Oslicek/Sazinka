@@ -1,7 +1,7 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Link } from '@tanstack/react-router';
-import type { PlannedRouteStop } from '@sazinka/shared-types';
+import type { PlannedRouteStop } from '@shared/route';
 import styles from './SortableStopItem.module.css';
 
 interface SortableStopItemProps {

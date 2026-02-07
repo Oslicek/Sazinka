@@ -8,7 +8,7 @@ import styles from './Admin.module.css';
 
 interface ServiceStatus {
   name: string;
-  status: 'running' | 'stopped' | 'error' | 'unknown';
+  status: 'running' | 'stopped' | 'starting' | 'error' | 'unknown';
   details?: string;
   lastCheck?: string;
 }

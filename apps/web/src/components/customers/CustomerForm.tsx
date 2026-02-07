@@ -200,16 +200,17 @@ export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = fals
       const unsubscribe = await subscribeToReverseGeocodeJobStatus(job.jobId, (update) => {
         setGeocodeJob(update);
         if (update.status.type === 'completed') {
+          const completedStatus = update.status;
           setFormData((prev) => ({
             ...prev,
-            street: update.status.street,
-            city: update.status.city,
-            postalCode: update.status.postalCode,
+            street: completedStatus.street,
+            city: completedStatus.city,
+            postalCode: completedStatus.postalCode,
           }));
           setIsGeocodeSubmitting(false);
           setNeedsRecenter(false);
           setLastGeocodedAddress(
-            normalizeAddressKey(update.status.street, update.status.city, update.status.postalCode)
+            normalizeAddressKey(completedStatus.street, completedStatus.city, completedStatus.postalCode)
           );
           if (onGeocodeCompleted) {
             onGeocodeCompleted();

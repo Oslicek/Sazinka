@@ -9,7 +9,7 @@ import type {
   CompleteVisitRequest,
   ListVisitsRequest,
   ListVisitsResponse,
-} from '@sazinka/shared-types';
+} from '@shared/visit';
 import { createRequest } from '@shared/messages';
 import { useNatsStore } from '../stores/natsStore';
 

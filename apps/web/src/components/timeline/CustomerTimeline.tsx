@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNatsStore } from '../../stores/natsStore';
 import * as communicationService from '../../services/communicationService';
 import * as visitService from '../../services/visitService';
-import type { Communication, Visit } from '@sazinka/shared-types';
+import type { Communication } from '@shared/communication';
+import type { Visit } from '@shared/visit';
 import { VisitDetailDialog } from './VisitDetailDialog';
 import styles from './CustomerTimeline.module.css';
 

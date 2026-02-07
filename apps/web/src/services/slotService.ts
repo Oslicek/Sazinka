@@ -56,7 +56,7 @@ export async function suggestSlots(
     throw new Error(response.error.message);
   }
   
-  return response.data;
+  return response.payload;
 }
 
 /**

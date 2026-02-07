@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import type { Visit, UpdateVisitRequest, CompleteVisitRequest } from '@sazinka/shared-types';
+import type { Visit, UpdateVisitRequest, CompleteVisitRequest } from '@shared/visit';
 import { 
   updateVisit, 
   completeVisit,
@@ -240,7 +240,7 @@ export function VisitDetailDialog({
                     <label>Výsledek *</label>
                     <select
                       value={completeData.result}
-                      onChange={(e) => setCompleteData({ ...completeData, result: e.target.value })}
+                      onChange={(e) => setCompleteData({ ...completeData, result: e.target.value as Visit['result'] & string })}
                       disabled={isSubmitting}
                     >
                       <option value="successful">Úspěšná</option>

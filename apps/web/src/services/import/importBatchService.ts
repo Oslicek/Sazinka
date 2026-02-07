@@ -8,7 +8,7 @@ import type {
   ImportDeviceRequest,
   ImportRevisionRequest,
   ImportCommunicationRequest,
-  ImportVisitRequest,
+  ImportWorkLogRequest,
   ImportBatchResponse,
 } from '@shared/import';
 
@@ -71,16 +71,16 @@ export async function importCommunicationsBatch(
 }
 
 /**
- * Send batch of visits to backend
+ * Send batch of work log entries to backend
  */
-export async function importVisitsBatch(
-  visits: ImportVisitRequest[]
+export async function importWorkLogBatch(
+  entries: ImportWorkLogRequest[]
 ): Promise<ImportBatchResponse> {
   const { request } = useNatsStore.getState();
 
-  const req = createRequest(USER_ID, { visits });
+  const req = createRequest(USER_ID, { entries });
   const response = await request<typeof req, NatsResponse<ImportBatchResponse>>(
-    'sazinka.import.visit',
+    'sazinka.import.worklog',
     req
   );
 

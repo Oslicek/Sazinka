@@ -49,6 +49,7 @@ describe('CustomerDetail', () => {
   const mockCustomer: Customer = {
     id: 'test-customer-id',
     userId: 'user-123',
+    type: 'person',
     name: 'Jan Novák',
     email: 'jan@example.com',
     phone: '+420 123 456 789',

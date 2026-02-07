@@ -427,7 +427,7 @@ export function normalizeEmail(
       level: 'warning',
       field: 'email',
       message: 'Email neobsahuje @',
-      originalValue: value,
+      originalValue: value ?? undefined,
     });
   }
 
@@ -637,7 +637,7 @@ export function normalizeCustomerRow(
   const customer: CreateCustomerRequest = {
     type: customerType,
     name: cleanValue(row.name) || '',
-    contactPerson: customerType === 'company' ? cleanValue(row.contactPerson) : undefined,
+    contactPerson: customerType === 'company' ? (cleanValue(row.contactPerson) ?? undefined) : undefined,
     ico: icoResult.ico || undefined,
     dic: dicResult.dic || undefined,
     email: emailResult.email || undefined,

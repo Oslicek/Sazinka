@@ -120,7 +120,11 @@ export function Calendar() {
   // Stats for the month
   const monthStats = useMemo(() => {
     const scheduled = revisions.filter(r => r.status === 'scheduled' || r.status === 'confirmed').length;
-    const overdue = revisions.filter(r => r.status === 'overdue').length;
+    const now = new Date();
+    const overdue = revisions.filter(r => {
+      if (r.status === 'completed' || r.status === 'cancelled') return false;
+      return new Date(r.dueDate) < now;
+    }).length;
     const completed = revisions.filter(r => r.status === 'completed').length;
     return { scheduled, overdue, completed, total: revisions.length };
   }, [revisions]);

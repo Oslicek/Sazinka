@@ -29,7 +29,7 @@ interface RevisionStatusActionsProps {
 function getWorkflowState(revision: Revision): WorkflowState {
   if (revision.status === 'completed') return 'completed';
   if (revision.status === 'cancelled') return 'cancelled';
-  if (revision.status === 'in_progress') return 'in_progress';
+  // 'in_progress' is not a stored RevisionStatus; skip this check
   if (revision.scheduledDate) return 'scheduled';
   return 'upcoming';
 }

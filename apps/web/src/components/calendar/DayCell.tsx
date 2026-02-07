@@ -19,7 +19,11 @@ export function DayCell({ day, revisions, onClick }: DayCellProps) {
     onClick?.(day, revisions);
   };
 
-  const hasOverdue = revisions.some(r => r.status === 'overdue');
+  const now = new Date();
+  const hasOverdue = revisions.some(r => {
+    if (r.status === 'completed' || r.status === 'cancelled') return false;
+    return new Date(r.dueDate) < now;
+  });
   const hasScheduled = revisions.some(r => r.status === 'scheduled' || r.status === 'confirmed');
 
   return (

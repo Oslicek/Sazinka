@@ -936,7 +936,7 @@ export function Planner() {
               return `
                 <tr>
                   <td>${index + 1}</td>
-                  <td class="time">${isPlannedStop ? `${stop.eta} - ${stop.etd}` : formatTime(stop.scheduledTimeStart)}</td>
+                  <td class="time">${isPlannedStop ? `${stop.eta} - ${stop.etd}` : formatTime(stop.scheduledTimeStart ?? undefined)}</td>
                   <td>${isPlannedStop ? stop.customerName : (stop.customerName || '-')}</td>
                   <td>${isPlannedStop ? stop.address : `${stop.customerStreet || ''}${stop.customerCity ? `, ${stop.customerCity}` : ''}${stop.customerPostalCode ? ` ${stop.customerPostalCode}` : ''}`}</td>
                   <td class="phone">${isPlannedStop ? '-' : (stop.customerPhone || '-')}</td>
@@ -1333,8 +1333,8 @@ export function Planner() {
                     <div className={styles.revisionContent}>
                       <div className={styles.revisionHeader}>
                         <span className={styles.timeWindow}>
-                          {formatTime(revision.scheduledTimeStart)}
-                          {revision.scheduledTimeEnd && ` - ${formatTime(revision.scheduledTimeEnd)}`}
+                          {formatTime(revision.scheduledTimeStart ?? undefined)}
+                          {revision.scheduledTimeEnd && ` - ${formatTime(revision.scheduledTimeEnd ?? undefined)}`}
                         </span>
                         <span className={`${styles.statusBadge} ${getStatusClass(revision.status)}`}>
                           {getStatusLabel(revision.status)}

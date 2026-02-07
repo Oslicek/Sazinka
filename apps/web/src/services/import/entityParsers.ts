@@ -617,8 +617,9 @@ export function normalizeWorkLogRow(row: CsvWorkLogRow, rowNumber: number): {
   }
 
   // Optional: duration_minutes
-  const durationMinutes = row.duration_minutes ? parseInt(row.duration_minutes, 10) : undefined;
-  if (row.duration_minutes && isNaN(durationMinutes!)) {
+  const durationMinutesVal = parseInt(row.duration_minutes);
+  const durationMinutes = durationMinutesVal !== null ? durationMinutesVal : undefined;
+  if (row.duration_minutes && durationMinutes === undefined) {
     issues.push({
       rowNumber,
       level: 'warning',

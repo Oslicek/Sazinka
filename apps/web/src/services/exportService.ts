@@ -4,7 +4,7 @@
  * Provides export functionality for customers and revisions
  */
 
-import type { Customer } from '@sazinka/shared-types';
+import type { Customer } from '@shared/customer';
 import * as customerService from './customerService';
 import * as revisionService from './revisionService';
 import { useNatsStore } from '../stores/natsStore';
@@ -106,10 +106,11 @@ export async function exportCustomers(
   }
 ): Promise<void> {
   // Fetch all customers
-  const customers = await deps.listCustomers(TEMP_USER_ID, { request: deps.request });
+  const result = await deps.listCustomers(TEMP_USER_ID, {});
+  const customers = result.items;
   
   // Map to export format
-  const rows: CustomerExportRow[] = customers.map(c => ({
+  const rows: CustomerExportRow[] = customers.map((c: Customer) => ({
     name: c.name,
     street: c.street || '',
     city: c.city || '',
@@ -120,7 +121,7 @@ export async function exportCustomers(
   }));
   
   // Generate CSV
-  const csv = toCSV(rows, CUSTOMER_HEADERS);
+  const csv = toCSV(rows as unknown as Record<string, unknown>[], CUSTOMER_HEADERS);
   
   // Download
   const date = new Date().toISOString().slice(0, 10);
@@ -191,11 +192,12 @@ export async function exportRevisions(
   }
 ): Promise<void> {
   // Fetch revisions
-  const revisions = await deps.listRevisions(TEMP_USER_ID, {
-    dateFrom: options.dateFrom,
-    dateTo: options.dateTo,
+  const result = await deps.listRevisions(TEMP_USER_ID, {
+    fromDate: options.dateFrom,
+    toDate: options.dateTo,
     status: options.status,
-  }, { request: deps.request }) as RevisionWithDetails[];
+  });
+  const revisions = result.items as RevisionWithDetails[];
   
   // Translate status
   const statusLabels: Record<string, string> = {
@@ -220,7 +222,7 @@ export async function exportRevisions(
   }));
   
   // Generate CSV
-  const csv = toCSV(rows, REVISION_HEADERS);
+  const csv = toCSV(rows as unknown as Record<string, unknown>[], REVISION_HEADERS);
   
   // Download
   const date = new Date().toISOString().slice(0, 10);
@@ -244,8 +246,8 @@ export async function getCustomerCount(
     request: useNatsStore.getState().request,
   }
 ): Promise<number> {
-  const customers = await deps.listCustomers(TEMP_USER_ID, { request: deps.request });
-  return customers.length;
+  const result = await deps.listCustomers(TEMP_USER_ID, {});
+  return result.total;
 }
 
 /**
@@ -262,10 +264,10 @@ export async function getRevisionCount(
     request: useNatsStore.getState().request,
   }
 ): Promise<number> {
-  const revisions = await deps.listRevisions(TEMP_USER_ID, {
-    dateFrom: options.dateFrom,
-    dateTo: options.dateTo,
+  const result = await deps.listRevisions(TEMP_USER_ID, {
+    fromDate: options.dateFrom,
+    toDate: options.dateTo,
     status: options.status,
-  }, { request: deps.request });
-  return revisions.length;
+  });
+  return result.total;
 }

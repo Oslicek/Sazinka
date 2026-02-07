@@ -39,6 +39,7 @@ describe('customerService', () => {
     const mockCustomerResponse: Customer = {
       id: '123e4567-e89b-12d3-a456-426614174000',
       userId: 'user-123',
+      type: 'person',
       name: 'Jan Novák',
       email: 'jan@example.com',
       phone: '+420 123 456 789',
@@ -123,6 +124,7 @@ describe('customerService', () => {
       {
         id: '123e4567-e89b-12d3-a456-426614174000',
         userId: 'user-123',
+        type: 'person',
         name: 'Jan Novák',
         street: 'Hlavní 123',
         city: 'Praha',
@@ -135,6 +137,7 @@ describe('customerService', () => {
       {
         id: '223e4567-e89b-12d3-a456-426614174001',
         userId: 'user-123',
+        type: 'person',
         name: 'Petr Svoboda',
         street: 'Vedlejší 456',
         city: 'Brno',

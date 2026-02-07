@@ -7,7 +7,7 @@
 
 import { useNatsStore } from '../stores/natsStore';
 import { createRequest, type SuccessResponse, type ErrorResponse } from '@shared/messages';
-import type { PlannedRouteStop, Coordinates, RoutePlanResponse } from '@sazinka/shared-types';
+import type { PlannedRouteStop, Coordinates, RoutePlanResponse } from '@shared/route';
 
 const TEMP_USER_ID = '00000000-0000-0000-0000-000000000001';
 
@@ -119,10 +119,11 @@ export async function saveRoute(
   request: SaveRouteRequest,
   deps = { request: useNatsStore.getState().request }
 ): Promise<SaveRouteResponse> {
-  const response = await deps.request<SaveRouteResponse>('sazinka.route.save', {
+  const payload = {
     userId: TEMP_USER_ID,
     payload: request,
-  });
+  };
+  const response = await deps.request<typeof payload, SaveRouteResponse>('sazinka.route.save', payload);
 
   return response;
 }
@@ -134,10 +135,11 @@ export async function getRoute(
   date: string,
   deps = { request: useNatsStore.getState().request }
 ): Promise<GetRouteResponse> {
-  const response = await deps.request<GetRouteResponse>('sazinka.route.get', {
+  const payload = {
     userId: TEMP_USER_ID,
     payload: { date },
-  });
+  };
+  const response = await deps.request<typeof payload, GetRouteResponse>('sazinka.route.get', payload);
 
   return response;
 }

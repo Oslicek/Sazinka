@@ -22,6 +22,7 @@ describe('deviceService', () => {
   const mockDevice: Device = {
     id: '123e4567-e89b-12d3-a456-426614174000',
     customerId: 'customer-123',
+    userId: 'user-123',
     deviceType: 'gas_boiler',
     manufacturer: 'Junkers',
     model: 'Cerapur',
@@ -30,6 +31,7 @@ describe('deviceService', () => {
     revisionIntervalMonths: 12,
     notes: 'Hlavní kotel',
     createdAt: '2026-01-26T12:00:00Z',
+    updatedAt: '2026-01-26T12:00:00Z',
   };
 
   describe('createDevice', () => {

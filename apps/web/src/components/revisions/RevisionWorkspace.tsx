@@ -10,7 +10,7 @@ import { useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
 import type { Revision } from '@shared/revision';
 import { REVISION_STATUS_LABELS, REVISION_RESULT_LABELS } from '@shared/revision';
-import { AddressStatusChip } from '../customers/AddressStatusChip';
+
 import { RevisionStatusActions } from './RevisionStatusActions';
 import styles from './RevisionWorkspace.module.css';
 
@@ -56,15 +56,12 @@ export function RevisionWorkspace({
     }
   };
 
-  const hasCoordinates = revision.customerLat !== undefined && revision.customerLng !== undefined;
   const fullAddress = [revision.customerStreet, revision.customerCity, revision.customerPostalCode]
     .filter(Boolean)
     .join(', ');
 
-  // Build Google Maps URL
-  const mapsUrl = hasCoordinates
-    ? `https://www.google.com/maps/dir/?api=1&destination=${revision.customerLat},${revision.customerLng}`
-    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress)}`;
+  // Build Google Maps URL from address
+  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress)}`;
 
   return (
     <div className={styles.workspace}>
@@ -83,13 +80,7 @@ export function RevisionWorkspace({
             </div>
           )}
           
-          {revision.customerEmail && (
-            <div className={styles.contactItem}>
-              <a href={`mailto:${revision.customerEmail}`} className={styles.contactLink}>
-                ✉️ {revision.customerEmail}
-              </a>
-            </div>
-          )}
+          {/* Email available via customer detail */}
           
           <div className={styles.cardActions}>
             <Link 
@@ -105,7 +96,7 @@ export function RevisionWorkspace({
         {/* Address card */}
         <section className={styles.card}>
           <h3 className={styles.cardTitle}>Adresa</h3>
-          <AddressStatusChip status={revision.geocodeStatus || 'pending'} />
+          {/* Geocode status available on the Customer entity */}
           <p className={styles.address}>{fullAddress || 'Adresa nevyplněna'}</p>
           
           {fullAddress && (

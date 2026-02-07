@@ -8,7 +8,7 @@ import type {
   UpdateCommunicationRequest,
   ListCommunicationsRequest,
   ListCommunicationsResponse,
-} from '@sazinka/shared-types';
+} from '@shared/communication';
 import { createRequest } from '@shared/messages';
 import { useNatsStore } from '../stores/natsStore';
 

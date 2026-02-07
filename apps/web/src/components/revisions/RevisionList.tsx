@@ -243,7 +243,7 @@ export function RevisionList({
                     <span className={styles.scheduledDate}>
                       Naplánováno: {formatDate(revision.scheduledDate)}
                       {revision.scheduledTimeStart && (
-                        <> {formatTime(revision.scheduledTimeStart)}-{formatTime(revision.scheduledTimeEnd)}</>
+                        <> {formatTime(revision.scheduledTimeStart ?? undefined)}-{formatTime(revision.scheduledTimeEnd ?? undefined)}</>
                       )}
                     </span>
                   )}
