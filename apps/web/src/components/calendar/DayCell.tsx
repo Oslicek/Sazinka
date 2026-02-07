@@ -9,12 +9,13 @@ interface DayCellProps {
   onClick?: (day: CalendarDay, items: CalendarItem[]) => void;
   workloadMinutes?: number;
   capacityMinutes?: number;
+  variant?: 'month' | 'week';
 }
 
 /**
  * Renders a single day cell in the calendar grid
  */
-export function DayCell({ day, items, onClick, workloadMinutes, capacityMinutes }: DayCellProps) {
+export function DayCell({ day, items, onClick, workloadMinutes, capacityMinutes, variant = 'month' }: DayCellProps) {
   const countClass = getItemCountClass(items.length);
   const isWeekend = day.date.getDay() === 0 || day.date.getDay() === 6;
   
@@ -36,10 +37,13 @@ export function DayCell({ day, items, onClick, workloadMinutes, capacityMinutes 
     capacityMinutes > 0 &&
     workloadMinutes > capacityMinutes;
 
+  const sortedItems = [...items].sort((a, b) => (a.timeStart || '').localeCompare(b.timeStart || ''));
+
   return (
     <div
       className={`
         ${styles.cell}
+        ${variant === 'week' ? styles.weekCell : ''}
         ${!day.isCurrentMonth ? styles.otherMonth : ''}
         ${day.isToday ? styles.today : ''}
         ${countClass ? styles[countClass] : ''}
@@ -59,7 +63,7 @@ export function DayCell({ day, items, onClick, workloadMinutes, capacityMinutes 
     >
       <span className={styles.dayNumber}>{day.dayNumber}</span>
       
-      {items.length > 0 && (
+      {variant === 'month' && items.length > 0 && (
         <div className={styles.indicators}>
           {hasScheduled && <span className={styles.scheduledDot} title="Naplánováno" />}
           {hasOverdue && <span className={styles.overdueDot} title="Po termínu" />}
@@ -67,6 +71,23 @@ export function DayCell({ day, items, onClick, workloadMinutes, capacityMinutes 
           <span className={styles.count}>
             {revisionCount}/{visitCount}/{taskCount}
           </span>
+        </div>
+      )}
+
+      {variant === 'week' && (
+        <div className={styles.weekItems}>
+          {sortedItems.slice(0, 8).map((item) => (
+            <div key={`${item.type}-${item.id}`} className={styles.weekItem}>
+              <span className={styles.weekItemTime}>{item.timeStart?.substring(0, 5) || '--:--'}</span>
+              <span className={styles.weekItemTitle}>{item.customerName || item.title}</span>
+              <span className={styles.weekItemType}>
+                {item.type === 'revision' ? 'R' : item.type === 'visit' ? 'N' : 'F'}
+              </span>
+            </div>
+          ))}
+          {items.length > 8 && (
+            <div className={styles.weekItemMore}>+{items.length - 8} dalších</div>
+          )}
         </div>
       )}
     </div>
