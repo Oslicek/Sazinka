@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNatsStore } from '../stores/natsStore';
+import { createRequest } from '@shared/messages';
+import { getToken } from '@/utils/auth';
 import * as exportService from '../services/exportService';
 import { importCustomersBatch, submitGeocodeAllPending } from '../services/customerService';
 import { ImportModal, type ImportEntityType } from '../components/import';
@@ -151,7 +153,7 @@ export function Admin() {
 
     // Check PostgreSQL via admin endpoint
     try {
-      const response = await request<any, any>('sazinka.admin.db.status', {});
+      const response = await request<any, any>('sazinka.admin.db.status', createRequest(getToken(), {}));
       // Response is wrapped in { id, timestamp, payload: {...} }
       const dbResult = response.payload || response;
       const pgIdx = newServices.findIndex(s => s.name === 'PostgreSQL');
@@ -183,7 +185,7 @@ export function Admin() {
 
     // Check Valhalla
     try {
-      const response = await request<any, any>('sazinka.admin.valhalla.status', {});
+      const response = await request<any, any>('sazinka.admin.valhalla.status', createRequest(getToken(), {}));
       const valhallaResult = response.payload || response;
       const valhallaIdx = newServices.findIndex(s => s.name === 'Valhalla');
       if (valhallaIdx >= 0) {
@@ -208,7 +210,7 @@ export function Admin() {
 
     // Check Nominatim
     try {
-      const response = await request<any, any>('sazinka.admin.nominatim.status', {});
+      const response = await request<any, any>('sazinka.admin.nominatim.status', createRequest(getToken(), {}));
       const nominatimResult = response.payload || response;
       const nominatimIdx = newServices.findIndex(s => s.name === 'Nominatim');
       if (nominatimIdx >= 0) {
@@ -241,7 +243,7 @@ export function Admin() {
 
     // Check JetStream
     try {
-      const response = await request<any, any>('sazinka.admin.jetstream.status', {});
+      const response = await request<any, any>('sazinka.admin.jetstream.status', createRequest(getToken(), {}));
       const jsResult = response.payload || response;
       const jsIdx = newServices.findIndex(s => s.name === 'JetStream');
       if (jsIdx >= 0) {
@@ -272,7 +274,7 @@ export function Admin() {
 
     // Check Geocoding status
     try {
-      const response = await request<any, any>('sazinka.admin.geocode.status', {});
+      const response = await request<any, any>('sazinka.admin.geocode.status', createRequest(getToken(), {}));
       const geocodeResult = response.payload || response;
       const geocodeIdx = newServices.findIndex(s => s.name === 'Geocoding');
       if (geocodeIdx >= 0) {
@@ -311,7 +313,7 @@ export function Admin() {
   const loadLogs = useCallback(async () => {
     setIsLoadingLogs(true);
     try {
-      const response = await request<any, any>('sazinka.admin.logs', { limit: 100, level: logFilter });
+      const response = await request<any, any>('sazinka.admin.logs', createRequest(getToken(), { limit: 100, level: logFilter }));
       // Response is wrapped in { id, timestamp, payload: { logs: [...] } }
       const result = response.payload || response;
       setLogs(result.logs || []);
@@ -328,7 +330,7 @@ export function Admin() {
     }
     setIsResettingDb(true);
     try {
-      await request('sazinka.admin.db.reset', {});
+      await request('sazinka.admin.db.reset', createRequest(getToken(), {}));
       alert('Databáze byla resetována.');
       runHealthCheck();
     } catch (e) {

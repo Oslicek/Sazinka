@@ -159,27 +159,87 @@ pub enum CustomerError {
 }
 ```
 
-### Database (SQLx)
-- Use compile-time checked queries with `sqlx::query!`
-- Keep queries in dedicated modules (`db/queries/`)
-- Use migrations for schema changes
-- Prefer transactions for multi-step operations
+### Database (SQLx) — SQL Injection Prevention
 
+> **CRITICAL RULE**: All user-provided values MUST be passed via `$N` parameterized
+> bindings (`.bind(value)`). NEVER interpolate user input into SQL via `format!()`,
+> string concatenation, or any other string-building method.
+
+#### Allowed in `format!()`
+- Column lists (`REVISION_COLS`) — constants, no user data
+- `ORDER BY` / `ASC`/`DESC` — derived from whitelist match arms only
+- `NULLS FIRST`/`NULLS LAST` — hardcoded strings
+- Static condition fragments like `"TRUE"`, `"r.due_date < $2"` — no user data
+
+#### NEVER in `format!()`
+- Any `String` / `&str` from request payload (names, filters, search, types)
+- UUIDs from user input (use `ANY($N)` array binding instead)
+- Numeric values from request payload (use `$N * INTERVAL '1 day'` pattern)
+
+#### Patterns
+
+**Simple parameterized query:**
 ```rust
-// Compile-time checked query
-let customer = sqlx::query_as!(
-    Customer,
-    r#"
-    SELECT id, name, email, address, coordinates
-    FROM customers
-    WHERE id = $1 AND user_id = $2
-    "#,
-    customer_id,
-    user_id
+let customer = sqlx::query_as::<_, Customer>(
+    "SELECT * FROM customers WHERE id = $1 AND user_id = $2"
 )
+.bind(customer_id)
+.bind(user_id)
 .fetch_optional(pool)
 .await?;
 ```
+
+**Dynamic filter with parameterized bindings:**
+```rust
+// Track the parameter index dynamically
+let mut conditions = vec!["c.user_id = $1".to_string()];
+let mut param_idx: usize = 1;
+
+// String filter — ALWAYS bind, NEVER format!()
+let search_pattern = search.as_ref().map(|s| format!("%{}%", s));
+if search_pattern.is_some() {
+    param_idx += 1;
+    conditions.push(format!("c.name LIKE ${}", param_idx));
+}
+
+let query = format!("SELECT * FROM customers WHERE {}", conditions.join(" AND "));
+let mut qb = sqlx::query_as::<_, Customer>(&query).bind(user_id);
+if let Some(ref pat) = search_pattern {
+    qb = qb.bind(pat);
+}
+let result = qb.fetch_all(pool).await?;
+```
+
+**UUID array exclusion (instead of `NOT IN ('uuid1', 'uuid2')`):**
+```rust
+let exclude_clause = if ids.is_empty() { "TRUE" } else { "NOT (r.id = ANY($3))" };
+let query = format!("SELECT * FROM t WHERE a = $1 AND b = $2 AND {}", exclude_clause);
+let mut qb = sqlx::query_as::<_, T>(&query).bind(a).bind(b);
+if !ids.is_empty() {
+    qb = qb.bind(&ids); // binds as uuid[] array
+}
+```
+
+**Integer/numeric values (instead of `CURRENT_DATE + {days}`):**
+```rust
+// Use a parameterized interval multiplication
+conditions.push(format!(
+    "col <= CURRENT_DATE + ${} * INTERVAL '1 day'",
+    param_idx
+));
+// Then bind: qb = qb.bind(days as f64);
+```
+
+#### Code Review Checklist — SQL Safety
+- [ ] Every `format!()` building SQL has been audited — only constants/whitelist values
+- [ ] All `String`/`&str` from request structs are bound via `.bind()`
+- [ ] UUID arrays use `ANY($N)` pattern, not string-formatted `IN (...)`
+- [ ] Integer/float request fields use parameterized intervals, not direct interpolation
+
+#### General
+- Keep queries in dedicated modules (`db/queries/`)
+- Use migrations for schema changes
+- Prefer transactions for multi-step operations
 
 ---
 
@@ -411,6 +471,12 @@ sazinka/
 - [ ] Error types properly defined
 - [ ] No unwrap() in production code (use ? or expect with message)
 - [ ] Async code doesn't block
+
+### SQL (Rust Worker)
+- [ ] No user input interpolated into SQL via `format!()` — use `$N` + `.bind()` only
+- [ ] UUID arrays use `ANY($N)` pattern, not formatted `NOT IN ('...')`
+- [ ] Numeric request values use parameterized intervals
+- [ ] Dynamic WHERE/HAVING conditions track `param_idx` correctly
 
 ### General
 - [ ] No security vulnerabilities

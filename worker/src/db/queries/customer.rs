@@ -340,10 +340,11 @@ pub async fn list_customers_extended(
         );
     }
 
-    if let Some(days) = req.next_revision_within_days {
+    if req.next_revision_within_days.is_some() {
+        param_idx += 1;
         having_conditions.push(format!(
-            "MIN(r.due_date) FILTER (WHERE r.status NOT IN ('completed', 'cancelled')) <= CURRENT_DATE + {}",
-            days
+            "MIN(r.due_date) FILTER (WHERE r.status NOT IN ('completed', 'cancelled')) <= CURRENT_DATE + ${} * INTERVAL '1 day'",
+            param_idx
         ));
     }
 
@@ -464,6 +465,10 @@ pub async fn list_customers_extended(
         query_builder = query_builder.bind(ctype);
     }
 
+    if let Some(days) = req.next_revision_within_days {
+        query_builder = query_builder.bind(days as f64);
+    }
+
     query_builder = query_builder.bind(limit).bind(offset);
 
     let items = query_builder.fetch_all(pool).await?;
@@ -550,6 +555,10 @@ pub async fn list_customers_extended(
 
     if let Some(ref ctype) = req.customer_type {
         count_builder = count_builder.bind(ctype);
+    }
+
+    if let Some(days) = req.next_revision_within_days {
+        count_builder = count_builder.bind(days as f64);
     }
 
     let (total,) = count_builder.fetch_one(pool).await?;

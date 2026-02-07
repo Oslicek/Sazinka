@@ -410,12 +410,10 @@ pub async fn get_revision_suggestions(
 ) -> Result<(Vec<RevisionSuggestion>, i64)> {
     let today = Utc::now().date_naive();
     
-    let exclude_clause = if exclude_ids.is_empty() {
-        "TRUE".to_string()
-    } else {
-        let ids: Vec<String> = exclude_ids.iter().map(|id| format!("'{}'", id)).collect();
-        format!("r.id NOT IN ({})", ids.join(","))
-    };
+    // Build exclude clause using parameterized binding (NOT r.id = ANY($N))
+    // Never format UUIDs directly into SQL strings.
+    let has_excludes = !exclude_ids.is_empty();
+    let exclude_param = if has_excludes { "NOT (r.id = ANY($5))" } else { "TRUE" };
     
     let query = format!(
         r#"
@@ -450,32 +448,45 @@ pub async fn get_revision_suggestions(
               AND r.status NOT IN ('completed', 'cancelled')
               AND (r.scheduled_date IS NULL OR r.scheduled_date = $3)
               AND c.lat IS NOT NULL AND c.lng IS NOT NULL
-              AND {}
+              AND {exclude}
         )
         SELECT * FROM scored_revisions
         ORDER BY priority_score DESC, days_until_due ASC
         LIMIT $4
         "#,
-        exclude_clause
+        exclude = exclude_param
     );
     
-    let suggestions = sqlx::query_as::<_, RevisionSuggestion>(&query)
-        .bind(user_id).bind(today).bind(target_date).bind(max_count as i64)
-        .fetch_all(pool).await?;
+    let mut query_builder = sqlx::query_as::<_, RevisionSuggestion>(&query)
+        .bind(user_id).bind(today).bind(target_date).bind(max_count as i64);
+
+    if has_excludes {
+        query_builder = query_builder.bind(exclude_ids);
+    }
+
+    let suggestions = query_builder.fetch_all(pool).await?;
     
+    // Count query uses same exclude pattern
+    let count_exclude = if has_excludes { "NOT (r.id = ANY($3))" } else { "TRUE" };
     let count_query = format!(
         r#"
         SELECT COUNT(*) FROM revisions r
         INNER JOIN customers c ON r.customer_id = c.id
         WHERE r.user_id = $1 AND r.status NOT IN ('completed', 'cancelled')
           AND (r.scheduled_date IS NULL OR r.scheduled_date = $2)
-          AND c.lat IS NOT NULL AND c.lng IS NOT NULL AND {}
+          AND c.lat IS NOT NULL AND c.lng IS NOT NULL AND {exclude}
         "#,
-        exclude_clause
+        exclude = count_exclude
     );
     
-    let total: (i64,) = sqlx::query_as(&count_query)
-        .bind(user_id).bind(target_date).fetch_one(pool).await?;
+    let mut count_builder = sqlx::query_as::<_, (i64,)>(&count_query)
+        .bind(user_id).bind(target_date);
+
+    if has_excludes {
+        count_builder = count_builder.bind(exclude_ids);
+    }
+
+    let total: (i64,) = count_builder.fetch_one(pool).await?;
     
     Ok((suggestions, total.0))
 }
@@ -496,6 +507,8 @@ pub async fn get_call_queue(
     let limit = request.limit.unwrap_or(50) as i64;
     let offset = request.offset.unwrap_or(0) as i64;
 
+    // Dynamic query builder: all user-provided values MUST use $N parameterized
+    // bindings. NEVER interpolate user input into SQL via format!().
     let mut conditions = vec![
         "r.user_id = $1".to_string(),
         "r.status IN ('upcoming', 'scheduled')".to_string(),
@@ -504,12 +517,22 @@ pub async fn get_call_queue(
         "r.due_date BETWEEN $2 - INTERVAL '30 days' AND $2 + INTERVAL '60 days'".to_string(),
     ];
 
-    if let Some(ref area) = request.area {
-        conditions.push(format!("c.postal_code LIKE '{}%'", area));
+    // Next parameter index (after user_id=$1, today=$2, limit=$3, offset=$4)
+    let mut param_idx: usize = 4;
+
+    // Area filter (postal code prefix) — parameterized to prevent SQL injection
+    let area_pattern = request.area.as_ref().map(|a| format!("{}%", a));
+    if area_pattern.is_some() {
+        param_idx += 1;
+        conditions.push(format!("c.postal_code LIKE ${}", param_idx));
     }
-    if let Some(ref device_type) = request.device_type {
-        conditions.push(format!("d.device_type::text = '{}'", device_type));
+
+    // Device type filter — parameterized to prevent SQL injection
+    if request.device_type.is_some() {
+        param_idx += 1;
+        conditions.push(format!("d.device_type::text = ${}", param_idx));
     }
+
     if let Some(ref priority) = request.priority_filter {
         match priority.as_str() {
             "overdue" => conditions.push("r.due_date < $2".to_string()),
@@ -554,15 +577,33 @@ pub async fn get_call_queue(
         where_clause
     );
 
-    let items = sqlx::query_as::<_, CallQueueItem>(&query)
-        .bind(user_id).bind(today).bind(limit).bind(offset)
-        .fetch_all(pool).await?;
+    let mut query_builder = sqlx::query_as::<_, CallQueueItem>(&query)
+        .bind(user_id).bind(today).bind(limit).bind(offset);
+
+    if let Some(ref pattern) = area_pattern {
+        query_builder = query_builder.bind(pattern);
+    }
+    if let Some(ref dt) = request.device_type {
+        query_builder = query_builder.bind(dt);
+    }
+
+    let items = query_builder.fetch_all(pool).await?;
 
     let count_query = format!(
         "SELECT COUNT(*) FROM revisions r INNER JOIN customers c ON r.customer_id = c.id INNER JOIN devices d ON r.device_id = d.id WHERE {}",
         where_clause
     );
-    let total: (i64,) = sqlx::query_as(&count_query).bind(user_id).bind(today).fetch_one(pool).await?;
+    let mut count_builder = sqlx::query_as::<_, (i64,)>(&count_query)
+        .bind(user_id).bind(today);
+
+    if let Some(ref pattern) = area_pattern {
+        count_builder = count_builder.bind(pattern);
+    }
+    if let Some(ref dt) = request.device_type {
+        count_builder = count_builder.bind(dt);
+    }
+
+    let total: (i64,) = count_builder.fetch_one(pool).await?;
 
     let overdue_count: (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM revisions r WHERE r.user_id = $1 AND r.status IN ('upcoming', 'scheduled') AND r.scheduled_date IS NULL AND (r.snooze_until IS NULL OR r.snooze_until <= $2) AND r.due_date < $2"
