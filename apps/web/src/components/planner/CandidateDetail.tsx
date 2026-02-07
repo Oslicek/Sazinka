@@ -183,28 +183,6 @@ export function CandidateDetail({
         </section>
       )}
 
-      {/* Route actions */}
-      {(onAddToRoute || onRemoveFromRoute) && (
-        <section className={styles.section}>
-          {isInRoute ? (
-            <button
-              type="button"
-              className={styles.removeRouteButton}
-              onClick={() => onRemoveFromRoute?.(candidate.id)}
-            >
-              ✕ Odebrat z trasy
-            </button>
-          ) : (
-            <button
-              type="button"
-              className={styles.addRouteButton}
-              onClick={() => onAddToRoute?.(candidate.id)}
-            >
-              ➕ Přidat do trasy
-            </button>
-          )}
-        </section>
-      )}
 
       {/* Notes */}
       {candidate.notes && (
@@ -297,28 +275,45 @@ export function CandidateDetail({
           {candidate.suggestedSlots?.length ? (
             <button
               type="button"
-              className="btn-primary"
+              className={styles.actionButton}
               onClick={() => {
                 onSchedule?.(candidate.id, candidate.suggestedSlots![0]);
               }}
             >
-              Domluvit termín
+              📅 Domluvit termín
             </button>
           ) : (
             <button
               type="button"
-              className="btn-primary"
+              className={styles.actionButton}
               onClick={() => setIsScheduling(true)}
             >
-              Domluvit termín
+              📅 Domluvit termín
+            </button>
+          )}
+          {isInRoute ? (
+            <button
+              type="button"
+              className={styles.actionButton}
+              onClick={() => onRemoveFromRoute?.(candidate.id)}
+            >
+              ✕ Odebrat z trasy
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={styles.actionButton}
+              onClick={() => onAddToRoute?.(candidate.id)}
+            >
+              ➕ Přidat do trasy
             </button>
           )}
           <button
             type="button"
-            className="btn-secondary"
+            className={styles.actionButton}
             onClick={() => onSnooze?.(candidate.id)}
           >
-            Odložit
+            ⏰ Odložit
           </button>
         </div>
       )}
