@@ -12,7 +12,6 @@ import styles from './RevisionForm.module.css';
 interface RevisionFormProps {
   customerId?: string;
   deviceId?: string;
-  userId: string;
   revision?: Revision;
   onSuccess: () => void;
   onCancel: () => void;
@@ -42,7 +41,7 @@ const createInitialFormData = (revision?: Revision): FormData => ({
   findings: revision?.findings ?? '',
 });
 
-export function RevisionForm({ customerId, deviceId, userId, revision, onSuccess, onCancel }: RevisionFormProps) {
+export function RevisionForm({ customerId, deviceId, revision, onSuccess, onCancel }: RevisionFormProps) {
   const isEditMode = !!revision;
   const [formData, setFormData] = useState<FormData>(() => createInitialFormData(revision));
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -93,7 +92,7 @@ export function RevisionForm({ customerId, deviceId, userId, revision, onSuccess
             : undefined,
         };
         
-        await updateRevision(userId, updateData);
+        await updateRevision(updateData);
       } else {
         const createData: CreateRevisionRequest = {
           customerId: customerId!,
@@ -105,7 +104,7 @@ export function RevisionForm({ customerId, deviceId, userId, revision, onSuccess
           findings: formData.findings || undefined,
         };
         
-        await createRevision(userId, createData);
+        await createRevision(createData);
       }
 
       onSuccess();
@@ -115,7 +114,7 @@ export function RevisionForm({ customerId, deviceId, userId, revision, onSuccess
     } finally {
       setIsSubmitting(false);
     }
-  }, [isConnected, formData, isEditMode, revision, userId, customerId, deviceId, onSuccess]);
+  }, [isConnected, formData, isEditMode, revision, customerId, deviceId, onSuccess]);
 
   return (
     <form className={styles.form} onSubmit={handleSubmit}>

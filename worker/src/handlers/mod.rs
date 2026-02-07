@@ -157,6 +157,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let route_plan_sub = client.subscribe("sazinka.route.plan").await?;
     let route_save_sub = client.subscribe("sazinka.route.save").await?;
     let route_get_sub = client.subscribe("sazinka.route.get").await?;
+    let route_list_for_date_sub = client.subscribe("sazinka.route.list_for_date").await?;
     let route_insertion_sub = client.subscribe("sazinka.route.insertion.calculate").await?;
     let route_insertion_batch_sub = client.subscribe("sazinka.route.insertion.batch").await?;
     
@@ -571,6 +572,13 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         route::handle_get(client_route_get, route_get_sub, pool_route_get, jwt_secret_route_get).await
     });
 
+    let client_route_list = client.clone();
+    let pool_route_list = pool.clone();
+    let jwt_secret_route_list = jwt_secret.clone();
+    let route_list_for_date_handle = tokio::spawn(async move {
+        route::handle_list_for_date(client_route_list, route_list_for_date_sub, pool_route_list, jwt_secret_route_list).await
+    });
+
     let route_insertion_handle = tokio::spawn(async move {
         route::handle_insertion_calculate(client_route_insertion, route_insertion_sub, pool_route_insertion, jwt_secret_route_insertion, routing_insertion).await
     });
@@ -801,7 +809,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
                 let processor_submit = Arc::clone(&processor);
                 let jwt_secret_submit = Arc::clone(&jwt_secret_customer_import);
                 tokio::spawn(async move {
-                    if let Err(e) = import::handle_customer_import_submit(client_submit, customer_import_submit_sub, processor_submit, jwt_secret_submit).await {
+                    if let Err(e) = import::handle_customer_import_submit(client_submit, customer_import_submit_sub, jwt_secret_submit, processor_submit).await {
                         error!("Customer import submit handler error: {}", e);
                     }
                 });
@@ -843,7 +851,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
                 let processor_submit = Arc::clone(&processor);
                 let jwt_secret_submit = Arc::clone(&jwt_secret_device_import);
                 tokio::spawn(async move {
-                    if let Err(e) = import_processors::handle_device_import_submit(client_submit, device_import_submit_sub, processor_submit, jwt_secret_submit).await {
+                    if let Err(e) = import_processors::handle_device_import_submit(client_submit, device_import_submit_sub, jwt_secret_submit, processor_submit).await {
                         error!("Device import submit handler error: {}", e);
                     }
                 });
@@ -884,7 +892,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
                 let processor_submit = Arc::clone(&processor);
                 let jwt_secret_submit = Arc::clone(&jwt_secret_revision_import);
                 tokio::spawn(async move {
-                    if let Err(e) = import_processors::handle_revision_import_submit(client_submit, revision_import_submit_sub, processor_submit, jwt_secret_submit).await {
+                    if let Err(e) = import_processors::handle_revision_import_submit(client_submit, revision_import_submit_sub, jwt_secret_submit, processor_submit).await {
                         error!("Revision import submit handler error: {}", e);
                     }
                 });
@@ -925,7 +933,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
                 let processor_submit = Arc::clone(&processor);
                 let jwt_secret_submit = Arc::clone(&jwt_secret_communication_import);
                 tokio::spawn(async move {
-                    if let Err(e) = import_processors::handle_communication_import_submit(client_submit, communication_import_submit_sub, processor_submit, jwt_secret_submit).await {
+                    if let Err(e) = import_processors::handle_communication_import_submit(client_submit, communication_import_submit_sub, jwt_secret_submit, processor_submit).await {
                         error!("Communication import submit handler error: {}", e);
                     }
                 });
@@ -966,7 +974,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
                 let processor_submit = Arc::clone(&processor);
                 let jwt_secret_submit = Arc::clone(&jwt_secret_visit_import);
                 tokio::spawn(async move {
-                    if let Err(e) = import_processors::handle_work_log_import_submit(client_submit, visit_import_submit_sub, processor_submit, jwt_secret_submit).await {
+                    if let Err(e) = import_processors::handle_work_log_import_submit(client_submit, visit_import_submit_sub, jwt_secret_submit, processor_submit).await {
                         error!("Visit import submit handler error: {}", e);
                     }
                 });
@@ -1007,7 +1015,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
                 let processor_submit = Arc::clone(&processor);
                 let jwt_secret_submit = Arc::clone(&jwt_secret_zip_import);
                 tokio::spawn(async move {
-                    if let Err(e) = import_processors::handle_zip_import_submit(client_submit, zip_import_submit_sub, processor_submit, jwt_secret_submit).await {
+                    if let Err(e) = import_processors::handle_zip_import_submit(client_submit, zip_import_submit_sub, jwt_secret_submit, processor_submit).await {
                         error!("ZIP import submit handler error: {}", e);
                     }
                 });
@@ -1303,6 +1311,9 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         }
         result = route_get_handle => {
             error!("Route get handler finished: {:?}", result);
+        }
+        result = route_list_for_date_handle => {
+            error!("Route list for date handler finished: {:?}", result);
         }
         result = route_insertion_handle => {
             error!("Route insertion handler finished: {:?}", result);

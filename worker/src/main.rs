@@ -52,6 +52,9 @@ async fn main() -> Result<()> {
     db::run_migrations(&pool).await?;
     info!("Database migrations complete");
 
+    // Ensure dev admin has a valid password hash
+    db::ensure_dev_admin_password(&pool).await;
+
     // Connect to NATS
     let nats_client = async_nats::connect(&config.nats_url).await?;
     info!("Connected to NATS at {}", config.nats_url);

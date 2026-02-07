@@ -443,6 +443,13 @@ pub struct GetRouteResponse {
     pub stops: Vec<queries::route::RouteStopWithInfo>,
 }
 
+/// Response with list of routes for a date
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListRoutesForDateResponse {
+    pub routes: Vec<queries::route::RouteWithCrewInfo>,
+}
+
 /// Handle route.save messages
 pub async fn handle_save(
     client: Client,
@@ -635,6 +642,66 @@ pub async fn handle_get(
     Ok(())
 }
 
+/// Handle route.list_for_date messages
+pub async fn handle_list_for_date(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+    jwt_secret: Arc<String>,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received route.list_for_date message");
+
+        let reply = match msg.reply {
+            Some(ref reply) => reply.clone(),
+            None => {
+                warn!("Message without reply subject");
+                continue;
+            }
+        };
+
+        // Parse request
+        let request: Request<GetRouteRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("Failed to parse request: {}", e);
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Check auth
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Load routes for date
+        match queries::route::list_routes_for_date(&pool, user_id, request.payload.date).await {
+            Ok(routes) => {
+                let response = SuccessResponse::new(
+                    request.id,
+                    ListRoutesForDateResponse { routes },
+                );
+                let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+                debug!("Returned {} routes for date {}", response.payload.routes.len(), request.payload.date);
+            }
+            Err(e) => {
+                error!("Failed to list routes: {}", e);
+                let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 // ============================================================================
 // Insertion Calculation Handlers (1×K + K×1 Matrix Strategy)
 // ============================================================================
@@ -701,7 +768,7 @@ pub async fn handle_insertion_calculate(
     client: Client,
     mut subscriber: Subscriber,
     _pool: PgPool,
-    jwt_secret: Arc<String>,
+    _jwt_secret: Arc<String>,
     routing_service: Arc<dyn RoutingService>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
@@ -927,7 +994,7 @@ pub async fn handle_insertion_batch(
     client: Client,
     mut subscriber: Subscriber,
     _pool: PgPool,
-    jwt_secret: Arc<String>,
+    _jwt_secret: Arc<String>,
     routing_service: Arc<dyn RoutingService>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {

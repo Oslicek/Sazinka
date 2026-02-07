@@ -5,7 +5,7 @@ pub mod queries;
 use anyhow::Result;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
-use tracing::info;
+use tracing::{info, warn};
 
 /// Create a database connection pool
 pub async fn create_pool(database_url: &str) -> Result<PgPool> {
@@ -24,4 +24,45 @@ pub async fn run_migrations(pool: &PgPool) -> Result<()> {
         .run(pool)
         .await?;
     Ok(())
+}
+
+/// Ensure the dev admin user has a valid Argon2 password hash.
+/// If the hash is invalid (e.g. "not_a_real_hash" or "not-set" from seed),
+/// set it to a hash of "password123".
+/// This only runs in dev - production users register with real passwords.
+pub async fn ensure_dev_admin_password(pool: &PgPool) {
+    use uuid::Uuid;
+
+    let dev_id = Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap();
+    let row: Option<(String,)> = sqlx::query_as(
+        "SELECT password_hash FROM users WHERE id = $1"
+    )
+    .bind(dev_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    if let Some((hash,)) = row {
+        if !hash.starts_with("$argon2") {
+            warn!("Dev admin user has invalid password hash, setting to 'password123'");
+            match crate::auth::hash_password("password123") {
+                Ok(new_hash) => {
+                    let result = sqlx::query(
+                        "UPDATE users SET password_hash = $1 WHERE id = $2"
+                    )
+                    .bind(&new_hash)
+                    .bind(dev_id)
+                    .execute(pool)
+                    .await;
+
+                    match result {
+                        Ok(_) => info!("Dev admin password set to 'password123'"),
+                        Err(e) => warn!("Failed to update dev admin password: {}", e),
+                    }
+                }
+                Err(e) => warn!("Failed to hash dev admin password: {}", e),
+            }
+        }
+    }
 }

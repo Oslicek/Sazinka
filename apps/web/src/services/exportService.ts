@@ -8,7 +8,7 @@ import type { Customer } from '@shared/customer';
 import * as customerService from './customerService';
 import * as revisionService from './revisionService';
 import { useNatsStore } from '../stores/natsStore';
-import { getToken } from '@/utils/auth';
+
 
 // ============================================================================
 // CSV Helpers
@@ -105,7 +105,7 @@ export async function exportCustomers(
   }
 ): Promise<void> {
   // Fetch all customers
-  const result = await deps.listCustomers(getToken(), {});
+  const result = await deps.listCustomers({});
   const customers = result.items;
   
   // Map to export format
@@ -191,7 +191,7 @@ export async function exportRevisions(
   }
 ): Promise<void> {
   // Fetch revisions
-  const result = await deps.listRevisions(getToken(), {
+  const result = await deps.listRevisions({
     fromDate: options.dateFrom,
     toDate: options.dateTo,
     status: options.status,
@@ -245,7 +245,7 @@ export async function getCustomerCount(
     request: useNatsStore.getState().request,
   }
 ): Promise<number> {
-  const result = await deps.listCustomers(getToken(), {});
+  const result = await deps.listCustomers({});
   return result.total;
 }
 
@@ -263,7 +263,7 @@ export async function getRevisionCount(
     request: useNatsStore.getState().request,
   }
 ): Promise<number> {
-  const result = await deps.listRevisions(getToken(), {
+  const result = await deps.listRevisions({
     fromDate: options.dateFrom,
     toDate: options.dateTo,
     status: options.status,

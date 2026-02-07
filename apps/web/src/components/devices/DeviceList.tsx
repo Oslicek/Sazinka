@@ -13,11 +13,10 @@ import styles from './DeviceList.module.css';
 
 interface DeviceListProps {
   customerId: string;
-  userId: string;
   onDeviceSelect?: (device: Device) => void;
 }
 
-export function DeviceList({ customerId, userId, onDeviceSelect }: DeviceListProps) {
+export function DeviceList({ customerId, onDeviceSelect }: DeviceListProps) {
   const [devices, setDevices] = useState<Device[]>([]);
   const [deviceRevisions, setDeviceRevisions] = useState<Record<string, Revision[]>>({});
   const [isLoading, setIsLoading] = useState(true);
@@ -40,7 +39,7 @@ export function DeviceList({ customerId, userId, onDeviceSelect }: DeviceListPro
     try {
       setIsLoading(true);
       setError(null);
-      const response = await listDevices(userId, customerId);
+      const response = await listDevices(customerId);
       setDevices(response.items);
       
       // Load revisions for all devices
@@ -48,7 +47,7 @@ export function DeviceList({ customerId, userId, onDeviceSelect }: DeviceListPro
       await Promise.all(
         response.items.map(async (device) => {
           try {
-            const revResponse = await listRevisions(userId, { deviceId: device.id, limit: 100 });
+            const revResponse = await listRevisions({ deviceId: device.id, limit: 100 });
             revisionsMap[device.id] = revResponse.items;
           } catch {
             revisionsMap[device.id] = [];
@@ -62,7 +61,7 @@ export function DeviceList({ customerId, userId, onDeviceSelect }: DeviceListPro
     } finally {
       setIsLoading(false);
     }
-  }, [isConnected, userId, customerId]);
+  }, [isConnected, customerId]);
 
   useEffect(() => {
     loadDevices();
@@ -97,7 +96,7 @@ export function DeviceList({ customerId, userId, onDeviceSelect }: DeviceListPro
     try {
       setDeletingDeviceId(device.id);
       setError(null);
-      await deleteDevice(userId, device.id, customerId);
+      await deleteDevice(device.id, customerId);
       loadDevices();
     } catch (err) {
       console.error('Failed to delete device:', err);
@@ -105,7 +104,7 @@ export function DeviceList({ customerId, userId, onDeviceSelect }: DeviceListPro
     } finally {
       setDeletingDeviceId(null);
     }
-  }, [userId, customerId, loadDevices]);
+  }, [customerId, loadDevices]);
 
   const formatDate = (dateStr: string | undefined) => {
     if (!dateStr) return '-';
@@ -156,7 +155,6 @@ export function DeviceList({ customerId, userId, onDeviceSelect }: DeviceListPro
         <RevisionForm
           customerId={customerId}
           deviceId={addingRevisionForDevice.id}
-          userId={userId}
           onSuccess={handleRevisionFormSuccess}
           onCancel={handleRevisionFormClose}
         />
@@ -168,7 +166,6 @@ export function DeviceList({ customerId, userId, onDeviceSelect }: DeviceListPro
     return (
       <DeviceForm
         customerId={customerId}
-        userId={userId}
         device={editingDevice ?? undefined}
         onSuccess={handleFormSuccess}
         onCancel={handleFormClose}

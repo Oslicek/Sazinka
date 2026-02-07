@@ -47,11 +47,14 @@ export interface SaveRouteResponse {
 export interface SavedRoute {
   id: string;
   userId: string;
+  crewId: string | null;
+  crewName?: string;
   date: string;
   status: string;
   totalDistanceKm: number | null;
   totalDurationMinutes: number | null;
   optimizationScore: number | null;
+  stopsCount?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -115,16 +118,20 @@ export function toPlannedRouteStop(stop: SavedRouteStop): PlannedRouteStop {
  * Save a route to the backend
  */
 export async function saveRoute(
-  request: SaveRouteRequest,
+  data: SaveRouteRequest,
   deps = { request: useNatsStore.getState().request }
 ): Promise<SaveRouteResponse> {
-  const payload = {
-    userId: getToken(),
-    payload: request,
-  };
-  const response = await deps.request<typeof payload, SaveRouteResponse>('sazinka.route.save', payload);
+  const req = createRequest(getToken(), data);
+  const response = await deps.request<typeof req, NatsResponse<SaveRouteResponse>>(
+    'sazinka.route.save',
+    req,
+  );
 
-  return response;
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+
+  return response.payload;
 }
 
 /**
@@ -134,13 +141,17 @@ export async function getRoute(
   date: string,
   deps = { request: useNatsStore.getState().request }
 ): Promise<GetRouteResponse> {
-  const payload = {
-    userId: getToken(),
-    payload: { date },
-  };
-  const response = await deps.request<typeof payload, GetRouteResponse>('sazinka.route.get', payload);
+  const req = createRequest(getToken(), { date });
+  const response = await deps.request<typeof req, NatsResponse<GetRouteResponse>>(
+    'sazinka.route.get',
+    req,
+  );
 
-  return response;
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+
+  return response.payload;
 }
 
 /**
@@ -152,6 +163,30 @@ export async function hasRouteForDate(
 ): Promise<boolean> {
   const response = await getRoute(date, deps);
   return response.route !== null;
+}
+
+export interface ListRoutesForDateResponse {
+  routes: SavedRoute[];
+}
+
+/**
+ * List all routes for a specific date (for all crews)
+ */
+export async function listRoutesForDate(
+  date: string,
+  deps = { request: useNatsStore.getState().request }
+): Promise<ListRoutesForDateResponse> {
+  const req = createRequest(getToken(), { date });
+  const response = await deps.request<typeof req, NatsResponse<ListRoutesForDateResponse>>(
+    'sazinka.route.list_for_date',
+    req,
+  );
+
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+
+  return response.payload;
 }
 
 // ==========================================================================
@@ -194,7 +229,6 @@ export async function submitRoutePlanJob(
   deps = { request: useNatsStore.getState().request }
 ): Promise<RoutePlanJobSubmitResponse> {
   const req = createRequest(getToken(), {
-    userId: getToken(),
     customerIds: request.customerIds,
     date: request.date,
     startLocation: request.startLocation,

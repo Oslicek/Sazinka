@@ -48,6 +48,61 @@ pub async fn get_route_for_date(
     Ok(route)
 }
 
+/// Route with crew info and stops count
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RouteWithCrewInfo {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub crew_id: Option<Uuid>,
+    pub crew_name: Option<String>,
+    pub date: NaiveDate,
+    pub status: String,
+    pub total_distance_km: Option<f64>,
+    pub total_duration_minutes: Option<i32>,
+    pub optimization_score: Option<i32>,
+    pub stops_count: Option<i64>,
+    pub created_at: chrono::NaiveDateTime,
+    pub updated_at: chrono::NaiveDateTime,
+}
+
+/// List all routes for a specific date (all crews)
+pub async fn list_routes_for_date(
+    pool: &PgPool,
+    user_id: Uuid,
+    date: NaiveDate,
+) -> Result<Vec<RouteWithCrewInfo>> {
+    let routes = sqlx::query_as::<_, RouteWithCrewInfo>(
+        r#"
+        SELECT
+            r.id,
+            r.user_id,
+            r.crew_id,
+            c.name as crew_name,
+            r.date,
+            r.status::text as status,
+            r.total_distance_km,
+            r.total_duration_minutes,
+            r.optimization_score,
+            COUNT(rs.id) as stops_count,
+            r.created_at,
+            r.updated_at
+        FROM routes r
+        LEFT JOIN crews c ON c.id = r.crew_id
+        LEFT JOIN route_stops rs ON rs.route_id = r.id
+        WHERE r.user_id = $1 AND r.date = $2
+        GROUP BY r.id, c.name
+        ORDER BY c.name NULLS LAST
+        "#
+    )
+    .bind(user_id)
+    .bind(date)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(routes)
+}
+
 /// Create or update route (with crew_id)
 pub async fn upsert_route(
     pool: &PgPool,

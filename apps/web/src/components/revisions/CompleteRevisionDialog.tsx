@@ -7,14 +7,13 @@ import styles from './CompleteRevisionDialog.module.css';
 
 interface CompleteRevisionDialogProps {
   revision: Revision;
-  userId: string;
   onSuccess: () => void;
   onCancel: () => void;
 }
 
 const RESULTS: RevisionResult[] = ['passed', 'failed', 'conditional'];
 
-export function CompleteRevisionDialog({ revision, userId, onSuccess, onCancel }: CompleteRevisionDialogProps) {
+export function CompleteRevisionDialog({ revision, onSuccess, onCancel }: CompleteRevisionDialogProps) {
   const [result, setResult] = useState<RevisionResult>('passed');
   const [findings, setFindings] = useState('');
   const [durationMinutes, setDurationMinutes] = useState<number>(30);
@@ -42,7 +41,7 @@ export function CompleteRevisionDialog({ revision, userId, onSuccess, onCancel }
         durationMinutes: durationMinutes > 0 ? durationMinutes : undefined,
       };
       
-      await completeRevision(userId, data);
+      await completeRevision(data);
       onSuccess();
     } catch (err) {
       console.error('Failed to complete revision:', err);
@@ -50,7 +49,7 @@ export function CompleteRevisionDialog({ revision, userId, onSuccess, onCancel }
     } finally {
       setIsSubmitting(false);
     }
-  }, [isConnected, revision.id, result, findings, durationMinutes, userId, onSuccess]);
+  }, [isConnected, revision.id, result, findings, durationMinutes, onSuccess]);
 
   return (
     <div className={styles.overlay} onClick={onCancel}>

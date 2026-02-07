@@ -23,7 +23,6 @@ import type { SlotSuggestion } from '../components/planner/SlotSuggestions';
 import { DeviceList } from '../components/devices';
 import { CustomerTimeline } from '../components/timeline';
 import { useNatsStore } from '../stores/natsStore';
-import { getToken } from '@/utils/auth';
 import styles from './CustomerDetail.module.css';
 
 // Default mock crews (fallback when none in database)
@@ -426,7 +425,6 @@ export function CustomerDetail() {
           devices: (
             <DeviceList
               customerId={customer.id}
-              userId={getToken()}
             />
           ),
           revisions: (

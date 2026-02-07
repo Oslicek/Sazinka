@@ -571,7 +571,7 @@ pub async fn handle_geocode_depot(
     client: Client,
     mut subscriber: Subscriber,
     geocoder: Arc<dyn Geocoder>,
-    jwt_secret: Arc<String>,
+    _jwt_secret: Arc<String>,
 ) -> Result<()> {
     use crate::types::Coordinates;
 

@@ -7,7 +7,6 @@ import styles from './DeviceForm.module.css';
 
 interface DeviceFormProps {
   customerId: string;
-  userId: string;
   device?: Device;
   onSuccess: () => void;
   onCancel: () => void;
@@ -42,7 +41,7 @@ const createInitialFormData = (device?: Device): FormData => ({
   notes: device?.notes ?? '',
 });
 
-export function DeviceForm({ customerId, userId, device, onSuccess, onCancel }: DeviceFormProps) {
+export function DeviceForm({ customerId, device, onSuccess, onCancel }: DeviceFormProps) {
   const isEditMode = !!device;
   const [formData, setFormData] = useState<FormData>(() => createInitialFormData(device));
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -96,7 +95,7 @@ export function DeviceForm({ customerId, userId, device, onSuccess, onCancel }: 
             : undefined,
         };
         
-        await updateDevice(userId, customerId, updateData);
+        await updateDevice(customerId, updateData);
       } else {
         const createData: CreateDeviceRequest = {
           customerId,
@@ -109,7 +108,7 @@ export function DeviceForm({ customerId, userId, device, onSuccess, onCancel }: 
           notes: formData.notes.trim() || undefined,
         };
         
-        await createDevice(userId, createData);
+        await createDevice(createData);
       }
 
       onSuccess();
@@ -119,7 +118,7 @@ export function DeviceForm({ customerId, userId, device, onSuccess, onCancel }: 
     } finally {
       setIsSubmitting(false);
     }
-  }, [isConnected, formData, isEditMode, device, userId, customerId, onSuccess]);
+  }, [isConnected, formData, isEditMode, device, customerId, onSuccess]);
 
   return (
     <form className={styles.form} onSubmit={handleSubmit}>

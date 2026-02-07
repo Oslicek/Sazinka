@@ -11,7 +11,7 @@ import {
 import { RevisionWorkspace, type RevisionTabId } from '../components/revisions/RevisionWorkspace';
 import { CompleteRevisionDialog } from '../components/revisions/CompleteRevisionDialog';
 import { useNatsStore } from '../stores/natsStore';
-import { getToken } from '@/utils/auth';
+
 import styles from './RevisionDetail.module.css';
 
 interface SearchParams {
@@ -364,7 +364,6 @@ export function RevisionDetail() {
       {showCompleteDialog && (
         <CompleteRevisionDialog
           revision={revision}
-          userId={getToken()}
           onSuccess={handleCompleteSuccess}
           onCancel={() => setShowCompleteDialog(false)}
         />

@@ -3,8 +3,9 @@
 
 -- Test admin user for development
 -- Password: password123 (dev only -- never use in production!)
--- Note: The password_hash will be set by the worker on first login attempt with
--- the legacy TEMP_USER_ID fallback. For fresh DBs, use the register endpoint.
+-- Note: password_hash is set to a placeholder here. The worker automatically
+-- detects invalid hashes on startup and replaces them with a proper Argon2
+-- hash of 'password123'. See db::ensure_dev_admin_password().
 INSERT INTO users (
     id, 
     email, 

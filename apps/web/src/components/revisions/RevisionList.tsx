@@ -12,14 +12,12 @@ import styles from './RevisionList.module.css';
 interface RevisionListProps {
   customerId?: string;
   deviceId?: string;
-  userId: string;
   onRevisionSelect?: (revision: Revision) => void;
 }
 
 export function RevisionList({ 
   customerId, 
   deviceId, 
-  userId, 
   onRevisionSelect,
 }: RevisionListProps) {
   const [revisions, setRevisions] = useState<Revision[]>([]);
@@ -51,7 +49,7 @@ export function RevisionList({
         limit: 50,
       };
       
-      const response = await listRevisions(userId, filters);
+      const response = await listRevisions(filters);
       setRevisions(response.items);
     } catch (err) {
       console.error('Failed to load revisions:', err);
@@ -59,7 +57,7 @@ export function RevisionList({
     } finally {
       setIsLoading(false);
     }
-  }, [isConnected, userId, customerId, deviceId, statusFilter]);
+  }, [isConnected, customerId, deviceId, statusFilter]);
 
   useEffect(() => {
     loadRevisions();
@@ -107,7 +105,7 @@ export function RevisionList({
     try {
       setDeletingRevisionId(revision.id);
       setError(null);
-      await deleteRevision(userId, revision.id);
+      await deleteRevision(revision.id);
       loadRevisions();
     } catch (err) {
       console.error('Failed to delete revision:', err);
@@ -115,7 +113,7 @@ export function RevisionList({
     } finally {
       setDeletingRevisionId(null);
     }
-  }, [userId, loadRevisions]);
+  }, [loadRevisions]);
 
   const formatDate = (dateStr: string | undefined) => {
     if (!dateStr) return '-';
@@ -158,7 +156,6 @@ export function RevisionList({
       <RevisionForm
         customerId={customerId}
         deviceId={deviceId}
-        userId={userId}
         revision={editingRevision ?? undefined}
         onSuccess={handleFormSuccess}
         onCancel={handleFormClose}
@@ -306,7 +303,6 @@ export function RevisionList({
       {completingRevision && (
         <CompleteRevisionDialog
           revision={completingRevision}
-          userId={userId}
           onSuccess={handleCompleteSuccess}
           onCancel={handleCompleteClose}
         />

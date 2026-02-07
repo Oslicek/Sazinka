@@ -14,7 +14,6 @@
 import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import type { Customer, CustomerListItem } from '@shared/customer';
-import { getToken } from '@/utils/auth';
 import { AddressMap } from './AddressMap';
 import { AddressStatusChip } from './AddressStatusChip';
 import { DeviceList } from '../devices';
@@ -296,7 +295,6 @@ export function CustomerPreviewPanel({
               {activeTab === 'devices' && (
                 <DeviceList
                   customerId={fullCustomer.id}
-                  userId={getToken()}
                 />
               )}
               {activeTab === 'revisions' && (
