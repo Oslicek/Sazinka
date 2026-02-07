@@ -1208,6 +1208,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let client_route_jobs = client.clone();
     let pool_route_jobs = pool.clone();
     let routing_service_jobs = Arc::clone(&routing_service);
+    let jwt_secret_route_jobs = Arc::clone(&jwt_secret);
     tokio::spawn(async move {
         match jobs::JobProcessor::new(client_route_jobs.clone(), pool_route_jobs, routing_service_jobs).await {
             Ok(processor) => {
@@ -1225,8 +1226,9 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
                 // Start submit handler
                 let client_submit = client_route_jobs.clone();
                 let processor_submit = Arc::clone(&processor);
+                let jwt_secret_submit = Arc::clone(&jwt_secret_route_jobs);
                 tokio::spawn(async move {
-                    if let Err(e) = jobs::handle_job_submit(client_submit, route_submit_sub, processor_submit).await {
+                    if let Err(e) = jobs::handle_job_submit(client_submit, route_submit_sub, processor_submit, jwt_secret_submit).await {
                         error!("Route job submit handler error: {}", e);
                     }
                 });

@@ -230,7 +230,7 @@ impl JobProcessor {
         job_id: Uuid,
         request: &RoutePlanJobRequest,
     ) -> Result<RoutePlanResponse> {
-        let user_id = request.user_id;
+        let user_id = request.user_id.unwrap_or(Uuid::nil());
         let solver = VrpSolver::new(SolverConfig::fast());
         
         // Validate request
@@ -520,6 +520,7 @@ pub async fn handle_job_submit(
     client: Client,
     mut subscriber: async_nats::Subscriber,
     processor: Arc<JobProcessor>,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
         let reply = match msg.reply {
@@ -537,14 +538,31 @@ pub async fn handle_job_submit(
             }
         };
         
-        match processor.submit_job(request.payload).await {
+        // Extract user_id from JWT token or Request wrapper
+        let request_id = request.id;
+        let request_user_id = request.user_id.clone();
+        // Try to extract auth before moving payload
+        let auth_user_id = crate::auth::extract_auth(&request, &jwt_secret)
+            .ok()
+            .map(|auth| auth.user_id);
+        
+        let mut job_request = request.payload;
+        if job_request.user_id.is_none() {
+            if let Some(uid) = auth_user_id {
+                job_request.user_id = Some(uid);
+            } else {
+                job_request.user_id = request_user_id;
+            }
+        }
+        
+        match processor.submit_job(job_request).await {
             Ok(response) => {
-                let success = SuccessResponse::new(request.id, response);
+                let success = SuccessResponse::new(request_id, response);
                 let _ = client.publish(reply, serde_json::to_vec(&success)?.into()).await;
             }
             Err(e) => {
                 error!("Failed to submit job: {}", e);
-                let error = ErrorResponse::new(request.id, "SUBMIT_ERROR", e.to_string());
+                let error = ErrorResponse::new(request_id, "SUBMIT_ERROR", e.to_string());
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
             }
         }

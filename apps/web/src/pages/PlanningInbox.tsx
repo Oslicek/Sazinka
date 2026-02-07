@@ -867,7 +867,11 @@ export function PlanningInbox() {
     if (routeStops.length < 2 || !context) return;
 
     const depot = depots.find((d) => d.id === context.depotId);
-    if (!depot) return;
+    
+    // Use first stop as fallback start location if no depot
+    const startLocation = depot
+      ? { lat: depot.lat, lng: depot.lng }
+      : { lat: routeStops[0].coordinates.lat, lng: routeStops[0].coordinates.lng };
 
     setIsOptimizing(true);
     setRouteJobProgress('Odesílám do optimalizátoru...');
@@ -877,7 +881,7 @@ export function PlanningInbox() {
       const jobResponse = await routeService.submitRoutePlanJob({
         customerIds,
         date: context.date,
-        startLocation: { lat: depot.lat, lng: depot.lng },
+        startLocation,
       });
 
       setRouteJobProgress('Ve frontě...');
@@ -943,10 +947,11 @@ export function PlanningInbox() {
         }
       );
     } catch (err) {
-      console.error('Failed to optimize route:', err);
-      setRouteJobProgress('Chyba při odesílání');
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('Failed to optimize route:', message, err);
+      setRouteJobProgress(`Chyba: ${message}`);
       setIsOptimizing(false);
-      setTimeout(() => setRouteJobProgress(null), 3000);
+      setTimeout(() => setRouteJobProgress(null), 8000);
     }
   }, [routeStops, context, depots]);
 
