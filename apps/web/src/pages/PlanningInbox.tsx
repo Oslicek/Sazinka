@@ -120,6 +120,15 @@ export function PlanningInbox() {
   const [slotSuggestions, setSlotSuggestions] = useState<SlotSuggestion[]>([]);
   const [isCalculatingSlots, setIsCalculatingSlots] = useState(false);
   
+  // Confirmation state - shows after scheduling
+  const [scheduledConfirmation, setScheduledConfirmation] = useState<{
+    candidateId: string;
+    candidateName: string;
+    date: string;
+    timeStart: string;
+    timeEnd: string;
+  } | null>(null);
+  
   // Draft mode state
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -761,12 +770,46 @@ export function PlanningInbox() {
         timeWindowEnd: slot.timeEnd,
       });
       
-      // Select next before removing
-      selectNextCandidate(candidate.customerId);
+      // Show confirmation - stay on this candidate
+      setScheduledConfirmation({
+        candidateId: candidate.customerId,
+        candidateName: candidate.customerName,
+        date: slot.date,
+        timeStart: slot.timeStart,
+        timeEnd: slot.timeEnd,
+      });
+      setSlotSuggestions([]);
       
-      // Remove from list and update counts
+      // Mark candidate as scheduled in list (but don't remove)
+      setCandidates((prev) =>
+        prev.map((c) =>
+          c.id === candidate.id
+            ? { ...c, _scheduled: true } as InboxCandidate
+            : c
+        )
+      );
+      
+      // Invalidate route cache since route changed
+      incrementRouteVersion();
+      
+      setHasChanges(true);
+      setLastSaved(new Date());
+    } catch (err) {
+      console.error('Failed to schedule:', err);
+    }
+  }, [candidates, incrementRouteVersion]);
+  
+  // Dismiss confirmation and move on to next candidate
+  const handleDismissConfirmation = useCallback(() => {
+    const confirmedId = scheduledConfirmation?.candidateId;
+    setScheduledConfirmation(null);
+    
+    if (confirmedId) {
+      // Now select next and remove the scheduled candidate
+      selectNextCandidate(confirmedId);
+      
       setCandidates((prev) => {
-        const updated = prev.filter((c) => c.id !== candidate.id);
+        const updated = prev.filter((c) => c.customerId !== confirmedId);
         setSegmentCounts({
           overdue: updated.filter((c) => getDaysOverdue(c) > 0).length,
           thisWeek: updated.filter((c) => c.daysUntilDue <= 7).length,
@@ -777,17 +820,8 @@ export function PlanningInbox() {
         });
         return updated;
       });
-      setSlotSuggestions([]);
-      
-      // Invalidate route cache since route changed
-      incrementRouteVersion();
-      
-      setHasChanges(true);
-      setLastSaved(new Date());
-    } catch (err) {
-      console.error('Failed to schedule:', err);
     }
-  }, [candidates, incrementRouteVersion, selectNextCandidate]);
+  }, [scheduledConfirmation, selectNextCandidate]);
 
   const handleSnooze = useCallback(async (candidateId: string) => {
     const candidate = candidates.find((c) => c.id === candidateId || c.customerId === candidateId);
@@ -1258,18 +1292,55 @@ export function PlanningInbox() {
   // Render detail panel
   const renderDetailPanel = () => (
     <div className={styles.detailPanel}>
-      <CandidateDetail
-        candidate={selectedCandidateDetail}
-        isRouteAware={isRouteAware}
-        onSchedule={handleSchedule}
-        onSnooze={handleSnooze}
-        onFixAddress={handleFixAddress}
-        isLoading={isCalculatingSlots}
-        onAddToRoute={handleAddToRoute}
-        onRemoveFromRoute={handleRemoveFromRoute}
-        isInRoute={selectedCandidateId ? inRouteIds.has(selectedCandidateId) : false}
-        routeDate={context?.date}
-      />
+      {scheduledConfirmation && scheduledConfirmation.candidateId === selectedCandidateId ? (
+        <div className={styles.confirmation}>
+          <div className={styles.confirmationIcon}>✓</div>
+          <h3 className={styles.confirmationTitle}>Naplánováno</h3>
+          <p className={styles.confirmationName}>{scheduledConfirmation.candidateName}</p>
+          
+          <div className={styles.confirmationDate}>
+            <div className={styles.calendarCard}>
+              <span className={styles.calendarMonth}>
+                {new Date(scheduledConfirmation.date + 'T00:00:00').toLocaleDateString('cs-CZ', { month: 'long' })}
+              </span>
+              <span className={styles.calendarDay}>
+                {new Date(scheduledConfirmation.date + 'T00:00:00').getDate()}
+              </span>
+              <span className={styles.calendarWeekday}>
+                {new Date(scheduledConfirmation.date + 'T00:00:00').toLocaleDateString('cs-CZ', { weekday: 'long' })}
+              </span>
+            </div>
+            {(scheduledConfirmation.timeStart || scheduledConfirmation.timeEnd) && (
+              <div className={styles.confirmationTime}>
+                {scheduledConfirmation.timeStart?.substring(0, 5) || '--:--'}
+                {' – '}
+                {scheduledConfirmation.timeEnd?.substring(0, 5) || '--:--'}
+              </div>
+            )}
+          </div>
+
+          <button
+            type="button"
+            className={styles.confirmationButton}
+            onClick={handleDismissConfirmation}
+          >
+            Další zákazník →
+          </button>
+        </div>
+      ) : (
+        <CandidateDetail
+          candidate={selectedCandidateDetail}
+          isRouteAware={isRouteAware}
+          onSchedule={handleSchedule}
+          onSnooze={handleSnooze}
+          onFixAddress={handleFixAddress}
+          isLoading={isCalculatingSlots}
+          onAddToRoute={handleAddToRoute}
+          onRemoveFromRoute={handleRemoveFromRoute}
+          isInRoute={selectedCandidateId ? inRouteIds.has(selectedCandidateId) : false}
+          routeDate={context?.date}
+        />
+      )}
     </div>
   );
 
