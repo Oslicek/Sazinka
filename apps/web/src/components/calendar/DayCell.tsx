@@ -16,6 +16,7 @@ interface DayCellProps {
  */
 export function DayCell({ day, items, onClick, workloadMinutes, capacityMinutes }: DayCellProps) {
   const countClass = getItemCountClass(items.length);
+  const isWeekend = day.date.getDay() === 0 || day.date.getDay() === 6;
   
   const handleClick = () => {
     onClick?.(day, items);
@@ -44,6 +45,7 @@ export function DayCell({ day, items, onClick, workloadMinutes, capacityMinutes 
         ${countClass ? styles[countClass] : ''}
         ${hasOverdue ? styles.hasOverdue : ''}
         ${isOverCapacity ? styles.overCapacity : ''}
+        ${isWeekend ? styles.weekend : ''}
       `}
       onClick={handleClick}
       role="button"

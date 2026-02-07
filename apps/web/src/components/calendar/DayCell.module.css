@@ -31,6 +31,11 @@
   opacity: 0.6;
 }
 
+/* Weekend highlighting */
+.weekend {
+  background: rgba(15, 23, 42, 0.04);
+}
+
 /* Today */
 .today {
   border-color: var(--color-primary);

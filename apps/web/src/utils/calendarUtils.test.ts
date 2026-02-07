@@ -2,11 +2,11 @@ import { describe, it, expect } from 'vitest';
 import {
   getMonthDays,
   getMonthRange,
-  groupRevisionsByDay,
-  getRevisionCountClass,
-  type CalendarDay,
+  getWeekDays,
+  groupItemsByDay,
+  getItemCountClass,
 } from './calendarUtils';
-import type { Revision } from '@shared/revision';
+import type { CalendarItem } from '@shared/calendar';
 
 describe('calendarUtils', () => {
   describe('getMonthRange', () => {
@@ -87,74 +87,60 @@ describe('calendarUtils', () => {
     });
   });
 
-  describe('groupRevisionsByDay', () => {
-    const mockRevisionsScheduled: Partial<Revision>[] = [
-      { id: '1', scheduledDate: '2026-01-15', status: 'scheduled' },
-      { id: '2', scheduledDate: '2026-01-15', status: 'confirmed' },
-      { id: '3', scheduledDate: '2026-01-20', status: 'scheduled' },
+  describe('getWeekDays', () => {
+    it('should return 7 days starting on Monday', () => {
+      const days = getWeekDays(new Date('2026-01-15T00:00:00'));
+      expect(days).toHaveLength(7);
+      expect(days[0].dateKey).toBe('2026-01-12');
+      expect(days[6].dateKey).toBe('2026-01-18');
+    });
+
+    it('should mark today flag on correct date', () => {
+      const today = new Date();
+      const days = getWeekDays(today);
+      const todayEntry = days.find((day) => day.isToday);
+      expect(todayEntry).toBeDefined();
+    });
+  });
+
+  describe('groupItemsByDay', () => {
+    const items: CalendarItem[] = [
+      { id: '1', type: 'revision', date: '2026-01-15', status: 'scheduled', title: 'A' },
+      { id: '2', type: 'visit', date: '2026-01-15', status: 'scheduled', title: 'B' },
+      { id: '3', type: 'task', date: '2026-01-20', status: 'pending', title: 'C' },
     ];
 
-    const mockRevisionsDue: Partial<Revision>[] = [
-      { id: '1', dueDate: '2026-01-15', status: 'upcoming' },
-      { id: '2', dueDate: '2026-01-15', status: 'upcoming' },
-      { id: '3', dueDate: '2026-01-25', status: 'upcoming' },
-    ];
-
-    it('should group revisions by scheduled date when dateField is scheduled', () => {
-      const grouped = groupRevisionsByDay(mockRevisionsScheduled as Revision[], 'scheduled');
-      
+    it('should group items by date', () => {
+      const grouped = groupItemsByDay(items);
       expect(grouped['2026-01-15']).toHaveLength(2);
       expect(grouped['2026-01-20']).toHaveLength(1);
     });
 
-    it('should group revisions by due date when dateField is due (default)', () => {
-      const grouped = groupRevisionsByDay(mockRevisionsDue as Revision[]);
-      
-      expect(grouped['2026-01-15']).toHaveLength(2);
-      expect(grouped['2026-01-25']).toHaveLength(1);
-    });
-
     it('should return empty object for empty array', () => {
-      const grouped = groupRevisionsByDay([]);
+      const grouped = groupItemsByDay([]);
       expect(grouped).toEqual({});
-    });
-
-    it('should skip revisions without the specified date field', () => {
-      const revisionsWithoutDate: Partial<Revision>[] = [
-        { id: '1', status: 'upcoming' },
-        { id: '2', scheduledDate: '2026-01-10', status: 'scheduled' }, // has scheduled but no due
-      ];
-      
-      // Default is 'due', so revision without dueDate should be skipped
-      const grouped = groupRevisionsByDay(revisionsWithoutDate as Revision[]);
-      expect(Object.keys(grouped)).toHaveLength(0);
-      
-      // With 'scheduled', revision with scheduledDate should be included
-      const groupedScheduled = groupRevisionsByDay(revisionsWithoutDate as Revision[], 'scheduled');
-      expect(Object.keys(groupedScheduled)).toHaveLength(1);
-      expect(groupedScheduled['2026-01-10']).toHaveLength(1);
     });
   });
 
-  describe('getRevisionCountClass', () => {
-    it('should return empty string for 0 revisions', () => {
-      expect(getRevisionCountClass(0)).toBe('');
+  describe('getItemCountClass', () => {
+    it('should return empty string for 0 items', () => {
+      expect(getItemCountClass(0)).toBe('');
     });
 
-    it('should return "low" for 1-2 revisions', () => {
-      expect(getRevisionCountClass(1)).toBe('low');
-      expect(getRevisionCountClass(2)).toBe('low');
+    it('should return "low" for 1-2 items', () => {
+      expect(getItemCountClass(1)).toBe('low');
+      expect(getItemCountClass(2)).toBe('low');
     });
 
-    it('should return "medium" for 3-5 revisions', () => {
-      expect(getRevisionCountClass(3)).toBe('medium');
-      expect(getRevisionCountClass(4)).toBe('medium');
-      expect(getRevisionCountClass(5)).toBe('medium');
+    it('should return "medium" for 3-5 items', () => {
+      expect(getItemCountClass(3)).toBe('medium');
+      expect(getItemCountClass(4)).toBe('medium');
+      expect(getItemCountClass(5)).toBe('medium');
     });
 
-    it('should return "high" for 6+ revisions', () => {
-      expect(getRevisionCountClass(6)).toBe('high');
-      expect(getRevisionCountClass(10)).toBe('high');
+    it('should return "high" for 6+ items', () => {
+      expect(getItemCountClass(6)).toBe('high');
+      expect(getItemCountClass(10)).toBe('high');
     });
   });
 });

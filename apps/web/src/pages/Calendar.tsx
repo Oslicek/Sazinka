@@ -2,11 +2,12 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, Link, useSearch } from '@tanstack/react-router';
 import type { CalendarItem, CalendarItemStatus, CalendarItemType } from '@shared/calendar';
 import type { CalendarDay } from '../utils/calendarUtils';
-import { getMonthRange, groupItemsByDay, getEstimatedMinutes } from '../utils/calendarUtils';
+import { formatDateKey, getMonthRange, getWeekDays, groupItemsByDay, getEstimatedMinutes } from '../utils/calendarUtils';
 import { listCalendarItems, type CalendarViewMode } from '../services/calendarService';
 import { listCrews, type Crew } from '../services/crewService';
 import { useNatsStore } from '../stores/natsStore';
 import { CalendarGrid } from '../components/calendar';
+import { DayCell } from '../components/calendar/DayCell';
 import styles from './Calendar.module.css';
 
 // Temporary user ID until auth is implemented
@@ -28,7 +29,7 @@ const STATUS_FILTERS: CalendarItemStatus[] = [
   'pending',
 ];
 
-type LayoutMode = 'month' | 'agenda';
+type LayoutMode = 'month' | 'agenda' | 'week' | 'day';
 
 interface CalendarSearchParams {
   view?: CalendarViewMode;
@@ -49,6 +50,19 @@ function parseListParam<T extends string>(value: string | undefined, allowed: T[
 function formatListParam(values: string[], fallback: string[]): string | undefined {
   if (values.length === 0) return fallback.join(',');
   return values.join(',');
+}
+
+function formatShortDate(date: Date): string {
+  return date.toLocaleDateString('cs-CZ', { day: '2-digit', month: '2-digit' });
+}
+
+function formatLongDate(date: Date): string {
+  return date.toLocaleDateString('cs-CZ', { weekday: 'short', day: '2-digit', month: 'long', year: 'numeric' });
+}
+
+function isWeekend(date: Date): boolean {
+  const day = date.getDay();
+  return day === 0 || day === 6;
 }
 
 function getCalendarStatusLabel(status: CalendarItemStatus): string {
@@ -96,7 +110,14 @@ export function Calendar() {
   const isConnected = useNatsStore((s) => s.isConnected);
 
   const initialViewMode = searchParams.view === 'scheduled' ? 'scheduled' : 'due';
-  const initialLayout = searchParams.layout === 'agenda' ? 'agenda' : 'month';
+  const initialLayout =
+    searchParams.layout === 'week'
+      ? 'week'
+      : searchParams.layout === 'day'
+        ? 'day'
+        : searchParams.layout === 'agenda'
+          ? 'agenda'
+          : 'month';
   const initialTypes = parseListParam(searchParams.types, ITEM_TYPES);
   const initialStatus = parseListParam(searchParams.status, STATUS_FILTERS);
 
@@ -108,9 +129,10 @@ export function Calendar() {
   const [selectedCrew, setSelectedCrew] = useState<string>(searchParams.crew || '');
   const [customerQuery, setCustomerQuery] = useState<string>(searchParams.customer || '');
 
-  // Current displayed month
-  const [year, setYear] = useState(() => new Date().getFullYear());
-  const [month, setMonth] = useState(() => new Date().getMonth());
+  // Current displayed date (drives month/week/day views)
+  const [currentDate, setCurrentDate] = useState(() => new Date());
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
 
   // Data state
   const [items, setItems] = useState<CalendarItem[]>([]);
@@ -163,7 +185,18 @@ export function Calendar() {
       setIsLoading(true);
       setError(null);
 
-      const { start, end } = getMonthRange(year, month);
+      const { start, end } =
+        layoutMode === 'week'
+          ? (() => {
+              const weekDays = getWeekDays(currentDate);
+              return { start: weekDays[0].dateKey, end: weekDays[6].dateKey };
+            })()
+          : layoutMode === 'day'
+            ? (() => {
+                const key = formatDateKey(currentDate);
+                return { start: key, end: key };
+              })()
+            : getMonthRange(year, month);
 
       const response = await listCalendarItems(TEMP_USER_ID, {
         startDate: start,
@@ -184,8 +217,10 @@ export function Calendar() {
     }
   }, [
     isConnected,
+    currentDate,
     year,
     month,
+    layoutMode,
     viewMode,
     selectedTypes,
     selectedStatus,
@@ -199,28 +234,40 @@ export function Calendar() {
   }, [loadItems]);
 
   // Navigation handlers
-  const goToPreviousMonth = useCallback(() => {
-    if (month === 0) {
-      setYear((y) => y - 1);
-      setMonth(11);
-    } else {
-      setMonth((m) => m - 1);
-    }
-  }, [month]);
+  const shiftDate = useCallback((days: number) => {
+    setCurrentDate((prev) => {
+      const next = new Date(prev);
+      next.setDate(prev.getDate() + days);
+      return next;
+    });
+  }, []);
 
-  const goToNextMonth = useCallback(() => {
-    if (month === 11) {
-      setYear((y) => y + 1);
-      setMonth(0);
-    } else {
-      setMonth((m) => m + 1);
+  const goToPrevious = useCallback(() => {
+    if (layoutMode === 'month' || layoutMode === 'agenda') {
+      setCurrentDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+      return;
     }
-  }, [month]);
+    if (layoutMode === 'week') {
+      shiftDate(-7);
+      return;
+    }
+    shiftDate(-1);
+  }, [layoutMode, shiftDate]);
+
+  const goToNext = useCallback(() => {
+    if (layoutMode === 'month' || layoutMode === 'agenda') {
+      setCurrentDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+      return;
+    }
+    if (layoutMode === 'week') {
+      shiftDate(7);
+      return;
+    }
+    shiftDate(1);
+  }, [layoutMode, shiftDate]);
 
   const goToToday = useCallback(() => {
-    const today = new Date();
-    setYear(today.getFullYear());
-    setMonth(today.getMonth());
+    setCurrentDate(new Date());
   }, []);
 
   // Handle day click - show details or navigate to planner
@@ -243,6 +290,7 @@ export function Calendar() {
   }, []);
 
   const groupedItems = useMemo(() => groupItemsByDay(items), [items]);
+  const weekDays = useMemo(() => getWeekDays(currentDate), [currentDate]);
 
   const monthStats = useMemo(() => {
     const scheduled = items.filter((item) => item.status === 'scheduled').length;
@@ -288,6 +336,19 @@ export function Calendar() {
       items: groupedItems[dateKey].slice().sort((a, b) => (a.timeStart || '').localeCompare(b.timeStart || '')),
     }));
   }, [groupedItems]);
+
+  const weekItems = useMemo(() => {
+    const start = weekDays[0].dateKey;
+    const end = weekDays[6].dateKey;
+    const dates = Object.keys(groupedItems).filter((dateKey) => dateKey >= start && dateKey <= end).sort();
+    return dates.map((dateKey) => ({
+      dateKey,
+      items: groupedItems[dateKey].slice().sort((a, b) => (a.timeStart || '').localeCompare(b.timeStart || '')),
+    }));
+  }, [groupedItems, weekDays]);
+
+  const dayKey = formatDateKey(currentDate);
+  const dayItems = useMemo(() => groupedItems[dayKey] || [], [groupedItems, dayKey]);
 
   const toggleType = (type: CalendarItemType) => {
     const next = selectedTypes.includes(type)
@@ -342,6 +403,24 @@ export function Calendar() {
             Měsíc
           </button>
           <button
+            className={`${styles.viewButton} ${layoutMode === 'week' ? styles.active : ''}`}
+            onClick={() => {
+              setLayoutMode('week');
+              updateSearchParams({ layout: 'week' });
+            }}
+          >
+            Týden
+          </button>
+          <button
+            className={`${styles.viewButton} ${layoutMode === 'day' ? styles.active : ''}`}
+            onClick={() => {
+              setLayoutMode('day');
+              updateSearchParams({ layout: 'day' });
+            }}
+          >
+            Den
+          </button>
+          <button
             className={`${styles.viewButton} ${layoutMode === 'agenda' ? styles.active : ''}`}
             onClick={() => {
               setLayoutMode('agenda');
@@ -354,8 +433,8 @@ export function Calendar() {
         <div className={styles.monthNav}>
           <button
             className="btn-secondary"
-            onClick={goToPreviousMonth}
-            aria-label="Předchozí měsíc"
+            onClick={goToPrevious}
+            aria-label="Předchozí období"
           >
             ←
           </button>
@@ -366,12 +445,16 @@ export function Calendar() {
             Dnes
           </button>
           <span className={styles.currentMonth}>
-            {MONTH_NAMES[month]} {year}
+            {layoutMode === 'week'
+              ? `${formatShortDate(weekDays[0].date)} – ${formatShortDate(weekDays[6].date)} ${weekDays[6].date.getFullYear()}`
+              : layoutMode === 'day'
+                ? formatLongDate(currentDate)
+                : `${MONTH_NAMES[month]} ${year}`}
           </span>
           <button
             className="btn-secondary"
-            onClick={goToNextMonth}
-            aria-label="Další měsíc"
+            onClick={goToNext}
+            aria-label="Další období"
           >
             →
           </button>
@@ -476,6 +559,62 @@ export function Calendar() {
             workloadByDay={workloadByDay}
             capacityByDay={capacityByDay}
           />
+        ) : layoutMode === 'week' ? (
+          <div className={styles.weekGrid}>
+            {weekDays.map((day) => (
+              <DayCell
+                key={day.dateKey}
+                day={day}
+                items={groupedItems[day.dateKey] || []}
+                onClick={handleDayClick}
+                workloadMinutes={workloadByDay[day.dateKey]}
+                capacityMinutes={capacityByDay[day.dateKey]}
+              />
+            ))}
+          </div>
+        ) : layoutMode === 'day' ? (
+          <div className={styles.dayView}>
+            <div className={`${styles.dayHeader} ${isWeekend(currentDate) ? styles.weekendDay : ''}`}>
+              <strong>{formatLongDate(currentDate)}</strong>
+              <span>{dayItems.length} položek</span>
+            </div>
+            {dayItems.length === 0 ? (
+              <div className={styles.emptyDay}>
+                <p>Žádné položky pro tento den</p>
+                <button className="btn-primary" onClick={handlePlanDay}>
+                  Naplánovat den
+                </button>
+              </div>
+            ) : (
+              <div className={styles.agendaList}>
+                {dayItems.map((item) => {
+                  const link = getItemLink(item);
+                  const content = (
+                    <div className={styles.itemRow}>
+                      <span className={styles.itemStatus}>{getCalendarStatusLabel(item.status)}</span>
+                      <span className={styles.itemTime}>{item.timeStart || '--:--'}</span>
+                      <span className={styles.itemTitle}>{getItemTitle(item)}</span>
+                      <span className={styles.itemSubtitle}>{item.subtitle || item.sourceType}</span>
+                    </div>
+                  );
+                  return link ? (
+                    <Link
+                      key={`${item.type}-${item.id}`}
+                      to={link.to}
+                      params={link.params}
+                      className={styles.itemLink}
+                    >
+                      {content}
+                    </Link>
+                  ) : (
+                    <div key={`${item.type}-${item.id}`} className={styles.itemLink}>
+                      {content}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         ) : (
           <div className={styles.agenda}>
             {agendaItems.length === 0 ? (
@@ -484,7 +623,10 @@ export function Calendar() {
               </div>
             ) : (
               agendaItems.map(({ dateKey, items: dayItems }) => (
-                <div key={dateKey} className={styles.agendaDay}>
+                <div
+                  key={dateKey}
+                  className={`${styles.agendaDay} ${isWeekend(new Date(`${dateKey}T00:00:00`)) ? styles.weekendDay : ''}`}
+                >
                   <div className={styles.agendaHeader}>
                     <strong>{dateKey}</strong>
                     <span>{dayItems.length} položek</span>
@@ -524,7 +666,7 @@ export function Calendar() {
       </div>
 
       {/* Day details panel */}
-      {selectedDay && layoutMode === 'month' && (
+      {selectedDay && layoutMode !== 'agenda' && layoutMode !== 'day' && (
         <div className={styles.detailsOverlay} onClick={handleCloseDetails}>
           <div className={styles.detailsPanel} onClick={(event) => event.stopPropagation()}>
             <div className={styles.detailsHeader}>

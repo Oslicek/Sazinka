@@ -27,7 +27,7 @@ export function getMonthRange(year: number, month: number): { start: string; end
 /**
  * Format date as YYYY-MM-DD
  */
-function formatDateKey(date: Date): string {
+export function formatDateKey(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
@@ -69,6 +69,30 @@ export function getMonthDays(year: number, month: number): CalendarDay[] {
   for (let day = 1; day <= remainingDays; day++) {
     const date = new Date(year, month + 1, day);
     days.push(createCalendarDay(date, month, today));
+  }
+
+  return days;
+}
+
+/**
+ * Get days for a Monday-starting week that includes the provided date
+ */
+export function getWeekDays(date: Date): CalendarDay[] {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(date);
+  target.setHours(0, 0, 0, 0);
+
+  const dayOfWeek = target.getDay(); // 0 = Sunday
+  const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const start = new Date(target);
+  start.setDate(target.getDate() + diffToMonday);
+
+  const days: CalendarDay[] = [];
+  for (let i = 0; i < 7; i++) {
+    const current = new Date(start);
+    current.setDate(start.getDate() + i);
+    days.push(createCalendarDay(current, target.getMonth(), today));
   }
 
   return days;
