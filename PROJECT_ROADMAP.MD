@@ -232,10 +232,35 @@
 
 ## Phase 3: Users, Settings, Communication 🔄 IN PROGRESS
 
-### 3.1 User Authentication (Skipped - using mock user)
+### 3.1 User Authentication & Multi-user Support
 
-**Status:** Deferred - using TEMP_USER_ID for now
+**Status:** Planned — see `PROJECT_MULTIUSER.MD` for full implementation plan
 
+**Implementation phases:**
+
+1. **DB migrace + backend auth** — migration (`role`, `owner_id`), JWT (`argon2` + `jsonwebtoken`), auth handler (`register`, `login`, `verify`), rate limiting, `extract_user_id` helper in all handlers
+2. **Frontend auth flow** — auth store (Zustand), Login/Register pages, protected routes, role-based nav guards
+3. **Odstranění TEMP_USER_ID** — replace hardcoded UUID in 22 frontend files with auth store, update tests
+4. **Worker management** — Customer creates Worker accounts in Settings tab
+
+**Roles:** `admin` (system), `customer` (business owner), `worker` (employee)
+
+**Key decisions:**
+- JWT token stored in `localStorage` (NATS.ws has no HTTP headers)
+- NATS CRUD subjects unchanged; `user_id` derived from JWT on backend
+- In-memory rate limiting in auth handler
+- No password reset / email confirmation in MVP
+
+**Before production (security checklist):**
+- [ ] TLS everywhere (NATS + HTTPS)
+- [ ] JWT secret in secure storage, min 256-bit, rotation plan
+- [ ] Edge rate limiting (Cloudflare / Nginx / Traefik)
+- [ ] Audit logs for auth and privileged actions
+- [ ] Admin-only endpoint hardening (`handle_db_reset`, imports/exports)
+- [ ] Password policy (min 8 chars, argon2 hash)
+- [ ] CORS restriction for NATS.ws origins
+- [ ] DB backups + recovery testing
+- [ ] Monitoring & alerting (auth failures, error rates)
 ### 3.2 User Settings UI ✅
 
 **Files created:**
