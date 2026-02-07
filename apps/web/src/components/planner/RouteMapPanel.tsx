@@ -31,11 +31,19 @@ export interface InsertionPreview {
   insertBeforeIndex: number;
 }
 
+export interface SelectedCandidate {
+  id: string;
+  name: string;
+  coordinates: { lat: number; lng: number };
+}
+
 interface RouteMapPanelProps {
   stops: MapStop[];
   depot: MapDepot | null;
   routeGeometry?: [number, number][];
   highlightedStopId?: string | null;
+  /** Show a candidate's location on the map before it is added to the route */
+  selectedCandidate?: SelectedCandidate | null;
   insertionPreview?: InsertionPreview | null;
   onStopClick?: (stopId: string) => void;
   isLoading?: boolean;
@@ -51,6 +59,7 @@ export function RouteMapPanel({
   depot,
   routeGeometry,
   highlightedStopId,
+  selectedCandidate,
   insertionPreview,
   onStopClick,
   isLoading,
@@ -63,6 +72,7 @@ export function RouteMapPanel({
   const markersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const depotMarkerRef = useRef<maplibregl.Marker | null>(null);
   const previewMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const selectedCandidateMarkerRef = useRef<maplibregl.Marker | null>(null);
 
   // Event handler refs for proper cleanup
   const segmentClickHandlerRef = useRef<((e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => void) | null>(null);
@@ -221,6 +231,84 @@ export function RouteMapPanel({
     });
   }, [stops, highlightedStopId, onStopClick, clearMarkers]);
 
+  // Show selected candidate location on the map (before adding to route)
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    // Remove previous selected candidate marker
+    if (selectedCandidateMarkerRef.current) {
+      selectedCandidateMarkerRef.current.remove();
+      selectedCandidateMarkerRef.current = null;
+    }
+
+    if (!selectedCandidate) return;
+
+    // Don't show if candidate is already a route stop (it already has a marker)
+    if (stops.some((s) => s.id === selectedCandidate.id)) return;
+
+    const { lat, lng } = selectedCandidate.coordinates;
+    if (!lat || !lng) return;
+
+    // Create a distinctive marker for the selected candidate
+    const el = document.createElement('div');
+    el.className = styles.selectedCandidateMarker;
+
+    selectedCandidateMarkerRef.current = new maplibregl.Marker({ element: el })
+      .setLngLat([lng, lat])
+      .setPopup(
+        new maplibregl.Popup({ offset: 25 }).setHTML(
+          `<strong>${selectedCandidate.name}</strong>`
+        )
+      )
+      .addTo(mapRef.current);
+  }, [selectedCandidate, stops]);
+
+  // Fit map bounds whenever relevant points change:
+  // - No candidate, no route: center on depot
+  // - Candidate selected, no route: fit depot + candidate
+  // - Route exists (± candidate): fit all route stops + depot + candidate
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    const candidateCoord = selectedCandidate
+      && !stops.some((s) => s.id === selectedCandidate.id)
+      && selectedCandidate.coordinates.lat && selectedCandidate.coordinates.lng
+      ? selectedCandidate.coordinates
+      : null;
+
+    if (stops.length === 0 && !candidateCoord) {
+      // No route, no candidate → center on depot
+      if (depot) {
+        mapRef.current.flyTo({
+          center: [depot.lng, depot.lat],
+          zoom: 11,
+          duration: 500,
+        });
+      }
+      return;
+    }
+
+    // Build bounds from all visible points
+    const bounds = new maplibregl.LngLatBounds();
+
+    // Include depot
+    if (depot) {
+      bounds.extend([depot.lng, depot.lat]);
+    }
+
+    // Include all route stops
+    for (const stop of stops) {
+      bounds.extend([stop.coordinates.lng, stop.coordinates.lat]);
+    }
+
+    // Include selected candidate
+    if (candidateCoord) {
+      bounds.extend([candidateCoord.lng, candidateCoord.lat]);
+    }
+
+    mapRef.current.fitBounds(bounds, { padding: 60, duration: 500, maxZoom: 14 });
+  }, [selectedCandidate, stops, depot]);
+
   // Update route line as segmented GeoJSON with highlight support
   useEffect(() => {
     if (!mapRef.current) return;
@@ -333,12 +421,6 @@ export function RouteMapPanel({
     };
     mapRef.current.on('mouseenter', 'route-hit-area', segmentEnterHandlerRef.current);
     mapRef.current.on('mouseleave', 'route-hit-area', segmentLeaveHandlerRef.current);
-
-    // Fit bounds
-    const allCoords = segments.flat();
-    const bounds = new maplibregl.LngLatBounds();
-    allCoords.forEach((coord) => bounds.extend(coord));
-    mapRef.current.fitBounds(bounds, { padding: 50 });
   }, [stops, depot, routeGeometry, clearRouteLayers]);
 
   // Update highlight filter when highlightedSegment changes
@@ -445,10 +527,9 @@ export function RouteMapPanel({
         </div>
       )}
       <div ref={containerRef} className={styles.map} />
-      {stops.length === 0 && !isLoading && (
-        <div className={styles.emptyState}>
-          <span className={styles.emptyIcon}>🗺️</span>
-          <p>Zatím žádné zastávky v trase</p>
+      {stops.length === 0 && !isLoading && !selectedCandidate && (
+        <div className={styles.emptyHint}>
+          Zatím žádné zastávky v trase
         </div>
       )}
       {segmentInfo && (

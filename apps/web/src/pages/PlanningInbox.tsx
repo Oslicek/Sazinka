@@ -9,6 +9,7 @@ import {
   RouteMapPanel,
   type MapStop,
   type MapDepot,
+  type SelectedCandidate,
   CandidateDetail,
   type CandidateDetailData,
   VirtualizedInboxList,
@@ -582,6 +583,20 @@ export function PlanningInbox() {
       } : undefined,
     };
   }, [selectedCandidate, slotSuggestions]);
+
+  // Selected candidate for map preview (before adding to route)
+  const selectedCandidateForMap: SelectedCandidate | null = useMemo(() => {
+    if (!selectedCandidate) return null;
+    if (!selectedCandidate.customerLat || !selectedCandidate.customerLng) return null;
+    return {
+      id: selectedCandidate.customerId,
+      name: selectedCandidate.customerName,
+      coordinates: {
+        lat: selectedCandidate.customerLat,
+        lng: selectedCandidate.customerLng,
+      },
+    };
+  }, [selectedCandidate]);
 
   // Sorted candidates for display (pre-ranked by insertion cost)
   const sortedCandidates = useMemo(() => {
@@ -1160,6 +1175,7 @@ export function PlanningInbox() {
           depot={currentDepot}
           routeGeometry={routeGeometry}
           highlightedStopId={selectedCandidateId}
+          selectedCandidate={selectedCandidateForMap}
           isLoading={isLoadingRoute}
         />
       </div>

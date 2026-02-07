@@ -48,6 +48,27 @@
   }
 }
 
+/* Selected candidate marker (before adding to route) */
+.selectedCandidateMarker {
+  width: 28px;
+  height: 28px;
+  background-color: #f59e0b;
+  border: 3px solid white;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.35), 0 2px 8px rgba(0, 0, 0, 0.3);
+  animation: candidatePulse 2s ease-in-out infinite;
+  cursor: pointer;
+}
+
+@keyframes candidatePulse {
+  0%, 100% {
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.35), 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(245, 158, 11, 0.15), 0 4px 16px rgba(245, 158, 11, 0.4);
+  }
+}
+
 /* Loading overlay */
 .loadingOverlay {
   position: absolute;
@@ -74,27 +95,21 @@
   }
 }
 
-/* Empty state */
-.emptyState {
+/* Empty hint (non-blocking, map stays visible) */
+.emptyHint {
   position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background-color: var(--color-bg-secondary);
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.375rem 0.75rem;
+  background-color: rgba(255, 255, 255, 0.85);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   color: var(--color-text-secondary);
-  gap: 0.5rem;
-}
-
-.emptyIcon {
-  font-size: 2.5rem;
-  opacity: 0.5;
-}
-
-.emptyState p {
-  font-size: 0.875rem;
-  margin: 0;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 5;
 }
 
 /* Segment info overlay */

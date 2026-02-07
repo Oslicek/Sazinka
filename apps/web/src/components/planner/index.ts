@@ -1,7 +1,7 @@
 export { SortableStopItem } from './SortableStopItem';
 export { RouteContextHeader, type RouteContext } from './RouteContextHeader';
 export { CapacityMetrics, type RouteMetrics } from './CapacityMetrics';
-export { RouteMapPanel, type MapStop, type MapDepot, type InsertionPreview as MapInsertionPreview } from './RouteMapPanel';
+export { RouteMapPanel, type MapStop, type MapDepot, type InsertionPreview as MapInsertionPreview, type SelectedCandidate } from './RouteMapPanel';
 export { CandidateRow, type CandidateRowData, type SlotStatus } from './CandidateRow';
 export { CandidateDetail, type CandidateDetailData } from './CandidateDetail';
 export { SlotSuggestions, type SlotSuggestion } from './SlotSuggestions';
