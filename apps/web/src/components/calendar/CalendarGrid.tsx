@@ -11,6 +11,7 @@ interface CalendarGridProps {
   onDayClick?: (day: CalendarDay, items: CalendarItem[]) => void;
   workloadByDay?: Record<string, number>;
   capacityByDay?: Record<string, number>;
+  selectedDateKey?: string;
 }
 
 const WEEKDAY_NAMES = ['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'];
@@ -25,6 +26,7 @@ export function CalendarGrid({
   onDayClick,
   workloadByDay = {},
   capacityByDay = {},
+  selectedDateKey,
 }: CalendarGridProps) {
   const days = getMonthDays(year, month);
   const itemsByDay = groupItemsByDay(items);
@@ -50,6 +52,7 @@ export function CalendarGrid({
             onClick={onDayClick}
             workloadMinutes={workloadByDay[day.dateKey]}
             capacityMinutes={capacityByDay[day.dateKey]}
+            isSelected={selectedDateKey === day.dateKey}
           />
         ))}
       </div>

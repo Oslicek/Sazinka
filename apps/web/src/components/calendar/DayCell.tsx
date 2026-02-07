@@ -10,12 +10,13 @@ interface DayCellProps {
   workloadMinutes?: number;
   capacityMinutes?: number;
   variant?: 'month' | 'week';
+  isSelected?: boolean;
 }
 
 /**
  * Renders a single day cell in the calendar grid
  */
-export function DayCell({ day, items, onClick, workloadMinutes, capacityMinutes, variant = 'month' }: DayCellProps) {
+export function DayCell({ day, items, onClick, workloadMinutes, capacityMinutes, variant = 'month', isSelected = false }: DayCellProps) {
   const countClass = getItemCountClass(items.length);
   const isWeekend = day.date.getDay() === 0 || day.date.getDay() === 6;
   
@@ -50,6 +51,7 @@ export function DayCell({ day, items, onClick, workloadMinutes, capacityMinutes,
         ${hasOverdue ? styles.hasOverdue : ''}
         ${isOverCapacity ? styles.overCapacity : ''}
         ${isWeekend ? styles.weekend : ''}
+        ${isSelected ? styles.selected : ''}
       `}
       onClick={handleClick}
       role="button"

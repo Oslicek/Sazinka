@@ -366,7 +366,7 @@ export function Calendar() {
   };
 
   return (
-    <div className={styles.calendar}>
+    <div className={`${styles.calendar} ${selectedDay && layoutMode !== 'agenda' && layoutMode !== 'day' ? styles.withSidePanel : ''}`}>
       <div className={styles.header}>
         <h1>Kalendář</h1>
         <div className={styles.viewToggle}>
@@ -555,6 +555,7 @@ export function Calendar() {
             onDayClick={handleDayClick}
             workloadByDay={workloadByDay}
             capacityByDay={capacityByDay}
+            selectedDateKey={selectedDay?.dateKey}
           />
         ) : layoutMode === 'week' ? (
           <div className={styles.weekGrid}>
@@ -567,6 +568,7 @@ export function Calendar() {
                 workloadMinutes={workloadByDay[day.dateKey]}
                 capacityMinutes={capacityByDay[day.dateKey]}
                 variant="week"
+                isSelected={selectedDay?.dateKey === day.dateKey}
               />
             ))}
           </div>
