@@ -87,16 +87,23 @@ export function splitGeometryIntoSegments(
 /**
  * Build straight-line segments when no Valhalla geometry is available.
  * Each segment is simply [waypoint_i, waypoint_{i+1}].
+ * If depot is null, segments connect only the stops without depot legs.
  */
 export function buildStraightLineSegments(
   stops: RouteWaypoint[],
-  depot: DepotCoord,
+  depot: DepotCoord | null,
 ): [number, number][][] {
-  const waypoints: [number, number][] = [
-    [depot.lng, depot.lat],
-    ...stops.map((s) => [s.coordinates.lng, s.coordinates.lat] as [number, number]),
-    [depot.lng, depot.lat],
-  ];
+  const stopCoords = stops.map((s) => [s.coordinates.lng, s.coordinates.lat] as [number, number]);
+
+  const waypoints: [number, number][] = depot
+    ? [
+        [depot.lng, depot.lat],
+        ...stopCoords,
+        [depot.lng, depot.lat],
+      ]
+    : stopCoords;
+
+  if (waypoints.length < 2) return [];
 
   const segments: [number, number][][] = [];
   for (let i = 0; i < waypoints.length - 1; i++) {

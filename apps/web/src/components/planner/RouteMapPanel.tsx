@@ -315,9 +315,9 @@ export function RouteMapPanel({
 
     clearRouteLayers();
 
-    if (stops.length === 0 || !depot) return;
+    if (stops.length === 0) return;
 
-    console.log('[RouteMapPanel] Rendering route with', stops.length, 'stops, routeGeometry length:', routeGeometry?.length || 0);
+    console.log('[RouteMapPanel] Rendering route with', stops.length, 'stops, routeGeometry length:', routeGeometry?.length || 0, 'depot:', !!depot);
 
     // Build segments using shared utilities
     const waypoints = stops.map((s) => ({
@@ -325,13 +325,16 @@ export function RouteMapPanel({
       name: s.name,
     }));
 
+    // Use a fake depot at the first stop's location if no depot is set
+    const effectiveDepot = depot ?? { lat: stops[0].coordinates.lat, lng: stops[0].coordinates.lng };
+
     let segments: [number, number][][];
     if (routeGeometry && routeGeometry.length > 0) {
       console.log('[RouteMapPanel] Using Valhalla geometry');
-      segments = splitGeometryIntoSegments(routeGeometry, waypoints, depot);
+      segments = splitGeometryIntoSegments(routeGeometry, waypoints, effectiveDepot);
     } else {
       console.log('[RouteMapPanel] Using straight line segments (no Valhalla geometry)');
-      segments = buildStraightLineSegments(waypoints, depot);
+      segments = buildStraightLineSegments(waypoints, depot ? effectiveDepot : null);
     }
 
     if (segments.length === 0) return;

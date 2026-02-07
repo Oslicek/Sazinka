@@ -262,18 +262,20 @@ export function PlanningInbox() {
   }, [isConnected, context?.date]);
 
   // Fetch Valhalla route geometry when route stops change
-  const fetchRouteGeometry = useCallback(async (stops: MapStop[], depot: { lat: number; lng: number }) => {
+  const fetchRouteGeometry = useCallback(async (stops: MapStop[], depot: { lat: number; lng: number } | null) => {
     if (stops.length < 1) {
       setRouteGeometry([]);
       return;
     }
 
-    // Build locations: depot → stops → depot
-    const locations = [
-      { lat: depot.lat, lng: depot.lng },
-      ...stops.map((s) => ({ lat: s.coordinates.lat, lng: s.coordinates.lng })),
-      { lat: depot.lat, lng: depot.lng },
-    ];
+    // Build locations: depot → stops → depot (or just stops if no depot)
+    const locations = depot
+      ? [
+          { lat: depot.lat, lng: depot.lng },
+          ...stops.map((s) => ({ lat: s.coordinates.lat, lng: s.coordinates.lng })),
+          { lat: depot.lat, lng: depot.lng },
+        ]
+      : stops.map((s) => ({ lat: s.coordinates.lat, lng: s.coordinates.lng }));
 
     try {
       // Cancel previous subscription
@@ -321,8 +323,7 @@ export function PlanningInbox() {
       return;
     }
 
-    const depot = depots.find((d) => d.id === context?.depotId);
-    if (!depot) return;
+    const depot = depots.find((d) => d.id === context?.depotId) ?? null;
 
     fetchRouteGeometry(routeStops, depot);
 
