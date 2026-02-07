@@ -11,6 +11,12 @@ import {
   type CrewServiceDeps,
 } from './crewService';
 
+vi.mock('@/utils/auth', () => ({
+  getToken: () => 'test-user-id',
+  getUserId: () => 'test-user-id',
+  hasRole: () => true,
+}));
+
 describe('crewService', () => {
   const mockRequest = vi.fn();
   const mockDeps: CrewServiceDeps = {

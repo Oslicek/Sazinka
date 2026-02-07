@@ -10,9 +10,6 @@ import { CalendarGrid } from '../components/calendar';
 import { DayCell } from '../components/calendar/DayCell';
 import styles from './Calendar.module.css';
 
-// Temporary user ID until auth is implemented
-const TEMP_USER_ID = '00000000-0000-0000-0000-000000000001';
-
 const MONTH_NAMES = [
   'Leden', 'Únor', 'Březen', 'Duben', 'Květen', 'Červen',
   'Červenec', 'Srpen', 'Září', 'Říjen', 'Listopad', 'Prosinec'
@@ -198,7 +195,7 @@ export function Calendar() {
               })()
             : getMonthRange(year, month);
 
-      const response = await listCalendarItems(TEMP_USER_ID, {
+      const response = await listCalendarItems({
         startDate: start,
         endDate: end,
         viewMode,

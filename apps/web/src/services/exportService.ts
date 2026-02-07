@@ -8,8 +8,7 @@ import type { Customer } from '@shared/customer';
 import * as customerService from './customerService';
 import * as revisionService from './revisionService';
 import { useNatsStore } from '../stores/natsStore';
-
-const TEMP_USER_ID = '00000000-0000-0000-0000-000000000001';
+import { getToken } from '@/utils/auth';
 
 // ============================================================================
 // CSV Helpers
@@ -106,7 +105,7 @@ export async function exportCustomers(
   }
 ): Promise<void> {
   // Fetch all customers
-  const result = await deps.listCustomers(TEMP_USER_ID, {});
+  const result = await deps.listCustomers(getToken(), {});
   const customers = result.items;
   
   // Map to export format
@@ -192,7 +191,7 @@ export async function exportRevisions(
   }
 ): Promise<void> {
   // Fetch revisions
-  const result = await deps.listRevisions(TEMP_USER_ID, {
+  const result = await deps.listRevisions(getToken(), {
     fromDate: options.dateFrom,
     toDate: options.dateTo,
     status: options.status,
@@ -246,7 +245,7 @@ export async function getCustomerCount(
     request: useNatsStore.getState().request,
   }
 ): Promise<number> {
-  const result = await deps.listCustomers(TEMP_USER_ID, {});
+  const result = await deps.listCustomers(getToken(), {});
   return result.total;
 }
 
@@ -264,7 +263,7 @@ export async function getRevisionCount(
     request: useNatsStore.getState().request,
   }
 ): Promise<number> {
-  const result = await deps.listRevisions(TEMP_USER_ID, {
+  const result = await deps.listRevisions(getToken(), {
     fromDate: options.dateFrom,
     toDate: options.dateTo,
     status: options.status,

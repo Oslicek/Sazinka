@@ -16,6 +16,9 @@ pub struct Config {
     
     /// Valhalla routing engine URL (optional, falls back to mock if unavailable)
     pub valhalla_url: Option<String>,
+    
+    /// JWT secret key for token signing/validation
+    pub jwt_secret: String,
 }
 
 impl Config {
@@ -35,11 +38,15 @@ impl Config {
 
         let valhalla_url = std::env::var("VALHALLA_URL").ok();
 
+        let jwt_secret = std::env::var("JWT_SECRET")
+            .unwrap_or_else(|_| "dev-secret-change-in-production-min-32-bytes!!".to_string());
+
         Ok(Self {
             nats_url,
             database_url,
             nominatim_url,
             valhalla_url,
+            jwt_secret,
         })
     }
 }

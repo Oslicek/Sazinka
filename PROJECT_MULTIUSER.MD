@@ -2,7 +2,7 @@
 
 > **Vytvořeno:** 2026-02-04
 > **Poslední aktualizace:** 2026-02-07
-> **Status:** Plán – zatím neimplementováno
+> **Status:** ✅ Implementováno (Fáze 1–4)
 
 ---
 
@@ -23,18 +23,23 @@ Aplikace je **architektonicky připravena na více uživatelů**, ale autentizac
 | SQL dotazy | ✅ Filtrují podle `user_id` | Data izolována |
 | Job status subscriptions | ✅ User-scoped | `sazinka.user.${userId}.jobs.>` |
 
-### Co chybí
+### Co bylo implementováno
 
 | Oblast | Stav |
 |--------|------|
-| Auth handler na backendu | ❌ |
-| Login / registrační stránka | ❌ |
-| JWT generování a validace | ❌ |
-| Auth store ve frontendu | ❌ |
-| Protected routes + role guards | ❌ |
-| Hashování hesel | ❌ |
-| Rate limiting | ❌ |
-| Sloupec `role` v tabulce `users` | ❌ |
+| Auth handler na backendu (register, login, verify) | ✅ `worker/src/handlers/auth.rs` |
+| Login / registrační stránka | ✅ `apps/web/src/pages/Login.tsx`, `Register.tsx` |
+| JWT generování a validace | ✅ `worker/src/auth.rs` (jsonwebtoken + argon2) |
+| Auth store ve frontendu (Zustand) | ✅ `apps/web/src/stores/authStore.ts` |
+| Protected routes + role guards | ✅ `ProtectedRoute` component, updated `routes/index.tsx` |
+| Hashování hesel (Argon2) | ✅ `worker/src/auth.rs` |
+| Rate limiting (in-memory) | ✅ `worker/src/handlers/auth.rs` (RateLimiter) |
+| Sloupec `role` a `owner_id` v `users` | ✅ `worker/migrations/002_add_auth_fields.sql` |
+| Všechny handlery → `extract_auth()` | ✅ 13 handler souborů aktualizováno |
+| Odstranění TEMP_USER_ID (22 souborů) | ✅ Všechny nahrazeny `getToken()` |
+| Worker management (backend + frontend) | ✅ Backend + Settings tab "Pracovníci" |
+| Admin hardening (role check) | ✅ Admin handler vyžaduje `role == "admin"` |
+| Settings page role guard | ✅ Pouze customer/admin |
 
 ### Rozsah hardcoded `TEMP_USER_ID` (22 souborů)
 

@@ -34,9 +34,6 @@ import { getCallQueue, snoozeRevision, scheduleRevision, type CallQueueItem } fr
 import { usePlannerShortcuts } from '../hooks/useKeyboardShortcuts';
 import styles from './PlanningInbox.module.css';
 
-// Mock user ID for development
-const USER_ID = '00000000-0000-0000-0000-000000000001';
-
 type InboxSegment = 'overdue' | 'thisWeek' | 'thisMonth' | 'all' | 'snoozed' | 'problems';
 
 interface Depot {
@@ -151,7 +148,7 @@ export function PlanningInbox() {
       try {
         // Load settings and crews independently - don't let one failure block the other
         const [settingsResult, crewsResult] = await Promise.allSettled([
-          settingsService.getSettings(USER_ID),
+          settingsService.getSettings(),
           crewService.listCrews(true),
         ]);
         
@@ -433,7 +430,7 @@ export function PlanningInbox() {
     
     setIsLoadingCandidates(true);
     try {
-      const response = await getCallQueue(USER_ID, {
+      const response = await getCallQueue({
         priorityFilter: segment === 'overdue' ? 'overdue' : 'all',
         geocodedOnly: isRouteAware,
         limit: 100,
@@ -728,7 +725,7 @@ export function PlanningInbox() {
     if (!candidate) return;
     
     try {
-      await scheduleRevision(USER_ID, {
+      await scheduleRevision({
         id: candidate.id,
         scheduledDate: slot.date,
         timeWindowStart: slot.timeStart,
@@ -759,7 +756,7 @@ export function PlanningInbox() {
     snoozeDate.setDate(snoozeDate.getDate() + 7);
     
     try {
-      await snoozeRevision(USER_ID, {
+      await snoozeRevision({
         id: candidate.id,
         snoozeUntil: snoozeDate.toISOString().split('T')[0],
       });

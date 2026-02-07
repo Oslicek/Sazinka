@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-02-05 (v0.16.0 - Overdue calculation logic)
+> **Last Updated:** 2026-02-04 (v0.17.0 - Multi-user authentication + RBAC)
 
 ## Overview
 
@@ -1410,9 +1410,13 @@ let base_url = std::env::var("NOMINATIM_URL")
 - [ ] Phase 7B: Async import system frontend integration (services, stores, UI updates)
 
 **Pending:**
-- [ ] Phase 3: User authentication, CSV export, Email notifications
-- [ ] Phase 4: CRM Evidence (Communications, Visits, Timeline)
 - [ ] Route optimization conversion to async job queue
+
+**Recently Completed:**
+- [x] Phase 3.1: Multi-user authentication (JWT + RBAC + worker management)
+  - Login/Register pages, auth store, protected routes, role guards
+  - All handlers use `extract_auth()`, TEMP_USER_ID fully removed
+  - See `PROJECT_MULTIUSER.MD` for details
 
 **Recently Completed:**
 - [x] Phase 7B Backend: Async import processors for all entity types (v0.15.0)

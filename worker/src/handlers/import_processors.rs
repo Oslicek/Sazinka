@@ -13,6 +13,7 @@ use sqlx::PgPool;
 use tracing::{error, warn, info};
 use uuid::Uuid;
 
+use crate::auth;
 use crate::db::queries;
 use crate::types::{
     ErrorResponse, Request, SuccessResponse,
@@ -468,6 +469,7 @@ impl DeviceImportProcessor {
 pub async fn handle_device_import_submit(
     client: Client,
     mut subscriber: Subscriber,
+    jwt_secret: Arc<String>,
     processor: Arc<DeviceImportProcessor>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
@@ -486,10 +488,10 @@ pub async fn handle_device_import_submit(
             }
         };
         
-        let user_id = match request.user_id {
-            Some(id) => id,
-            None => {
-                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
@@ -810,6 +812,7 @@ impl RevisionImportProcessor {
 pub async fn handle_revision_import_submit(
     client: Client,
     mut subscriber: Subscriber,
+    jwt_secret: Arc<String>,
     processor: Arc<RevisionImportProcessor>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
@@ -828,10 +831,10 @@ pub async fn handle_revision_import_submit(
             }
         };
         
-        let user_id = match request.user_id {
-            Some(id) => id,
-            None => {
-                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
@@ -1100,6 +1103,7 @@ impl CommunicationImportProcessor {
 pub async fn handle_communication_import_submit(
     client: Client,
     mut subscriber: Subscriber,
+    jwt_secret: Arc<String>,
     processor: Arc<CommunicationImportProcessor>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
@@ -1118,10 +1122,10 @@ pub async fn handle_communication_import_submit(
             }
         };
         
-        let user_id = match request.user_id {
-            Some(id) => id,
-            None => {
-                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
@@ -1401,6 +1405,7 @@ impl WorkLogImportProcessor {
 pub async fn handle_work_log_import_submit(
     client: Client,
     mut subscriber: Subscriber,
+    jwt_secret: Arc<String>,
     processor: Arc<WorkLogImportProcessor>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
@@ -1419,10 +1424,10 @@ pub async fn handle_work_log_import_submit(
             }
         };
         
-        let user_id = match request.user_id {
-            Some(id) => id,
-            None => {
-                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
@@ -2261,6 +2266,7 @@ impl ZipImportProcessor {
 pub async fn handle_zip_import_submit(
     client: Client,
     mut subscriber: Subscriber,
+    jwt_secret: Arc<String>,
     processor: Arc<ZipImportProcessor>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
@@ -2279,10 +2285,10 @@ pub async fn handle_zip_import_submit(
             }
         };
         
-        let user_id = match request.user_id {
-            Some(id) => id,
-            None => {
-                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }

@@ -1,6 +1,6 @@
 # Project Roadmap - Sazinka v1.0 GA
 
-> **Last Updated:** 2026-02-02 (Phase 8 COMPLETED - UX/UI Redesign: Route-Aware Planning)
+> **Last Updated:** 2026-02-04 (Phase 3.1 COMPLETED - Multi-user auth, JWT, RBAC, Worker management)
 
 ## Current State Analysis
 
@@ -230,34 +230,56 @@
 
 ---
 
-## Phase 3: Users, Settings, Communication 🔄 IN PROGRESS
+## Phase 3: Users, Settings, Communication ✅ COMPLETE
 
-### 3.1 User Authentication & Multi-user Support
+### 3.1 User Authentication & Multi-user Support ✅
 
-**Status:** Planned — see `PROJECT_MULTIUSER.MD` for full implementation plan
+**Status:** Implemented — see `PROJECT_MULTIUSER.MD` for full details
 
-**Implementation phases:**
+**Implementation completed (4 phases):**
 
-1. **DB migrace + backend auth** — migration (`role`, `owner_id`), JWT (`argon2` + `jsonwebtoken`), auth handler (`register`, `login`, `verify`), rate limiting, `extract_user_id` helper in all handlers
-2. **Frontend auth flow** — auth store (Zustand), Login/Register pages, protected routes, role-based nav guards
-3. **Odstranění TEMP_USER_ID** — replace hardcoded UUID in 22 frontend files with auth store, update tests
-4. **Worker management** — Customer creates Worker accounts in Settings tab
+1. **DB migration + backend auth** ✅ — migration (`role`, `owner_id`), JWT (`argon2` + `jsonwebtoken`), auth handler (`register`, `login`, `verify`), rate limiting, `extract_auth` in all 15 handler files
+2. **Frontend auth flow** ✅ — auth store (Zustand), Login/Register pages, protected routes with role guards, role-based nav
+3. **Removed TEMP_USER_ID** ✅ — replaced hardcoded UUID in 22+ frontend files with `getToken()` from auth utility, updated all tests
+4. **Worker management** ✅ — Customer creates Worker accounts in Settings "Pracovníci" tab
 
 **Roles:** `admin` (system), `customer` (business owner), `worker` (employee)
 
 **Key decisions:**
 - JWT token stored in `localStorage` (NATS.ws has no HTTP headers)
-- NATS CRUD subjects unchanged; `user_id` derived from JWT on backend
-- In-memory rate limiting in auth handler
+- NATS CRUD subjects unchanged; `user_id` derived from JWT on backend via `extract_auth`
+- In-memory rate limiting in auth handler (5 attempts / 5 min)
 - No password reset / email confirmation in MVP
+
+**Files created:**
+- `worker/src/auth.rs` — JWT token generation/validation, password hashing (argon2), `extract_auth` helper ✅
+- `worker/src/handlers/auth.rs` — register, login, verify + worker CRUD handlers ✅
+- `worker/src/db/queries/user.rs` — user queries (get, get_by_email, create, list_workers, delete_worker) ✅
+- `worker/src/types/user.rs` — User, UserPublic, AuthResponse types ✅
+- `worker/migrations/002_add_auth_fields.sql` — role + owner_id columns ✅
+- `packages/shared-types/src/auth.ts` — LoginRequest, RegisterRequest, UserPublic, AuthResponse ✅
+- `apps/web/src/stores/authStore.ts` — Zustand auth state (login, register, logout, verify) ✅
+- `apps/web/src/utils/auth.ts` — getToken, getUserId, hasRole helpers ✅
+- `apps/web/src/pages/Login.tsx` + `Login.module.css` ✅
+- `apps/web/src/pages/Register.tsx` ✅
+- `apps/web/src/components/ProtectedRoute.tsx` — role-based route guard ✅
+- `apps/web/src/services/workerService.ts` — worker CRUD frontend service ✅
+
+**NATS subjects added:**
+- `sazinka.auth.register` ✅
+- `sazinka.auth.login` ✅
+- `sazinka.auth.verify` ✅
+- `sazinka.auth.worker.create` ✅
+- `sazinka.auth.worker.list` ✅
+- `sazinka.auth.worker.delete` ✅
 
 **Before production (security checklist):**
 - [ ] TLS everywhere (NATS + HTTPS)
 - [ ] JWT secret in secure storage, min 256-bit, rotation plan
 - [ ] Edge rate limiting (Cloudflare / Nginx / Traefik)
 - [ ] Audit logs for auth and privileged actions
-- [ ] Admin-only endpoint hardening (`handle_db_reset`, imports/exports)
-- [ ] Password policy (min 8 chars, argon2 hash)
+- [x] Admin-only endpoint hardening (all admin handlers check role) ✅
+- [x] Password policy (min 8 chars, argon2 hash) ✅
 - [ ] CORS restriction for NATS.ws origins
 - [ ] DB backups + recovery testing
 - [ ] Monitoring & alerting (auth failures, error rates)
@@ -432,32 +454,34 @@
 
 ### 5A: Pre-Launch (MUST HAVE) 🔴
 
-#### 5A.1 Authentication & Authorization
+#### 5A.1 Authentication & Authorization ✅ IMPLEMENTED
 
-**Current state:** Hardcoded `TEMP_USER_ID`, no login flow
+**Current state:** JWT-based auth with login/register/verify, role-based access control, TEMP_USER_ID removed
 
-**Files to create/modify:**
-- `worker/src/handlers/auth.rs` - JWT login/logout/verify
-- `worker/src/middleware/auth.rs` - JWT validation middleware
-- `apps/web/src/pages/Login.tsx` - Login form
-- `apps/web/src/stores/authStore.ts` - Implement JWT storage
+**Files created (see Phase 3.1 for full list):**
+- `worker/src/auth.rs` — JWT + argon2 password hashing ✅
+- `worker/src/handlers/auth.rs` — auth handlers + rate limiting ✅
+- `apps/web/src/pages/Login.tsx` — Login form ✅
+- `apps/web/src/pages/Register.tsx` — Registration form ✅
+- `apps/web/src/stores/authStore.ts` — JWT storage in localStorage ✅
 
-**Features:**
-| Feature | Priority | Description |
-|---------|----------|-------------|
-| JWT login | MUST | Email + password → JWT token |
-| JWT refresh | MUST | Refresh token rotation |
-| Password hashing | MUST | bcrypt or argon2 |
-| Password reset | MUST | Email-based reset flow |
-| Session invalidation | MUST | Logout clears tokens |
+**Implemented features:**
+| Feature | Status | Description |
+|---------|--------|-------------|
+| JWT login | ✅ | Email + password → JWT token (15 min expiry) |
+| Registration | ✅ | Self-service customer registration |
+| Token verification | ✅ | Verify stored token on page load |
+| Password hashing | ✅ | argon2 |
+| Rate limiting | ✅ | In-memory, 5 attempts / 5 min per email |
+| Role-based access | ✅ | admin, customer, worker roles |
+| Admin hardening | ✅ | All admin endpoints check role |
+| Worker management | ✅ | Customer creates/deletes worker accounts |
+| Session invalidation | ✅ | Logout clears localStorage token |
 
-**NATS subjects:**
-- `sazinka.auth.login` - Returns JWT + refresh token
-- `sazinka.auth.logout` - Invalidates session
-- `sazinka.auth.verify` - Validates JWT
-- `sazinka.auth.refresh` - Rotates tokens
-- `sazinka.auth.reset-password` - Initiates reset
-- `sazinka.auth.set-password` - Completes reset
+**Not in MVP (deferred):**
+- JWT refresh token rotation
+- Password reset (email-based)
+- Email confirmation
 
 #### 5A.2 TLS on WebSocket
 
@@ -1555,7 +1579,7 @@ Phase 2 (Smart Planning): ✅ COMPLETE
   2.4 Route persistence ✅
 
 Phase 3 (Users & Comms): ✅ COMPLETE
-  3.1 Authentication (mocked) ✅
+  3.1 Authentication (JWT + roles + worker mgmt) ✅
   3.2 Settings UI ✅
   3.3 CSV export ✅
   3.4 Email reminders (stretch goal - deferred)
@@ -1569,9 +1593,9 @@ Phase 4 (CRM Evidence): ✅ COMPLETE
   4.6 Customer Timeline ✅
   4.7 Dashboard enhancements (deferred)
 
-Phase 5 (Production Readiness): 📋 PLANNED
-  5A: Pre-Launch (MUST HAVE) 🔴
-    5A.1 JWT Authentication
+Phase 5 (Production Readiness): 🔄 IN PROGRESS
+  5A: Pre-Launch (MUST HAVE) 🔄
+    5A.1 JWT Authentication ✅
     5A.2 TLS on WebSocket
     5A.3 Rate limiting
     5A.4 Health checks

@@ -5,8 +5,7 @@
 import type { SuccessResponse, ErrorResponse } from '@shared/messages';
 import { createRequest } from '@shared/messages';
 import { useNatsStore } from '../stores/natsStore';
-
-const TEMP_USER_ID = '00000000-0000-0000-0000-000000000001';
+import { getToken } from '@/utils/auth';
 
 type NatsResponse<T> = SuccessResponse<T> | ErrorResponse;
 
@@ -74,7 +73,7 @@ export async function createCrew(
   data: CreateCrewRequest,
   deps = { request: useNatsStore.getState().request }
 ): Promise<Crew> {
-  const request = createRequest<CreateCrewRequest>(TEMP_USER_ID, data);
+  const request = createRequest<CreateCrewRequest>(getToken(), data);
 
   const response = await deps.request<typeof request, NatsResponse<Crew>>(
     'sazinka.crew.create',
@@ -95,7 +94,7 @@ export async function listCrews(
   activeOnly = true,
   deps = { request: useNatsStore.getState().request }
 ): Promise<Crew[]> {
-  const request = createRequest<ListCrewsRequest>(TEMP_USER_ID, { activeOnly });
+  const request = createRequest<ListCrewsRequest>(getToken(), { activeOnly });
 
   const response = await deps.request<typeof request, NatsResponse<CrewListResponse>>(
     'sazinka.crew.list',
@@ -116,7 +115,7 @@ export async function getCrew(
   id: string,
   deps = { request: useNatsStore.getState().request }
 ): Promise<Crew> {
-  const request = createRequest<GetCrewRequest>(TEMP_USER_ID, { id });
+  const request = createRequest<GetCrewRequest>(getToken(), { id });
 
   const response = await deps.request<typeof request, NatsResponse<Crew>>(
     'sazinka.crew.get',
@@ -137,7 +136,7 @@ export async function updateCrew(
   data: UpdateCrewRequest,
   deps = { request: useNatsStore.getState().request }
 ): Promise<Crew> {
-  const request = createRequest<UpdateCrewRequest>(TEMP_USER_ID, data);
+  const request = createRequest<UpdateCrewRequest>(getToken(), data);
 
   const response = await deps.request<typeof request, NatsResponse<Crew>>(
     'sazinka.crew.update',
@@ -158,7 +157,7 @@ export async function deleteCrew(
   id: string,
   deps = { request: useNatsStore.getState().request }
 ): Promise<boolean> {
-  const request = createRequest<DeleteCrewRequest>(TEMP_USER_ID, { id });
+  const request = createRequest<DeleteCrewRequest>(getToken(), { id });
 
   const response = await deps.request<typeof request, NatsResponse<{ deleted: boolean }>>(
     'sazinka.crew.delete',

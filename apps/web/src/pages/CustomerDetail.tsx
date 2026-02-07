@@ -23,10 +23,8 @@ import type { SlotSuggestion } from '../components/planner/SlotSuggestions';
 import { DeviceList } from '../components/devices';
 import { CustomerTimeline } from '../components/timeline';
 import { useNatsStore } from '../stores/natsStore';
+import { getToken } from '@/utils/auth';
 import styles from './CustomerDetail.module.css';
-
-// Temporary user ID until auth is implemented
-const TEMP_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 // Default mock crews (fallback when none in database)
 const DEFAULT_CREWS: Crew[] = [
@@ -85,7 +83,7 @@ export function CustomerDetail() {
     try {
       setIsLoading(true);
       setError(null);
-      const data = await getCustomer(TEMP_USER_ID, customerId);
+      const data = await getCustomer(customerId);
       setCustomer(data);
     } catch (err) {
       console.error('Failed to load customer:', err);
@@ -126,14 +124,14 @@ export function CustomerDetail() {
     try {
       setIsSubmitting(true);
       setError(null);
-      const updated = await updateCustomer(TEMP_USER_ID, data as UpdateCustomerRequest);
+      const updated = await updateCustomer(data as UpdateCustomerRequest);
       setCustomer(updated);
       setIsEditDrawerOpen(false);
 
       const addressChanged = Boolean(data.street || data.city || data.postalCode);
       const hasCoords = data.lat !== undefined && data.lng !== undefined;
       if (addressChanged && !hasCoords) {
-        const job = await submitGeocodeJob(TEMP_USER_ID, [updated.id]);
+        const job = await submitGeocodeJob([updated.id]);
         setGeocodeJob({
           jobId: job.jobId,
           timestamp: new Date().toISOString(),
@@ -179,7 +177,7 @@ export function CustomerDetail() {
     try {
       setIsDeleting(true);
       setError(null);
-      await deleteCustomer(TEMP_USER_ID, customerId);
+      await deleteCustomer(customerId);
       navigate({ to: '/customers' });
     } catch (err) {
       console.error('Failed to delete customer:', err);
@@ -200,7 +198,7 @@ export function CustomerDetail() {
       try {
         const [crewList, depotList] = await Promise.all([
           listCrews(true),
-          listDepots(TEMP_USER_ID),
+          listDepots(),
         ]);
         // Use fetched crews if available, otherwise keep defaults
         if (crewList.length > 0) {
@@ -428,7 +426,7 @@ export function CustomerDetail() {
           devices: (
             <DeviceList
               customerId={customer.id}
-              userId={TEMP_USER_ID}
+              userId={getToken()}
             />
           ),
           revisions: (

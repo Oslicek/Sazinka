@@ -8,6 +8,7 @@ use sqlx::PgPool;
 use tracing::{debug, error, warn, info};
 use uuid::Uuid;
 
+use crate::auth;
 use crate::db::queries;
 use crate::services::routing::{RoutingService, MockRoutingService};
 use crate::services::vrp::{VrpSolver, VrpProblem, VrpStop, Depot, SolverConfig, StopTimeWindow};
@@ -23,6 +24,7 @@ pub async fn handle_plan(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
+    jwt_secret: Arc<String>,
     routing_service: Arc<dyn RoutingService>,
 ) -> Result<()> {
     // Create VRP solver with fast config for interactive use
@@ -50,11 +52,11 @@ pub async fn handle_plan(
             }
         };
 
-        // Check user_id
-        let user_id = match request.user_id {
-            Some(id) => id,
-            None => {
-                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+        // Check auth
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
@@ -446,6 +448,7 @@ pub async fn handle_save(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
         debug!("Received route.save message");
@@ -469,11 +472,11 @@ pub async fn handle_save(
             }
         };
 
-        // Check user_id
-        let user_id = match request.user_id {
-            Some(id) => id,
-            None => {
-                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+        // Check auth
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
@@ -550,6 +553,7 @@ pub async fn handle_get(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
         debug!("Received route.get message");
@@ -573,11 +577,11 @@ pub async fn handle_get(
             }
         };
 
-        // Check user_id
-        let user_id = match request.user_id {
-            Some(id) => id,
-            None => {
-                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+        // Check auth
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
@@ -697,6 +701,7 @@ pub async fn handle_insertion_calculate(
     client: Client,
     mut subscriber: Subscriber,
     _pool: PgPool,
+    jwt_secret: Arc<String>,
     routing_service: Arc<dyn RoutingService>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
@@ -922,6 +927,7 @@ pub async fn handle_insertion_batch(
     client: Client,
     mut subscriber: Subscriber,
     _pool: PgPool,
+    jwt_secret: Arc<String>,
     routing_service: Arc<dyn RoutingService>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {

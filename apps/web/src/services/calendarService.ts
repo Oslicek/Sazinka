@@ -134,7 +134,6 @@ function filterByCrew(items: CalendarItem[], crewId?: string): CalendarItem[] {
 }
 
 export async function listCalendarItems(
-  userId: string,
   filters: CalendarItemFilters
 ): Promise<CalendarItemsResponse> {
   const viewMode = filters.viewMode ?? 'due';
@@ -142,7 +141,7 @@ export async function listCalendarItems(
 
   const [revisionsResponse, visitsResponse, communicationsResponse] = await Promise.all([
     types.includes('revision')
-      ? listRevisions(userId, {
+      ? listRevisions({
           fromDate: filters.startDate,
           toDate: filters.endDate,
           dateType: viewMode,

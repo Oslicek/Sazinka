@@ -6,9 +6,6 @@ import { getRevisionStats, type RevisionStats } from '../services/revisionServic
 import { listCalendarItems } from '../services/calendarService';
 import styles from './Dashboard.module.css';
 
-// Temporary user ID until auth is implemented
-const TEMP_USER_ID = '00000000-0000-0000-0000-000000000001';
-
 function getStatusLabel(status: CalendarItem['status']): string {
   const labels: Record<CalendarItem['status'], string> = {
     scheduled: 'Naplánováno',
@@ -59,13 +56,13 @@ export function Dashboard() {
       const weekKey = weekAhead.toISOString().substring(0, 10);
 
       const [revisionStats, todayResponse, weekResponse] = await Promise.all([
-        getRevisionStats(TEMP_USER_ID),
-        listCalendarItems(TEMP_USER_ID, {
+        getRevisionStats(),
+        listCalendarItems({
           startDate: todayKey,
           endDate: todayKey,
           viewMode: 'scheduled',
         }),
-        listCalendarItems(TEMP_USER_ID, {
+        listCalendarItems({
           startDate: todayKey,
           endDate: weekKey,
           viewMode: 'scheduled',

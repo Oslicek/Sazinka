@@ -14,10 +14,8 @@ import {
   formatSlotTime,
   type SuggestedSlot,
 } from '../services/slotService';
+import { getToken } from '@/utils/auth';
 import styles from './CallQueue.module.css';
-
-// Mock user ID for now
-const USER_ID = '00000000-0000-0000-0000-000000000001';
 
 // Device type labels
 const DEVICE_TYPE_LABELS: Record<string, string> = {
@@ -77,7 +75,7 @@ export function CallQueue() {
     setError(null);
     
     try {
-      const response: CallQueueResponse = await getCallQueue(USER_ID, filters);
+      const response: CallQueueResponse = await getCallQueue(filters);
       setQueue(response.items);
       setStats({
         total: response.total,
@@ -99,7 +97,7 @@ export function CallQueue() {
     if (!selectedItem || !snoozeDate) return;
     
     try {
-      await snoozeRevision(USER_ID, {
+      await snoozeRevision({
         id: selectedItem.id,
         snoozeUntil: snoozeDate,
         reason: snoozeReason || undefined,
@@ -144,7 +142,7 @@ export function CallQueue() {
     if (!selectedItem || !scheduleDate) return;
     
     try {
-      await scheduleRevision(USER_ID, {
+      await scheduleRevision({
         id: selectedItem.id,
         scheduledDate: scheduleDate,
         timeWindowStart: scheduleTimeStart || undefined,

@@ -14,6 +14,7 @@
 import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import type { Customer, CustomerListItem } from '@shared/customer';
+import { getToken } from '@/utils/auth';
 import { AddressMap } from './AddressMap';
 import { AddressStatusChip } from './AddressStatusChip';
 import { DeviceList } from '../devices';
@@ -58,9 +59,6 @@ function AddressStatus({ status }: { status: string }) {
     </span>
   );
 }
-
-// Temp user ID
-const TEMP_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 export function CustomerPreviewPanel({
   customer,
@@ -298,7 +296,7 @@ export function CustomerPreviewPanel({
               {activeTab === 'devices' && (
                 <DeviceList
                   customerId={fullCustomer.id}
-                  userId={TEMP_USER_ID}
+                  userId={getToken()}
                 />
               )}
               {activeTab === 'revisions' && (

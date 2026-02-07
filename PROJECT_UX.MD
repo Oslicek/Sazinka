@@ -309,28 +309,41 @@ Bez mobilní aplikace potřebuje technik jednoduché webové rozhraní.
 
 ## Role a režimy použití
 
-### Režim A: Dispečerka + 1-N aut
+> **Autentizace:** Přístup k aplikaci vyžaduje přihlášení (JWT). Role jsou vynuceny na backendu i frontendu. Viz `PROJECT_MULTIUSER.MD`.
+
+### Role
+
+| Role | Přístup ke stránkám | Popis |
+|------|---------------------|-------|
+| **Admin** | Vše včetně Admin panelu | Správce systému |
+| **Customer** | Vše kromě Admin (včetně Nastavení) | Majitel firmy, může vytvářet pracovníky |
+| **Worker** | Vše kromě Admin a Nastavení | Zaměstnanec, vidí data svého zákazníka |
+
+### Režim A: Dispečerka + 1-N aut (Customer + Workers)
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 │   Dispečerka    │     │   Technik 1     │     │   Technik 2     │
+│   (Customer)    │     │   (Worker)      │     │   (Worker)      │
 ├─────────────────┤     ├─────────────────┤     ├─────────────────┤
 │ • Fronta        │     │ • Můj plán      │     │ • Můj plán      │
 │ • Domluva       │────▶│ • Status update │     │ • Status update │
 │ • Plánování     │     │ • Export        │     │ • Export        │
 │ • Přehledy      │     └─────────────────┘     └─────────────────┘
+│ • Nastavení     │
 └─────────────────┘
 ```
 
-### Režim B: Řemeslník sám
+### Režim B: Řemeslník sám (Customer bez Workers)
 
 ```
 ┌─────────────────────────────────────┐
-│         Řemeslník (vše sám)         │
+│     Řemeslník (Customer, vše sám)   │
 ├─────────────────────────────────────┤
 │ • Fronta + mini plánování v jednom  │
 │ • "Můj plán" jako výchozí homepage  │
 │ • Domluva s automatickými sloty     │
+│ • Nastavení                         │
 └─────────────────────────────────────┘
 ```
 

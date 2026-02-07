@@ -11,10 +11,8 @@ import {
 import { RevisionWorkspace, type RevisionTabId } from '../components/revisions/RevisionWorkspace';
 import { CompleteRevisionDialog } from '../components/revisions/CompleteRevisionDialog';
 import { useNatsStore } from '../stores/natsStore';
+import { getToken } from '@/utils/auth';
 import styles from './RevisionDetail.module.css';
-
-// Temporary user ID until auth is implemented
-const TEMP_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 interface SearchParams {
   tab?: RevisionTabId;
@@ -65,7 +63,7 @@ export function RevisionDetail() {
     try {
       setIsLoading(true);
       setError(null);
-      const data = await getRevision(TEMP_USER_ID, revisionId);
+      const data = await getRevision(revisionId);
       setRevision(data);
     } catch (err) {
       console.error('Failed to load revision:', err);
@@ -86,7 +84,7 @@ export function RevisionDetail() {
     try {
       setIsSubmitting(true);
       setError(null);
-      await scheduleRevision(TEMP_USER_ID, {
+      await scheduleRevision({
         id: revision.id,
         scheduledDate: scheduleDate,
         timeWindowStart: scheduleTimeStart || undefined,
@@ -110,7 +108,7 @@ export function RevisionDetail() {
     try {
       setIsSubmitting(true);
       setError(null);
-      await snoozeRevision(TEMP_USER_ID, {
+      await snoozeRevision({
         id: revision.id,
         snoozeUntil,
         reason: snoozeReason || undefined,
@@ -143,7 +141,7 @@ export function RevisionDetail() {
     try {
       setIsSubmitting(true);
       setError(null);
-      await updateRevision(TEMP_USER_ID, {
+      await updateRevision({
         id: revision.id,
         status: 'cancelled',
       });
@@ -366,7 +364,7 @@ export function RevisionDetail() {
       {showCompleteDialog && (
         <CompleteRevisionDialog
           revision={revision}
-          userId={TEMP_USER_ID}
+          userId={getToken()}
           onSuccess={handleCompleteSuccess}
           onCancel={() => setShowCompleteDialog(false)}
         />

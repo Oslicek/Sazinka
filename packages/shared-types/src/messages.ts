@@ -3,7 +3,8 @@
 export interface Request<T> {
   id: string;
   timestamp: string;
-  userId?: string;
+  userId?: string;  // Legacy - ignored by backend when token is present
+  token?: string;   // JWT access token (preferred)
   payload: T;
 }
 
@@ -36,12 +37,20 @@ export interface ListResponse<T> {
   offset: number;
 }
 
-// Helper type to create request payloads
-export function createRequest<T>(userId: string | undefined, payload: T): Request<T> {
+/**
+ * Create a NATS request with JWT token authentication.
+ * @param tokenOrUserId - JWT token string, or legacy userId (for backward compat during migration)
+ * @param payload - The request payload
+ */
+export function createRequest<T>(tokenOrUserId: string | undefined, payload: T): Request<T> {
+  // Detect if it's a JWT token (contains dots) or a legacy userId (UUID format)
+  const isToken = tokenOrUserId && tokenOrUserId.includes('.');
+  
   return {
     id: crypto.randomUUID(),
     timestamp: new Date().toISOString(),
-    userId,
+    userId: isToken ? undefined : tokenOrUserId,
+    token: isToken ? tokenOrUserId : undefined,
     payload,
   };
 }

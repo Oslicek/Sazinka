@@ -11,8 +11,7 @@ import type {
 } from '@shared/communication';
 import { createRequest } from '@shared/messages';
 import { useNatsStore } from '../stores/natsStore';
-
-const TEMP_USER_ID = '00000000-0000-0000-0000-000000000001';
+import { getToken } from '@/utils/auth';
 
 export interface CommunicationServiceDeps {
   request: <TRes>(subject: string, payload: unknown) => Promise<TRes>;
@@ -31,7 +30,7 @@ export async function createCommunication(
   data: CreateCommunicationRequest,
   deps = getDefaultDeps()
 ): Promise<Communication> {
-  const request = createRequest(TEMP_USER_ID, data);
+  const request = createRequest(getToken(), data);
   const response = await deps.request<{ payload: Communication }>(
     'sazinka.communication.create',
     request
@@ -46,7 +45,7 @@ export async function listCommunications(
   filters: ListCommunicationsRequest = {},
   deps = getDefaultDeps()
 ): Promise<ListCommunicationsResponse> {
-  const request = createRequest(TEMP_USER_ID, filters);
+  const request = createRequest(getToken(), filters);
   const response = await deps.request<{ payload: ListCommunicationsResponse }>(
     'sazinka.communication.list',
     request
@@ -73,7 +72,7 @@ export async function updateCommunication(
   data: UpdateCommunicationRequest,
   deps = getDefaultDeps()
 ): Promise<Communication> {
-  const request = createRequest(TEMP_USER_ID, data);
+  const request = createRequest(getToken(), data);
   const response = await deps.request<{ payload: Communication }>(
     'sazinka.communication.update',
     request
@@ -88,7 +87,7 @@ export async function deleteCommunication(
   id: string,
   deps = getDefaultDeps()
 ): Promise<boolean> {
-  const request = createRequest(TEMP_USER_ID, { id });
+  const request = createRequest(getToken(), { id });
   const response = await deps.request<{ payload: { deleted: boolean } }>(
     'sazinka.communication.delete',
     request

@@ -57,9 +57,16 @@ users
 ├── reminder_days_before            INTEGER[] DEFAULT '{30, 14, 7}'
 ├── email_subject_template          TEXT
 ├── email_body_template             TEXT
+├── role                            VARCHAR(20) NOT NULL DEFAULT 'customer'
+├── owner_id                        UUID REFERENCES users(id) ON DELETE CASCADE
 ├── created_at                      TIMESTAMPTZ
 └── updated_at                      TIMESTAMPTZ
 ```
+
+**Role:** `admin` (systém), `customer` (majitel firmy), `worker` (zaměstnanec).
+Worker má `owner_id` odkazující na svého customera – vidí stejná data.
+
+**Indexy:** `idx_users_role`, `idx_users_owner`
 
 **Poznámky:**
 

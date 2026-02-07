@@ -12,6 +12,12 @@ import {
 } from './customerService';
 import type { CreateCustomerRequest, Customer } from '@shared/customer';
 
+vi.mock('@/utils/auth', () => ({
+  getToken: () => 'test-user-id',
+  getUserId: () => 'test-user-id',
+  hasRole: () => true,
+}));
+
 describe('customerService', () => {
   const mockRequest = vi.fn();
   const mockSubscribe = vi.fn();
@@ -56,12 +62,11 @@ describe('customerService', () => {
     it('should call NATS with correct subject and payload', async () => {
       mockRequest.mockResolvedValueOnce({ payload: mockCustomerResponse });
 
-      await createCustomer('user-123', validCustomerData, mockDeps);
+      await createCustomer(validCustomerData, mockDeps);
 
       expect(mockRequest).toHaveBeenCalledWith(
         'sazinka.customer.create',
         expect.objectContaining({
-          userId: 'user-123',
           payload: validCustomerData,
         })
       );
@@ -70,7 +75,7 @@ describe('customerService', () => {
     it('should return created customer on success', async () => {
       mockRequest.mockResolvedValueOnce({ payload: mockCustomerResponse });
 
-      const result = await createCustomer('user-123', validCustomerData, mockDeps);
+      const result = await createCustomer(validCustomerData, mockDeps);
 
       expect(result).toEqual(mockCustomerResponse);
     });
@@ -80,7 +85,7 @@ describe('customerService', () => {
         error: { code: 'DATABASE_ERROR', message: 'Connection failed' },
       });
 
-      await expect(createCustomer('user-123', validCustomerData, mockDeps)).rejects.toThrow(
+      await expect(createCustomer(validCustomerData, mockDeps)).rejects.toThrow(
         'Connection failed'
       );
     });
@@ -88,7 +93,7 @@ describe('customerService', () => {
     it('should throw error when NATS request fails', async () => {
       mockRequest.mockRejectedValueOnce(new Error('Network error'));
 
-      await expect(createCustomer('user-123', validCustomerData, mockDeps)).rejects.toThrow(
+      await expect(createCustomer(validCustomerData, mockDeps)).rejects.toThrow(
         'Network error'
       );
     });
@@ -96,7 +101,7 @@ describe('customerService', () => {
     it('should include request id and timestamp', async () => {
       mockRequest.mockResolvedValueOnce({ payload: mockCustomerResponse });
 
-      await createCustomer('user-123', validCustomerData, mockDeps);
+      await createCustomer(validCustomerData, mockDeps);
 
       expect(mockRequest).toHaveBeenCalledWith(
         'sazinka.customer.create',
@@ -110,11 +115,11 @@ describe('customerService', () => {
     it('should use camelCase userId field for backend compatibility', async () => {
       mockRequest.mockResolvedValueOnce({ payload: mockCustomerResponse });
 
-      await createCustomer('user-123', validCustomerData, mockDeps);
+      await createCustomer(validCustomerData, mockDeps);
 
       const callArgs = mockRequest.mock.calls[0][1];
       // Verify camelCase is used (not snake_case user_id)
-      expect(callArgs).toHaveProperty('userId', 'user-123');
+      expect(callArgs).toHaveProperty('userId');
       expect(callArgs).not.toHaveProperty('user_id');
     });
   });
@@ -154,12 +159,12 @@ describe('customerService', () => {
         payload: { items: mockCustomers, total: 2, limit: 50, offset: 0 },
       });
 
-      await listCustomers('user-123', {}, mockDeps);
+      await listCustomers({}, mockDeps);
 
       expect(mockRequest).toHaveBeenCalledWith(
         'sazinka.customer.list',
         expect.objectContaining({
-          userId: 'user-123',
+          userId: expect.any(String),
         })
       );
     });
@@ -169,7 +174,7 @@ describe('customerService', () => {
         payload: { items: mockCustomers, total: 2, limit: 50, offset: 0 },
       });
 
-      const result = await listCustomers('user-123', {}, mockDeps);
+      const result = await listCustomers({}, mockDeps);
 
       expect(result.items).toHaveLength(2);
       expect(result.total).toBe(2);
@@ -180,7 +185,7 @@ describe('customerService', () => {
         payload: { items: [], total: 0, limit: 10, offset: 20 },
       });
 
-      await listCustomers('user-123', { limit: 10, offset: 20 }, mockDeps);
+      await listCustomers({ limit: 10, offset: 20 }, mockDeps);
 
       expect(mockRequest).toHaveBeenCalledWith(
         'sazinka.customer.list',
@@ -195,12 +200,11 @@ describe('customerService', () => {
     it('should call NATS with correct subject and payload', async () => {
       mockRequest.mockResolvedValueOnce({ payload: { jobId: 'job-123', message: 'ok' } });
 
-      await submitGeocodeJob('user-123', ['cust-1'], mockDeps);
+      await submitGeocodeJob(['cust-1'], mockDeps);
 
       expect(mockRequest).toHaveBeenCalledWith(
         'sazinka.geocode.submit',
         expect.objectContaining({
-          userId: 'user-123',
           payload: expect.objectContaining({
             customerIds: ['cust-1'],
           }),
@@ -211,7 +215,7 @@ describe('customerService', () => {
     it('should return job response on success', async () => {
       mockRequest.mockResolvedValueOnce({ payload: { jobId: 'job-123', message: 'ok' } });
 
-      const result = await submitGeocodeJob('user-123', ['cust-1'], mockDeps);
+      const result = await submitGeocodeJob(['cust-1'], mockDeps);
 
       expect(result.jobId).toBe('job-123');
     });
@@ -221,7 +225,7 @@ describe('customerService', () => {
         error: { code: 'SUBMIT_ERROR', message: 'Queue error' },
       });
 
-      await expect(submitGeocodeJob('user-123', ['cust-1'], mockDeps)).rejects.toThrow(
+      await expect(submitGeocodeJob(['cust-1'], mockDeps)).rejects.toThrow(
         'Queue error'
       );
     });
@@ -245,12 +249,11 @@ describe('customerService', () => {
     it('should call NATS with correct subject and payload', async () => {
       mockRequest.mockResolvedValueOnce({ payload: { jobId: 'job-addr', message: 'ok' } });
 
-      await submitGeocodeAddressJob('user-123', { street: 'A', city: 'B', postalCode: '10000' }, mockDeps);
+      await submitGeocodeAddressJob({ street: 'A', city: 'B', postalCode: '10000' }, mockDeps);
 
       expect(mockRequest).toHaveBeenCalledWith(
         'sazinka.geocode.address.submit',
         expect.objectContaining({
-          userId: 'user-123',
           payload: expect.objectContaining({
             street: 'A',
             city: 'B',
@@ -279,12 +282,11 @@ describe('customerService', () => {
     it('should call NATS with correct subject and payload', async () => {
       mockRequest.mockResolvedValueOnce({ payload: { jobId: 'job-rev', message: 'ok' } });
 
-      await submitReverseGeocodeJob('user-123', { customerId: 'cust-1', lat: 1, lng: 2 }, mockDeps);
+      await submitReverseGeocodeJob({ customerId: 'cust-1', lat: 1, lng: 2 }, mockDeps);
 
       expect(mockRequest).toHaveBeenCalledWith(
         'sazinka.geocode.reverse.submit',
         expect.objectContaining({
-          userId: 'user-123',
           payload: expect.objectContaining({
             customerId: 'cust-1',
             lat: 1,

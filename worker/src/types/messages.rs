@@ -10,7 +10,10 @@ use chrono::{DateTime, Utc};
 pub struct Request<T> {
     pub id: Uuid,
     pub timestamp: DateTime<Utc>,
-    pub user_id: Option<Uuid>,  // None for auth requests
+    #[serde(default)]
+    pub user_id: Option<Uuid>,  // Legacy dev mode fallback
+    #[serde(default)]
+    pub token: Option<String>,  // JWT access token (preferred)
     pub payload: T,
 }
 
@@ -20,6 +23,17 @@ impl<T> Request<T> {
             id: Uuid::new_v4(),
             timestamp: Utc::now(),
             user_id,
+            token: None,
+            payload,
+        }
+    }
+
+    pub fn with_token(token: String, payload: T) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            timestamp: Utc::now(),
+            user_id: None,
+            token: Some(token),
             payload,
         }
     }

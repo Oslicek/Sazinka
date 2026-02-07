@@ -6,8 +6,7 @@
 
 import { useNatsStore } from '../stores/natsStore';
 import { createRequest, type SuccessResponse, type ErrorResponse } from '@shared/messages';
-
-const TEMP_USER_ID = '00000000-0000-0000-0000-000000000001';
+import { getToken } from '@/utils/auth';
 
 type NatsResponse<T> = SuccessResponse<T> | ErrorResponse;
 
@@ -40,7 +39,7 @@ export async function submitGeometryJob(
   locations: Array<{ lat: number; lng: number }>,
   deps = { request: useNatsStore.getState().request },
 ): Promise<GeometryJobSubmitResponse> {
-  const req = createRequest(TEMP_USER_ID, { locations });
+  const req = createRequest(getToken(), { locations });
 
   const response = await deps.request<typeof req, NatsResponse<GeometryJobSubmitResponse>>(
     'sazinka.valhalla.geometry.submit',

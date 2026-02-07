@@ -11,9 +11,7 @@ import type {
   ImportWorkLogRequest,
   ImportBatchResponse,
 } from '@shared/import';
-
-// Mock user ID for development
-const USER_ID = '00000000-0000-0000-0000-000000000001';
+import { getToken } from '@/utils/auth';
 
 interface NatsResponse<T> {
   payload: T;
@@ -27,7 +25,7 @@ export async function importDevicesBatch(
 ): Promise<ImportBatchResponse> {
   const { request } = useNatsStore.getState();
 
-  const req = createRequest(USER_ID, { devices });
+  const req = createRequest(getToken(), { devices });
   const response = await request<typeof req, NatsResponse<ImportBatchResponse>>(
     'sazinka.import.device',
     req
@@ -44,7 +42,7 @@ export async function importRevisionsBatch(
 ): Promise<ImportBatchResponse> {
   const { request } = useNatsStore.getState();
 
-  const req = createRequest(USER_ID, { revisions });
+  const req = createRequest(getToken(), { revisions });
   const response = await request<typeof req, NatsResponse<ImportBatchResponse>>(
     'sazinka.import.revision',
     req
@@ -61,7 +59,7 @@ export async function importCommunicationsBatch(
 ): Promise<ImportBatchResponse> {
   const { request } = useNatsStore.getState();
 
-  const req = createRequest(USER_ID, { communications });
+  const req = createRequest(getToken(), { communications });
   const response = await request<typeof req, NatsResponse<ImportBatchResponse>>(
     'sazinka.import.communication',
     req
@@ -78,7 +76,7 @@ export async function importWorkLogBatch(
 ): Promise<ImportBatchResponse> {
   const { request } = useNatsStore.getState();
 
-  const req = createRequest(USER_ID, { entries });
+  const req = createRequest(getToken(), { entries });
   const response = await request<typeof req, NatsResponse<ImportBatchResponse>>(
     'sazinka.import.worklog',
     req

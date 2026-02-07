@@ -12,8 +12,7 @@ import type {
 } from '@shared/visit';
 import { createRequest } from '@shared/messages';
 import { useNatsStore } from '../stores/natsStore';
-
-const TEMP_USER_ID = '00000000-0000-0000-0000-000000000001';
+import { getToken } from '@/utils/auth';
 
 export interface VisitServiceDeps {
   request: <TRes>(subject: string, payload: unknown) => Promise<TRes>;
@@ -32,7 +31,7 @@ export async function createVisit(
   data: CreateVisitRequest,
   deps = getDefaultDeps()
 ): Promise<Visit> {
-  const request = createRequest(TEMP_USER_ID, data);
+  const request = createRequest(getToken(), data);
   const response = await deps.request<{ payload: Visit }>(
     'sazinka.visit.create',
     request
@@ -47,7 +46,7 @@ export async function listVisits(
   filters: ListVisitsRequest = {},
   deps = getDefaultDeps()
 ): Promise<ListVisitsResponse> {
-  const request = createRequest(TEMP_USER_ID, filters);
+  const request = createRequest(getToken(), filters);
   const response = await deps.request<{ payload: ListVisitsResponse }>(
     'sazinka.visit.list',
     request
@@ -74,7 +73,7 @@ export async function updateVisit(
   data: UpdateVisitRequest,
   deps = getDefaultDeps()
 ): Promise<Visit> {
-  const request = createRequest(TEMP_USER_ID, data);
+  const request = createRequest(getToken(), data);
   const response = await deps.request<{ payload: Visit }>(
     'sazinka.visit.update',
     request
@@ -89,7 +88,7 @@ export async function completeVisit(
   data: CompleteVisitRequest,
   deps = getDefaultDeps()
 ): Promise<Visit> {
-  const request = createRequest(TEMP_USER_ID, data);
+  const request = createRequest(getToken(), data);
   const response = await deps.request<{ payload: Visit }>(
     'sazinka.visit.complete',
     request
@@ -104,7 +103,7 @@ export async function deleteVisit(
   id: string,
   deps = getDefaultDeps()
 ): Promise<boolean> {
-  const request = createRequest(TEMP_USER_ID, { id });
+  const request = createRequest(getToken(), { id });
   const response = await deps.request<{ payload: { deleted: boolean } }>(
     'sazinka.visit.delete',
     request

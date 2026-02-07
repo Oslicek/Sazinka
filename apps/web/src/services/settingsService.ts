@@ -15,6 +15,7 @@ import type {
 import type { SuccessResponse, ErrorResponse } from '@shared/messages';
 import { createRequest } from '@shared/messages';
 import { useNatsStore } from '../stores/natsStore';
+import { getToken } from '@/utils/auth';
 
 /**
  * Dependencies for settings service (for testing)
@@ -52,10 +53,9 @@ function isErrorResponse(response: NatsResponse<unknown>): response is ErrorResp
  * Get all user settings including depots
  */
 export async function getSettings(
-  userId: string,
   deps: SettingsServiceDeps = getDefaultDeps()
 ): Promise<UserSettings> {
-  const request = createRequest(userId, {});
+  const request = createRequest(getToken(), {});
 
   const response = await deps.request<typeof request, NatsResponse<UserSettings>>(
     'sazinka.settings.get',
@@ -73,11 +73,10 @@ export async function getSettings(
  * Update work constraints
  */
 export async function updateWorkConstraints(
-  userId: string,
   data: UpdateWorkConstraintsRequest,
   deps: SettingsServiceDeps = getDefaultDeps()
 ): Promise<WorkConstraints> {
-  const request = createRequest(userId, data);
+  const request = createRequest(getToken(), data);
 
   const response = await deps.request<typeof request, NatsResponse<WorkConstraints>>(
     'sazinka.settings.work.update',
@@ -95,11 +94,10 @@ export async function updateWorkConstraints(
  * Update business info
  */
 export async function updateBusinessInfo(
-  userId: string,
   data: UpdateBusinessInfoRequest,
   deps: SettingsServiceDeps = getDefaultDeps()
 ): Promise<BusinessInfo> {
-  const request = createRequest(userId, data);
+  const request = createRequest(getToken(), data);
 
   const response = await deps.request<typeof request, NatsResponse<BusinessInfo>>(
     'sazinka.settings.business.update',
@@ -117,11 +115,10 @@ export async function updateBusinessInfo(
  * Update email templates
  */
 export async function updateEmailTemplates(
-  userId: string,
   data: UpdateEmailTemplatesRequest,
   deps: SettingsServiceDeps = getDefaultDeps()
 ): Promise<EmailTemplateSettings> {
-  const request = createRequest(userId, data);
+  const request = createRequest(getToken(), data);
 
   const response = await deps.request<typeof request, NatsResponse<EmailTemplateSettings>>(
     'sazinka.settings.email.update',
@@ -143,10 +140,9 @@ export async function updateEmailTemplates(
  * List all depots for user
  */
 export async function listDepots(
-  userId: string,
   deps: SettingsServiceDeps = getDefaultDeps()
 ): Promise<Depot[]> {
-  const request = createRequest(userId, {});
+  const request = createRequest(getToken(), {});
 
   const response = await deps.request<typeof request, NatsResponse<ListDepotsResponse>>(
     'sazinka.depot.list',
@@ -164,11 +160,10 @@ export async function listDepots(
  * Create a new depot
  */
 export async function createDepot(
-  userId: string,
   data: CreateDepotRequest,
   deps: SettingsServiceDeps = getDefaultDeps()
 ): Promise<Depot> {
-  const request = createRequest(userId, data);
+  const request = createRequest(getToken(), data);
 
   const response = await deps.request<typeof request, NatsResponse<Depot>>(
     'sazinka.depot.create',
@@ -186,11 +181,10 @@ export async function createDepot(
  * Update a depot
  */
 export async function updateDepot(
-  userId: string,
   data: UpdateDepotRequest,
   deps: SettingsServiceDeps = getDefaultDeps()
 ): Promise<Depot> {
-  const request = createRequest(userId, data);
+  const request = createRequest(getToken(), data);
 
   const response = await deps.request<typeof request, NatsResponse<Depot>>(
     'sazinka.depot.update',
@@ -208,11 +202,10 @@ export async function updateDepot(
  * Delete a depot
  */
 export async function deleteDepot(
-  userId: string,
   depotId: string,
   deps: SettingsServiceDeps = getDefaultDeps()
 ): Promise<boolean> {
-  const request = createRequest(userId, { id: depotId } as DeleteDepotRequest);
+  const request = createRequest(getToken(), { id: depotId } as DeleteDepotRequest);
 
   const response = await deps.request<typeof request, NatsResponse<{ deleted: boolean }>>(
     'sazinka.depot.delete',
@@ -239,11 +232,10 @@ export interface GeocodeDepotResponse {
  * Geocode an address for depot
  */
 export async function geocodeDepotAddress(
-  userId: string,
   address: { street: string; city: string; postalCode: string },
   deps: SettingsServiceDeps = getDefaultDeps()
 ): Promise<GeocodeDepotResponse> {
-  const request = createRequest(userId, address);
+  const request = createRequest(getToken(), address);
 
   const response = await deps.request<typeof request, NatsResponse<GeocodeDepotResponse>>(
     'sazinka.depot.geocode',

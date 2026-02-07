@@ -2,6 +2,7 @@
 //!
 //! This worker connects to NATS and handles messages from the frontend.
 
+mod auth;
 mod config;
 mod db;
 mod handlers;

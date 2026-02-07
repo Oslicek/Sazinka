@@ -13,6 +13,12 @@ import {
 } from './revisionService';
 import type { Revision } from '@shared/revision';
 
+vi.mock('@/utils/auth', () => ({
+  getToken: () => 'test-user-id',
+  getUserId: () => 'test-user-id',
+  hasRole: () => true,
+}));
+
 describe('revisionService', () => {
   const mockRequest = vi.fn();
   const mockDeps: RevisionServiceDeps = {
@@ -50,12 +56,11 @@ describe('revisionService', () => {
     it('should call NATS with correct subject and payload', async () => {
       mockRequest.mockResolvedValueOnce({ payload: mockRevision });
 
-      await createRevision('user-123', createRequest, mockDeps);
+      await createRevision(createRequest, mockDeps);
 
       expect(mockRequest).toHaveBeenCalledWith(
         'sazinka.revision.create',
         expect.objectContaining({
-          userId: 'user-123',
           payload: createRequest,
         })
       );
@@ -64,7 +69,7 @@ describe('revisionService', () => {
     it('should return created revision on success', async () => {
       mockRequest.mockResolvedValueOnce({ payload: mockRevision });
 
-      const result = await createRevision('user-123', createRequest, mockDeps);
+      const result = await createRevision(createRequest, mockDeps);
 
       expect(result).toEqual(mockRevision);
     });
@@ -74,7 +79,7 @@ describe('revisionService', () => {
         error: { code: 'DATABASE_ERROR', message: 'Connection failed' },
       });
 
-      await expect(createRevision('user-123', createRequest, mockDeps)).rejects.toThrow(
+      await expect(createRevision(createRequest, mockDeps)).rejects.toThrow(
         'Connection failed'
       );
     });
@@ -88,12 +93,11 @@ describe('revisionService', () => {
         payload: { items: mockRevisions, total: 1 },
       });
 
-      await listRevisions('user-123', { customerId: 'customer-123', status: 'upcoming' }, mockDeps);
+      await listRevisions({ customerId: 'customer-123', status: 'upcoming' }, mockDeps);
 
       expect(mockRequest).toHaveBeenCalledWith(
         'sazinka.revision.list',
         expect.objectContaining({
-          userId: 'user-123',
           payload: { customerId: 'customer-123', status: 'upcoming' },
         })
       );
@@ -104,7 +108,7 @@ describe('revisionService', () => {
         payload: { items: mockRevisions, total: 1 },
       });
 
-      const result = await listRevisions('user-123', {}, mockDeps);
+      const result = await listRevisions({}, mockDeps);
 
       expect(result.items).toHaveLength(1);
       expect(result.total).toBe(1);
@@ -116,7 +120,6 @@ describe('revisionService', () => {
       });
 
       await listRevisions(
-        'user-123',
         { fromDate: '2026-01-01', toDate: '2026-12-31' },
         mockDeps
       );
@@ -134,12 +137,11 @@ describe('revisionService', () => {
     it('should call NATS with correct subject and revision id', async () => {
       mockRequest.mockResolvedValueOnce({ payload: mockRevision });
 
-      await getRevision('user-123', 'revision-123', mockDeps);
+      await getRevision('revision-123', mockDeps);
 
       expect(mockRequest).toHaveBeenCalledWith(
         'sazinka.revision.get',
         expect.objectContaining({
-          userId: 'user-123',
           payload: { id: 'revision-123' },
         })
       );
@@ -148,7 +150,7 @@ describe('revisionService', () => {
     it('should return revision on success', async () => {
       mockRequest.mockResolvedValueOnce({ payload: mockRevision });
 
-      const result = await getRevision('user-123', 'revision-123', mockDeps);
+      const result = await getRevision('revision-123', mockDeps);
 
       expect(result).toEqual(mockRevision);
     });
@@ -158,7 +160,7 @@ describe('revisionService', () => {
         error: { code: 'NOT_FOUND', message: 'Revision not found' },
       });
 
-      await expect(getRevision('user-123', 'revision-123', mockDeps)).rejects.toThrow(
+      await expect(getRevision('revision-123', mockDeps)).rejects.toThrow(
         'Revision not found'
       );
     });
@@ -174,12 +176,11 @@ describe('revisionService', () => {
     it('should call NATS with correct subject and update data', async () => {
       mockRequest.mockResolvedValueOnce({ payload: { ...mockRevision, ...updateRequest } });
 
-      await updateRevision('user-123', updateRequest, mockDeps);
+      await updateRevision(updateRequest, mockDeps);
 
       expect(mockRequest).toHaveBeenCalledWith(
         'sazinka.revision.update',
         expect.objectContaining({
-          userId: 'user-123',
           payload: updateRequest,
         })
       );
@@ -189,7 +190,7 @@ describe('revisionService', () => {
       const updatedRevision = { ...mockRevision, status: 'scheduled', scheduledDate: '2026-03-15' };
       mockRequest.mockResolvedValueOnce({ payload: updatedRevision });
 
-      const result = await updateRevision('user-123', updateRequest, mockDeps);
+      const result = await updateRevision(updateRequest, mockDeps);
 
       expect(result.status).toBe('scheduled');
       expect(result.scheduledDate).toBe('2026-03-15');
@@ -215,12 +216,11 @@ describe('revisionService', () => {
       };
       mockRequest.mockResolvedValueOnce({ payload: completedRevision });
 
-      await completeRevision('user-123', completeRequest, mockDeps);
+      await completeRevision(completeRequest, mockDeps);
 
       expect(mockRequest).toHaveBeenCalledWith(
         'sazinka.revision.complete',
         expect.objectContaining({
-          userId: 'user-123',
           payload: completeRequest,
         })
       );
@@ -235,7 +235,7 @@ describe('revisionService', () => {
       };
       mockRequest.mockResolvedValueOnce({ payload: completedRevision });
 
-      const result = await completeRevision('user-123', completeRequest, mockDeps);
+      const result = await completeRevision(completeRequest, mockDeps);
 
       expect(result.status).toBe('completed');
       expect(result.result).toBe('passed');
@@ -247,12 +247,11 @@ describe('revisionService', () => {
     it('should call NATS with correct subject and revision id', async () => {
       mockRequest.mockResolvedValueOnce({ payload: { deleted: true } });
 
-      await deleteRevision('user-123', 'revision-123', mockDeps);
+      await deleteRevision('revision-123', mockDeps);
 
       expect(mockRequest).toHaveBeenCalledWith(
         'sazinka.revision.delete',
         expect.objectContaining({
-          userId: 'user-123',
           payload: { id: 'revision-123' },
         })
       );
@@ -261,7 +260,7 @@ describe('revisionService', () => {
     it('should return true on successful deletion', async () => {
       mockRequest.mockResolvedValueOnce({ payload: { deleted: true } });
 
-      const result = await deleteRevision('user-123', 'revision-123', mockDeps);
+      const result = await deleteRevision('revision-123', mockDeps);
 
       expect(result).toBe(true);
     });
@@ -273,12 +272,11 @@ describe('revisionService', () => {
         payload: { overdue: [], dueSoon: [] },
       });
 
-      await getUpcomingRevisions('user-123', 14, mockDeps);
+      await getUpcomingRevisions(14, mockDeps);
 
       expect(mockRequest).toHaveBeenCalledWith(
         'sazinka.revision.upcoming',
         expect.objectContaining({
-          userId: 'user-123',
           payload: { daysAhead: 14 },
         })
       );
@@ -292,7 +290,7 @@ describe('revisionService', () => {
         payload: { overdue: [overdueRevision], dueSoon: [dueSoonRevision] },
       });
 
-      const result = await getUpcomingRevisions('user-123', 30, mockDeps);
+      const result = await getUpcomingRevisions(30, mockDeps);
 
       expect(result.overdue).toHaveLength(1);
       expect(result.dueSoon).toHaveLength(1);
@@ -310,12 +308,11 @@ describe('revisionService', () => {
     it('should call NATS with correct subject', async () => {
       mockRequest.mockResolvedValueOnce({ payload: mockStats });
 
-      await getRevisionStats('user-123', mockDeps);
+      await getRevisionStats(mockDeps);
 
       expect(mockRequest).toHaveBeenCalledWith(
         'sazinka.revision.stats',
         expect.objectContaining({
-          userId: 'user-123',
           payload: {},
         })
       );
@@ -324,7 +321,7 @@ describe('revisionService', () => {
     it('should return revision statistics', async () => {
       mockRequest.mockResolvedValueOnce({ payload: mockStats });
 
-      const result = await getRevisionStats('user-123', mockDeps);
+      const result = await getRevisionStats(mockDeps);
 
       expect(result.overdue).toBe(5);
       expect(result.dueThisWeek).toBe(12);
@@ -337,7 +334,7 @@ describe('revisionService', () => {
         error: { code: 'DATABASE_ERROR', message: 'Query failed' },
       });
 
-      await expect(getRevisionStats('user-123', mockDeps)).rejects.toThrow('Query failed');
+      await expect(getRevisionStats(mockDeps)).rejects.toThrow('Query failed');
     });
   });
 
@@ -367,12 +364,11 @@ describe('revisionService', () => {
         payload: { suggestions: [mockSuggestion], totalCandidates: 1 },
       });
 
-      await getSuggestedRevisions('user-123', '2026-02-05', 50, [], mockDeps);
+      await getSuggestedRevisions('2026-02-05', 50, [], mockDeps);
 
       expect(mockRequest).toHaveBeenCalledWith(
         'sazinka.revision.suggest',
         expect.objectContaining({
-          userId: 'user-123',
           payload: {
             date: '2026-02-05',
             maxCount: 50,
@@ -387,7 +383,7 @@ describe('revisionService', () => {
         payload: { suggestions: [], totalCandidates: 0 },
       });
 
-      await getSuggestedRevisions('user-123', '2026-02-05', 10, ['rev-1', 'rev-2'], mockDeps);
+      await getSuggestedRevisions('2026-02-05', 10, ['rev-1', 'rev-2'], mockDeps);
 
       expect(mockRequest).toHaveBeenCalledWith(
         'sazinka.revision.suggest',
@@ -409,7 +405,7 @@ describe('revisionService', () => {
         payload: { suggestions: [overdueSuggestion, upcomingSuggestion], totalCandidates: 25 },
       });
 
-      const result = await getSuggestedRevisions('user-123', '2026-02-05', 50, [], mockDeps);
+      const result = await getSuggestedRevisions('2026-02-05', 50, [], mockDeps);
 
       expect(result.suggestions).toHaveLength(2);
       expect(result.suggestions[0].priorityScore).toBe(100);
@@ -422,7 +418,7 @@ describe('revisionService', () => {
         error: { code: 'DATABASE_ERROR', message: 'Query failed' },
       });
 
-      await expect(getSuggestedRevisions('user-123', '2026-02-05', 50, [], mockDeps)).rejects.toThrow('Query failed');
+      await expect(getSuggestedRevisions('2026-02-05', 50, [], mockDeps)).rejects.toThrow('Query failed');
     });
   });
 });

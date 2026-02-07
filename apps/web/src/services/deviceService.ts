@@ -2,6 +2,7 @@ import type { Device, CreateDeviceRequest } from '@shared/device';
 import type { SuccessResponse, ErrorResponse } from '@shared/messages';
 import { createRequest } from '@shared/messages';
 import { useNatsStore } from '../stores/natsStore';
+import { getToken } from '@/utils/auth';
 
 /**
  * Dependencies for device service (for testing)
@@ -57,11 +58,10 @@ export interface DeviceListResponse {
  * Create a new device
  */
 export async function createDevice(
-  userId: string,
   data: CreateDeviceRequest,
   deps: DeviceServiceDeps = getDefaultDeps()
 ): Promise<Device> {
-  const request = createRequest(userId, data);
+  const request = createRequest(getToken(), data);
 
   const response = await deps.request<typeof request, NatsResponse<Device>>(
     'sazinka.device.create',
@@ -79,11 +79,10 @@ export async function createDevice(
  * List devices for a customer
  */
 export async function listDevices(
-  userId: string,
   customerId: string,
   deps: DeviceServiceDeps = getDefaultDeps()
 ): Promise<DeviceListResponse> {
-  const request = createRequest(userId, { customerId });
+  const request = createRequest(getToken(), { customerId });
 
   const response = await deps.request<typeof request, NatsResponse<DeviceListResponse>>(
     'sazinka.device.list',
@@ -101,12 +100,11 @@ export async function listDevices(
  * Get a single device by ID
  */
 export async function getDevice(
-  userId: string,
   deviceId: string,
   customerId: string,
   deps: DeviceServiceDeps = getDefaultDeps()
 ): Promise<Device> {
-  const request = createRequest(userId, { id: deviceId, customerId });
+  const request = createRequest(getToken(), { id: deviceId, customerId });
 
   const response = await deps.request<typeof request, NatsResponse<Device>>(
     'sazinka.device.get',
@@ -124,12 +122,11 @@ export async function getDevice(
  * Update a device
  */
 export async function updateDevice(
-  userId: string,
   customerId: string,
   data: UpdateDeviceRequest,
   deps: DeviceServiceDeps = getDefaultDeps()
 ): Promise<Device> {
-  const request = createRequest(userId, { ...data, customerId });
+  const request = createRequest(getToken(), { ...data, customerId });
 
   const response = await deps.request<typeof request, NatsResponse<Device>>(
     'sazinka.device.update',
@@ -147,12 +144,11 @@ export async function updateDevice(
  * Delete a device
  */
 export async function deleteDevice(
-  userId: string,
   deviceId: string,
   customerId: string,
   deps: DeviceServiceDeps = getDefaultDeps()
 ): Promise<boolean> {
-  const request = createRequest(userId, { id: deviceId, customerId });
+  const request = createRequest(getToken(), { id: deviceId, customerId });
 
   const response = await deps.request<typeof request, NatsResponse<{ deleted: boolean }>>(
     'sazinka.device.delete',

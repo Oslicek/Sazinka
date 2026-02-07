@@ -28,9 +28,6 @@ import { useNatsStore } from '../stores/natsStore';
 import { updateCustomer } from '../services/customerService';
 import styles from './Customers.module.css';
 
-// Temporary user ID until auth is implemented
-const TEMP_USER_ID = '00000000-0000-0000-0000-000000000001';
-
 /** Page size for infinite scroll */
 const PAGE_SIZE = 100;
 
@@ -121,8 +118,8 @@ export function Customers() {
       
       // Fetch first page and summary in parallel
       const [result, summaryResult] = await Promise.all([
-        listCustomersExtended(TEMP_USER_ID, { ...requestOptions, offset: 0 }),
-        getCustomerSummary(TEMP_USER_ID).catch(() => null),
+        listCustomersExtended({ ...requestOptions, offset: 0 }),
+        getCustomerSummary().catch(() => null),
       ]);
       
       setCustomers(result.items);
@@ -153,7 +150,7 @@ export function Customers() {
     
     try {
       setIsLoadingMore(true);
-      const result = await listCustomersExtended(TEMP_USER_ID, {
+      const result = await listCustomersExtended({
         ...requestOptions,
         offset: customers.length,
       });
@@ -175,12 +172,12 @@ export function Customers() {
     try {
       setIsSubmitting(true);
       setError(null);
-      const newCustomer = await createCustomer(TEMP_USER_ID, data);
+      const newCustomer = await createCustomer(data);
       setShowForm(false);
 
       // Trigger async geocoding if coordinates are missing
       if (!newCustomer.lat || !newCustomer.lng) {
-        const job = await submitGeocodeJob(TEMP_USER_ID, [newCustomer.id]);
+        const job = await submitGeocodeJob([newCustomer.id]);
         setGeocodeJob({
           jobId: job.jobId,
           timestamp: new Date().toISOString(),
@@ -242,7 +239,7 @@ export function Customers() {
     let cancelled = false;
     setIsLoadingFull(true);
 
-    getCustomer(TEMP_USER_ID, selectedCustomer.id)
+    getCustomer(selectedCustomer.id)
       .then((data) => {
         if (!cancelled) {
           setFullCustomer(data);
@@ -284,7 +281,7 @@ export function Customers() {
 
     try {
       setIsEditSubmitting(true);
-      const updated = await updateCustomer(TEMP_USER_ID, data);
+      const updated = await updateCustomer(data);
       setFullCustomer(updated);
       setIsEditDrawerOpen(false);
 
@@ -292,7 +289,7 @@ export function Customers() {
       const addressChanged = Boolean(data.street || data.city || data.postalCode);
       const hasCoords = data.lat !== undefined && data.lng !== undefined;
       if (addressChanged && !hasCoords) {
-        const job = await submitGeocodeJob(TEMP_USER_ID, [updated.id]);
+        const job = await submitGeocodeJob([updated.id]);
         setGeocodeJob({
           jobId: job.jobId,
           timestamp: new Date().toISOString(),
@@ -306,7 +303,7 @@ export function Customers() {
           if (update.status.type === 'completed' || update.status.type === 'failed') {
             loadCustomers();
             // Refresh full customer
-            getCustomer(TEMP_USER_ID, updated.id)
+            getCustomer(updated.id)
               .then(setFullCustomer)
               .catch(console.error);
             if (geocodeUnsubscribeRef.current) {
@@ -329,7 +326,7 @@ export function Customers() {
 
   const handleEditGeocodeCompleted = useCallback(() => {
     if (fullCustomer) {
-      getCustomer(TEMP_USER_ID, fullCustomer.id)
+      getCustomer(fullCustomer.id)
         .then(setFullCustomer)
         .catch(console.error);
     }

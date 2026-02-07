@@ -82,19 +82,17 @@ export function Admin() {
   };
 
   // Handler for customer import batch - wraps importCustomersBatch with userId
-  const handleCustomerImportBatch = useCallback(async (customers: Parameters<typeof importCustomersBatch>[1]) => {
-    const USER_ID = '00000000-0000-0000-0000-000000000001';
-    return importCustomersBatch(USER_ID, customers);
+  const handleCustomerImportBatch = useCallback(async (customers: Parameters<typeof importCustomersBatch>[0]) => {
+    return importCustomersBatch(customers);
   }, []);
 
   // Geocoding state and handler
   const [isSubmittingGeocode, setIsSubmittingGeocode] = useState(false);
   
   const handleTriggerGeocode = useCallback(async () => {
-    const USER_ID = '00000000-0000-0000-0000-000000000001';
     setIsSubmittingGeocode(true);
     try {
-      const result = await submitGeocodeAllPending(USER_ID);
+      const result = await submitGeocodeAllPending();
       if (result) {
         alert(`Geokódování spuštěno! Job ID: ${result.jobId}`);
       } else {

@@ -10,9 +10,7 @@
 import { useNatsStore } from '../stores/natsStore';
 import { createRequest, type SuccessResponse, type ErrorResponse } from '@shared/messages';
 import type { JobType, JobStatusUpdate } from '../types/jobStatus';
-
-// Temporary user ID until auth is implemented
-const TEMP_USER_ID = '00000000-0000-0000-0000-000000000001';
+import { getToken } from '@/utils/auth';
 
 /**
  * Response type that can be either success or error
@@ -64,7 +62,7 @@ export async function listJobHistory(
 ): Promise<JobHistoryResponse> {
   const { request } = useNatsStore.getState();
   
-  const req = createRequest(TEMP_USER_ID, options);
+  const req = createRequest(getToken(), options);
   const response = await request<typeof req, NatsResponse<JobHistoryResponse>>(
     'sazinka.jobs.history',
     req
@@ -81,7 +79,7 @@ export async function listJobHistory(
 export async function cancelJob(jobId: string, jobType: JobType): Promise<JobActionResponse> {
   const { request } = useNatsStore.getState();
   
-  const req = createRequest(TEMP_USER_ID, { jobId, jobType });
+  const req = createRequest(getToken(), { jobId, jobType });
   const response = await request<typeof req, NatsResponse<JobActionResponse>>(
     'sazinka.jobs.cancel',
     req
@@ -98,7 +96,7 @@ export async function cancelJob(jobId: string, jobType: JobType): Promise<JobAct
 export async function retryJob(jobId: string, jobType: JobType): Promise<JobActionResponse> {
   const { request } = useNatsStore.getState();
   
-  const req = createRequest(TEMP_USER_ID, { jobId, jobType });
+  const req = createRequest(getToken(), { jobId, jobType });
   const response = await request<typeof req, NatsResponse<JobActionResponse>>(
     'sazinka.jobs.retry',
     req

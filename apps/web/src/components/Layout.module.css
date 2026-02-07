@@ -113,3 +113,36 @@
   padding: 1.5rem;
   background-color: var(--color-bg-secondary);
 }
+
+.userMenu {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-left: 0.5rem;
+  padding-left: 0.75rem;
+  border-left: 1px solid var(--color-border);
+}
+
+.userName {
+  font-size: 0.8125rem;
+  color: var(--color-text);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.logoutButton {
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.logoutButton:hover {
+  color: var(--color-error);
+  border-color: var(--color-error);
+}

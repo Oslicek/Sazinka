@@ -1,5 +1,7 @@
 //! Visit message handlers
 
+use std::sync::Arc;
+
 use anyhow::Result;
 use async_nats::{Client, Subscriber};
 use futures::StreamExt;
@@ -7,6 +9,7 @@ use sqlx::PgPool;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
+use crate::auth;
 use crate::db::queries;
 use crate::types::{
     CompleteVisitRequest, CreateVisitRequest, ErrorResponse, ListVisitsRequest,
@@ -18,6 +21,7 @@ pub async fn handle_create(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
         debug!("Received visit.create message");
@@ -42,10 +46,10 @@ pub async fn handle_create(
             }
         };
 
-        let user_id = match request.user_id {
-            Some(id) => id,
-            None => {
-                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client
                     .publish(reply, serde_json::to_vec(&error)?.into())
                     .await;
@@ -99,6 +103,7 @@ pub async fn handle_list(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
         debug!("Received visit.list message");
@@ -123,10 +128,10 @@ pub async fn handle_list(
             }
         };
 
-        let user_id = match request.user_id {
-            Some(id) => id,
-            None => {
-                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client
                     .publish(reply, serde_json::to_vec(&error)?.into())
                     .await;
@@ -177,6 +182,7 @@ pub async fn handle_update(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
         debug!("Received visit.update message");
@@ -201,10 +207,10 @@ pub async fn handle_update(
             }
         };
 
-        let user_id = match request.user_id {
-            Some(id) => id,
-            None => {
-                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client
                     .publish(reply, serde_json::to_vec(&error)?.into())
                     .await;
@@ -257,6 +263,7 @@ pub async fn handle_complete(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
         debug!("Received visit.complete message");
@@ -281,10 +288,10 @@ pub async fn handle_complete(
             }
         };
 
-        let user_id = match request.user_id {
-            Some(id) => id,
-            None => {
-                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client
                     .publish(reply, serde_json::to_vec(&error)?.into())
                     .await;
@@ -338,6 +345,7 @@ pub async fn handle_delete(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
         debug!("Received visit.delete message");
@@ -367,10 +375,10 @@ pub async fn handle_delete(
             }
         };
 
-        let user_id = match request.user_id {
-            Some(id) => id,
-            None => {
-                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client
                     .publish(reply, serde_json::to_vec(&error)?.into())
                     .await;

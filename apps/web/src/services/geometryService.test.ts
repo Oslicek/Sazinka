@@ -5,6 +5,12 @@ import {
   type GeometryJobStatusUpdate,
 } from './geometryService';
 
+vi.mock('@/utils/auth', () => ({
+  getToken: () => 'test-user-id',
+  getUserId: () => 'test-user-id',
+  hasRole: () => true,
+}));
+
 describe('geometryService', () => {
   const mockRequest = vi.fn();
   const mockSubscribe = vi.fn();

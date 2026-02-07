@@ -8,6 +8,7 @@ use sqlx::PgPool;
 use tracing::{debug, error, warn};
 use uuid::Uuid;
 
+use crate::auth;
 use crate::db::queries;
 use crate::services::geocoding::Geocoder;
 use crate::types::{
@@ -26,6 +27,7 @@ pub async fn handle_get_settings(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
         debug!("Received settings.get message");
@@ -49,15 +51,21 @@ pub async fn handle_get_settings(
             }
         };
 
-        // Check user_id
-        let user_id = match request.user_id {
-            Some(id) => id,
-            None => {
-                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+        let auth_info = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info,
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
         };
+        // Settings require customer or admin role
+        if auth_info.role != "customer" && auth_info.role != "admin" {
+            let error = ErrorResponse::new(request.id, "FORBIDDEN", "Settings access requires customer or admin role");
+            let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            continue;
+        }
+        let user_id = auth_info.data_user_id();
 
         // Get user settings
         match queries::settings::get_user_settings(&pool, user_id).await {
@@ -100,6 +108,7 @@ pub async fn handle_update_work_constraints(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
         debug!("Received settings.work.update message");
@@ -122,14 +131,21 @@ pub async fn handle_update_work_constraints(
             }
         };
 
-        let user_id = match request.user_id {
-            Some(id) => id,
-            None => {
-                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+        let auth_info = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info,
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
         };
+        // Settings require customer or admin role
+        if auth_info.role != "customer" && auth_info.role != "admin" {
+            let error = ErrorResponse::new(request.id, "FORBIDDEN", "Settings access requires customer or admin role");
+            let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            continue;
+        }
+        let user_id = auth_info.data_user_id();
 
         // Update work constraints
         match queries::settings::update_work_constraints(&pool, user_id, &request.payload).await {
@@ -163,6 +179,7 @@ pub async fn handle_update_business_info(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
         debug!("Received settings.business.update message");
@@ -185,14 +202,21 @@ pub async fn handle_update_business_info(
             }
         };
 
-        let user_id = match request.user_id {
-            Some(id) => id,
-            None => {
-                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+        let auth_info = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info,
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
         };
+        // Settings require customer or admin role
+        if auth_info.role != "customer" && auth_info.role != "admin" {
+            let error = ErrorResponse::new(request.id, "FORBIDDEN", "Settings access requires customer or admin role");
+            let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            continue;
+        }
+        let user_id = auth_info.data_user_id();
 
         // Update business info
         match queries::settings::update_business_info(&pool, user_id, &request.payload).await {
@@ -226,6 +250,7 @@ pub async fn handle_update_email_templates(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
         debug!("Received settings.email.update message");
@@ -248,14 +273,21 @@ pub async fn handle_update_email_templates(
             }
         };
 
-        let user_id = match request.user_id {
-            Some(id) => id,
-            None => {
-                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+        let auth_info = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info,
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
         };
+        // Settings require customer or admin role
+        if auth_info.role != "customer" && auth_info.role != "admin" {
+            let error = ErrorResponse::new(request.id, "FORBIDDEN", "Settings access requires customer or admin role");
+            let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            continue;
+        }
+        let user_id = auth_info.data_user_id();
 
         // Update email templates
         match queries::settings::update_email_templates(&pool, user_id, &request.payload).await {
@@ -289,6 +321,7 @@ pub async fn handle_list_depots(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
         debug!("Received depot.list message");
@@ -311,14 +344,21 @@ pub async fn handle_list_depots(
             }
         };
 
-        let user_id = match request.user_id {
-            Some(id) => id,
-            None => {
-                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+        let auth_info = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info,
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
         };
+        // Settings require customer or admin role
+        if auth_info.role != "customer" && auth_info.role != "admin" {
+            let error = ErrorResponse::new(request.id, "FORBIDDEN", "Settings access requires customer or admin role");
+            let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            continue;
+        }
+        let user_id = auth_info.data_user_id();
 
         match queries::settings::list_depots(&pool, user_id).await {
             Ok(depots) => {
@@ -341,6 +381,7 @@ pub async fn handle_create_depot(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
+    jwt_secret: Arc<String>,
     geocoder: Arc<dyn Geocoder>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
@@ -364,14 +405,21 @@ pub async fn handle_create_depot(
             }
         };
 
-        let user_id = match request.user_id {
-            Some(id) => id,
-            None => {
-                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+        let auth_info = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info,
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
         };
+        // Settings require customer or admin role
+        if auth_info.role != "customer" && auth_info.role != "admin" {
+            let error = ErrorResponse::new(request.id, "FORBIDDEN", "Settings access requires customer or admin role");
+            let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            continue;
+        }
+        let user_id = auth_info.data_user_id();
 
         match queries::settings::create_depot(&pool, user_id, &request.payload).await {
             Ok(depot) => {
@@ -395,6 +443,7 @@ pub async fn handle_update_depot(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
         debug!("Received depot.update message");
@@ -417,14 +466,21 @@ pub async fn handle_update_depot(
             }
         };
 
-        let user_id = match request.user_id {
-            Some(id) => id,
-            None => {
-                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+        let auth_info = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info,
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
         };
+        // Settings require customer or admin role
+        if auth_info.role != "customer" && auth_info.role != "admin" {
+            let error = ErrorResponse::new(request.id, "FORBIDDEN", "Settings access requires customer or admin role");
+            let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            continue;
+        }
+        let user_id = auth_info.data_user_id();
 
         match queries::settings::update_depot(&pool, user_id, &request.payload).await {
             Ok(Some(depot)) => {
@@ -451,6 +507,7 @@ pub async fn handle_delete_depot(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
         debug!("Received depot.delete message");
@@ -473,14 +530,21 @@ pub async fn handle_delete_depot(
             }
         };
 
-        let user_id = match request.user_id {
-            Some(id) => id,
-            None => {
-                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+        let auth_info = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info,
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
         };
+        // Settings require customer or admin role
+        if auth_info.role != "customer" && auth_info.role != "admin" {
+            let error = ErrorResponse::new(request.id, "FORBIDDEN", "Settings access requires customer or admin role");
+            let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            continue;
+        }
+        let user_id = auth_info.data_user_id();
 
         match queries::settings::delete_depot(&pool, request.payload.id, user_id).await {
             Ok(true) => {
@@ -507,6 +571,7 @@ pub async fn handle_geocode_depot(
     client: Client,
     mut subscriber: Subscriber,
     geocoder: Arc<dyn Geocoder>,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     use crate::types::Coordinates;
 

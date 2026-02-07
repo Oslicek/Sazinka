@@ -11,6 +11,7 @@ use sqlx::PgPool;
 use tracing::{debug, error, warn, info};
 use uuid::Uuid;
 
+use crate::auth;
 use crate::db::queries;
 use crate::types::{
     ErrorResponse, Request, SuccessResponse,
@@ -221,6 +222,7 @@ pub async fn handle_device_import(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
         debug!("Received import.device message");
@@ -244,10 +246,10 @@ pub async fn handle_device_import(
             }
         };
 
-        let user_id = match request.user_id {
-            Some(id) => id,
-            None => {
-                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
@@ -390,6 +392,7 @@ pub async fn handle_revision_import(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
         debug!("Received import.revision message");
@@ -412,10 +415,10 @@ pub async fn handle_revision_import(
             }
         };
 
-        let user_id = match request.user_id {
-            Some(id) => id,
-            None => {
-                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
@@ -600,6 +603,7 @@ pub async fn handle_communication_import(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
         debug!("Received import.communication message");
@@ -622,10 +626,10 @@ pub async fn handle_communication_import(
             }
         };
 
-        let user_id = match request.user_id {
-            Some(id) => id,
-            None => {
-                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
@@ -768,6 +772,7 @@ pub async fn handle_work_log_import(
     client: Client,
     mut subscriber: Subscriber,
     pool: PgPool,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     use std::collections::HashMap;
 
@@ -792,10 +797,10 @@ pub async fn handle_work_log_import(
             }
         };
 
-        let user_id = match request.user_id {
-            Some(id) => id,
-            None => {
-                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
@@ -1370,6 +1375,7 @@ pub struct CsvCustomerRow {
 pub async fn handle_customer_import_submit(
     client: Client,
     mut subscriber: Subscriber,
+    jwt_secret: Arc<String>,
     processor: Arc<CustomerImportProcessor>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
@@ -1388,10 +1394,10 @@ pub async fn handle_customer_import_submit(
             }
         };
         
-        let user_id = match request.user_id {
-            Some(id) => id,
-            None => {
-                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "user_id required");
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }

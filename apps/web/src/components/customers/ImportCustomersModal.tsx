@@ -6,10 +6,8 @@
 import { useCallback, useRef, useState } from 'react';
 import { submitCustomerImportJob } from '../../services/importJobService';
 import { useActiveJobsStore } from '../../stores/activeJobsStore';
+import { getToken } from '@/utils/auth';
 import styles from './ImportCustomersModal.module.css';
-
-// Mock user ID for development
-const USER_ID = '00000000-0000-0000-0000-000000000001';
 
 interface ImportCustomersModalProps {
   isOpen: boolean;
@@ -151,7 +149,6 @@ export function ImportCustomersModal({
     
     try {
       const result = await submitCustomerImportJob(
-        USER_ID,
         preview.csvContent,
         preview.filename
       );

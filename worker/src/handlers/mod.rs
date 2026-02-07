@@ -1,6 +1,7 @@
 //! NATS message handlers
 
 pub mod admin;
+pub mod auth;
 pub mod communication;
 pub mod customer;
 pub mod device;
@@ -128,6 +129,20 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         create_routing_service_with_fallback(config.valhalla_url.clone()).await
     );
     info!("Routing service initialized: {}", routing_service.name());
+
+    // JWT secret for authentication
+    let jwt_secret = Arc::new(config.jwt_secret.clone());
+
+    // Rate limiter for login attempts (5 attempts per 5 minutes)
+    let rate_limiter = Arc::new(auth::RateLimiter::new(5, 300));
+
+    // Auth subscriptions
+    let auth_register_sub = client.subscribe("sazinka.auth.register").await?;
+    let auth_login_sub = client.subscribe("sazinka.auth.login").await?;
+    let auth_verify_sub = client.subscribe("sazinka.auth.verify").await?;
+    let auth_worker_create_sub = client.subscribe("sazinka.auth.worker.create").await?;
+    let auth_worker_list_sub = client.subscribe("sazinka.auth.worker.list").await?;
+    let auth_worker_delete_sub = client.subscribe("sazinka.auth.worker.delete").await?;
 
     // Subscribe to all subjects
     let ping_sub = client.subscribe("sazinka.ping").await?;
@@ -368,6 +383,143 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let routing_plan = Arc::clone(&routing_service);
     let routing_insertion = Arc::clone(&routing_service);
     let routing_insertion_batch = Arc::clone(&routing_service);
+    
+    // JWT secret clones for customer handlers
+    let jwt_secret_customer_create = Arc::clone(&jwt_secret);
+    let jwt_secret_customer_list = Arc::clone(&jwt_secret);
+    let jwt_secret_customer_get = Arc::clone(&jwt_secret);
+    let jwt_secret_customer_update = Arc::clone(&jwt_secret);
+    let jwt_secret_customer_delete = Arc::clone(&jwt_secret);
+    let jwt_secret_customer_random = Arc::clone(&jwt_secret);
+    let jwt_secret_customer_list_extended = Arc::clone(&jwt_secret);
+    let jwt_secret_customer_summary = Arc::clone(&jwt_secret);
+    
+    // JWT secret clones for route handlers
+    let jwt_secret_route_plan = Arc::clone(&jwt_secret);
+    let jwt_secret_route_save = Arc::clone(&jwt_secret);
+    let jwt_secret_route_get = Arc::clone(&jwt_secret);
+    let jwt_secret_route_insertion = Arc::clone(&jwt_secret);
+    let jwt_secret_route_insertion_batch = Arc::clone(&jwt_secret);
+    
+    // JWT secret clones for device handlers
+    let jwt_secret_device_create = Arc::clone(&jwt_secret);
+    let jwt_secret_device_list = Arc::clone(&jwt_secret);
+    let jwt_secret_device_get = Arc::clone(&jwt_secret);
+    let jwt_secret_device_update = Arc::clone(&jwt_secret);
+    let jwt_secret_device_delete = Arc::clone(&jwt_secret);
+    
+    // JWT secret clones for revision handlers
+    let jwt_secret_revision_create = Arc::clone(&jwt_secret);
+    let jwt_secret_revision_list = Arc::clone(&jwt_secret);
+    let jwt_secret_revision_get = Arc::clone(&jwt_secret);
+    let jwt_secret_revision_update = Arc::clone(&jwt_secret);
+    let jwt_secret_revision_delete = Arc::clone(&jwt_secret);
+    let jwt_secret_revision_complete = Arc::clone(&jwt_secret);
+    let jwt_secret_revision_upcoming = Arc::clone(&jwt_secret);
+    let jwt_secret_revision_stats = Arc::clone(&jwt_secret);
+    let jwt_secret_revision_suggest = Arc::clone(&jwt_secret);
+    let jwt_secret_revision_queue = Arc::clone(&jwt_secret);
+    let jwt_secret_revision_snooze = Arc::clone(&jwt_secret);
+    let jwt_secret_revision_schedule = Arc::clone(&jwt_secret);
+    
+    // JWT secret clones for slots handler
+    let jwt_secret_slots_suggest = Arc::clone(&jwt_secret);
+    
+    // JWT secret clones for settings handlers
+    let jwt_secret_settings_get = Arc::clone(&jwt_secret);
+    let jwt_secret_settings_work = Arc::clone(&jwt_secret);
+    let jwt_secret_settings_business = Arc::clone(&jwt_secret);
+    let jwt_secret_settings_email = Arc::clone(&jwt_secret);
+    
+    // JWT secret clones for depot handlers
+    let jwt_secret_depot_list = Arc::clone(&jwt_secret);
+    let jwt_secret_depot_create = Arc::clone(&jwt_secret);
+    let jwt_secret_depot_update = Arc::clone(&jwt_secret);
+    let jwt_secret_depot_delete = Arc::clone(&jwt_secret);
+    let jwt_secret_depot_geocode = Arc::clone(&jwt_secret);
+    
+    // JWT secret clones for communication handlers
+    let jwt_secret_comm_create = Arc::clone(&jwt_secret);
+    let jwt_secret_comm_list = Arc::clone(&jwt_secret);
+    let jwt_secret_comm_update = Arc::clone(&jwt_secret);
+    let jwt_secret_comm_delete = Arc::clone(&jwt_secret);
+    
+    // JWT secret clones for visit handlers
+    let jwt_secret_visit_create = Arc::clone(&jwt_secret);
+    let jwt_secret_visit_list = Arc::clone(&jwt_secret);
+    let jwt_secret_visit_update = Arc::clone(&jwt_secret);
+    let jwt_secret_visit_complete = Arc::clone(&jwt_secret);
+    let jwt_secret_visit_delete = Arc::clone(&jwt_secret);
+    
+    // JWT secret clones for crew handlers
+    let jwt_secret_crew_create = Arc::clone(&jwt_secret);
+    let jwt_secret_crew_list = Arc::clone(&jwt_secret);
+    let jwt_secret_crew_update = Arc::clone(&jwt_secret);
+    let jwt_secret_crew_delete = Arc::clone(&jwt_secret);
+    
+    // JWT secret clones for work item handlers
+    let jwt_secret_work_item_create = Arc::clone(&jwt_secret);
+    let jwt_secret_work_item_list = Arc::clone(&jwt_secret);
+    let jwt_secret_work_item_get = Arc::clone(&jwt_secret);
+    let jwt_secret_work_item_complete = Arc::clone(&jwt_secret);
+
+    // Spawn auth handlers
+    let client_auth_register = client.clone();
+    let pool_auth_register = pool.clone();
+    let jwt_secret_register = Arc::clone(&jwt_secret);
+    tokio::spawn(async move {
+        if let Err(e) = auth::handle_register(client_auth_register, auth_register_sub, pool_auth_register, jwt_secret_register).await {
+            error!("Auth register handler error: {}", e);
+        }
+    });
+
+    let client_auth_login = client.clone();
+    let pool_auth_login = pool.clone();
+    let jwt_secret_login = Arc::clone(&jwt_secret);
+    let rate_limiter_login = Arc::clone(&rate_limiter);
+    tokio::spawn(async move {
+        if let Err(e) = auth::handle_login(client_auth_login, auth_login_sub, pool_auth_login, jwt_secret_login, rate_limiter_login).await {
+            error!("Auth login handler error: {}", e);
+        }
+    });
+
+    let client_auth_verify = client.clone();
+    let pool_auth_verify = pool.clone();
+    let jwt_secret_verify = Arc::clone(&jwt_secret);
+    tokio::spawn(async move {
+        if let Err(e) = auth::handle_verify(client_auth_verify, auth_verify_sub, pool_auth_verify, jwt_secret_verify).await {
+            error!("Auth verify handler error: {}", e);
+        }
+    });
+
+    let client_worker_create = client.clone();
+    let pool_worker_create = pool.clone();
+    let jwt_secret_worker_create = Arc::clone(&jwt_secret);
+    tokio::spawn(async move {
+        if let Err(e) = auth::handle_create_worker(client_worker_create, auth_worker_create_sub, pool_worker_create, jwt_secret_worker_create).await {
+            error!("Auth worker create handler error: {}", e);
+        }
+    });
+
+    let client_worker_list = client.clone();
+    let pool_worker_list = pool.clone();
+    let jwt_secret_worker_list = Arc::clone(&jwt_secret);
+    tokio::spawn(async move {
+        if let Err(e) = auth::handle_list_workers(client_worker_list, auth_worker_list_sub, pool_worker_list, jwt_secret_worker_list).await {
+            error!("Auth worker list handler error: {}", e);
+        }
+    });
+
+    let client_worker_delete = client.clone();
+    let pool_worker_delete = pool.clone();
+    let jwt_secret_worker_delete = Arc::clone(&jwt_secret);
+    tokio::spawn(async move {
+        if let Err(e) = auth::handle_delete_worker(client_worker_delete, auth_worker_delete_sub, pool_worker_delete, jwt_secret_worker_delete).await {
+            error!("Auth worker delete handler error: {}", e);
+        }
+    });
+
+    info!("Auth handlers started");
 
     // Spawn handlers
     let ping_handle = tokio::spawn(async move {
@@ -375,241 +527,241 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     });
 
     let customer_create_handle = tokio::spawn(async move {
-        customer::handle_create(client_customer_create, customer_create_sub, pool_customer_create).await
+        customer::handle_create(client_customer_create, customer_create_sub, pool_customer_create, jwt_secret_customer_create).await
     });
 
     let customer_list_handle = tokio::spawn(async move {
-        customer::handle_list(client_customer_list, customer_list_sub, pool_customer_list).await
+        customer::handle_list(client_customer_list, customer_list_sub, pool_customer_list, jwt_secret_customer_list).await
     });
 
     let customer_get_handle = tokio::spawn(async move {
-        customer::handle_get(client_customer_get, customer_get_sub, pool_customer_get).await
+        customer::handle_get(client_customer_get, customer_get_sub, pool_customer_get, jwt_secret_customer_get).await
     });
 
     let customer_update_handle = tokio::spawn(async move {
-        customer::handle_update(client_customer_update, customer_update_sub, pool_customer_update).await
+        customer::handle_update(client_customer_update, customer_update_sub, pool_customer_update, jwt_secret_customer_update).await
     });
 
     let customer_delete_handle = tokio::spawn(async move {
-        customer::handle_delete(client_customer_delete, customer_delete_sub, pool_customer_delete).await
+        customer::handle_delete(client_customer_delete, customer_delete_sub, pool_customer_delete, jwt_secret_customer_delete).await
     });
 
 
     let customer_random_handle = tokio::spawn(async move {
-        customer::handle_random(client_customer_random, customer_random_sub, pool_customer_random).await
+        customer::handle_random(client_customer_random, customer_random_sub, pool_customer_random, jwt_secret_customer_random).await
     });
 
     let customer_list_extended_handle = tokio::spawn(async move {
-        customer::handle_list_extended(client_customer_list_extended, customer_list_extended_sub, pool_customer_list_extended).await
+        customer::handle_list_extended(client_customer_list_extended, customer_list_extended_sub, pool_customer_list_extended, jwt_secret_customer_list_extended).await
     });
 
     let customer_summary_handle = tokio::spawn(async move {
-        customer::handle_summary(client_customer_summary, customer_summary_sub, pool_customer_summary).await
+        customer::handle_summary(client_customer_summary, customer_summary_sub, pool_customer_summary, jwt_secret_customer_summary).await
     });
 
     let route_plan_handle = tokio::spawn(async move {
-        route::handle_plan(client_route_plan, route_plan_sub, pool_route_plan, routing_plan).await
+        route::handle_plan(client_route_plan, route_plan_sub, pool_route_plan, jwt_secret_route_plan, routing_plan).await
     });
 
     let route_save_handle = tokio::spawn(async move {
-        route::handle_save(client_route_save, route_save_sub, pool_route_save).await
+        route::handle_save(client_route_save, route_save_sub, pool_route_save, jwt_secret_route_save).await
     });
 
     let route_get_handle = tokio::spawn(async move {
-        route::handle_get(client_route_get, route_get_sub, pool_route_get).await
+        route::handle_get(client_route_get, route_get_sub, pool_route_get, jwt_secret_route_get).await
     });
 
     let route_insertion_handle = tokio::spawn(async move {
-        route::handle_insertion_calculate(client_route_insertion, route_insertion_sub, pool_route_insertion, routing_insertion).await
+        route::handle_insertion_calculate(client_route_insertion, route_insertion_sub, pool_route_insertion, jwt_secret_route_insertion, routing_insertion).await
     });
 
     let route_insertion_batch_handle = tokio::spawn(async move {
-        route::handle_insertion_batch(client_route_insertion_batch, route_insertion_batch_sub, pool_route_insertion_batch, routing_insertion_batch).await
+        route::handle_insertion_batch(client_route_insertion_batch, route_insertion_batch_sub, pool_route_insertion_batch, jwt_secret_route_insertion_batch, routing_insertion_batch).await
     });
 
     // Device handlers
     let device_create_handle = tokio::spawn(async move {
-        device::handle_create(client_device_create, device_create_sub, pool_device_create).await
+        device::handle_create(client_device_create, device_create_sub, pool_device_create, jwt_secret_device_create).await
     });
     
     let device_list_handle = tokio::spawn(async move {
-        device::handle_list(client_device_list, device_list_sub, pool_device_list).await
+        device::handle_list(client_device_list, device_list_sub, pool_device_list, jwt_secret_device_list).await
     });
     
     let device_get_handle = tokio::spawn(async move {
-        device::handle_get(client_device_get, device_get_sub, pool_device_get).await
+        device::handle_get(client_device_get, device_get_sub, pool_device_get, jwt_secret_device_get).await
     });
     
     let device_update_handle = tokio::spawn(async move {
-        device::handle_update(client_device_update, device_update_sub, pool_device_update).await
+        device::handle_update(client_device_update, device_update_sub, pool_device_update, jwt_secret_device_update).await
     });
     
     let device_delete_handle = tokio::spawn(async move {
-        device::handle_delete(client_device_delete, device_delete_sub, pool_device_delete).await
+        device::handle_delete(client_device_delete, device_delete_sub, pool_device_delete, jwt_secret_device_delete).await
     });
     
     // Revision handlers
     let revision_create_handle = tokio::spawn(async move {
-        revision::handle_create(client_revision_create, revision_create_sub, pool_revision_create).await
+        revision::handle_create(client_revision_create, revision_create_sub, pool_revision_create, jwt_secret_revision_create).await
     });
     
     let revision_list_handle = tokio::spawn(async move {
-        revision::handle_list(client_revision_list, revision_list_sub, pool_revision_list).await
+        revision::handle_list(client_revision_list, revision_list_sub, pool_revision_list, jwt_secret_revision_list).await
     });
     
     let revision_get_handle = tokio::spawn(async move {
-        revision::handle_get(client_revision_get, revision_get_sub, pool_revision_get).await
+        revision::handle_get(client_revision_get, revision_get_sub, pool_revision_get, jwt_secret_revision_get).await
     });
     
     let revision_update_handle = tokio::spawn(async move {
-        revision::handle_update(client_revision_update, revision_update_sub, pool_revision_update).await
+        revision::handle_update(client_revision_update, revision_update_sub, pool_revision_update, jwt_secret_revision_update).await
     });
     
     let revision_delete_handle = tokio::spawn(async move {
-        revision::handle_delete(client_revision_delete, revision_delete_sub, pool_revision_delete).await
+        revision::handle_delete(client_revision_delete, revision_delete_sub, pool_revision_delete, jwt_secret_revision_delete).await
     });
     
     let revision_complete_handle = tokio::spawn(async move {
-        revision::handle_complete(client_revision_complete, revision_complete_sub, pool_revision_complete).await
+        revision::handle_complete(client_revision_complete, revision_complete_sub, pool_revision_complete, jwt_secret_revision_complete).await
     });
     
     let revision_upcoming_handle = tokio::spawn(async move {
-        revision::handle_upcoming(client_revision_upcoming, revision_upcoming_sub, pool_revision_upcoming).await
+        revision::handle_upcoming(client_revision_upcoming, revision_upcoming_sub, pool_revision_upcoming, jwt_secret_revision_upcoming).await
     });
     
     let revision_stats_handle = tokio::spawn(async move {
-        revision::handle_stats(client_revision_stats, revision_stats_sub, pool_revision_stats).await
+        revision::handle_stats(client_revision_stats, revision_stats_sub, pool_revision_stats, jwt_secret_revision_stats).await
     });
     
     let revision_suggest_handle = tokio::spawn(async move {
-        revision::handle_suggest(client_revision_suggest, revision_suggest_sub, pool_revision_suggest).await
+        revision::handle_suggest(client_revision_suggest, revision_suggest_sub, pool_revision_suggest, jwt_secret_revision_suggest).await
     });
     
     let revision_queue_handle = tokio::spawn(async move {
-        revision::handle_queue(client_revision_queue, revision_queue_sub, pool_revision_queue).await
+        revision::handle_queue(client_revision_queue, revision_queue_sub, pool_revision_queue, jwt_secret_revision_queue).await
     });
     
     let revision_snooze_handle = tokio::spawn(async move {
-        revision::handle_snooze(client_revision_snooze, revision_snooze_sub, pool_revision_snooze).await
+        revision::handle_snooze(client_revision_snooze, revision_snooze_sub, pool_revision_snooze, jwt_secret_revision_snooze).await
     });
     
     let revision_schedule_handle = tokio::spawn(async move {
-        revision::handle_schedule(client_revision_schedule, revision_schedule_sub, pool_revision_schedule).await
+        revision::handle_schedule(client_revision_schedule, revision_schedule_sub, pool_revision_schedule, jwt_secret_revision_schedule).await
     });
     
     // Slots handlers
     let slots_suggest_handle = tokio::spawn(async move {
-        slots::handle_suggest(client_slots_suggest, slots_suggest_sub, pool_slots_suggest).await
+        slots::handle_suggest(client_slots_suggest, slots_suggest_sub, pool_slots_suggest, jwt_secret_slots_suggest).await
     });
     
     // Settings handlers
     let settings_get_handle = tokio::spawn(async move {
-        settings::handle_get_settings(client_settings_get, settings_get_sub, pool_settings_get).await
+        settings::handle_get_settings(client_settings_get, settings_get_sub, pool_settings_get, jwt_secret_settings_get).await
     });
     
     let settings_work_handle = tokio::spawn(async move {
-        settings::handle_update_work_constraints(client_settings_work, settings_work_update_sub, pool_settings_work).await
+        settings::handle_update_work_constraints(client_settings_work, settings_work_update_sub, pool_settings_work, jwt_secret_settings_work).await
     });
     
     let settings_business_handle = tokio::spawn(async move {
-        settings::handle_update_business_info(client_settings_business, settings_business_update_sub, pool_settings_business).await
+        settings::handle_update_business_info(client_settings_business, settings_business_update_sub, pool_settings_business, jwt_secret_settings_business).await
     });
     
     let settings_email_handle = tokio::spawn(async move {
-        settings::handle_update_email_templates(client_settings_email, settings_email_update_sub, pool_settings_email).await
+        settings::handle_update_email_templates(client_settings_email, settings_email_update_sub, pool_settings_email, jwt_secret_settings_email).await
     });
     
     // Depot handlers
     let depot_list_handle = tokio::spawn(async move {
-        settings::handle_list_depots(client_depot_list, depot_list_sub, pool_depot_list).await
+        settings::handle_list_depots(client_depot_list, depot_list_sub, pool_depot_list, jwt_secret_depot_list).await
     });
     
     let depot_create_handle = tokio::spawn(async move {
-        settings::handle_create_depot(client_depot_create, depot_create_sub, pool_depot_create, geocoder_depot_create).await
+        settings::handle_create_depot(client_depot_create, depot_create_sub, pool_depot_create, jwt_secret_depot_create, geocoder_depot_create).await
     });
     
     let depot_update_handle = tokio::spawn(async move {
-        settings::handle_update_depot(client_depot_update, depot_update_sub, pool_depot_update).await
+        settings::handle_update_depot(client_depot_update, depot_update_sub, pool_depot_update, jwt_secret_depot_update).await
     });
     
     let depot_delete_handle = tokio::spawn(async move {
-        settings::handle_delete_depot(client_depot_delete, depot_delete_sub, pool_depot_delete).await
+        settings::handle_delete_depot(client_depot_delete, depot_delete_sub, pool_depot_delete, jwt_secret_depot_delete).await
     });
     
     let depot_geocode_handle = tokio::spawn(async move {
-        settings::handle_geocode_depot(client_depot_geocode, depot_geocode_sub, geocoder_depot_geocode).await
+        settings::handle_geocode_depot(client_depot_geocode, depot_geocode_sub, geocoder_depot_geocode, jwt_secret_depot_geocode).await
     });
     
     // Communication handlers
     let comm_create_handle = tokio::spawn(async move {
-        communication::handle_create(client_comm_create, comm_create_sub, pool_comm_create).await
+        communication::handle_create(client_comm_create, comm_create_sub, pool_comm_create, jwt_secret_comm_create).await
     });
     
     let comm_list_handle = tokio::spawn(async move {
-        communication::handle_list(client_comm_list, comm_list_sub, pool_comm_list).await
+        communication::handle_list(client_comm_list, comm_list_sub, pool_comm_list, jwt_secret_comm_list).await
     });
     
     let comm_update_handle = tokio::spawn(async move {
-        communication::handle_update(client_comm_update, comm_update_sub, pool_comm_update).await
+        communication::handle_update(client_comm_update, comm_update_sub, pool_comm_update, jwt_secret_comm_update).await
     });
     
     let comm_delete_handle = tokio::spawn(async move {
-        communication::handle_delete(client_comm_delete, comm_delete_sub, pool_comm_delete).await
+        communication::handle_delete(client_comm_delete, comm_delete_sub, pool_comm_delete, jwt_secret_comm_delete).await
     });
     
     // Visit handlers
     let visit_create_handle = tokio::spawn(async move {
-        visit::handle_create(client_visit_create, visit_create_sub, pool_visit_create).await
+        visit::handle_create(client_visit_create, visit_create_sub, pool_visit_create, jwt_secret_visit_create).await
     });
     
     let visit_list_handle = tokio::spawn(async move {
-        visit::handle_list(client_visit_list, visit_list_sub, pool_visit_list).await
+        visit::handle_list(client_visit_list, visit_list_sub, pool_visit_list, jwt_secret_visit_list).await
     });
     
     let visit_update_handle = tokio::spawn(async move {
-        visit::handle_update(client_visit_update, visit_update_sub, pool_visit_update).await
+        visit::handle_update(client_visit_update, visit_update_sub, pool_visit_update, jwt_secret_visit_update).await
     });
     
     let visit_complete_handle = tokio::spawn(async move {
-        visit::handle_complete(client_visit_complete, visit_complete_sub, pool_visit_complete).await
+        visit::handle_complete(client_visit_complete, visit_complete_sub, pool_visit_complete, jwt_secret_visit_complete).await
     });
     
     let visit_delete_handle = tokio::spawn(async move {
-        visit::handle_delete(client_visit_delete, visit_delete_sub, pool_visit_delete).await
+        visit::handle_delete(client_visit_delete, visit_delete_sub, pool_visit_delete, jwt_secret_visit_delete).await
     });
     
     // Crew handlers
     let crew_create_handle = tokio::spawn(async move {
-        crew::handle_create(client_crew_create, crew_create_sub, pool_crew_create).await
+        crew::handle_create(client_crew_create, crew_create_sub, pool_crew_create, jwt_secret_crew_create).await
     });
     
     let crew_list_handle = tokio::spawn(async move {
-        crew::handle_list(client_crew_list, crew_list_sub, pool_crew_list).await
+        crew::handle_list(client_crew_list, crew_list_sub, pool_crew_list, jwt_secret_crew_list).await
     });
     
     let crew_update_handle = tokio::spawn(async move {
-        crew::handle_update(client_crew_update, crew_update_sub, pool_crew_update).await
+        crew::handle_update(client_crew_update, crew_update_sub, pool_crew_update, jwt_secret_crew_update).await
     });
     
     let crew_delete_handle = tokio::spawn(async move {
-        crew::handle_delete(client_crew_delete, crew_delete_sub, pool_crew_delete).await
+        crew::handle_delete(client_crew_delete, crew_delete_sub, pool_crew_delete, jwt_secret_crew_delete).await
     });
     
     // Work item handlers
     let work_item_create_handle = tokio::spawn(async move {
-        work_item::handle_create(client_work_item_create, work_item_create_sub, pool_work_item_create).await
+        work_item::handle_create(client_work_item_create, work_item_create_sub, pool_work_item_create, jwt_secret_work_item_create).await
     });
     
     let work_item_list_handle = tokio::spawn(async move {
-        work_item::handle_list(client_work_item_list, work_item_list_sub, pool_work_item_list).await
+        work_item::handle_list(client_work_item_list, work_item_list_sub, pool_work_item_list, jwt_secret_work_item_list).await
     });
     
     let work_item_get_handle = tokio::spawn(async move {
-        work_item::handle_get(client_work_item_get, work_item_get_sub, pool_work_item_get).await
+        work_item::handle_get(client_work_item_get, work_item_get_sub, pool_work_item_get, jwt_secret_work_item_get).await
     });
     
     let work_item_complete_handle = tokio::spawn(async move {
-        work_item::handle_complete(client_work_item_complete, work_item_complete_sub, pool_work_item_complete).await
+        work_item::handle_complete(client_work_item_complete, work_item_complete_sub, pool_work_item_complete, jwt_secret_work_item_complete).await
     });
     
     // Old sync import handlers removed - replaced by async processors below
@@ -619,8 +771,9 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_admin = pool.clone();
     let valhalla_url = config.valhalla_url.clone();
     let nominatim_url = Some(config.nominatim_url.clone());
+    let jwt_secret_admin = Arc::clone(&jwt_secret);
     tokio::spawn(async move {
-        if let Err(e) = admin::start_admin_handlers(client_admin, pool_admin, valhalla_url, nominatim_url).await {
+        if let Err(e) = admin::start_admin_handlers(client_admin, pool_admin, valhalla_url, nominatim_url, jwt_secret_admin).await {
             error!("Admin handlers error: {}", e);
         }
     });
@@ -628,6 +781,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     // Start customer import processor
     let client_customer_import = client.clone();
     let pool_customer_import = pool.clone();
+    let jwt_secret_customer_import = Arc::clone(&jwt_secret);
     tokio::spawn(async move {
         match import::CustomerImportProcessor::new(client_customer_import.clone(), pool_customer_import).await {
             Ok(processor) => {
@@ -645,8 +799,9 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
                 // Start submit handler
                 let client_submit = client_customer_import.clone();
                 let processor_submit = Arc::clone(&processor);
+                let jwt_secret_submit = Arc::clone(&jwt_secret_customer_import);
                 tokio::spawn(async move {
-                    if let Err(e) = import::handle_customer_import_submit(client_submit, customer_import_submit_sub, processor_submit).await {
+                    if let Err(e) = import::handle_customer_import_submit(client_submit, customer_import_submit_sub, processor_submit, jwt_secret_submit).await {
                         error!("Customer import submit handler error: {}", e);
                     }
                 });
@@ -670,6 +825,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     // Start device import processor
     let client_device_import = client.clone();
     let pool_device_import = pool.clone();
+    let jwt_secret_device_import = Arc::clone(&jwt_secret);
     tokio::spawn(async move {
         match import_processors::DeviceImportProcessor::new(client_device_import.clone(), pool_device_import).await {
             Ok(processor) => {
@@ -685,8 +841,9 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
                 
                 let client_submit = client_device_import.clone();
                 let processor_submit = Arc::clone(&processor);
+                let jwt_secret_submit = Arc::clone(&jwt_secret_device_import);
                 tokio::spawn(async move {
-                    if let Err(e) = import_processors::handle_device_import_submit(client_submit, device_import_submit_sub, processor_submit).await {
+                    if let Err(e) = import_processors::handle_device_import_submit(client_submit, device_import_submit_sub, processor_submit, jwt_secret_submit).await {
                         error!("Device import submit handler error: {}", e);
                     }
                 });
@@ -709,6 +866,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     // Start revision import processor
     let client_revision_import = client.clone();
     let pool_revision_import = pool.clone();
+    let jwt_secret_revision_import = Arc::clone(&jwt_secret);
     tokio::spawn(async move {
         match import_processors::RevisionImportProcessor::new(client_revision_import.clone(), pool_revision_import).await {
             Ok(processor) => {
@@ -724,8 +882,9 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
                 
                 let client_submit = client_revision_import.clone();
                 let processor_submit = Arc::clone(&processor);
+                let jwt_secret_submit = Arc::clone(&jwt_secret_revision_import);
                 tokio::spawn(async move {
-                    if let Err(e) = import_processors::handle_revision_import_submit(client_submit, revision_import_submit_sub, processor_submit).await {
+                    if let Err(e) = import_processors::handle_revision_import_submit(client_submit, revision_import_submit_sub, processor_submit, jwt_secret_submit).await {
                         error!("Revision import submit handler error: {}", e);
                     }
                 });
@@ -748,6 +907,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     // Start communication import processor
     let client_communication_import = client.clone();
     let pool_communication_import = pool.clone();
+    let jwt_secret_communication_import = Arc::clone(&jwt_secret);
     tokio::spawn(async move {
         match import_processors::CommunicationImportProcessor::new(client_communication_import.clone(), pool_communication_import).await {
             Ok(processor) => {
@@ -763,8 +923,9 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
                 
                 let client_submit = client_communication_import.clone();
                 let processor_submit = Arc::clone(&processor);
+                let jwt_secret_submit = Arc::clone(&jwt_secret_communication_import);
                 tokio::spawn(async move {
-                    if let Err(e) = import_processors::handle_communication_import_submit(client_submit, communication_import_submit_sub, processor_submit).await {
+                    if let Err(e) = import_processors::handle_communication_import_submit(client_submit, communication_import_submit_sub, processor_submit, jwt_secret_submit).await {
                         error!("Communication import submit handler error: {}", e);
                     }
                 });
@@ -787,6 +948,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     // Start visit import processor
     let client_visit_import = client.clone();
     let pool_visit_import = pool.clone();
+    let jwt_secret_visit_import = Arc::clone(&jwt_secret);
     tokio::spawn(async move {
         match import_processors::WorkLogImportProcessor::new(client_visit_import.clone(), pool_visit_import).await {
             Ok(processor) => {
@@ -802,8 +964,9 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
                 
                 let client_submit = client_visit_import.clone();
                 let processor_submit = Arc::clone(&processor);
+                let jwt_secret_submit = Arc::clone(&jwt_secret_visit_import);
                 tokio::spawn(async move {
-                    if let Err(e) = import_processors::handle_work_log_import_submit(client_submit, visit_import_submit_sub, processor_submit).await {
+                    if let Err(e) = import_processors::handle_work_log_import_submit(client_submit, visit_import_submit_sub, processor_submit, jwt_secret_submit).await {
                         error!("Visit import submit handler error: {}", e);
                     }
                 });
@@ -826,6 +989,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     // Start ZIP import processor
     let client_zip_import = client.clone();
     let pool_zip_import = pool.clone();
+    let jwt_secret_zip_import = Arc::clone(&jwt_secret);
     tokio::spawn(async move {
         match import_processors::ZipImportProcessor::new(client_zip_import.clone(), pool_zip_import).await {
             Ok(processor) => {
@@ -841,8 +1005,9 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
                 
                 let client_submit = client_zip_import.clone();
                 let processor_submit = Arc::clone(&processor);
+                let jwt_secret_submit = Arc::clone(&jwt_secret_zip_import);
                 tokio::spawn(async move {
-                    if let Err(e) = import_processors::handle_zip_import_submit(client_submit, zip_import_submit_sub, processor_submit).await {
+                    if let Err(e) = import_processors::handle_zip_import_submit(client_submit, zip_import_submit_sub, processor_submit, jwt_secret_submit).await {
                         error!("ZIP import submit handler error: {}", e);
                     }
                 });

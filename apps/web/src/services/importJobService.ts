@@ -24,6 +24,7 @@ import type {
 import type { SuccessResponse, ErrorResponse } from '@shared/messages';
 import { createRequest } from '@shared/messages';
 import { useNatsStore } from '../stores/natsStore';
+import { getToken } from '@/utils/auth';
 
 // NATS subjects for all import types
 const SUBJECTS = {
@@ -92,7 +93,6 @@ function isErrorResponse(response: NatsResponse<unknown>): response is ErrorResp
  * Returns immediately after the job is queued
  */
 export async function submitCustomerImportJob(
-  userId: string,
   csvContent: string,
   filename: string,
   deps: ImportJobServiceDeps = getDefaultDeps()
@@ -102,7 +102,7 @@ export async function submitCustomerImportJob(
     filename,
   };
   
-  const request = createRequest(userId, payload);
+  const request = createRequest(getToken(), payload);
   
   const response = await deps.request<typeof request, NatsResponse<CustomerImportJobSubmitResponse>>(
     SUBJECTS.customer.submit,
@@ -140,7 +140,6 @@ export async function subscribeToCustomerImportJobStatus(
  * Submit a device import job
  */
 export async function submitDeviceImportJob(
-  userId: string,
   csvContent: string,
   filename: string,
   deps: ImportJobServiceDeps = getDefaultDeps()
@@ -150,7 +149,7 @@ export async function submitDeviceImportJob(
     filename,
   };
   
-  const request = createRequest(userId, payload);
+  const request = createRequest(getToken(), payload);
   
   const response = await deps.request<typeof request, NatsResponse<DeviceImportJobSubmitResponse>>(
     SUBJECTS.device.submit,
@@ -188,7 +187,6 @@ export async function subscribeToDeviceImportJobStatus(
  * Submit a revision import job
  */
 export async function submitRevisionImportJob(
-  userId: string,
   csvContent: string,
   filename: string,
   deps: ImportJobServiceDeps = getDefaultDeps()
@@ -198,7 +196,7 @@ export async function submitRevisionImportJob(
     filename,
   };
   
-  const request = createRequest(userId, payload);
+  const request = createRequest(getToken(), payload);
   
   const response = await deps.request<typeof request, NatsResponse<RevisionImportJobSubmitResponse>>(
     SUBJECTS.revision.submit,
@@ -236,7 +234,6 @@ export async function subscribeToRevisionImportJobStatus(
  * Submit a communication import job
  */
 export async function submitCommunicationImportJob(
-  userId: string,
   csvContent: string,
   filename: string,
   deps: ImportJobServiceDeps = getDefaultDeps()
@@ -246,7 +243,7 @@ export async function submitCommunicationImportJob(
     filename,
   };
   
-  const request = createRequest(userId, payload);
+  const request = createRequest(getToken(), payload);
   
   const response = await deps.request<typeof request, NatsResponse<CommunicationImportJobSubmitResponse>>(
     SUBJECTS.communication.submit,
@@ -284,7 +281,6 @@ export async function subscribeToCommunicationImportJobStatus(
  * Submit a work log import job
  */
 export async function submitWorkLogImportJob(
-  userId: string,
   csvContent: string,
   filename: string,
   deps: ImportJobServiceDeps = getDefaultDeps()
@@ -294,7 +290,7 @@ export async function submitWorkLogImportJob(
     filename,
   };
   
-  const request = createRequest(userId, payload);
+  const request = createRequest(getToken(), payload);
   
   const response = await deps.request<typeof request, NatsResponse<WorkLogImportJobSubmitResponse>>(
     SUBJECTS.visit.submit,
@@ -333,7 +329,6 @@ export async function subscribeToWorkLogImportJobStatus(
  * The ZIP file should be base64 encoded
  */
 export async function submitZipImportJob(
-  userId: string,
   zipContentBase64: string,
   filename: string,
   deps: ImportJobServiceDeps = getDefaultDeps()
@@ -343,7 +338,7 @@ export async function submitZipImportJob(
     filename,
   };
   
-  const request = createRequest(userId, payload);
+  const request = createRequest(getToken(), payload);
   
   const response = await deps.request<typeof request, NatsResponse<ZipImportJobSubmitResponse>>(
     SUBJECTS.zip.submit,

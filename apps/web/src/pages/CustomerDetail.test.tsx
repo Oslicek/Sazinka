@@ -240,7 +240,6 @@ describe('CustomerDetail', () => {
 
       await waitFor(() => {
         expect(mockGetCustomer).toHaveBeenCalledWith(
-          expect.any(String), // userId
           'test-customer-id'
         );
       });

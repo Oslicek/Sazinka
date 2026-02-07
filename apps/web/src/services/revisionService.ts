@@ -2,6 +2,7 @@ import type { Revision } from '@shared/revision';
 import type { SuccessResponse, ErrorResponse } from '@shared/messages';
 import { createRequest } from '@shared/messages';
 import { useNatsStore } from '../stores/natsStore';
+import { getToken } from '@/utils/auth';
 
 // Re-export types
 export type { Revision };
@@ -200,11 +201,10 @@ export interface ScheduleRevisionRequest {
  * Create a new revision
  */
 export async function createRevision(
-  userId: string,
   data: CreateRevisionRequest,
   deps: RevisionServiceDeps = getDefaultDeps()
 ): Promise<Revision> {
-  const request = createRequest(userId, data);
+  const request = createRequest(getToken(), data);
 
   const response = await deps.request<typeof request, NatsResponse<Revision>>(
     'sazinka.revision.create',
@@ -222,11 +222,10 @@ export async function createRevision(
  * List revisions with optional filters
  */
 export async function listRevisions(
-  userId: string,
   filters: ListRevisionsFilters = {},
   deps: RevisionServiceDeps = getDefaultDeps()
 ): Promise<RevisionListResponse> {
-  const request = createRequest(userId, filters);
+  const request = createRequest(getToken(), filters);
 
   const response = await deps.request<typeof request, NatsResponse<RevisionListResponse>>(
     'sazinka.revision.list',
@@ -244,11 +243,10 @@ export async function listRevisions(
  * Get a single revision by ID
  */
 export async function getRevision(
-  userId: string,
   revisionId: string,
   deps: RevisionServiceDeps = getDefaultDeps()
 ): Promise<Revision> {
-  const request = createRequest(userId, { id: revisionId });
+  const request = createRequest(getToken(), { id: revisionId });
 
   const response = await deps.request<typeof request, NatsResponse<Revision>>(
     'sazinka.revision.get',
@@ -266,11 +264,10 @@ export async function getRevision(
  * Update a revision
  */
 export async function updateRevision(
-  userId: string,
   data: UpdateRevisionRequest,
   deps: RevisionServiceDeps = getDefaultDeps()
 ): Promise<Revision> {
-  const request = createRequest(userId, data);
+  const request = createRequest(getToken(), data);
 
   const response = await deps.request<typeof request, NatsResponse<Revision>>(
     'sazinka.revision.update',
@@ -288,11 +285,10 @@ export async function updateRevision(
  * Complete a revision with result and findings
  */
 export async function completeRevision(
-  userId: string,
   data: CompleteRevisionRequest,
   deps: RevisionServiceDeps = getDefaultDeps()
 ): Promise<Revision> {
-  const request = createRequest(userId, data);
+  const request = createRequest(getToken(), data);
 
   const response = await deps.request<typeof request, NatsResponse<Revision>>(
     'sazinka.revision.complete',
@@ -310,11 +306,10 @@ export async function completeRevision(
  * Delete a revision
  */
 export async function deleteRevision(
-  userId: string,
   revisionId: string,
   deps: RevisionServiceDeps = getDefaultDeps()
 ): Promise<boolean> {
-  const request = createRequest(userId, { id: revisionId });
+  const request = createRequest(getToken(), { id: revisionId });
 
   const response = await deps.request<typeof request, NatsResponse<{ deleted: boolean }>>(
     'sazinka.revision.delete',
@@ -332,11 +327,10 @@ export async function deleteRevision(
  * Get upcoming revisions (overdue + due soon)
  */
 export async function getUpcomingRevisions(
-  userId: string,
   daysAhead: number = 30,
   deps: RevisionServiceDeps = getDefaultDeps()
 ): Promise<UpcomingRevisionsResponse> {
-  const request = createRequest(userId, { daysAhead });
+  const request = createRequest(getToken(), { daysAhead });
 
   const response = await deps.request<typeof request, NatsResponse<UpcomingRevisionsResponse>>(
     'sazinka.revision.upcoming',
@@ -354,10 +348,9 @@ export async function getUpcomingRevisions(
  * Get revision statistics for dashboard
  */
 export async function getRevisionStats(
-  userId: string,
   deps: RevisionServiceDeps = getDefaultDeps()
 ): Promise<RevisionStats> {
-  const request = createRequest(userId, {});
+  const request = createRequest(getToken(), {});
 
   const response = await deps.request<typeof request, NatsResponse<RevisionStats>>(
     'sazinka.revision.stats',
@@ -376,7 +369,6 @@ export async function getRevisionStats(
  * Returns prioritized list based on urgency (overdue > due soon > upcoming)
  */
 export async function getSuggestedRevisions(
-  userId: string,
   date: string,
   maxCount: number = 50,
   excludeIds: string[] = [],
@@ -387,7 +379,7 @@ export async function getSuggestedRevisions(
     maxCount,
     excludeIds: excludeIds.length > 0 ? excludeIds : undefined,
   };
-  const request = createRequest(userId, payload);
+  const request = createRequest(getToken(), payload);
 
   const response = await deps.request<typeof request, NatsResponse<SuggestRevisionsResponse>>(
     'sazinka.revision.suggest',
@@ -409,11 +401,10 @@ export async function getSuggestedRevisions(
  * Get the call queue - revisions needing customer contact
  */
 export async function getCallQueue(
-  userId: string,
   filters: CallQueueRequest = {},
   deps: RevisionServiceDeps = getDefaultDeps()
 ): Promise<CallQueueResponse> {
-  const request = createRequest(userId, filters);
+  const request = createRequest(getToken(), filters);
 
   const response = await deps.request<typeof request, NatsResponse<CallQueueResponse>>(
     'sazinka.revision.queue',
@@ -431,11 +422,10 @@ export async function getCallQueue(
  * Snooze a revision - postpone contact until a future date
  */
 export async function snoozeRevision(
-  userId: string,
   data: SnoozeRevisionRequest,
   deps: RevisionServiceDeps = getDefaultDeps()
 ): Promise<Revision> {
-  const request = createRequest(userId, data);
+  const request = createRequest(getToken(), data);
 
   const response = await deps.request<typeof request, NatsResponse<Revision>>(
     'sazinka.revision.snooze',
@@ -453,11 +443,10 @@ export async function snoozeRevision(
  * Schedule a revision - set date, time window, and optionally crew
  */
 export async function scheduleRevision(
-  userId: string,
   data: ScheduleRevisionRequest,
   deps: RevisionServiceDeps = getDefaultDeps()
 ): Promise<Revision> {
-  const request = createRequest(userId, data);
+  const request = createRequest(getToken(), data);
 
   const response = await deps.request<typeof request, NatsResponse<Revision>>(
     'sazinka.revision.schedule',

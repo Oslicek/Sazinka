@@ -2,9 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNatsStore } from '../stores/natsStore';
 import * as settingsService from '../services/settingsService';
 import * as crewService from '../services/crewService';
+import * as workerService from '../services/workerService';
 import * as exportService from '../services/exportService';
 import { importCustomersBatch } from '../services/customerService';
 import type { Crew } from '../services/crewService';
+import type { UserPublic } from '@shared/auth';
 import type {
   UserSettings,
   WorkConstraints,
@@ -16,15 +18,14 @@ import { ImportModal, type ImportEntityType } from '../components/import';
 import { ImportCustomersModal } from '../components/customers/ImportCustomersModal';
 import styles from './Settings.module.css';
 
-const TEMP_USER_ID = '00000000-0000-0000-0000-000000000001';
-
-type SettingsTab = 'work' | 'business' | 'email' | 'depots' | 'crews' | 'import-export';
+type SettingsTab = 'work' | 'business' | 'email' | 'depots' | 'crews' | 'workers' | 'import-export';
 
 export function Settings() {
   const { isConnected } = useNatsStore();
   const [activeTab, setActiveTab] = useState<SettingsTab>('work');
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [crews, setCrews] = useState<Crew[]>([]);
+  const [workers, setWorkers] = useState<UserPublic[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,12 +51,14 @@ export function Settings() {
     setError(null);
     
     try {
-      const [data, crewList] = await Promise.all([
-        settingsService.getSettings(TEMP_USER_ID),
+      const [data, crewList, workerList] = await Promise.all([
+        settingsService.getSettings(),
         crewService.listCrews(false), // Load all crews, including inactive
+        workerService.listWorkers().catch(() => [] as UserPublic[]), // Workers might fail for non-customers
       ]);
       setSettings(data);
       setCrews(crewList);
+      setWorkers(workerList);
     } catch (e) {
       console.error('Failed to load settings:', e);
       setError('Nepodařilo se načíst nastavení');
@@ -119,8 +122,8 @@ export function Settings() {
     setShowCustomerImport(false);
   };
 
-  const handleCustomerImportBatch = useCallback(async (customers: Parameters<typeof importCustomersBatch>[1]) => {
-    return importCustomersBatch(TEMP_USER_ID, customers);
+  const handleCustomerImportBatch = useCallback(async (customers: Parameters<typeof importCustomersBatch>[0]) => {
+    return importCustomersBatch(customers);
   }, []);
 
   // Tab components
@@ -130,6 +133,7 @@ export function Settings() {
     { id: 'email', label: 'E-mailové šablony' },
     { id: 'depots', label: 'Depa' },
     { id: 'crews', label: 'Posádky' },
+    { id: 'workers', label: 'Pracovníci' },
     { id: 'import-export', label: 'Import & Export' },
   ];
 
@@ -185,7 +189,7 @@ export function Settings() {
               setSaving(true);
               setError(null);
               try {
-                const updated = await settingsService.updateWorkConstraints(TEMP_USER_ID, data);
+                const updated = await settingsService.updateWorkConstraints(data);
                 setSettings((prev) => prev ? { ...prev, workConstraints: updated } : null);
                 showSuccess('Nastavení pracovní doby uloženo');
               } catch (e) {
@@ -205,7 +209,7 @@ export function Settings() {
               setSaving(true);
               setError(null);
               try {
-                const updated = await settingsService.updateBusinessInfo(TEMP_USER_ID, data);
+                const updated = await settingsService.updateBusinessInfo(data);
                 setSettings((prev) => prev ? { ...prev, businessInfo: updated } : null);
                 showSuccess('Firemní údaje uloženy');
               } catch (e) {
@@ -225,7 +229,7 @@ export function Settings() {
               setSaving(true);
               setError(null);
               try {
-                const updated = await settingsService.updateEmailTemplates(TEMP_USER_ID, data);
+                const updated = await settingsService.updateEmailTemplates(data);
                 setSettings((prev) => prev ? { ...prev, emailTemplates: updated } : null);
                 showSuccess('E-mailové šablony uloženy');
               } catch (e) {
@@ -251,6 +255,16 @@ export function Settings() {
             crews={crews}
             onUpdate={async () => {
               await loadSettings();
+            }}
+          />
+        )}
+
+        {activeTab === 'workers' && (
+          <WorkersManager
+            workers={workers}
+            onUpdate={async () => {
+              const updatedWorkers = await workerService.listWorkers().catch(() => [] as UserPublic[]);
+              setWorkers(updatedWorkers);
             }}
           />
         )}
@@ -776,7 +790,7 @@ function DepotsManager({ depots, onUpdate }: DepotsManagerProps) {
     
     try {
       // First geocode the address
-      const geocoded = await settingsService.geocodeDepotAddress(TEMP_USER_ID, data);
+      const geocoded = await settingsService.geocodeDepotAddress(data);
       
       if (!geocoded.coordinates) {
         setError('Adresa nebyla nalezena. Zkontrolujte prosím zadané údaje.');
@@ -785,7 +799,7 @@ function DepotsManager({ depots, onUpdate }: DepotsManagerProps) {
       }
       
       // Create depot with coordinates
-      await settingsService.createDepot(TEMP_USER_ID, {
+      await settingsService.createDepot({
         name: data.name,
         street: data.street,
         city: data.city,
@@ -812,9 +826,9 @@ function DepotsManager({ depots, onUpdate }: DepotsManagerProps) {
     
     try {
       // Geocode if address changed
-      const geocoded = await settingsService.geocodeDepotAddress(TEMP_USER_ID, data);
+      const geocoded = await settingsService.geocodeDepotAddress(data);
       
-      await settingsService.updateDepot(TEMP_USER_ID, {
+      await settingsService.updateDepot({
         id: editingDepot.id,
         name: data.name,
         street: data.street,
@@ -837,7 +851,7 @@ function DepotsManager({ depots, onUpdate }: DepotsManagerProps) {
     if (!confirm('Opravdu chcete smazat toto depo?')) return;
     
     try {
-      await settingsService.deleteDepot(TEMP_USER_ID, depotId);
+      await settingsService.deleteDepot(depotId);
       await onUpdate();
     } catch (e) {
       setError('Nepodařilo se smazat depo');
@@ -846,7 +860,7 @@ function DepotsManager({ depots, onUpdate }: DepotsManagerProps) {
 
   const handleSetPrimary = async (depot: Depot) => {
     try {
-      await settingsService.updateDepot(TEMP_USER_ID, {
+      await settingsService.updateDepot({
         id: depot.id,
         isPrimary: true,
       });
@@ -1216,6 +1230,158 @@ function CrewForm({ crew, saving, onSave, onCancel }: CrewFormProps) {
         </button>
       </div>
     </form>
+  );
+}
+
+// =============================================================================
+// Workers Manager (Pracovníci)
+// =============================================================================
+
+interface WorkersManagerProps {
+  workers: UserPublic[];
+  onUpdate: () => Promise<void>;
+}
+
+function WorkersManager({ workers, onUpdate }: WorkersManagerProps) {
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Form state
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+
+  const resetForm = () => {
+    setName('');
+    setEmail('');
+    setPassword('');
+    setShowForm(false);
+    setError(null);
+  };
+
+  const handleSubmit = async () => {
+    if (!name || !email || !password) {
+      setError('Vyplňte všechna povinná pole');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Heslo musí mít alespoň 8 znaků');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await workerService.createWorker({ email, password, name });
+      resetForm();
+      await onUpdate();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Nepodařilo se vytvořit pracovníka');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (workerId: string, workerName: string) => {
+    if (!confirm(`Opravdu chcete smazat pracovníka "${workerName}"?`)) return;
+    try {
+      await workerService.deleteWorker(workerId);
+      await onUpdate();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Nepodařilo se smazat pracovníka');
+    }
+  };
+
+  return (
+    <div>
+      <div className={styles.sectionHeader}>
+        <h2 className={styles.sectionTitle}>Pracovníci</h2>
+        <button className={styles.addButton} onClick={() => setShowForm(true)}>
+          + Přidat pracovníka
+        </button>
+      </div>
+
+      <p className={styles.sectionDescription}>
+        Pracovníci mají přístup k zákazníkům, kalendáři, plánovači a dalším stránkám.
+        Nemohou měnit nastavení ani spravovat admin panel.
+      </p>
+
+      {error && <div className={styles.error}>{error}</div>}
+
+      {showForm && (
+        <div className={styles.formCard}>
+          <h3>Nový pracovník</h3>
+          <div className={styles.formGrid}>
+            <div className={styles.formGroup}>
+              <label className={styles.label}>Jméno *</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className={styles.input}
+                placeholder="Jan Novák"
+              />
+            </div>
+            <div className={styles.formGroup}>
+              <label className={styles.label}>Email *</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className={styles.input}
+                placeholder="jan@firma.cz"
+              />
+            </div>
+            <div className={styles.formGroup}>
+              <label className={styles.label}>Heslo * (min. 8 znaků)</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className={styles.input}
+                placeholder="Heslo pro přihlášení"
+                minLength={8}
+              />
+            </div>
+          </div>
+          <div className={styles.formActions}>
+            <button className={styles.saveButton} onClick={handleSubmit} disabled={saving}>
+              {saving ? 'Ukládám...' : 'Vytvořit pracovníka'}
+            </button>
+            <button className={styles.cancelButton} onClick={resetForm}>
+              Zrušit
+            </button>
+          </div>
+        </div>
+      )}
+
+      {workers.length === 0 ? (
+        <div className={styles.emptyState}>
+          <p>Zatím nemáte žádné pracovníky.</p>
+          <p>Pracovníci se mohou přihlásit pod svým účtem a pracovat se systémem.</p>
+        </div>
+      ) : (
+        <div className={styles.crewList}>
+          {workers.map((worker) => (
+            <div key={worker.id} className={styles.crewCard}>
+              <div className={styles.crewInfo}>
+                <span className={styles.crewName}>{worker.name}</span>
+                <span className={styles.crewDetail}>{worker.email}</span>
+              </div>
+              <div className={styles.crewActions}>
+                <button
+                  className={styles.deleteCrewButton}
+                  onClick={() => handleDelete(worker.id, worker.name)}
+                  title="Smazat pracovníka"
+                >
+                  🗑️
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

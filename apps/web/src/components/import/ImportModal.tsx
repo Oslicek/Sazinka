@@ -16,10 +16,8 @@ import {
 } from '../../services/importJobService';
 import { useActiveJobsStore } from '../../stores/activeJobsStore';
 import type { JobType } from '../../stores/activeJobsStore';
+import { getToken } from '@/utils/auth';
 import styles from './ImportModal.module.css';
-
-// Mock user ID for development
-const USER_ID = '00000000-0000-0000-0000-000000000001';
 
 export type ImportEntityType = 'device' | 'revision' | 'communication' | 'work_log' | 'zip';
 
@@ -253,19 +251,19 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
 
       switch (entityType) {
         case 'device':
-          result = await submitDeviceImportJob(USER_ID, preview.content, preview.filename);
+          result = await submitDeviceImportJob(preview.content, preview.filename);
           break;
         case 'revision':
-          result = await submitRevisionImportJob(USER_ID, preview.content, preview.filename);
+          result = await submitRevisionImportJob(preview.content, preview.filename);
           break;
         case 'communication':
-          result = await submitCommunicationImportJob(USER_ID, preview.content, preview.filename);
+          result = await submitCommunicationImportJob(preview.content, preview.filename);
           break;
         case 'work_log':
-          result = await submitWorkLogImportJob(USER_ID, preview.content, preview.filename);
+          result = await submitWorkLogImportJob(preview.content, preview.filename);
           break;
         case 'zip':
-          result = await submitZipImportJob(USER_ID, preview.content, preview.filename);
+          result = await submitZipImportJob(preview.content, preview.filename);
           break;
         default:
           throw new Error(`Nepodporovaný typ importu: ${entityType}`);

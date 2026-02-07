@@ -8,8 +8,7 @@
 import { useNatsStore } from '../stores/natsStore';
 import { createRequest, type SuccessResponse, type ErrorResponse } from '@shared/messages';
 import type { PlannedRouteStop, Coordinates, RoutePlanResponse } from '@shared/route';
-
-const TEMP_USER_ID = '00000000-0000-0000-0000-000000000001';
+import { getToken } from '@/utils/auth';
 
 /**
  * Response type that can be either success or error
@@ -120,7 +119,7 @@ export async function saveRoute(
   deps = { request: useNatsStore.getState().request }
 ): Promise<SaveRouteResponse> {
   const payload = {
-    userId: TEMP_USER_ID,
+    userId: getToken(),
     payload: request,
   };
   const response = await deps.request<typeof payload, SaveRouteResponse>('sazinka.route.save', payload);
@@ -136,7 +135,7 @@ export async function getRoute(
   deps = { request: useNatsStore.getState().request }
 ): Promise<GetRouteResponse> {
   const payload = {
-    userId: TEMP_USER_ID,
+    userId: getToken(),
     payload: { date },
   };
   const response = await deps.request<typeof payload, GetRouteResponse>('sazinka.route.get', payload);
@@ -194,8 +193,8 @@ export async function submitRoutePlanJob(
   request: RoutePlanJobRequest,
   deps = { request: useNatsStore.getState().request }
 ): Promise<RoutePlanJobSubmitResponse> {
-  const req = createRequest(TEMP_USER_ID, {
-    userId: TEMP_USER_ID,
+  const req = createRequest(getToken(), {
+    userId: getToken(),
     customerIds: request.customerIds,
     date: request.date,
     startLocation: request.startLocation,

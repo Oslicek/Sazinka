@@ -9,6 +9,12 @@ import {
 } from './deviceService';
 import type { Device, CreateDeviceRequest } from '@shared/device';
 
+vi.mock('@/utils/auth', () => ({
+  getToken: () => 'test-user-id',
+  getUserId: () => 'test-user-id',
+  hasRole: () => true,
+}));
+
 describe('deviceService', () => {
   const mockRequest = vi.fn();
   const mockDeps: DeviceServiceDeps = {
@@ -49,12 +55,11 @@ describe('deviceService', () => {
     it('should call NATS with correct subject and payload', async () => {
       mockRequest.mockResolvedValueOnce({ payload: mockDevice });
 
-      await createDevice('user-123', createRequest, mockDeps);
+      await createDevice(createRequest, mockDeps);
 
       expect(mockRequest).toHaveBeenCalledWith(
         'sazinka.device.create',
         expect.objectContaining({
-          userId: 'user-123',
           payload: createRequest,
         })
       );
@@ -63,7 +68,7 @@ describe('deviceService', () => {
     it('should return created device on success', async () => {
       mockRequest.mockResolvedValueOnce({ payload: mockDevice });
 
-      const result = await createDevice('user-123', createRequest, mockDeps);
+      const result = await createDevice(createRequest, mockDeps);
 
       expect(result).toEqual(mockDevice);
     });
@@ -73,7 +78,7 @@ describe('deviceService', () => {
         error: { code: 'DATABASE_ERROR', message: 'Connection failed' },
       });
 
-      await expect(createDevice('user-123', createRequest, mockDeps)).rejects.toThrow(
+      await expect(createDevice(createRequest, mockDeps)).rejects.toThrow(
         'Connection failed'
       );
     });
@@ -81,7 +86,7 @@ describe('deviceService', () => {
     it('should include request id and timestamp', async () => {
       mockRequest.mockResolvedValueOnce({ payload: mockDevice });
 
-      await createDevice('user-123', createRequest, mockDeps);
+      await createDevice(createRequest, mockDeps);
 
       expect(mockRequest).toHaveBeenCalledWith(
         'sazinka.device.create',
@@ -101,12 +106,11 @@ describe('deviceService', () => {
         payload: { items: mockDevices, total: 1 },
       });
 
-      await listDevices('user-123', 'customer-123', mockDeps);
+      await listDevices('customer-123', mockDeps);
 
       expect(mockRequest).toHaveBeenCalledWith(
         'sazinka.device.list',
         expect.objectContaining({
-          userId: 'user-123',
           payload: { customerId: 'customer-123' },
         })
       );
@@ -117,7 +121,7 @@ describe('deviceService', () => {
         payload: { items: mockDevices, total: 1 },
       });
 
-      const result = await listDevices('user-123', 'customer-123', mockDeps);
+      const result = await listDevices('customer-123', mockDeps);
 
       expect(result.items).toHaveLength(1);
       expect(result.total).toBe(1);
@@ -128,7 +132,7 @@ describe('deviceService', () => {
         error: { code: 'DATABASE_ERROR', message: 'Query failed' },
       });
 
-      await expect(listDevices('user-123', 'customer-123', mockDeps)).rejects.toThrow(
+      await expect(listDevices('customer-123', mockDeps)).rejects.toThrow(
         'Query failed'
       );
     });
@@ -138,12 +142,11 @@ describe('deviceService', () => {
     it('should call NATS with correct subject and device/customer ids', async () => {
       mockRequest.mockResolvedValueOnce({ payload: mockDevice });
 
-      await getDevice('user-123', 'device-123', 'customer-123', mockDeps);
+      await getDevice('device-123', 'customer-123', mockDeps);
 
       expect(mockRequest).toHaveBeenCalledWith(
         'sazinka.device.get',
         expect.objectContaining({
-          userId: 'user-123',
           payload: { id: 'device-123', customerId: 'customer-123' },
         })
       );
@@ -152,7 +155,7 @@ describe('deviceService', () => {
     it('should return device on success', async () => {
       mockRequest.mockResolvedValueOnce({ payload: mockDevice });
 
-      const result = await getDevice('user-123', 'device-123', 'customer-123', mockDeps);
+      const result = await getDevice('device-123', 'customer-123', mockDeps);
 
       expect(result).toEqual(mockDevice);
     });
@@ -163,7 +166,7 @@ describe('deviceService', () => {
       });
 
       await expect(
-        getDevice('user-123', 'device-123', 'customer-123', mockDeps)
+        getDevice('device-123', 'customer-123', mockDeps)
       ).rejects.toThrow('Device not found');
     });
   });
@@ -178,12 +181,11 @@ describe('deviceService', () => {
     it('should call NATS with correct subject and update data', async () => {
       mockRequest.mockResolvedValueOnce({ payload: { ...mockDevice, ...updateRequest } });
 
-      await updateDevice('user-123', 'customer-123', updateRequest, mockDeps);
+      await updateDevice('customer-123', updateRequest, mockDeps);
 
       expect(mockRequest).toHaveBeenCalledWith(
         'sazinka.device.update',
         expect.objectContaining({
-          userId: 'user-123',
           payload: { ...updateRequest, customerId: 'customer-123' },
         })
       );
@@ -193,7 +195,7 @@ describe('deviceService', () => {
       const updatedDevice = { ...mockDevice, manufacturer: 'Vaillant', model: 'ecoTEC' };
       mockRequest.mockResolvedValueOnce({ payload: updatedDevice });
 
-      const result = await updateDevice('user-123', 'customer-123', updateRequest, mockDeps);
+      const result = await updateDevice('customer-123', updateRequest, mockDeps);
 
       expect(result.manufacturer).toBe('Vaillant');
       expect(result.model).toBe('ecoTEC');
@@ -205,7 +207,7 @@ describe('deviceService', () => {
       });
 
       await expect(
-        updateDevice('user-123', 'customer-123', updateRequest, mockDeps)
+        updateDevice('customer-123', updateRequest, mockDeps)
       ).rejects.toThrow('Device not found');
     });
   });
@@ -214,12 +216,11 @@ describe('deviceService', () => {
     it('should call NATS with correct subject and device/customer ids', async () => {
       mockRequest.mockResolvedValueOnce({ payload: { deleted: true } });
 
-      await deleteDevice('user-123', 'device-123', 'customer-123', mockDeps);
+      await deleteDevice('device-123', 'customer-123', mockDeps);
 
       expect(mockRequest).toHaveBeenCalledWith(
         'sazinka.device.delete',
         expect.objectContaining({
-          userId: 'user-123',
           payload: { id: 'device-123', customerId: 'customer-123' },
         })
       );
@@ -228,7 +229,7 @@ describe('deviceService', () => {
     it('should return true on successful deletion', async () => {
       mockRequest.mockResolvedValueOnce({ payload: { deleted: true } });
 
-      const result = await deleteDevice('user-123', 'device-123', 'customer-123', mockDeps);
+      const result = await deleteDevice('device-123', 'customer-123', mockDeps);
 
       expect(result).toBe(true);
     });
@@ -239,7 +240,7 @@ describe('deviceService', () => {
       });
 
       await expect(
-        deleteDevice('user-123', 'device-123', 'customer-123', mockDeps)
+        deleteDevice('device-123', 'customer-123', mockDeps)
       ).rejects.toThrow('Device not found');
     });
   });

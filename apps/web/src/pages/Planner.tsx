@@ -38,10 +38,8 @@ import {
 import { SortableStopItem, DraftModeBar, AddFromInboxDrawer } from '../components/planner';
 import type { InboxCandidate } from '../types';
 import type { SlotSuggestion } from '../components/planner/SlotSuggestions';
+import { getToken } from '@/utils/auth';
 import styles from './Planner.module.css';
-
-// Mock user ID for development
-const USER_ID = '00000000-0000-0000-0000-000000000001';
 
 // Default depot location (Prague center) - fallback if no depot configured
 const DEFAULT_DEPOT = { lat: 50.0755, lng: 14.4378 };
@@ -218,7 +216,7 @@ export function Planner() {
     
     async function loadDepot() {
       try {
-        const settings = await settingsService.getSettings(USER_ID);
+        const settings = await settingsService.getSettings();
         const primaryDepot = settings.depots.find(d => d.isPrimary) || settings.depots[0];
         if (primaryDepot) {
           setDepot({ lat: primaryDepot.lat, lng: primaryDepot.lng, name: primaryDepot.name });
@@ -241,7 +239,7 @@ export function Planner() {
     
     setScheduledLoading(true);
     try {
-      const response = await listRevisions(USER_ID, {
+      const response = await listRevisions({
         fromDate: selectedDate,
         toDate: selectedDate,
         dateType: 'scheduled',
@@ -275,7 +273,7 @@ export function Planner() {
     
     setQueueLoading(true);
     try {
-      const response = await getCallQueue(USER_ID, { 
+      const response = await getCallQueue({ 
         priorityFilter: 'all', 
         geocodedOnly: true,  // Only show customers with valid coordinates
         limit: 5 
@@ -661,7 +659,7 @@ export function Planner() {
 
     setLoadingInboxCandidates(true);
     try {
-      const response = await getCallQueue(USER_ID, {
+      const response = await getCallQueue({
         priorityFilter: 'all',
         geocodedOnly: true,
         limit: 20,
@@ -721,7 +719,7 @@ export function Planner() {
         id: revisionId,
         result: finalResult,
       };
-      await completeRevision(USER_ID, data);
+      await completeRevision(data);
       loadScheduledRevisions();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Nepodařilo se dokončit revizi');

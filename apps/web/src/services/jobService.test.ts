@@ -5,6 +5,12 @@ import {
   retryJob,
 } from './jobService';
 
+vi.mock('@/utils/auth', () => ({
+  getToken: () => 'test-user-id',
+  getUserId: () => 'test-user-id',
+  hasRole: () => true,
+}));
+
 // Mock natsStore
 const mockRequest = vi.fn();
 

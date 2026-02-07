@@ -3,10 +3,8 @@ import { Link } from '@tanstack/react-router';
 import type { CustomerSummary as CustomerSummaryType } from '@shared/customer';
 import { getCustomerSummary } from '../services/customerService';
 import { useNatsStore } from '../stores/natsStore';
+import { getToken } from '@/utils/auth';
 import styles from './CustomerSummary.module.css';
-
-// Temporary user ID until auth is implemented
-const TEMP_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 interface StatCardProps {
   label: string;
@@ -42,7 +40,7 @@ export function CustomerSummary() {
     try {
       setIsLoading(true);
       setError(null);
-      const data = await getCustomerSummary(TEMP_USER_ID);
+      const data = await getCustomerSummary();
       setSummary(data);
     } catch (err) {
       console.error('Failed to load customer summary:', err);

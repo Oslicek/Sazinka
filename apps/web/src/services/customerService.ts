@@ -10,6 +10,7 @@ import type {
 import type { ListRequest, ListResponse, SuccessResponse, ErrorResponse } from '@shared/messages';
 import { createRequest } from '@shared/messages';
 import { useNatsStore } from '../stores/natsStore';
+import { getToken } from '@/utils/auth';
 
 /**
  * Dependencies for customer service (for testing)
@@ -45,11 +46,10 @@ function isErrorResponse(response: NatsResponse<unknown>): response is ErrorResp
  * Create a new customer
  */
 export async function createCustomer(
-  userId: string,
   data: CreateCustomerRequest,
   deps: CustomerServiceDeps = getDefaultDeps()
 ): Promise<Customer> {
-  const request = createRequest(userId, data);
+  const request = createRequest(getToken(), data);
   
   const response = await deps.request<typeof request, NatsResponse<Customer>>(
     'sazinka.customer.create',
@@ -67,11 +67,10 @@ export async function createCustomer(
  * List customers with pagination
  */
 export async function listCustomers(
-  userId: string,
   options: ListRequest = {},
   deps: CustomerServiceDeps = getDefaultDeps()
 ): Promise<ListResponse<Customer>> {
-  const request = createRequest(userId, options);
+  const request = createRequest(getToken(), options);
 
   const response = await deps.request<typeof request, NatsResponse<ListResponse<Customer>>>(
     'sazinka.customer.list',
@@ -90,11 +89,10 @@ export async function listCustomers(
  * Supports filtering and sorting
  */
 export async function listCustomersExtended(
-  userId: string,
   options: ListCustomersRequest = {},
   deps: CustomerServiceDeps = getDefaultDeps()
 ): Promise<CustomerListResponse> {
-  const request = createRequest(userId, options);
+  const request = createRequest(getToken(), options);
 
   const response = await deps.request<typeof request, NatsResponse<CustomerListResponse>>(
     'sazinka.customer.list.extended',
@@ -112,10 +110,9 @@ export async function listCustomersExtended(
  * Get customer summary statistics
  */
 export async function getCustomerSummary(
-  userId: string,
   deps: CustomerServiceDeps = getDefaultDeps()
 ): Promise<CustomerSummary> {
-  const request = createRequest(userId, {});
+  const request = createRequest(getToken(), {});
 
   const response = await deps.request<typeof request, NatsResponse<CustomerSummary>>(
     'sazinka.customer.summary',
@@ -133,11 +130,10 @@ export async function getCustomerSummary(
  * Get a single customer by ID
  */
 export async function getCustomer(
-  userId: string,
   customerId: string,
   deps: CustomerServiceDeps = getDefaultDeps()
 ): Promise<Customer> {
-  const request = createRequest(userId, { id: customerId });
+  const request = createRequest(getToken(), { id: customerId });
 
   const response = await deps.request<typeof request, NatsResponse<Customer>>(
     'sazinka.customer.get',
@@ -155,11 +151,10 @@ export async function getCustomer(
  * Update a customer
  */
 export async function updateCustomer(
-  userId: string,
   data: UpdateCustomerRequest,
   deps: CustomerServiceDeps = getDefaultDeps()
 ): Promise<Customer> {
-  const request = createRequest(userId, data);
+  const request = createRequest(getToken(), data);
 
   const response = await deps.request<typeof request, NatsResponse<Customer>>(
     'sazinka.customer.update',
@@ -177,11 +172,10 @@ export async function updateCustomer(
  * Delete a customer
  */
 export async function deleteCustomer(
-  userId: string,
   customerId: string,
   deps: CustomerServiceDeps = getDefaultDeps()
 ): Promise<boolean> {
-  const request = createRequest(userId, { id: customerId });
+  const request = createRequest(getToken(), { id: customerId });
 
   const response = await deps.request<typeof request, NatsResponse<{ deleted: boolean }>>(
     'sazinka.customer.delete',
@@ -202,7 +196,6 @@ export async function deleteCustomer(
  * Each batch is processed atomically on the server.
  */
 export async function importCustomersBatch(
-  userId: string,
   customers: CreateCustomerRequest[],
   deps: CustomerServiceDeps = getDefaultDeps()
 ): Promise<{ importedCount: number; updatedCount: number; errors: ImportIssue[] }> {
@@ -214,7 +207,7 @@ export async function importCustomersBatch(
 
   for (let i = 0; i < customers.length; i++) {
     try {
-      await createCustomer(userId, customers[i], deps);
+      await createCustomer(customers[i], deps);
       importedCount++;
     } catch (error) {
       errors.push({
@@ -248,10 +241,9 @@ export interface PendingGeocodeResponse {
 }
 
 export async function getCustomersPendingGeocode(
-  userId: string,
   deps: CustomerServiceDeps = getDefaultDeps()
 ): Promise<PendingGeocodeResponse> {
-  const request = createRequest(userId, {});
+  const request = createRequest(getToken(), {});
 
   const response = await deps.request<typeof request, NatsResponse<PendingGeocodeResponse>>(
     'sazinka.geocode.pending',
@@ -274,12 +266,10 @@ export interface GeocodeJobSubmitResponse {
 }
 
 export async function submitGeocodeJob(
-  userId: string,
   customerIds: string[],
   deps: CustomerServiceDeps = getDefaultDeps()
 ): Promise<GeocodeJobSubmitResponse> {
-  const request = createRequest(userId, { 
-    userId,
+  const request = createRequest(getToken(), { 
     customerIds 
   });
 
@@ -305,11 +295,10 @@ export interface GeocodeAddressJobSubmitResponse {
 }
 
 export async function submitGeocodeAddressJob(
-  userId: string,
   address: { street: string; city: string; postalCode: string },
   deps: CustomerServiceDeps = getDefaultDeps()
 ): Promise<GeocodeAddressJobSubmitResponse> {
-  const request = createRequest(userId, {
+  const request = createRequest(getToken(), {
     street: address.street,
     city: address.city,
     postalCode: address.postalCode,
@@ -362,11 +351,10 @@ export interface ReverseGeocodeJobSubmitResponse {
 }
 
 export async function submitReverseGeocodeJob(
-  userId: string,
   payload: { customerId: string; lat: number; lng: number },
   deps: CustomerServiceDeps = getDefaultDeps()
 ): Promise<ReverseGeocodeJobSubmitResponse> {
-  const request = createRequest(userId, payload);
+  const request = createRequest(getToken(), payload);
 
   const response = await deps.request<typeof request, NatsResponse<ReverseGeocodeJobSubmitResponse>>(
     'sazinka.geocode.reverse.submit',
@@ -438,11 +426,10 @@ export async function subscribeToGeocodeJobStatus(
  * Submit geocoding for all customers without coordinates
  */
 export async function submitGeocodeAllPending(
-  userId: string,
   deps: CustomerServiceDeps = getDefaultDeps()
 ): Promise<GeocodeJobSubmitResponse | null> {
   // First, get all customers pending geocode
-  const pending = await getCustomersPendingGeocode(userId, deps);
+  const pending = await getCustomersPendingGeocode(deps);
   
   if (pending.count === 0) {
     return null; // Nothing to geocode
@@ -450,5 +437,5 @@ export async function submitGeocodeAllPending(
   
   // Submit geocoding job for all of them
   const customerIds = pending.customers.map(c => c.id);
-  return submitGeocodeJob(userId, customerIds, deps);
+  return submitGeocodeJob(customerIds, deps);
 }

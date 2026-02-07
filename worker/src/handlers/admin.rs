@@ -6,6 +6,8 @@
 //! - Valhalla status
 //! - System logs
 
+use std::sync::Arc;
+
 use anyhow::Result;
 use async_nats::Client;
 use futures::StreamExt;
@@ -13,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use tracing::{info, error, warn};
 
+use crate::auth;
 use crate::types::{Request, SuccessResponse, ErrorResponse};
 
 // ==========================================================================
@@ -148,60 +151,68 @@ pub async fn start_admin_handlers(
     pool: PgPool,
     valhalla_url: Option<String>,
     nominatim_url: Option<String>,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     info!("Starting admin handlers...");
 
     // Spawn handlers
     let client1 = client.clone();
     let pool1 = pool.clone();
+    let jwt_secret1 = Arc::clone(&jwt_secret);
     tokio::spawn(async move {
-        if let Err(e) = handle_db_status(client1, pool1).await {
+        if let Err(e) = handle_db_status(client1, pool1, jwt_secret1).await {
             error!("DB status handler error: {}", e);
         }
     });
 
     let client2 = client.clone();
     let pool2 = pool.clone();
+    let jwt_secret2 = Arc::clone(&jwt_secret);
     tokio::spawn(async move {
-        if let Err(e) = handle_db_reset(client2, pool2).await {
+        if let Err(e) = handle_db_reset(client2, pool2, jwt_secret2).await {
             error!("DB reset handler error: {}", e);
         }
     });
 
     let client3 = client.clone();
     let valhalla_url_clone = valhalla_url.clone();
+    let jwt_secret3 = Arc::clone(&jwt_secret);
     tokio::spawn(async move {
-        if let Err(e) = handle_valhalla_status(client3, valhalla_url_clone).await {
+        if let Err(e) = handle_valhalla_status(client3, valhalla_url_clone, jwt_secret3).await {
             error!("Valhalla status handler error: {}", e);
         }
     });
 
     let client4 = client.clone();
+    let jwt_secret4 = Arc::clone(&jwt_secret);
     tokio::spawn(async move {
-        if let Err(e) = handle_logs(client4).await {
+        if let Err(e) = handle_logs(client4, jwt_secret4).await {
             error!("Logs handler error: {}", e);
         }
     });
 
     let client5 = client.clone();
     let nominatim_url_clone = nominatim_url.clone();
+    let jwt_secret5 = Arc::clone(&jwt_secret);
     tokio::spawn(async move {
-        if let Err(e) = handle_nominatim_status(client5, nominatim_url_clone).await {
+        if let Err(e) = handle_nominatim_status(client5, nominatim_url_clone, jwt_secret5).await {
             error!("Nominatim status handler error: {}", e);
         }
     });
 
     let client6 = client.clone();
+    let jwt_secret6 = Arc::clone(&jwt_secret);
     tokio::spawn(async move {
-        if let Err(e) = handle_jetstream_status(client6).await {
+        if let Err(e) = handle_jetstream_status(client6, jwt_secret6).await {
             error!("JetStream status handler error: {}", e);
         }
     });
 
     let client7 = client.clone();
     let pool3 = pool.clone();
+    let jwt_secret7 = Arc::clone(&jwt_secret);
     tokio::spawn(async move {
-        if let Err(e) = handle_geocode_status(client7, pool3).await {
+        if let Err(e) = handle_geocode_status(client7, pool3, jwt_secret7).await {
             error!("Geocode status handler error: {}", e);
         }
     });
@@ -211,7 +222,7 @@ pub async fn start_admin_handlers(
 }
 
 /// Handle database status requests
-async fn handle_db_status(client: Client, pool: PgPool) -> Result<()> {
+async fn handle_db_status(client: Client, pool: PgPool, jwt_secret: Arc<String>) -> Result<()> {
     let mut sub = client.subscribe("sazinka.admin.db.status").await?;
     
     while let Some(msg) = sub.next().await {
@@ -220,15 +231,39 @@ async fn handle_db_status(client: Client, pool: PgPool) -> Result<()> {
             None => continue,
         };
 
+        let request: Request<DbStatusRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(r) => r,
+            Err(e) => {
+                let request_id = extract_request_id(&msg.payload);
+                let error = ErrorResponse::new(request_id, "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Authenticate and check admin role
+        let auth_info = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info,
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        if auth_info.role != "admin" {
+            let error = ErrorResponse::new(request.id, "FORBIDDEN", "Admin access required");
+            let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            continue;
+        }
+
         let response = match get_db_status(&pool).await {
             Ok(status) => {
-                let request_id = extract_request_id(&msg.payload);
-                SuccessResponse::new(request_id, status)
+                SuccessResponse::new(request.id, status)
             }
             Err(e) => {
                 error!("Failed to get DB status: {}", e);
-                let request_id = extract_request_id(&msg.payload);
-                let error = ErrorResponse::new(request_id, "DB_ERROR", e.to_string());
+                let error = ErrorResponse::new(request.id, "DB_ERROR", e.to_string());
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
@@ -303,7 +338,7 @@ async fn get_db_status(pool: &PgPool) -> Result<DbStatusResponse> {
 }
 
 /// Handle database reset requests
-async fn handle_db_reset(client: Client, pool: PgPool) -> Result<()> {
+async fn handle_db_reset(client: Client, pool: PgPool, jwt_secret: Arc<String>) -> Result<()> {
     let mut sub = client.subscribe("sazinka.admin.db.reset").await?;
     
     while let Some(msg) = sub.next().await {
@@ -312,21 +347,45 @@ async fn handle_db_reset(client: Client, pool: PgPool) -> Result<()> {
             None => continue,
         };
 
-        warn!("Database reset requested!");
+        let request: Request<DbResetRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(r) => r,
+            Err(e) => {
+                let request_id = extract_request_id(&msg.payload);
+                let error = ErrorResponse::new(request_id, "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Authenticate and check admin role
+        let auth_info = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info,
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        if auth_info.role != "admin" {
+            let error = ErrorResponse::new(request.id, "FORBIDDEN", "Admin access required");
+            let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            continue;
+        }
+
+        warn!("Database reset requested by user {}", auth_info.user_id);
 
         let response = match reset_database(&pool).await {
             Ok(_) => {
                 info!("Database reset completed successfully");
-                let request_id = extract_request_id(&msg.payload);
-                SuccessResponse::new(request_id, DbResetResponse {
+                SuccessResponse::new(request.id, DbResetResponse {
                     success: true,
                     message: "Database reset successfully".to_string(),
                 })
             }
             Err(e) => {
                 error!("Failed to reset database: {}", e);
-                let request_id = extract_request_id(&msg.payload);
-                let error = ErrorResponse::new(request_id, "RESET_ERROR", e.to_string());
+                let error = ErrorResponse::new(request.id, "RESET_ERROR", e.to_string());
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
@@ -374,7 +433,7 @@ async fn reset_database(pool: &PgPool) -> Result<()> {
 }
 
 /// Handle Valhalla status requests
-async fn handle_valhalla_status(client: Client, valhalla_url: Option<String>) -> Result<()> {
+async fn handle_valhalla_status(client: Client, valhalla_url: Option<String>, jwt_secret: Arc<String>) -> Result<()> {
     let mut sub = client.subscribe("sazinka.admin.valhalla.status").await?;
     
     while let Some(msg) = sub.next().await {
@@ -382,6 +441,32 @@ async fn handle_valhalla_status(client: Client, valhalla_url: Option<String>) ->
             Some(r) => r,
             None => continue,
         };
+
+        let request: Request<ValhallaStatusRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(r) => r,
+            Err(e) => {
+                let request_id = extract_request_id(&msg.payload);
+                let error = ErrorResponse::new(request_id, "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Authenticate and check admin role
+        let auth_info = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info,
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        if auth_info.role != "admin" {
+            let error = ErrorResponse::new(request.id, "FORBIDDEN", "Admin access required");
+            let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            continue;
+        }
 
         let (available, url) = match &valhalla_url {
             Some(url) => {
@@ -397,8 +482,7 @@ async fn handle_valhalla_status(client: Client, valhalla_url: Option<String>) ->
             None => (false, "Not configured".to_string()),
         };
 
-        let request_id = extract_request_id(&msg.payload);
-        let response = SuccessResponse::new(request_id, ValhallaStatusResponse {
+        let response = SuccessResponse::new(request.id, ValhallaStatusResponse {
             available,
             url,
         });
@@ -410,7 +494,7 @@ async fn handle_valhalla_status(client: Client, valhalla_url: Option<String>) ->
 }
 
 /// Handle Nominatim status requests
-async fn handle_nominatim_status(client: Client, nominatim_url: Option<String>) -> Result<()> {
+async fn handle_nominatim_status(client: Client, nominatim_url: Option<String>, jwt_secret: Arc<String>) -> Result<()> {
     let mut sub = client.subscribe("sazinka.admin.nominatim.status").await?;
     
     while let Some(msg) = sub.next().await {
@@ -418,6 +502,32 @@ async fn handle_nominatim_status(client: Client, nominatim_url: Option<String>) 
             Some(r) => r,
             None => continue,
         };
+
+        let request: Request<NominatimStatusRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(r) => r,
+            Err(e) => {
+                let request_id = extract_request_id(&msg.payload);
+                let error = ErrorResponse::new(request_id, "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Authenticate and check admin role
+        let auth_info = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info,
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        if auth_info.role != "admin" {
+            let error = ErrorResponse::new(request.id, "FORBIDDEN", "Admin access required");
+            let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            continue;
+        }
 
         let (available, url, version) = match &nominatim_url {
             Some(url) => {
@@ -444,8 +554,7 @@ async fn handle_nominatim_status(client: Client, nominatim_url: Option<String>) 
             None => (false, "Not configured".to_string(), None),
         };
 
-        let request_id = extract_request_id(&msg.payload);
-        let response = SuccessResponse::new(request_id, NominatimStatusResponse {
+        let response = SuccessResponse::new(request.id, NominatimStatusResponse {
             available,
             url,
             version,
@@ -458,7 +567,7 @@ async fn handle_nominatim_status(client: Client, nominatim_url: Option<String>) 
 }
 
 /// Handle JetStream status requests
-async fn handle_jetstream_status(client: Client) -> Result<()> {
+async fn handle_jetstream_status(client: Client, jwt_secret: Arc<String>) -> Result<()> {
     use async_nats::jetstream;
     
     let mut sub = client.subscribe("sazinka.admin.jetstream.status").await?;
@@ -468,6 +577,32 @@ async fn handle_jetstream_status(client: Client) -> Result<()> {
             Some(r) => r,
             None => continue,
         };
+
+        let request: Request<JetStreamStatusRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(r) => r,
+            Err(e) => {
+                let request_id = extract_request_id(&msg.payload);
+                let error = ErrorResponse::new(request_id, "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Authenticate and check admin role
+        let auth_info = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info,
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        if auth_info.role != "admin" {
+            let error = ErrorResponse::new(request.id, "FORBIDDEN", "Admin access required");
+            let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            continue;
+        }
 
         let js = jetstream::new(client.clone());
         
@@ -506,8 +641,7 @@ async fn handle_jetstream_status(client: Client) -> Result<()> {
             }
         };
 
-        let request_id = extract_request_id(&msg.payload);
-        let response = SuccessResponse::new(request_id, JetStreamStatusResponse {
+        let response = SuccessResponse::new(request.id, JetStreamStatusResponse {
             available,
             streams,
             consumers,
@@ -520,7 +654,7 @@ async fn handle_jetstream_status(client: Client) -> Result<()> {
 }
 
 /// Handle geocode status requests
-async fn handle_geocode_status(client: Client, pool: PgPool) -> Result<()> {
+async fn handle_geocode_status(client: Client, pool: PgPool, jwt_secret: Arc<String>) -> Result<()> {
     use async_nats::jetstream;
     
     let mut sub = client.subscribe("sazinka.admin.geocode.status").await?;
@@ -530,6 +664,32 @@ async fn handle_geocode_status(client: Client, pool: PgPool) -> Result<()> {
             Some(ref r) => r.clone(),
             None => continue,
         };
+
+        let request: Request<GeocodeStatusRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(r) => r,
+            Err(e) => {
+                let request_id = extract_request_id(&msg.payload);
+                let error = ErrorResponse::new(request_id, "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Authenticate and check admin role
+        let auth_info = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info,
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        if auth_info.role != "admin" {
+            let error = ErrorResponse::new(request.id, "FORBIDDEN", "Admin access required");
+            let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            continue;
+        }
 
         let js = jetstream::new(client.clone());
         
@@ -560,8 +720,7 @@ async fn handle_geocode_status(client: Client, pool: PgPool) -> Result<()> {
             Err(_) => 0,
         };
 
-        let request_id = extract_request_id(&msg.payload);
-        let response = SuccessResponse::new(request_id, GeocodeStatusResponse {
+        let response = SuccessResponse::new(request.id, GeocodeStatusResponse {
             available: true,
             pending_customers: pending_customers.0,
             failed_customers: failed_customers.0,
@@ -575,7 +734,7 @@ async fn handle_geocode_status(client: Client, pool: PgPool) -> Result<()> {
 }
 
 /// Handle logs requests
-async fn handle_logs(client: Client) -> Result<()> {
+async fn handle_logs(client: Client, jwt_secret: Arc<String>) -> Result<()> {
     let mut sub = client.subscribe("sazinka.admin.logs").await?;
     
     while let Some(msg) = sub.next().await {
@@ -584,20 +743,40 @@ async fn handle_logs(client: Client) -> Result<()> {
             None => continue,
         };
 
-        // Parse request to get limit and level filter
-        let request: LogsRequest = serde_json::from_slice(&msg.payload)
-            .map(|r: Request<LogsRequest>| r.payload)
-            .unwrap_or(LogsRequest { limit: Some(100), level: None });
-        
-        let limit = request.limit.unwrap_or(100) as usize;
-        let level_filter = request.level.as_deref();
+        let request: Request<LogsRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(r) => r,
+            Err(e) => {
+                let request_id = extract_request_id(&msg.payload);
+                let error = ErrorResponse::new(request_id, "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Authenticate and check admin role
+        let auth_info = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info,
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        if auth_info.role != "admin" {
+            let error = ErrorResponse::new(request.id, "FORBIDDEN", "Admin access required");
+            let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            continue;
+        }
+
+        let limit = request.payload.limit.unwrap_or(100) as usize;
+        let level_filter = request.payload.level.as_deref();
         
         // Read logs from all log files in the logs directory
         let logs_dir = std::env::var("LOGS_DIR").unwrap_or_else(|_| "../logs".to_string());
         let logs = read_all_logs(&logs_dir, limit, level_filter);
         
-        let request_id = extract_request_id(&msg.payload);
-        let response = SuccessResponse::new(request_id, LogsResponse { logs });
+        let response = SuccessResponse::new(request.id, LogsResponse { logs });
 
         let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
     }

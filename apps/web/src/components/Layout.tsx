@@ -1,6 +1,7 @@
-import { Link } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { useNatsStore } from '@/stores/natsStore';
 import { useActiveJobsStore } from '@/stores/activeJobsStore';
+import { useAuthStore } from '@/stores/authStore';
 import styles from './Layout.module.css';
 
 interface LayoutProps {
@@ -10,6 +11,23 @@ interface LayoutProps {
 export function Layout({ children }: LayoutProps) {
   const isConnected = useNatsStore((s) => s.isConnected);
   const activeJobsCount = useActiveJobsStore((s) => s.activeCount);
+  const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
+  const navigate = useNavigate();
+
+  const role = user?.role ?? 'worker';
+
+  // Role-based navigation:
+  // Admin: all pages
+  // Customer: all except Admin
+  // Worker: all except Admin and Settings
+  const showAdmin = role === 'admin';
+  const showSettings = role === 'admin' || role === 'customer';
+
+  const handleLogout = () => {
+    logout();
+    navigate({ to: '/login' });
+  };
 
   return (
     <div className={styles.layout}>
@@ -25,8 +43,8 @@ export function Layout({ children }: LayoutProps) {
           <NavLink to="/inbox">Fronta</NavLink>
           <NavLink to="/planner">Plán dne</NavLink>
           <NavLink to="/jobs">Úlohy</NavLink>
-          <NavLink to="/settings">Nastavení</NavLink>
-          <NavLink to="/admin">Admin</NavLink>
+          {showSettings && <NavLink to="/settings">Nastavení</NavLink>}
+          {showAdmin && <NavLink to="/admin">Admin</NavLink>}
         </nav>
 
         <div className={styles.headerRight}>
@@ -44,6 +62,15 @@ export function Layout({ children }: LayoutProps) {
             />
             {isConnected ? 'Online' : 'Offline'}
           </div>
+
+          {user && (
+            <div className={styles.userMenu}>
+              <span className={styles.userName}>{user.name}</span>
+              <button className={styles.logoutButton} onClick={handleLogout}>
+                Odhlásit
+              </button>
+            </div>
+          )}
         </div>
       </header>
 

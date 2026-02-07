@@ -6,6 +6,7 @@ import {
 } from '@tanstack/react-router';
 
 import { Layout } from '@/components/Layout';
+import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { Dashboard } from '@/pages/Dashboard';
 import { Customers } from '@/pages/Customers';
 import { CustomerDetail } from '@/pages/CustomerDetail';
@@ -17,82 +18,116 @@ import { Admin } from '@/pages/Admin';
 import { Settings } from '@/pages/Settings';
 import { RevisionDetail } from '@/pages/RevisionDetail';
 import { Jobs } from '@/pages/Jobs';
+import { Login } from '@/pages/Login';
+import { Register } from '@/pages/Register';
 
-// Root route with layout
+// Root route with layout (only for authenticated pages)
 const rootRoute = createRootRoute({
+  component: () => <Outlet />,
+});
+
+// --- Auth routes (no layout, no protection) ---
+
+const loginRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/login',
+  component: Login,
+});
+
+const registerRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/register',
+  component: Register,
+});
+
+// --- Layout wrapper for authenticated pages ---
+
+const layoutRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  id: 'layout',
   component: () => (
-    <Layout>
-      <Outlet />
-    </Layout>
+    <ProtectedRoute>
+      <Layout>
+        <Outlet />
+      </Layout>
+    </ProtectedRoute>
   ),
 });
 
 // Dashboard (home page)
 const indexRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => layoutRoute,
   path: '/',
   component: Dashboard,
 });
 
 // Customers
 const customersRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => layoutRoute,
   path: '/customers',
   component: Customers,
 });
 
 // Customer summary (static route - must be before dynamic $customerId route)
 const customerSummaryRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => layoutRoute,
   path: '/customers/summary',
   component: CustomerSummary,
 });
 
 // Customer detail
 const customerDetailRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => layoutRoute,
   path: '/customers/$customerId',
   component: CustomerDetail,
 });
 
 // Calendar
 const calendarRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => layoutRoute,
   path: '/calendar',
   component: Calendar,
 });
 
 // Route planner
 const plannerRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => layoutRoute,
   path: '/planner',
   component: Planner,
 });
 
 // Planning Inbox (route-aware)
 const inboxRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => layoutRoute,
   path: '/inbox',
   component: PlanningInbox,
 });
 
-// Admin
+// Admin - requires admin role
 const adminRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => layoutRoute,
   path: '/admin',
-  component: Admin,
+  component: () => (
+    <ProtectedRoute roles={['admin']}>
+      <Admin />
+    </ProtectedRoute>
+  ),
 });
 
-// Settings
+// Settings - requires customer or admin role
 const settingsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => layoutRoute,
   path: '/settings',
-  component: Settings,
+  component: () => (
+    <ProtectedRoute roles={['customer', 'admin']}>
+      <Settings />
+    </ProtectedRoute>
+  ),
 });
 
 // Call Queue - redirect to new Planning Inbox
 const callQueueRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => layoutRoute,
   path: '/queue',
   beforeLoad: () => {
     throw redirect({ to: '/inbox' });
@@ -101,7 +136,7 @@ const callQueueRoute = createRoute({
 
 // Redirect /today to /planner (TechnicianDay merged into Planner)
 const todayRedirectRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => layoutRoute,
   path: '/today',
   beforeLoad: () => {
     throw redirect({ to: '/planner' });
@@ -110,31 +145,35 @@ const todayRedirectRoute = createRoute({
 
 // Revision Detail
 const revisionDetailRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => layoutRoute,
   path: '/revisions/$revisionId',
   component: RevisionDetail,
 });
 
 // Jobs Dashboard
 const jobsRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => layoutRoute,
   path: '/jobs',
   component: Jobs,
 });
 
 // Route tree
 export const routeTree = rootRoute.addChildren([
-  indexRoute,
-  customersRoute,
-  customerSummaryRoute,
-  customerDetailRoute,
-  calendarRoute,
-  plannerRoute,
-  inboxRoute,
-  callQueueRoute,
-  todayRedirectRoute,
-  revisionDetailRoute,
-  jobsRoute,
-  adminRoute,
-  settingsRoute,
+  loginRoute,
+  registerRoute,
+  layoutRoute.addChildren([
+    indexRoute,
+    customersRoute,
+    customerSummaryRoute,
+    customerDetailRoute,
+    calendarRoute,
+    plannerRoute,
+    inboxRoute,
+    callQueueRoute,
+    todayRedirectRoute,
+    revisionDetailRoute,
+    jobsRoute,
+    adminRoute,
+    settingsRoute,
+  ]),
 ]);
