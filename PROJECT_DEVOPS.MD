@@ -153,18 +153,28 @@ JetStream pro garantované doručení.
 ```
 Sazinka/
 ├── apps/
-│   └── web/                      # React frontend (Vite)
+│   ├── site/                     # Marketingová část (Site)
+│   │   ├── src/
+│   │   │   ├── components/       # UI komponenty (hero, pricing, features...)
+│   │   │   ├── pages/            # Veřejné stránky (home, pricing, docs...)
+│   │   │   └── assets/           # Obrázky, ikony
+│   │   ├── package.json
+│   │   ├── vite.config.ts
+│   │   └── .env.production       # Žádné WebSockety, čistě statický
+│   │
+│   └── web/                      # Aplikační část (App)
 │       ├── src/
 │       │   ├── components/       # UI komponenty
-│       │   ├── pages/            # Stránky aplikace
+│       │   ├── pages/            # Stránky aplikace (po přihlášení)
 │       │   ├── services/         # NATS komunikační služby
 │       │   ├── stores/           # Zustand stores
 │       │   ├── utils/            # Utilitní funkce
 │       │   └── routes/           # TanStack Router definice
 │       ├── package.json
 │       ├── vite.config.ts
-│       ├── .env                  # VITE_NATS_WS_URL
-│       └── .env.example
+│       ├── .env                  # VITE_NATS_WS_URL (dev)
+│       ├── .env.example
+│       └── .env.production       # VITE_NATS_WS_URL=wss://app.sazinka.cz/nats
 │
 ├── packages/
 │   └── shared-types/             # Sdílené TypeScript typy
@@ -204,7 +214,10 @@ Sazinka/
 │
 ├── infra/                        # Docker infrastruktura
 │   ├── docker-compose.yml
+│   ├── docker-compose.prod.yml   # Produkční konfigurace
 │   ├── nats-server.conf
+│   ├── nats-server.prod.conf     # Produkční konfigurace s ACL
+│   ├── Caddyfile                 # Reverse proxy konfigurace
 │   ├── init-db.sql               # Inicializační SQL (extensions)
 │   ├── seed-dev.sql              # Testovací data (dev)
 │   └── manage.ps1                # Správa infrastruktury
@@ -225,6 +238,10 @@ Sazinka/
 ├── PROJECT_IMPORT.MD             # Specifikace CSV importu
 └── PROJECT_DEVOPS.MD             # ← Tento soubor
 ```
+
+**Poznámka**: Aplikace má dvě oddělené části:
+- **Site** (`apps/site`): Veřejná marketingová část bez WebSocketů.
+- **App** (`apps/web`): Aplikační část s NATS WebSocket (po přihlášení).
 
 ---
 
@@ -819,13 +836,29 @@ Kompilace trvá déle (~10+ minut) ale výsledný binární soubor je výrazně 
 
 ### 15.3 Frontend - produkční build
 
+**Aplikační část** (`apps/web`):
+
 ```powershell
 cd apps/web
 pnpm build                             # → dist/
 ```
 
 Produkční build generuje statické soubory do `apps/web/dist/` které lze
-nasadit na libovolný statický hosting (Cloudflare Pages, nginx, S3, ...).
+nasadit na Cloudflare Pages, nginx, S3, atd.
+
+**Marketingová část** (`apps/site`):
+
+```powershell
+cd apps/site
+pnpm build                             # → dist/
+```
+
+Marketingová část je čistě statická (žádný NATS WebSocket). Build je optimalizovaný
+pro rychlost:
+- Lazy loading komponent
+- Code splitting
+- Optimalizované obrázky
+- Tree shaking
 
 ### 15.4 Monorepo build
 
@@ -866,6 +899,18 @@ Valhalla image :latest              Supply-chain riziko               STŘEDNÍ
 
 ### 16.2 Cílová architektura pro veřejný server
 
+Aplikace má dvě oddělené části:
+
+1. **Site** (marketingová část): Veřejná home page, demos, pricing, dokumentace.
+   - Statický React/Vite build, žádné WebSockety.
+   - Processing pouze na klientovi → nemůže dojít k přetížení serveru.
+   - Nasazeno na Cloudflare Pages nebo jako statické soubory přes Caddy.
+
+2. **App** (aplikační část): CRM, plánování tras, správa zákazníků.
+   - React/Vite s NATS WebSocket komunikací.
+   - Přístup pouze po přihlášení.
+   - Vyžaduje autentizaci a autorizaci.
+
 ```
                          Internet
                             │
@@ -874,33 +919,45 @@ Valhalla image :latest              Supply-chain riziko               STŘEDNÍ
                      │ jen 22+443  │
                      └──────┬──────┘
                             │ :443
-                     ┌──────┴──────┐
-                     │   Caddy     │      Cloudflare Pages
-                     │ reverse     │◄──── (frontend HTTPS)
-                     │ proxy + TLS │
-                     └──┬─────┬────┘
-                        │     │
-            ┌───────────┘     └──────────┐
-            │ wss→ws                     │ (volitelné: monitoring)
-            ▼                            ▼
-     ┌──────────────┐           ┌───────────────┐
-     │ NATS :8222   │           │ NATS :8223    │
-     │ (interní)    │           │ monitoring    │
-     │ + Auth/ACL   │           │ (basic auth)  │
-     └──────┬───────┘           └───────────────┘
-            │ :4222 (docker net)
-            ▼
-     ┌──────────────┐
-     │ Rust Worker  │
-     └──┬──────┬──┬─┘
-        │      │  │   vše přes docker network (žádné porty ven)
-        ▼      ▼  ▼
-     Postgres  Nominatim  Valhalla
-     :5432     :8080      :8002
+                     ┌──────┴──────────────────────────┐
+                     │         Caddy                   │
+                     │    reverse proxy + TLS          │
+                     └──┬────────┬─────────┬───────────┘
+                        │        │         │
+            ┌───────────┘        │         └──────────┐
+            │                    │                    │
+            ▼                    ▼                    ▼
+     ┌─────────────┐    ┌──────────────┐    ┌───────────────┐
+     │ Site        │    │ App          │    │ NATS :8223    │
+     │ (statické)  │    │ (statické)   │    │ monitoring    │
+     │ /           │    │ /app         │    │ (basic auth)  │
+     │ /pricing    │    │ + wss→ws     │    └───────────────┘
+     │ /docs       │    │ /app/nats    │
+     └─────────────┘    └──────┬───────┘
+                               │ wss→ws
+                               ▼
+                        ┌──────────────┐
+                        │ NATS :8222   │
+                        │ (interní)    │
+                        │ + Auth/ACL   │
+                        └──────┬───────┘
+                               │ :4222 (docker net)
+                               ▼
+                        ┌──────────────┐
+                        │ Rust Worker  │
+                        └──┬──────┬──┬─┘
+                           │      │  │   vše přes docker network
+                           ▼      ▼  ▼
+                        Postgres  Nominatim  Valhalla
+                        :5432     :8080      :8002
 ```
 
-**Klíčový princip**: z internetu je vidět POUZE port 443 (Caddy).
-Vše ostatní komunikuje uvnitř Docker sítě.
+**Klíčové principy**:
+- Z internetu je vidět POUZE port 443 (Caddy).
+- **Site** je čistě statický, žádné WebSockety → nemůže být přetížen.
+- **App** vyžaduje přihlášení, teprve pak se otevře WebSocket.
+- NATS WebSocket je dostupný jen přes `/app/nats` (ne z veřejné části).
+- Vše ostatní komunikuje uvnitř Docker sítě.
 
 ### 16.3 Bezpečnostní checklist (před nasazením)
 
@@ -1058,41 +1115,95 @@ Klíčové rozdíly oproti dev konfiguraci:
 
 ### 16.5 Reverse proxy: Caddy konfigurace
 
-Caddy automaticky zajistí Let's Encrypt certifikát. Caddyfile:
+Caddy automaticky zajistí Let's Encrypt certifikát. Konfigurace pro Site + App:
 
 ```
 # infra/Caddyfile
-api.sazinka.cz {
+
+# Veřejná marketingová část (Site)
+sazinka.cz {
+    # Statické soubory (build z apps/site)
+    root * /var/www/site
+    file_server
+    
+    # SPA fallback pro client-side routing
+    try_files {path} /index.html
+    
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+}
+
+# Aplikační část (App) - vyžaduje přihlášení
+app.sazinka.cz {
+    # Statické soubory (build z apps/web)
+    root * /var/www/app
+    
     # NATS WebSocket proxy (wss:// → ws://)
     handle /nats/* {
         uri strip_prefix /nats
         reverse_proxy nats:8222
     }
-
-    # Volitelné: NATS monitoring (zaheslované)
-    handle /monitor/* {
-        basicauth {
-            admin $2a$14$... # bcrypt hash hesla, viz: caddy hash-password
-        }
-        reverse_proxy nats:8223
-    }
-
-    # Catch-all: 404
+    
+    # Statické soubory aplikace
     handle {
-        respond "Not Found" 404
+        file_server
+        try_files {path} /index.html
     }
+    
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        # CSP: povolíme WebSocket jen na app.sazinka.cz
+        Content-Security-Policy "default-src 'self'; connect-src 'self' wss://app.sazinka.cz; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';"
+    }
+}
+
+# Volitelné: NATS monitoring (zaheslované, přístup jen pro admin)
+monitor.sazinka.cz {
+    basicauth {
+        admin $2a$14$... # bcrypt hash hesla, viz: caddy hash-password
+    }
+    reverse_proxy nats:8223
 }
 ```
 
-Frontend `.env` pro produkci:
+**Struktura souborů na serveru**:
 
-```env
-VITE_NATS_WS_URL=wss://api.sazinka.cz/nats
+```
+/var/www/
+├── site/              # Build z apps/site (marketingová část)
+│   ├── index.html
+│   ├── assets/
+│   └── ...
+└── app/               # Build z apps/web (aplikační část)
+    ├── index.html
+    ├── assets/
+    └── ...
 ```
 
-**Poznámka**: HTTPS frontend na Cloudflare Pages se nemůže připojit k `ws://`
-(nešifrovaný WebSocket). Browser to zablokuje jako Mixed Content. Proto je
-`wss://` (přes Caddy TLS) nutnost, ne luxus.
+**Environment proměnné**:
+
+```env
+# apps/site/.env.production (Site - marketingová část)
+# Žádné NATS, žádné WebSockety
+
+# apps/web/.env.production (App - aplikační část)
+VITE_NATS_WS_URL=wss://app.sazinka.cz/nats
+```
+
+**Poznámky**:
+- **Site** (`sazinka.cz`) nemá přístup k NATS WebSocket → nemůže být zneužit k DoS.
+- **App** (`app.sazinka.cz`) má NATS WebSocket na `/nats` → přístup jen po přihlášení.
+- HTTPS frontend se nemůže připojit k `ws://` (Mixed Content) → `wss://` je nutnost.
+- CSP header v App části omezuje WebSocket připojení jen na `app.sazinka.cz`.
 
 ### 16.6 NATS autentizace a autorizace (ACL)
 
@@ -1467,15 +1578,49 @@ sudo systemctl status sazinka-worker
     └─ psql < seed-dev.sql (nebo produkční seed)
 
 11. DNS nastavení
-    └─ api.sazinka.cz → IP serveru
+    ├─ api.sazinka.cz → IP serveru (backend API)
+    ├─ sazinka.cz → CNAME na Cloudflare Pages (marketing)
+    ├─ www.sazinka.cz → CNAME na Cloudflare Pages (marketing redirect)
+    └─ app.sazinka.cz → CNAME na Cloudflare Pages (aplikace)
 
-12. Nasazení frontendu
-    ├─ Cloudflare Pages deploy
-    └─ VITE_NATS_WS_URL=wss://api.sazinka.cz/nats
+12. Nasazení marketingové části (Cloudflare Pages)
+    ├─ Vytvořit projekt v Cloudflare Pages: "sazinka-site"
+    ├─ Propojit s Git repozitářem (GitHub/GitLab)
+    ├─ Build settings:
+    │   ├─ Framework preset: Vite
+    │   ├─ Build command: cd apps/site && pnpm install && pnpm build
+    │   ├─ Build output directory: apps/site/dist
+    │   └─ Root directory: / (monorepo)
+    ├─ Environment variables: žádné (čistě statický)
+    ├─ Custom domain: sazinka.cz + www.sazinka.cz
+    └─ Optimalizace:
+        ├─ Automatické minifikace (Cloudflare)
+        ├─ Brotli komprese
+        ├─ HTTP/3 + QUIC
+        └─ Edge caching (CDN)
 
-13. Ověření
-    ├─ curl https://api.sazinka.cz/monitor/healthz (s basic auth)
-    ├─ Frontend login test
+13. Nasazení aplikační části (Cloudflare Pages)
+    ├─ Vytvořit projekt v Cloudflare Pages: "sazinka-app"
+    ├─ Propojit s Git repozitářem
+    ├─ Build settings:
+    │   ├─ Framework preset: Vite
+    │   ├─ Build command: cd apps/web && pnpm install && pnpm build
+    │   ├─ Build output directory: apps/web/dist
+    │   └─ Root directory: / (monorepo)
+    ├─ Environment variables:
+    │   └─ VITE_NATS_WS_URL=wss://api.sazinka.cz/nats
+    └─ Custom domain: app.sazinka.cz
+
+14. Ověření
+    ├─ https://sazinka.cz
+    │   ├─ Rychlost načtení (< 1s)
+    │   ├─ Lighthouse score (> 90)
+    │   └─ SEO meta tags
+    ├─ https://app.sazinka.cz
+    │   ├─ Login stránka se zobrazí
+    │   ├─ WebSocket připojení (DevTools → Network → WS)
+    │   └─ Funkční přihlášení
+    ├─ https://api.sazinka.cz/monitor/healthz (s basic auth)
     └─ Monitoring check (Uptime Kuma)
 ```
 
