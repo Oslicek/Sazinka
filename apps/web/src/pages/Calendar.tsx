@@ -569,6 +569,7 @@ export function Calendar() {
                 onClick={handleDayClick}
                 workloadMinutes={workloadByDay[day.dateKey]}
                 capacityMinutes={capacityByDay[day.dateKey]}
+                variant="week"
               />
             ))}
           </div>
