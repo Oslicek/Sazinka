@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNatsStore } from '../stores/natsStore';
 import * as settingsService from '../services/settingsService';
 import * as crewService from '../services/crewService';
+import * as exportService from '../services/exportService';
+import { importCustomersBatch } from '../services/customerService';
 import type { Crew } from '../services/crewService';
 import type {
   UserSettings,
@@ -10,11 +12,13 @@ import type {
   EmailTemplateSettings,
   Depot,
 } from '@shared/settings';
+import { ImportModal, type ImportEntityType } from '../components/import';
+import { ImportCustomersModal } from '../components/customers/ImportCustomersModal';
 import styles from './Settings.module.css';
 
 const TEMP_USER_ID = '00000000-0000-0000-0000-000000000001';
 
-type SettingsTab = 'work' | 'business' | 'email' | 'depots' | 'crews';
+type SettingsTab = 'work' | 'business' | 'email' | 'depots' | 'crews' | 'import-export';
 
 export function Settings() {
   const { isConnected } = useNatsStore();
@@ -25,6 +29,18 @@ export function Settings() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  
+  // Export state
+  const [isExportingCustomers, setIsExportingCustomers] = useState(false);
+  const [isExportingRevisions, setIsExportingRevisions] = useState(false);
+  const [exportDateFrom, setExportDateFrom] = useState('');
+  const [exportDateTo, setExportDateTo] = useState('');
+  const [exportStatus, setExportStatus] = useState<string>('all');
+  
+  // Import state
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importEntityType, setImportEntityType] = useState<ImportEntityType>('device');
+  const [showCustomerImport, setShowCustomerImport] = useState(false);
 
   // Load settings and crews
   const loadSettings = useCallback(async () => {
@@ -58,6 +74,55 @@ export function Settings() {
     setTimeout(() => setSuccess(null), 3000);
   };
 
+  // Export handlers
+  const handleExportCustomers = async () => {
+    setIsExportingCustomers(true);
+    try {
+      await exportService.exportCustomers();
+    } catch (e) {
+      console.error('Export failed:', e);
+      setError('Export zákazníků selhal: ' + String(e));
+    }
+    setIsExportingCustomers(false);
+  };
+
+  const handleExportRevisions = async () => {
+    setIsExportingRevisions(true);
+    try {
+      await exportService.exportRevisions({
+        dateFrom: exportDateFrom || undefined,
+        dateTo: exportDateTo || undefined,
+        status: exportStatus !== 'all' ? exportStatus : undefined,
+      });
+    } catch (e) {
+      console.error('Export failed:', e);
+      setError('Export revizí selhal: ' + String(e));
+    }
+    setIsExportingRevisions(false);
+  };
+
+  // Import handlers
+  const handleOpenImport = (entityType: ImportEntityType) => {
+    setImportEntityType(entityType);
+    setImportModalOpen(true);
+  };
+
+  const handleCloseImport = () => {
+    setImportModalOpen(false);
+  };
+
+  const handleOpenCustomerImport = () => {
+    setShowCustomerImport(true);
+  };
+
+  const handleCloseCustomerImport = () => {
+    setShowCustomerImport(false);
+  };
+
+  const handleCustomerImportBatch = useCallback(async (customers: Parameters<typeof importCustomersBatch>[1]) => {
+    return importCustomersBatch(TEMP_USER_ID, customers);
+  }, []);
+
   // Tab components
   const tabs: { id: SettingsTab; label: string }[] = [
     { id: 'work', label: 'Pracovní doba' },
@@ -65,6 +130,7 @@ export function Settings() {
     { id: 'email', label: 'E-mailové šablony' },
     { id: 'depots', label: 'Depa' },
     { id: 'crews', label: 'Posádky' },
+    { id: 'import-export', label: 'Import & Export' },
   ];
 
   if (loading) {
@@ -188,7 +254,211 @@ export function Settings() {
             }}
           />
         )}
+
+        {activeTab === 'import-export' && (
+          <div className={styles.importExportContent}>
+            {/* Export Section */}
+            <section className={styles.section}>
+              <h2 className={styles.sectionTitle}>Export dat</h2>
+
+              <div className={styles.exportContainer}>
+                {/* Customers Export */}
+                <div className={styles.exportCard}>
+                  <h3>Export zákazníků</h3>
+                  <p className={styles.exportDescription}>
+                    Exportuje všechny zákazníky do CSV souboru ve formátu kompatibilním s importem.
+                  </p>
+                  <button
+                    type="button"
+                    className={styles.exportButton}
+                    onClick={handleExportCustomers}
+                    disabled={isExportingCustomers || !isConnected}
+                  >
+                    {isExportingCustomers ? 'Exportuji...' : '📥 Exportovat zákazníky'}
+                  </button>
+                </div>
+
+                {/* Revisions Export */}
+                <div className={styles.exportCard}>
+                  <h3>Export revizí</h3>
+                  <p className={styles.exportDescription}>
+                    Exportuje revize do CSV souboru. Můžete filtrovat podle data a stavu.
+                  </p>
+
+                  <div className={styles.exportFilters}>
+                    <div className={styles.filterGroup}>
+                      <label>Od data</label>
+                      <input
+                        type="date"
+                        value={exportDateFrom}
+                        onChange={(e) => setExportDateFrom(e.target.value)}
+                      />
+                    </div>
+                    <div className={styles.filterGroup}>
+                      <label>Do data</label>
+                      <input
+                        type="date"
+                        value={exportDateTo}
+                        onChange={(e) => setExportDateTo(e.target.value)}
+                      />
+                    </div>
+                    <div className={styles.filterGroup}>
+                      <label>Stav</label>
+                      <select
+                        value={exportStatus}
+                        onChange={(e) => setExportStatus(e.target.value)}
+                      >
+                        <option value="all">Všechny</option>
+                        <option value="pending">Čekající</option>
+                        <option value="scheduled">Naplánované</option>
+                        <option value="completed">Dokončené</option>
+                        <option value="cancelled">Zrušené</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    className={styles.exportButton}
+                    onClick={handleExportRevisions}
+                    disabled={isExportingRevisions || !isConnected}
+                  >
+                    {isExportingRevisions ? 'Exportuji...' : '📥 Exportovat revize'}
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            {/* Import Section */}
+            <section className={styles.section}>
+              <h2 className={styles.sectionTitle}>Import dat</h2>
+
+              <div className={styles.exportContainer}>
+                {/* Customers Import */}
+                <div className={styles.exportCard}>
+                  <h3>1. Import zákazníků</h3>
+                  <p className={styles.exportDescription}>
+                    Importuje zákazníky z CSV. Automaticky spustí geokódování adres.
+                  </p>
+                  <button
+                    type="button"
+                    className={styles.exportButton}
+                    onClick={handleOpenCustomerImport}
+                    disabled={!isConnected}
+                  >
+                    📤 Importovat zákazníky
+                  </button>
+                </div>
+
+                {/* Devices Import */}
+                <div className={styles.exportCard}>
+                  <h3>2. Import zařízení</h3>
+                  <p className={styles.exportDescription}>
+                    Importuje zařízení z CSV. Vyžaduje existující zákazníky (propojení přes IČO/email/telefon).
+                  </p>
+                  <button
+                    type="button"
+                    className={styles.exportButton}
+                    onClick={() => handleOpenImport('device')}
+                    disabled={!isConnected}
+                  >
+                    📤 Importovat zařízení
+                  </button>
+                </div>
+
+                {/* Revisions Import */}
+                <div className={styles.exportCard}>
+                  <h3>3. Import revizí</h3>
+                  <p className={styles.exportDescription}>
+                    Importuje revize z CSV. Vyžaduje existující zařízení (propojení přes sériové číslo).
+                  </p>
+                  <button
+                    type="button"
+                    className={styles.exportButton}
+                    onClick={() => handleOpenImport('revision')}
+                    disabled={!isConnected}
+                  >
+                    📤 Importovat revize
+                  </button>
+                </div>
+
+                {/* Communications Import */}
+                <div className={styles.exportCard}>
+                  <h3>4. Import komunikace</h3>
+                  <p className={styles.exportDescription}>
+                    Importuje historii komunikace (hovory, emaily, poznámky) z CSV.
+                  </p>
+                  <button
+                    type="button"
+                    className={styles.exportButton}
+                    onClick={() => handleOpenImport('communication')}
+                    disabled={!isConnected}
+                  >
+                    📤 Importovat komunikaci
+                  </button>
+                </div>
+
+                {/* Work Log Import */}
+                <div className={styles.exportCard}>
+                  <h3>5. Import pracovního deníku</h3>
+                  <p className={styles.exportDescription}>
+                    Importuje pracovní deník (work_log) z CSV.
+                  </p>
+                  <button
+                    type="button"
+                    className={styles.exportButton}
+                    onClick={() => handleOpenImport('work_log')}
+                    disabled={!isConnected}
+                  >
+                    📤 Importovat pracovní deník
+                  </button>
+                </div>
+
+                {/* ZIP Import */}
+                <div className={styles.exportCard}>
+                  <h3>📦 Import ZIP</h3>
+                  <p className={styles.exportDescription}>
+                    Importujte více souborů najednou z jednoho ZIP archivu. Automaticky rozpozná typy souborů
+                    a importuje je ve správném pořadí.
+                  </p>
+                  <button
+                    type="button"
+                    className={styles.exportButton}
+                    onClick={() => handleOpenImport('zip')}
+                    disabled={!isConnected}
+                  >
+                    📦 Importovat ZIP
+                  </button>
+                </div>
+              </div>
+
+              <div className={styles.importHint}>
+                <p>
+                  📋 <a href="/PROJECT_IMPORT.MD" target="_blank" rel="noopener noreferrer">
+                    Dokumentace formátů CSV pro import
+                  </a>
+                </p>
+                <p>
+                  Importujte v uvedeném pořadí (1-5). Každý import vyžaduje data z předchozích kroků.
+                </p>
+              </div>
+            </section>
+          </div>
+        )}
       </div>
+
+      {/* Import Modal */}
+      <ImportModal
+        isOpen={importModalOpen}
+        onClose={handleCloseImport}
+        entityType={importEntityType}
+      />
+
+      {/* Customer Import Modal */}
+      <ImportCustomersModal
+        isOpen={showCustomerImport}
+        onClose={handleCloseCustomerImport}
+      />
     </div>
   );
 }

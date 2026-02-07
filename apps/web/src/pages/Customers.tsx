@@ -13,14 +13,12 @@ import {
   getCustomer,
   listCustomersExtended,
   getCustomerSummary,
-  importCustomersBatch, 
   submitGeocodeJob, 
   subscribeToGeocodeJobStatus, 
   type GeocodeJobStatusUpdate,
 } from '../services/customerService';
 import type { UpdateCustomerRequest } from '@shared/customer';
 import { AddCustomerForm } from '../components/customers/AddCustomerForm';
-import { ImportCustomersModal } from '../components/customers/ImportCustomersModal';
 import { CustomerTable } from '../components/customers/CustomerTable';
 import { CustomerPreviewPanel } from '../components/customers/CustomerPreviewPanel';
 import { CustomerEditDrawer } from '../components/customers/CustomerEditDrawer';
@@ -50,7 +48,6 @@ export function Customers() {
   const searchParams = useSearch({ strict: false }) as SearchParams;
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(searchParams?.action === 'new');
-  const [showImport, setShowImport] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [customers, setCustomers] = useState<CustomerListItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -234,25 +231,6 @@ export function Customers() {
     setError(null);
     setShowForm(true);
   }, []);
-
-  const handleShowImport = useCallback(() => {
-    setError(null);
-    setShowImport(true);
-  }, []);
-
-  const handleCloseImport = useCallback(() => {
-    setShowImport(false);
-    loadCustomers();
-  }, [loadCustomers]);
-
-  const handleImportBatch = useCallback(async (batch: CreateCustomerRequest[]) => {
-    if (!isConnected) {
-      throw new Error('Není připojení k serveru');
-    }
-    
-    const result = await importCustomersBatch(TEMP_USER_ID, batch);
-    return result;
-  }, [isConnected]);
 
   // Fetch full customer when selection changes
   useEffect(() => {
@@ -679,9 +657,6 @@ export function Customers() {
           <Link to="/customers/summary" className={styles.summaryButton}>
             Souhrnné informace
           </Link>
-          <button className={styles.importButton} onClick={handleShowImport}>
-            Import CSV
-          </button>
           <button className="btn-primary" onClick={handleShowForm}>
             + Nový zákazník
           </button>
@@ -719,11 +694,6 @@ export function Customers() {
           </div>
         )}
       </div>
-
-      <ImportCustomersModal
-        isOpen={showImport}
-        onClose={handleCloseImport}
-      />
 
       {/* Edit drawer (inline, no navigation) */}
       {fullCustomer && (

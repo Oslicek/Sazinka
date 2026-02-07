@@ -280,6 +280,134 @@
   font-weight: 600;
 }
 
+/* Import/Export Section */
+.importExportContent {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.sectionTitle {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0;
+  color: var(--color-text);
+}
+
+.exportContainer {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.exportCard {
+  background: var(--color-bg, #ffffff);
+  border: 1px solid var(--color-border, #e9ecef);
+  border-radius: 8px;
+  padding: 1.25rem;
+}
+
+.exportCard h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.exportDescription {
+  color: var(--color-text-secondary, #6c757d);
+  font-size: 0.875rem;
+  margin: 0 0 1rem 0;
+}
+
+.exportButton {
+  width: 100%;
+  background: #4361ee;
+  color: white;
+  border: none;
+  padding: 0.625rem 1.25rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.exportButton:hover:not(:disabled) {
+  background: #3651d4;
+}
+
+.exportButton:disabled {
+  background: #a0aec0;
+  cursor: not-allowed;
+}
+
+.exportFilters {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.filterGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.filterGroup label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-secondary, #6c757d);
+}
+
+.filterGroup input,
+.filterGroup select {
+  padding: 0.5rem;
+  border: 1px solid var(--color-border, #dee2e6);
+  border-radius: 6px;
+  font-size: 0.875rem;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.filterGroup input:focus,
+.filterGroup select:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.importHint {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: var(--color-bg-light, #f8f9fa);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  color: var(--color-text-secondary, #6c757d);
+}
+
+.importHint p {
+  margin: 0 0 0.5rem 0;
+}
+
+.importHint p:last-child {
+  margin-bottom: 0;
+}
+
+.importHint a {
+  color: var(--color-primary, #2563eb);
+  text-decoration: none;
+}
+
+.importHint a:hover {
+  text-decoration: underline;
+}
+
 /* Responsive */
 @media (max-width: 640px) {
   .tabs {
@@ -293,6 +421,10 @@
   }
   
   .formRow {
+    grid-template-columns: 1fr;
+  }
+
+  .exportFilters {
     grid-template-columns: 1fr;
   }
 }
