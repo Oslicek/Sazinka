@@ -1257,8 +1257,8 @@ export function PlanningInbox() {
           center={renderDetailPanel()}
           right={renderMapPanel()}
           leftWidth={22}
-          centerWidth={38}
-          rightWidth={40}
+          centerWidth={33}
+          rightWidth={45}
           className={styles.splitLayout}
         />
       </div>

@@ -228,9 +228,9 @@
 }
 
 .mapSection {
-  height: 300px;
-  min-height: 300px;
-  max-height: 300px;
+  height: 450px;
+  min-height: 450px;
+  max-height: 450px;
   position: relative;
   flex-shrink: 0;
 }
