@@ -1,30 +1,39 @@
-import type { Revision } from '@shared/revision';
+import type { CalendarItem } from '@shared/calendar';
 import type { CalendarDay } from '../../utils/calendarUtils';
-import { getRevisionCountClass } from '../../utils/calendarUtils';
+import { getItemCountClass } from '../../utils/calendarUtils';
 import styles from './DayCell.module.css';
 
 interface DayCellProps {
   day: CalendarDay;
-  revisions: Revision[];
-  onClick?: (day: CalendarDay, revisions: Revision[]) => void;
+  items: CalendarItem[];
+  onClick?: (day: CalendarDay, items: CalendarItem[]) => void;
+  workloadMinutes?: number;
+  capacityMinutes?: number;
 }
 
 /**
  * Renders a single day cell in the calendar grid
  */
-export function DayCell({ day, revisions, onClick }: DayCellProps) {
-  const countClass = getRevisionCountClass(revisions.length);
+export function DayCell({ day, items, onClick, workloadMinutes, capacityMinutes }: DayCellProps) {
+  const countClass = getItemCountClass(items.length);
   
   const handleClick = () => {
-    onClick?.(day, revisions);
+    onClick?.(day, items);
   };
 
-  const now = new Date();
-  const hasOverdue = revisions.some(r => {
-    if (r.status === 'completed' || r.status === 'cancelled') return false;
-    return new Date(r.dueDate) < now;
-  });
-  const hasScheduled = revisions.some(r => r.status === 'scheduled' || r.status === 'confirmed');
+  const revisionCount = items.filter((item) => item.type === 'revision').length;
+  const visitCount = items.filter((item) => item.type === 'visit').length;
+  const taskCount = items.filter((item) => item.type === 'task').length;
+
+  const hasOverdue = items.some((item) => item.status === 'overdue');
+  const hasScheduled = items.some((item) => item.status === 'scheduled');
+  const hasInProgress = items.some((item) => item.status === 'in_progress');
+
+  const isOverCapacity =
+    typeof workloadMinutes === 'number' &&
+    typeof capacityMinutes === 'number' &&
+    capacityMinutes > 0 &&
+    workloadMinutes > capacityMinutes;
 
   return (
     <div
@@ -34,11 +43,12 @@ export function DayCell({ day, revisions, onClick }: DayCellProps) {
         ${day.isToday ? styles.today : ''}
         ${countClass ? styles[countClass] : ''}
         ${hasOverdue ? styles.hasOverdue : ''}
+        ${isOverCapacity ? styles.overCapacity : ''}
       `}
       onClick={handleClick}
       role="button"
       tabIndex={0}
-      aria-label={`${day.dateKey}, ${revisions.length} revizí`}
+      aria-label={`${day.dateKey}, ${items.length} položek`}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           handleClick();
@@ -47,11 +57,14 @@ export function DayCell({ day, revisions, onClick }: DayCellProps) {
     >
       <span className={styles.dayNumber}>{day.dayNumber}</span>
       
-      {revisions.length > 0 && (
+      {items.length > 0 && (
         <div className={styles.indicators}>
           {hasScheduled && <span className={styles.scheduledDot} title="Naplánováno" />}
           {hasOverdue && <span className={styles.overdueDot} title="Po termínu" />}
-          <span className={styles.count}>{revisions.length}</span>
+          {hasInProgress && <span className={styles.inProgressDot} title="Probíhá" />}
+          <span className={styles.count}>
+            {revisionCount}/{visitCount}/{taskCount}
+          </span>
         </div>
       )}
     </div>

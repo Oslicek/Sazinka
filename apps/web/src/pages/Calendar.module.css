@@ -42,10 +42,71 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
+.active {
+  background: var(--color-primary);
+  color: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
 .monthNav {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.filterGroup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.filterLabel {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.filterButton {
+  padding: 0.35rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+
+.filterButton:hover {
+  border-color: var(--color-primary);
+}
+
+.activeFilter {
+  background: var(--color-primary);
+  color: white;
+  border-color: var(--color-primary);
+}
+
+.select,
+.input {
+  padding: 0.35rem 0.5rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  font-size: 0.8rem;
 }
 
 .currentMonth {
@@ -204,6 +265,19 @@
   margin-bottom: 1rem;
 }
 
+.section {
+  margin-bottom: 1rem;
+}
+
+.sectionHeader {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.5rem;
+}
+
 .revisionItem {
   display: flex;
   flex-wrap: wrap;
@@ -299,6 +373,79 @@
   width: 100%;
 }
 
+.agenda {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.agendaDay {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.agendaHeader {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  background: var(--color-bg-secondary);
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.agendaList {
+  display: flex;
+  flex-direction: column;
+}
+
+.itemLink {
+  text-decoration: none;
+  color: inherit;
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.itemLink:hover {
+  background: var(--hover-bg, #f0f0f0);
+}
+
+.itemRow {
+  display: grid;
+  grid-template-columns: 90px 60px 1fr 1fr;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.85rem;
+}
+
+.itemStatus {
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  font-size: 0.65rem;
+}
+
+.itemTime {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.itemTitle {
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemSubtitle {
+  color: var(--color-text-secondary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Legend */
 .legend {
   display: flex;
@@ -316,6 +463,11 @@
   display: flex;
   align-items: center;
   gap: 0.375rem;
+}
+
+.legendInline {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
 }
 
 .legendDot {

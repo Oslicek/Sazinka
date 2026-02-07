@@ -1,4 +1,4 @@
-import type { Revision } from '@shared/revision';
+import type { CalendarItem } from '@shared/calendar';
 
 /**
  * Represents a day in the calendar grid
@@ -88,45 +88,46 @@ function createCalendarDay(date: Date, currentMonth: number, today: Date): Calen
 }
 
 /**
- * Group revisions by a specific date field
- * @param revisions - list of revisions to group
- * @param dateField - which date field to use: 'due' for dueDate, 'scheduled' for scheduledDate
- * Returns a map of dateKey -> revisions[]
+ * Group calendar items by day
+ * Returns a map of dateKey -> items[]
  */
-export function groupRevisionsByDay(
-  revisions: Revision[], 
-  dateField: 'due' | 'scheduled' = 'due'
-): Record<string, Revision[]> {
-  const grouped: Record<string, Revision[]> = {};
+export function groupItemsByDay(items: CalendarItem[]): Record<string, CalendarItem[]> {
+  const grouped: Record<string, CalendarItem[]> = {};
 
-  for (const revision of revisions) {
-    // Use the specified date field
-    const dateStr = dateField === 'scheduled' 
-      ? revision.scheduledDate 
-      : revision.dueDate;
-    
-    if (!dateStr) {
-      continue;
+  for (const item of items) {
+    if (!item.date) continue;
+    if (!grouped[item.date]) {
+      grouped[item.date] = [];
     }
-
-    // Normalize date string to YYYY-MM-DD
-    const dateKey = dateStr.substring(0, 10);
-
-    if (!grouped[dateKey]) {
-      grouped[dateKey] = [];
-    }
-    grouped[dateKey].push(revision);
+    grouped[item.date].push(item);
   }
 
   return grouped;
 }
 
 /**
- * Get CSS class based on revision count for a day
+ * Get CSS class based on item count for a day
  */
-export function getRevisionCountClass(count: number): string {
+export function getItemCountClass(count: number): string {
   if (count === 0) return '';
   if (count <= 2) return 'low';
   if (count <= 5) return 'medium';
   return 'high';
+}
+
+/**
+ * Estimate workload minutes for a calendar item
+ */
+export function getEstimatedMinutes(item: CalendarItem): number {
+  if (item.timeStart && item.timeEnd) {
+    const [startH, startM] = item.timeStart.split(':').map(Number);
+    const [endH, endM] = item.timeEnd.split(':').map(Number);
+    if (!Number.isNaN(startH) && !Number.isNaN(endH)) {
+      const minutes = (endH * 60 + endM) - (startH * 60 + startM);
+      if (minutes > 0) return minutes;
+    }
+  }
+  if (item.type === 'task') return 15;
+  if (item.type === 'visit') return 60;
+  return 60;
 }

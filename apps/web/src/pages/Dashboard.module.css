@@ -64,6 +64,96 @@
   margin-top: 1rem;
 }
 
+.sectionGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.sectionCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.sectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sectionLink {
+  font-size: 0.8rem;
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.sectionLink:hover {
+  text-decoration: underline;
+}
+
+.worklist {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.workItem {
+  display: grid;
+  grid-template-columns: 90px 60px 1fr 1fr;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+}
+
+.workItemLink {
+  text-decoration: none;
+  color: inherit;
+}
+
+.workItemLink:hover {
+  border-color: var(--color-primary);
+  background: var(--hover-bg, #f0f0f0);
+}
+
+.workStatus {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.workTime {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.workTitle {
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workSubtitle {
+  color: var(--color-text-secondary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emptyState {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
 /* Call Queue Banner */
 .callQueueBanner {
   display: flex;

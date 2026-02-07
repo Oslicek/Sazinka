@@ -1,16 +1,16 @@
-import type { Revision } from '@shared/revision';
+import type { CalendarItem } from '@shared/calendar';
 import type { CalendarDay } from '../../utils/calendarUtils';
-import { getMonthDays, groupRevisionsByDay } from '../../utils/calendarUtils';
+import { getMonthDays, groupItemsByDay } from '../../utils/calendarUtils';
 import { DayCell } from './DayCell';
 import styles from './CalendarGrid.module.css';
 
 interface CalendarGridProps {
   year: number;
   month: number;
-  revisions: Revision[];
-  /** Which date field to group by: 'due' or 'scheduled' */
-  dateField?: 'due' | 'scheduled';
-  onDayClick?: (day: CalendarDay, revisions: Revision[]) => void;
+  items: CalendarItem[];
+  onDayClick?: (day: CalendarDay, items: CalendarItem[]) => void;
+  workloadByDay?: Record<string, number>;
+  capacityByDay?: Record<string, number>;
 }
 
 const WEEKDAY_NAMES = ['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'];
@@ -18,9 +18,16 @@ const WEEKDAY_NAMES = ['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'];
 /**
  * Calendar grid component displaying a month with revisions
  */
-export function CalendarGrid({ year, month, revisions, dateField = 'due', onDayClick }: CalendarGridProps) {
+export function CalendarGrid({
+  year,
+  month,
+  items,
+  onDayClick,
+  workloadByDay = {},
+  capacityByDay = {},
+}: CalendarGridProps) {
   const days = getMonthDays(year, month);
-  const revisionsByDay = groupRevisionsByDay(revisions, dateField);
+  const itemsByDay = groupItemsByDay(items);
 
   return (
     <div className={styles.grid}>
@@ -39,8 +46,10 @@ export function CalendarGrid({ year, month, revisions, dateField = 'due', onDayC
           <DayCell
             key={day.dateKey}
             day={day}
-            revisions={revisionsByDay[day.dateKey] || []}
+            items={itemsByDay[day.dateKey] || []}
             onClick={onDayClick}
+            workloadMinutes={workloadByDay[day.dateKey]}
+            capacityMinutes={capacityByDay[day.dateKey]}
           />
         ))}
       </div>

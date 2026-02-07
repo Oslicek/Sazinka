@@ -64,7 +64,8 @@
 }
 
 .scheduledDot,
-.overdueDot {
+.overdueDot,
+.inProgressDot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -76,6 +77,10 @@
 
 .overdueDot {
   background: var(--color-error);
+}
+
+.inProgressDot {
+  background: var(--color-warning);
 }
 
 .count {
@@ -100,6 +105,10 @@
 
 .hasOverdue {
   border-left: 3px solid var(--color-error);
+}
+
+.overCapacity {
+  border-top: 3px solid var(--color-warning);
 }
 
 /* Mobile adjustments */
