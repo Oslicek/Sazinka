@@ -282,12 +282,16 @@ export function PlanningInbox() {
         geometryUnsubRef.current = null;
       }
 
+      console.log('[PlanningInbox] Submitting geometry job for', locations.length, 'locations');
       const jobResponse = await geometryService.submitGeometryJob(locations);
+      console.log('[PlanningInbox] Geometry job submitted, jobId:', jobResponse.jobId);
 
       const unsubscribe = await geometryService.subscribeToGeometryJobStatus(
         jobResponse.jobId,
         (update) => {
+          console.log('[PlanningInbox] Geometry job status update:', update);
           if (update.status.type === 'completed') {
+            console.log('[PlanningInbox] Setting route geometry, coordinates count:', update.status.coordinates.length);
             setRouteGeometry(update.status.coordinates);
             if (geometryUnsubRef.current) {
               geometryUnsubRef.current();

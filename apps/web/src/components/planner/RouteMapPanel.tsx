@@ -317,6 +317,8 @@ export function RouteMapPanel({
 
     if (stops.length === 0 || !depot) return;
 
+    console.log('[RouteMapPanel] Rendering route with', stops.length, 'stops, routeGeometry length:', routeGeometry?.length || 0);
+
     // Build segments using shared utilities
     const waypoints = stops.map((s) => ({
       coordinates: s.coordinates,
@@ -325,8 +327,10 @@ export function RouteMapPanel({
 
     let segments: [number, number][][];
     if (routeGeometry && routeGeometry.length > 0) {
+      console.log('[RouteMapPanel] Using Valhalla geometry');
       segments = splitGeometryIntoSegments(routeGeometry, waypoints, depot);
     } else {
+      console.log('[RouteMapPanel] Using straight line segments (no Valhalla geometry)');
       segments = buildStraightLineSegments(waypoints, depot);
     }
 
