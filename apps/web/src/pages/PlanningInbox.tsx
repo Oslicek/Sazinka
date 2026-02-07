@@ -1245,11 +1245,11 @@ export function PlanningInbox() {
       <div className={styles.content}>
         <ThreePanelLayout
           left={renderInboxList()}
-          center={renderMapPanel()}
-          right={renderDetailPanel()}
-          leftWidth={28}
-          centerWidth={42}
-          rightWidth={30}
+          center={renderDetailPanel()}
+          right={renderMapPanel()}
+          leftWidth={22}
+          centerWidth={38}
+          rightWidth={40}
           className={styles.splitLayout}
         />
       </div>
