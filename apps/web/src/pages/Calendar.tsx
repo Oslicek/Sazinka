@@ -5,6 +5,7 @@ import type { CalendarDay } from '../utils/calendarUtils';
 import { formatDateKey, getMonthRange, getWeekDays, groupItemsByDay, getEstimatedMinutes } from '../utils/calendarUtils';
 import { listCalendarItems, type CalendarViewMode } from '../services/calendarService';
 import { listCrews, type Crew } from '../services/crewService';
+import { listRoutesForDate, type SavedRoute } from '../services/routeService';
 import { useNatsStore } from '../stores/natsStore';
 import { CalendarGrid } from '../components/calendar';
 import { DayCell } from '../components/calendar/DayCell';
@@ -140,6 +141,7 @@ export function Calendar() {
   // Selected day state (for modal/details)
   const [selectedDay, setSelectedDay] = useState<CalendarDay | null>(null);
   const [selectedItems, setSelectedItems] = useState<CalendarItem[]>([]);
+  const [selectedDayRoutes, setSelectedDayRoutes] = useState<SavedRoute[]>([]);
 
   const updateSearchParams = useCallback(
     (next: Partial<CalendarSearchParams>) => {
@@ -268,9 +270,18 @@ export function Calendar() {
   }, []);
 
   // Handle day click - show details or navigate to planner
-  const handleDayClick = useCallback((day: CalendarDay, dayItems: CalendarItem[]) => {
+  const handleDayClick = useCallback(async (day: CalendarDay, dayItems: CalendarItem[]) => {
     setSelectedDay(day);
     setSelectedItems(dayItems);
+    
+    // Load routes for the selected day
+    try {
+      const response = await listRoutesForDate(day.dateKey);
+      setSelectedDayRoutes(response.routes);
+    } catch (err) {
+      console.error('Failed to load routes for day:', err);
+      setSelectedDayRoutes([]);
+    }
   }, []);
 
   // Navigate to planner for selected date
@@ -284,6 +295,7 @@ export function Calendar() {
   const handleCloseDetails = useCallback(() => {
     setSelectedDay(null);
     setSelectedItems([]);
+    setSelectedDayRoutes([]);
   }, []);
 
   const groupedItems = useMemo(() => groupItemsByDay(items), [items]);
@@ -680,7 +692,36 @@ export function Calendar() {
               </button>
             </div>
 
-            {selectedItems.length === 0 ? (
+            {/* Routes section */}
+            {selectedDayRoutes.length > 0 && (
+              <div className={styles.section}>
+                <div className={styles.sectionHeader}>
+                  Naplánované cesty ({selectedDayRoutes.length})
+                </div>
+                <div className={styles.routeList}>
+                  {selectedDayRoutes.map((route) => (
+                    <Link
+                      key={route.id}
+                      to="/planner"
+                      search={{ date: selectedDay.dateKey, crew: route.crewId || undefined }}
+                      className={styles.routeItem}
+                    >
+                      <div className={styles.routeInfo}>
+                        <span className={styles.routeCrew}>
+                          {route.crewName || 'Posádka'}
+                        </span>
+                        <span className={styles.routeStats}>
+                          {route.stopsCount || 0} zastávek · {route.totalDistanceKm?.toFixed(1) || '?'} km · {route.totalDurationMinutes || '?'} min
+                        </span>
+                      </div>
+                      <span className={styles.revisionArrow}>→</span>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {selectedItems.length === 0 && selectedDayRoutes.length === 0 ? (
               <div className={styles.emptyDay}>
                 <p>Žádné položky pro tento den</p>
                 <button className="btn-primary" onClick={handlePlanDay}>

@@ -7,7 +7,7 @@
 /* Shift content when side panel is open on desktop */
 @media (min-width: 769px) {
   .calendar.withSidePanel {
-    margin-left: 440px;
+    margin-right: 440px;
   }
 }
 
@@ -222,9 +222,9 @@
   }
 }
 
-@keyframes slideInLeft {
+@keyframes slideInRight {
   from {
-    transform: translateX(-100%);
+    transform: translateX(100%);
   }
   to {
     transform: translateX(0);
@@ -243,15 +243,15 @@
 .detailsPanel {
   position: fixed;
   top: 0;
-  left: 0;
+  right: 0;
   bottom: 0;
   width: 420px;
   background: var(--color-bg);
   padding: 2rem;
   overflow-y: auto;
-  box-shadow: 4px 0 20px rgba(0, 0, 0, 0.15);
-  border-right: 1px solid var(--color-border);
-  animation: slideInLeft 0.3s ease-out;
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.15);
+  border-left: 1px solid var(--color-border);
+  animation: slideInRight 0.3s ease-out;
 }
 
 /* Mobile: slide from bottom */
@@ -264,7 +264,7 @@
     width: 100%;
     max-height: 70vh;
     padding: 1.5rem;
-    border-right: none;
+    border-left: none;
     border-top: 1px solid var(--color-border);
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     animation: slideInUp 0.3s ease-out;
@@ -339,6 +339,68 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   margin-bottom: 0.5rem;
+}
+
+/* Routes section */
+.routeList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.routeItem {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  border-left: 3px solid var(--color-primary);
+  text-decoration: none;
+  color: inherit;
+  transition: all 0.15s;
+  margin-bottom: 0.5rem;
+}
+
+.routeItem:last-child {
+  margin-bottom: 0;
+}
+
+.routeItem:hover {
+  background: var(--color-bg-secondary);
+  transform: translateX(4px);
+  border-left-color: var(--color-primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.routeIcon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.routeInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.routeCrew {
+  font-weight: 600;
+  color: var(--color-text);
+  font-size: 0.9rem;
+}
+
+.routeStats {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.routeArrow {
+  font-size: 1.25rem;
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
 }
 
 .revisionItem {
