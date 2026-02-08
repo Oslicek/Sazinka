@@ -969,31 +969,46 @@ export function Planner() {
     checkSavedRoute();
   }, [checkSavedRoute]);
 
-  // Save the current route
+  // Save the current route manually (triggers auto-save)
   const handleSaveRoute = useCallback(async () => {
     if (stops.length === 0) return;
     
-    setIsSaving(true);
     try {
-      const saveStops = stops.map((stop) => routeService.toSaveRouteStop(stop));
-
-      await routeService.saveRoute({
-        date: selectedDate,
-        stops: saveStops,
-        totalDistanceKm: totalDistance,
-        totalDurationMinutes: totalDuration,
-        optimizationScore: optimizationScore,
-      });
-      
-      setLastSaved(new Date());
+      await autoSaveFn();
       setHasSavedRoute(true);
     } catch (e) {
       console.error('Failed to save route:', e);
       setError('Nepodařilo se uložit trasu');
-    } finally {
-      setIsSaving(false);
     }
-  }, [stops, selectedDate, totalDistance, totalDuration, optimizationScore]);
+  }, [autoSaveFn]);
+
+  // Discard changes and reload saved route
+  const handleDiscardChanges = useCallback(async () => {
+    if (!confirm('Zahodit neuložené změny?')) return;
+    
+    try {
+      const result = await routeService.getRoute(selectedDate);
+      
+      if (result.route && result.stops.length > 0) {
+        const loadedStops = result.stops.map(routeService.toPlannedRouteStop);
+        
+        setStops(loadedStops);
+        setTotalDistance(result.route.totalDistanceKm ?? 0);
+        setTotalDuration(result.route.totalDurationMinutes ?? 0);
+        setOptimizationScore(result.route.optimizationScore ?? 0);
+        setIsManuallyReordered(false);
+        setLockedStops(new Set());
+        
+        addStopMarkers(loadedStops, []);
+      } else {
+        // No saved route, just clear
+        handleClearRoute();
+      }
+    } catch (e) {
+      console.error('Failed to discard changes:', e);
+      setError('Nepodařilo se načíst uloženou trasu');
+    }
+  }, [selectedDate, addStopMarkers, handleClearRoute]);
 
   // Load a saved route
   const handleLoadRoute = useCallback(async () => {
