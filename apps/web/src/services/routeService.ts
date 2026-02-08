@@ -77,6 +77,7 @@ export interface SavedRouteStop {
   scheduledDate: string | null;
   scheduledTimeStart: string | null;
   scheduledTimeEnd: string | null;
+  revisionStatus: string | null;
 }
 
 export interface GetRouteResponse {

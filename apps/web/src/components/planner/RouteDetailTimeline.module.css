@@ -158,6 +158,13 @@
   color: var(--color-text-secondary);
 }
 
+.etaTime {
+  font-size: 0.6875rem;
+  color: var(--color-text-secondary);
+  font-weight: 400;
+  margin-top: 0.125rem;
+}
+
 .stopAddress {
   font-size: 0.6875rem;
   color: var(--color-text-secondary);
@@ -182,9 +189,19 @@
   background-color: rgba(34, 197, 94, 0.12);
 }
 
+.badgeScheduled {
+  color: var(--color-primary);
+  background-color: rgba(37, 99, 235, 0.12);
+}
+
 .badgeCompleted {
   color: var(--color-text-secondary);
   background-color: var(--color-bg-secondary);
+}
+
+.badgeCancelled {
+  color: var(--color-error, #ef4444);
+  background-color: rgba(239, 68, 68, 0.12);
 }
 
 .badgePending {

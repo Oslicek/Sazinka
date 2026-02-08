@@ -280,6 +280,7 @@ pub struct RouteStopWithInfo {
     pub scheduled_date: Option<NaiveDate>,
     pub scheduled_time_start: Option<NaiveTime>,
     pub scheduled_time_end: Option<NaiveTime>,
+    pub revision_status: Option<String>,
 }
 
 /// Get all stops for a route with customer info
@@ -301,7 +302,8 @@ pub async fn get_route_stops_with_info(
             c.lng as customer_lng,
             rev.scheduled_date,
             rev.scheduled_time_start,
-            rev.scheduled_time_end
+            rev.scheduled_time_end,
+            rev.status::text as revision_status
         FROM route_stops rs
         INNER JOIN customers c ON rs.customer_id = c.id
         LEFT JOIN revisions rev ON rs.revision_id = rev.id

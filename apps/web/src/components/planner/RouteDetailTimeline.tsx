@@ -27,16 +27,17 @@ function formatScheduledDate(dateStr: string): string {
   return d.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric', year: 'numeric' });
 }
 
-function getStatusBadge(status: string): { label: string; className: string } {
-  switch (status) {
+function getStatusBadge(revisionStatus: string | null): { label: string; className: string } {
+  switch (revisionStatus) {
     case 'confirmed':
       return { label: 'Potvrzeno', className: styles.badgeConfirmed };
+    case 'scheduled':
+      return { label: 'Naplánováno', className: styles.badgeScheduled };
     case 'completed':
       return { label: 'Hotovo', className: styles.badgeCompleted };
-    case 'arrived':
-      return { label: 'Na místě', className: styles.badgeArrived };
-    case 'skipped':
-      return { label: 'Přeskočeno', className: styles.badgeSkipped };
+    case 'cancelled':
+      return { label: 'Zrušeno', className: styles.badgeCancelled };
+    case 'upcoming':
     default:
       return { label: 'Nepotvrzeno', className: styles.badgePending };
   }
@@ -69,7 +70,7 @@ export function RouteDetailTimeline({
       </div>
 
       {stops.map((stop, index) => {
-        const badge = getStatusBadge(stop.status);
+        const badge = getStatusBadge(stop.revisionStatus);
         const isSelected = stop.customerId === selectedStopId;
 
         return (
@@ -122,22 +123,27 @@ export function RouteDetailTimeline({
                   <span className={styles.stopName}>{stop.customerName}</span>
                   <span className={`${styles.badge} ${badge.className}`}>{badge.label}</span>
                 </div>
-                <div className={styles.stopTime}>
-                  <span>{formatTime(stop.estimatedArrival)}</span>
-                  <span className={styles.timeSeparator}>–</span>
-                  <span>{formatTime(stop.estimatedDeparture)}</span>
-                </div>
-                {stop.scheduledDate && (
-                  <div className={styles.scheduledInfo}>
-                    <span className={styles.scheduledIcon}>&#x1F4C5;</span>
-                    <span>{formatScheduledDate(stop.scheduledDate)}</span>
-                    {(stop.scheduledTimeStart || stop.scheduledTimeEnd) && (
-                      <span className={styles.scheduledTime}>
-                        {formatTime(stop.scheduledTimeStart)}
-                        {stop.scheduledTimeStart && stop.scheduledTimeEnd ? ' – ' : ''}
-                        {formatTime(stop.scheduledTimeEnd)}
-                      </span>
+                {/* Primary time: scheduled if available, otherwise ETA/ETD */}
+                {(stop.scheduledTimeStart || stop.scheduledTimeEnd) ? (
+                  <>
+                    <div className={styles.stopTime}>
+                      <span>{formatTime(stop.scheduledTimeStart)}</span>
+                      <span className={styles.timeSeparator}>–</span>
+                      <span>{formatTime(stop.scheduledTimeEnd)}</span>
+                    </div>
+                    {/* Secondary: ETA/ETD as additional info */}
+                    {(stop.estimatedArrival || stop.estimatedDeparture) && (
+                      <div className={styles.etaTime}>
+                        ETA {formatTime(stop.estimatedArrival)} – {formatTime(stop.estimatedDeparture)}
+                      </div>
                     )}
+                  </>
+                ) : (
+                  /* Fallback: show ETA/ETD as primary if no scheduled time */
+                  <div className={styles.stopTime}>
+                    <span>{formatTime(stop.estimatedArrival)}</span>
+                    <span className={styles.timeSeparator}>–</span>
+                    <span>{formatTime(stop.estimatedDeparture)}</span>
                   </div>
                 )}
                 <div className={styles.stopAddress}>{stop.address}</div>

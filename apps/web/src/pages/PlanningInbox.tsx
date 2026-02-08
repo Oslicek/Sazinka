@@ -289,6 +289,7 @@ export function PlanningInbox() {
             scheduledDate: stop.scheduledDate ?? undefined,
             scheduledTimeStart: stop.scheduledTimeStart ?? undefined,
             scheduledTimeEnd: stop.scheduledTimeEnd ?? undefined,
+            revisionStatus: stop.revisionStatus ?? undefined,
           }));
           setRouteStops(stops);
           
@@ -1153,15 +1154,25 @@ export function PlanningInbox() {
             case 'completed': {
               const result = update.status.result;
               if (result.stops && result.stops.length > 0) {
-                const optimizedStops: MapStop[] = result.stops.map((s, i) => ({
-                  id: s.customerId,
-                  name: s.customerName,
-                  address: s.address,
-                  coordinates: s.coordinates,
-                  order: i + 1,
-                  eta: s.eta,
-                  etd: s.etd,
-                }));
+                const optimizedStops: MapStop[] = result.stops.map((s, i) => {
+                  // Find original stop to preserve revision data
+                  const original = routeStops.find((rs) => rs.id === s.customerId);
+                  return {
+                    id: s.customerId,
+                    name: s.customerName,
+                    address: s.address,
+                    coordinates: s.coordinates,
+                    order: i + 1,
+                    eta: s.eta,
+                    etd: s.etd,
+                    // Preserve revision-related fields from original
+                    revisionId: original?.revisionId,
+                    scheduledDate: original?.scheduledDate,
+                    scheduledTimeStart: original?.scheduledTimeStart,
+                    scheduledTimeEnd: original?.scheduledTimeEnd,
+                    revisionStatus: original?.revisionStatus,
+                  };
+                });
                 setRouteStops(optimizedStops);
 
                 // Capture Valhalla geometry from VRP result

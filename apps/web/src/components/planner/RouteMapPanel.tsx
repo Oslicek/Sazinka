@@ -19,6 +19,7 @@ export interface MapStop {
   scheduledDate?: string;
   scheduledTimeStart?: string;
   scheduledTimeEnd?: string;
+  revisionStatus?: string;
 }
 
 export interface MapDepot {
