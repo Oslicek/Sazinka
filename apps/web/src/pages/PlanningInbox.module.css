@@ -224,22 +224,22 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  padding-bottom: 1rem;
 }
 
 .mapSection {
-  height: 450px;
-  min-height: 450px;
-  max-height: 450px;
+  flex: 1;
+  min-height: 400px;
   position: relative;
-  flex-shrink: 0;
+  order: 0;
 }
 
 .routeStopSection {
-  flex: 1;
+  max-height: 300px;
   overflow-y: auto;
   border-top: 1px solid var(--color-border);
-  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  order: 1;
+  flex-shrink: 0;
 }
 
 /* Detail Panel */
