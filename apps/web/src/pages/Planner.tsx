@@ -11,13 +11,16 @@ import maplibregl from 'maplibre-gl';
 import { useNatsStore } from '../stores/natsStore';
 import {
   buildStraightLineSegments,
+  splitGeometryIntoSegments,
 } from '../utils/routeGeometry';
+import * as geometryService from '../services/geometryService';
 import * as settingsService from '../services/settingsService';
 import * as routeService from '../services/routeService';
 import type { SavedRoute, SavedRouteStop } from '../services/routeService';
 import { listCrews, type Crew } from '../services/crewService';
 import type { Depot } from '@shared/settings';
 import { RouteListPanel, RouteDetailTimeline } from '../components/planner';
+import { PlannerFilters } from '../components/shared/PlannerFilters';
 import styles from './Planner.module.css';
 
 // Default depot location (Prague center) - fallback
@@ -67,6 +70,7 @@ export function Planner() {
   const segmentClickHandlerRef = useRef<((e: any) => void) | null>(null);
   const segmentEnterHandlerRef = useRef<(() => void) | null>(null);
   const segmentLeaveHandlerRef = useRef<(() => void) | null>(null);
+  const geometryUnsubRef = useRef<(() => void) | null>(null);
 
   // ─── Load settings (crews, depots, user preferences) ─────────────
 
@@ -113,6 +117,9 @@ export function Planner() {
 
   // ─── Load routes when filters change ─────────────────────────────
 
+  const selectedRouteIdRef = useRef(selectedRouteId);
+  selectedRouteIdRef.current = selectedRouteId;
+
   const loadRoutes = useCallback(async () => {
     if (!isConnected) return;
 
@@ -130,7 +137,7 @@ export function Planner() {
 
       // Auto-select first route if current selection is not in results
       if (response.routes.length > 0) {
-        const currentStillExists = selectedRouteId && response.routes.some((r) => r.id === selectedRouteId);
+        const currentStillExists = selectedRouteIdRef.current && response.routes.some((r) => r.id === selectedRouteIdRef.current);
         if (!currentStillExists) {
           setSelectedRouteId(response.routes[0].id);
         }
@@ -139,13 +146,14 @@ export function Planner() {
         setSelectedRouteStops([]);
       }
     } catch (err) {
-      console.error('Failed to load routes:', err);
-      setError('Nepodařilo se načíst cesty');
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error('Failed to load routes:', detail);
+      setError(`Nepodařilo se načíst cesty: ${detail}`);
       setRoutes([]);
     } finally {
       setIsLoadingRoutes(false);
     }
-  }, [isConnected, dateFrom, dateTo, isDateRange, filterCrewId, filterDepotId, selectedRouteId]);
+  }, [isConnected, dateFrom, dateTo, isDateRange, filterCrewId, filterDepotId]);
 
   useEffect(() => {
     if (!isLoadingSettings) {
@@ -161,26 +169,23 @@ export function Planner() {
       return;
     }
 
-    const selectedRoute = routes.find((r) => r.id === selectedRouteId);
-    if (!selectedRoute) return;
-
     async function loadStops() {
       setIsLoadingStops(true);
       try {
-        const result = await routeService.getRoute(selectedRoute!.date);
-        // The getRoute endpoint returns stops for user's route on that date.
-        // If multiple routes exist for the date, we need stops for the specific route.
-        // For now, use the stops returned.
+        const result = await routeService.getRoute({ routeId: selectedRouteId });
         setSelectedRouteStops(result.stops);
       } catch (err) {
-        console.error('Failed to load route stops:', err);
+        const detail = err instanceof Error ? err.message : String(err);
+        console.error('Failed to load route stops:', detail);
+        setError(`Nepodařilo se načíst zastávky trasy: ${detail}`);
         setSelectedRouteStops([]);
       } finally {
         setIsLoadingStops(false);
       }
     }
     loadStops();
-  }, [selectedRouteId, routes, isConnected]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRouteId, isConnected]);
 
   // ─── URL sync ────────────────────────────────────────────────────
 
@@ -395,11 +400,88 @@ export function Planner() {
     map.current.fitBounds(bounds, { padding: 50 });
   }, [clearMarkers, depot]);
 
+  // ─── Fetch Valhalla geometry and update map ───────────────────────
+
+  const fetchAndDrawGeometry = useCallback(async (stops: SavedRouteStop[]) => {
+    if (!map.current || !depot || stops.length === 0) return;
+
+    const waypoints = stops
+      .filter((s) => s.customerLat && s.customerLng)
+      .map((s) => ({
+        coordinates: { lat: s.customerLat!, lng: s.customerLng! },
+        name: s.customerName,
+      }));
+
+    if (waypoints.length === 0) return;
+
+    // Build locations: depot → stops → depot
+    const locations = [
+      { lat: depot.lat, lng: depot.lng },
+      ...waypoints.map((w) => ({ lat: w.coordinates.lat, lng: w.coordinates.lng })),
+      { lat: depot.lat, lng: depot.lng },
+    ];
+
+    try {
+      // Cancel previous subscription
+      if (geometryUnsubRef.current) {
+        geometryUnsubRef.current();
+        geometryUnsubRef.current = null;
+      }
+
+      const jobResponse = await geometryService.submitGeometryJob(locations);
+
+      const unsubscribe = await geometryService.subscribeToGeometryJobStatus(
+        jobResponse.jobId,
+        (update) => {
+          if (update.status.type === 'completed' && map.current) {
+            const geometry = update.status.coordinates as [number, number][];
+            const segments = splitGeometryIntoSegments(geometry, waypoints, depot);
+
+            // Update the existing GeoJSON source with real geometry
+            const source = map.current.getSource('route-segments') as maplibregl.GeoJSONSource | undefined;
+            if (source) {
+              const features = segments.map((coords, index) => ({
+                type: 'Feature' as const,
+                properties: { segmentIndex: index },
+                geometry: { type: 'LineString' as const, coordinates: coords },
+              }));
+              source.setData({ type: 'FeatureCollection', features });
+            }
+
+            if (geometryUnsubRef.current) {
+              geometryUnsubRef.current();
+              geometryUnsubRef.current = null;
+            }
+          } else if (update.status.type === 'failed') {
+            console.warn('Geometry job failed:', update.status.error);
+            if (geometryUnsubRef.current) {
+              geometryUnsubRef.current();
+              geometryUnsubRef.current = null;
+            }
+          }
+        },
+      );
+
+      geometryUnsubRef.current = unsubscribe;
+    } catch (err) {
+      console.warn('Failed to fetch route geometry:', err);
+    }
+  }, [depot]);
+
   // ─── Redraw map when stops change ────────────────────────────────
 
   useEffect(() => {
     drawRouteOnMap(selectedRouteStops);
-  }, [selectedRouteStops, drawRouteOnMap]);
+    // Then fetch real road geometry asynchronously
+    fetchAndDrawGeometry(selectedRouteStops);
+
+    return () => {
+      if (geometryUnsubRef.current) {
+        geometryUnsubRef.current();
+        geometryUnsubRef.current = null;
+      }
+    };
+  }, [selectedRouteStops, drawRouteOnMap, fetchAndDrawGeometry]);
 
   // ─── Update highlight layer ──────────────────────────────────────
 
@@ -458,61 +540,20 @@ export function Planner() {
     <div className={styles.planner}>
       <div className={styles.sidebar}>
         {/* Filters */}
-        <div className={styles.filtersSection}>
-          <div className={styles.filterRow}>
-            <div className={styles.dateFilter}>
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => handleDateFromChange(e.target.value)}
-                className={styles.dateInput}
-              />
-              {isDateRange && (
-                <>
-                  <span className={styles.dateSeparator}>–</span>
-                  <input
-                    type="date"
-                    value={dateTo}
-                    onChange={(e) => handleDateToChange(e.target.value)}
-                    className={styles.dateInput}
-                  />
-                </>
-              )}
-              <button
-                type="button"
-                className={`${styles.rangeToggle} ${isDateRange ? styles.rangeToggleActive : ''}`}
-                onClick={handleToggleRange}
-                title={isDateRange ? 'Jeden den' : 'Rozsah'}
-              >
-                {isDateRange ? '1' : '...'}
-              </button>
-            </div>
-          </div>
-
-          <div className={styles.filterRow}>
-            <select
-              value={filterCrewId}
-              onChange={(e) => handleCrewFilterChange(e.target.value)}
-              className={styles.filterSelect}
-            >
-              <option value="">Posádka: Vše</option>
-              {crews.map((crew) => (
-                <option key={crew.id} value={crew.id}>{crew.name}</option>
-              ))}
-            </select>
-
-            <select
-              value={filterDepotId}
-              onChange={(e) => handleDepotFilterChange(e.target.value)}
-              className={styles.filterSelect}
-            >
-              <option value="">Depo: Vše</option>
-              {depots.map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
-            </select>
-          </div>
-        </div>
+        <PlannerFilters
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          isDateRange={isDateRange}
+          filterCrewId={filterCrewId}
+          filterDepotId={filterDepotId}
+          crews={crews}
+          depots={depots}
+          onDateFromChange={handleDateFromChange}
+          onDateToChange={handleDateToChange}
+          onToggleRange={handleToggleRange}
+          onCrewChange={handleCrewFilterChange}
+          onDepotChange={handleDepotFilterChange}
+        />
 
         {/* Error */}
         {error && (

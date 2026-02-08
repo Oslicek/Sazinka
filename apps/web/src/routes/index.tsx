@@ -18,6 +18,7 @@ import { Admin } from '@/pages/Admin';
 import { Settings } from '@/pages/Settings';
 import { RevisionDetail } from '@/pages/RevisionDetail';
 import { Jobs } from '@/pages/Jobs';
+import { WorkLog } from '@/pages/WorkLog';
 import { Login } from '@/pages/Login';
 import { Register } from '@/pages/Register';
 import { About } from '@/pages/About';
@@ -160,6 +161,13 @@ const jobsRoute = createRoute({
   component: Jobs,
 });
 
+// Work Log
+const workLogRoute = createRoute({
+  getParentRoute: () => layoutRoute,
+  path: '/worklog',
+  component: WorkLog,
+});
+
 // About page
 const aboutRoute = createRoute({
   getParentRoute: () => layoutRoute,
@@ -183,6 +191,7 @@ export const routeTree = rootRoute.addChildren([
     todayRedirectRoute,
     revisionDetailRoute,
     jobsRoute,
+    workLogRoute,
     adminRoute,
     settingsRoute,
     aboutRoute,

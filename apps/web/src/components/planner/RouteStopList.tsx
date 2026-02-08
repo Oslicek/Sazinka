@@ -48,6 +48,12 @@ export function RouteStopList({
     return time.substring(0, 5);
   };
 
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric', year: 'numeric' });
+  };
+
   return (
     <div className={styles.container}>
       <div className={styles.header}>
@@ -63,6 +69,16 @@ export function RouteStopList({
             <div className={styles.stopInfo}>
               <div className={styles.stopName}>{stop.name}</div>
               <div className={styles.stopAddress}>{stop.address}</div>
+              {stop.scheduledDate && (
+                <div className={styles.scheduledWindow}>
+                  <span className={styles.scheduledBadge}>
+                    📅 {formatDate(stop.scheduledDate)}
+                    {(stop.scheduledTimeStart || stop.scheduledTimeEnd) && (
+                      <> {formatTime(stop.scheduledTimeStart)}{stop.scheduledTimeStart && stop.scheduledTimeEnd ? ' – ' : ''}{formatTime(stop.scheduledTimeEnd)}</>
+                    )}
+                  </span>
+                </div>
+              )}
               {(stop.eta || stop.etd) && (
                 <div className={styles.stopTimeWindow}>
                   🕐 {formatTime(stop.eta)}{stop.eta && stop.etd ? ' – ' : ''}{formatTime(stop.etd)}
