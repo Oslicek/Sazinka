@@ -19,6 +19,9 @@ export interface CandidateRowData {
     label: string;
     status: SlotStatus;
   }>;
+  // State flags
+  isScheduled?: boolean;
+  isInRoute?: boolean;
 }
 
 interface CandidateRowProps {
@@ -95,9 +98,14 @@ export function CandidateRow({
           onClick={(e) => e.stopPropagation()}
         />
       )}
-      {isInRoute && (
-        <span className={styles.inRouteBadge} title="V trase">✓</span>
-      )}
+      <div className={styles.stateIcons}>
+        {candidate.isScheduled && (
+          <span className={styles.stateIcon} title="Má termín">📅</span>
+        )}
+        {(isInRoute || candidate.isInRoute) && (
+          <span className={styles.stateIcon} title="V trase">🚗</span>
+        )}
+      </div>
       <div className={styles.main}>
         <div className={styles.nameRow}>
           <span className={styles.name}>{candidate.customerName}</span>

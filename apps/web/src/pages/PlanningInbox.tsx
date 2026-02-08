@@ -621,6 +621,9 @@ export function PlanningInbox() {
   const selectedCandidateDetail: CandidateDetailData | null = useMemo(() => {
     if (!selectedCandidate) return null;
     
+    // Check if this candidate has a scheduled revision
+    const isScheduled = selectedCandidate.status === 'scheduled' || selectedCandidate.status === 'confirmed';
+    
     return {
       id: selectedCandidate.id,
       customerId: selectedCandidate.customerId,
@@ -644,6 +647,7 @@ export function PlanningInbox() {
         estimatedArrival: slotSuggestions[0].timeStart,
         estimatedDeparture: slotSuggestions[0].timeEnd,
       } : undefined,
+      isScheduled,
     };
   }, [selectedCandidate, slotSuggestions]);
 
@@ -720,6 +724,11 @@ export function PlanningInbox() {
   // Keep ref in sync for use in callbacks
   sortedCandidatesRef.current = sortedCandidates;
 
+  // Compute set of candidate IDs that are currently in the route
+  const inRouteIds = useMemo(() => {
+    return new Set(routeStops.map((s) => s.id));
+  }, [routeStops]);
+
   // Convert to CandidateRowData for VirtualizedInboxList
   const candidateRowData: CandidateRowData[] = useMemo(() => {
     return sortedCandidates.map((c) => ({
@@ -734,8 +743,10 @@ export function PlanningInbox() {
       deltaKm: c.deltaKm,
       deltaMin: c.deltaMin,
       slotStatus: c.slotStatus,
+      isScheduled: c.status === 'scheduled' || c.status === 'confirmed',
+      isInRoute: inRouteIds.has(c.customerId),
     }));
-  }, [sortedCandidates]);
+  }, [sortedCandidates, inRouteIds]);
 
   // Problem candidates for ProblemsSegment
   const problemCandidates: ProblemCandidate[] = useMemo(() => {
@@ -953,13 +964,13 @@ export function PlanningInbox() {
     }
   }, [scheduledConfirmation, selectNextCandidate]);
 
-  const handleSnooze = useCallback(async (candidateId: string) => {
+  const handleSnooze = useCallback(async (candidateId: string, days: number) => {
     const candidate = candidates.find((c) => c.id === candidateId || c.customerId === candidateId);
     if (!candidate) return;
     
-    // Snooze for 7 days by default
+    // Snooze for specified number of days
     const snoozeDate = new Date();
-    snoozeDate.setDate(snoozeDate.getDate() + 7);
+    snoozeDate.setDate(snoozeDate.getDate() + days);
     
     try {
       await snoozeRevision({
@@ -987,16 +998,11 @@ export function PlanningInbox() {
     } catch (err) {
       console.error('Failed to snooze:', err);
     }
-  }, [candidates]);
+  }, [candidates, selectNextCandidate]);
 
   const handleFixAddress = useCallback((candidateId: string) => {
     navigate({ to: '/customers/$customerId', params: { customerId: candidateId } });
   }, [navigate]);
-
-  // Compute set of candidate IDs that are currently in the route
-  const inRouteIds = useMemo(() => {
-    return new Set(routeStops.map((s) => s.id));
-  }, [routeStops]);
 
   // Route building: toggle checkbox selection
   const handleSelectionChange = useCallback((id: string, selected: boolean) => {
@@ -1220,7 +1226,9 @@ export function PlanningInbox() {
 
   const handleSnoozeShortcut = useCallback(() => {
     if (selectedCandidateId) {
-      handleSnooze(selectedCandidateId);
+      // Use default snooze duration from localStorage (7 days if not set)
+      const defaultDays = parseInt(localStorage.getItem('sazinka.snooze.defaultDays') || '7');
+      handleSnooze(selectedCandidateId, defaultDays);
     }
   }, [selectedCandidateId, handleSnooze]);
 

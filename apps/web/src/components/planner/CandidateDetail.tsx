@@ -22,13 +22,17 @@ export interface CandidateDetailData {
   // Route-aware data
   suggestedSlots?: SlotSuggestion[];
   insertionInfo?: InsertionInfo;
+  // State flags
+  isScheduled?: boolean;
 }
+
+export type SnoozeDuration = 1 | 7 | 14 | 30;
 
 interface CandidateDetailProps {
   candidate: CandidateDetailData | null;
   isRouteAware?: boolean;
   onSchedule?: (candidateId: string, slot: SlotSuggestion) => void;
-  onSnooze?: (candidateId: string) => void;
+  onSnooze?: (candidateId: string, days: SnoozeDuration) => void;
   onFixAddress?: (candidateId: string) => void;
   isLoading?: boolean;
   /** Add candidate to the route */
@@ -59,6 +63,13 @@ export function CandidateDetail({
   const [schedTimeStart, setSchedTimeStart] = useState('08:00');
   const [schedTimeEnd, setSchedTimeEnd] = useState('12:00');
   const [schedNotes, setSchedNotes] = useState('');
+  
+  // Snooze dropdown state
+  const [showSnoozeDropdown, setShowSnoozeDropdown] = useState(false);
+  const [defaultSnoozeDays, setDefaultSnoozeDays] = useState<SnoozeDuration>(() => {
+    const saved = localStorage.getItem('sazinka.snooze.defaultDays');
+    return (saved ? parseInt(saved) : 7) as SnoozeDuration;
+  });
 
   // Reset scheduling form when candidate changes
   useEffect(() => {
@@ -67,6 +78,7 @@ export function CandidateDetail({
     setSchedTimeStart('08:00');
     setSchedTimeEnd('12:00');
     setSchedNotes('');
+    setShowSnoozeDropdown(false);
   }, [candidate?.id, routeDate]);
   if (isLoading) {
     return (
@@ -100,10 +112,123 @@ export function CandidateDetail({
     year: 'numeric',
   });
 
+  const handleSnoozeSelect = (days: SnoozeDuration) => {
+    setDefaultSnoozeDays(days);
+    localStorage.setItem('sazinka.snooze.defaultDays', days.toString());
+    setShowSnoozeDropdown(false);
+    onSnooze?.(candidate.id, days);
+  };
+
+  const getSnoozeDurationLabel = (days: SnoozeDuration): string => {
+    switch (days) {
+      case 1: return 'o den';
+      case 7: return 'o týden';
+      case 14: return 'o 2 týdny';
+      case 30: return 'o měsíc';
+    }
+  };
+
   return (
     <div className={styles.container}>
+      {/* State Flags */}
+      <div className={styles.stateFlags} data-testid="state-flags">
+        <div className={`${styles.stateFlag} ${candidate.isScheduled ? styles.stateFlagYes : styles.stateFlagNo}`}>
+          <span className={styles.stateFlagLabel}>Termín:</span>
+          <span className={styles.stateFlagValue}>{candidate.isScheduled ? 'Ano' : 'Ne'}</span>
+        </div>
+        <div className={`${styles.stateFlag} ${isInRoute ? styles.stateFlagYes : styles.stateFlagNo}`}>
+          <span className={styles.stateFlagLabel}>V trase:</span>
+          <span className={styles.stateFlagValue}>{isInRoute ? 'Ano' : 'Ne'}</span>
+        </div>
+      </div>
+
+      {/* Actions - moved to top */}
+      {!isScheduling && (
+        <div className={styles.actions} data-testid="candidate-actions">
+          {candidate.suggestedSlots?.length ? (
+            <button
+              type="button"
+              className={styles.actionButton}
+              onClick={() => {
+                onSchedule?.(candidate.id, candidate.suggestedSlots![0]);
+              }}
+            >
+              📅 Domluvit termín
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={styles.actionButton}
+              onClick={() => setIsScheduling(true)}
+            >
+              📅 Domluvit termín
+            </button>
+          )}
+          {isInRoute ? (
+            <button
+              type="button"
+              className={styles.actionButton}
+              onClick={() => onRemoveFromRoute?.(candidate.id)}
+            >
+              ✕ Odebrat z trasy
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={styles.actionButton}
+              onClick={() => onAddToRoute?.(candidate.id)}
+            >
+              ➕ Přidat do trasy
+            </button>
+          )}
+          <div className={styles.snoozeButtonWrapper}>
+            <button
+              type="button"
+              className={styles.actionButton}
+              onClick={() => setShowSnoozeDropdown(!showSnoozeDropdown)}
+              aria-haspopup="true"
+              aria-expanded={showSnoozeDropdown}
+            >
+              ⏰ Odložit {getSnoozeDurationLabel(defaultSnoozeDays)}
+            </button>
+            {showSnoozeDropdown && (
+              <div className={styles.snoozeDropdown}>
+                <button
+                  type="button"
+                  className={styles.snoozeOption}
+                  onClick={() => handleSnoozeSelect(1)}
+                >
+                  Odložit o den
+                </button>
+                <button
+                  type="button"
+                  className={styles.snoozeOption}
+                  onClick={() => handleSnoozeSelect(7)}
+                >
+                  Odložit o týden
+                </button>
+                <button
+                  type="button"
+                  className={styles.snoozeOption}
+                  onClick={() => handleSnoozeSelect(14)}
+                >
+                  Odložit o 2 týdny
+                </button>
+                <button
+                  type="button"
+                  className={styles.snoozeOption}
+                  onClick={() => handleSnoozeSelect(30)}
+                >
+                  Odložit o měsíc
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Header */}
-      <div className={styles.header}>
+      <div className={styles.header} data-testid="candidate-header">
         <h3 className={styles.name}>{candidate.customerName}</h3>
         <div className={styles.badges}>
           <span className={styles.deviceBadge}>{candidate.deviceType}</span>
@@ -250,6 +375,7 @@ export function CandidateDetail({
                     status: 'ok',
                     deltaKm: 0,
                     deltaMin: 0,
+                    insertAfterIndex: -1,
                   };
                   onSchedule?.(candidate.id, slot);
                   setIsScheduling(false);
@@ -269,54 +395,6 @@ export function CandidateDetail({
         </section>
       )}
 
-      {/* Actions */}
-      {!isScheduling && (
-        <div className={styles.actions}>
-          {candidate.suggestedSlots?.length ? (
-            <button
-              type="button"
-              className={styles.actionButton}
-              onClick={() => {
-                onSchedule?.(candidate.id, candidate.suggestedSlots![0]);
-              }}
-            >
-              📅 Domluvit termín
-            </button>
-          ) : (
-            <button
-              type="button"
-              className={styles.actionButton}
-              onClick={() => setIsScheduling(true)}
-            >
-              📅 Domluvit termín
-            </button>
-          )}
-          {isInRoute ? (
-            <button
-              type="button"
-              className={styles.actionButton}
-              onClick={() => onRemoveFromRoute?.(candidate.id)}
-            >
-              ✕ Odebrat z trasy
-            </button>
-          ) : (
-            <button
-              type="button"
-              className={styles.actionButton}
-              onClick={() => onAddToRoute?.(candidate.id)}
-            >
-              ➕ Přidat do trasy
-            </button>
-          )}
-          <button
-            type="button"
-            className={styles.actionButton}
-            onClick={() => onSnooze?.(candidate.id)}
-          >
-            ⏰ Odložit
-          </button>
-        </div>
-      )}
 
       {/* Links */}
       <div className={styles.links}>
