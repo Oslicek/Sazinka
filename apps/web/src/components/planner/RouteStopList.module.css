@@ -183,19 +183,14 @@
   cursor: not-allowed;
 }
 
-.saveButton {
-  background-color: var(--color-bg);
-  color: var(--color-primary);
-  border: 1px solid var(--color-primary);
-}
-
-.saveButton:hover:not(:disabled) {
-  background-color: rgba(37, 99, 235, 0.05);
-}
-
-.saveButton:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.savingIndicator {
+  display: flex;
+  align-items: center;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  font-style: italic;
+  padding: 0.25rem 0.5rem;
+  white-space: nowrap;
 }
 
 .clearButton {

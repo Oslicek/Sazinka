@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useNatsStore } from '../stores/natsStore';
 import { useRouteCacheStore } from '../stores/routeCacheStore';
+import { useAutoSave } from '../hooks/useAutoSave';
 import { 
   RouteContextHeader, 
   type RouteContext,
@@ -141,10 +142,8 @@ export function PlanningInbox() {
   const [dayOverviewGeometry, setDayOverviewGeometry] = useState<[number, number][]>([]);
   const [dayOverviewStops, setDayOverviewStops] = useState<MapStop[]>([]);
   
-  // Draft mode state
+  // Draft mode state (auto-save)
   const [hasChanges, setHasChanges] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
   
   // Multi-crew state (TODO: implement multi-crew comparison)
   const [crewComparisons, _setCrewComparisons] = useState<CrewComparison[]>([]);
@@ -165,6 +164,31 @@ export function PlanningInbox() {
     all: 0,
     snoozed: 0,
     problems: 0,
+  });
+
+  // Auto-save route
+  const autoSaveFn = useCallback(async () => {
+    if (routeStops.length === 0 || !context) return;
+    await routeService.saveRoute({
+      date: context.date,
+      stops: routeStops.map((s) => ({
+        customerId: s.id,
+        order: s.order ?? 0,
+        eta: s.eta,
+        etd: s.etd,
+      })),
+      totalDistanceKm: metrics?.distanceKm ?? 0,
+      totalDurationMinutes: (metrics?.travelTimeMin ?? 0) + (metrics?.serviceTimeMin ?? 0),
+      optimizationScore: 0,
+    });
+    setHasChanges(false);
+  }, [routeStops, context, metrics]);
+
+  const { isSaving, lastSaved, saveError, retry: retrySave } = useAutoSave({
+    saveFn: autoSaveFn,
+    hasChanges,
+    debounceMs: 1500,
+    enabled: routeStops.length > 0 && !!context,
   });
 
   // Load settings (crews, depots)
@@ -892,7 +916,6 @@ export function PlanningInbox() {
       incrementRouteVersion();
       
       setHasChanges(true);
-      setLastSaved(new Date());
     } catch (err) {
       console.error('Failed to schedule:', err);
     }
@@ -1146,33 +1169,6 @@ export function PlanningInbox() {
     }
   }, [routeStops, context, depots]);
 
-  // Route building: save route to backend
-  const handleSaveRoute = useCallback(async () => {
-    if (routeStops.length === 0 || !context) return;
-
-    setIsSaving(true);
-    try {
-      await routeService.saveRoute({
-        date: context.date,
-        stops: routeStops.map((s) => ({
-          customerId: s.id,
-          order: s.order ?? 0,
-          eta: s.eta,
-          etd: s.etd,
-        })),
-        totalDistanceKm: metrics?.distanceKm ?? 0,
-        totalDurationMinutes: (metrics?.travelTimeMin ?? 0) + (metrics?.serviceTimeMin ?? 0),
-        optimizationScore: 0,
-      });
-      setHasChanges(false);
-      setLastSaved(new Date());
-    } catch (err) {
-      console.error('Failed to save route:', err);
-    } finally {
-      setIsSaving(false);
-    }
-  }, [routeStops, context, metrics]);
-
   // Route building: clear all stops
   const handleClearRoute = useCallback(() => {
     setRouteStops([]);
@@ -1182,24 +1178,6 @@ export function PlanningInbox() {
     setHasChanges(true);
     incrementRouteVersion();
   }, [incrementRouteVersion]);
-
-  // Draft mode handlers — delegates to handleSaveRoute for the route,
-  // then clears the unsaved-changes flag.
-  const handleSave = useCallback(async () => {
-    if (routeStops.length > 0 && context) {
-      await handleSaveRoute();
-    } else {
-      // Nothing concrete to persist — just clear the flag
-      setHasChanges(false);
-      setLastSaved(new Date());
-    }
-  }, [routeStops, context, handleSaveRoute]);
-
-  const handleDiscard = useCallback(() => {
-    // Reload candidates to discard local changes
-    loadCandidates();
-    setHasChanges(false);
-  }, [loadCandidates]);
 
   // Keyboard shortcuts handlers
   const handleMoveUp = useCallback(() => {
@@ -1478,7 +1456,6 @@ export function PlanningInbox() {
             metrics={metrics}
             onRemoveStop={handleRemoveFromRoute}
             onOptimize={handleOptimizeRoute}
-            onSave={handleSaveRoute}
             onClear={handleClearRoute}
             isOptimizing={isOptimizing}
             isSaving={isSaving}
@@ -1563,8 +1540,8 @@ export function PlanningInbox() {
         hasChanges={hasChanges}
         isSaving={isSaving}
         lastSaved={lastSaved}
-        onSave={handleSave}
-        onDiscard={handleDiscard}
+        saveError={saveError}
+        onRetry={retrySave}
       />
       
       <div className={styles.content}>

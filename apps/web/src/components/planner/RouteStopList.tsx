@@ -15,7 +15,6 @@ interface RouteStopListProps {
   metrics: RouteMetrics | null;
   onRemoveStop?: (stopId: string) => void;
   onOptimize?: () => void;
-  onSave?: () => void;
   onClear?: () => void;
   isOptimizing?: boolean;
   isSaving?: boolean;
@@ -27,7 +26,6 @@ export function RouteStopList({
   metrics,
   onRemoveStop,
   onOptimize,
-  onSave,
   onClear,
   isOptimizing = false,
   isSaving = false,
@@ -121,15 +119,8 @@ export function RouteStopList({
             {isOptimizing ? 'Optimalizuji...' : '🚀 Optimalizovat'}
           </button>
         )}
-        {onSave && (
-          <button
-            type="button"
-            className={styles.saveButton}
-            onClick={onSave}
-            disabled={isSaving}
-          >
-            {isSaving ? 'Ukládám...' : '💾 Uložit'}
-          </button>
+        {isSaving && (
+          <span className={styles.savingIndicator}>⟳ Ukládám...</span>
         )}
         {onClear && (
           <button

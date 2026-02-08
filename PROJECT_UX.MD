@@ -547,7 +547,7 @@ Cíl: Uživatel nesmí "přeskakovat" mezi izolovanými stránkami. Každá obra
 4. Přidaní kandidáti se zobrazí ve středním panelu pod mapou jako seznam zastávek
 5. Mapa průběžně zobrazuje zastávky a propojení
 6. Uživatel klikne "Optimalizovat trasu" → VRP solver přepočítá pořadí a časy
-7. Uživatel uloží trasu → trasa je persistována v databázi
+7. Trasa se **automaticky ukládá** průběžně (auto-save s debounce 1,5 s) — uživatel nemusí nic ukládat ručně
 
 #### Levý panel — Seznam kandidátů
 
@@ -562,7 +562,12 @@ Cíl: Uživatel nesmí "přeskakovat" mezi izolovanými stránkami. Každá obra
 - Spodní část: kompaktní seznam zastávek v trase:
   - Pořadové číslo, jméno zákazníka, adresa, ETA–ETD, tlačítko ✕ (odebrat)
   - Souhrnné metriky: vzdálenost, čas, počet zastávek, zatížení dne (%)
-- Akční tlačítka: Optimalizovat trasu, Uložit trasu, Vyčistit
+- Akční tlačítka: Optimalizovat trasu, Vyčistit
+- **Auto-save:** Trasa se automaticky ukládá 1,5 s po poslední změně (přidání, odebrání, optimalizace). Status bar v hlavičce ukazuje:
+  - `● Neuložené změny` — změna čeká na uložení (debounce)
+  - `⟳ Ukládám...` — probíhá ukládání
+  - `✓ Uloženo právě teď / před N min` — úspěšně uloženo
+  - `⚠️ Nepodařilo se uložit [Zkusit znovu]` — chyba s možností retry
 - Prázdný stav: "Zatím žádné zastávky v trase. Vyberte kandidáty ze seznamu."
 
 #### Pravý panel — Detail kandidáta
@@ -594,8 +599,8 @@ KANDIDÁTI (levý panel)        MAPA + TRASA (střed)         DETAIL (pravý)
 |                           | | Vzdál: 45km  Čas: 3h   | | [Odložit]        |
 |                           | | Zatížení: 62%           | | [Detail zákazníka]|
 |                           | |                        | |                  |
-|                           | | [Optimalizovat] [Uložit]| | kbd: A přidat    |
-|                           | |           [Vyčistit]    | |      R odebrat   |
+|                           | | [Optimalizovat][Vyčistit]| | kbd: A přidat    |
+|                           | | ✓ Uloženo právě teď     | |      R odebrat   |
 +---------------------------+ +------------------------+ +------------------+
 ```
 

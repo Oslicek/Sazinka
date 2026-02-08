@@ -4,8 +4,8 @@ interface DraftModeBarProps {
   hasChanges: boolean;
   isSaving?: boolean;
   lastSaved?: Date | null;
-  onSave: () => void;
-  onDiscard: () => void;
+  saveError?: string | null;
+  onRetry?: () => void;
 }
 
 function formatLastSaved(date: Date): string {
@@ -26,46 +26,60 @@ export function DraftModeBar({
   hasChanges,
   isSaving,
   lastSaved,
-  onSave,
-  onDiscard,
+  saveError,
+  onRetry,
 }: DraftModeBarProps) {
-  if (!hasChanges && !lastSaved) {
-    return null;
+  // Error state — takes priority
+  if (saveError) {
+    return (
+      <div className={`${styles.container} ${styles.hasError}`}>
+        <span className={styles.icon}>⚠️</span>
+        <span className={styles.errorMessage}>Nepodařilo se uložit</span>
+        {onRetry && (
+          <button
+            type="button"
+            className={styles.retryButton}
+            onClick={onRetry}
+          >
+            Zkusit znovu
+          </button>
+        )}
+      </div>
+    );
   }
 
-  return (
-    <div className={`${styles.container} ${hasChanges ? styles.hasChanges : ''}`}>
-      {hasChanges ? (
-        <>
-          <span className={styles.icon}>⚠️</span>
-          <span className={styles.message}>Neuložené změny</span>
-          <div className={styles.actions}>
-            <button
-              type="button"
-              className={styles.discardButton}
-              onClick={onDiscard}
-              disabled={isSaving}
-            >
-              Zahodit
-            </button>
-            <button
-              type="button"
-              className={styles.saveButton}
-              onClick={onSave}
-              disabled={isSaving}
-            >
-              {isSaving ? 'Ukládám...' : 'Uložit'}
-            </button>
-          </div>
-        </>
-      ) : lastSaved ? (
-        <>
-          <span className={styles.icon}>✓</span>
-          <span className={styles.savedMessage}>
-            Uloženo {formatLastSaved(lastSaved)}
-          </span>
-        </>
-      ) : null}
-    </div>
-  );
+  // Currently saving
+  if (isSaving) {
+    return (
+      <div className={styles.container}>
+        <span className={styles.icon}>⟳</span>
+        <span className={styles.savingMessage}>Ukládám...</span>
+      </div>
+    );
+  }
+
+  // Has unsaved changes (waiting for debounce)
+  if (hasChanges) {
+    return (
+      <div className={styles.container}>
+        <span className={styles.icon}>●</span>
+        <span className={styles.pendingMessage}>Neuložené změny</span>
+      </div>
+    );
+  }
+
+  // Successfully saved
+  if (lastSaved) {
+    return (
+      <div className={styles.container}>
+        <span className={styles.icon}>✓</span>
+        <span className={styles.savedMessage}>
+          Uloženo {formatLastSaved(lastSaved)}
+        </span>
+      </div>
+    );
+  }
+
+  // Nothing to show
+  return null;
 }
