@@ -184,12 +184,21 @@ export function CandidateDetail({
           <div className={styles.snoozeButtonWrapper}>
             <button
               type="button"
-              className={styles.actionButton}
+              className={styles.snoozePrimaryButton}
+              onClick={() => handleSnoozeSelect(defaultSnoozeDays)}
+              title={`Odložit ${getSnoozeDurationLabel(defaultSnoozeDays)}`}
+            >
+              ⏰ Odložit {getSnoozeDurationLabel(defaultSnoozeDays)}
+            </button>
+            <button
+              type="button"
+              className={styles.snoozeDropdownToggle}
               onClick={() => setShowSnoozeDropdown(!showSnoozeDropdown)}
               aria-haspopup="true"
               aria-expanded={showSnoozeDropdown}
+              title="Zobrazit další možnosti"
             >
-              ⏰ Odložit {getSnoozeDurationLabel(defaultSnoozeDays)}
+              ▼
             </button>
             {showSnoozeDropdown && (
               <div className={styles.snoozeDropdown}>

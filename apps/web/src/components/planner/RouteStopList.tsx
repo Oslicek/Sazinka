@@ -63,12 +63,12 @@ export function RouteStopList({
             <div className={styles.stopInfo}>
               <div className={styles.stopName}>{stop.name}</div>
               <div className={styles.stopAddress}>{stop.address}</div>
+              {(stop.eta || stop.etd) && (
+                <div className={styles.stopTimeWindow}>
+                  🕐 {formatTime(stop.eta)}{stop.eta && stop.etd ? ' – ' : ''}{formatTime(stop.etd)}
+                </div>
+              )}
             </div>
-            {(stop.eta || stop.etd) && (
-              <span className={styles.stopTime}>
-                {formatTime(stop.eta)}{stop.eta && stop.etd ? '–' : ''}{formatTime(stop.etd)}
-              </span>
-            )}
             {onRemoveStop && (
               <button
                 type="button"

@@ -1,8 +1,8 @@
 .container {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  overflow: hidden;
+  min-height: 0;
+  flex: 1;
 }
 
 .header {
@@ -83,6 +83,14 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.stopTimeWindow {
+  font-size: 0.6875rem;
+  color: var(--color-primary);
+  font-weight: 500;
+  margin-top: 0.125rem;
+  white-space: nowrap;
 }
 
 .stopTime {
