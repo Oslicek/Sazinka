@@ -410,3 +410,103 @@ pub async fn handle_delete(
 
     Ok(())
 }
+
+/// Handle visit.get messages
+pub async fn handle_get(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+    jwt_secret: Arc<String>,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received visit.get message");
+
+        let reply = match msg.reply {
+            Some(ref reply) => reply.clone(),
+            None => {
+                warn!("Message without reply subject");
+                continue;
+            }
+        };
+
+        let request: Request<crate::types::visit::VisitIdRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("Failed to parse request: {}", e);
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        let visit_id = request.payload.id;
+
+        // Get visit
+        match queries::visit::get_visit(&pool, visit_id, user_id).await {
+            Ok(Some(visit)) => {
+                // Get customer data
+                let customer = match queries::customer::get_customer(&pool, user_id, visit.customer_id).await {
+                    Ok(Some(c)) => c,
+                    Ok(None) => {
+                        let error = ErrorResponse::new(request.id, "NOT_FOUND", "Customer not found");
+                        let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                        continue;
+                    }
+                    Err(e) => {
+                        error!("Failed to get customer: {}", e);
+                        let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                        let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                        continue;
+                    }
+                };
+
+                // Get work items for this visit
+                let work_items = match queries::work_item::list_work_items_for_visit(&pool, visit_id).await {
+                    Ok(items) => items,
+                    Err(e) => {
+                        warn!("Failed to get work items for visit {}: {}", visit_id, e);
+                        vec![]
+                    }
+                };
+
+                let work_items_count = work_items.len();
+                let response = SuccessResponse::new(
+                    request.id,
+                    crate::types::visit::GetVisitResponse {
+                        visit,
+                        customer_name: customer.name,
+                        customer_street: customer.street,
+                        customer_city: customer.city,
+                        customer_postal_code: customer.postal_code,
+                        customer_phone: customer.phone,
+                        customer_lat: customer.lat,
+                        customer_lng: customer.lng,
+                        work_items,
+                    },
+                );
+                let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+                debug!("Returned visit {} with {} work items", visit_id, work_items_count);
+            }
+            Ok(None) => {
+                let error = ErrorResponse::new(request.id, "NOT_FOUND", "Visit not found");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+            Err(e) => {
+                error!("Failed to get visit: {}", e);
+                let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+
+    Ok(())
+}

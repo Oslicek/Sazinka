@@ -188,6 +188,28 @@ pub struct ListVisitsResponse {
     pub total: i64,
 }
 
+/// Request to get a single visit by ID
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VisitIdRequest {
+    pub id: Uuid,
+}
+
+/// Response with visit, customer, and work items
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetVisitResponse {
+    pub visit: Visit,
+    pub customer_name: Option<String>,
+    pub customer_street: Option<String>,
+    pub customer_city: Option<String>,
+    pub customer_postal_code: Option<String>,
+    pub customer_phone: Option<String>,
+    pub customer_lat: Option<f64>,
+    pub customer_lng: Option<f64>,
+    pub work_items: Vec<crate::types::work_item::VisitWorkItem>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

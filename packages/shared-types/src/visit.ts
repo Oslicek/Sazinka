@@ -86,3 +86,15 @@ export interface ListVisitsResponse {
   visits: Visit[];
   total: number;
 }
+
+export interface GetVisitResponse {
+  visit: Visit;
+  customerName?: string | null;
+  customerStreet?: string | null;
+  customerCity?: string | null;
+  customerPostalCode?: string | null;
+  customerPhone?: string | null;
+  customerLat?: number | null;
+  customerLng?: number | null;
+  workItems: import('./workItem').VisitWorkItem[];
+}

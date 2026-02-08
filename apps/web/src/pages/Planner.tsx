@@ -170,6 +170,11 @@ export function Planner() {
     }
 
     async function loadStops() {
+      if (!selectedRouteId) {
+        setSelectedRouteStops([]);
+        setIsLoadingStops(false);
+        return;
+      }
       setIsLoadingStops(true);
       try {
         const result = await routeService.getRoute({ routeId: selectedRouteId });

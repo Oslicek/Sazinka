@@ -40,6 +40,45 @@ export async function createVisit(
 }
 
 /**
+ * Get a single visit by ID (with customer data and work items)
+ */
+export async function getVisit(
+  visitId: string,
+  deps = getDefaultDeps()
+): Promise<{
+  visit: Visit;
+  customerName: string | null;
+  customerStreet: string | null;
+  customerCity: string | null;
+  customerPostalCode: string | null;
+  customerPhone: string | null;
+  customerLat: number | null;
+  customerLng: number | null;
+  workItems: Array<{
+    id: string;
+    visitId: string;
+    deviceId?: string | null;
+    revisionId?: string | null;
+    crewId?: string | null;
+    workType: string;
+    durationMinutes?: number | null;
+    result?: string | null;
+    resultNotes?: string | null;
+    findings?: string | null;
+    requiresFollowUp: boolean;
+    followUpReason?: string | null;
+    createdAt: string;
+  }>;
+}> {
+  const request = createRequest(getToken(), { id: visitId });
+  const response = await deps.request<{ payload: any }>(
+    'sazinka.visit.get',
+    request
+  );
+  return response.payload;
+}
+
+/**
  * List visits with filters
  */
 export async function listVisits(

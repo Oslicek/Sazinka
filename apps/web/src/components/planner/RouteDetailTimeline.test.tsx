@@ -34,6 +34,10 @@ const mockStops: SavedRouteStop[] = [
     address: 'Lesní 123, Brno',
     customerLat: 49.2,
     customerLng: 16.6,
+    scheduledDate: '2026-01-25',
+    scheduledTimeStart: '09:00:00',
+    scheduledTimeEnd: '09:45:00',
+    revisionStatus: 'scheduled',
   },
   {
     id: 's2',
@@ -50,6 +54,10 @@ const mockStops: SavedRouteStop[] = [
     address: 'Hlavní 45, Brno',
     customerLat: 49.21,
     customerLng: 16.61,
+    scheduledDate: null,
+    scheduledTimeStart: null,
+    scheduledTimeEnd: null,
+    revisionStatus: 'upcoming',
   },
 ];
 

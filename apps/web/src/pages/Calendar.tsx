@@ -80,6 +80,9 @@ function getItemLink(item: CalendarItem) {
   if (item.type === 'revision') {
     return { to: '/revisions/$revisionId' as const, params: { revisionId: item.id } };
   }
+  if (item.type === 'visit') {
+    return { to: '/visits/$visitId' as const, params: { visitId: item.id } };
+  }
   if (item.customerId) {
     return { to: '/customers/$customerId' as const, params: { customerId: item.customerId } };
   }

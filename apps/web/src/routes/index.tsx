@@ -17,6 +17,8 @@ import { PlanningInbox } from '@/pages/PlanningInbox';
 import { Admin } from '@/pages/Admin';
 import { Settings } from '@/pages/Settings';
 import { RevisionDetail } from '@/pages/RevisionDetail';
+import { VisitDetail } from '@/pages/VisitDetail';
+import { WorkItemDetail } from '@/pages/WorkItemDetail';
 import { Jobs } from '@/pages/Jobs';
 import { WorkLog } from '@/pages/WorkLog';
 import { Login } from '@/pages/Login';
@@ -154,6 +156,20 @@ const revisionDetailRoute = createRoute({
   component: RevisionDetail,
 });
 
+// Visit Detail
+const visitDetailRoute = createRoute({
+  getParentRoute: () => layoutRoute,
+  path: '/visits/$visitId',
+  component: VisitDetail,
+});
+
+// Work Item Detail
+const workItemDetailRoute = createRoute({
+  getParentRoute: () => layoutRoute,
+  path: '/work-items/$workItemId',
+  component: WorkItemDetail,
+});
+
 // Jobs Dashboard
 const jobsRoute = createRoute({
   getParentRoute: () => layoutRoute,
@@ -190,6 +206,8 @@ export const routeTree = rootRoute.addChildren([
     callQueueRoute,
     todayRedirectRoute,
     revisionDetailRoute,
+    visitDetailRoute,
+    workItemDetailRoute,
     jobsRoute,
     workLogRoute,
     adminRoute,

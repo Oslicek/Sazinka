@@ -212,6 +212,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let visit_update_sub = client.subscribe("sazinka.visit.update").await?;
     let visit_complete_sub = client.subscribe("sazinka.visit.complete").await?;
     let visit_delete_sub = client.subscribe("sazinka.visit.delete").await?;
+    let visit_get_sub = client.subscribe("sazinka.visit.get").await?;
     
     // Crew subjects
     let crew_create_sub = client.subscribe("sazinka.crew.create").await?;
@@ -342,6 +343,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let client_visit_update = client.clone();
     let client_visit_complete = client.clone();
     let client_visit_delete = client.clone();
+    let client_visit_get = client.clone();
     
     // Communication pool clones
     let pool_comm_create = pool.clone();
@@ -355,6 +357,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_visit_update = pool.clone();
     let pool_visit_complete = pool.clone();
     let pool_visit_delete = pool.clone();
+    let pool_visit_get = pool.clone();
     
     // Crew handler clones
     let client_crew_create = client.clone();
@@ -456,6 +459,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let jwt_secret_visit_update = Arc::clone(&jwt_secret);
     let jwt_secret_visit_complete = Arc::clone(&jwt_secret);
     let jwt_secret_visit_delete = Arc::clone(&jwt_secret);
+    let jwt_secret_visit_get = Arc::clone(&jwt_secret);
     
     // JWT secret clones for crew handlers
     let jwt_secret_crew_create = Arc::clone(&jwt_secret);
@@ -752,6 +756,10 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     
     let visit_delete_handle = tokio::spawn(async move {
         visit::handle_delete(client_visit_delete, visit_delete_sub, pool_visit_delete, jwt_secret_visit_delete).await
+    });
+    
+    let visit_get_handle = tokio::spawn(async move {
+        visit::handle_get(client_visit_get, visit_get_sub, pool_visit_get, jwt_secret_visit_get).await
     });
     
     // Crew handlers
@@ -1269,235 +1277,97 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let client_job_history = client.clone();
     let job_history_sub = client.subscribe("sazinka.jobs.history").await?;
     let job_history_handle = tokio::spawn(async move {
-        if let Err(e) = jobs::handle_job_history(client_job_history, job_history_sub).await {
-            error!("Job history handler error: {}", e);
-        }
+        jobs::handle_job_history(client_job_history, job_history_sub).await
     });
     
     let client_job_cancel = client.clone();
     let job_cancel_sub = client.subscribe("sazinka.jobs.cancel").await?;
     let job_cancel_handle = tokio::spawn(async move {
-        if let Err(e) = jobs::handle_job_cancel(client_job_cancel, job_cancel_sub).await {
-            error!("Job cancel handler error: {}", e);
-        }
+        jobs::handle_job_cancel(client_job_cancel, job_cancel_sub).await
     });
     
     let client_job_retry = client.clone();
     let job_retry_sub = client.subscribe("sazinka.jobs.retry").await?;
     let job_retry_handle = tokio::spawn(async move {
-        if let Err(e) = jobs::handle_job_retry(client_job_retry, job_retry_sub).await {
-            error!("Job retry handler error: {}", e);
-        }
+        jobs::handle_job_retry(client_job_retry, job_retry_sub).await
     });
 
     info!("All handlers started, waiting for messages...");
 
     // Wait for any handler to finish (which means an error occurred)
-    select! {
-        result = ping_handle => {
-            error!("Ping handler finished: {:?}", result);
-        }
-        result = customer_create_handle => {
-            error!("Customer create handler finished: {:?}", result);
-        }
-        result = customer_list_handle => {
-            error!("Customer list handler finished: {:?}", result);
-        }
-        result = customer_get_handle => {
-            error!("Customer get handler finished: {:?}", result);
-        }
-        result = customer_update_handle => {
-            error!("Customer update handler finished: {:?}", result);
-        }
-        result = customer_delete_handle => {
-            error!("Customer delete handler finished: {:?}", result);
-        }
-        result = customer_random_handle => {
-            error!("Customer random handler finished: {:?}", result);
-        }
-        result = customer_list_extended_handle => {
-            error!("Customer list extended handler finished: {:?}", result);
-        }
-        result = customer_summary_handle => {
-            error!("Customer summary handler finished: {:?}", result);
-        }
-        result = route_plan_handle => {
-            error!("Route plan handler finished: {:?}", result);
-        }
-        result = route_save_handle => {
-            error!("Route save handler finished: {:?}", result);
-        }
-        result = route_get_handle => {
-            error!("Route get handler finished: {:?}", result);
-        }
-        result = route_list_for_date_handle => {
-            error!("Route list for date handler finished: {:?}", result);
-        }
-        result = route_list_handle => {
-            error!("Route list handler finished: {:?}", result);
-        }
-        result = route_insertion_handle => {
-            error!("Route insertion handler finished: {:?}", result);
-        }
-        result = route_insertion_batch_handle => {
-            error!("Route insertion batch handler finished: {:?}", result);
-        }
-        // Device handlers
-        result = device_create_handle => {
-            error!("Device create handler finished: {:?}", result);
-        }
-        result = device_list_handle => {
-            error!("Device list handler finished: {:?}", result);
-        }
-        result = device_get_handle => {
-            error!("Device get handler finished: {:?}", result);
-        }
-        result = device_update_handle => {
-            error!("Device update handler finished: {:?}", result);
-        }
-        result = device_delete_handle => {
-            error!("Device delete handler finished: {:?}", result);
-        }
-        // Revision handlers
-        result = revision_create_handle => {
-            error!("Revision create handler finished: {:?}", result);
-        }
-        result = revision_list_handle => {
-            error!("Revision list handler finished: {:?}", result);
-        }
-        result = revision_get_handle => {
-            error!("Revision get handler finished: {:?}", result);
-        }
-        result = revision_update_handle => {
-            error!("Revision update handler finished: {:?}", result);
-        }
-        result = revision_delete_handle => {
-            error!("Revision delete handler finished: {:?}", result);
-        }
-        result = revision_complete_handle => {
-            error!("Revision complete handler finished: {:?}", result);
-        }
-        result = revision_upcoming_handle => {
-            error!("Revision upcoming handler finished: {:?}", result);
-        }
-        result = revision_stats_handle => {
-            error!("Revision stats handler finished: {:?}", result);
-        }
-        result = revision_suggest_handle => {
-            error!("Revision suggest handler finished: {:?}", result);
-        }
-        result = revision_queue_handle => {
-            error!("Revision queue handler finished: {:?}", result);
-        }
-        result = revision_snooze_handle => {
-            error!("Revision snooze handler finished: {:?}", result);
-        }
-        result = revision_schedule_handle => {
-            error!("Revision schedule handler finished: {:?}", result);
-        }
-        // Slots handlers
-        result = slots_suggest_handle => {
-            error!("Slots suggest handler finished: {:?}", result);
-        }
-        // Settings handlers
-        result = settings_get_handle => {
-            error!("Settings get handler finished: {:?}", result);
-        }
-        result = settings_work_handle => {
-            error!("Settings work handler finished: {:?}", result);
-        }
-        result = settings_business_handle => {
-            error!("Settings business handler finished: {:?}", result);
-        }
-        result = settings_email_handle => {
-            error!("Settings email handler finished: {:?}", result);
-        }
-        result = settings_preferences_handle => {
-            error!("Settings preferences handler finished: {:?}", result);
-        }
-        // Depot handlers
-        result = depot_list_handle => {
-            error!("Depot list handler finished: {:?}", result);
-        }
-        result = depot_create_handle => {
-            error!("Depot create handler finished: {:?}", result);
-        }
-        result = depot_update_handle => {
-            error!("Depot update handler finished: {:?}", result);
-        }
-        result = depot_delete_handle => {
-            error!("Depot delete handler finished: {:?}", result);
-        }
-        result = depot_geocode_handle => {
-            error!("Depot geocode handler finished: {:?}", result);
-        }
-        // Communication handlers
-        result = comm_create_handle => {
-            error!("Communication create handler finished: {:?}", result);
-        }
-        result = comm_list_handle => {
-            error!("Communication list handler finished: {:?}", result);
-        }
-        result = comm_update_handle => {
-            error!("Communication update handler finished: {:?}", result);
-        }
-        result = comm_delete_handle => {
-            error!("Communication delete handler finished: {:?}", result);
-        }
-        // Visit handlers
-        result = visit_create_handle => {
-            error!("Visit create handler finished: {:?}", result);
-        }
-        result = visit_list_handle => {
-            error!("Visit list handler finished: {:?}", result);
-        }
-        result = visit_update_handle => {
-            error!("Visit update handler finished: {:?}", result);
-        }
-        result = visit_complete_handle => {
-            error!("Visit complete handler finished: {:?}", result);
-        }
-        result = visit_delete_handle => {
-            error!("Visit delete handler finished: {:?}", result);
-        }
-        // Crew handlers
-        result = crew_create_handle => {
-            error!("Crew create handler finished: {:?}", result);
-        }
-        result = crew_list_handle => {
-            error!("Crew list handler finished: {:?}", result);
-        }
-        result = crew_update_handle => {
-            error!("Crew update handler finished: {:?}", result);
-        }
-        result = crew_delete_handle => {
-            error!("Crew delete handler finished: {:?}", result);
-        }
-        // Work item handlers
-        result = work_item_create_handle => {
-            error!("Work item create handler finished: {:?}", result);
-        }
-        result = work_item_list_handle => {
-            error!("Work item list handler finished: {:?}", result);
-        }
-        result = work_item_get_handle => {
-            error!("Work item get handler finished: {:?}", result);
-        }
-        result = work_item_complete_handle => {
-            error!("Work item complete handler finished: {:?}", result);
-        }
-        // Old sync import handlers removed - now using async processors
-        // Job management handlers
-        result = job_history_handle => {
-            error!("Job history handler finished: {:?}", result);
-        }
-        result = job_cancel_handle => {
-            error!("Job cancel handler finished: {:?}", result);
-        }
-        result = job_retry_handle => {
-            error!("Job retry handler finished: {:?}", result);
-        }
-    }
+    // Using futures::future::select_all to avoid select! macro 64-branch limit
+    use futures::future::FutureExt;
+    
+    let handles: Vec<_> = vec![
+        ping_handle.boxed(),
+        customer_create_handle.boxed(),
+        customer_list_handle.boxed(),
+        customer_get_handle.boxed(),
+        customer_update_handle.boxed(),
+        customer_delete_handle.boxed(),
+        customer_random_handle.boxed(),
+        customer_list_extended_handle.boxed(),
+        customer_summary_handle.boxed(),
+        route_plan_handle.boxed(),
+        route_save_handle.boxed(),
+        route_get_handle.boxed(),
+        route_list_for_date_handle.boxed(),
+        route_list_handle.boxed(),
+        route_insertion_handle.boxed(),
+        route_insertion_batch_handle.boxed(),
+        device_create_handle.boxed(),
+        device_list_handle.boxed(),
+        device_get_handle.boxed(),
+        device_update_handle.boxed(),
+        device_delete_handle.boxed(),
+        revision_create_handle.boxed(),
+        revision_list_handle.boxed(),
+        revision_get_handle.boxed(),
+        revision_update_handle.boxed(),
+        revision_delete_handle.boxed(),
+        revision_complete_handle.boxed(),
+        revision_upcoming_handle.boxed(),
+        revision_stats_handle.boxed(),
+        revision_suggest_handle.boxed(),
+        revision_queue_handle.boxed(),
+        revision_snooze_handle.boxed(),
+        revision_schedule_handle.boxed(),
+        slots_suggest_handle.boxed(),
+        settings_get_handle.boxed(),
+        settings_work_handle.boxed(),
+        settings_business_handle.boxed(),
+        settings_email_handle.boxed(),
+        settings_preferences_handle.boxed(),
+        depot_list_handle.boxed(),
+        depot_create_handle.boxed(),
+        depot_update_handle.boxed(),
+        depot_delete_handle.boxed(),
+        depot_geocode_handle.boxed(),
+        comm_create_handle.boxed(),
+        comm_list_handle.boxed(),
+        comm_update_handle.boxed(),
+        comm_delete_handle.boxed(),
+        visit_create_handle.boxed(),
+        visit_list_handle.boxed(),
+        visit_update_handle.boxed(),
+        visit_complete_handle.boxed(),
+        visit_delete_handle.boxed(),
+        visit_get_handle.boxed(),
+        crew_create_handle.boxed(),
+        crew_list_handle.boxed(),
+        crew_update_handle.boxed(),
+        crew_delete_handle.boxed(),
+        work_item_create_handle.boxed(),
+        work_item_list_handle.boxed(),
+        work_item_get_handle.boxed(),
+        work_item_complete_handle.boxed(),
+        job_history_handle.boxed(),
+        job_cancel_handle.boxed(),
+        job_retry_handle.boxed(),
+    ];
+
+    let (result, _index, _remaining) = futures::future::select_all(handles).await;
+    error!("A handler finished unexpectedly: {:?}", result);
 
     Ok(())
 }
