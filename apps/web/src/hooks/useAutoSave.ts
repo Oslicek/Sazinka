@@ -39,8 +39,9 @@ export function useAutoSave({
   // Track whether a save is in-flight to prevent double saves
   const isSavingRef = useRef(false);
 
-  const doSave = useCallback(async () => {
-    if (isSavingRef.current) return;
+  /** Returns true on success, false on failure */
+  const doSave = useCallback(async (): Promise<boolean> => {
+    if (isSavingRef.current) return false;
     isSavingRef.current = true;
     setIsSaving(true);
     setSaveError(null);
@@ -49,28 +50,53 @@ export function useAutoSave({
       await saveFnRef.current();
       setLastSaved(new Date());
       setSaveError(null);
+      return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setSaveError(message);
+      return false;
     } finally {
       setIsSaving(false);
       isSavingRef.current = false;
     }
   }, []);
 
+  // Auto-retry counter — bumped after each failed save so the effect re-fires
+  const [retryAttempt, setRetryAttempt] = useState(0);
+
+  // Reset retry counter when changes are cleared (new change cycle)
+  const prevHasChanges = useRef(hasChanges);
+  if (!hasChanges && prevHasChanges.current) {
+    // hasChanges went from true → false: reset retry
+    if (retryAttempt > 0) setRetryAttempt(0);
+  }
+  prevHasChanges.current = hasChanges;
+
   // Debounced auto-save effect
   useEffect(() => {
     if (!hasChanges || !enabled) return;
 
-    const timer = setTimeout(() => {
-      doSave();
-    }, debounceMs);
+    // After a failure, use exponential backoff: 3s, 6s, 12s, max 30s
+    const delay = retryAttempt > 0
+      ? Math.min(3000 * Math.pow(2, retryAttempt - 1), 30000)
+      : debounceMs;
+
+    const timer = setTimeout(async () => {
+      const success = await doSave();
+      if (success) {
+        if (retryAttempt > 0) setRetryAttempt(0);
+      } else {
+        // Bump retry counter so this effect re-fires with longer delay
+        setRetryAttempt((prev) => prev + 1);
+      }
+    }, delay);
 
     return () => clearTimeout(timer);
-  }, [hasChanges, enabled, debounceMs, doSave]);
+  }, [hasChanges, enabled, debounceMs, doSave, retryAttempt]);
 
-  // Retry: immediate save
+  // Manual retry: immediate save
   const retry = useCallback(() => {
+    setRetryAttempt(0);
     doSave();
   }, [doSave]);
 

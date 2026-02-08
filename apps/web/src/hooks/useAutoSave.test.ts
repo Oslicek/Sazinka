@@ -212,4 +212,37 @@ describe('useAutoSave', () => {
 
     expect(saveFn).not.toHaveBeenCalled();
   });
+
+  it('should auto-retry with backoff after failure', async () => {
+    const saveFn = vi.fn()
+      .mockRejectedValueOnce(new Error('Fail 1'))
+      .mockRejectedValueOnce(new Error('Fail 2'))
+      .mockResolvedValueOnce(undefined);
+
+    const { result } = renderHook(() =>
+      useAutoSave({ saveFn, hasChanges: true, debounceMs: 500 })
+    );
+
+    // First attempt at 500ms
+    await act(async () => {
+      vi.advanceTimersByTime(600);
+    });
+    expect(saveFn).toHaveBeenCalledTimes(1);
+    expect(result.current.saveError).toBe('Fail 1');
+
+    // Auto-retry #1 at ~3000ms backoff
+    await act(async () => {
+      vi.advanceTimersByTime(3100);
+    });
+    expect(saveFn).toHaveBeenCalledTimes(2);
+    expect(result.current.saveError).toBe('Fail 2');
+
+    // Auto-retry #2 at ~6000ms backoff
+    await act(async () => {
+      vi.advanceTimersByTime(6100);
+    });
+    expect(saveFn).toHaveBeenCalledTimes(3);
+    expect(result.current.saveError).toBeNull();
+    expect(result.current.lastSaved).toBeInstanceOf(Date);
+  });
 });
