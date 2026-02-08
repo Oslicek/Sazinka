@@ -133,6 +133,13 @@
   font-size: 0.875rem;
   font-weight: 600;
   color: var(--color-text);
+  text-decoration: none;
+  transition: color 0.15s;
+  cursor: pointer;
+}
+
+.dateGroupLabel:hover {
+  color: var(--color-primary);
 }
 
 .dateGroupCount {
@@ -180,6 +187,16 @@
 
 .row:hover {
   background-color: var(--color-bg-secondary);
+  cursor: pointer;
+}
+
+/* Cell links */
+.cellLink {
+  display: block;
+  width: 100%;
+  height: 100%;
+  color: inherit;
+  text-decoration: none;
 }
 
 /* Column widths */

@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { useSearch, useNavigate } from '@tanstack/react-router';
+import { useSearch, useNavigate, Link } from '@tanstack/react-router';
 import { useNatsStore } from '../stores/natsStore';
 import * as settingsService from '../services/settingsService';
 import * as visitService from '../services/visitService';
@@ -288,7 +288,12 @@ export function WorkLog() {
           {groupedVisits.map((group) => (
             <div key={group.date} className={styles.dateGroup}>
               <div className={styles.dateGroupHeader}>
-                <span className={styles.dateGroupLabel}>{formatDate(group.date)}</span>
+                <Link
+                  to="/calendar"
+                  className={styles.dateGroupLabel}
+                >
+                  {formatDate(group.date)}
+                </Link>
                 <span className={styles.dateGroupCount}>{group.visits.length}</span>
               </div>
               <table className={styles.table}>
@@ -307,28 +312,70 @@ export function WorkLog() {
                   {group.visits.map((visit) => (
                     <tr key={visit.id} className={styles.row}>
                       <td className={styles.tdTime}>
-                        {formatTime(visit.scheduledTimeStart)}
-                        {visit.scheduledTimeEnd ? ` – ${formatTime(visit.scheduledTimeEnd)}` : ''}
+                        <Link
+                          to="/visits/$visitId"
+                          params={{ visitId: visit.id }}
+                          className={styles.cellLink}
+                        >
+                          {formatTime(visit.scheduledTimeStart)}
+                          {visit.scheduledTimeEnd ? ` – ${formatTime(visit.scheduledTimeEnd)}` : ''}
+                        </Link>
                       </td>
                       <td className={styles.tdCustomer}>
-                        {visit.customerName || '–'}
+                        <Link
+                          to="/customers/$customerId"
+                          params={{ customerId: visit.customerId }}
+                          className={styles.cellLink}
+                        >
+                          {visit.customerName || '–'}
+                        </Link>
                       </td>
                       <td className={styles.tdAddress}>
-                        {[visit.customerStreet, visit.customerCity].filter(Boolean).join(', ') || '–'}
+                        <Link
+                          to="/customers/$customerId"
+                          params={{ customerId: visit.customerId }}
+                          className={styles.cellLink}
+                        >
+                          {[visit.customerStreet, visit.customerCity].filter(Boolean).join(', ') || '–'}
+                        </Link>
                       </td>
                       <td className={styles.tdType}>
-                        {visitService.getVisitTypeLabel(visit.visitType)}
+                        <Link
+                          to="/visits/$visitId"
+                          params={{ visitId: visit.id }}
+                          className={styles.cellLink}
+                        >
+                          {visitService.getVisitTypeLabel(visit.visitType)}
+                        </Link>
                       </td>
                       <td className={styles.tdCrew}>
-                        {getCrewName(visit.crewId)}
+                        <Link
+                          to="/visits/$visitId"
+                          params={{ visitId: visit.id }}
+                          className={styles.cellLink}
+                        >
+                          {getCrewName(visit.crewId)}
+                        </Link>
                       </td>
                       <td className={styles.tdStatus}>
-                        <span className={`${styles.badge} ${getStatusBadgeClass(visit.status)}`}>
-                          {visitService.getVisitStatusIcon(visit.status)} {visitService.getVisitStatusLabel(visit.status)}
-                        </span>
+                        <Link
+                          to="/visits/$visitId"
+                          params={{ visitId: visit.id }}
+                          className={styles.cellLink}
+                        >
+                          <span className={`${styles.badge} ${getStatusBadgeClass(visit.status)}`}>
+                            {visitService.getVisitStatusIcon(visit.status)} {visitService.getVisitStatusLabel(visit.status)}
+                          </span>
+                        </Link>
                       </td>
                       <td className={styles.tdResult}>
-                        {visit.result ? visitService.getVisitResultLabel(visit.result) : '–'}
+                        <Link
+                          to="/visits/$visitId"
+                          params={{ visitId: visit.id}}
+                          className={styles.cellLink}
+                        >
+                          {visit.result ? visitService.getVisitResultLabel(visit.result) : '–'}
+                        </Link>
                       </td>
                     </tr>
                   ))}
