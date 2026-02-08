@@ -514,7 +514,6 @@ pub async fn get_call_queue(
         "r.status IN ('upcoming', 'scheduled')".to_string(),
         "r.scheduled_date IS NULL".to_string(),
         "(r.snooze_until IS NULL OR r.snooze_until <= $2)".to_string(),
-        "r.due_date BETWEEN $2 - INTERVAL '30 days' AND $2 + INTERVAL '60 days'".to_string(),
     ];
 
     // Next parameter index (after user_id=$1, today=$2, limit=$3, offset=$4)

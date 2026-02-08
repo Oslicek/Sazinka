@@ -177,6 +177,7 @@ export function PlanningInbox() {
       date: context.date,
       stops: routeStops.map((s) => ({
         customerId: s.id,
+        revisionId: s.revisionId,
         order: s.order ?? 0,
         eta: s.eta,
         etd: s.etd,
@@ -270,11 +271,12 @@ export function PlanningInbox() {
     async function loadRoute() {
       setIsLoadingRoute(true);
       try {
-        const response = await routeService.getRoute(dateToLoad);
+        const response = await routeService.getRoute({ date: dateToLoad });
         
         if (response.route && response.stops.length > 0) {
           const stops: MapStop[] = response.stops.map((stop) => ({
             id: stop.customerId,
+            revisionId: stop.revisionId ?? undefined,
             name: stop.customerName,
             address: stop.address,
             coordinates: {
@@ -284,6 +286,9 @@ export function PlanningInbox() {
             order: stop.stopOrder,
             eta: stop.estimatedArrival ?? undefined,
             etd: stop.estimatedDeparture ?? undefined,
+            scheduledDate: stop.scheduledDate ?? undefined,
+            scheduledTimeStart: stop.scheduledTimeStart ?? undefined,
+            scheduledTimeEnd: stop.scheduledTimeEnd ?? undefined,
           }));
           setRouteStops(stops);
           
@@ -926,6 +931,20 @@ export function PlanningInbox() {
         )
       );
       
+      // Update route stop if this candidate is already in the route
+      setRouteStops((prev) =>
+        prev.map((stop) =>
+          stop.id === candidate.customerId
+            ? {
+                ...stop,
+                scheduledDate: slot.date,
+                scheduledTimeStart: slot.timeStart,
+                scheduledTimeEnd: slot.timeEnd,
+              }
+            : stop
+        )
+      );
+      
       // Move to next candidate automatically
       selectNextCandidate(candidate.customerId);
       
@@ -1037,6 +1056,7 @@ export function PlanningInbox() {
 
       newStops.push({
         id: candidate.customerId,
+        revisionId: candidate.id,
         name: candidate.customerName,
         address: `${candidate.customerStreet ?? ''}, ${candidate.customerCity ?? ''}`.replace(/^, |, $/g, ''),
         coordinates: {
@@ -1044,6 +1064,9 @@ export function PlanningInbox() {
           lng: candidate.customerLng,
         },
         order: routeStops.length + newStops.length + 1,
+        scheduledDate: candidate._scheduledDate,
+        scheduledTimeStart: candidate._scheduledTimeStart,
+        scheduledTimeEnd: candidate._scheduledTimeEnd,
       });
     });
 
@@ -1063,6 +1086,7 @@ export function PlanningInbox() {
 
     const newStop: MapStop = {
       id: candidate.customerId,
+      revisionId: candidate.id,
       name: candidate.customerName,
       address: `${candidate.customerStreet ?? ''}, ${candidate.customerCity ?? ''}`.replace(/^, |, $/g, ''),
       coordinates: {
@@ -1070,6 +1094,9 @@ export function PlanningInbox() {
         lng: candidate.customerLng,
       },
       order: routeStops.length + 1,
+      scheduledDate: candidate._scheduledDate,
+      scheduledTimeStart: candidate._scheduledTimeStart,
+      scheduledTimeEnd: candidate._scheduledTimeEnd,
     };
 
     setRouteStops((prev) => [...prev, newStop]);

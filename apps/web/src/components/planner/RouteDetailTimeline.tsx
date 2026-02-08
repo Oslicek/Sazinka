@@ -22,6 +22,11 @@ function formatTime(time: string | null): string {
   return time.substring(0, 5);
 }
 
+function formatScheduledDate(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric', year: 'numeric' });
+}
+
 function getStatusBadge(status: string): { label: string; className: string } {
   switch (status) {
     case 'confirmed':
@@ -84,11 +89,15 @@ export function RouteDetailTimeline({
             >
               <div className={styles.segmentLine} />
               <div className={styles.segmentInfo}>
-                {stop.distanceFromPreviousKm != null && (
-                  <span>{stop.distanceFromPreviousKm.toFixed(1)} km</span>
+                {stop.distanceFromPreviousKm != null && stop.distanceFromPreviousKm > 0 ? (
+                  <span className={styles.segmentDistance}>{stop.distanceFromPreviousKm.toFixed(1)} km</span>
+                ) : (
+                  <span className={styles.segmentDistance}>—</span>
                 )}
-                {stop.durationFromPreviousMinutes != null && (
-                  <span>{stop.durationFromPreviousMinutes} min</span>
+                {stop.durationFromPreviousMinutes != null && stop.durationFromPreviousMinutes > 0 ? (
+                  <span className={styles.segmentDuration}>{stop.durationFromPreviousMinutes} min</span>
+                ) : (
+                  <span className={styles.segmentDuration}>—</span>
                 )}
               </div>
             </div>
@@ -118,6 +127,19 @@ export function RouteDetailTimeline({
                   <span className={styles.timeSeparator}>–</span>
                   <span>{formatTime(stop.estimatedDeparture)}</span>
                 </div>
+                {stop.scheduledDate && (
+                  <div className={styles.scheduledInfo}>
+                    <span className={styles.scheduledIcon}>&#x1F4C5;</span>
+                    <span>{formatScheduledDate(stop.scheduledDate)}</span>
+                    {(stop.scheduledTimeStart || stop.scheduledTimeEnd) && (
+                      <span className={styles.scheduledTime}>
+                        {formatTime(stop.scheduledTimeStart)}
+                        {stop.scheduledTimeStart && stop.scheduledTimeEnd ? ' – ' : ''}
+                        {formatTime(stop.scheduledTimeEnd)}
+                      </span>
+                    )}
+                  </div>
+                )}
                 <div className={styles.stopAddress}>{stop.address}</div>
               </div>
             </div>

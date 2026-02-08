@@ -432,7 +432,8 @@ pub struct SaveRouteResponse {
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetRouteRequest {
-    pub date: NaiveDate,
+    pub date: Option<NaiveDate>,
+    pub route_id: Option<Uuid>,
 }
 
 /// Response with saved route data
@@ -515,7 +516,7 @@ pub async fn handle_save(
             user_id,
             None, // crew_id - not specified in save request yet
             payload.date,
-            "saved",
+            "draft",
             Some(payload.total_distance_km),
             Some(payload.total_duration_minutes),
             Some(payload.optimization_score),
@@ -611,14 +612,26 @@ pub async fn handle_get(
             }
         };
 
-        info!("Getting route for date {}", request.payload.date);
+        // Lookup route by ID or by date
+        let route_result = if let Some(route_id) = request.payload.route_id {
+            info!("Getting route by id {}", route_id);
+            queries::route::get_route_by_id(&pool, user_id, route_id).await
+        } else if let Some(date) = request.payload.date {
+            info!("Getting route for date {}", date);
+            queries::route::get_route_for_date(&pool, user_id, date).await
+        } else {
+            error!("Neither routeId nor date provided");
+            let error = ErrorResponse::new(request.id, "INVALID_REQUEST", "Either routeId or date is required");
+            let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            continue;
+        };
 
-        // Get route
-        match queries::route::get_route_for_date(&pool, user_id, request.payload.date).await {
+        match route_result {
             Ok(Some(route)) => {
                 // Get stops with info
                 match queries::route::get_route_stops_with_info(&pool, route.id).await {
                     Ok(stops) => {
+                        let stop_count = stops.len();
                         let response = SuccessResponse::new(
                             request.id,
                             GetRouteResponse {
@@ -627,7 +640,7 @@ pub async fn handle_get(
                             },
                         );
                         let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
-                        debug!("Returned saved route");
+                        debug!("Returned saved route with {} stops", stop_count);
                     }
                     Err(e) => {
                         error!("Failed to get route stops: {}", e);
@@ -637,7 +650,6 @@ pub async fn handle_get(
                 }
             }
             Ok(None) => {
-                // No saved route for this date
                 let response = SuccessResponse::new(
                     request.id,
                     GetRouteResponse {
@@ -646,7 +658,7 @@ pub async fn handle_get(
                     },
                 );
                 let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
-                debug!("No saved route for date {}", request.payload.date);
+                debug!("No route found");
             }
             Err(e) => {
                 error!("Failed to get route: {}", e);
@@ -699,14 +711,23 @@ pub async fn handle_list_for_date(
         };
 
         // Load routes for date
-        match queries::route::list_routes_for_date(&pool, user_id, request.payload.date).await {
+        let date = match request.payload.date {
+            Some(d) => d,
+            None => {
+                let error = ErrorResponse::new(request.id, "INVALID_REQUEST", "date is required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        match queries::route::list_routes_for_date(&pool, user_id, date).await {
             Ok(routes) => {
                 let response = SuccessResponse::new(
                     request.id,
                     ListRoutesForDateResponse { routes },
                 );
                 let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
-                debug!("Returned {} routes for date {}", response.payload.routes.len(), request.payload.date);
+                debug!("Returned {} routes for date {}", response.payload.routes.len(), date);
             }
             Err(e) => {
                 error!("Failed to list routes: {}", e);

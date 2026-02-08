@@ -228,7 +228,7 @@ export function CustomerDetail() {
 
     try {
       // Get the current route for the selected date
-      const routeResponse = await routeService.getRoute(date);
+      const routeResponse = await routeService.getRoute({ date });
       
       // Get depot coordinates (use first depot or default)
       const depot = depots[0];

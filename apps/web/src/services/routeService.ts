@@ -62,7 +62,7 @@ export interface SavedRoute {
 export interface SavedRouteStop {
   id: string;
   routeId: string;
-  revisionId: string;
+  revisionId: string | null;
   stopOrder: number;
   estimatedArrival: string | null;
   estimatedDeparture: string | null;
@@ -74,6 +74,9 @@ export interface SavedRouteStop {
   address: string;
   customerLat: number | null;
   customerLng: number | null;
+  scheduledDate: string | null;
+  scheduledTimeStart: string | null;
+  scheduledTimeEnd: string | null;
 }
 
 export interface GetRouteResponse {
@@ -135,13 +138,17 @@ export async function saveRoute(
 }
 
 /**
- * Get a saved route for a specific date
+ * Get a saved route by route ID or by date.
+ * When routeId is provided, it takes precedence over date.
  */
 export async function getRoute(
-  date: string,
+  params: { routeId: string } | { date: string },
   deps = { request: useNatsStore.getState().request }
 ): Promise<GetRouteResponse> {
-  const req = createRequest(getToken(), { date });
+  const payload = 'routeId' in params
+    ? { routeId: params.routeId }
+    : { date: params.date };
+  const req = createRequest(getToken(), payload);
   const response = await deps.request<typeof req, NatsResponse<GetRouteResponse>>(
     'sazinka.route.get',
     req,
@@ -161,7 +168,7 @@ export async function hasRouteForDate(
   date: string,
   deps = { request: useNatsStore.getState().request }
 ): Promise<boolean> {
-  const response = await getRoute(date, deps);
+  const response = await getRoute({ date }, deps);
   return response.route !== null;
 }
 

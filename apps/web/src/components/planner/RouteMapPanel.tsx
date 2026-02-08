@@ -9,12 +9,16 @@ import styles from './RouteMapPanel.module.css';
 
 export interface MapStop {
   id: string;
+  revisionId?: string;
   name: string;
   address: string;
   coordinates: { lat: number; lng: number };
   eta?: string;
   etd?: string;
   order?: number;
+  scheduledDate?: string;
+  scheduledTimeStart?: string;
+  scheduledTimeEnd?: string;
 }
 
 export interface MapDepot {

@@ -2,7 +2,7 @@
 
 use sqlx::PgPool;
 use uuid::Uuid;
-use chrono::{NaiveDate, NaiveTime};
+use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 use anyhow::Result;
 
 use crate::types::route::Route;
@@ -48,6 +48,30 @@ pub async fn get_route_for_date(
     Ok(route)
 }
 
+/// Get a specific route by ID (with user check)
+pub async fn get_route_by_id(
+    pool: &PgPool,
+    user_id: Uuid,
+    route_id: Uuid,
+) -> Result<Option<Route>> {
+    let route = sqlx::query_as::<_, Route>(
+        r#"
+        SELECT
+            id, user_id, crew_id, date, status::text,
+            total_distance_km, total_duration_minutes,
+            optimization_score, created_at, updated_at
+        FROM routes
+        WHERE id = $1 AND user_id = $2
+        "#
+    )
+    .bind(route_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(route)
+}
+
 /// Route with crew info and stops count
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -62,8 +86,8 @@ pub struct RouteWithCrewInfo {
     pub total_duration_minutes: Option<i32>,
     pub optimization_score: Option<i32>,
     pub stops_count: Option<i64>,
-    pub created_at: chrono::NaiveDateTime,
-    pub updated_at: chrono::NaiveDateTime,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 /// List all routes for a specific date (all crews)
@@ -114,37 +138,70 @@ pub async fn upsert_route(
     total_duration_minutes: Option<i32>,
     optimization_score: Option<i32>,
 ) -> Result<Route> {
-    let route = sqlx::query_as::<_, Route>(
-        r#"
-        INSERT INTO routes (
-            id, user_id, crew_id, date, status,
-            total_distance_km, total_duration_minutes,
-            optimization_score, created_at, updated_at
+    // Two-step upsert to handle NULL crew_id (NULL != NULL in SQL unique index)
+    let existing = if let Some(cid) = crew_id {
+        sqlx::query_as::<_, Route>(
+            "SELECT id, user_id, crew_id, date, status::text, total_distance_km, total_duration_minutes, optimization_score, created_at, updated_at FROM routes WHERE user_id = $1 AND date = $2 AND crew_id = $3"
         )
-        VALUES ($1, $2, $3, $4, $5::route_status, $6, $7, $8, NOW(), NOW())
-        ON CONFLICT (user_id, date, crew_id)
-        DO UPDATE SET
-            status = $5::route_status,
-            total_distance_km = $6,
-            total_duration_minutes = $7,
-            optimization_score = $8,
-            updated_at = NOW()
-        RETURNING
-            id, user_id, crew_id, date, status::text,
-            total_distance_km, total_duration_minutes,
-            optimization_score, created_at, updated_at
-        "#
-    )
-    .bind(Uuid::new_v4())
-    .bind(user_id)
-    .bind(crew_id)
-    .bind(date)
-    .bind(status)
-    .bind(total_distance_km)
-    .bind(total_duration_minutes)
-    .bind(optimization_score)
-    .fetch_one(pool)
-    .await?;
+        .bind(user_id).bind(date).bind(cid)
+        .fetch_optional(pool).await?
+    } else {
+        sqlx::query_as::<_, Route>(
+            "SELECT id, user_id, crew_id, date, status::text, total_distance_km, total_duration_minutes, optimization_score, created_at, updated_at FROM routes WHERE user_id = $1 AND date = $2 AND crew_id IS NULL"
+        )
+        .bind(user_id).bind(date)
+        .fetch_optional(pool).await?
+    };
+
+    let route = if let Some(existing_route) = existing {
+        // Update existing route
+        sqlx::query_as::<_, Route>(
+            r#"
+            UPDATE routes SET
+                status = $2::route_status,
+                total_distance_km = $3,
+                total_duration_minutes = $4,
+                optimization_score = $5,
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING
+                id, user_id, crew_id, date, status::text,
+                total_distance_km, total_duration_minutes,
+                optimization_score, created_at, updated_at
+            "#
+        )
+        .bind(existing_route.id)
+        .bind(status)
+        .bind(total_distance_km)
+        .bind(total_duration_minutes)
+        .bind(optimization_score)
+        .fetch_one(pool).await?
+    } else {
+        // Insert new route
+        sqlx::query_as::<_, Route>(
+            r#"
+            INSERT INTO routes (
+                id, user_id, crew_id, date, status,
+                total_distance_km, total_duration_minutes,
+                optimization_score, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5::route_status, $6, $7, $8, NOW(), NOW())
+            RETURNING
+                id, user_id, crew_id, date, status::text,
+                total_distance_km, total_duration_minutes,
+                optimization_score, created_at, updated_at
+            "#
+        )
+        .bind(Uuid::new_v4())
+        .bind(user_id)
+        .bind(crew_id)
+        .bind(date)
+        .bind(status)
+        .bind(total_distance_km)
+        .bind(total_duration_minutes)
+        .bind(optimization_score)
+        .fetch_one(pool).await?
+    };
 
     Ok(route)
 }
@@ -220,6 +277,9 @@ pub struct RouteStopWithInfo {
     pub address: Option<String>,
     pub customer_lat: Option<f64>,
     pub customer_lng: Option<f64>,
+    pub scheduled_date: Option<NaiveDate>,
+    pub scheduled_time_start: Option<NaiveTime>,
+    pub scheduled_time_end: Option<NaiveTime>,
 }
 
 /// Get all stops for a route with customer info
@@ -238,9 +298,13 @@ pub async fn get_route_stops_with_info(
             c.name as customer_name,
             CONCAT(COALESCE(c.street, ''), ', ', COALESCE(c.city, '')) as address,
             c.lat as customer_lat,
-            c.lng as customer_lng
+            c.lng as customer_lng,
+            rev.scheduled_date,
+            rev.scheduled_time_start,
+            rev.scheduled_time_end
         FROM route_stops rs
         INNER JOIN customers c ON rs.customer_id = c.id
+        LEFT JOIN revisions rev ON rs.revision_id = rev.id
         WHERE rs.route_id = $1
         ORDER BY rs.stop_order ASC
         "#
