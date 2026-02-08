@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Link, useSearch, useNavigate } from '@tanstack/react-router';
 import maplibregl from 'maplibre-gl';
 import { useNatsStore } from '../stores/natsStore';
+import { useAutoSave } from '../hooks/useAutoSave';
 import type { PlannedRouteStop } from '@shared/route';
 import {
   splitGeometryIntoSegments,
@@ -116,12 +117,31 @@ export function Planner() {
   const [lockedStops, setLockedStops] = useState<Set<string>>(new Set());
   const [isManuallyReordered, setIsManuallyReordered] = useState(false);
   
-  // Route persistence state
-  const [isSaving, setIsSaving] = useState(false);
+  // Route persistence state (auto-save)
   const [isLoadingSaved, setIsLoadingSaved] = useState(false);
   const [hasSavedRoute, setHasSavedRoute] = useState(false);
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
   
+  const autoSaveFn = useCallback(async () => {
+    if (stops.length === 0) return;
+    const saveStops = stops.map((stop) => routeService.toSaveRouteStop(stop));
+    await routeService.saveRoute({
+      date: selectedDate,
+      stops: saveStops,
+      totalDistanceKm: totalDistance,
+      totalDurationMinutes: totalDuration,
+      optimizationScore: optimizationScore,
+    });
+    setHasSavedRoute(true);
+    setIsManuallyReordered(false);
+  }, [stops, selectedDate, totalDistance, totalDuration, optimizationScore]);
+
+  const { isSaving, lastSaved, saveError, retry: retrySave } = useAutoSave({
+    saveFn: autoSaveFn,
+    hasChanges: isManuallyReordered && stops.length > 0,
+    debounceMs: 1500,
+    enabled: stops.length > 0,
+  });
+
   // Route job state (async optimization)
   const [routeJob, setRouteJob] = useState<RouteJobStatusUpdate | null>(null);
   const routeJobUnsubscribeRef = useRef<(() => void) | null>(null);
@@ -906,13 +926,6 @@ export function Planner() {
     setLockedStops(new Set());
     setIsManuallyReordered(false);
   }, [clearMarkers]);
-
-  // Discard changes
-  const handleDiscardChanges = useCallback(() => {
-    if (confirm('Opravdu chcete zahodit změny?')) {
-      handleClearRoute();
-    }
-  }, [handleClearRoute]);
 
   // Handle drag end
   const handleDragEnd = useCallback((event: DragEndEvent) => {

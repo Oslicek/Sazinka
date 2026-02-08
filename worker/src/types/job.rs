@@ -315,8 +315,9 @@ impl Default for JobPriority {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoutePlanJobRequest {
-    /// User making the request
-    pub user_id: Uuid,
+    /// User making the request (optional - filled from Request wrapper if missing)
+    #[serde(default)]
+    pub user_id: Option<Uuid>,
     /// Customers to include in route
     pub customer_ids: Vec<Uuid>,
     /// Date for the route
