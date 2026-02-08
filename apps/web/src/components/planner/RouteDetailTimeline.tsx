@@ -27,7 +27,15 @@ function formatScheduledDate(dateStr: string): string {
   return d.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric', year: 'numeric' });
 }
 
-function getStatusBadge(revisionStatus: string | null): { label: string; className: string } {
+function getStatusBadge(
+  revisionStatus: string | null, 
+  hasScheduledTime: boolean
+): { label: string; className: string } {
+  // If has scheduled time but status is not confirmed, treat as scheduled
+  if (hasScheduledTime && revisionStatus !== 'confirmed' && revisionStatus !== 'completed' && revisionStatus !== 'cancelled') {
+    return { label: 'Naplánováno', className: styles.badgeScheduled };
+  }
+  
   switch (revisionStatus) {
     case 'confirmed':
       return { label: 'Potvrzeno', className: styles.badgeConfirmed };
@@ -41,6 +49,13 @@ function getStatusBadge(revisionStatus: string | null): { label: string; classNa
     default:
       return { label: 'Nepotvrzeno', className: styles.badgePending };
   }
+}
+
+function calculateTimeDifference(time1: string | null, time2: string | null): number | null {
+  if (!time1 || !time2) return null;
+  const [h1, m1] = time1.split(':').map(Number);
+  const [h2, m2] = time2.split(':').map(Number);
+  return Math.abs((h1 * 60 + m1) - (h2 * 60 + m2));
 }
 
 export function RouteDetailTimeline({
@@ -70,8 +85,14 @@ export function RouteDetailTimeline({
       </div>
 
       {stops.map((stop, index) => {
-        const badge = getStatusBadge(stop.revisionStatus);
+        const hasScheduledTime = !!(stop.scheduledTimeStart && stop.scheduledTimeEnd);
+        const badge = getStatusBadge(stop.revisionStatus, hasScheduledTime);
         const isSelected = stop.customerId === selectedStopId;
+        
+        // Calculate time difference between scheduled and estimated
+        const timeDiffStart = calculateTimeDifference(stop.scheduledTimeStart, stop.estimatedArrival);
+        const timeDiffEnd = calculateTimeDifference(stop.scheduledTimeEnd, stop.estimatedDeparture);
+        const hasSignificantDiff = (timeDiffStart && timeDiffStart > 15) || (timeDiffEnd && timeDiffEnd > 15);
 
         return (
           <div key={stop.id}>
@@ -95,6 +116,7 @@ export function RouteDetailTimeline({
                 ) : (
                   <span className={styles.segmentDistance}>—</span>
                 )}
+                <span className={styles.segmentSeparator}>•</span>
                 {stop.durationFromPreviousMinutes != null && stop.durationFromPreviousMinutes > 0 ? (
                   <span className={styles.segmentDuration}>{stop.durationFromPreviousMinutes} min</span>
                 ) : (
@@ -123,29 +145,42 @@ export function RouteDetailTimeline({
                   <span className={styles.stopName}>{stop.customerName}</span>
                   <span className={`${styles.badge} ${badge.className}`}>{badge.label}</span>
                 </div>
-                {/* Primary time: scheduled if available, otherwise ETA/ETD */}
-                {(stop.scheduledTimeStart || stop.scheduledTimeEnd) ? (
+                
+                {/* Show both scheduled and estimated times */}
+                {hasScheduledTime ? (
                   <>
-                    <div className={styles.stopTime}>
-                      <span>{formatTime(stop.scheduledTimeStart)}</span>
-                      <span className={styles.timeSeparator}>–</span>
-                      <span>{formatTime(stop.scheduledTimeEnd)}</span>
+                    <div className={styles.timeRow}>
+                      <span className={styles.timeLabel}>Dohodnuto:</span>
+                      <div className={styles.stopTime}>
+                        <span>{formatTime(stop.scheduledTimeStart)}</span>
+                        <span className={styles.timeSeparator}>–</span>
+                        <span>{formatTime(stop.scheduledTimeEnd)}</span>
+                      </div>
+                      {hasSignificantDiff && <span className={styles.warningIcon} title="Výrazný rozdíl oproti vypočítanému času">⚠️</span>}
                     </div>
-                    {/* Secondary: ETA/ETD as additional info */}
                     {(stop.estimatedArrival || stop.estimatedDeparture) && (
-                      <div className={styles.etaTime}>
-                        ETA {formatTime(stop.estimatedArrival)} – {formatTime(stop.estimatedDeparture)}
+                      <div className={styles.timeRow}>
+                        <span className={styles.timeLabel}>Vypočítáno:</span>
+                        <div className={styles.etaTime}>
+                          <span>{formatTime(stop.estimatedArrival)}</span>
+                          <span className={styles.timeSeparator}>–</span>
+                          <span>{formatTime(stop.estimatedDeparture)}</span>
+                        </div>
                       </div>
                     )}
                   </>
                 ) : (
-                  /* Fallback: show ETA/ETD as primary if no scheduled time */
-                  <div className={styles.stopTime}>
-                    <span>{formatTime(stop.estimatedArrival)}</span>
-                    <span className={styles.timeSeparator}>–</span>
-                    <span>{formatTime(stop.estimatedDeparture)}</span>
+                  /* No scheduled time - show only estimated */
+                  <div className={styles.timeRow}>
+                    <span className={styles.timeLabel}>Vypočítáno:</span>
+                    <div className={styles.stopTime}>
+                      <span>{formatTime(stop.estimatedArrival)}</span>
+                      <span className={styles.timeSeparator}>–</span>
+                      <span>{formatTime(stop.estimatedDeparture)}</span>
+                    </div>
                   </div>
                 )}
+                
                 <div className={styles.stopAddress}>{stop.address}</div>
               </div>
             </div>

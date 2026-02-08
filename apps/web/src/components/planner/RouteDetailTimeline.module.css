@@ -70,16 +70,14 @@
 
 .segmentDuration {
   color: var(--color-text-secondary);
-  opacity: 0.8;
-}
-
-.segmentDistance {
-  font-weight: 600;
-}
-
-.segmentDuration {
   font-weight: 400;
-  opacity: 0.8;
+  opacity: 0.85;
+}
+
+.segmentSeparator {
+  color: var(--color-text-secondary);
+  opacity: 0.4;
+  font-size: 0.625rem;
 }
 
 /* Stop card */
@@ -145,24 +143,49 @@
   text-overflow: ellipsis;
 }
 
+.timeRow {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.125rem;
+}
+
+.timeLabel {
+  font-size: 0.6875rem;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+  min-width: 4.5rem;
+  flex-shrink: 0;
+}
+
 .stopTime {
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--color-primary);
 }
 
 .timeSeparator {
   color: var(--color-text-secondary);
+  font-size: 0.6875rem;
 }
 
 .etaTime {
-  font-size: 0.6875rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
   color: var(--color-text-secondary);
-  font-weight: 400;
-  margin-top: 0.125rem;
+  font-weight: 500;
+}
+
+.warningIcon {
+  font-size: 0.875rem;
+  line-height: 1;
+  margin-left: 0.25rem;
+  cursor: help;
 }
 
 .stopAddress {
