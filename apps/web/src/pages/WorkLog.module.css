@@ -148,6 +148,7 @@
 .table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
   font-size: 0.8125rem;
 }
 
@@ -183,12 +184,12 @@
 
 /* Column widths */
 .thTime { width: 100px; }
-.thCustomer { }
-.thAddress { }
-.thType { width: 100px; }
-.thCrew { width: 120px; }
-.thStatus { width: 130px; }
-.thResult { width: 120px; }
+.thCustomer { width: 18%; }
+.thAddress { width: 25%; }
+.thType { width: 80px; }
+.thCrew { width: 100px; }
+.thStatus { width: 120px; }
+.thResult { width: 90px; }
 
 .tdTime {
   white-space: nowrap;
