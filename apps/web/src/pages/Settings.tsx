@@ -18,11 +18,11 @@ import { ImportModal, type ImportEntityType } from '../components/import';
 import { ImportCustomersModal } from '../components/customers/ImportCustomersModal';
 import styles from './Settings.module.css';
 
-type SettingsTab = 'work' | 'business' | 'email' | 'depots' | 'crews' | 'workers' | 'import-export';
+type SettingsTab = 'preferences' | 'work' | 'business' | 'email' | 'depots' | 'crews' | 'workers' | 'import-export';
 
 export function Settings() {
   const { isConnected } = useNatsStore();
-  const [activeTab, setActiveTab] = useState<SettingsTab>('work');
+  const [activeTab, setActiveTab] = useState<SettingsTab>('preferences');
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [crews, setCrews] = useState<Crew[]>([]);
   const [workers, setWorkers] = useState<UserPublic[]>([]);
@@ -128,6 +128,7 @@ export function Settings() {
 
   // Tab components
   const tabs: { id: SettingsTab; label: string }[] = [
+    { id: 'preferences', label: 'Moje nastavení' },
     { id: 'work', label: 'Pracovní doba' },
     { id: 'business', label: 'Firemní údaje' },
     { id: 'email', label: 'E-mailové šablony' },
@@ -181,6 +182,29 @@ export function Settings() {
 
       {/* Tab content */}
       <div className={styles.tabContent}>
+        {activeTab === 'preferences' && settings && (
+          <PreferencesForm
+            defaultCrewId={settings.preferences?.defaultCrewId ?? null}
+            defaultDepotId={settings.preferences?.defaultDepotId ?? null}
+            crews={crews.filter((c) => c.isActive)}
+            depots={settings.depots}
+            saving={saving}
+            onSave={async (data) => {
+              setSaving(true);
+              setError(null);
+              try {
+                const updated = await settingsService.updatePreferences(data);
+                setSettings((prev) => prev ? { ...prev, preferences: updated } : null);
+                showSuccess('Preference uloženy');
+              } catch (e) {
+                setError('Nepodařilo se uložit preference');
+              } finally {
+                setSaving(false);
+              }
+            }}
+          />
+        )}
+
         {activeTab === 'work' && settings && (
           <WorkConstraintsForm
             data={settings.workConstraints}
@@ -474,6 +498,77 @@ export function Settings() {
         onClose={handleCloseCustomerImport}
       />
     </div>
+  );
+}
+
+// ============================================================================
+// Preferences Form (Moje nastavení)
+// ============================================================================
+
+interface PreferencesFormProps {
+  defaultCrewId: string | null;
+  defaultDepotId: string | null;
+  crews: Crew[];
+  depots: Depot[];
+  saving: boolean;
+  onSave: (data: { defaultCrewId: string | null; defaultDepotId: string | null }) => Promise<void>;
+}
+
+function PreferencesForm({ defaultCrewId, defaultDepotId, crews, depots, saving, onSave }: PreferencesFormProps) {
+  const [crewId, setCrewId] = useState(defaultCrewId ?? '');
+  const [depotId, setDepotId] = useState(defaultDepotId ?? '');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSave({
+      defaultCrewId: crewId || null,
+      defaultDepotId: depotId || null,
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className={styles.form}>
+      <h3>Moje nastavení</h3>
+      <p className={styles.formDescription}>
+        Nastavte svou výchozí posádku a depo. Tyto hodnoty se použijí jako výchozí filtry v plánovači tras.
+      </p>
+
+      <div className={styles.formGroup}>
+        <label>Výchozí posádka</label>
+        <select
+          value={crewId}
+          onChange={(e) => setCrewId(e.target.value)}
+          className={styles.input}
+        >
+          <option value="">— Žádná —</option>
+          {crews.map((crew) => (
+            <option key={crew.id} value={crew.id}>
+              {crew.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className={styles.formGroup}>
+        <label>Výchozí depo</label>
+        <select
+          value={depotId}
+          onChange={(e) => setDepotId(e.target.value)}
+          className={styles.input}
+        >
+          <option value="">— Žádné —</option>
+          {depots.map((depot) => (
+            <option key={depot.id} value={depot.id}>
+              {depot.name}{depot.isPrimary ? ' (primární)' : ''}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <button type="submit" className={styles.saveButton} disabled={saving}>
+        {saving ? 'Ukládám...' : 'Uložit'}
+      </button>
+    </form>
   );
 }
 

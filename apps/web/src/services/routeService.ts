@@ -189,6 +189,38 @@ export async function listRoutesForDate(
   return response.payload;
 }
 
+/** Request to list routes with filters */
+export interface ListRoutesRequest {
+  dateFrom: string;
+  dateTo: string;
+  crewId?: string | null;
+  depotId?: string | null;
+}
+
+export interface ListRoutesResponse {
+  routes: SavedRoute[];
+}
+
+/**
+ * List routes with optional filters (date range, crew, depot)
+ */
+export async function listRoutes(
+  filters: ListRoutesRequest,
+  deps = { request: useNatsStore.getState().request }
+): Promise<ListRoutesResponse> {
+  const req = createRequest(getToken(), filters);
+  const response = await deps.request<typeof req, NatsResponse<ListRoutesResponse>>(
+    'sazinka.route.list',
+    req,
+  );
+
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+
+  return response.payload;
+}
+
 // ==========================================================================
 // Route Planning Job Queue (async)
 // ==========================================================================

@@ -252,6 +252,53 @@ pub async fn get_route_stops_with_info(
     Ok(stops)
 }
 
+/// List routes with optional filters (date range, crew, depot)
+pub async fn list_routes(
+    pool: &PgPool,
+    user_id: Uuid,
+    date_from: NaiveDate,
+    date_to: NaiveDate,
+    crew_id: Option<Uuid>,
+    depot_id: Option<Uuid>,
+) -> Result<Vec<RouteWithCrewInfo>> {
+    let routes = sqlx::query_as::<_, RouteWithCrewInfo>(
+        r#"
+        SELECT
+            r.id,
+            r.user_id,
+            r.crew_id,
+            c.name as crew_name,
+            r.date,
+            r.status::text as status,
+            r.total_distance_km,
+            r.total_duration_minutes,
+            r.optimization_score,
+            COUNT(rs.id) as stops_count,
+            r.created_at,
+            r.updated_at
+        FROM routes r
+        LEFT JOIN crews c ON c.id = r.crew_id
+        LEFT JOIN route_stops rs ON rs.route_id = r.id
+        WHERE r.user_id = $1
+          AND r.date >= $2
+          AND r.date <= $3
+          AND ($4::uuid IS NULL OR r.crew_id = $4)
+          AND ($5::uuid IS NULL OR c.home_depot_id = $5)
+        GROUP BY r.id, c.name
+        ORDER BY r.date ASC, c.name NULLS LAST
+        "#
+    )
+    .bind(user_id)
+    .bind(date_from)
+    .bind(date_to)
+    .bind(crew_id)
+    .bind(depot_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(routes)
+}
+
 /// Delete a route and all its stops
 pub async fn delete_route(pool: &PgPool, user_id: Uuid, date: NaiveDate) -> Result<bool> {
     let result = sqlx::query("DELETE FROM routes WHERE user_id = $1 AND date = $2")

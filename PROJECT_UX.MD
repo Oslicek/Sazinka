@@ -1,8 +1,8 @@
 # Sazinka - Workflow & UI Koncept
 
-> **Status:** MVP kompletní + Phase 7 plánována  
-> **Verze:** 0.5  
-> **Datum:** 2026-02-05
+> **Status:** MVP kompletní + Phase 9 (Planner redesign) dokončena  
+> **Verze:** 0.6  
+> **Datum:** 2026-02-08
 > 
 > **Implementováno:**
 > - ✅ Fronta k obvolání (`/queue`) - filtry, statistiky, akce
@@ -1283,28 +1283,68 @@ Když je **OFF**:
 
 ---
 
-#### 8.2 Plán dne (route editor / export)
+#### 8.2 Přehled cest / Planner (`/planner`)
 
-**Účel:** Vidět a upravit denní trasu, reorder, export, kapacita.
+**Účel:** Přehled naplánovaných cest s filtrováním. Prohlížení tras s detailní časovou osou a vizualizací na mapě.
 
-**Desktop layout:**
+**Desktop layout (2 sloupce: sidebar + mapa):**
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│ Plán dne  Den[..] Posádka[1] Depo[..]  51km • 92%⚠ • slack 18m⚠    │
-│ [Přidat z inboxu] [Export ▾] [Tisk] [Uložit]                     │
-├───────────────┬──────────────────────────────────────────────────┤
-│ Stops (DND)   │ MAPA + TRASA                                      │
-│ 1 Jana 10–12  │ polyline + piny                                   │
-│ 2 ...         │                                                   │
-└───────────────┴──────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────────┐
+│  LEVÝ SLOUPEC (sidebar)               │  PRAVÝ SLOUPEC (mapa)            │
+│                                        │                                  │
+│  FILTRY                                │  ┌──────────────────────────┐   │
+│  [Datum ____] [... rozsah]             │  │                          │   │
+│  [Posádka: Vše ▾] [Depo: Vše ▾]       │  │      MAPA S TRASOU       │   │
+│                                        │  │   (piny + segmenty)      │   │
+│  NAPLÁNOVANÉ CESTY (N)  [↻]           │  │                          │   │
+│  ┌──────────────────────────────────┐  │  │   ①──②──③──④──🏠         │   │
+│  │ Po 2.2. • Posádka 1 • 3 zast.   │  │  │                          │   │
+│  │ 45 km • 2h30                     │  │  └──────────────────────────┘   │
+│  ├──────────────────────────────────┤  │                                  │
+│  │ Út 3.2. • Posádka 1 • 5 zast.   │  │                                  │
+│  │ 78 km • 4h15                     │  │                                  │
+│  └──────────────────────────────────┘  │                                  │
+│                                        │                                  │
+│  DETAIL TRASY           45 km · 2h30   │                                  │
+│  ┌──────────────────────────────────┐  │                                  │
+│  │ 🏠 Depo Brno                     │  │                                  │
+│  │ ─── 12 km · 18 min ──────────── │  │                                  │
+│  │ ① Jan Novák    08:30–09:15      │  │                                  │
+│  │   Lesní 123, Brno  [Potvrzeno]  │  │                                  │
+│  │ ─── 8 km · 12 min ──────────── │  │                                  │
+│  │ ② Marie Svob.  09:45–10:15     │  │                                  │
+│  │   Hlavní 45     [Nepotvrzeno]   │  │                                  │
+│  │ ─── 15 km · 22 min ─────────── │  │                                  │
+│  │ ③ Petr Černý   10:50–11:35     │  │                                  │
+│  │   Nádražní 8    [Potvrzeno]     │  │                                  │
+│  │ ─── 10 km · 15 min ─────────── │  │                                  │
+│  │ 🏠 Depo Brno                     │  │                                  │
+│  └──────────────────────────────────┘  │                                  │
+└────────────────────────────────────────┴──────────────────────────────────┘
 ```
 
-**Funkce:**
-- Drag & drop reorder zastávek
-- Draft mode s "Neuložené změny" bannerem
-- "Přidat z inboxu" otevře drawer s kandidáty
-- Export: Google Maps (segmentovaný), Tisk/PDF
+**Filtry:**
+- **Den**: výběr jednoho dne s možností přepnout na rozsah
+- **Posádka**: defaultně "Vše", výběr z existujících posádek
+- **Depo**: defaultně "Vše", výběr z existujících dep
+- Uživatelské preference (defaultní posádka, depo) se načtou ze Settings jako výchozí hodnoty
+
+**Interakce:**
+- Kliknutí na trasu v seznamu zobrazí její detail v dolní části sidebaru
+- Kliknutí na zastávku v timeline zvýrazní místo na mapě a přeletí na něj
+- Kliknutí na segment v timeline zvýrazní úsek cesty na mapě
+- Kliknutí na segment cesty na mapě zobrazí info o úseku
+
+**Komponenty:**
+- `RouteListPanel` — seznam tras s kartami (datum, posádka, zastávky, vzdálenost, čas)
+- `RouteDetailTimeline` — vertikální timeline: depo → segment → zastávka → ... → depo
+- Mapa s maplibre-gl (OSM tiles, barevné piny, segmentované polyline, highlight)
+
+**Nastavení uživatele (Settings → Moje nastavení):**
+- Defaultní posádka a depo se ukládají do DB (`users.default_crew_id`, `users.default_depot_id`)
+- Používají se jako výchozí filtry na stránce Planner
+- Uživatel může filtrovat i jiné posádky/depa — preference nejsou tvrdá vazba
 
 ---
 

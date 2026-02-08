@@ -24,6 +24,9 @@ export interface CandidateDetailData {
   insertionInfo?: InsertionInfo;
   // State flags
   isScheduled?: boolean;
+  scheduledDate?: string;
+  scheduledTimeStart?: string;
+  scheduledTimeEnd?: string;
 }
 
 export type SnoozeDuration = 1 | 7 | 14 | 30;
@@ -153,7 +156,7 @@ export function CandidateDetail({
                 onSchedule?.(candidate.id, candidate.suggestedSlots![0]);
               }}
             >
-              📅 Domluvit termín
+              📅 {candidate.isScheduled ? 'Změnit termín' : 'Domluvit termín'}
             </button>
           ) : (
             <button
@@ -161,7 +164,7 @@ export function CandidateDetail({
               className={styles.actionButton}
               onClick={() => setIsScheduling(true)}
             >
-              📅 Domluvit termín
+              📅 {candidate.isScheduled ? 'Změnit termín' : 'Domluvit termín'}
             </button>
           )}
           {isInRoute ? (
@@ -284,9 +287,28 @@ export function CandidateDetail({
         )}
       </section>
 
+      {/* Scheduled appointment section */}
+      {candidate.isScheduled && candidate.scheduledDate && (
+        <section className={styles.section}>
+          <h4 className={styles.sectionTitle}>Domluvený termín</h4>
+          <p className={styles.scheduledAppointment}>
+            📅 {new Date(candidate.scheduledDate).toLocaleDateString('cs-CZ', {
+              day: 'numeric',
+              month: 'numeric',
+              year: 'numeric',
+            })}
+            {candidate.scheduledTimeStart && candidate.scheduledTimeEnd && (
+              <span className={styles.scheduledTime}>
+                {' '}🕐 {candidate.scheduledTimeStart.substring(0, 5)} – {candidate.scheduledTimeEnd.substring(0, 5)}
+              </span>
+            )}
+          </p>
+        </section>
+      )}
+
       {/* Due date section */}
       <section className={styles.section}>
-        <h4 className={styles.sectionTitle}>Termín</h4>
+        <h4 className={styles.sectionTitle}>Revize nejpozději</h4>
         <p className={styles.dueDate}>
           <span className={candidate.priority === 'overdue' ? styles.overdueText : ''}>
             {dueDateFormatted}

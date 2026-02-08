@@ -73,6 +73,11 @@ export interface EmailTemplateSettings {
 }
 
 // Combined user settings
+export interface UserPreferences {
+  defaultCrewId: string | null;
+  defaultDepotId: string | null;
+}
+
 export interface UserSettings {
   // Work constraints
   workConstraints: WorkConstraints;
@@ -82,6 +87,8 @@ export interface UserSettings {
   emailTemplates: EmailTemplateSettings;
   // Depots
   depots: Depot[];
+  // User preferences (default crew/depot)
+  preferences: UserPreferences;
 }
 
 // Update requests

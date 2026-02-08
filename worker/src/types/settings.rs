@@ -102,6 +102,14 @@ pub struct EmailTemplateSettings {
     pub email_body_template: String,
 }
 
+/// User preferences
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserPreferences {
+    pub default_crew_id: Option<Uuid>,
+    pub default_depot_id: Option<Uuid>,
+}
+
 /// Combined user settings response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -110,6 +118,7 @@ pub struct UserSettings {
     pub business_info: BusinessInfo,
     pub email_templates: EmailTemplateSettings,
     pub depots: Vec<Depot>,
+    pub preferences: UserPreferences,
 }
 
 /// Update work constraints request
@@ -147,6 +156,14 @@ pub struct UpdateEmailTemplatesRequest {
     pub email_body_template: Option<String>,
 }
 
+/// Update user preferences request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdatePreferencesRequest {
+    pub default_crew_id: Option<Uuid>,
+    pub default_depot_id: Option<Uuid>,
+}
+
 /// Extended user with all settings fields (for DB queries)
 #[derive(Debug, Clone, FromRow)]
 pub struct UserWithSettings {
@@ -172,6 +189,8 @@ pub struct UserWithSettings {
     pub dic: Option<String>,
     pub email_subject_template: Option<String>,
     pub email_body_template: Option<String>,
+    pub default_crew_id: Option<Uuid>,
+    pub default_depot_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -212,6 +231,14 @@ impl UserWithSettings {
                 .unwrap_or_else(|| "Připomínka revize - {{device_type}}".to_string()),
             email_body_template: self.email_body_template.clone()
                 .unwrap_or_else(|| DEFAULT_EMAIL_TEMPLATE.to_string()),
+        }
+    }
+
+    /// Convert to user preferences
+    pub fn to_preferences(&self) -> UserPreferences {
+        UserPreferences {
+            default_crew_id: self.default_crew_id,
+            default_depot_id: self.default_depot_id,
         }
     }
 }

@@ -133,6 +133,41 @@ export async function updateEmailTemplates(
 }
 
 // ============================================================================
+// User Preferences API
+// ============================================================================
+
+export interface UpdatePreferencesRequest {
+  defaultCrewId: string | null;
+  defaultDepotId: string | null;
+}
+
+export interface UserPreferences {
+  defaultCrewId: string | null;
+  defaultDepotId: string | null;
+}
+
+/**
+ * Update user preferences (default crew, depot)
+ */
+export async function updatePreferences(
+  data: UpdatePreferencesRequest,
+  deps: SettingsServiceDeps = getDefaultDeps()
+): Promise<UserPreferences> {
+  const request = createRequest(getToken(), data);
+
+  const response = await deps.request<typeof request, NatsResponse<UserPreferences>>(
+    'sazinka.settings.preferences.update',
+    request
+  );
+
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+
+  return response.payload;
+}
+
+// ============================================================================
 // Depot API
 // ============================================================================
 

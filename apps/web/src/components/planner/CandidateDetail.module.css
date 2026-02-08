@@ -193,6 +193,18 @@
 }
 
 /* Due date */
+.scheduledAppointment {
+  font-size: 0.875rem;
+  margin: 0;
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.scheduledTime {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
 .dueDate {
   font-size: 0.875rem;
   margin: 0;

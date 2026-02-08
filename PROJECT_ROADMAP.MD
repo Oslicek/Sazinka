@@ -1,6 +1,6 @@
 # Project Roadmap - Sazinka v1.0 GA
 
-> **Last Updated:** 2026-02-04 (Phase 3.1 COMPLETED - Multi-user auth, JWT, RBAC, Worker management)
+> **Last Updated:** 2026-02-08 (Phase 9 COMPLETED - Planner UI Redesign: filtry, seznam cest, detail timeline, user preferences)
 
 ## Current State Analysis
 
@@ -1549,6 +1549,79 @@ UI: "Tip: Posádka 2 (+2 min)" - ne spam
 
 ---
 
+## Phase 9: Planner UI Redesign ✅ COMPLETED
+
+> **Status:** Completed
+> **Goal:** Přepis stránky `/planner` na přehled cest s filtrováním, detailní timeline a uživatelskými preferencemi
+
+### Overview
+
+Kompletní přepis Planner stránky z "Plán dne" (DnD, queue preview, inbox drawer) na "Přehled cest" s filtry, seznamem tras a detailní timeline.
+
+### 9.1: DB migrace + Backend preferences ✅
+
+- Migration `003_add_user_preferences.sql`: `default_crew_id` a `default_depot_id` do `users` tabulky
+- Rozšíření `UserWithSettings` a `UserPreferences` typů
+- Handler `sazinka.settings.preferences.update` pro ukládání preferencí
+- Frontend: `updatePreferences()` v `settingsService.ts`
+
+### 9.2: Backend route filtering ✅
+
+- Nový SQL dotaz `list_routes` s filtry (`date_from`, `date_to`, `crew_id`, `depot_id`)
+- Handler `sazinka.route.list` + registrace v `mod.rs`
+- Frontend: `listRoutes()` v `routeService.ts`
+
+### 9.3: Settings - Moje nastavení ✅
+
+- Nová záložka "Moje nastavení" na Settings stránce
+- `PreferencesForm` s výběrem defaultní posádky a depa
+- Hodnoty se ukládají do DB a používají jako výchozí filtry v Planneru
+
+### 9.4: Frontend komponenty ✅
+
+- `RouteListPanel` — seznam tras s kartami (datum, posádka, zastávky, vzdálenost, čas)
+- `RouteListPanel.test.tsx` — 7 testů
+- `RouteDetailTimeline` — vertikální timeline: depo → segment → zastávka → ... → depo
+- `RouteDetailTimeline.test.tsx` — 7 testů
+
+### 9.5: Kompletní přepis Planner.tsx ✅
+
+- Filtry: datum (s rozsahem), posádka, depo
+- Uživatelské preference jako výchozí filtry
+- `RouteListPanel` v horní části sidebaru
+- `RouteDetailTimeline` v dolní části sidebaru
+- Mapa s maplibre-gl (piny, segmenty, highlight)
+- Kliknutí na zastávku/segment → fly-to na mapě
+- Přepis `Planner.module.css` pro nový layout
+- Žádné linter chyby, všechny nové testy procházejí
+
+**Files created:**
+- `worker/migrations/003_add_user_preferences.sql`
+- `apps/web/src/components/planner/RouteListPanel.tsx`
+- `apps/web/src/components/planner/RouteListPanel.module.css`
+- `apps/web/src/components/planner/RouteListPanel.test.tsx`
+- `apps/web/src/components/planner/RouteDetailTimeline.tsx`
+- `apps/web/src/components/planner/RouteDetailTimeline.module.css`
+- `apps/web/src/components/planner/RouteDetailTimeline.test.tsx`
+
+**Files modified:**
+- `apps/web/src/pages/Planner.tsx` — kompletní přepis
+- `apps/web/src/pages/Planner.module.css` — nový layout
+- `apps/web/src/pages/Settings.tsx` — "Moje nastavení" záložka
+- `apps/web/src/pages/Settings.module.css` — styly pro preferences
+- `apps/web/src/services/routeService.ts` — `listRoutes()`, `updatePreferences()`
+- `apps/web/src/services/settingsService.ts` — `updatePreferences()`
+- `apps/web/src/components/planner/index.ts` — export nových komponent
+- `worker/src/types/settings.rs` — `UserWithSettings` rozšíření
+- `worker/src/db/queries/settings.rs` — preference queries
+- `worker/src/db/queries/route.rs` — `list_routes` query
+- `worker/src/handlers/settings.rs` — `handle_update_preferences`
+- `worker/src/handlers/route.rs` — `handle_list`
+- `worker/src/handlers/mod.rs` — registrace nových subscriptions
+- `packages/shared-types/src/settings.ts` — `UserPreferences` typ
+
+---
+
 ## Out of Scope for v1.0
 
 Explicitly excluded:
@@ -1702,4 +1775,28 @@ Phase 8 (UX/UI Redesign - Route-Aware Planning): ✅ COMPLETED
     8D.2 DraftModeBar pro plán dne ✅
     8D.3 useKeyboardShortcuts hook ✅
     8D.4 Optimistic UI pro domluvení ✅
+
+Phase 9 (Planner UI Redesign): ✅ COMPLETED
+  9.1 DB migrace + Backend preferences ✅
+    9.1.1 Migration 003_add_user_preferences.sql ✅
+    9.1.2 UserWithSettings rozšíření ✅
+    9.1.3 sazinka.settings.preferences.update handler ✅
+  
+  9.2 Backend route filtering ✅
+    9.2.1 list_routes SQL query s filtry ✅
+    9.2.2 sazinka.route.list handler ✅
+    9.2.3 Frontend listRoutes() + updatePreferences() ✅
+  
+  9.3 Settings - Moje nastavení ✅
+    9.3.1 PreferencesForm na Settings stránce ✅
+  
+  9.4 Frontend komponenty ✅
+    9.4.1 RouteListPanel + testy ✅
+    9.4.2 RouteDetailTimeline + testy ✅
+  
+  9.5 Kompletní přepis Planner.tsx ✅
+    9.5.1 Filtry (datum, posádka, depo) ✅
+    9.5.2 RouteListPanel + RouteDetailTimeline integrace ✅
+    9.5.3 Mapa s highlight ✅
+    9.5.4 Přepis Planner.module.css ✅
 ```

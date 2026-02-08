@@ -52,6 +52,10 @@ interface InboxCandidate extends CallQueueItem {
   slotStatus?: 'ok' | 'tight' | 'conflict';
   isCalculating?: boolean;
   suggestedSlots?: SlotSuggestion[];
+  _scheduled?: boolean;
+  _scheduledDate?: string;
+  _scheduledTimeStart?: string;
+  _scheduledTimeEnd?: string;
 }
 
 // Helper to check if customer is overdue
@@ -648,6 +652,9 @@ export function PlanningInbox() {
         estimatedDeparture: slotSuggestions[0].timeEnd,
       } : undefined,
       isScheduled,
+      scheduledDate: selectedCandidate._scheduledDate,
+      scheduledTimeStart: selectedCandidate._scheduledTimeStart,
+      scheduledTimeEnd: selectedCandidate._scheduledTimeEnd,
     };
   }, [selectedCandidate, slotSuggestions]);
 
@@ -901,27 +908,26 @@ export function PlanningInbox() {
         timeWindowEnd: slot.timeEnd,
       });
       
-      // Show confirmation - stay on this candidate
-      setScheduledConfirmation({
-        candidateId: candidate.customerId,
-        candidateName: candidate.customerName,
-        date: slot.date,
-        timeStart: slot.timeStart,
-        timeEnd: slot.timeEnd,
-      });
       setSlotSuggestions([]);
       
-      // Mark candidate as scheduled in list (but don't remove)
+      // Mark candidate as scheduled in list with time info (don't show confirmation screen)
       setCandidates((prev) =>
         prev.map((c) =>
           c.id === candidate.id
-            ? { ...c, _scheduled: true } as InboxCandidate
+            ? { 
+                ...c, 
+                _scheduled: true,
+                status: 'scheduled',
+                _scheduledDate: slot.date,
+                _scheduledTimeStart: slot.timeStart,
+                _scheduledTimeEnd: slot.timeEnd,
+              } as InboxCandidate
             : c
         )
       );
       
-      // Load day overview for the scheduled date (right panel)
-      loadDayOverview(slot.date);
+      // Move to next candidate automatically
+      selectNextCandidate(candidate.customerId);
       
       // Invalidate route cache since route changed
       incrementRouteVersion();

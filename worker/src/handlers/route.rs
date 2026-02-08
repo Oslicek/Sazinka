@@ -450,6 +450,23 @@ pub struct ListRoutesForDateResponse {
     pub routes: Vec<queries::route::RouteWithCrewInfo>,
 }
 
+/// Request to list routes with filters
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListRoutesRequest {
+    pub date_from: chrono::NaiveDate,
+    pub date_to: chrono::NaiveDate,
+    pub crew_id: Option<Uuid>,
+    pub depot_id: Option<Uuid>,
+}
+
+/// Response with filtered list of routes
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListRoutesResponse {
+    pub routes: Vec<queries::route::RouteWithCrewInfo>,
+}
+
 /// Handle route.save messages
 pub async fn handle_save(
     client: Client,
@@ -690,6 +707,71 @@ pub async fn handle_list_for_date(
                 );
                 let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
                 debug!("Returned {} routes for date {}", response.payload.routes.len(), request.payload.date);
+            }
+            Err(e) => {
+                error!("Failed to list routes: {}", e);
+                let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Handle route.list messages — list routes with optional filters
+pub async fn handle_list(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+    jwt_secret: Arc<String>,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received route.list message");
+
+        let reply = match msg.reply {
+            Some(ref reply) => reply.clone(),
+            None => {
+                warn!("Message without reply subject");
+                continue;
+            }
+        };
+
+        let request: Request<ListRoutesRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("Failed to parse request: {}", e);
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        let payload = &request.payload;
+        match queries::route::list_routes(
+            &pool,
+            user_id,
+            payload.date_from,
+            payload.date_to,
+            payload.crew_id,
+            payload.depot_id,
+        ).await {
+            Ok(routes) => {
+                let response = SuccessResponse::new(
+                    request.id,
+                    ListRoutesResponse { routes },
+                );
+                let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+                debug!("Returned {} routes for range {} to {}", response.payload.routes.len(), payload.date_from, payload.date_to);
             }
             Err(e) => {
                 error!("Failed to list routes: {}", e);

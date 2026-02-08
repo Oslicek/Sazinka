@@ -9,6 +9,7 @@ use crate::types::settings::{
     Depot, CreateDepotRequest, UpdateDepotRequest,
     UserWithSettings, UpdateWorkConstraintsRequest,
     UpdateBusinessInfoRequest, UpdateEmailTemplatesRequest,
+    UpdatePreferencesRequest,
 };
 
 // ============================================================================
@@ -30,6 +31,7 @@ pub async fn get_user_settings(pool: &PgPool, user_id: Uuid) -> Result<Option<Us
             reminder_days_before,
             ico, dic,
             email_subject_template, email_body_template,
+            default_crew_id, default_depot_id,
             created_at, updated_at
         FROM users
         WHERE id = $1
@@ -136,6 +138,29 @@ pub async fn update_email_templates(
     .bind(user_id)
     .bind(&req.email_subject_template)
     .bind(&req.email_body_template)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Update user preferences
+pub async fn update_preferences(
+    pool: &PgPool,
+    user_id: Uuid,
+    req: &UpdatePreferencesRequest,
+) -> Result<()> {
+    sqlx::query(
+        r#"
+        UPDATE users SET
+            default_crew_id = $2,
+            default_depot_id = $3
+        WHERE id = $1
+        "#
+    )
+    .bind(user_id)
+    .bind(req.default_crew_id)
+    .bind(req.default_depot_id)
     .execute(pool)
     .await?;
 

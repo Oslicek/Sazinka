@@ -16,6 +16,7 @@ use crate::types::{
     Depot, CreateDepotRequest, UpdateDepotRequest, DeleteDepotRequest,
     ListDepotsResponse, UserSettings,
     UpdateWorkConstraintsRequest, UpdateBusinessInfoRequest, UpdateEmailTemplatesRequest,
+    UpdatePreferencesRequest,
 };
 
 // ============================================================================
@@ -78,6 +79,7 @@ pub async fn handle_get_settings(
                     work_constraints: user.to_work_constraints(),
                     business_info: user.to_business_info(),
                     email_templates: user.to_email_templates(),
+                    preferences: user.to_preferences(),
                     depots,
                 };
 
@@ -642,6 +644,64 @@ pub async fn handle_geocode_depot(
             Err(e) => {
                 error!("Failed to geocode depot address: {}", e);
                 let error = ErrorResponse::new(request.id, "GEOCODING_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// Preferences Handler
+// ============================================================================
+
+/// Handle settings.preferences.update messages
+pub async fn handle_update_preferences(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+    jwt_secret: Arc<String>,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received settings.preferences.update message");
+
+        let reply = match msg.reply {
+            Some(ref reply) => reply.clone(),
+            None => {
+                warn!("Message without reply subject");
+                continue;
+            }
+        };
+
+        let request: Request<UpdatePreferencesRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("Failed to parse request: {}", e);
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        let auth_info = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info,
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+        let user_id = auth_info.user_id;
+
+        match queries::settings::update_preferences(&pool, user_id, &request.payload).await {
+            Ok(_) => {
+                let response = SuccessResponse::new(request.id, EmptyPayload {});
+                let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+            }
+            Err(e) => {
+                error!("Failed to update preferences: {}", e);
+                let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
             }
         }

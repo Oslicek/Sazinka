@@ -158,6 +158,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let route_save_sub = client.subscribe("sazinka.route.save").await?;
     let route_get_sub = client.subscribe("sazinka.route.get").await?;
     let route_list_for_date_sub = client.subscribe("sazinka.route.list_for_date").await?;
+    let route_list_sub = client.subscribe("sazinka.route.list").await?;
     let route_insertion_sub = client.subscribe("sazinka.route.insertion.calculate").await?;
     let route_insertion_batch_sub = client.subscribe("sazinka.route.insertion.batch").await?;
     
@@ -190,6 +191,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let settings_work_update_sub = client.subscribe("sazinka.settings.work.update").await?;
     let settings_business_update_sub = client.subscribe("sazinka.settings.business.update").await?;
     let settings_email_update_sub = client.subscribe("sazinka.settings.email.update").await?;
+    let settings_preferences_update_sub = client.subscribe("sazinka.settings.preferences.update").await?;
     
     // Depot subjects
     let depot_list_sub = client.subscribe("sazinka.depot.list").await?;
@@ -306,6 +308,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let client_settings_work = client.clone();
     let client_settings_business = client.clone();
     let client_settings_email = client.clone();
+    let client_settings_preferences = client.clone();
     
     // Depot handler clones
     let client_depot_list = client.clone();
@@ -319,6 +322,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_settings_work = pool.clone();
     let pool_settings_business = pool.clone();
     let pool_settings_email = pool.clone();
+    let pool_settings_preferences = pool.clone();
     
     // Depot pool clones
     let pool_depot_list = pool.clone();
@@ -431,6 +435,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let jwt_secret_settings_work = Arc::clone(&jwt_secret);
     let jwt_secret_settings_business = Arc::clone(&jwt_secret);
     let jwt_secret_settings_email = Arc::clone(&jwt_secret);
+    let jwt_secret_settings_preferences = Arc::clone(&jwt_secret);
     
     // JWT secret clones for depot handlers
     let jwt_secret_depot_list = Arc::clone(&jwt_secret);
@@ -579,6 +584,13 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         route::handle_list_for_date(client_route_list, route_list_for_date_sub, pool_route_list, jwt_secret_route_list).await
     });
 
+    let client_route_list2 = client.clone();
+    let pool_route_list2 = pool.clone();
+    let jwt_secret_route_list2 = jwt_secret.clone();
+    let route_list_handle = tokio::spawn(async move {
+        route::handle_list(client_route_list2, route_list_sub, pool_route_list2, jwt_secret_route_list2).await
+    });
+
     let route_insertion_handle = tokio::spawn(async move {
         route::handle_insertion_calculate(client_route_insertion, route_insertion_sub, pool_route_insertion, jwt_secret_route_insertion, routing_insertion).await
     });
@@ -677,6 +689,10 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     
     let settings_email_handle = tokio::spawn(async move {
         settings::handle_update_email_templates(client_settings_email, settings_email_update_sub, pool_settings_email, jwt_secret_settings_email).await
+    });
+    
+    let settings_preferences_handle = tokio::spawn(async move {
+        settings::handle_update_preferences(client_settings_preferences, settings_preferences_update_sub, pool_settings_preferences, jwt_secret_settings_preferences).await
     });
     
     // Depot handlers
@@ -1317,6 +1333,9 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         result = route_list_for_date_handle => {
             error!("Route list for date handler finished: {:?}", result);
         }
+        result = route_list_handle => {
+            error!("Route list handler finished: {:?}", result);
+        }
         result = route_insertion_handle => {
             error!("Route insertion handler finished: {:?}", result);
         }
@@ -1392,6 +1411,9 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         }
         result = settings_email_handle => {
             error!("Settings email handler finished: {:?}", result);
+        }
+        result = settings_preferences_handle => {
+            error!("Settings preferences handler finished: {:?}", result);
         }
         // Depot handlers
         result = depot_list_handle => {
