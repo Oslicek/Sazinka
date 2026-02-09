@@ -7,6 +7,7 @@
 
 import type { SavedRouteStop } from '../../services/routeService';
 import type { RouteMetrics } from './CapacityMetrics';
+import type { RouteWarning } from '@shared/route';
 import styles from './RouteDetailTimeline.module.css';
 
 interface RouteDetailTimelineProps {
@@ -20,10 +21,13 @@ interface RouteDetailTimelineProps {
   onRemoveStop?: (stopId: string) => void;
   onOptimize?: () => void;
   onDeleteRoute?: () => void;
+  deleteRouteLabel?: string; // Custom label for delete button (default: "Smazat trasu")
   isOptimizing?: boolean;
   isSaving?: boolean;
   // Metrics
   metrics?: RouteMetrics | null;
+  // Warnings from solver (LATE_ARRIVAL, INSUFFICIENT_BUFFER, etc.)
+  warnings?: RouteWarning[];
 }
 
 function formatTime(time: string | null): string {
@@ -67,6 +71,30 @@ function calculateTimeDifference(time1: string | null, time2: string | null): nu
   return Math.abs((h1 * 60 + m1) - (h2 * 60 + m2));
 }
 
+function getWarningLabel(warningType: string): string {
+  switch (warningType) {
+    case 'LATE_ARRIVAL':
+      return 'Pozdní příjezd';
+    case 'INSUFFICIENT_BUFFER':
+      return 'Nedostatečná rezerva';
+    case 'TIME_WINDOW':
+      return 'Mimo časové okno';
+    default:
+      return warningType;
+  }
+}
+
+function getWarningIcon(warningType: string): string {
+  switch (warningType) {
+    case 'LATE_ARRIVAL':
+      return '🔴';
+    case 'INSUFFICIENT_BUFFER':
+      return '🟡';
+    default:
+      return '⚠️';
+  }
+}
+
 export function RouteDetailTimeline({
   stops,
   depot,
@@ -77,11 +105,23 @@ export function RouteDetailTimeline({
   onRemoveStop,
   onOptimize,
   onDeleteRoute,
+  deleteRouteLabel = 'Smazat trasu',
   isOptimizing = false,
   isSaving = false,
   metrics,
+  warnings = [],
 }: RouteDetailTimelineProps) {
   const depotName = depot?.name ?? 'Depo';
+
+  // Build per-stop warning map: stopIndex (0-based) → warnings[]
+  const warningsByStop = new Map<number, RouteWarning[]>();
+  for (const w of warnings) {
+    if (w.stopIndex != null) {
+      const existing = warningsByStop.get(w.stopIndex) ?? [];
+      existing.push(w);
+      warningsByStop.set(w.stopIndex, existing);
+    }
+  }
 
   if (stops.length === 0) {
     return (
@@ -199,6 +239,22 @@ export function RouteDetailTimeline({
                 )}
                 
                 <div className={styles.stopAddress}>{stop.address}</div>
+                
+                {/* Per-stop warnings (LATE_ARRIVAL, INSUFFICIENT_BUFFER) */}
+                {warningsByStop.has(index) && (
+                  <div className={styles.stopWarnings}>
+                    {warningsByStop.get(index)!.map((w, wi) => (
+                      <div
+                        key={wi}
+                        className={`${styles.stopWarning} ${w.warningType === 'LATE_ARRIVAL' ? styles.stopWarningDanger : styles.stopWarningCaution}`}
+                        title={w.message}
+                      >
+                        <span className={styles.stopWarningIcon}>{getWarningIcon(w.warningType)}</span>
+                        <span>{getWarningLabel(w.warningType)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               {onRemoveStop && (
                 <button
@@ -272,7 +328,7 @@ export function RouteDetailTimeline({
             className={styles.deleteButton}
             onClick={onDeleteRoute}
           >
-            🗑️ Smazat trasu
+            🗑️ {deleteRouteLabel}
           </button>
         )}
       </div>

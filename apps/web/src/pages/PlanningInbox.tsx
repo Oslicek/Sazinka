@@ -36,6 +36,7 @@ import { getCallQueue, snoozeRevision, scheduleRevision, type CallQueueItem } fr
 import { listCalendarItems } from '../services/calendarService';
 import type { CalendarItem } from '@shared/calendar';
 import { usePlannerShortcuts } from '../hooks/useKeyboardShortcuts';
+import type { RouteWarning } from '@shared/route';
 import styles from './PlanningInbox.module.css';
 
 type InboxSegment = 'overdue' | 'thisWeek' | 'thisMonth' | 'all' | 'snoozed' | 'problems';
@@ -110,6 +111,7 @@ export function PlanningInbox() {
   // Route state
   const [routeStops, setRouteStops] = useState<SavedRouteStop[]>([]);
   const [routeGeometry, setRouteGeometry] = useState<[number, number][]>([]);
+  const [routeWarnings, setRouteWarnings] = useState<RouteWarning[]>([]);
   const [metrics, setMetrics] = useState<RouteMetrics | null>(null);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   const geometryUnsubRef = useRef<(() => void) | null>(null);
@@ -1173,6 +1175,7 @@ export function PlanningInbox() {
         customerIds,
         date: context.date,
         startLocation,
+        crewId: context.crewId || undefined,
       });
 
       setRouteJobProgress('Ve frontě...');
@@ -1216,6 +1219,9 @@ export function PlanningInbox() {
                   };
                 });
                 setRouteStops(optimizedStops);
+
+                // Store solver warnings (LATE_ARRIVAL, INSUFFICIENT_BUFFER, etc.)
+                setRouteWarnings(result.warnings ?? []);
 
                 // Capture Valhalla geometry from VRP result
                 if (result.geometry && result.geometry.length > 0) {
@@ -1560,9 +1566,12 @@ export function PlanningInbox() {
             onSegmentClick={setHighlightedSegment}
             onRemoveStop={handleRemoveFromRoute}
             onOptimize={handleOptimizeRoute}
+            onDeleteRoute={handleClearRoute}
+            deleteRouteLabel="Vyčistit"
             isOptimizing={isOptimizing}
             isSaving={isSaving}
             metrics={metrics}
+            warnings={routeWarnings}
           />
         </div>
       </div>
