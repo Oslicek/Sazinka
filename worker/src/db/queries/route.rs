@@ -338,6 +338,7 @@ pub async fn list_routes(
             r.user_id,
             r.crew_id,
             c.name as crew_name,
+            r.depot_id,
             r.date,
             r.status::text as status,
             r.total_distance_km,
@@ -354,7 +355,7 @@ pub async fn list_routes(
           AND r.date <= $3
           AND ($4::uuid IS NULL OR r.crew_id = $4)
           AND ($5::uuid IS NULL OR c.home_depot_id = $5)
-        GROUP BY r.id, c.name
+        GROUP BY r.id, c.name, r.depot_id
         ORDER BY r.date ASC, c.name NULLS LAST
         "#
     )
