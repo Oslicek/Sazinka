@@ -14,6 +14,7 @@ import * as routeService from '../services/routeService';
 import type { SavedRoute, SavedRouteStop } from '../services/routeService';
 import { listCrews, type Crew } from '../services/crewService';
 import type { Depot } from '@shared/settings';
+import type { RouteWarning } from '@shared/route';
 import { RouteListPanel, RouteDetailTimeline, RouteMapPanel, type MapDepot } from '../components/planner';
 import { PlannerFilters } from '../components/shared/PlannerFilters';
 import styles from './Planner.module.css';
@@ -59,6 +60,11 @@ export function Planner() {
   const [highlightedStopId, setHighlightedStopId] = useState<string | null>(null);
   const [routeGeometry, setRouteGeometry] = useState<[number, number][]>([]);
   const geometryUnsubRef = useRef<(() => void) | null>(null);
+
+  // --- Route warnings (from optimization) ---
+  // Note: Saved routes don't have warnings stored in DB yet, so this will be empty
+  // TODO: Store warnings in DB when route is saved from optimization
+  const [routeWarnings] = useState<RouteWarning[]>([]);
 
   // ─── Load settings (crews, depots, user preferences) ─────────────
 
@@ -412,6 +418,7 @@ export function Planner() {
                 highlightedSegment={highlightedSegment}
                 onStopClick={handleStopClick}
                 onSegmentClick={handleSegmentClick}
+                warnings={routeWarnings}
               />
             )}
           </div>
