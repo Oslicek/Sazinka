@@ -181,15 +181,18 @@ export function PlanningInbox() {
   // Auto-save route
   const autoSaveFn = useCallback(async () => {
     if (routeStops.length === 0 || !context) return;
+    // Sanitize: convert empty/invalid UUID strings to undefined so they are omitted from JSON
+    const sanitizeUuid = (v: string | null | undefined): string | undefined =>
+      v && v.length >= 8 ? v : undefined;
     await routeService.saveRoute({
       date: context.date,
-      depotId: context.depotId || null,
+      depotId: sanitizeUuid(context.depotId) ?? null,
       stops: routeStops.map((s, index) => ({
         customerId: s.customerId,
-        revisionId: s.revisionId ?? undefined,
+        revisionId: sanitizeUuid(s.revisionId),
         order: s.stopOrder ?? index + 1,
-        eta: s.estimatedArrival ?? undefined,
-        etd: s.estimatedDeparture ?? undefined,
+        eta: s.estimatedArrival || undefined,
+        etd: s.estimatedDeparture || undefined,
       })),
       totalDistanceKm: metrics?.distanceKm ?? 0,
       totalDurationMinutes: (metrics?.travelTimeMin ?? 0) + (metrics?.serviceTimeMin ?? 0),
@@ -619,62 +622,108 @@ export function PlanningInbox() {
     return depot ? { lat: depot.lat, lng: depot.lng, name: depot.name } : null;
   }, [context?.depotId, depots]);
 
-  // Selected candidate
+  // Selected candidate (from candidates list or fallback from route stops)
   const selectedCandidate = useMemo(() => 
     candidates.find((c) => c.customerId === selectedCandidateId),
     [candidates, selectedCandidateId]
   );
 
   // Convert selected candidate to CandidateDetailData
+  // Falls back to route stop data when the candidate is not in the current filter/segment
   const selectedCandidateDetail: CandidateDetailData | null = useMemo(() => {
-    if (!selectedCandidate) return null;
-    
-    // Check if this candidate has a scheduled revision
-    const isScheduled = selectedCandidate.status === 'scheduled' || selectedCandidate.status === 'confirmed';
-    
-    return {
-      id: selectedCandidate.id,
-      customerId: selectedCandidate.customerId,
-      customerName: selectedCandidate.customerName,
-      deviceType: selectedCandidate.deviceType ?? 'Zařízení',
-      deviceName: selectedCandidate.deviceName ?? undefined,
-      phone: selectedCandidate.customerPhone ?? undefined,
-      street: selectedCandidate.customerStreet ?? '',
-      city: selectedCandidate.customerCity ?? '',
-      dueDate: selectedCandidate.dueDate ?? new Date().toISOString(),
-      daysUntilDue: selectedCandidate.daysUntilDue,
-      priority: toPriority(selectedCandidate),
-      suggestedSlots: slotSuggestions,
-      insertionInfo: slotSuggestions[0] ? {
-        insertAfterIndex: slotSuggestions[0].insertAfterIndex,
-        insertAfterName: slotSuggestions[0].insertAfterName ?? 'Depo',
-        insertBeforeIndex: slotSuggestions[0].insertAfterIndex + 1,
-        insertBeforeName: slotSuggestions[0].insertBeforeName ?? 'Depo',
-        deltaKm: slotSuggestions[0].deltaKm,
-        deltaMin: slotSuggestions[0].deltaMin,
-        estimatedArrival: slotSuggestions[0].timeStart,
-        estimatedDeparture: slotSuggestions[0].timeEnd,
-      } : undefined,
-      isScheduled,
-      scheduledDate: selectedCandidate._scheduledDate,
-      scheduledTimeStart: selectedCandidate._scheduledTimeStart,
-      scheduledTimeEnd: selectedCandidate._scheduledTimeEnd,
-    };
-  }, [selectedCandidate, slotSuggestions]);
+    if (selectedCandidate) {
+      // Full candidate data available from call queue
+      const isScheduled = selectedCandidate.status === 'scheduled' || selectedCandidate.status === 'confirmed';
+      
+      return {
+        id: selectedCandidate.id,
+        customerId: selectedCandidate.customerId,
+        customerName: selectedCandidate.customerName,
+        deviceType: selectedCandidate.deviceType ?? 'Zařízení',
+        deviceName: selectedCandidate.deviceName ?? undefined,
+        phone: selectedCandidate.customerPhone ?? undefined,
+        email: selectedCandidate.customerEmail ?? undefined,
+        street: selectedCandidate.customerStreet ?? '',
+        city: selectedCandidate.customerCity ?? '',
+        dueDate: selectedCandidate.dueDate ?? new Date().toISOString(),
+        daysUntilDue: selectedCandidate.daysUntilDue,
+        priority: toPriority(selectedCandidate),
+        suggestedSlots: slotSuggestions,
+        insertionInfo: slotSuggestions[0] ? {
+          insertAfterIndex: slotSuggestions[0].insertAfterIndex,
+          insertAfterName: slotSuggestions[0].insertAfterName ?? 'Depo',
+          insertBeforeIndex: slotSuggestions[0].insertAfterIndex + 1,
+          insertBeforeName: slotSuggestions[0].insertBeforeName ?? 'Depo',
+          deltaKm: slotSuggestions[0].deltaKm,
+          deltaMin: slotSuggestions[0].deltaMin,
+          estimatedArrival: slotSuggestions[0].timeStart,
+          estimatedDeparture: slotSuggestions[0].timeEnd,
+        } : undefined,
+        isScheduled,
+        scheduledDate: selectedCandidate._scheduledDate,
+        scheduledTimeStart: selectedCandidate._scheduledTimeStart,
+        scheduledTimeEnd: selectedCandidate._scheduledTimeEnd,
+      };
+    }
+
+    // Fallback: candidate not in current list but is a route stop (clicked from timeline)
+    if (selectedCandidateId) {
+      const routeStop = routeStops.find((s) => s.customerId === selectedCandidateId);
+      if (routeStop) {
+        const isScheduled = routeStop.revisionStatus === 'scheduled' || routeStop.revisionStatus === 'confirmed';
+        const addressParts = routeStop.address?.split(',').map((p) => p.trim()) ?? [];
+        return {
+          id: routeStop.revisionId ?? routeStop.id,
+          customerId: routeStop.customerId,
+          customerName: routeStop.customerName,
+          deviceType: 'Zařízení',
+          phone: routeStop.customerPhone ?? undefined,
+          email: routeStop.customerEmail ?? undefined,
+          street: addressParts[0] ?? '',
+          city: addressParts[1] ?? '',
+          dueDate: routeStop.scheduledDate ?? new Date().toISOString(),
+          daysUntilDue: 0,
+          priority: 'upcoming' as const,
+          isScheduled,
+          scheduledDate: routeStop.scheduledDate ?? undefined,
+          scheduledTimeStart: routeStop.scheduledTimeStart ?? undefined,
+          scheduledTimeEnd: routeStop.scheduledTimeEnd ?? undefined,
+        };
+      }
+    }
+
+    return null;
+  }, [selectedCandidate, selectedCandidateId, routeStops, slotSuggestions]);
 
   // Selected candidate for map preview (before adding to route)
   const selectedCandidateForMap: SelectedCandidate | null = useMemo(() => {
-    if (!selectedCandidate) return null;
-    if (!selectedCandidate.customerLat || !selectedCandidate.customerLng) return null;
-    return {
-      id: selectedCandidate.customerId,
-      name: selectedCandidate.customerName,
-      coordinates: {
-        lat: selectedCandidate.customerLat,
-        lng: selectedCandidate.customerLng,
-      },
-    };
-  }, [selectedCandidate]);
+    if (selectedCandidate) {
+      if (!selectedCandidate.customerLat || !selectedCandidate.customerLng) return null;
+      return {
+        id: selectedCandidate.customerId,
+        name: selectedCandidate.customerName,
+        coordinates: {
+          lat: selectedCandidate.customerLat,
+          lng: selectedCandidate.customerLng,
+        },
+      };
+    }
+    // Fallback from route stops
+    if (selectedCandidateId) {
+      const routeStop = routeStops.find((s) => s.customerId === selectedCandidateId);
+      if (routeStop?.customerLat && routeStop?.customerLng) {
+        return {
+          id: routeStop.customerId,
+          name: routeStop.customerName,
+          coordinates: {
+            lat: routeStop.customerLat,
+            lng: routeStop.customerLng,
+          },
+        };
+      }
+    }
+    return null;
+  }, [selectedCandidate, selectedCandidateId, routeStops]);
 
   // Insertion preview for map (dashed line showing where candidate will be inserted)
   const insertionPreviewForMap: InsertionPreview | null = useMemo(() => {
@@ -886,6 +935,8 @@ export function PlanningInbox() {
             address: cand.customerStreet ? `${cand.customerStreet}, ${cand.customerCity}` : (cand.customerCity || ''),
             customerLat: cand.customerLat,
             customerLng: cand.customerLng,
+            customerPhone: cand.customerPhone ?? null,
+            customerEmail: cand.customerEmail ?? null,
             scheduledDate: null,
             scheduledTimeStart: null,
             scheduledTimeEnd: null,
@@ -968,12 +1019,13 @@ export function PlanningInbox() {
       // Update route stop if this candidate is already in the route
       setRouteStops((prev) =>
         prev.map((stop) =>
-          stop.id === candidate.customerId
+          stop.customerId === candidate.customerId
             ? {
                 ...stop,
                 scheduledDate: slot.date,
                 scheduledTimeStart: slot.timeStart,
                 scheduledTimeEnd: slot.timeEnd,
+                revisionStatus: 'scheduled',
               }
             : stop
         )
@@ -1105,6 +1157,8 @@ export function PlanningInbox() {
         address: `${candidate.customerStreet ?? ''}, ${candidate.customerCity ?? ''}`.replace(/^, |, $/g, ''),
         customerLat: candidate.customerLat,
         customerLng: candidate.customerLng,
+        customerPhone: candidate.customerPhone ?? null,
+        customerEmail: candidate.customerEmail ?? null,
         scheduledDate: candidate._scheduledDate ?? null,
         scheduledTimeStart: candidate._scheduledTimeStart ?? null,
         scheduledTimeEnd: candidate._scheduledTimeEnd ?? null,
@@ -1141,6 +1195,8 @@ export function PlanningInbox() {
       address: `${candidate.customerStreet ?? ''}, ${candidate.customerCity ?? ''}`.replace(/^, |, $/g, ''),
       customerLat: candidate.customerLat,
       customerLng: candidate.customerLng,
+      customerPhone: candidate.customerPhone ?? null,
+      customerEmail: candidate.customerEmail ?? null,
       scheduledDate: candidate._scheduledDate ?? null,
       scheduledTimeStart: candidate._scheduledTimeStart ?? null,
       scheduledTimeEnd: candidate._scheduledTimeEnd ?? null,
@@ -1220,6 +1276,8 @@ export function PlanningInbox() {
                     address: s.address,
                     customerLat: s.coordinates.lat,
                     customerLng: s.coordinates.lng,
+                    customerPhone: original?.customerPhone ?? null,
+                    customerEmail: original?.customerEmail ?? null,
                     scheduledDate: original?.scheduledDate ?? null,
                     scheduledTimeStart: original?.scheduledTimeStart ?? null,
                     scheduledTimeEnd: original?.scheduledTimeEnd ?? null,

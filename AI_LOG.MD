@@ -839,3 +839,154 @@ Samostatná stránka s přehledem všech naplánovaných tras v tabulkovém form
 - `worker/src/db/queries/route.rs` - `delete_route_by_id`, `update_route` queries
 - Navigace: `/routes` v hlavním menu a hamburger menu
 - Datum kliknutelný → odkaz na Planner
+
+### Bug fix: `no column found for name: depot_id` v list_routes
+
+**Příčina:** Funkce `list_routes` v `worker/src/db/queries/route.rs` neobsahovala `r.depot_id` v SELECT, ale struct `RouteWithCrewInfo` tento sloupec vyžaduje. SQLx pak nemohl namapovat výsledek.
+
+**Řešení:** ✅ Přidán `r.depot_id` do SELECT a `r.depot_id` do GROUP BY v `list_routes` query.
+
+**Commit:** `28e3522` - fix: Add missing depot_id to list_routes SQL query
+
+### Bug: Trasa se automaticky neukládá (route.save selhává)
+
+**Symptom:** Uživatel přidá zastávky do trasy v Inboxu, ale při reloadu stránky trasa zmizí. Auto-save nefunguje.
+
+**Investigace:**
+- `useAutoSave` hook je správně zapojen, `setHasChanges(true)` se volá při přidání/odebrání zastávky
+- Worker log ukazuje, že `route.save` requesty PŘICHÁZEJÍ, ale **všechny selhávají na parsování**:
+  ```
+  ERROR: Failed to parse request: UUID parsing failed: invalid length: expected length 32 for simple format, found 2 at line 1 column 384
+  ```
+- Chyba "found 2" = backend dostává 2-znakový string místo UUID
+
+**Příčina (identifikovaná):**
+- Řádek 1131 v `PlanningInbox.tsx`: `routeId: ''` - při vytváření nového stopu se nastaví `routeId` na prázdný string
+- Frontend `SaveRouteStop` interface má `revisionId: s.revisionId ?? undefined` - ale samotný `SaveRouteStop` v requestu neobsahuje `routeId`
+- Problém je pravděpodobně v `depotId` nebo v jednom z UUID polí ve stop-ech
+- `autoSaveFn` posílá `depotId: context.depotId || null` - pokud depotId je platný UUID, je OK
+- Ale `SaveRouteStop` na backendu očekává `customer_id: Uuid` a `revision_id: Option<Uuid>`
+- V Inboxu se `revisionId` nastavuje na `candidate.id` (řádek 1132) - to je ID revize (UUID)
+- `customerId` je `candidate.customerId` - to je ID zákazníka (UUID)
+
+**Klíčový nález z worker logu:**
+- `route.save` přichází 4× a POKAŽDÉ selhává na UUID parsování
+- Pozice chyby (column 384) ukazuje na pozici uvnitř `stops` pole
+- Chyba "found 2" naznačuje, že se posílá prázdný string `""` (2 znaky v JSON = `""`)
+
+**Pravděpodobná příčina:**
+- `eta` nebo `etd` pole: `s.estimatedArrival ?? undefined` - pokud je arrival `null`, field se vůbec nepošle (undefined). ALE pokud je to prázdný string, pošle se `""` a backend ho parsuje jako UUID → selhání
+- NEBO: `revisionId` může být krátký string místo UUID v některých případech
+
+**Hlubší analýza (2026-02-09 18:00):**
+
+Backend `Request<SaveRouteRequest>` struktura (všechna UUID pole):
+- `Request.id: Uuid` — z `crypto.randomUUID()` → vždy validní ✅
+- `Request.user_id: Option<Uuid>` — fallback `'00000000-0000-0000-0000-000000000001'` nebo `undefined` → OK ✅
+- `SaveRouteRequest.depot_id: Option<Uuid>` — `context.depotId || null` → null pokud empty → OK ✅
+- `SaveRouteStop.customer_id: Uuid` — `s.customerId` z `CallQueueItem.customerId` → UUID ✅
+- `SaveRouteStop.revision_id: Option<Uuid>` — `s.revisionId ?? undefined` → undefined se nepošle ✅
+- `SaveRouteStop.eta: Option<NaiveTime>` — **NENÍ UUID**, ale `chrono::NaiveTime` → chyba "UUID parsing" by z tohoto pole nepřišla
+- `SaveRouteStop.etd: Option<NaiveTime>` — stejně jako eta
+
+**Klíčový objev:** Chyba říká "UUID parsing failed" → musí jít o pole s typem `Uuid`, ne `NaiveTime`. Pole `eta`/`etd` jsou `NaiveTime`, takže NEJSOU zdrojem chyby.
+
+**Zbývající podezřelá pole:**
+1. `customer_id: Uuid` (required) — pokud `candidate.customerId` je krátký/neplatný string
+2. `revision_id: Option<Uuid>` — pokud `s.revisionId` je neprázdný ale neplatný string (ne null, ne undefined → `?? undefined` ho nepřeskočí)
+
+**Hypotéza "found 2":**
+- "found 2" = string délky 2 znaků
+- V JSON: `""` je prázdný string (délka 0), ne 2
+- Délka 2 by odpovídala např. `"id"`, `"ab"`, `"-1"` atd.
+- NOVÝ POZNATEK: `"found 2"` v kontextu serde UUID parsování znamená, že vstupní string má 2 znaky, ne 32
+
+**Provedené kroky:**
+- ✅ Přidán lepší error logging do `handle_save` v `route.rs` — při parse error se nyní loguje raw JSON payload (prvních 600 znaků)
+- ✅ Worker přebuilděn a restartován s novým logováním
+- ⏳ Čekám na zachycení dalšího selhání pro identifikaci přesného pole
+
+**Plán opravy (preventivní, bez čekání na log):**
+- Frontend: přidat sanitizaci všech UUID polí před odesláním — prázdné/neplatné stringy → `undefined`/`null`
+- Backend: přidat `#[serde(deserialize_with = "...")]` pro robustnější UUID parsing (prázdný string → None)
+
+**Ověření typů (2026-02-09 18:05):**
+- `CallQueueItem.id` = revision UUID z backendu → vždy validní ✅
+- `CallQueueItem.customerId` = customer UUID z backendu → vždy validní ✅
+- `InboxCandidate extends CallQueueItem` → data přímo z `getCallQueue()` → validní UUIDs ✅
+- `handleAddToRoute` nastavuje `revisionId: candidate.id` → validní UUID ✅
+- Po optimalizaci: `revisionId: original?.revisionId ?? null` → buď validní UUID, nebo null ✅
+
+**Závěr:** Všechna UUID pole by měla být validní, ale pro jistotu je problém ošetřen na obou stranách.
+
+### Oprava (2026-02-09 18:08)
+
+**Frontend (`PlanningInbox.tsx`, autoSaveFn):**
+- Přidána `sanitizeUuid()` funkce — stringy kratší než 8 znaků se převedou na `undefined`/`null`
+- `depotId`: `sanitizeUuid(context.depotId) ?? null`
+- `revisionId`: `sanitizeUuid(s.revisionId)` místo `s.revisionId ?? undefined`
+- `eta`/`etd`: `s.estimatedArrival || undefined` (falsy check místo nullish coalescing — zachytí i `""`)
+
+**Backend (`worker/src/handlers/route.rs`):**
+- Přidány custom deserializátory `deserialize_optional_uuid` a `deserialize_uuid_tolerant`
+- Stringy kratší než 8 znaků → `None` (pro Option<Uuid>) nebo `Uuid::nil()` (pro required Uuid) + warning log
+- Aplikováno na `SaveRouteRequest.depot_id`, `SaveRouteStop.customer_id`, `SaveRouteStop.revision_id`
+- Přidán raw payload logging při parse error (prvních 600 znaků) pro budoucí debugging
+
+**Worker přebuilděn a restartován** s oběma opravami.
+
+**Status:** ✅ Oprava nasazena — auto-save funguje
+
+---
+
+### Fix: Termíny se nezobrazí v timeline bez reloadu (2026-02-09 18:15)
+
+**Symptom:** Po naplánování termínu zákazníkovi, který je na trase, se dohodnuté časy nezobrazí v timeline. Nutný reload stránky.
+
+**Příčina:** Bug v `handleSchedule` v `PlanningInbox.tsx` (řádek 974):
+```typescript
+// BUG: stop.id je UUID route_stop, candidate.customerId je UUID zákazníka → nikdy nematchne
+stop.id === candidate.customerId
+// FIX:
+stop.customerId === candidate.customerId
+```
+Navíc chybělo nastavení `revisionStatus: 'scheduled'` při aktualizaci route stop.
+
+**Oprava:** `PlanningInbox.tsx` řádek 974 — opraveno porovnání + přidáno `revisionStatus: 'scheduled'`.
+
+**Status:** ✅ Opraveno
+
+---
+
+### Feature: Klik na zastávku v trase zobrazí detail zákazníka (2026-02-09 18:15)
+
+**Symptom:** Při kliknutí na zastávku v timeline trasy se v prostředním sloupci nezobrazí detail zákazníka (zobrazí se "Vyberte kandidáta ze seznamu").
+
+**Příčina:** `selectedCandidateDetail` se počítal pouze z `candidates` (call queue list). Pokud zákazník nebyl v aktuálním segmentu/filtru (např. už měl termín a vypadl z call queue), `selectedCandidate` byl `null`.
+
+**Oprava:**
+- `selectedCandidateDetail` nyní má fallback z `routeStops` — pokud zákazník není v `candidates`, vytvoří se detail z dat route stop (jméno, adresa, termín, status)
+- `selectedCandidateForMap` má stejný fallback — zákazník se zvýrazní na mapě i při kliknutí z timeline
+
+**Status:** ✅ Opraveno
+
+---
+
+### Fix: Chybějící telefon a email v detailu zákazníka na trase (2026-02-09 18:25)
+
+**Symptom:** Po kliknutí na zastávku v trase se v detailu zákazníka zobrazí "Chybí telefon" u všech zákazníků, i když telefon mají. Email se nezobrazuje vůbec.
+
+**Příčina:**
+1. Backend `RouteStopWithInfo` neobsahoval `customer_phone` a `customer_email` — SQL query je neselektoval z tabulky `customers`
+2. Frontend `SavedRouteStop` interface neměl pole `customerPhone` a `customerEmail`
+3. Fallback v `selectedCandidateDetail` (pro zákazníky z trasy) nepředával `phone`/`email`
+4. `CandidateDetail` nezobrazoval varování při chybějícím emailu (zobrazoval jen telefon warning)
+5. V hlavní větvi (kandidát z call queue) chybělo předání `email` do `CandidateDetailData`
+
+**Oprava:**
+- **Backend** (`route.rs`): Přidány `customer_phone` a `customer_email` do `RouteStopWithInfo` struct a SQL query (`c.phone as customer_phone, c.email as customer_email`)
+- **Frontend** (`routeService.ts`): Rozšířen `SavedRouteStop` interface o `customerPhone: string | null` a `customerEmail: string | null`
+- **Frontend** (`PlanningInbox.tsx`): Přidáno `customerPhone`/`customerEmail` na všech 4 místech, kde se vytváří `SavedRouteStop` (dayOverview, handleAddSelectedToRoute, handleAddToRoute, optimalizace). Přidáno `email` do hlavní větve `selectedCandidateDetail`. Přidáno `phone`/`email` do fallback větve.
+- **Frontend** (`CandidateDetail.tsx`): Přidáno varování "Chybí email" (s ikonou ✉️) když email chybí, analogicky k existujícímu "Chybí telefon"
+
+**Status:** ✅ Opraveno, worker přebuilděn a restartován

@@ -76,6 +76,8 @@ export interface SavedRouteStop {
   address: string;
   customerLat: number | null;
   customerLng: number | null;
+  customerPhone: string | null;
+  customerEmail: string | null;
   scheduledDate: string | null;
   scheduledTimeStart: string | null;
   scheduledTimeEnd: string | null;

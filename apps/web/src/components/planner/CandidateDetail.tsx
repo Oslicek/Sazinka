@@ -274,10 +274,12 @@ export function CandidateDetail({
           <span className={styles.missingInfo}>📵 Chybí telefon</span>
         )}
 
-        {candidate.email && (
+        {candidate.email ? (
           <a href={`mailto:${candidate.email}`} className={styles.emailLink}>
             ✉️ {candidate.email}
           </a>
+        ) : (
+          <span className={styles.missingInfo}>✉️ Chybí email</span>
         )}
       </section>
 

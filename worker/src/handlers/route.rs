@@ -471,11 +471,42 @@ pub fn create_mock_routing_service() -> Arc<dyn RoutingService> {
 use chrono::NaiveDate;
 use crate::types::route::Route;
 
+/// Deserialize an Option<Uuid> that tolerates empty or short strings (returns None instead of error)
+fn deserialize_optional_uuid<'de, D>(deserializer: D) -> Result<Option<Uuid>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    let opt: Option<String> = Option::deserialize(deserializer)?;
+    match opt {
+        None => Ok(None),
+        Some(s) if s.len() < 8 => Ok(None), // Too short to be a valid UUID
+        Some(s) => {
+            Uuid::parse_str(&s).map(Some).map_err(serde::de::Error::custom)
+        }
+    }
+}
+
+/// Deserialize a Uuid that tolerates empty or short strings by returning Uuid::nil()
+fn deserialize_uuid_tolerant<'de, D>(deserializer: D) -> Result<Uuid, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    let s = String::deserialize(deserializer)?;
+    if s.len() < 8 {
+        warn!("Received invalid UUID string '{}', substituting nil UUID", s);
+        return Ok(Uuid::nil());
+    }
+    Uuid::parse_str(&s).map_err(serde::de::Error::custom)
+}
+
 /// Request to save a route
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveRouteRequest {
     pub date: NaiveDate,
+    #[serde(default, deserialize_with = "deserialize_optional_uuid")]
     pub depot_id: Option<Uuid>,
     pub stops: Vec<SaveRouteStop>,
     pub total_distance_km: f64,
@@ -487,7 +518,9 @@ pub struct SaveRouteRequest {
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveRouteStop {
+    #[serde(deserialize_with = "deserialize_uuid_tolerant")]
     pub customer_id: Uuid,
+    #[serde(default, deserialize_with = "deserialize_optional_uuid")]
     pub revision_id: Option<Uuid>,
     pub order: i32,
     pub eta: Option<chrono::NaiveTime>,
@@ -565,7 +598,8 @@ pub async fn handle_save(
         let request: Request<SaveRouteRequest> = match serde_json::from_slice(&msg.payload) {
             Ok(req) => req,
             Err(e) => {
-                error!("Failed to parse request: {}", e);
+                let raw = String::from_utf8_lossy(&msg.payload);
+                error!("Failed to parse route.save request: {} | raw payload: {}", e, &raw[..raw.len().min(600)]);
                 let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
