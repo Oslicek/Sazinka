@@ -21,6 +21,7 @@
 > - ✅ **Sjednocené komponenty Inbox/Planner** — `RouteDetailTimeline` + `RouteMapPanel` sdílené oběma stránkami
 > - ✅ **Bidirectional highlight** — klik na zastávku/segment v timeline ↔ zvýraznění na mapě
 > - ✅ **InsertionPreview** — vizualizace vložení kandidáta do trasy na mapě (Inbox only)
+> - ✅ **Export+ asynchronně** — export joby běží na workeru a v `Úlohy` lze dokončený export stáhnout přes `Stáhnout export`
 > 
 > **Změny v navigaci:**
 > - `/planner` → "Plán dne" (sloučeno Plánování + Můj den)

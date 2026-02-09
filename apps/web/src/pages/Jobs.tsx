@@ -13,6 +13,7 @@ import {
   isTerminal,
 } from '../types/jobStatus';
 import { cancelJob, retryJob, listJobHistory, type JobHistoryEntry } from '../services/jobService';
+import { downloadExportJob } from '@/services/exportPlusService';
 import type { CustomerImportJobStatusUpdate, ImportReport } from '@shared/import';
 import styles from './Jobs.module.css';
 
@@ -57,6 +58,7 @@ export function Jobs() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [reportDialogData, setReportDialogData] = useState<ImportReport | null>(null);
+  const [downloadingExportId, setDownloadingExportId] = useState<string | null>(null);
   
   // Merge local active jobs with global active jobs from store
   const activeJobs = new Map(localActiveJobs);
@@ -144,6 +146,28 @@ export function Jobs() {
       setActionError(err instanceof Error ? err.message : 'Nepodařilo se opakovat úlohu');
     } finally {
       setActionLoading(null);
+    }
+  }, []);
+
+  // Handle export download from job history
+  const handleDownloadExport = useCallback(async (jobId: string) => {
+    setDownloadingExportId(jobId);
+    setActionError(null);
+
+    try {
+      const { blob, filename } = await downloadExportJob(jobId);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Export se nepodařilo stáhnout');
+    } finally {
+      setDownloadingExportId(null);
     }
   }, []);
   
@@ -448,6 +472,15 @@ export function Jobs() {
                                 disabled={actionLoading === job.id}
                               >
                                 {actionLoading === job.id ? '...' : 'Opakovat'}
+                              </button>
+                            )}
+                            {job.type === 'export' && job.status.type === 'completed' && (
+                              <button
+                                className={styles.downloadBtn}
+                                onClick={() => handleDownloadExport(job.id)}
+                                disabled={downloadingExportId === job.id}
+                              >
+                                {downloadingExportId === job.id ? 'Stahuji...' : 'Stáhnout export'}
                               </button>
                             )}
                           </>

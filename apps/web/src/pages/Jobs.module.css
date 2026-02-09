@@ -348,6 +348,28 @@
   background: #047857;
 }
 
+/* Export download button */
+.downloadBtn {
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-right: 0.5rem;
+}
+
+.downloadBtn:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.downloadBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .sectionHeader {

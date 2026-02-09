@@ -1581,3 +1581,39 @@ CSV soubor → Parsování → Řádek po řádku zpracování
                               ↓
                     ImportReportDialog (Jobs page)
 ```
+
+---
+
+## 18. Export+ (asynchronní ZIP export přes worker)
+
+Export je zpracováván asynchronně na workeru přes JetStream, nikoliv synchronně v UI vlákně:
+
+- Submit: `sazinka.export.submit`
+- Download: `sazinka.export.download`
+- Queue stream: `SAZINKA_EXPORT_JOBS`
+- Status topic: `sazinka.job.export.status.{jobId}`
+
+### 18.1 Podporované exportní soubory
+
+- `customers.csv`
+- `devices.csv`
+- `revisions.csv`
+- `communications.csv`
+- `work_log.csv`
+- `routes.csv` (export-only)
+- (interně i `route_stops.csv` v ZIP podle scope)
+
+### 18.2 Scope režimy exportu
+
+- `customer_only`
+- `all_workers_combined` (sjednocené soubory, `worker_uuid` ve všech řádcích)
+- `all_workers_split` (oddělené soubory prefixované `worker_uuid`)
+- `single_worker`
+
+### 18.3 UX v aplikaci
+
+- Export se zakládá v Settings/Admin přes `ExportPlusPanel`.
+- Stav exportu je viditelný na stránce `Úlohy` (`/jobs`).
+- Po dokončení:
+  - uživatel může stahovat výsledek přímo tlačítkem `Stáhnout export` v historii úloh,
+  - a zároveň může dostat browser notifikaci při doběhnutí úlohy.

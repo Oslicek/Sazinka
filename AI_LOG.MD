@@ -1169,3 +1169,43 @@ Aktualizovány dokumenty:
 - `PROJECT_ROADMAP.MD` (GDPR/RtBF status)
 - `PROJECT_DATA.MD` (anonymizační pole a behavior v `customers`)
 - `PROJECT_UX.MD` (UX flow a text potvrzení mazání)
+
+## 2026-02-09T22:10:00Z — Cursor Agent (gpt-5.3-codex) — CRASH RECOVERY
+
+### Investigace stavu po pádu Cursoru + pokračování implementace
+
+Po obnově session proběhla kontrola pracovního stromu a cílových souborů pro Export+:
+
+- `apps/web/src/pages/Jobs.tsx` už obsahuje implementaci explicitního tlačítka `Stáhnout export` pro dokončené export joby v historii.
+- `apps/web/src/pages/Jobs.module.css` už obsahuje styly `.downloadBtn`.
+- Download akce používá `downloadExportJob(jobId)` z `exportPlusService.ts` a stahuje ZIP přes `Blob` + `URL.createObjectURL`.
+
+### Dokončeno po recovery
+
+1. ✅ Ověřeno, že požadovaný UX gap z auditu je implementován:
+   - Historie úloh nyní nabízí explicitní ruční stažení exportu (`Stáhnout export`) i bez otevřeného Export panelu.
+2. ✅ Aktualizována dokumentace v relevantních `PROJECT_xxx` souborech tak, aby odpovídala aktuálnímu stavu Export+ (async worker, Úlohy, ruční download).
+3. ✅ Tento AI log doplněn o crash-recovery audit a výsledek.
+
+## 2026-02-11T21:45:00Z — Cursor Agent (gpt-5.3-codex)
+
+### Re-validace anonymizačního mazání zákazníka (E2E) + pokračování dle plánu
+
+Proběhla nová end-to-end validace přes reálné NATS request/reply flow:
+
+- `sazinka.auth.login` (admin) → OK
+- `sazinka.customer.create` → OK
+- `sazinka.communication.create` → OK
+- `sazinka.customer.delete` → `{ deleted: true }`
+- `sazinka.customer.get` na stejném `customerId` → `NOT_FOUND`
+- `sazinka.communication.list` pro anonymizovaného zákazníka stále vrací záznam, ale PII je odstraněna:
+  - `subject = "Anonymizováno"`
+  - `content = "Anonymizováno"`
+  - `contactName = null`
+  - `contactPhone = null`
+
+Technická poznámka:
+- E2E check byl spuštěn jednorázovým lokálním testovacím bin skriptem (`cargo run --bin e2e_customer_delete_check`), který byl po ověření odstraněn, aby nezůstával v repozitáři.
+
+Závěr:
+- Implementace anonymizačního mazání je funkční v runtime toku (auth -> create -> delete -> verify).
