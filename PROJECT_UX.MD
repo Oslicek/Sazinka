@@ -879,7 +879,7 @@ interface DayPlan {
 
 ## Jobs Dashboard (Phase 7D)
 
-> **Status:** Planned (Phase 7)
+> **Status:** Partially implemented (Phase 7D core in `/jobs`)
 > **Umístění:** `/admin/jobs` (součást Admin sekce)
 
 ### Účel
@@ -889,6 +889,7 @@ Centralizovaný monitoring všech asynchronních úloh zpracovávaných přes Je
 - Routing (Valhalla)
 - Importy/Exporty
 - Email/SMS (budoucí)
+- Exporty lze z historie stahovat přímo tlačítkem `Stáhnout export` u dokončených export jobů
 
 ### Wireframe
 
@@ -1410,6 +1411,12 @@ Když je **OFF**:
 ```
 
 **Editace:** Pravý drawer se sekcemi "Základ", "Kontakt", "Adresa + ověření", "Poznámky"
+
+**Mazání zákazníka (aktuální UX):**
+
+- V headeru detailu je akce pro smazání zákazníka (anonymizace).
+- Po kliknutí se otevře potvrzovací dialog s upozorněním, že akce je nevratná a osobní údaje budou trvale anonymizovány bez možnosti undo.
+- Po potvrzení zákazník zmizí ze seznamů/UI, ale historická navázaná data zůstávají zachována v anonymizované podobě.
 
 ---
 

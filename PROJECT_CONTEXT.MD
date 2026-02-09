@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-02-09 (v0.18.0 - Unified route components + VRP timeout fix)
+> **Last Updated:** 2026-02-09 (v0.18.1 - Customer anonymization delete flow verified)
 
 ## Overview
 
@@ -1559,6 +1559,19 @@ cargo test
   - Graceful fallback to nearest-neighbor heuristic on timeout/error/panic
   - Time windows from revisions now correctly passed to VRP solver via `build_vrp_problem`
   - `load_customers` fetches `scheduled_time_start`/`scheduled_time_end` from DB
+
+## Recent Changes (v0.18.1)
+
+- **Customer delete switched to anonymization flow (GDPR-friendly):**
+  - `customers` now support soft anonymization fields (`is_anonymized`, `anonymized_at`)
+  - `sazinka.customer.delete` anonymizes personal data instead of hard delete
+  - Related data are preserved for FK integrity and historical reporting
+  - `communications`, `visits`, and `visit_work_items` PII fields are anonymized transactionally
+  - Customer query endpoints exclude anonymized customers (`is_anonymized = FALSE`)
+- **E2E verification completed (NATS request/reply):**
+  - Delete returns `deleted: true`
+  - Subsequent `customer.get` returns `NOT_FOUND`
+  - Existing communication records remain but are anonymized (`subject/content = "Anonymizováno"`, contacts nulled)
 
 ## Recent Changes (v0.16.0)
 

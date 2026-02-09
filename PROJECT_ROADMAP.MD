@@ -1,6 +1,6 @@
 # Project Roadmap - Sazinka v1.0 GA
 
-> **Last Updated:** 2026-02-09 (Phase 9 + Unified route components + VRP timeout fix)
+> **Last Updated:** 2026-02-09 (Customer anonymization delete flow verified)
 
 ## Current State Analysis
 
@@ -706,7 +706,7 @@ CREATE TABLE usage_records (
 
 **Features to implement:**
 - **Data export** - Full user data in JSON/ZIP
-- **Data deletion** - "Right to be forgotten"
+- **Data deletion** - "Right to be forgotten" (partial implementation: customer anonymization flow for soft delete + PII anonymization in linked records)
 - **Consent management** - Track what user agreed to
 - **Audit trail** - Who accessed what when
 
@@ -1797,6 +1797,7 @@ Phase 7 (JetStream External Services): ✅ COMPLETE
     7D.2 JobStatusTimeline component ✅
     7D.3 Admin actions (cancel, retry) handlers ✅
     7D.4 Jobs route + navigation link ✅
+    7D.5 Export download action in history (`Stáhnout export`) ✅
 
 Phase 8 (UX/UI Redesign - Route-Aware Planning): ✅ COMPLETED
   8A: Nový Inbox Layout + Route Context ✅

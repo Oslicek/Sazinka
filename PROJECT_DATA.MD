@@ -99,6 +99,8 @@ customers
 ├── lat               DOUBLE PRECISION
 ├── lng               DOUBLE PRECISION
 ├── geocode_status    VARCHAR(20)                          ← problém
+├── is_anonymized     BOOLEAN NOT NULL DEFAULT FALSE       ← nové (soft delete)
+├── anonymized_at     TIMESTAMPTZ                          ← nové (audit stopa)
 ├── notes             TEXT
 ├── created_at        TIMESTAMPTZ
 └── updated_at        TIMESTAMPTZ
@@ -115,6 +117,13 @@ customers
 | `geocode_status` | `VARCHAR(20)` | Tříhodnotový stav (`pending`, `success`, `failed`) uložený jako volný string. Přestože to není boolean (má 3 stavy, ne 2), měl by to být ENUM pro typovou bezpečnost. Geocode status se neimportuje, je výsledek následného geocodingu. | `geocode_status_enum ENUM('pending','success','failed') DEFAULT 'pending'` |
 | `phone` | `VARCHAR(50)` | Zbytečně velký. E.164 = max 16 znaků. | `VARCHAR(20)` |
 | `country` | `VARCHAR(10)` | ISO alpha-2 = 2 znaky. | `CHAR(2) DEFAULT 'CZ'` – není kritické |
+
+**Poznámka k mazání zákazníka (aktuální implementace):**
+
+- `customers` se při "smazání" fyzicky nemažou.
+- Záznam je anonymizován (`is_anonymized = TRUE`, `anonymized_at = NOW()`), PII pole jsou vyčištěna.
+- Čtecí dotazy pro zákazníky filtrují `is_anonymized = FALSE`, takže anonymizovaní zákazníci nejsou vidět v UI.
+- Vazby v dalších tabulkách zůstávají zachované (FK integrita), navazující PII je anonymizována.
 
 **Proč `geocode_status` nemůže být boolean:**
 

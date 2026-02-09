@@ -990,3 +990,182 @@ Navíc chybělo nastavení `revisionStatus: 'scheduled'` při aktualizaci route 
 - **Frontend** (`CandidateDetail.tsx`): Přidáno varování "Chybí email" (s ikonou ✉️) když email chybí, analogicky k existujícímu "Chybí telefon"
 
 **Status:** ✅ Opraveno, worker přebuilděn a restartován
+
+---
+
+### Drobná oprava: Celkový čas pod trasou v Inboxu (2026-02-09 18:35)
+
+Formát celkového času změněn z `5.1 h` na `5h 06min` v `RouteDetailTimeline.tsx`.
+
+**Status:** ✅ Opraveno
+
+---
+
+## Požadavky: Přepracování filtrů v Plánovacím Inboxu (2026-02-09 19:00)
+
+### Zadání od uživatele
+
+1. **Backend musí vracet i kandidáty s naplánovaným termínem** — dosud call queue filtroval `scheduled_date IS NULL`, takže zákazníci s termínem se v Inboxu vůbec nezobrazovali.
+
+2. **Filtry musí být multi-select (AND logika)** — uživatel může zapnout více filtrů najednou, vztah mezi nimi je AND (průnik).
+
+3. **Požadované filtry:**
+   - **Má termín** (přejmenováno z "S termínem") + negace **Nemá termín**
+   - **V trase** + negace **Není v trase**
+   - Další smysluplné filtry (po termínu, problémy s kontaktem/adresou, atd.)
+
+4. **UI musí být sofistikovanější** — ne jednoduché segment tabs, ale pokročilejší filtrační rozhraní umožňující kombinaci filtrů.
+
+### Identifikované problémy s aktuálním stavem
+
+- Backend `get_call_queue` SQL má podmínku `r.scheduled_date IS NULL` → zákazníci s termínem se nenačtou
+- Frontend filtry jsou exkluzivní segment tabs (jen jeden aktivní) → nelze kombinovat
+- Filtr "S termínem" je vždy prázdný (backend je vyfiltruje)
+- Chybí filtr "V trase" / "Není v trase"
+
+**Status:** ⏳ Plánování implementace
+
+## 2026-02-09T19:15:00Z — Cursor Agent (gpt-5.3-codex)
+
+### Pauzy v trasách (obědová pauza) — rozhodnutí uživatele + stav implementace
+
+**Rozhodnutí uživatele (potvrzené):**
+
+1. Pokud se časové a kilometrové omezení automatické pauzy bijí, pauza se vloží a zobrazí se varování.
+2. Valhalla/VRP musí pauzu vidět a respektovat ji jako omezení při optimalizaci.
+3. Pauza zatím nemá prostorovou lokalizaci (jen časové omezení).
+4. Ručně vložené pauzy lze umístit kamkoliv a parametry upravit libovolně; při porušení omezení se zobrazí varování, ale uživatel může pokračovat.
+
+### Implementováno
+
+- DB migrace `007_add_break_settings.sql`:
+  - `users`: `break_enabled`, `break_duration_minutes`, `break_earliest_time`, `break_latest_time`, `break_min_km`, `break_max_km`
+  - `route_stops`: `stop_type`, `break_duration_minutes`, `break_time_start`; `customer_id` je nullable pro break stopy
+  - CHECK constraints pro konzistenci customer/break stopu
+- Backend settings:
+  - `worker/src/types/settings.rs`, `worker/src/db/queries/settings.rs`, `worker/src/handlers/settings.rs`
+  - nový handler `sazinka.settings.break.update` vrací aktualizované break settings
+- Frontend settings:
+  - `Settings` obsahuje záložku `Pauzy` (toggle + délka + časové a km rozmezí)
+  - `settingsService.updateBreakSettings()` napojen na backend
+- Ukládání/načítání tras:
+  - `SavedRouteStop` a backend route queries podporují `stopType = customer|break`
+  - break stopy se ukládají/načítají včetně `breakDurationMinutes` a `breakTimeStart`
+- Inbox/Planner:
+  - auto-vložení pauzy do nové trasy
+  - ruční přidání/smazání pauzy v planneru
+  - inline editace začátku a délky ručně vložené pauzy
+  - zobrazení varování při porušení omezení
+- VRP integrace:
+  - break config je předán do `vrp-pragmatic` (`breaks` v shift definici)
+  - parser řešení mapuje break aktivity do výsledných stopů (interně jako stop s `customer_id = nil`)
+
+### Poznámky k validaci
+
+- Po změnách byla opravena duplicita handleru `handle_update_break_settings` v `worker/src/handlers/settings.rs`.
+- Rust kontrola nehlásí nové type-level chyby spojené s break feature; build check je v tomto repu blokován pre-existující SQLx compile-time DB/cache konfigurací.
+
+## 2026-02-09T20:05:00Z — Cursor Agent (gpt-5.3-codex)
+
+### Export+ implementace (Settings + Admin)
+
+Implementována nová exportní vrstva a UI panel pro Export+:
+
+- Nová služba `apps/web/src/services/exportPlusService.ts`:
+  - ZIP export přes `jszip`
+  - podporované soubory: `customers.csv`, `devices.csv`, `revisions.csv`, `communications.csv`, `work_log.csv`, `routes.csv` + `route_stops.csv`
+  - filtry s AND logikou (datum, stavy revizí/návštěv/tras, posádky, depa)
+  - admin scope režimy:
+    - `customer_only`
+    - `all_workers_combined` (1A, přidán `worker_uuid` ve všech souborech)
+    - `all_workers_split` (1B, per-worker prefix v názvech souborů)
+    - `single_worker` (1C)
+  - pseudonymizace referenčních ID per worker (`pseudoId`) pro GDPR izolaci exportovaných identifikátorů
+- Nový UI komponent:
+  - `apps/web/src/components/shared/ExportPlusPanel.tsx`
+  - `apps/web/src/components/shared/ExportPlusPanel.module.css`
+  - multi-select filtry přes chip UI, výběr více souborů, režim exportu, hledání pracovníka pro 1C
+- Integrace:
+  - `Settings.tsx`: starý export (zákazníci/revize) nahrazen `ExportPlusPanel`
+  - `Admin.tsx`: starý export (zákazníci/revize) nahrazen `ExportPlusPanel` v `adminMode`
+- Přidána frontend závislost:
+  - `apps/web/package.json`: `jszip`
+
+## 2026-02-09T21:10:00Z — Cursor Agent (gpt-5.3-codex)
+
+### Audit stavu: Async Export+ na workeru + viditelnost v Úlohách + upozornění
+
+Na základě požadavku „ověřit stav, protože implementace má být hotová nebo téměř hotová“ proběhl cílený audit backend + frontend.
+
+### Co je IMPLEMENTOVÁNO (potvrzeno v kódu)
+
+1. **Export běží asynchronně na workeru (JetStream)**
+   - `worker/src/services/export_processor.rs`
+   - stream: `SAZINKA_EXPORT_JOBS`
+   - subject queue: `sazinka.jobs.export.submit`
+   - status subject: `sazinka.job.export.status.{jobId}`
+   - job lifecycle: `queued` -> `processing` -> `completed|failed`
+   - po dokončení se ukládá ZIP do `exports/{userId}/{jobId}.zip`
+
+2. **NATS handlery pro submit/download**
+   - `worker/src/handlers/export.rs`
+   - submit subject: `sazinka.export.submit`
+   - download subject: `sazinka.export.download`
+   - download vrací `fileBase64` + metadata ZIP
+
+3. **Processor je napojen ve startupu handlerů**
+   - `worker/src/handlers/mod.rs`
+   - procesor se vytváří a spouští (`start_processing`)
+   - subscribe na `sazinka.export.submit` + `sazinka.export.download`
+
+4. **Export je viditelný v stránce Úlohy**
+   - `apps/web/src/pages/Jobs.tsx`
+   - `JOB_STREAMS` obsahuje `export`
+   - subscribe wildcard: `sazinka.job.export.status.*`
+   - export joby se renderují v Aktivních úlohách / Historii
+
+5. **Upozornění uživatele po dokončení**
+   - `apps/web/src/components/shared/ExportPlusPanel.tsx`
+   - po `completed`:
+     - proběhne stažení ZIP (`downloadExportJob`)
+     - browser notification (`new Notification('Export připraven', ...)`)
+     - info message v UI
+
+### Co je TÉMĚŘ HOTOVÉ / drobná mezera
+
+- V `Jobs.tsx` je `downloadExportJob` importováno, ale v tabulce Historie zatím není explicitní tlačítko „Stáhnout export“ pro completed export job.
+- Prakticky to funguje přes auto-download z `ExportPlusPanel`, ale uživatel bez otevřeného panelu nemá v „Úlohách“ vlastní ruční download akci.
+
+### Závěr auditu
+
+- Požadavek je **z velké části implementovaný a funkční**:
+  - async worker export ✅
+  - statusy v Úlohách ✅
+  - upozornění + stažení po dokončení ✅
+- Otevřený detail pro dokončení UX:
+  - přidat explicitní download akci pro export job přímo v `Jobs.tsx` (history row / action button).
+
+## 2026-02-09T21:35:00Z — Cursor Agent (gpt-5.3-codex)
+
+### E2E ověření anonymizačního mazání zákazníka + dokumentace
+
+Byl proveden end-to-end test přes NATS request/reply (login -> create customer -> create communication -> delete customer -> verify state):
+
+- Přihlášení přes `sazinka.auth.login` funguje.
+- Nový zákazník byl vytvořen přes `sazinka.customer.create`.
+- Komunikace byla vytvořena přes `sazinka.communication.create`.
+- Smazání/anonymizace přes `sazinka.customer.delete` vrátilo `{ deleted: true }`.
+- Následné `sazinka.customer.get` pro stejné `customerId` vrací `NOT_FOUND` (zákazník je v UI skrytý).
+- `sazinka.communication.list` stále vrací záznam komunikace, ale s anonymizovaným obsahem:
+  - `subject = "Anonymizováno"`
+  - `content = "Anonymizováno"`
+  - `contactName = null`
+  - `contactPhone = null`
+
+Závěr: požadovaný behavior je potvrzen — zákazník není fyzicky smazán, ale anonymizován; navázaná data zůstávají referenčně zachovaná a PII je odstraněna.
+
+Aktualizovány dokumenty:
+- `PROJECT_CONTEXT.MD` (recent changes)
+- `PROJECT_ROADMAP.MD` (GDPR/RtBF status)
+- `PROJECT_DATA.MD` (anonymizační pole a behavior v `customers`)
+- `PROJECT_UX.MD` (UX flow a text potvrzení mazání)
