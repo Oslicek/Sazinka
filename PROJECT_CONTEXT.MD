@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-02-09 (v0.18.1 - Customer anonymization delete flow verified)
+> **Last Updated:** 2026-02-11 (v0.18.2 - Customer anonymization runtime re-validation)
 
 ## Overview
 
@@ -1572,6 +1572,14 @@ cargo test
   - Delete returns `deleted: true`
   - Subsequent `customer.get` returns `NOT_FOUND`
   - Existing communication records remain but are anonymized (`subject/content = "Anonymizováno"`, contacts nulled)
+
+## Recent Changes (v0.18.2)
+
+- **Customer anonymization flow re-validated in runtime (NATS request/reply):**
+  - Verified sequence: `auth.login -> customer.create -> communication.create -> customer.delete -> customer.get -> communication.list`
+  - Confirmed `customer.delete` returns `deleted: true`
+  - Confirmed anonymized customer is hidden from `customer.get` (`NOT_FOUND`)
+  - Confirmed linked communication remains historically present but with anonymized PII fields
 
 ## Recent Changes (v0.16.0)
 

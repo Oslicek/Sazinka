@@ -95,6 +95,8 @@ export function CustomerHeader({
               type="button"
               className={`${styles.actionButton} ${styles.danger}`}
               onClick={onDelete}
+              title="Smazat zákazníka (anonymizace)"
+              aria-label="Smazat zákazníka (anonymizace)"
             >
               🗑️
             </button>

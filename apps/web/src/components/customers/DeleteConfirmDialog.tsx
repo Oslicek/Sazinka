@@ -40,7 +40,8 @@ export function DeleteConfirmDialog({
         </p>
         
         <p className={styles.warning}>
-          Tato akce je nevratná. Všechna data zákazníka budou trvale odstraněna.
+          Tato akce je nevratná. Po potvrzení budou osobní údaje zákazníka bez možnosti Undo trvale smazány
+          a související data (například ve worklogu) budou anonymizována.
         </p>
 
         <div className={styles.actions}>

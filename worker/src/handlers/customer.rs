@@ -404,13 +404,13 @@ pub async fn handle_delete(
             }
         };
 
-        // Delete customer
+        // Anonymize customer (keeps historical FK references intact)
         match queries::customer::delete_customer(&pool, user_id, request.payload.id).await {
             Ok(deleted) => {
                 if deleted {
                     let response = SuccessResponse::new(request.id, DeleteResponse { deleted: true });
                     let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
-                    debug!("Deleted customer: {}", request.payload.id);
+                    debug!("Anonymized customer: {}", request.payload.id);
                 } else {
                     let error = ErrorResponse::new(request.id, "NOT_FOUND", "Customer not found");
                     let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;

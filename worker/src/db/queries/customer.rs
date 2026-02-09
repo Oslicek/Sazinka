@@ -84,7 +84,7 @@ pub async fn get_customer(
             street, city, postal_code, country,
             lat, lng, geocode_status::text, notes, created_at, updated_at
         FROM customers
-        WHERE id = $1 AND user_id = $2
+        WHERE id = $1 AND user_id = $2 AND is_anonymized = FALSE
         "#
     )
     .bind(customer_id)
@@ -110,7 +110,7 @@ pub async fn list_customers(
             street, city, postal_code, country,
             lat, lng, geocode_status::text, notes, created_at, updated_at
         FROM customers
-        WHERE user_id = $1
+        WHERE user_id = $1 AND is_anonymized = FALSE
         ORDER BY name ASC
         LIMIT $2 OFFSET $3
         "#
@@ -157,7 +157,7 @@ pub async fn reset_customer_coordinates(
         r#"
         UPDATE customers
         SET lat = NULL, lng = NULL, geocode_status = 'pending', updated_at = NOW()
-        WHERE id = $1 AND user_id = $2
+        WHERE id = $1 AND user_id = $2 AND is_anonymized = FALSE
         "#
     )
     .bind(customer_id)
@@ -207,6 +207,7 @@ pub async fn update_customer(
             notes = COALESCE($18, notes),
             updated_at = NOW()
         WHERE id = $1 AND user_id = $2
+          AND is_anonymized = FALSE
         RETURNING
             id, user_id, customer_type, name, contact_person, ico, dic,
             email, phone, phone_raw,
@@ -244,18 +245,96 @@ pub async fn delete_customer(
     user_id: Uuid,
     customer_id: Uuid,
 ) -> Result<bool> {
+    let anonymized_name = format!("Anonymní zákazník {}", &customer_id.to_string()[..8]);
+    let mut tx = pool.begin().await?;
+
+    // 1) Anonymize the customer record itself (keep row/FKs intact)
     let result = sqlx::query(
         r#"
-        DELETE FROM customers
-        WHERE id = $1 AND user_id = $2
+        UPDATE customers
+        SET
+            name = $3,
+            contact_person = NULL,
+            ico = NULL,
+            dic = NULL,
+            email = NULL,
+            phone = NULL,
+            phone_raw = NULL,
+            street = NULL,
+            city = NULL,
+            postal_code = NULL,
+            country = NULL,
+            lat = NULL,
+            lng = NULL,
+            geocode_status = 'pending',
+            notes = NULL,
+            is_anonymized = TRUE,
+            anonymized_at = NOW(),
+            updated_at = NOW()
+        WHERE id = $1 AND user_id = $2 AND is_anonymized = FALSE
         "#
     )
     .bind(customer_id)
     .bind(user_id)
-    .execute(pool)
+    .bind(anonymized_name)
+    .execute(&mut *tx)
     .await?;
 
-    Ok(result.rows_affected() > 0)
+    if result.rows_affected() == 0 {
+        tx.rollback().await?;
+        return Ok(false);
+    }
+
+    // 2) Anonymize direct customer contact PII in communications
+    sqlx::query(
+        r#"
+        UPDATE communications
+        SET
+            contact_name = NULL,
+            contact_phone = NULL,
+            subject = 'Anonymizováno',
+            content = 'Anonymizováno',
+            updated_at = NOW()
+        WHERE user_id = $1 AND customer_id = $2
+        "#
+    )
+    .bind(user_id)
+    .bind(customer_id)
+    .execute(&mut *tx)
+    .await?;
+
+    // 3) Anonymize worklog-like free text tied to the customer
+    sqlx::query(
+        r#"
+        UPDATE visits
+        SET result_notes = 'Anonymizováno'
+        WHERE user_id = $1 AND customer_id = $2
+          AND result_notes IS NOT NULL
+        "#
+    )
+    .bind(user_id)
+    .bind(customer_id)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        r#"
+        UPDATE visit_work_items w
+        SET result_notes = 'Anonymizováno'
+        FROM visits v
+        WHERE w.visit_id = v.id
+          AND v.user_id = $1
+          AND v.customer_id = $2
+          AND w.result_notes IS NOT NULL
+        "#
+    )
+    .bind(user_id)
+    .bind(customer_id)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+    Ok(true)
 }
 
 /// Get random customers with coordinates (for route planning)
@@ -272,7 +351,7 @@ pub async fn get_random_customers_with_coords(
             street, city, postal_code, country,
             lat, lng, geocode_status::text, notes, created_at, updated_at
         FROM customers
-        WHERE user_id = $1 AND lat IS NOT NULL AND lng IS NOT NULL
+        WHERE user_id = $1 AND is_anonymized = FALSE AND lat IS NOT NULL AND lng IS NOT NULL
         ORDER BY RANDOM()
         LIMIT $2
         "#
@@ -301,7 +380,10 @@ pub async fn list_customers_extended(
     let offset = req.offset.unwrap_or(0) as i64;
 
     // Build WHERE conditions
-    let mut conditions = vec!["c.user_id = $1".to_string()];
+    let mut conditions = vec![
+        "c.user_id = $1".to_string(),
+        "c.is_anonymized = FALSE".to_string(),
+    ];
     let mut param_idx = 2;
 
     // Search filter
@@ -588,7 +670,7 @@ pub async fn get_customer_summary(
             COUNT(*) FILTER (WHERE phone IS NULL OR phone = '') as customers_without_phone,
             COUNT(*) FILTER (WHERE email IS NULL OR email = '') as customers_without_email
         FROM customers
-        WHERE user_id = $1
+        WHERE user_id = $1 AND is_anonymized = FALSE
         "#
     )
     .bind(user_id)
@@ -601,7 +683,7 @@ pub async fn get_customer_summary(
         SELECT COUNT(*)
         FROM devices d
         INNER JOIN customers c ON d.customer_id = c.id
-        WHERE c.user_id = $1
+        WHERE c.user_id = $1 AND c.is_anonymized = FALSE
         "#
     )
     .bind(user_id)
@@ -617,7 +699,7 @@ pub async fn get_customer_summary(
             COUNT(*) FILTER (WHERE r.status = 'scheduled') as scheduled
         FROM revisions r
         INNER JOIN customers c ON r.customer_id = c.id
-        WHERE c.user_id = $1
+        WHERE c.user_id = $1 AND c.is_anonymized = FALSE
         "#
     )
     .bind(user_id)
@@ -655,7 +737,7 @@ pub async fn get_customer_summary(
             INNER JOIN customers c ON d.customer_id = c.id
             LEFT JOIN revisions r ON d.id = r.device_id
             LEFT JOIN visits v ON (v.device_id = d.id OR (v.device_id IS NULL AND v.customer_id = d.customer_id))
-            WHERE c.user_id = $1
+            WHERE c.user_id = $1 AND c.is_anonymized = FALSE
             GROUP BY d.id, d.customer_id, d.revision_interval_months, d.installation_date
         )
         SELECT
@@ -703,7 +785,7 @@ pub async fn list_pending_geocode(
         r#"
         SELECT id
         FROM customers
-        WHERE user_id = $1 AND geocode_status = 'pending'
+        WHERE user_id = $1 AND is_anonymized = FALSE AND geocode_status = 'pending'
         ORDER BY created_at DESC
         "#
     )
