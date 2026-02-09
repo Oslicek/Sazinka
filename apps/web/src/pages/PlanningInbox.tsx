@@ -37,18 +37,25 @@ import type { CalendarItem } from '@shared/calendar';
 import { usePlannerShortcuts } from '../hooks/useKeyboardShortcuts';
 import type { RouteWarning } from '@shared/route';
 import {
-  DEFAULT_INBOX_FILTERS,
+  DEFAULT_FILTER_EXPRESSION,
+  FILTER_PRESETS,
+  applyFilterPreset,
   applyInboxFilters,
+  buildFilterSummary,
   getActiveFilterCount,
   hasPhone,
+  hasAdvancedCriteria,
   hasValidAddress,
   isScheduledCandidate,
-  toggleFilter,
-  type InboxFilters,
-  type ProblemFilter,
-  type RouteFilter,
-  type ScheduleFilter,
-  type TimeFilter,
+  mapExpressionToCallQueueRequestV1,
+  normalizeExpression,
+  toggleToken,
+  type FilterPresetId,
+  type GroupOperator,
+  type InboxFilterExpression,
+  type ProblemToken,
+  type TimeToken,
+  type TriState,
 } from './planningInboxFilters';
 import styles from './PlanningInbox.module.css';
 
@@ -131,20 +138,14 @@ export function PlanningInbox() {
   const geometryUnsubRef = useRef<(() => void) | null>(null);
   
   // Inbox state - restore from sessionStorage
-  const [filters, setFilters] = useState<InboxFilters>(() => {
+  const [filters, setFilters] = useState<InboxFilterExpression>(() => {
     const raw = sessionStorage.getItem('planningInbox.filters');
-    if (!raw) return DEFAULT_INBOX_FILTERS;
+    if (!raw) return DEFAULT_FILTER_EXPRESSION;
 
     try {
-      const parsed = JSON.parse(raw) as Partial<InboxFilters>;
-      return {
-        time: parsed.time ?? DEFAULT_INBOX_FILTERS.time,
-        schedule: parsed.schedule ?? [],
-        route: parsed.route ?? [],
-        problems: parsed.problems ?? [],
-      };
+      return normalizeExpression(JSON.parse(raw));
     } catch {
-      return DEFAULT_INBOX_FILTERS;
+      return DEFAULT_FILTER_EXPRESSION;
     }
   });
   const [candidates, setCandidates] = useState<InboxCandidate[]>([]);
@@ -189,6 +190,8 @@ export function PlanningInbox() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [routeJobProgress, setRouteJobProgress] = useState<string | null>(null);
+  const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState(false);
+  const [activePresetId, setActivePresetId] = useState<FilterPresetId | null>(null);
 
   useEffect(() => {
     localStorage.setItem('planningInbox.enforceDrivingBreakRule', String(enforceDrivingBreakRule));
@@ -526,9 +529,9 @@ export function PlanningInbox() {
     
     setIsLoadingCandidates(true);
     try {
+      const backendFilters = mapExpressionToCallQueueRequestV1(filters, isRouteAware);
       const response = await getCallQueue({
-        priorityFilter: 'all',
-        geocodedOnly: isRouteAware,
+        ...backendFilters,
         limit: 100,
       });
       
@@ -548,7 +551,7 @@ export function PlanningInbox() {
     } finally {
       setIsLoadingCandidates(false);
     }
-  }, [isConnected, isRouteAware]);
+  }, [isConnected, isRouteAware, filters]);
 
   useEffect(() => {
     loadCandidates();
@@ -1488,27 +1491,85 @@ export function PlanningInbox() {
     sessionStorage.setItem('planningInbox.filters', JSON.stringify(filters));
   }, [filters]);
 
-  const toggleTimeFilter = useCallback((value: TimeFilter) => {
-    setFilters((prev) => ({ ...prev, time: toggleFilter(prev.time, value) }));
+  const setRootOperator = useCallback((value: 'AND' | 'OR') => {
+    setActivePresetId(null);
+    setFilters((prev) => ({ ...prev, rootOperator: value }));
   }, []);
 
-  const toggleScheduleFilter = useCallback((value: ScheduleFilter) => {
-    setFilters((prev) => ({ ...prev, schedule: toggleFilter(prev.schedule, value) }));
+  const setGroupOperator = useCallback((group: 'time' | 'problems', value: GroupOperator) => {
+    setActivePresetId(null);
+    setFilters((prev) => ({
+      ...prev,
+      groups: {
+        ...prev.groups,
+        [group]: {
+          ...prev.groups[group],
+          operator: value,
+        },
+      },
+    }));
   }, []);
 
-  const toggleRouteFilter = useCallback((value: RouteFilter) => {
-    setFilters((prev) => ({ ...prev, route: toggleFilter(prev.route, value) }));
+  const toggleTimeFilter = useCallback((value: TimeToken) => {
+    setActivePresetId(null);
+    setFilters((prev) => ({
+      ...prev,
+      groups: {
+        ...prev.groups,
+        time: (() => {
+          const selected = toggleToken(prev.groups.time.selected, value);
+          return {
+            ...prev.groups.time,
+            selected,
+            enabled: selected.length > 0,
+          };
+        })(),
+      },
+    }));
   }, []);
 
-  const toggleProblemFilter = useCallback((value: ProblemFilter) => {
-    setFilters((prev) => ({ ...prev, problems: toggleFilter(prev.problems, value) }));
+  const toggleProblemFilter = useCallback((value: ProblemToken) => {
+    setActivePresetId(null);
+    setFilters((prev) => ({
+      ...prev,
+      groups: {
+        ...prev.groups,
+        problems: (() => {
+          const selected = toggleToken(prev.groups.problems.selected, value);
+          return {
+            ...prev.groups.problems,
+            selected,
+            enabled: selected.length > 0,
+          };
+        })(),
+      },
+    }));
+  }, []);
+
+  const setTriState = useCallback((field: 'hasTerm' | 'inRoute', value: TriState) => {
+    setActivePresetId(null);
+    setFilters((prev) => ({
+      ...prev,
+      groups: {
+        ...prev.groups,
+        [field]: value,
+      },
+    }));
+  }, []);
+
+  const applyPreset = useCallback((presetId: FilterPresetId) => {
+    setFilters((prev) => applyFilterPreset(presetId, prev));
+    setActivePresetId(presetId);
   }, []);
 
   const clearFilters = useCallback(() => {
-    setFilters(DEFAULT_INBOX_FILTERS);
+    setFilters(applyFilterPreset('ALL'));
+    setActivePresetId('ALL');
   }, []);
 
   const activeFilterCount = getActiveFilterCount(filters);
+  const filterSummary = buildFilterSummary(filters);
+  const hasAdvancedActive = hasAdvancedCriteria(filters);
 
   // Render inbox list panel
   const renderInboxList = () => (
@@ -1518,7 +1579,17 @@ export function PlanningInbox() {
           <span className={styles.filterSummary}>
             Filtry {activeFilterCount > 0 ? `(${activeFilterCount})` : ''}
           </span>
+          {!isAdvancedFiltersOpen && hasAdvancedActive && (
+            <span className={styles.advancedHint}>pokročilé podmínky aktivní</span>
+          )}
           <span className={styles.filterResults}>{sortedCandidates.length} výsledků</span>
+          <button
+            type="button"
+            className={styles.advancedToggleButton}
+            onClick={() => setIsAdvancedFiltersOpen((prev) => !prev)}
+          >
+            {isAdvancedFiltersOpen ? 'Skrýt pokročilé' : 'Pokročilé'}
+          </button>
           <button
             type="button"
             className={styles.filterResetButton}
@@ -1529,38 +1600,118 @@ export function PlanningInbox() {
           </button>
         </div>
 
+        <div className={styles.filterPresets}>
+          {FILTER_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              className={`${styles.filterChip} ${activePresetId === preset.id ? styles.active : ''}`}
+              onClick={() => applyPreset(preset.id)}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+
         <div className={styles.filterGroup}>
           <span className={styles.filterGroupLabel}>Čas/Priorita</span>
           <div className={styles.filterChips}>
-            <button type="button" className={`${styles.filterChip} ${filters.time.includes('overdue') ? styles.active : ''}`} onClick={() => toggleTimeFilter('overdue')}>Po termínu</button>
-            <button type="button" className={`${styles.filterChip} ${filters.time.includes('thisWeek') ? styles.active : ''}`} onClick={() => toggleTimeFilter('thisWeek')}>Do 7 dnů</button>
-            <button type="button" className={`${styles.filterChip} ${filters.time.includes('thisMonth') ? styles.active : ''}`} onClick={() => toggleTimeFilter('thisMonth')}>Do 30 dnů</button>
+            <button type="button" className={`${styles.filterChip} ${filters.groups.time.selected.includes('OVERDUE') ? styles.active : ''}`} onClick={() => toggleTimeFilter('OVERDUE')}>Po termínu</button>
+            <button type="button" className={`${styles.filterChip} ${filters.groups.time.selected.includes('DUE_IN_7_DAYS') ? styles.active : ''}`} onClick={() => toggleTimeFilter('DUE_IN_7_DAYS')}>Do 7 dnů</button>
+            <button type="button" className={`${styles.filterChip} ${filters.groups.time.selected.includes('DUE_IN_30_DAYS') ? styles.active : ''}`} onClick={() => toggleTimeFilter('DUE_IN_30_DAYS')}>Do 30 dnů</button>
           </div>
         </div>
 
         <div className={styles.filterGroup}>
           <span className={styles.filterGroupLabel}>Termín</span>
-          <div className={styles.filterChips}>
-            <button type="button" className={`${styles.filterChip} ${filters.schedule.includes('hasTerm') ? styles.active : ''}`} onClick={() => toggleScheduleFilter('hasTerm')}>Má termín</button>
-            <button type="button" className={`${styles.filterChip} ${filters.schedule.includes('noTerm') ? styles.active : ''}`} onClick={() => toggleScheduleFilter('noTerm')}>Nemá termín</button>
+          <div className={styles.filterTriState}>
+            <button type="button" className={`${styles.filterChip} ${filters.groups.hasTerm === 'ANY' ? styles.active : ''}`} onClick={() => setTriState('hasTerm', 'ANY')}>Neřešit</button>
+            <button type="button" className={`${styles.filterChip} ${filters.groups.hasTerm === 'YES' ? styles.active : ''}`} onClick={() => setTriState('hasTerm', 'YES')}>Má termín</button>
+            <button type="button" className={`${styles.filterChip} ${filters.groups.hasTerm === 'NO' ? styles.active : ''}`} onClick={() => setTriState('hasTerm', 'NO')}>Nemá termín</button>
           </div>
         </div>
 
         <div className={styles.filterGroup}>
           <span className={styles.filterGroupLabel}>Trasa</span>
-          <div className={styles.filterChips}>
-            <button type="button" className={`${styles.filterChip} ${filters.route.includes('inRoute') ? styles.active : ''}`} onClick={() => toggleRouteFilter('inRoute')}>V trase</button>
-            <button type="button" className={`${styles.filterChip} ${filters.route.includes('notInRoute') ? styles.active : ''}`} onClick={() => toggleRouteFilter('notInRoute')}>Není v trase</button>
+          <div className={styles.filterTriState}>
+            <button type="button" className={`${styles.filterChip} ${filters.groups.inRoute === 'ANY' ? styles.active : ''}`} onClick={() => setTriState('inRoute', 'ANY')}>Neřešit</button>
+            <button type="button" className={`${styles.filterChip} ${filters.groups.inRoute === 'YES' ? styles.active : ''}`} onClick={() => setTriState('inRoute', 'YES')}>V trase</button>
+            <button type="button" className={`${styles.filterChip} ${filters.groups.inRoute === 'NO' ? styles.active : ''}`} onClick={() => setTriState('inRoute', 'NO')}>Není v trase</button>
           </div>
         </div>
 
-        <div className={styles.filterGroup}>
-          <span className={styles.filterGroupLabel}>Problémy</span>
-          <div className={styles.filterChips}>
-            <button type="button" className={`${styles.filterChip} ${filters.problems.includes('missingPhone') ? styles.active : ''}`} onClick={() => toggleProblemFilter('missingPhone')}>Chybí telefon</button>
-            <button type="button" className={`${styles.filterChip} ${filters.problems.includes('addressIssue') ? styles.active : ''}`} onClick={() => toggleProblemFilter('addressIssue')}>Problém s adresou</button>
+        {isAdvancedFiltersOpen && (
+          <div className={styles.advancedPanel}>
+            <div className={styles.advancedPanelHeader}>Pokročilé filtry</div>
+
+            <div className={styles.advancedRow}>
+              <span className={styles.filterGroupLabel}>Logika mezi skupinami</span>
+              <div className={styles.rootOperatorSwitch}>
+                <button
+                  type="button"
+                  className={`${styles.operatorButton} ${filters.rootOperator === 'AND' ? styles.active : ''}`}
+                  onClick={() => setRootOperator('AND')}
+                >
+                  AND
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.operatorButton} ${filters.rootOperator === 'OR' ? styles.active : ''}`}
+                  onClick={() => setRootOperator('OR')}
+                >
+                  OR
+                </button>
+              </div>
+            </div>
+
+            <div className={styles.advancedRow}>
+              <span className={styles.filterGroupLabel}>Logika časových podmínek</span>
+              <div className={styles.groupOperatorSwitch}>
+                <button
+                  type="button"
+                  className={`${styles.operatorButton} ${filters.groups.time.operator === 'OR' ? styles.active : ''}`}
+                  onClick={() => setGroupOperator('time', 'OR')}
+                >
+                  OR
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.operatorButton} ${filters.groups.time.operator === 'AND' ? styles.active : ''}`}
+                  onClick={() => setGroupOperator('time', 'AND')}
+                >
+                  AND
+                </button>
+              </div>
+            </div>
+
+            <div className={styles.filterGroup}>
+              <span className={styles.filterGroupLabel}>Problémy</span>
+              <div className={styles.groupOperatorSwitch}>
+                <button
+                  type="button"
+                  className={`${styles.operatorButton} ${filters.groups.problems.operator === 'OR' ? styles.active : ''}`}
+                  onClick={() => setGroupOperator('problems', 'OR')}
+                >
+                  OR
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.operatorButton} ${filters.groups.problems.operator === 'AND' ? styles.active : ''}`}
+                  onClick={() => setGroupOperator('problems', 'AND')}
+                >
+                  AND
+                </button>
+              </div>
+              <div className={styles.filterChips}>
+                <button type="button" className={`${styles.filterChip} ${filters.groups.problems.selected.includes('MISSING_PHONE') ? styles.active : ''}`} onClick={() => toggleProblemFilter('MISSING_PHONE')}>Chybí telefon</button>
+                <button type="button" className={`${styles.filterChip} ${filters.groups.problems.selected.includes('ADDRESS_ISSUE') ? styles.active : ''}`} onClick={() => toggleProblemFilter('ADDRESS_ISSUE')}>Problém s adresou</button>
+                <button type="button" className={`${styles.filterChip} ${filters.groups.problems.selected.includes('GEOCODE_FAILED') ? styles.active : ''}`} onClick={() => toggleProblemFilter('GEOCODE_FAILED')}>Geokód selhal</button>
+              </div>
+            </div>
+
+            <div className={styles.filterSummaryText}>{filterSummary}</div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Multi-crew tip */}
@@ -1831,17 +1982,6 @@ export function PlanningInbox() {
           ))}
         </div>
       )}
-      <div className={styles.breakRuleRow}>
-        <label className={styles.breakRuleToggle}>
-          <input
-            type="checkbox"
-            checked={enforceDrivingBreakRule}
-            onChange={(e) => setEnforceDrivingBreakRule(e.target.checked)}
-          />
-          <span>Vložit pauzu 45 minut nejpozději po 4,5 hodinách kumulovaného řízení</span>
-        </label>
-      </div>
-      
       <div className={styles.content}>
         <ThreePanelLayout
           left={renderInboxList()}
