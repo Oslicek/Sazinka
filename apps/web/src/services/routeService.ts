@@ -165,6 +165,47 @@ export async function getRoute(
 }
 
 /**
+ * Delete a route by ID
+ */
+export async function deleteRoute(
+  routeId: string,
+  deps = { request: useNatsStore.getState().request }
+): Promise<{ deleted: boolean }> {
+  const req = createRequest(getToken(), { routeId });
+  const response = await deps.request<typeof req, NatsResponse<{ deleted: boolean }>>(
+    'sazinka.route.delete',
+    req,
+  );
+
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+
+  return response.payload;
+}
+
+/**
+ * Update a route (e.g. assign crew)
+ */
+export async function updateRoute(
+  routeId: string,
+  updates: { crewId?: string | null; depotId?: string | null; status?: string },
+  deps = { request: useNatsStore.getState().request }
+): Promise<{ updated: boolean }> {
+  const req = createRequest(getToken(), { routeId, ...updates });
+  const response = await deps.request<typeof req, NatsResponse<{ updated: boolean }>>(
+    'sazinka.route.update',
+    req,
+  );
+
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+
+  return response.payload;
+}
+
+/**
  * Check if a saved route exists for a date
  */
 export async function hasRouteForDate(

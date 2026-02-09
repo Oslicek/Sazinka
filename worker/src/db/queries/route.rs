@@ -369,9 +369,74 @@ pub async fn list_routes(
     Ok(routes)
 }
 
-/// Delete a route and all its stops
+/// Update a route's crew_id, depot_id, or status
+pub async fn update_route(
+    pool: &PgPool,
+    route_id: Uuid,
+    user_id: Uuid,
+    crew_id: Option<Option<Uuid>>,
+    depot_id: Option<Option<Uuid>>,
+    status: Option<&str>,
+) -> Result<bool> {
+    // Build dynamic UPDATE query
+    let mut set_clauses = Vec::new();
+    let mut param_index = 3u32; // $1 = route_id, $2 = user_id
+
+    if crew_id.is_some() {
+        set_clauses.push(format!("crew_id = ${}", param_index));
+        param_index += 1;
+    }
+    if depot_id.is_some() {
+        set_clauses.push(format!("depot_id = ${}", param_index));
+        param_index += 1;
+    }
+    if status.is_some() {
+        set_clauses.push(format!("status = ${}", param_index));
+        // param_index += 1; // not needed after last
+    }
+
+    if set_clauses.is_empty() {
+        return Ok(false);
+    }
+
+    set_clauses.push("updated_at = NOW()".to_string());
+
+    let sql = format!(
+        "UPDATE routes SET {} WHERE id = $1 AND user_id = $2",
+        set_clauses.join(", ")
+    );
+
+    let mut query = sqlx::query(&sql)
+        .bind(route_id)
+        .bind(user_id);
+
+    if let Some(cid) = crew_id {
+        query = query.bind(cid);
+    }
+    if let Some(did) = depot_id {
+        query = query.bind(did);
+    }
+    if let Some(s) = status {
+        query = query.bind(s);
+    }
+
+    let result = query.execute(pool).await?;
+    Ok(result.rows_affected() > 0)
+}
+
+/// Delete a route and all its stops (by user_id + date)
 pub async fn delete_route(pool: &PgPool, user_id: Uuid, date: NaiveDate) -> Result<bool> {
     let result = sqlx::query("DELETE FROM routes WHERE user_id = $1 AND date = $2")
         .bind(user_id).bind(date).execute(pool).await?;
+    Ok(result.rows_affected() > 0)
+}
+
+/// Delete a route by route ID (checks user ownership)
+pub async fn delete_route_by_id(pool: &PgPool, route_id: Uuid, user_id: Uuid) -> Result<bool> {
+    // First delete stops (FK cascade might handle this, but be explicit)
+    let _ = sqlx::query("DELETE FROM route_stops WHERE route_id = $1")
+        .bind(route_id).execute(pool).await?;
+    let result = sqlx::query("DELETE FROM routes WHERE id = $1 AND user_id = $2")
+        .bind(route_id).bind(user_id).execute(pool).await?;
     Ok(result.rows_affected() > 0)
 }

@@ -55,6 +55,7 @@ export function Layout({ children }: LayoutProps) {
           <NavLink to="/calendar">Kalendář</NavLink>
           <NavLink to="/inbox">Fronta</NavLink>
           <NavLink to="/planner">Plán dne</NavLink>
+          <NavLink to="/routes">Trasy</NavLink>
           <NavLink to="/customers">Zákazníci</NavLink>
           <NavLink to="/worklog">Záznam</NavLink>
           <NavLink to="/jobs">Úlohy</NavLink>
@@ -109,6 +110,7 @@ export function Layout({ children }: LayoutProps) {
               <MenuLink to="/calendar" onClick={handleMenuItemClick}>Kalendář</MenuLink>
               <MenuLink to="/inbox" onClick={handleMenuItemClick}>Fronta</MenuLink>
               <MenuLink to="/planner" onClick={handleMenuItemClick}>Plán dne</MenuLink>
+              <MenuLink to="/routes" onClick={handleMenuItemClick}>Trasy</MenuLink>
               <MenuLink to="/customers" onClick={handleMenuItemClick}>Zákazníci</MenuLink>
               <MenuLink to="/worklog" onClick={handleMenuItemClick}>Záznam</MenuLink>
               <MenuLink to="/jobs" onClick={handleMenuItemClick}>Úlohy</MenuLink>

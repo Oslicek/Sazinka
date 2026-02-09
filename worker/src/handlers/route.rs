@@ -652,6 +652,172 @@ pub async fn handle_save(
     Ok(())
 }
 
+/// Request to update a route
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateRouteRequest {
+    pub route_id: Uuid,
+    pub crew_id: Option<Option<Uuid>>,
+    pub depot_id: Option<Option<Uuid>>,
+    pub status: Option<String>,
+}
+
+/// Response after updating a route
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateRouteResponse {
+    pub updated: bool,
+}
+
+/// Handle route.update messages
+pub async fn handle_update(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+    jwt_secret: Arc<String>,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received route.update message");
+
+        let reply = match msg.reply {
+            Some(ref reply) => reply.clone(),
+            None => {
+                warn!("Message without reply subject");
+                continue;
+            }
+        };
+
+        let request: Request<UpdateRouteRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("Failed to parse request: {}", e);
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        let payload = request.payload;
+        info!("Updating route {} (crew={:?}, depot={:?}, status={:?})",
+            payload.route_id, payload.crew_id, payload.depot_id, payload.status);
+
+        match queries::route::update_route(
+            &pool,
+            payload.route_id,
+            user_id,
+            payload.crew_id,
+            payload.depot_id,
+            payload.status.as_deref(),
+        ).await {
+            Ok(updated) => {
+                let response = SuccessResponse::new(
+                    request.id,
+                    UpdateRouteResponse { updated },
+                );
+                let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+                if updated {
+                    info!("Route {} updated", payload.route_id);
+                } else {
+                    warn!("Route {} not found or not owned by user", payload.route_id);
+                }
+            }
+            Err(e) => {
+                error!("Failed to update route: {}", e);
+                let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Request to delete a route
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteRouteRequest {
+    pub route_id: Uuid,
+}
+
+/// Response after deleting a route
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteRouteResponse {
+    pub deleted: bool,
+}
+
+/// Handle route.delete messages
+pub async fn handle_delete(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+    jwt_secret: Arc<String>,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received route.delete message");
+
+        let reply = match msg.reply {
+            Some(ref reply) => reply.clone(),
+            None => {
+                warn!("Message without reply subject");
+                continue;
+            }
+        };
+
+        let request: Request<DeleteRouteRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("Failed to parse request: {}", e);
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        info!("Deleting route {}", request.payload.route_id);
+
+        match queries::route::delete_route_by_id(&pool, request.payload.route_id, user_id).await {
+            Ok(deleted) => {
+                let response = SuccessResponse::new(
+                    request.id,
+                    DeleteRouteResponse { deleted },
+                );
+                let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+                if deleted {
+                    info!("Route {} deleted", request.payload.route_id);
+                } else {
+                    warn!("Route {} not found or not owned by user", request.payload.route_id);
+                }
+            }
+            Err(e) => {
+                error!("Failed to delete route: {}", e);
+                let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Handle route.get messages
 pub async fn handle_get(
     client: Client,

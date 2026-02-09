@@ -39,7 +39,7 @@ import { usePlannerShortcuts } from '../hooks/useKeyboardShortcuts';
 import type { RouteWarning } from '@shared/route';
 import styles from './PlanningInbox.module.css';
 
-type InboxSegment = 'overdue' | 'thisWeek' | 'thisMonth' | 'all' | 'snoozed' | 'problems';
+type InboxSegment = 'overdue' | 'thisWeek' | 'thisMonth' | 'all' | 'snoozed' | 'problems' | 'scheduled';
 
 interface Depot {
   id: string;
@@ -175,6 +175,7 @@ export function PlanningInbox() {
     all: 0,
     snoozed: 0,
     problems: 0,
+    scheduled: 0,
   });
 
   // Auto-save route
@@ -526,6 +527,7 @@ export function PlanningInbox() {
         all: loadedCandidates.length,
         snoozed: 0, // Would need backend support
         problems: loadedCandidates.filter((c) => !hasPhone(c) || !hasValidAddress(c)).length,
+        scheduled: loadedCandidates.filter((c) => c.status === 'scheduled' || c.status === 'confirmed').length,
       });
     } catch (err) {
       console.error('Failed to load candidates:', err);
@@ -709,6 +711,9 @@ export function PlanningInbox() {
         break;
       case 'problems':
         filtered = filtered.filter((c) => !hasPhone(c) || !hasValidAddress(c));
+        break;
+      case 'scheduled':
+        filtered = filtered.filter((c) => c.status === 'scheduled' || c.status === 'confirmed');
         break;
       // 'all' and 'snoozed' show all
     }
@@ -1012,6 +1017,7 @@ export function PlanningInbox() {
           all: updated.length,
           snoozed: 0,
           problems: updated.filter((c) => !hasPhone(c) || !hasValidAddress(c)).length,
+          scheduled: updated.filter((c) => c.status === 'scheduled' || c.status === 'confirmed').length,
         });
         return updated;
       });
@@ -1045,6 +1051,7 @@ export function PlanningInbox() {
           all: updated.length,
           snoozed: 0,
           problems: updated.filter((c) => !hasPhone(c) || !hasValidAddress(c)).length,
+          scheduled: updated.filter((c) => c.status === 'scheduled' || c.status === 'confirmed').length,
         });
         return updated;
       });
@@ -1367,6 +1374,7 @@ export function PlanningInbox() {
           { key: 'overdue', label: 'Po termínu', count: segmentCounts.overdue },
           { key: 'thisWeek', label: 'Týden', count: segmentCounts.thisWeek },
           { key: 'thisMonth', label: '30 dní', count: segmentCounts.thisMonth },
+          { key: 'scheduled', label: 'S termínem', count: segmentCounts.scheduled },
           { key: 'all', label: 'Vše', count: segmentCounts.all },
           { key: 'problems', label: 'Problémy', count: segmentCounts.problems },
         ] as const).map(({ key, label, count }) => (

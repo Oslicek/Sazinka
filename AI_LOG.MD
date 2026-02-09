@@ -779,3 +779,63 @@ Rust type `f64` (as SQL type `FLOAT8`) is not compatible with SQL type `FLOAT4`
 13. ✅ Worker restartován (debug build) - migrace `006` proběhla úspěšně
 
 **Status:** Depot se nyní ukládá a načítá správně. Zbývá otestovat v prohlížeči.
+
+14. ✅ Změny commitnuty a pushnuty (commit 26aea2e)
+
+**Další kroky:**
+- Otestovat v prohlížeči, že se depot správně ukládá a načítá
+- Vyřešit problém s jiným pořadím zastávek v Planneru (pokud přetrvává)
+
+### Restart Vite dev serveru
+
+15. ✅ Vite server restartován
+16. ⚠️ **Aplikace nyní běží na http://localhost:5174/** (port 5173 byl obsazený)
+
+---
+
+## Požadavky uživatele (2026-02-09)
+
+### 1. Planner – tlačítko Smazat trasu
+
+V Planneru chybí možnost smazat trasu. Přidat tlačítko "Smazat trasu" k detailu trasy.
+
+**Stav implementace:**
+- ✅ Backend: `sazinka.route.delete` handler + `delete_route_by_id` SQL query
+- ✅ Frontend: `deleteRoute()` funkce v `routeService.ts`
+- ✅ Frontend: `handleDeleteRoute` callback v `Planner.tsx` s confirmation dialogem
+- ✅ Frontend: `onDeleteRoute` prop předán do `RouteDetailTimeline`
+- ⏳ Čeká se na `cargo build` (kompilace backendu)
+
+### 2. Inbox – filtr zákazníků s dohodnutým termínem
+
+Přidat do Inboxu filtr, který ukáže všechny zákazníky s dohodnutým termínem a informaci, zda jsou nebo nejsou součástí naplánované trasy. Při smazání trasy se stav zákazníků, kteří na ní byli, změní na "Není v trase".
+
+**Stav:** ✅ Částečně implementováno.
+
+**Implementace:**
+- ✅ Nový segment "S termínem" v Inbox tab baru
+- ✅ Filtruje zákazníky se statusem `scheduled` nebo `confirmed`
+- ✅ U každého zákazníka v seznamu se zobrazuje ikona "V trase" (existující `isInRoute` flag)
+- ⏳ Při smazání trasy - aktualizace stavu zákazníků (TODO: backend logika)
+
+### 3. Nová stránka "Trasy"
+
+Samostatná stránka s přehledem všech naplánovaných tras v tabulkovém formátu.
+
+**Stav:** ✅ Implementováno.
+
+**Požadavky:**
+- ✅ Odkaz v hlavním menu (mezi "Plán dne" a "Zákazníci")
+- ✅ Tabulkový přehled tras s parametry (datum, posádka, depo, počet zastávek, vzdálenost, doba trvání, stav)
+- ✅ Možnost smazat trasu (s potvrzovacím dialogem)
+- ✅ Možnost změnit přiřazenou posádku (inline select)
+- ✅ Připraveno pro budoucí rozšíření (další operace s trasami)
+
+**Implementace:**
+- `apps/web/src/pages/Routes.tsx` - nová stránka
+- `apps/web/src/pages/Routes.module.css` - styly
+- Backend: `sazinka.route.delete` handler (delete by route_id)
+- Backend: `sazinka.route.update` handler (update crew_id, depot_id, status)
+- `worker/src/db/queries/route.rs` - `delete_route_by_id`, `update_route` queries
+- Navigace: `/routes` v hlavním menu a hamburger menu
+- Datum kliknutelný → odkaz na Planner

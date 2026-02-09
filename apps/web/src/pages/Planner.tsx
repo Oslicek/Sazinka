@@ -333,6 +333,25 @@ export function Planner() {
     setHighlightedStopId(null);
   }, []);
 
+  // ─── Delete route ──────────────────────────────────────────────
+
+  const handleDeleteRoute = useCallback(async () => {
+    if (!selectedRouteId) return;
+    if (!window.confirm('Opravdu chcete smazat tuto trasu?')) return;
+
+    try {
+      await routeService.deleteRoute(selectedRouteId);
+      setSelectedRouteId(null);
+      setSelectedRouteStops([]);
+      setRouteGeometry([]);
+      // Reload route list
+      loadRoutes();
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      setError(`Nepodařilo se smazat trasu: ${detail}`);
+    }
+  }, [selectedRouteId, loadRoutes]);
+
   // ─── Selected route object ──────────────────────────────────────
 
   const selectedRoute = routes.find((r) => r.id === selectedRouteId) ?? null;
@@ -426,6 +445,7 @@ export function Planner() {
                 highlightedSegment={highlightedSegment}
                 onStopClick={handleStopClick}
                 onSegmentClick={handleSegmentClick}
+                onDeleteRoute={handleDeleteRoute}
                 warnings={routeWarnings}
               />
             )}

@@ -156,6 +156,8 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let customer_summary_sub = client.subscribe("sazinka.customer.summary").await?;
     let route_plan_sub = client.subscribe("sazinka.route.plan").await?;
     let route_save_sub = client.subscribe("sazinka.route.save").await?;
+    let route_delete_sub = client.subscribe("sazinka.route.delete").await?;
+    let route_update_sub = client.subscribe("sazinka.route.update").await?;
     let route_get_sub = client.subscribe("sazinka.route.get").await?;
     let route_list_for_date_sub = client.subscribe("sazinka.route.list_for_date").await?;
     let route_list_sub = client.subscribe("sazinka.route.list").await?;
@@ -242,6 +244,8 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let client_customer_summary = client.clone();
     let client_route_plan = client.clone();
     let client_route_save = client.clone();
+    let client_route_delete = client.clone();
+    let client_route_update = client.clone();
     let client_route_get = client.clone();
     let client_route_insertion = client.clone();
     let client_route_insertion_batch = client.clone();
@@ -278,6 +282,8 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_customer_summary = pool.clone();
     let pool_route_plan = pool.clone();
     let pool_route_save = pool.clone();
+    let pool_route_delete = pool.clone();
+    let pool_route_update = pool.clone();
     let pool_route_get = pool.clone();
     let pool_route_insertion = pool.clone();
     let pool_route_insertion_batch = pool.clone();
@@ -405,6 +411,8 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     // JWT secret clones for route handlers
     let jwt_secret_route_plan = Arc::clone(&jwt_secret);
     let jwt_secret_route_save = Arc::clone(&jwt_secret);
+    let jwt_secret_route_delete = Arc::clone(&jwt_secret);
+    let jwt_secret_route_update = Arc::clone(&jwt_secret);
     let jwt_secret_route_get = Arc::clone(&jwt_secret);
     let jwt_secret_route_insertion = Arc::clone(&jwt_secret);
     let jwt_secret_route_insertion_batch = Arc::clone(&jwt_secret);
@@ -575,6 +583,14 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
 
     let route_save_handle = tokio::spawn(async move {
         route::handle_save(client_route_save, route_save_sub, pool_route_save, jwt_secret_route_save).await
+    });
+
+    let route_delete_handle = tokio::spawn(async move {
+        route::handle_delete(client_route_delete, route_delete_sub, pool_route_delete, jwt_secret_route_delete).await
+    });
+
+    let route_update_handle = tokio::spawn(async move {
+        route::handle_update(client_route_update, route_update_sub, pool_route_update, jwt_secret_route_update).await
     });
 
     let route_get_handle = tokio::spawn(async move {
@@ -1310,6 +1326,8 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         customer_summary_handle.boxed(),
         route_plan_handle.boxed(),
         route_save_handle.boxed(),
+        route_delete_handle.boxed(),
+        route_update_handle.boxed(),
         route_get_handle.boxed(),
         route_list_for_date_handle.boxed(),
         route_list_handle.boxed(),
