@@ -14,6 +14,7 @@ pub struct Route {
     pub id: Uuid,
     pub user_id: Uuid,
     pub crew_id: Option<Uuid>,
+    pub depot_id: Option<Uuid>,
     pub date: NaiveDate,
     pub status: String,
     pub total_distance_km: Option<f64>,
@@ -92,6 +93,8 @@ pub struct RoutePlanRequest {
     pub date: NaiveDate,
     /// Working hours
     pub working_hours: Option<WorkingHours>,
+    /// Crew ID — if provided, crew-specific settings (arrival buffer) are used
+    pub crew_id: Option<Uuid>,
 }
 
 /// Working hours configuration

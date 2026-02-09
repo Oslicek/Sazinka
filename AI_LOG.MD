@@ -697,3 +697,85 @@ Optimalizace trasy nebere v úvahu naplánované sloty. Naplánuje trasu bez ohl
 
 **Zbývající TODO (pro budoucnost):**
 - Ukládat warnings do DB při uložení trasy (aby se zobrazovaly i v Planner pro saved routes)
+
+## 2026-02-09T14:00:00Z — Cursor Agent (claude-sonnet-4.5)
+
+### Bug fix: Chybějící tlačítka v Inbox timeline
+
+**Problém:**
+Uživatel nahlásil, že v Inboxu pod trasou chybí tlačítka "Optimalizovat" a "Vyčistit".
+
+**Příčina:**
+`RouteDetailTimeline` komponenta dostávala `onOptimize` callback, ale chyběl `onDeleteRoute` callback pro tlačítko "Vyčistit".
+
+**Řešení:**
+1. ✅ Přidán `onDeleteRoute={handleClearRoute}` prop do `RouteDetailTimeline` v `PlanningInbox.tsx`
+2. ✅ Přidán nový prop `deleteRouteLabel` do `RouteDetailTimeline` pro vlastní text tlačítka
+3. ✅ V Inboxu se zobrazí "🗑️ Vyčistit", v Planneru "🗑️ Smazat trasu"
+
+**Commit:** f3a9ab3
+
+### Bug fix: Database type mismatch - crew arrival_buffer_percent
+
+**Problém:**
+Stránka Nastavení nefunguje, backend hlásí chybu:
+```
+ERROR: Failed to list crews: mismatched types; 
+Rust type `f64` (as SQL type `FLOAT8`) is not compatible with SQL type `FLOAT4`
+```
+
+**Příčina:**
+- Migrace `004_add_crew_buffer.sql` použila `REAL` (FLOAT4)
+- Rust `f64` typ očekává `DOUBLE PRECISION` (FLOAT8)
+- SQLx nemůže dekódovat FLOAT4 do f64
+
+**Řešení:**
+1. ✅ Opraven `004_add_crew_buffer.sql` - změna `REAL` → `DOUBLE PRECISION`
+2. ✅ Vytvořena nová migrace `005_fix_crew_buffer_type.sql` pro opravu existujících DB
+3. ✅ Worker restartován, ale migrace se nespustila - stále stejná chyba
+
+**Poznámka:** Migrace `005` se nespustila automaticky. SQLx migrations pravděpodobně už byly aplikovány a nová migrace nebyla detekována. Bude potřeba manuální SQL update nebo rebuild databáze.
+
+### Nový problém: Planner zobrazuje špatné depo a jiné pořadí zastávek
+
+**Uživatel nahlásil:**
+1. Tatáž trasa vypadá v Planneru jinak než v Inboxu (jiné pořadí zastávek)
+2. Planner používá depo v Praze místo nastaveného depa v Brně
+
+**Investigace:**
+- `Planner.tsx` má hardcoded `DEFAULT_DEPOT = { lat: 50.0755, lng: 14.4378 }` (Praha)
+- Když se načítá saved route, depo se nenastaví podle trasy
+- `SavedRoute` interface neobsahuje `depot_id` nebo depot info
+- Backend `RouteWithCrewInfo` struct pravděpodobně také neobsahuje depot info
+
+**Zjištění:**
+1. ✅ Routes tabulka NEMÁ `depot_id` sloupec - trasa nemá info o depu!
+2. ✅ Backend vrací zastávky ve správném pořadí (Stop 0, 1, 2) podle `stop_order ASC`
+3. ✅ Planner má hardcoded `DEFAULT_DEPOT` (Praha) a nenastaví depo podle trasy
+
+**Příčiny problémů:**
+- **Špatné depo:** Routes tabulka neukládá depot_id, takže saved route nemá info o depu. Planner používá fallback DEFAULT_DEPOT (Praha).
+- **Jiné pořadí:** Backend vrací správné pořadí, problém musí být ve frontendu (možná se zastávky řadí jinak při zobrazení nebo geometrie se kreslí z jiných souřadnic).
+
+**Řešení:**
+1. ✅ Vytvořena migrace `006_add_route_depot.sql` - přidává `depot_id UUID` do routes tabulky + index
+2. ✅ Aktualizován `Route` struct v `worker/src/types/route.rs` - přidáno `depot_id: Option<Uuid>`
+3. ✅ Aktualizovány SQL queries v `route.rs`:
+   - `get_route_for_date` - přidán `depot_id` do SELECT
+   - `get_route_by_id` - přidán `depot_id` do SELECT
+   - `list_routes_for_date` - přidán `depot_id` do SELECT a GROUP BY
+   - `upsert_route` SELECT queries - přidán `depot_id`
+   - `upsert_route` UPDATE RETURNING - přidán `depot_id`
+   - `upsert_route` INSERT - přidán `depot_id` (zatím NULL)
+4. ✅ Aktualizován `RouteWithCrewInfo` struct - přidáno `depot_id: Option<Uuid>`
+5. ✅ Aktualizován frontend `SavedRoute` interface - přidáno `depotId: string | null`
+6. ✅ Planner načítá depot z `result.route.depotId` a nastavuje správné depo
+7. ✅ cargo check - kompilace OK (213 warnings, 0 errors)
+8. ✅ Aktualizován `SaveRouteRequest` v route handler - přidáno `depot_id: Option<Uuid>`
+9. ✅ Aktualizován `handle_save` - předává `payload.depot_id` do `upsert_route`
+10. ✅ Aktualizována signatura `upsert_route` - nový parametr `depot_id: Option<Uuid>`
+11. ✅ Aktualizován frontend `SaveRouteRequest` - přidáno `depotId?: string | null`
+12. ✅ PlanningInbox `autoSaveFn` - posílá `depotId: context.depotId || null`
+13. ✅ Worker restartován (debug build) - migrace `006` proběhla úspěšně
+
+**Status:** Depot se nyní ukládá a načítá správně. Zbývá otestovat v prohlížeči.

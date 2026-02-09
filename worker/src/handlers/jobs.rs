@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 use crate::db::queries;
 use crate::services::routing::{RoutingService, MockRoutingService};
-use crate::services::vrp::{VrpSolver, VrpProblem, VrpStop, Depot, SolverConfig};
+use crate::services::vrp::{VrpSolver, VrpProblem, VrpStop, Depot, SolverConfig, StopTimeWindow};
 use crate::types::{
     Coordinates, ErrorResponse, Request, SuccessResponse,
     JobSubmitResponse, JobStatus, JobStatusUpdate, QueuedJob, RoutePlanJobRequest,
@@ -231,7 +231,24 @@ impl JobProcessor {
         request: &RoutePlanJobRequest,
     ) -> Result<RoutePlanResponse> {
         let user_id = request.user_id.unwrap_or(Uuid::nil());
-        let solver = VrpSolver::new(SolverConfig::fast());
+
+        // Load crew-specific settings for arrival buffer
+        let arrival_buffer_percent = if let Some(crew_id) = request.crew_id {
+            match queries::crew::get_crew(&self.pool, crew_id, user_id).await {
+                Ok(Some(crew)) => {
+                    info!("Job: using crew '{}' arrival buffer: {}%", crew.name, crew.arrival_buffer_percent);
+                    crew.arrival_buffer_percent
+                }
+                _ => {
+                    warn!("Job: crew {} not found, using default buffer", crew_id);
+                    10.0
+                }
+            }
+        } else {
+            10.0
+        };
+
+        let solver = VrpSolver::new(SolverConfig::with_buffer(5, 500, arrival_buffer_percent));
         
         // Validate request
         if request.customer_ids.is_empty() {
@@ -511,17 +528,27 @@ impl JobProcessor {
     ) -> VrpProblem {
         let stops: Vec<VrpStop> = customers
             .iter()
-            .map(|c| VrpStop {
-                id: c.id.to_string(),
-                customer_id: c.id,
-                customer_name: c.name.clone().unwrap_or_default(),
-                coordinates: Coordinates {
-                    lat: c.lat.unwrap(),
-                    lng: c.lng.unwrap(),
-                },
-                service_duration_minutes,
-                time_window: None,
-                priority: 1,
+            .map(|c| {
+                let time_window = match (c.scheduled_time_start, c.scheduled_time_end) {
+                    (Some(start), Some(end)) => Some(StopTimeWindow {
+                        start,
+                        end,
+                        is_hard: true,
+                    }),
+                    _ => None,
+                };
+                VrpStop {
+                    id: c.id.to_string(),
+                    customer_id: c.id,
+                    customer_name: c.name.clone().unwrap_or_default(),
+                    coordinates: Coordinates {
+                        lat: c.lat.unwrap(),
+                        lng: c.lng.unwrap(),
+                    },
+                    service_duration_minutes,
+                    time_window,
+                    priority: 1,
+                }
             })
             .collect();
         

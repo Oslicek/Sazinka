@@ -182,6 +182,14 @@ export function Planner() {
           durationMin: s.durationFromPreviousMinutes,
         })));
         setSelectedRouteStops(result.stops);
+
+        // Set depot from route if available
+        if (result.route?.depotId && depots.length > 0) {
+          const routeDepot = depots.find(d => d.id === result.route!.depotId);
+          if (routeDepot) {
+            setDepot({ lat: routeDepot.lat, lng: routeDepot.lng, name: routeDepot.name });
+          }
+        }
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
         console.error('Failed to load route stops:', detail);
@@ -193,7 +201,7 @@ export function Planner() {
     }
     loadStops();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRouteId, isConnected]);
+  }, [selectedRouteId, isConnected, depots]);
 
   // ─── URL sync ────────────────────────────────────────────────────
 

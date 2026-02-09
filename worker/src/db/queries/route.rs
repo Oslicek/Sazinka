@@ -33,7 +33,7 @@ pub async fn get_route_for_date(
     let route = sqlx::query_as::<_, Route>(
         r#"
         SELECT
-            id, user_id, crew_id, date, status::text,
+            id, user_id, crew_id, depot_id, date, status::text,
             total_distance_km, total_duration_minutes,
             optimization_score, created_at, updated_at
         FROM routes
@@ -57,7 +57,7 @@ pub async fn get_route_by_id(
     let route = sqlx::query_as::<_, Route>(
         r#"
         SELECT
-            id, user_id, crew_id, date, status::text,
+            id, user_id, crew_id, depot_id, date, status::text,
             total_distance_km, total_duration_minutes,
             optimization_score, created_at, updated_at
         FROM routes
@@ -80,6 +80,7 @@ pub struct RouteWithCrewInfo {
     pub user_id: Uuid,
     pub crew_id: Option<Uuid>,
     pub crew_name: Option<String>,
+    pub depot_id: Option<Uuid>,
     pub date: NaiveDate,
     pub status: String,
     pub total_distance_km: Option<f64>,
@@ -103,6 +104,7 @@ pub async fn list_routes_for_date(
             r.user_id,
             r.crew_id,
             c.name as crew_name,
+            r.depot_id,
             r.date,
             r.status::text as status,
             r.total_distance_km,
@@ -115,7 +117,7 @@ pub async fn list_routes_for_date(
         LEFT JOIN crews c ON c.id = r.crew_id
         LEFT JOIN route_stops rs ON rs.route_id = r.id
         WHERE r.user_id = $1 AND r.date = $2
-        GROUP BY r.id, c.name
+        GROUP BY r.id, c.name, r.depot_id
         ORDER BY c.name NULLS LAST
         "#
     )
@@ -127,11 +129,12 @@ pub async fn list_routes_for_date(
     Ok(routes)
 }
 
-/// Create or update route (with crew_id)
+/// Create or update route (with crew_id and depot_id)
 pub async fn upsert_route(
     pool: &PgPool,
     user_id: Uuid,
     crew_id: Option<Uuid>,
+    depot_id: Option<Uuid>,
     date: NaiveDate,
     status: &str,
     total_distance_km: Option<f64>,
@@ -141,13 +144,13 @@ pub async fn upsert_route(
     // Two-step upsert to handle NULL crew_id (NULL != NULL in SQL unique index)
     let existing = if let Some(cid) = crew_id {
         sqlx::query_as::<_, Route>(
-            "SELECT id, user_id, crew_id, date, status::text, total_distance_km, total_duration_minutes, optimization_score, created_at, updated_at FROM routes WHERE user_id = $1 AND date = $2 AND crew_id = $3"
+            "SELECT id, user_id, crew_id, depot_id, date, status::text, total_distance_km, total_duration_minutes, optimization_score, created_at, updated_at FROM routes WHERE user_id = $1 AND date = $2 AND crew_id = $3"
         )
         .bind(user_id).bind(date).bind(cid)
         .fetch_optional(pool).await?
     } else {
         sqlx::query_as::<_, Route>(
-            "SELECT id, user_id, crew_id, date, status::text, total_distance_km, total_duration_minutes, optimization_score, created_at, updated_at FROM routes WHERE user_id = $1 AND date = $2 AND crew_id IS NULL"
+            "SELECT id, user_id, crew_id, depot_id, date, status::text, total_distance_km, total_duration_minutes, optimization_score, created_at, updated_at FROM routes WHERE user_id = $1 AND date = $2 AND crew_id IS NULL"
         )
         .bind(user_id).bind(date)
         .fetch_optional(pool).await?
@@ -165,7 +168,7 @@ pub async fn upsert_route(
                 updated_at = NOW()
             WHERE id = $1
             RETURNING
-                id, user_id, crew_id, date, status::text,
+                id, user_id, crew_id, depot_id, date, status::text,
                 total_distance_km, total_duration_minutes,
                 optimization_score, created_at, updated_at
             "#
@@ -181,13 +184,13 @@ pub async fn upsert_route(
         sqlx::query_as::<_, Route>(
             r#"
             INSERT INTO routes (
-                id, user_id, crew_id, date, status,
+                id, user_id, crew_id, depot_id, date, status,
                 total_distance_km, total_duration_minutes,
                 optimization_score, created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5::route_status, $6, $7, $8, NOW(), NOW())
+            VALUES ($1, $2, $3, $4, $5, $6::route_status, $7, $8, $9, NOW(), NOW())
             RETURNING
-                id, user_id, crew_id, date, status::text,
+                id, user_id, crew_id, depot_id, date, status::text,
                 total_distance_km, total_duration_minutes,
                 optimization_score, created_at, updated_at
             "#
@@ -195,6 +198,7 @@ pub async fn upsert_route(
         .bind(Uuid::new_v4())
         .bind(user_id)
         .bind(crew_id)
+        .bind(depot_id)
         .bind(date)
         .bind(status)
         .bind(total_distance_km)

@@ -121,9 +121,9 @@ mod tests {
     #[test]
     fn test_route_plan_job_request_serializes() {
         let request = RoutePlanJobRequest {
-            user_id: Uuid::nil(),
+            user_id: Some(Uuid::nil()),
             customer_ids: vec![Uuid::nil()],
-            date: "2026-01-29".to_string(),
+            date: chrono::NaiveDate::from_ymd_opt(2026, 1, 29).unwrap(),
             start_location: crate::types::Coordinates { lat: 50.0, lng: 14.0 },
         };
         
@@ -324,6 +324,9 @@ pub struct RoutePlanJobRequest {
     pub date: chrono::NaiveDate,
     /// Starting location (depot)
     pub start_location: crate::types::Coordinates,
+    /// Crew ID — if provided, crew-specific settings (arrival buffer) are used
+    #[serde(default)]
+    pub crew_id: Option<Uuid>,
 }
 
 /// A job stored in the JetStream queue

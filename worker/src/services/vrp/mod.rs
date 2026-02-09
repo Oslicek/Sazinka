@@ -12,7 +12,7 @@ mod pragmatic;
 pub use problem::{VrpProblem, VrpStop, Depot, StopTimeWindow};
 pub use solution::{RouteSolution, PlannedStop, RouteWarning};
 pub use config::SolverConfig;
-pub use adapter::{build_pragmatic_problem, build_pragmatic_matrix, DEFAULT_PROFILE};
+pub use adapter::{build_pragmatic_problem, build_pragmatic_problem_with_buffer, build_pragmatic_matrix, DEFAULT_PROFILE};
 pub use pragmatic::solve_pragmatic;
 
 use anyhow::Result;
@@ -119,8 +119,8 @@ impl VrpSolver {
             }
         }
 
-        // Fallback: use nearest neighbor heuristic
-        let ordered_indices = self.nearest_neighbor(matrices);
+        // Fallback: use nearest neighbor heuristic (time-window-aware)
+        let ordered_indices = self.nearest_neighbor(problem, matrices);
         
         // Build solution from ordered indices
         let mut solution = self.build_solution(problem, matrices, &ordered_indices);
@@ -152,27 +152,54 @@ impl VrpSolver {
         Ok(solution)
     }
 
-    /// Nearest neighbor heuristic
-    /// Returns indices of stops in visit order (0 = depot, 1..n = stops)
-    fn nearest_neighbor(&self, matrices: &DistanceTimeMatrices) -> Vec<usize> {
+    /// Time-window-aware nearest neighbor heuristic.
+    /// Stops with hard time windows are scheduled first (sorted by window start).
+    /// Remaining stops without windows are inserted by nearest neighbor.
+    /// Returns indices of stops in visit order (1..n, where 0 = depot).
+    fn nearest_neighbor(&self, problem: &VrpProblem, matrices: &DistanceTimeMatrices) -> Vec<usize> {
         let n = matrices.size;
         if n <= 1 {
             return vec![];
         }
 
+        // Separate stops into those with hard time windows and those without
+        let mut windowed: Vec<(usize, NaiveTime)> = Vec::new(); // (matrix_index, window_start)
+        let mut unwindowed: Vec<usize> = Vec::new();
+
+        for (i, stop) in problem.stops.iter().enumerate() {
+            let matrix_idx = i + 1; // 0 is depot
+            match &stop.time_window {
+                Some(tw) if tw.is_hard => {
+                    windowed.push((matrix_idx, tw.start));
+                }
+                _ => {
+                    unwindowed.push(matrix_idx);
+                }
+            }
+        }
+
+        // Sort windowed stops by window start (earliest first)
+        windowed.sort_by_key(|&(_, start)| start);
+
         let mut visited = vec![false; n];
         let mut route = Vec::with_capacity(n - 1);
-        
-        // Start from depot (index 0)
         visited[0] = true;
         let mut current = 0;
 
-        // Visit all stops (indices 1..n)
-        for _ in 1..n {
+        // Phase 1: Schedule windowed stops in order of their time window start
+        for (idx, _start) in &windowed {
+            visited[*idx] = true;
+            route.push(*idx);
+            current = *idx;
+        }
+
+        // Phase 2: Fill remaining stops by nearest neighbor from last position
+        let remaining_count = unwindowed.len();
+        for _ in 0..remaining_count {
             let mut best_next = None;
             let mut best_distance = u64::MAX;
 
-            for j in 1..n {
+            for &j in &unwindowed {
                 if !visited[j] {
                     let dist = matrices.distance(current, j);
                     if dist < best_distance {
@@ -478,9 +505,36 @@ mod tests {
     }
 
     #[test]
-    fn test_nearest_neighbor_ordering() {
+    fn test_nearest_neighbor_ordering_no_windows() {
         let solver = VrpSolver::default();
         
+        // Problem with no time windows - pure nearest neighbor
+        let problem = VrpProblem {
+            depot: Depot { coordinates: Coordinates { lat: 50.0, lng: 14.0 } },
+            shift_start: NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
+            shift_end: NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+            stops: vec![
+                VrpStop {
+                    id: "s1".to_string(),
+                    customer_id: Uuid::new_v4(),
+                    customer_name: "A".to_string(),
+                    coordinates: Coordinates { lat: 49.0, lng: 16.0 },
+                    service_duration_minutes: 30,
+                    time_window: None,
+                    priority: 1,
+                },
+                VrpStop {
+                    id: "s2".to_string(),
+                    customer_id: Uuid::new_v4(),
+                    customer_name: "B".to_string(),
+                    coordinates: Coordinates { lat: 49.5, lng: 15.0 },
+                    service_duration_minutes: 30,
+                    time_window: None,
+                    priority: 1,
+                },
+            ],
+        };
+
         // Create a matrix where stop 2 is closest to depot, then stop 1
         let mut distances = vec![vec![0u64; 3]; 3];
         distances[0][1] = 20000; // depot -> stop1: 20km
@@ -496,9 +550,60 @@ mod tests {
             size: 3,
         };
         
-        let route = solver.nearest_neighbor(&matrices);
+        let route = solver.nearest_neighbor(&problem, &matrices);
         
         // Should visit stop 2 first (closer to depot), then stop 1
+        assert_eq!(route, vec![2, 1]);
+    }
+
+    #[test]
+    fn test_nearest_neighbor_with_time_windows_orders_by_window() {
+        let solver = VrpSolver::default();
+        
+        // Stop 1 is closer but has LATER time window, stop 2 has EARLIER window
+        let problem = VrpProblem {
+            depot: Depot { coordinates: Coordinates { lat: 50.0, lng: 14.0 } },
+            shift_start: NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
+            shift_end: NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+            stops: vec![
+                VrpStop {
+                    id: "s1".to_string(),
+                    customer_id: Uuid::new_v4(),
+                    customer_name: "A".to_string(),
+                    coordinates: Coordinates { lat: 49.0, lng: 16.0 },
+                    service_duration_minutes: 30,
+                    time_window: Some(StopTimeWindow {
+                        start: NaiveTime::from_hms_opt(14, 0, 0).unwrap(), // later
+                        end: NaiveTime::from_hms_opt(16, 0, 0).unwrap(),
+                        is_hard: true,
+                    }),
+                    priority: 1,
+                },
+                VrpStop {
+                    id: "s2".to_string(),
+                    customer_id: Uuid::new_v4(),
+                    customer_name: "B".to_string(),
+                    coordinates: Coordinates { lat: 49.5, lng: 15.0 },
+                    service_duration_minutes: 30,
+                    time_window: Some(StopTimeWindow {
+                        start: NaiveTime::from_hms_opt(9, 0, 0).unwrap(), // earlier
+                        end: NaiveTime::from_hms_opt(11, 0, 0).unwrap(),
+                        is_hard: true,
+                    }),
+                    priority: 1,
+                },
+            ],
+        };
+
+        let matrices = DistanceTimeMatrices {
+            distances: vec![vec![10000u64; 3]; 3],
+            durations: vec![vec![600u64; 3]; 3],
+            size: 3,
+        };
+        
+        let route = solver.nearest_neighbor(&problem, &matrices);
+        
+        // Should visit stop 2 first (earlier window 09:00), then stop 1 (14:00)
         assert_eq!(route, vec![2, 1]);
     }
 }

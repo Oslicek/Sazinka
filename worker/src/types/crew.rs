@@ -15,6 +15,8 @@ pub struct Crew {
     pub working_hours_start: NaiveTime,
     pub working_hours_end: NaiveTime,
     pub is_active: bool,
+    /// Arrival buffer as percentage of preceding segment duration (default 10%)
+    pub arrival_buffer_percent: f64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -29,6 +31,8 @@ pub struct CreateCrewRequest {
     pub preferred_areas: Vec<String>,
     pub working_hours_start: Option<NaiveTime>,
     pub working_hours_end: Option<NaiveTime>,
+    /// Arrival buffer as percentage of preceding segment duration (default 10%)
+    pub arrival_buffer_percent: Option<f64>,
 }
 
 /// Request to update an existing crew
@@ -42,6 +46,8 @@ pub struct UpdateCrewRequest {
     pub working_hours_start: Option<NaiveTime>,
     pub working_hours_end: Option<NaiveTime>,
     pub is_active: Option<bool>,
+    /// Arrival buffer as percentage of preceding segment duration
+    pub arrival_buffer_percent: Option<f64>,
 }
 
 /// Request to list crews
@@ -88,6 +94,71 @@ mod tests {
     }
 
     #[test]
+    fn test_crew_arrival_buffer_percent_default() {
+        // Crew should have arrival_buffer_percent with a sensible default
+        let crew = Crew {
+            id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            name: "Test".to_string(),
+            home_depot_id: None,
+            preferred_areas: vec![],
+            working_hours_start: NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
+            working_hours_end: NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+            is_active: true,
+            arrival_buffer_percent: 10.0,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        assert!((crew.arrival_buffer_percent - 10.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_create_crew_request_with_buffer() {
+        let json = r#"{
+            "name": "Posádka 2",
+            "arrivalBufferPercent": 15.0
+        }"#;
+        let request: CreateCrewRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(request.arrival_buffer_percent, Some(15.0));
+    }
+
+    #[test]
+    fn test_create_crew_request_without_buffer_defaults_none() {
+        let json = r#"{"name": "Posádka 3"}"#;
+        let request: CreateCrewRequest = serde_json::from_str(json).unwrap();
+        assert!(request.arrival_buffer_percent.is_none());
+    }
+
+    #[test]
+    fn test_update_crew_request_with_buffer() {
+        let json = r#"{
+            "id": "123e4567-e89b-12d3-a456-426614174000",
+            "arrivalBufferPercent": 5.0
+        }"#;
+        let request: UpdateCrewRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(request.arrival_buffer_percent, Some(5.0));
+    }
+
+    #[test]
+    fn test_crew_serializes_buffer_as_camel_case() {
+        let crew = Crew {
+            id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            name: "Test".to_string(),
+            home_depot_id: None,
+            preferred_areas: vec![],
+            working_hours_start: NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
+            working_hours_end: NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+            is_active: true,
+            arrival_buffer_percent: 12.5,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        let json = serde_json::to_string(&crew).unwrap();
+        assert!(json.contains("\"arrivalBufferPercent\":12.5"));
+    }
+
+    #[test]
     fn test_create_crew_request_minimal() {
         let json = r#"{"name": "Posádka 1"}"#;
 
@@ -120,6 +191,7 @@ mod tests {
             working_hours_start: NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
             working_hours_end: NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
             is_active: true,
+            arrival_buffer_percent: 10.0,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };

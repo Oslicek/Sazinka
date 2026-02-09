@@ -13,8 +13,8 @@ use vrp_pragmatic::format::solution::{PragmaticOutputType, Solution as Pragmatic
 
 use crate::services::routing::DistanceTimeMatrices;
 use super::{
-    build_pragmatic_matrix, build_pragmatic_problem, DEFAULT_PROFILE, PlannedStop, RouteSolution,
-    RouteWarning, SolverConfig, VrpProblem,
+    build_pragmatic_matrix, build_pragmatic_problem_with_buffer, DEFAULT_PROFILE, PlannedStop,
+    RouteSolution, RouteWarning, SolverConfig, VrpProblem,
 };
 
 pub fn solve_pragmatic(
@@ -27,7 +27,12 @@ pub fn solve_pragmatic(
         return Ok(RouteSolution::empty());
     }
 
-    let problem_json = build_pragmatic_problem(problem, date);
+    let problem_json = build_pragmatic_problem_with_buffer(
+        problem,
+        date,
+        Some(matrices),
+        config.arrival_buffer_percent,
+    );
     let problem_format: Problem = serde_json::from_value(problem_json)
         .context("Failed to deserialize pragmatic problem")?;
 
@@ -122,6 +127,19 @@ fn map_solution(problem: &VrpProblem, solution: &PragmaticSolution) -> RouteSolu
                         departure_time,
                         waiting_time_minutes: 0,
                     });
+
+                    // Post-solve validation: compare arrival vs original (unshifted) time window
+                    if let Some(tw) = &definition.time_window {
+                        if tw.is_hard {
+                            validate_arrival_vs_window(
+                                &definition.id,
+                                &definition.customer_name,
+                                arrival_time,
+                                tw,
+                                &mut warnings,
+                            );
+                        }
+                    }
                 } else {
                     warnings.push(RouteWarning {
                         stop_id: Some(activity.job_id.clone()),
@@ -199,6 +217,43 @@ fn format_unassigned_reason(code: &str, description: Option<&str>) -> String {
         format!("{} ({})", reason, desc)
     } else {
         reason.to_string()
+    }
+}
+
+/// Validate that the solver's planned arrival respects the original time window.
+/// Generates LATE_ARRIVAL if arrival is after window end,
+/// and INSUFFICIENT_BUFFER if arrival is after window start (no buffer).
+fn validate_arrival_vs_window(
+    stop_id: &str,
+    customer_name: &str,
+    arrival_time: NaiveTime,
+    window: &super::StopTimeWindow,
+    warnings: &mut Vec<RouteWarning>,
+) {
+    if arrival_time > window.end {
+        warnings.push(RouteWarning {
+            stop_id: Some(stop_id.to_string()),
+            warning_type: "LATE_ARRIVAL".to_string(),
+            message: format!(
+                "{}: příjezd v {} je po konci okna {}",
+                customer_name,
+                arrival_time.format("%H:%M"),
+                window.end.format("%H:%M"),
+            ),
+        });
+    } else if arrival_time > window.start {
+        let late_by_seconds = (arrival_time - window.start).num_seconds();
+        warnings.push(RouteWarning {
+            stop_id: Some(stop_id.to_string()),
+            warning_type: "INSUFFICIENT_BUFFER".to_string(),
+            message: format!(
+                "{}: příjezd v {} je {} min po začátku okna {}",
+                customer_name,
+                arrival_time.format("%H:%M"),
+                late_by_seconds / 60,
+                window.start.format("%H:%M"),
+            ),
+        });
     }
 }
 
@@ -411,5 +466,76 @@ mod tests {
             short_solution.total_duration_seconds,
             duration_difference
         );
+    }
+
+    // ==========================================================================
+    // Post-solve validation tests
+    // ==========================================================================
+
+    #[test]
+    fn validate_arrival_before_window_no_warning() {
+        let window = super::super::StopTimeWindow {
+            start: NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
+            end: NaiveTime::from_hms_opt(12, 0, 0).unwrap(),
+            is_hard: true,
+        };
+        let mut warnings = Vec::new();
+        validate_arrival_vs_window(
+            "s1", "Customer A",
+            NaiveTime::from_hms_opt(9, 50, 0).unwrap(),
+            &window, &mut warnings,
+        );
+        assert!(warnings.is_empty(), "No warning when arriving before window start");
+    }
+
+    #[test]
+    fn validate_arrival_exactly_at_start_no_warning() {
+        let window = super::super::StopTimeWindow {
+            start: NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
+            end: NaiveTime::from_hms_opt(12, 0, 0).unwrap(),
+            is_hard: true,
+        };
+        let mut warnings = Vec::new();
+        validate_arrival_vs_window(
+            "s1", "Customer A",
+            NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
+            &window, &mut warnings,
+        );
+        assert!(warnings.is_empty(), "No warning when arriving exactly at window start");
+    }
+
+    #[test]
+    fn validate_arrival_after_start_insufficient_buffer() {
+        let window = super::super::StopTimeWindow {
+            start: NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
+            end: NaiveTime::from_hms_opt(12, 0, 0).unwrap(),
+            is_hard: true,
+        };
+        let mut warnings = Vec::new();
+        validate_arrival_vs_window(
+            "s1", "Customer A",
+            NaiveTime::from_hms_opt(10, 5, 0).unwrap(), // 5 min late
+            &window, &mut warnings,
+        );
+        assert_eq!(warnings.len(), 1);
+        assert_eq!(warnings[0].warning_type, "INSUFFICIENT_BUFFER");
+        assert!(warnings[0].message.contains("Customer A"));
+    }
+
+    #[test]
+    fn validate_arrival_after_end_late_arrival() {
+        let window = super::super::StopTimeWindow {
+            start: NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
+            end: NaiveTime::from_hms_opt(12, 0, 0).unwrap(),
+            is_hard: true,
+        };
+        let mut warnings = Vec::new();
+        validate_arrival_vs_window(
+            "s1", "Customer A",
+            NaiveTime::from_hms_opt(12, 30, 0).unwrap(), // after end
+            &window, &mut warnings,
+        );
+        assert_eq!(warnings.len(), 1);
+        assert_eq!(warnings[0].warning_type, "LATE_ARRIVAL");
     }
 }

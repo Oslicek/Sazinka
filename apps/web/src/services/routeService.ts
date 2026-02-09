@@ -32,6 +32,7 @@ export interface SaveRouteStop {
 
 export interface SaveRouteRequest {
   date: string;
+  depotId?: string | null;
   stops: SaveRouteStop[];
   totalDistanceKm: number;
   totalDurationMinutes: number;
@@ -49,6 +50,7 @@ export interface SavedRoute {
   userId: string;
   crewId: string | null;
   crewName?: string;
+  depotId: string | null;
   date: string;
   status: string;
   totalDistanceKm: number | null;
@@ -238,6 +240,8 @@ export interface RoutePlanJobRequest {
   customerIds: string[];
   date: string;  // YYYY-MM-DD format
   startLocation: Coordinates;
+  /** Optional crew ID - if provided, crew-specific settings (arrival buffer) are used */
+  crewId?: string;
 }
 
 /** Response from submitting a route planning job */
@@ -272,6 +276,7 @@ export async function submitRoutePlanJob(
     customerIds: request.customerIds,
     date: request.date,
     startLocation: request.startLocation,
+    ...(request.crewId ? { crewId: request.crewId } : {}),
   });
   
   const response = await deps.request<typeof req, NatsResponse<RoutePlanJobSubmitResponse>>(

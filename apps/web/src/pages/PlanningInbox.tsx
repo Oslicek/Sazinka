@@ -182,6 +182,7 @@ export function PlanningInbox() {
     if (routeStops.length === 0 || !context) return;
     await routeService.saveRoute({
       date: context.date,
+      depotId: context.depotId || null,
       stops: routeStops.map((s, index) => ({
         customerId: s.customerId,
         revisionId: s.revisionId ?? undefined,

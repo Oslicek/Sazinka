@@ -163,25 +163,25 @@ export function Settings() {
     <div className={styles.settings}>
       <h1>Nastavení</h1>
 
-      {/* Tabs */}
-      <div className={styles.tabs}>
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            className={`${styles.tab} ${activeTab === tab.id ? styles.active : ''}`}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <div className={styles.settingsLayout}>
+        {/* Sidebar Navigation */}
+        <nav className={styles.sidebar}>
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              className={`${styles.sidebarItem} ${activeTab === tab.id ? styles.sidebarItemActive : ''}`}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
 
-      {/* Messages */}
-      {error && <div className={styles.error}>{error}</div>}
-      {success && <div className={styles.success}>{success}</div>}
-
-      {/* Tab content */}
-      <div className={styles.tabContent}>
+        {/* Content Area */}
+        <div className={styles.contentArea}>
+          {/* Messages */}
+          {error && <div className={styles.error}>{error}</div>}
+          {success && <div className={styles.success}>{success}</div>}
         {activeTab === 'preferences' && settings && (
           <PreferencesForm
             defaultCrewId={settings.preferences?.defaultCrewId ?? null}
@@ -483,6 +483,7 @@ export function Settings() {
             </section>
           </div>
         )}
+        </div>
       </div>
 
       {/* Import Modal */}
@@ -1146,12 +1147,17 @@ function CrewsManager({ crews, onUpdate }: CrewsManagerProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleCreate = async (data: { name: string }) => {
+  const handleCreate = async (data: CrewFormData) => {
     setSaving(true);
     setError(null);
     
     try {
-      await crewService.createCrew({ name: data.name });
+      await crewService.createCrew({
+        name: data.name,
+        arrivalBufferPercent: data.arrivalBufferPercent,
+        workingHoursStart: data.workingHoursStart,
+        workingHoursEnd: data.workingHoursEnd,
+      });
       setShowForm(false);
       await onUpdate();
     } catch (e) {
@@ -1161,7 +1167,7 @@ function CrewsManager({ crews, onUpdate }: CrewsManagerProps) {
     }
   };
 
-  const handleUpdate = async (data: { name: string }) => {
+  const handleUpdate = async (data: CrewFormData) => {
     if (!editingCrew) return;
     
     setSaving(true);
@@ -1171,6 +1177,9 @@ function CrewsManager({ crews, onUpdate }: CrewsManagerProps) {
       await crewService.updateCrew({
         id: editingCrew.id,
         name: data.name,
+        arrivalBufferPercent: data.arrivalBufferPercent,
+        workingHoursStart: data.workingHoursStart,
+        workingHoursEnd: data.workingHoursEnd,
       });
       setEditingCrew(null);
       await onUpdate();
@@ -1220,6 +1229,11 @@ function CrewsManager({ crews, onUpdate }: CrewsManagerProps) {
                   <strong>{crew.name}</strong>
                   {!crew.isActive && <span className={styles.inactiveBadge}>Neaktivní</span>}
                 </div>
+                <small>
+                  {crew.workingHoursStart?.slice(0, 5) || '08:00'}–{crew.workingHoursEnd?.slice(0, 5) || '17:00'}
+                  {' · '}
+                  Rezerva {crew.arrivalBufferPercent ?? 10} %
+                </small>
               </div>
               <div className={styles.depotActions}>
                 <button
@@ -1283,16 +1297,26 @@ function CrewsManager({ crews, onUpdate }: CrewsManagerProps) {
 // Crew Form
 // ============================================================================
 
+interface CrewFormData {
+  name: string;
+  arrivalBufferPercent: number;
+  workingHoursStart: string;
+  workingHoursEnd: string;
+}
+
 interface CrewFormProps {
   crew: Crew | null;
   saving: boolean;
-  onSave: (data: { name: string }) => Promise<void>;
+  onSave: (data: CrewFormData) => Promise<void>;
   onCancel: () => void;
 }
 
 function CrewForm({ crew, saving, onSave, onCancel }: CrewFormProps) {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<CrewFormData>({
     name: crew?.name || '',
+    arrivalBufferPercent: crew?.arrivalBufferPercent ?? 10,
+    workingHoursStart: crew?.workingHoursStart || '08:00:00',
+    workingHoursEnd: crew?.workingHoursEnd || '17:00:00',
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -1314,6 +1338,44 @@ function CrewForm({ crew, saving, onSave, onCancel }: CrewFormProps) {
           required
           placeholder="např. Posádka 1"
         />
+      </div>
+
+      <div className={styles.crewDetailRow}>
+        <div className={styles.formGroup}>
+          <label htmlFor="crewWorkStart">Začátek směny</label>
+          <input
+            type="time"
+            id="crewWorkStart"
+            value={formData.workingHoursStart.slice(0, 5)}
+            onChange={(e) => setFormData({ ...formData, workingHoursStart: e.target.value + ':00' })}
+          />
+        </div>
+        <div className={styles.formGroup}>
+          <label htmlFor="crewWorkEnd">Konec směny</label>
+          <input
+            type="time"
+            id="crewWorkEnd"
+            value={formData.workingHoursEnd.slice(0, 5)}
+            onChange={(e) => setFormData({ ...formData, workingHoursEnd: e.target.value + ':00' })}
+          />
+        </div>
+      </div>
+
+      <div className={styles.formGroup}>
+        <label htmlFor="crewBuffer">Rezerva příjezdu (%)</label>
+        <input
+          type="number"
+          id="crewBuffer"
+          value={formData.arrivalBufferPercent}
+          onChange={(e) => setFormData({ ...formData, arrivalBufferPercent: parseFloat(e.target.value) || 0 })}
+          min={0}
+          max={100}
+          step={1}
+        />
+        <p className={styles.bufferHint}>
+          Procento doby přejezdu, o které posádka přijede dříve před naplánovaným oknem.
+          Např. 10 % z 60minutového přejezdu = příjezd 6 minut před oknem.
+        </p>
       </div>
       
       <div className={styles.formActions}>

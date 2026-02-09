@@ -22,6 +22,8 @@ export interface Crew {
   workingHoursStart: string | null;
   workingHoursEnd: string | null;
   isActive: boolean;
+  /** Arrival buffer as percentage of preceding segment duration (default 10%) */
+  arrivalBufferPercent: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -37,6 +39,7 @@ export interface CreateCrewRequest {
   preferredAreas?: string[];
   workingHoursStart?: string;
   workingHoursEnd?: string;
+  arrivalBufferPercent?: number;
 }
 
 export interface UpdateCrewRequest {
@@ -47,6 +50,7 @@ export interface UpdateCrewRequest {
   workingHoursStart?: string;
   workingHoursEnd?: string;
   isActive?: boolean;
+  arrivalBufferPercent?: number;
 }
 
 export interface ListCrewsRequest {

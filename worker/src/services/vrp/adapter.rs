@@ -1,6 +1,6 @@
 //! Adapter to build vrp-pragmatic inputs.
 
-use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, SecondsFormat, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, SecondsFormat, Timelike, Utc};
 use serde_json::{json, Value};
 use vrp_pragmatic::format::problem::Matrix;
 
@@ -11,8 +11,65 @@ pub const DEFAULT_PROFILE: &str = "car";
 pub const DEFAULT_VEHICLE_ID: &str = "vehicle_1";
 pub const DEFAULT_VEHICLE_TYPE: &str = "vehicle";
 
+/// Compute the average travel time (in seconds) from all other locations to `target_index`.
+/// `target_index` is 0-based in the distance matrix (depot=0, stop[0]=1, etc.).
+fn avg_travel_time_to(matrices: &DistanceTimeMatrices, target_index: usize) -> u64 {
+    let mut sum: u64 = 0;
+    let mut count: u64 = 0;
+    for src in 0..matrices.size {
+        if src == target_index {
+            continue;
+        }
+        let d = matrices.duration(src, target_index);
+        if d > 0 {
+            sum += d as u64;
+            count += 1;
+        }
+    }
+    if count > 0 { sum / count } else { 0 }
+}
+
+/// Shift a time window start earlier by `buffer_percent` of the estimated segment duration.
+/// Returns a new StopTimeWindow with adjusted start.
+/// The end is kept as-is (hard deadline).
+fn apply_arrival_buffer(
+    window: &StopTimeWindow,
+    avg_segment_seconds: u64,
+    buffer_percent: f64,
+) -> StopTimeWindow {
+    if buffer_percent <= 0.0 || avg_segment_seconds == 0 || !window.is_hard {
+        return window.clone();
+    }
+    let buffer_seconds = (avg_segment_seconds as f64 * buffer_percent / 100.0).round() as i64;
+    let start_total_secs = window.start.num_seconds_from_midnight() as i64;
+    let new_start_secs = (start_total_secs - buffer_seconds).max(0) as u32;
+    StopTimeWindow {
+        start: NaiveTime::from_num_seconds_from_midnight_opt(new_start_secs, 0)
+            .unwrap_or(window.start),
+        end: window.end,
+        is_hard: window.is_hard,
+    }
+}
+
 /// Build pragmatic problem JSON with location indices.
-pub fn build_pragmatic_problem(problem: &VrpProblem, date: NaiveDate) -> Value {
+/// If `matrices` and `buffer_percent > 0` are provided, hard time windows
+/// are shifted earlier to create an arrival buffer.
+pub fn build_pragmatic_problem(
+    problem: &VrpProblem,
+    date: NaiveDate,
+) -> Value {
+    build_pragmatic_problem_with_buffer(problem, date, None, 0.0)
+}
+
+/// Build pragmatic problem JSON with buffer support.
+/// `matrices`: if provided, used to estimate segment durations for buffer calculation.
+/// `buffer_percent`: percentage of segment duration to arrive early (0 = no buffer).
+pub fn build_pragmatic_problem_with_buffer(
+    problem: &VrpProblem,
+    date: NaiveDate,
+    matrices: Option<&DistanceTimeMatrices>,
+    buffer_percent: f64,
+) -> Value {
     let jobs: Vec<Value> = problem
         .stops
         .iter()
@@ -24,7 +81,20 @@ pub fn build_pragmatic_problem(problem: &VrpProblem, date: NaiveDate) -> Value {
             });
 
             let place = match &stop.time_window {
-                Some(window) => add_time_window(place, date, window),
+                Some(window) => {
+                    // Apply buffer if matrices are available and buffer > 0
+                    let adjusted = if let Some(m) = matrices {
+                        if buffer_percent > 0.0 && window.is_hard {
+                            let avg_secs = avg_travel_time_to(m, index + 1);
+                            apply_arrival_buffer(window, avg_secs, buffer_percent)
+                        } else {
+                            window.clone()
+                        }
+                    } else {
+                        window.clone()
+                    };
+                    add_time_window(place, date, &adjusted)
+                }
                 None => place,
             };
 
@@ -214,5 +284,129 @@ mod tests {
         assert_eq!(matrix.distances, vec![0, 5, 7, 0]);
         assert_eq!(matrix.travel_times, vec![0, 10, 20, 0]);
         assert_eq!(matrix.profile.as_deref(), Some("car"));
+    }
+
+    // ==========================================================================
+    // Buffer logic tests
+    // ==========================================================================
+
+    #[test]
+    fn avg_travel_time_to_computes_correctly() {
+        // 3 locations: depot(0), stop-1(1), stop-2(2)
+        let matrices = DistanceTimeMatrices {
+            distances: vec![
+                vec![0, 100, 200],
+                vec![100, 0, 150],
+                vec![200, 150, 0],
+            ],
+            durations: vec![
+                vec![0, 600, 1200],  // depot->s1=600s, depot->s2=1200s
+                vec![600, 0, 900],   // s1->s2=900s
+                vec![1200, 900, 0],
+            ],
+            size: 3,
+        };
+
+        // Avg travel time to stop-1 (index=1): from depot(600) + from stop-2(900) = 1500/2 = 750
+        assert_eq!(avg_travel_time_to(&matrices, 1), 750);
+        // Avg travel time to stop-2 (index=2): from depot(1200) + from stop-1(900) = 2100/2 = 1050
+        assert_eq!(avg_travel_time_to(&matrices, 2), 1050);
+    }
+
+    #[test]
+    fn apply_arrival_buffer_shifts_start_earlier() {
+        let window = StopTimeWindow {
+            start: NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
+            end: NaiveTime::from_hms_opt(12, 0, 0).unwrap(),
+            is_hard: true,
+        };
+
+        // 10% of 600s segment = 60s buffer
+        let adjusted = apply_arrival_buffer(&window, 600, 10.0);
+        assert_eq!(adjusted.start, NaiveTime::from_hms_opt(9, 59, 0).unwrap());
+        assert_eq!(adjusted.end, NaiveTime::from_hms_opt(12, 0, 0).unwrap());
+    }
+
+    #[test]
+    fn apply_arrival_buffer_does_not_go_before_midnight() {
+        let window = StopTimeWindow {
+            start: NaiveTime::from_hms_opt(0, 0, 30).unwrap(),
+            end: NaiveTime::from_hms_opt(1, 0, 0).unwrap(),
+            is_hard: true,
+        };
+
+        // 50% of 3600s = 1800s buffer, but start is only 30s from midnight
+        let adjusted = apply_arrival_buffer(&window, 3600, 50.0);
+        assert_eq!(adjusted.start, NaiveTime::from_hms_opt(0, 0, 0).unwrap());
+    }
+
+    #[test]
+    fn apply_arrival_buffer_noop_for_soft_window() {
+        let window = StopTimeWindow {
+            start: NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
+            end: NaiveTime::from_hms_opt(12, 0, 0).unwrap(),
+            is_hard: false,
+        };
+
+        let adjusted = apply_arrival_buffer(&window, 600, 10.0);
+        // Soft windows are not shifted
+        assert_eq!(adjusted.start, window.start);
+    }
+
+    #[test]
+    fn apply_arrival_buffer_noop_for_zero_percent() {
+        let window = StopTimeWindow {
+            start: NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
+            end: NaiveTime::from_hms_opt(12, 0, 0).unwrap(),
+            is_hard: true,
+        };
+
+        let adjusted = apply_arrival_buffer(&window, 600, 0.0);
+        assert_eq!(adjusted.start, window.start);
+    }
+
+    #[test]
+    fn build_pragmatic_problem_with_buffer_shifts_hard_windows() {
+        let date = NaiveDate::from_ymd_opt(2026, 1, 26).unwrap();
+        let problem = test_problem();
+
+        // 3 locations: depot(0), stop-1(1), stop-2(2)
+        let matrices = DistanceTimeMatrices {
+            distances: vec![
+                vec![0, 100000, 200000],
+                vec![100000, 0, 150000],
+                vec![200000, 150000, 0],
+            ],
+            durations: vec![
+                vec![0, 3600, 7200],   // depot->s1=3600s(1h), depot->s2=7200s(2h)
+                vec![3600, 0, 5400],   // s1->s2=5400s(1.5h)
+                vec![7200, 5400, 0],
+            ],
+            size: 3,
+        };
+
+        // 10% buffer: avg to stop-1 = (3600+5400)/2=4500s, 10% = 450s = 7min30s
+        // Original window: 10:00-12:00 → Shifted to 09:52:30-12:00
+        let json = build_pragmatic_problem_with_buffer(&problem, date, Some(&matrices), 10.0);
+        let place = &json["plan"]["jobs"][0]["services"][0]["places"][0];
+        let times = place["times"].as_array().unwrap();
+        let start_str = times[0][0].as_str().unwrap();
+        assert!(start_str.starts_with("2026-01-26T09:52:30Z"), "Expected shifted start, got: {}", start_str);
+        // End should be unchanged
+        let end_str = times[0][1].as_str().unwrap();
+        assert!(end_str.starts_with("2026-01-26T12:00:00Z"));
+    }
+
+    #[test]
+    fn build_pragmatic_problem_without_buffer_unchanged() {
+        let date = NaiveDate::from_ymd_opt(2026, 1, 26).unwrap();
+        let problem = test_problem();
+
+        // No buffer — original function
+        let json = build_pragmatic_problem(&problem, date);
+        let place = &json["plan"]["jobs"][0]["services"][0]["places"][0];
+        let times = place["times"].as_array().unwrap();
+        let start_str = times[0][0].as_str().unwrap();
+        assert!(start_str.starts_with("2026-01-26T10:00:00Z"));
     }
 }

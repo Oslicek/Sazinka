@@ -190,8 +190,25 @@ pub async fn handle_plan(
             }
         };
 
+        // Load crew-specific settings for arrival buffer
+        let arrival_buffer_percent = if let Some(crew_id) = plan_request.crew_id {
+            match queries::crew::get_crew(&pool, crew_id, user_id).await {
+                Ok(Some(crew)) => {
+                    info!("Using crew '{}' arrival buffer: {}%", crew.name, crew.arrival_buffer_percent);
+                    crew.arrival_buffer_percent
+                }
+                _ => {
+                    warn!("Crew {} not found, using default buffer", crew_id);
+                    10.0
+                }
+            }
+        } else {
+            10.0
+        };
+
         // Solve VRP - solver handles timeout and spawn_blocking internally
-        let solver = VrpSolver::new(SolverConfig::fast());
+        let solver_config = SolverConfig::with_buffer(5, 500, arrival_buffer_percent);
+        let solver = VrpSolver::new(solver_config);
         let solution = match solver.solve(&vrp_problem, &matrices, plan_request.date).await {
             Ok(s) => {
                 // If solver used heuristic fallback and we had time windows,
@@ -235,7 +252,7 @@ pub async fn handle_plan(
                         (Some(start), Some(end)) => Some(crate::types::TimeWindow {
                             start,
                             end,
-                            is_hard: false,
+                            is_hard: true,
                         }),
                         _ => None,
                     },
@@ -402,7 +419,7 @@ fn build_vrp_problem(
                 (Some(start), Some(end)) => Some(StopTimeWindow {
                     start,
                     end,
-                    is_hard: false, // Soft constraint - solver will try to satisfy but won't fail
+                    is_hard: true, // Hard constraint - route must respect scheduled time windows
                 }),
                 _ => None,
             };
@@ -459,6 +476,7 @@ use crate::types::route::Route;
 #[serde(rename_all = "camelCase")]
 pub struct SaveRouteRequest {
     pub date: NaiveDate,
+    pub depot_id: Option<Uuid>,
     pub stops: Vec<SaveRouteStop>,
     pub total_distance_km: f64,
     pub total_duration_minutes: i32,
@@ -575,6 +593,7 @@ pub async fn handle_save(
             &pool,
             user_id,
             None, // crew_id - not specified in save request yet
+            payload.depot_id, // depot_id from request
             payload.date,
             "draft",
             Some(payload.total_distance_km),
@@ -1379,6 +1398,8 @@ mod tests {
                 postal_code: Some("11000".to_string()),
                 lat: Some(50.1),
                 lng: Some(14.5),
+                scheduled_time_start: None,
+                scheduled_time_end: None,
             },
             CustomerForRoute {
                 id: Uuid::new_v4(),
@@ -1388,6 +1409,8 @@ mod tests {
                 postal_code: Some("60200".to_string()),
                 lat: Some(49.2),
                 lng: Some(16.6),
+                scheduled_time_start: None,
+                scheduled_time_end: None,
             },
         ];
 
@@ -1415,6 +1438,8 @@ mod tests {
                 postal_code: Some("11000".to_string()),
                 lat: Some(50.1),
                 lng: Some(14.5),
+                scheduled_time_start: None,
+                scheduled_time_end: None,
             },
         ];
 
@@ -1442,6 +1467,8 @@ mod tests {
                 postal_code: Some("11000".to_string()),
                 lat: Some(50.1),
                 lng: Some(14.5),
+                scheduled_time_start: None,
+                scheduled_time_end: None,
             },
         ];
 
