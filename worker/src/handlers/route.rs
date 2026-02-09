@@ -27,9 +27,6 @@ pub async fn handle_plan(
     jwt_secret: Arc<String>,
     routing_service: Arc<dyn RoutingService>,
 ) -> Result<()> {
-    // Create VRP solver with fast config for interactive use
-    let solver = VrpSolver::new(SolverConfig::fast());
-
     while let Some(msg) = subscriber.next().await {
         debug!("Received route.plan message");
 
@@ -83,7 +80,7 @@ pub async fn handle_plan(
         }
 
         // Load customers from database
-        let customers = match load_customers(&pool, user_id, &plan_request.customer_ids).await {
+        let customers = match load_customers(&pool, user_id, &plan_request.customer_ids, plan_request.date).await {
             Ok(c) => c,
             Err(e) => {
                 error!("Failed to load customers: {}", e);
@@ -193,11 +190,19 @@ pub async fn handle_plan(
             }
         };
 
-        // Solve VRP
-        let solution = match solver.solve(&vrp_problem, &matrices, plan_request.date) {
-            Ok(s) => s,
+        // Solve VRP - solver handles timeout and spawn_blocking internally
+        let solver = VrpSolver::new(SolverConfig::fast());
+        let solution = match solver.solve(&vrp_problem, &matrices, plan_request.date).await {
+            Ok(s) => {
+                // If solver used heuristic fallback and we had time windows,
+                // check if the solution respects them (heuristic ignores time windows)
+                if s.algorithm.contains("heuristic") && vrp_problem.stops.iter().any(|stop| stop.time_window.is_some()) {
+                    info!("Heuristic fallback used with time windows present - windows may not be respected");
+                }
+                s
+            }
             Err(e) => {
-                error!("VRP solver failed: {}", e);
+                error!("VRP solver failed completely: {}", e);
                 let error = ErrorResponse::new(request.id, "SOLVER_ERROR", e.to_string());
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
@@ -226,7 +231,14 @@ pub async fn handle_plan(
                     eta: stop.arrival_time,
                     etd: stop.departure_time,
                     service_duration_minutes: service_duration as i32,
-                    time_window: None, // TODO: from customer preferences
+                    time_window: match (customer.scheduled_time_start, customer.scheduled_time_end) {
+                        (Some(start), Some(end)) => Some(crate::types::TimeWindow {
+                            start,
+                            end,
+                            is_hard: false,
+                        }),
+                        _ => None,
+                    },
                 });
             }
         }
@@ -324,18 +336,40 @@ struct CustomerForRoute {
     postal_code: Option<String>,
     lat: Option<f64>,
     lng: Option<f64>,
+    /// Scheduled time window from revision (if any)
+    scheduled_time_start: Option<chrono::NaiveTime>,
+    scheduled_time_end: Option<chrono::NaiveTime>,
 }
 
-/// Load customers from database
+/// Load customers from database, including scheduled time windows from revisions
 async fn load_customers(
     pool: &PgPool,
     user_id: Uuid,
     customer_ids: &[Uuid],
+    date: NaiveDate,
 ) -> Result<Vec<CustomerForRoute>> {
     let mut customers = Vec::new();
 
     for customer_id in customer_ids {
         if let Some(customer) = queries::customer::get_customer(pool, user_id, *customer_id).await? {
+            // Try to find a scheduled revision for this customer on the given date
+            let (tw_start, tw_end) = match queries::revision::get_scheduled_time_window(
+                pool, user_id, *customer_id, date,
+            ).await {
+                Ok(Some((start, end))) => {
+                    debug!(
+                        "Customer {} has time window {:?}-{:?} on {}",
+                        customer.name.as_deref().unwrap_or("?"), start, end, date
+                    );
+                    (Some(start), Some(end))
+                }
+                Ok(None) => (None, None),
+                Err(e) => {
+                    warn!("Failed to load time window for customer {}: {}", customer_id, e);
+                    (None, None)
+                }
+            };
+
             customers.push(CustomerForRoute {
                 id: customer.id,
                 name: customer.name.clone(),
@@ -344,6 +378,8 @@ async fn load_customers(
                 postal_code: customer.postal_code.clone(),
                 lat: customer.lat,
                 lng: customer.lng,
+                scheduled_time_start: tw_start,
+                scheduled_time_end: tw_end,
             });
         }
     }
@@ -351,7 +387,7 @@ async fn load_customers(
     Ok(customers)
 }
 
-/// Build VRP problem from customers
+/// Build VRP problem from customers, including time windows from revisions
 fn build_vrp_problem(
     start: &Coordinates,
     customers: &[CustomerForRoute],
@@ -361,17 +397,38 @@ fn build_vrp_problem(
 ) -> VrpProblem {
     let stops: Vec<VrpStop> = customers
         .iter()
-        .map(|c| VrpStop {
-            id: c.id.to_string(),
-            customer_id: c.id,
-            customer_name: c.name.clone().unwrap_or_default(),
-            coordinates: Coordinates {
-                lat: c.lat.unwrap(),
-                lng: c.lng.unwrap(),
-            },
-            service_duration_minutes,
-            time_window: None, // TODO: from customer preferences
-            priority: 1,
+        .map(|c| {
+            let time_window = match (c.scheduled_time_start, c.scheduled_time_end) {
+                (Some(start), Some(end)) => Some(StopTimeWindow {
+                    start,
+                    end,
+                    is_hard: false, // Soft constraint - solver will try to satisfy but won't fail
+                }),
+                _ => None,
+            };
+
+            if time_window.is_some() {
+                info!(
+                    "VRP stop {} ({}) has time window {:?}-{:?}",
+                    c.id,
+                    c.name.as_deref().unwrap_or("?"),
+                    c.scheduled_time_start,
+                    c.scheduled_time_end,
+                );
+            }
+
+            VrpStop {
+                id: c.id.to_string(),
+                customer_id: c.id,
+                customer_name: c.name.clone().unwrap_or_default(),
+                coordinates: Coordinates {
+                    lat: c.lat.unwrap(),
+                    lng: c.lng.unwrap(),
+                },
+                service_duration_minutes,
+                time_window,
+                priority: 1,
+            }
         })
         .collect();
 
@@ -509,6 +566,9 @@ pub async fn handle_save(
 
         let payload = request.payload;
         info!("Saving route for date {} with {} stops", payload.date, payload.stops.len());
+        for (i, stop) in payload.stops.iter().enumerate() {
+            debug!("  Stop {}: customer_id={}, revision_id={:?}", i, stop.customer_id, stop.revision_id);
+        }
 
         // Upsert route
         match queries::route::upsert_route(
@@ -632,6 +692,15 @@ pub async fn handle_get(
                 match queries::route::get_route_stops_with_info(&pool, route.id).await {
                     Ok(stops) => {
                         let stop_count = stops.len();
+                        for (i, s) in stops.iter().enumerate() {
+                            debug!(
+                                "  Stop {} ({}): revision_id={:?}, rev_status={:?}, sched_start={:?}, sched_end={:?}, dist={:?}, dur={:?}",
+                                i, s.customer_name.as_deref().unwrap_or("?"),
+                                s.revision_id, s.revision_status,
+                                s.scheduled_time_start, s.scheduled_time_end,
+                                s.distance_from_previous_km, s.duration_from_previous_minutes
+                            );
+                        }
                         let response = SuccessResponse::new(
                             request.id,
                             GetRouteResponse {

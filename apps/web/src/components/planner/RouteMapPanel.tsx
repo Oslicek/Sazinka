@@ -5,22 +5,8 @@ import {
   buildStraightLineSegments,
   getSegmentLabel,
 } from '../../utils/routeGeometry';
+import type { SavedRouteStop } from '../../services/routeService';
 import styles from './RouteMapPanel.module.css';
-
-export interface MapStop {
-  id: string;
-  revisionId?: string;
-  name: string;
-  address: string;
-  coordinates: { lat: number; lng: number };
-  eta?: string;
-  etd?: string;
-  order?: number;
-  scheduledDate?: string;
-  scheduledTimeStart?: string;
-  scheduledTimeEnd?: string;
-  revisionStatus?: string;
-}
 
 export interface MapDepot {
   lat: number;
@@ -43,7 +29,7 @@ export interface SelectedCandidate {
 }
 
 interface RouteMapPanelProps {
-  stops: MapStop[];
+  stops: SavedRouteStop[];
   depot: MapDepot | null;
   routeGeometry?: [number, number][];
   highlightedStopId?: string | null;
@@ -84,6 +70,9 @@ export function RouteMapPanel({
   const segmentEnterHandlerRef = useRef<(() => void) | null>(null);
   const segmentLeaveHandlerRef = useRef<(() => void) | null>(null);
 
+  // Track whether map style has finished loading (needed before addSource/addLayer)
+  const [mapLoaded, setMapLoaded] = useState(false);
+
   // Internal segment highlight state (used when not controlled)
   const [internalHighlightedSegment, setInternalHighlightedSegment] = useState<number | null>(null);
 
@@ -100,13 +89,11 @@ export function RouteMapPanel({
     }
   }, [onSegmentHighlight]);
 
-  // Initialize map
+  // Initialize map (only once - depot changes are handled by fitBounds/flyTo)
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
-    const initialCenter = depot
-      ? [depot.lng, depot.lat] as [number, number]
-      : [14.4378, 50.0755] as [number, number]; // Prague default
+    const initialCenter: [number, number] = [14.4378, 50.0755]; // Prague default
 
     mapRef.current = new maplibregl.Map({
       container: containerRef.current,
@@ -138,11 +125,17 @@ export function RouteMapPanel({
 
     mapRef.current.addControl(new maplibregl.NavigationControl(), 'top-right');
 
+    mapRef.current.on('load', () => {
+      setMapLoaded(true);
+    });
+
     return () => {
       mapRef.current?.remove();
       mapRef.current = null;
+      setMapLoaded(false);
     };
-  }, [depot]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Update depot marker
   useEffect(() => {
@@ -206,15 +199,19 @@ export function RouteMapPanel({
 
     stops.forEach((stop, index) => {
       const isHighlighted = stop.id === highlightedStopId;
+      const lat = stop.customerLat;
+      const lng = stop.customerLng;
+      if (!lat || !lng) return; // Skip stops without coordinates
+
       const marker = new maplibregl.Marker({
         color: isHighlighted ? '#f59e0b' : '#3b82f6',
       })
-        .setLngLat([stop.coordinates.lng, stop.coordinates.lat])
+        .setLngLat([lng, lat])
         .setPopup(
           new maplibregl.Popup().setHTML(`
-            <strong>${index + 1}. ${stop.name}</strong><br/>
+            <strong>${index + 1}. ${stop.customerName}</strong><br/>
             ${stop.address}<br/>
-            ${stop.eta && stop.etd ? `<small>ETA: ${stop.eta} | ETD: ${stop.etd}</small>` : ''}
+            ${stop.estimatedArrival && stop.estimatedDeparture ? `<small>ETA: ${stop.estimatedArrival} | ETD: ${stop.estimatedDeparture}</small>` : ''}
           `)
         )
         .addTo(mapRef.current!);
@@ -303,7 +300,9 @@ export function RouteMapPanel({
 
     // Include all route stops
     for (const stop of stops) {
-      bounds.extend([stop.coordinates.lng, stop.coordinates.lat]);
+      if (stop.customerLat && stop.customerLng) {
+        bounds.extend([stop.customerLng, stop.customerLat]);
+      }
     }
 
     // Include selected candidate
@@ -316,7 +315,7 @@ export function RouteMapPanel({
 
   // Update route line as segmented GeoJSON with highlight support
   useEffect(() => {
-    if (!mapRef.current) return;
+    if (!mapRef.current || !mapLoaded) return;
 
     clearRouteLayers();
 
@@ -325,13 +324,15 @@ export function RouteMapPanel({
     console.log('[RouteMapPanel] Rendering route with', stops.length, 'stops, routeGeometry length:', routeGeometry?.length || 0, 'depot:', !!depot);
 
     // Build segments using shared utilities
-    const waypoints = stops.map((s) => ({
-      coordinates: s.coordinates,
-      name: s.name,
-    }));
+    const waypoints = stops
+      .filter((s) => s.customerLat && s.customerLng)
+      .map((s) => ({
+        coordinates: { lat: s.customerLat!, lng: s.customerLng! },
+        name: s.customerName,
+      }));
 
     // Use a fake depot at the first stop's location if no depot is set
-    const effectiveDepot = depot ?? { lat: stops[0].coordinates.lat, lng: stops[0].coordinates.lng };
+    const effectiveDepot = depot ?? { lat: stops[0].customerLat!, lng: stops[0].customerLng! };
 
     let segments: [number, number][][];
     if (routeGeometry && routeGeometry.length > 0) {
@@ -433,7 +434,7 @@ export function RouteMapPanel({
     };
     mapRef.current.on('mouseenter', 'route-hit-area', segmentEnterHandlerRef.current);
     mapRef.current.on('mouseleave', 'route-hit-area', segmentLeaveHandlerRef.current);
-  }, [stops, depot, routeGeometry, clearRouteLayers]);
+  }, [stops, depot, routeGeometry, clearRouteLayers, mapLoaded]);
 
   // Update highlight filter when highlightedSegment changes
   useEffect(() => {
@@ -449,7 +450,7 @@ export function RouteMapPanel({
 
   // Update insertion preview marker
   useEffect(() => {
-    if (!mapRef.current) return;
+    if (!mapRef.current || !mapLoaded) return;
 
     // Remove existing preview marker
     if (previewMarkerRef.current) {
@@ -520,13 +521,13 @@ export function RouteMapPanel({
         },
       });
     }
-  }, [insertionPreview, stops, depot]);
+  }, [insertionPreview, stops, depot, mapLoaded]);
 
   // Build segment info overlay
   const segmentInfo = highlightedSegment !== null && stops.length > 0
     ? getSegmentLabel(
         highlightedSegment,
-        stops.map((s) => ({ name: s.name })),
+        stops.map((s) => ({ name: s.customerName })),
         depot?.name || 'Depo',
       )
     : null;

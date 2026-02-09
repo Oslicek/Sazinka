@@ -46,6 +46,8 @@ interface CandidateDetailProps {
   isInRoute?: boolean;
   /** Currently selected route date (for pre-filling the scheduling form) */
   routeDate?: string;
+  /** Default service duration in minutes from settings (for auto-filling "Do" time) */
+  defaultServiceDurationMinutes?: number;
 }
 
 export function CandidateDetail({
@@ -59,6 +61,7 @@ export function CandidateDetail({
   onRemoveFromRoute,
   isInRoute = false,
   routeDate,
+  defaultServiceDurationMinutes = 30,
 }: CandidateDetailProps) {
   // Inline scheduling form state
   const [isScheduling, setIsScheduling] = useState(false);
@@ -74,15 +77,24 @@ export function CandidateDetail({
     return (saved ? parseInt(saved) : 7) as SnoozeDuration;
   });
 
+  // Helper: add minutes to time string "HH:MM" → "HH:MM"
+  const addMinutesToTime = (time: string, minutes: number): string => {
+    const [h, m] = time.split(':').map(Number);
+    const totalMin = h * 60 + m + minutes;
+    const newH = Math.floor(totalMin / 60) % 24;
+    const newM = totalMin % 60;
+    return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
+  };
+
   // Reset scheduling form when candidate changes
   useEffect(() => {
     setIsScheduling(false);
     setSchedDate(routeDate ?? new Date().toISOString().split('T')[0]);
     setSchedTimeStart('08:00');
-    setSchedTimeEnd('12:00');
+    setSchedTimeEnd(addMinutesToTime('08:00', defaultServiceDurationMinutes));
     setSchedNotes('');
     setShowSnoozeDropdown(false);
-  }, [candidate?.id, routeDate]);
+  }, [candidate?.id, routeDate, defaultServiceDurationMinutes]);
   if (isLoading) {
     return (
       <div className={styles.container}>
@@ -369,7 +381,13 @@ export function CandidateDetail({
                   type="time"
                   className={styles.scheduleInput}
                   value={schedTimeStart}
-                  onChange={(e) => setSchedTimeStart(e.target.value)}
+                  onChange={(e) => {
+                    const newStart = e.target.value;
+                    setSchedTimeStart(newStart);
+                    if (newStart) {
+                      setSchedTimeEnd(addMinutesToTime(newStart, defaultServiceDurationMinutes));
+                    }
+                  }}
                 />
               </label>
               <label className={styles.scheduleLabel}>

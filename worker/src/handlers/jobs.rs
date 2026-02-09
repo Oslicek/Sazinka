@@ -255,7 +255,7 @@ impl JobProcessor {
             message: "Načítání zákazníků z databáze...".to_string(),
         }).await?;
         
-        let customers = self.load_customers_for_route(user_id, &request.customer_ids).await?;
+        let customers = self.load_customers_for_route(user_id, &request.customer_ids, request.date).await?;
         
         // Filter customers with valid coordinates
         let (valid_customers, invalid_ids): (Vec<_>, Vec<_>) = customers
@@ -349,7 +349,7 @@ impl JobProcessor {
             message: "Optimalizace trasy...".to_string(),
         }).await?;
         
-        let solution = solver.solve(&vrp_problem, &matrices, request.date)?;
+        let solution = solver.solve(&vrp_problem, &matrices, request.date).await?;
         
         // Build response
         self.publish_status(job_id, JobStatus::Processing {
@@ -446,11 +446,14 @@ impl JobProcessor {
     }
     
     /// Load customers for route planning
-    async fn load_customers_for_route(&self, user_id: Uuid, customer_ids: &[Uuid]) -> Result<Vec<CustomerForRoute>> {
+    async fn load_customers_for_route(&self, user_id: Uuid, customer_ids: &[Uuid], date: chrono::NaiveDate) -> Result<Vec<CustomerForRoute>> {
         let mut customers = Vec::new();
         
         for customer_id in customer_ids {
             if let Some(customer) = queries::customer::get_customer(&self.pool, user_id, *customer_id).await? {
+                // Load scheduled time window from visits for this customer on this date
+                let (tw_start, tw_end) = self.load_scheduled_time_window(user_id, *customer_id, date).await;
+                
                 customers.push(CustomerForRoute {
                     id: customer.id,
                     name: customer.name.clone(),
@@ -459,11 +462,42 @@ impl JobProcessor {
                     postal_code: customer.postal_code.clone(),
                     lat: customer.lat,
                     lng: customer.lng,
+                    scheduled_time_start: tw_start,
+                    scheduled_time_end: tw_end,
                 });
             }
         }
         
         Ok(customers)
+    }
+    
+    /// Load scheduled time window for a customer on a given date from visits table
+    async fn load_scheduled_time_window(
+        &self,
+        user_id: Uuid,
+        customer_id: Uuid,
+        date: chrono::NaiveDate,
+    ) -> (Option<chrono::NaiveTime>, Option<chrono::NaiveTime>) {
+        let result = sqlx::query_as::<_, (Option<chrono::NaiveTime>, Option<chrono::NaiveTime>)>(
+            r#"
+            SELECT scheduled_time_start, scheduled_time_end
+            FROM visits
+            WHERE user_id = $1 AND customer_id = $2 AND scheduled_date = $3
+              AND status NOT IN ('cancelled', 'completed')
+            ORDER BY scheduled_time_start ASC NULLS LAST
+            LIMIT 1
+            "#
+        )
+        .bind(user_id)
+        .bind(customer_id)
+        .bind(date)
+        .fetch_optional(&self.pool)
+        .await;
+        
+        match result {
+            Ok(Some((start, end))) => (start, end),
+            _ => (None, None),
+        }
     }
     
     /// Build VRP problem from customers
@@ -509,6 +543,9 @@ struct CustomerForRoute {
     postal_code: Option<String>,
     lat: Option<f64>,
     lng: Option<f64>,
+    /// Scheduled time window from revision (if any)
+    scheduled_time_start: Option<chrono::NaiveTime>,
+    scheduled_time_end: Option<chrono::NaiveTime>,
 }
 
 // ==========================================================================

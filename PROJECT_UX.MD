@@ -1,8 +1,8 @@
 # Sazinka - Workflow & UI Koncept
 
-> **Status:** MVP kompletní + Phase 9 (Planner redesign) dokončena  
-> **Verze:** 0.6  
-> **Datum:** 2026-02-08
+> **Status:** MVP kompletní + Phase 9 (Planner redesign) + sjednocení komponent Inbox/Planner dokončeno  
+> **Verze:** 0.7  
+> **Datum:** 2026-02-09
 > 
 > **Implementováno:**
 > - ✅ Fronta k obvolání (`/queue`) - filtry, statistiky, akce
@@ -18,6 +18,9 @@
 > - ✅ Smart Slots - inteligentní návrhy časových slotů podle existující trasy
 > - ✅ Detail revize (`/revisions/:id`) - workflow hub
 > - ✅ Dashboard - clickable stats, CTA fronta k obvolání
+> - ✅ **Sjednocené komponenty Inbox/Planner** — `RouteDetailTimeline` + `RouteMapPanel` sdílené oběma stránkami
+> - ✅ **Bidirectional highlight** — klik na zastávku/segment v timeline ↔ zvýraznění na mapě
+> - ✅ **InsertionPreview** — vizualizace vložení kandidáta do trasy na mapě (Inbox only)
 > 
 > **Změny v navigaci:**
 > - `/planner` → "Plán dne" (sloučeno Plánování + Můj den)
@@ -1336,10 +1339,11 @@ Když je **OFF**:
 - Kliknutí na segment v timeline zvýrazní úsek cesty na mapě
 - Kliknutí na segment cesty na mapě zobrazí info o úseku
 
-**Komponenty:**
+**Komponenty (sdílené s Inbox):**
 - `RouteListPanel` — seznam tras s kartami (datum, posádka, zastávky, vzdálenost, čas)
-- `RouteDetailTimeline` — vertikální timeline: depo → segment → zastávka → ... → depo
-- Mapa s maplibre-gl (OSM tiles, barevné piny, segmentované polyline, highlight)
+- `RouteDetailTimeline` — sdílená vertikální timeline: depo → segment (km, min) → zastávka (status badge, dohodnuté/vypočítané časy) → ... → depo
+- `RouteMapPanel` — sdílená mapa MapLibre GL (piny, segmenty, polyline, highlight, v Inbox navíc selectedCandidate a insertionPreview)
+- Bidirectional highlight: klik v timeline ↔ zvýraznění na mapě, klik na segment/zastávku na mapě ↔ zvýraznění v timeline
 
 **Nastavení uživatele (Settings → Moje nastavení):**
 - Defaultní posádka a depo se ukládají do DB (`users.default_crew_id`, `users.default_depot_id`)

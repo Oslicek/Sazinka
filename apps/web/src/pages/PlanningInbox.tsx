@@ -8,9 +8,9 @@ import {
   type RouteContext,
   type RouteMetrics,
   RouteMapPanel,
-  type MapStop,
   type MapDepot,
   type SelectedCandidate,
+  type MapInsertionPreview as InsertionPreview,
   CandidateDetail,
   type CandidateDetailData,
   VirtualizedInboxList,
@@ -22,10 +22,11 @@ import {
   MultiCrewTip,
   type CrewComparison,
   type SlotSuggestion,
-  RouteStopList,
+  RouteDetailTimeline,
 } from '../components/planner';
 import { DraftModeBar } from '../components/planner/DraftModeBar';
 import { ThreePanelLayout } from '../components/common';
+import type { SavedRouteStop } from '../services/routeService';
 import * as settingsService from '../services/settingsService';
 import * as crewService from '../services/crewService';
 import * as routeService from '../services/routeService';
@@ -104,9 +105,10 @@ export function PlanningInbox() {
   const [isRouteAware, setIsRouteAware] = useState(true);
   const [crews, setCrews] = useState<crewService.Crew[]>([]);
   const [depots, setDepots] = useState<Depot[]>([]);
+  const [defaultServiceDurationMinutes, setDefaultServiceDurationMinutes] = useState(30);
   
   // Route state
-  const [routeStops, setRouteStops] = useState<MapStop[]>([]);
+  const [routeStops, setRouteStops] = useState<SavedRouteStop[]>([]);
   const [routeGeometry, setRouteGeometry] = useState<[number, number][]>([]);
   const [metrics, setMetrics] = useState<RouteMetrics | null>(null);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
@@ -122,6 +124,9 @@ export function PlanningInbox() {
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(() => {
     return sessionStorage.getItem('planningInbox.selectedId');
   });
+  
+  // Map/timeline highlighting state
+  const [highlightedSegment, setHighlightedSegment] = useState<number | null>(null);
   
   // Detail state
   const [slotSuggestions, setSlotSuggestions] = useState<SlotSuggestion[]>([]);
@@ -144,7 +149,7 @@ export function PlanningInbox() {
   } | null>(null);
   const dayOverviewGeometryUnsubRef = useRef<(() => void) | null>(null);
   const [dayOverviewGeometry, setDayOverviewGeometry] = useState<[number, number][]>([]);
-  const [dayOverviewStops, setDayOverviewStops] = useState<MapStop[]>([]);
+  const [dayOverviewStops, setDayOverviewStops] = useState<SavedRouteStop[]>([]);
   
   // Draft mode state (auto-save)
   const [hasChanges, setHasChanges] = useState(false);
@@ -175,12 +180,12 @@ export function PlanningInbox() {
     if (routeStops.length === 0 || !context) return;
     await routeService.saveRoute({
       date: context.date,
-      stops: routeStops.map((s) => ({
-        customerId: s.id,
-        revisionId: s.revisionId,
-        order: s.order ?? 0,
-        eta: s.eta,
-        etd: s.etd,
+      stops: routeStops.map((s, index) => ({
+        customerId: s.customerId,
+        revisionId: s.revisionId ?? undefined,
+        order: s.stopOrder ?? index + 1,
+        eta: s.estimatedArrival ?? undefined,
+        etd: s.estimatedDeparture ?? undefined,
       })),
       totalDistanceKm: metrics?.distanceKm ?? 0,
       totalDurationMinutes: (metrics?.travelTimeMin ?? 0) + (metrics?.serviceTimeMin ?? 0),
@@ -226,6 +231,11 @@ export function PlanningInbox() {
         })) : [];
         setDepots(loadedDepots);
         setCrews(loadedVehicles);
+        
+        // Store default service duration from settings
+        if (settings?.workConstraints?.defaultServiceDurationMinutes) {
+          setDefaultServiceDurationMinutes(settings.workConstraints.defaultServiceDurationMinutes);
+        }
         
         // Build initial context with whatever data we have
         const primaryDepot = loadedDepots.find((d) => 
@@ -274,27 +284,10 @@ export function PlanningInbox() {
         const response = await routeService.getRoute({ date: dateToLoad });
         
         if (response.route && response.stops.length > 0) {
-          const stops: MapStop[] = response.stops.map((stop) => ({
-            id: stop.customerId,
-            revisionId: stop.revisionId ?? undefined,
-            name: stop.customerName,
-            address: stop.address,
-            coordinates: {
-              lat: stop.customerLat ?? 0,
-              lng: stop.customerLng ?? 0,
-            },
-            order: stop.stopOrder,
-            eta: stop.estimatedArrival ?? undefined,
-            etd: stop.estimatedDeparture ?? undefined,
-            scheduledDate: stop.scheduledDate ?? undefined,
-            scheduledTimeStart: stop.scheduledTimeStart ?? undefined,
-            scheduledTimeEnd: stop.scheduledTimeEnd ?? undefined,
-            revisionStatus: stop.revisionStatus ?? undefined,
-          }));
-          setRouteStops(stops);
+          setRouteStops(response.stops);
           
           const totalMin = response.route.totalDurationMinutes ?? 0;
-          const serviceMin = stops.length * 30;
+          const serviceMin = response.stops.length * 30;
           const travelMin = totalMin - serviceMin;
           const workingDayMin = 9 * 60;
           
@@ -304,7 +297,7 @@ export function PlanningInbox() {
             serviceTimeMin: serviceMin,
             loadPercent: Math.round((totalMin / workingDayMin) * 100),
             slackMin: Math.max(0, workingDayMin - totalMin),
-            stopCount: stops.length,
+            stopCount: response.stops.length,
           });
         } else {
           setRouteStops([]);
@@ -323,7 +316,7 @@ export function PlanningInbox() {
   }, [isConnected, context?.date]);
 
   // Fetch Valhalla route geometry when route stops change
-  const fetchRouteGeometry = useCallback(async (stops: MapStop[], depot: { lat: number; lng: number } | null) => {
+  const fetchRouteGeometry = useCallback(async (stops: SavedRouteStop[], depot: { lat: number; lng: number } | null) => {
     if (stops.length < 1) {
       setRouteGeometry([]);
       return;
@@ -333,10 +326,10 @@ export function PlanningInbox() {
     const locations = depot
       ? [
           { lat: depot.lat, lng: depot.lng },
-          ...stops.map((s) => ({ lat: s.coordinates.lat, lng: s.coordinates.lng })),
+          ...stops.map((s) => ({ lat: s.customerLat ?? 0, lng: s.customerLng ?? 0 })),
           { lat: depot.lat, lng: depot.lng },
         ]
-      : stops.map((s) => ({ lat: s.coordinates.lat, lng: s.coordinates.lng }));
+      : stops.map((s) => ({ lat: s.customerLat ?? 0, lng: s.customerLng ?? 0 }));
 
     try {
       // Cancel previous subscription
@@ -442,10 +435,10 @@ export function PlanningInbox() {
         const response = await insertionService.calculateInsertion({
           routeStops: routeStops.map((stop) => ({
             id: stop.id,
-            name: stop.name,
-            coordinates: stop.coordinates,
-            arrivalTime: stop.eta,
-            departureTime: stop.etd,
+            name: stop.customerName,
+            coordinates: { lat: stop.customerLat!, lng: stop.customerLng! },
+            arrivalTime: stop.estimatedArrival ?? undefined,
+            departureTime: stop.estimatedDeparture ?? undefined,
           })),
           depot: { lat: depot!.lat, lng: depot!.lng },
           candidate: {
@@ -561,10 +554,10 @@ export function PlanningInbox() {
         const response = await insertionService.calculateBatchInsertion({
           routeStops: routeStops.map((stop) => ({
             id: stop.id,
-            name: stop.name,
-            coordinates: stop.coordinates,
-            arrivalTime: stop.eta,
-            departureTime: stop.etd,
+            name: stop.customerName,
+            coordinates: { lat: stop.customerLat!, lng: stop.customerLng! },
+            arrivalTime: stop.estimatedArrival ?? undefined,
+            departureTime: stop.estimatedDeparture ?? undefined,
           })),
           depot: { lat: depot!.lat, lng: depot!.lng },
           candidates: validCandidates.map((c) => ({
@@ -678,6 +671,24 @@ export function PlanningInbox() {
     };
   }, [selectedCandidate]);
 
+  // Insertion preview for map (dashed line showing where candidate will be inserted)
+  const insertionPreviewForMap: InsertionPreview | null = useMemo(() => {
+    if (!selectedCandidate || !slotSuggestions[0]) return null;
+    if (!selectedCandidate.customerLat || !selectedCandidate.customerLng) return null;
+    if (routeStops.length === 0) return null;
+
+    return {
+      candidateId: selectedCandidate.customerId,
+      candidateName: selectedCandidate.customerName,
+      coordinates: {
+        lat: selectedCandidate.customerLat,
+        lng: selectedCandidate.customerLng,
+      },
+      insertAfterIndex: slotSuggestions[0].insertAfterIndex,
+      insertBeforeIndex: slotSuggestions[0].insertAfterIndex + 1,
+    };
+  }, [selectedCandidate, slotSuggestions, routeStops.length]);
+
   // Sorted candidates for display (pre-ranked by insertion cost)
   const sortedCandidates = useMemo(() => {
     let filtered = [...candidates];
@@ -737,9 +748,9 @@ export function PlanningInbox() {
   // Keep ref in sync for use in callbacks
   sortedCandidatesRef.current = sortedCandidates;
 
-  // Compute set of candidate IDs that are currently in the route
+  // Compute set of customer IDs that are currently in the route
   const inRouteIds = useMemo(() => {
-    return new Set(routeStops.map((s) => s.id));
+    return new Set(routeStops.map((s) => s.customerId));
   }, [routeStops]);
 
   // Convert to CandidateRowData for VirtualizedInboxList
@@ -846,17 +857,31 @@ export function PlanningInbox() {
       
       // Build map stops from items that have coordinates
       // We need to look up coordinates from candidates list
-      const stops: MapStop[] = [];
+      const stops: SavedRouteStop[] = [];
       for (const item of response.items) {
         if (!item.customerId) continue;
         // Try to find coordinates from candidates
         const cand = candidates.find((c) => c.customerId === item.customerId);
         if (cand?.customerLat && cand?.customerLng) {
           stops.push({
-            id: item.customerId,
-            name: item.customerName || item.title,
+            id: crypto.randomUUID(),
+            routeId: '',
+            revisionId: item.id,
+            stopOrder: stops.length + 1,
+            estimatedArrival: null,
+            estimatedDeparture: null,
+            distanceFromPreviousKm: null,
+            durationFromPreviousMinutes: null,
+            status: 'draft',
+            customerId: item.customerId,
+            customerName: item.customerName || item.title,
             address: cand.customerStreet ? `${cand.customerStreet}, ${cand.customerCity}` : (cand.customerCity || ''),
-            coordinates: { lat: cand.customerLat, lng: cand.customerLng },
+            customerLat: cand.customerLat,
+            customerLng: cand.customerLng,
+            scheduledDate: null,
+            scheduledTimeStart: null,
+            scheduledTimeEnd: null,
+            revisionStatus: null,
           });
         }
       }
@@ -864,7 +889,7 @@ export function PlanningInbox() {
       
       // Fetch route geometry if we have 2+ stops
       if (stops.length >= 2) {
-        const locations = stops.map((s) => ({ lat: s.coordinates.lat, lng: s.coordinates.lng }));
+        const locations = stops.map((s) => ({ lat: s.customerLat ?? 0, lng: s.customerLng ?? 0 }));
         
         try {
           if (dayOverviewGeometryUnsubRef.current) {
@@ -1047,7 +1072,7 @@ export function PlanningInbox() {
   const handleAddSelectedToRoute = useCallback(() => {
     if (selectedIds.size === 0) return;
 
-    const newStops: MapStop[] = [];
+    const newStops: SavedRouteStop[] = [];
     selectedIds.forEach((customerId) => {
       // Skip if already in route
       if (inRouteIds.has(customerId)) return;
@@ -1056,18 +1081,24 @@ export function PlanningInbox() {
       if (!candidate || !candidate.customerLat || !candidate.customerLng) return;
 
       newStops.push({
-        id: candidate.customerId,
+        id: crypto.randomUUID(),
+        routeId: '',
         revisionId: candidate.id,
-        name: candidate.customerName,
+        stopOrder: routeStops.length + newStops.length + 1,
+        estimatedArrival: null,
+        estimatedDeparture: null,
+        distanceFromPreviousKm: null,
+        durationFromPreviousMinutes: null,
+        status: 'draft',
+        customerId: candidate.customerId,
+        customerName: candidate.customerName,
         address: `${candidate.customerStreet ?? ''}, ${candidate.customerCity ?? ''}`.replace(/^, |, $/g, ''),
-        coordinates: {
-          lat: candidate.customerLat,
-          lng: candidate.customerLng,
-        },
-        order: routeStops.length + newStops.length + 1,
-        scheduledDate: candidate._scheduledDate,
-        scheduledTimeStart: candidate._scheduledTimeStart,
-        scheduledTimeEnd: candidate._scheduledTimeEnd,
+        customerLat: candidate.customerLat,
+        customerLng: candidate.customerLng,
+        scheduledDate: candidate._scheduledDate ?? null,
+        scheduledTimeStart: candidate._scheduledTimeStart ?? null,
+        scheduledTimeEnd: candidate._scheduledTimeEnd ?? null,
+        revisionStatus: candidate.status ?? null,
       });
     });
 
@@ -1085,19 +1116,25 @@ export function PlanningInbox() {
     if (!candidate || !candidate.customerLat || !candidate.customerLng) return;
     if (inRouteIds.has(candidate.customerId)) return;
 
-    const newStop: MapStop = {
-      id: candidate.customerId,
+    const newStop: SavedRouteStop = {
+      id: crypto.randomUUID(), // Generate new UUID for route_stop
+      routeId: '', // Will be set properly on save
       revisionId: candidate.id,
-      name: candidate.customerName,
+      stopOrder: routeStops.length + 1,
+      estimatedArrival: null, // Will be calculated by optimizer
+      estimatedDeparture: null,
+      distanceFromPreviousKm: null, // Will be calculated
+      durationFromPreviousMinutes: null, // Will be calculated
+      status: 'draft',
+      customerId: candidate.customerId,
+      customerName: candidate.customerName,
       address: `${candidate.customerStreet ?? ''}, ${candidate.customerCity ?? ''}`.replace(/^, |, $/g, ''),
-      coordinates: {
-        lat: candidate.customerLat,
-        lng: candidate.customerLng,
-      },
-      order: routeStops.length + 1,
-      scheduledDate: candidate._scheduledDate,
-      scheduledTimeStart: candidate._scheduledTimeStart,
-      scheduledTimeEnd: candidate._scheduledTimeEnd,
+      customerLat: candidate.customerLat,
+      customerLng: candidate.customerLng,
+      scheduledDate: candidate._scheduledDate ?? null,
+      scheduledTimeStart: candidate._scheduledTimeStart ?? null,
+      scheduledTimeEnd: candidate._scheduledTimeEnd ?? null,
+      revisionStatus: candidate.status ?? null,
     };
 
     setRouteStops((prev) => [...prev, newStop]);
@@ -1108,9 +1145,9 @@ export function PlanningInbox() {
   // Route building: remove stop from route
   const handleRemoveFromRoute = useCallback((stopId: string) => {
     setRouteStops((prev) => {
-      const filtered = prev.filter((s) => s.id !== stopId);
+      const filtered = prev.filter((s) => s.id !== stopId && s.customerId !== stopId);
       // Renumber
-      return filtered.map((s, i) => ({ ...s, order: i + 1 }));
+      return filtered.map((s, i) => ({ ...s, stopOrder: i + 1 }));
     });
     setHasChanges(true);
     incrementRouteVersion();
@@ -1125,13 +1162,13 @@ export function PlanningInbox() {
     // Use first stop as fallback start location if no depot
     const startLocation = depot
       ? { lat: depot.lat, lng: depot.lng }
-      : { lat: routeStops[0].coordinates.lat, lng: routeStops[0].coordinates.lng };
+      : { lat: routeStops[0].customerLat ?? 0, lng: routeStops[0].customerLng ?? 0 };
 
     setIsOptimizing(true);
     setRouteJobProgress('Odesílám do optimalizátoru...');
 
     try {
-      const customerIds = routeStops.map((s) => s.id);
+      const customerIds = routeStops.map((s) => s.customerId);
       const jobResponse = await routeService.submitRoutePlanJob({
         customerIds,
         date: context.date,
@@ -1154,23 +1191,28 @@ export function PlanningInbox() {
             case 'completed': {
               const result = update.status.result;
               if (result.stops && result.stops.length > 0) {
-                const optimizedStops: MapStop[] = result.stops.map((s, i) => {
-                  // Find original stop to preserve revision data
-                  const original = routeStops.find((rs) => rs.id === s.customerId);
+                const optimizedStops: SavedRouteStop[] = result.stops.map((s, i) => {
+                  // Find original stop to preserve data
+                  const original = routeStops.find((rs) => rs.customerId === s.customerId);
                   return {
-                    id: s.customerId,
-                    name: s.customerName,
+                    id: original?.id ?? crypto.randomUUID(),
+                    routeId: original?.routeId ?? '',
+                    revisionId: original?.revisionId ?? null,
+                    stopOrder: i + 1,
+                    estimatedArrival: s.eta,
+                    estimatedDeparture: s.etd,
+                    distanceFromPreviousKm: null, // Will be calculated
+                    durationFromPreviousMinutes: null, // Will be calculated
+                    status: original?.status ?? 'draft',
+                    customerId: s.customerId,
+                    customerName: s.customerName,
                     address: s.address,
-                    coordinates: s.coordinates,
-                    order: i + 1,
-                    eta: s.eta,
-                    etd: s.etd,
-                    // Preserve revision-related fields from original
-                    revisionId: original?.revisionId,
-                    scheduledDate: original?.scheduledDate,
-                    scheduledTimeStart: original?.scheduledTimeStart,
-                    scheduledTimeEnd: original?.scheduledTimeEnd,
-                    revisionStatus: original?.revisionStatus,
+                    customerLat: s.coordinates.lat,
+                    customerLng: s.coordinates.lng,
+                    scheduledDate: original?.scheduledDate ?? null,
+                    scheduledTimeStart: original?.scheduledTimeStart ?? null,
+                    scheduledTimeEnd: original?.scheduledTimeEnd ?? null,
+                    revisionStatus: original?.revisionStatus ?? null,
                   };
                 });
                 setRouteStops(optimizedStops);
@@ -1498,20 +1540,29 @@ export function PlanningInbox() {
             depot={currentDepot}
             routeGeometry={routeGeometry}
             highlightedStopId={selectedCandidateId}
+            highlightedSegment={highlightedSegment}
             selectedCandidate={selectedCandidateForMap}
+            insertionPreview={insertionPreviewForMap}
+            onSegmentHighlight={setHighlightedSegment}
             isLoading={isLoadingRoute}
           />
         </div>
         <div className={styles.routeStopSection}>
-          <RouteStopList
+          <RouteDetailTimeline
             stops={routeStops}
-            metrics={metrics}
+            depot={currentDepot ? { ...currentDepot, name: currentDepot.name ?? 'Depo' } : null}
+            selectedStopId={selectedCandidateId}
+            highlightedSegment={highlightedSegment}
+            onStopClick={(customerId) => {
+              setSelectedCandidateId(customerId);
+              setHighlightedSegment(null);
+            }}
+            onSegmentClick={setHighlightedSegment}
             onRemoveStop={handleRemoveFromRoute}
             onOptimize={handleOptimizeRoute}
-            onClear={handleClearRoute}
             isOptimizing={isOptimizing}
             isSaving={isSaving}
-            jobProgress={routeJobProgress}
+            metrics={metrics}
           />
         </div>
       </div>
@@ -1568,6 +1619,7 @@ export function PlanningInbox() {
           onRemoveFromRoute={handleRemoveFromRoute}
           isInRoute={selectedCandidateId ? inRouteIds.has(selectedCandidateId) : false}
           routeDate={context?.date}
+          defaultServiceDurationMinutes={defaultServiceDurationMinutes}
         />
       )}
     </div>

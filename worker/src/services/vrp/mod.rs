@@ -32,8 +32,9 @@ impl VrpSolver {
         Self { config }
     }
 
-    /// Solve VRP problem using nearest neighbor heuristic
-    pub fn solve(
+    /// Solve VRP problem with timeout protection.
+    /// Uses vrp-pragmatic with a hard timeout, falling back to heuristic if it fails or times out.
+    pub async fn solve(
         &self,
         problem: &VrpProblem,
         matrices: &DistanceTimeMatrices,
@@ -56,12 +57,27 @@ impl VrpSolver {
             problem.stops.len(),
         );
 
-        match solve_pragmatic(problem, matrices, date, &self.config) {
-            Ok(mut solution) => {
+        // Hard timeout: config time + 10s buffer. solve_pragmatic is CPU-bound,
+        // so we run it in spawn_blocking and wrap with tokio timeout.
+        let timeout_secs = self.config.max_time_seconds as u64 + 10;
+        let problem_clone = problem.clone();
+        let matrices_clone = matrices.clone();
+        let config_clone = self.config.clone();
+
+        let pragmatic_result = tokio::time::timeout(
+            std::time::Duration::from_secs(timeout_secs),
+            tokio::task::spawn_blocking(move || {
+                solve_pragmatic(&problem_clone, &matrices_clone, date, &config_clone)
+            }),
+        )
+        .await;
+
+        match pragmatic_result {
+            Ok(Ok(Ok(mut solution))) => {
+                // solve_pragmatic succeeded within timeout
                 solution.algorithm = "vrp-pragmatic".to_string();
                 solution.solve_time_ms = started_at.elapsed().as_millis() as u64;
                 
-                // Build log with stats first, then append unassigned reasons from solution
                 let mut final_log = Vec::new();
                 final_log.push(format!(
                     "algorithm=vrp-pragmatic time_ms={}",
@@ -72,35 +88,46 @@ impl VrpSolver {
                     solution.stops.len(),
                     solution.unassigned.len()
                 ));
-                // Append unassigned reasons from pragmatic solution
                 final_log.extend(solution.solver_log.drain(..));
                 solution.solver_log = final_log;
                 
                 info!(
-                    "VRP solved with vrp-pragmatic: {} stops, {:.1} km",
+                    "VRP solved with vrp-pragmatic: {} stops, {:.1} km in {}ms",
                     solution.stops.len(),
                     solution.total_distance_meters as f64 / 1000.0,
+                    solution.solve_time_ms,
                 );
                 return Ok(solution);
             }
-            Err(err) => {
-                warn!(
-                    "vrp-pragmatic failed, falling back to heuristic: {}",
-                    err
-                );
+            Ok(Ok(Err(err))) => {
+                // solve_pragmatic returned an error
+                warn!("vrp-pragmatic failed, falling back to heuristic: {}", err);
                 solver_log.push(format!("pragmatic_error={}", err));
+            }
+            Ok(Err(join_err)) => {
+                // spawn_blocking panicked
+                warn!("vrp-pragmatic panicked, falling back to heuristic: {}", join_err);
+                solver_log.push(format!("pragmatic_panic={}", join_err));
+            }
+            Err(_elapsed) => {
+                // Timeout reached
+                warn!(
+                    "vrp-pragmatic timed out after {}s, falling back to heuristic",
+                    timeout_secs
+                );
+                solver_log.push(format!("pragmatic_timeout={}s", timeout_secs));
             }
         }
 
-        // Use nearest neighbor heuristic
+        // Fallback: use nearest neighbor heuristic
         let ordered_indices = self.nearest_neighbor(matrices);
         
         // Build solution from ordered indices
         let mut solution = self.build_solution(problem, matrices, &ordered_indices);
-        solution.algorithm = "heuristic".to_string();
+        solution.algorithm = "heuristic-fallback".to_string();
         solution.solve_time_ms = started_at.elapsed().as_millis() as u64;
         solver_log.push(format!(
-            "algorithm=heuristic time_ms={}",
+            "algorithm=heuristic-fallback time_ms={}",
             solution.solve_time_ms
         ));
         solver_log.push(format!(
@@ -111,8 +138,8 @@ impl VrpSolver {
         solution.solver_log = solver_log;
         solution.warnings.push(RouteWarning {
             stop_id: None,
-            warning_type: "PRAGMATIC_FAILED".to_string(),
-            message: "vrp-pragmatic failed, used heuristic fallback".to_string(),
+            warning_type: "SOLVER_FALLBACK".to_string(),
+            message: "Optimalizátor selhal nebo vypršel čas, použita jednoduchá heuristika".to_string(),
         });
 
         info!(
@@ -323,8 +350,8 @@ mod tests {
         assert!(config.max_time_seconds < 10);
     }
 
-    #[test]
-    fn test_empty_problem() {
+    #[tokio::test]
+    async fn test_empty_problem() {
         let solver = VrpSolver::default();
         let problem = VrpProblem {
             depot: Depot { coordinates: prague() },
@@ -340,6 +367,7 @@ mod tests {
                 &matrices,
                 chrono::NaiveDate::from_ymd_opt(2026, 1, 26).unwrap(),
             )
+            .await
             .unwrap();
 
         assert!(solution.stops.is_empty());
@@ -347,8 +375,8 @@ mod tests {
         assert_eq!(solution.optimization_score, 100);
     }
 
-    #[test]
-    fn test_single_stop_problem() {
+    #[tokio::test]
+    async fn test_single_stop_problem() {
         let solver = VrpSolver::new(SolverConfig::fast());
         let problem = VrpProblem {
             depot: Depot { coordinates: prague() },
@@ -364,14 +392,15 @@ mod tests {
                 &matrices,
                 chrono::NaiveDate::from_ymd_opt(2026, 1, 26).unwrap(),
             )
+            .await
             .unwrap();
 
         assert_eq!(solution.stops.len(), 1);
         assert_eq!(solution.stops[0].order, 1);
     }
 
-    #[test]
-    fn test_multiple_stops_all_assigned() {
+    #[tokio::test]
+    async fn test_multiple_stops_all_assigned() {
         let solver = VrpSolver::new(SolverConfig::fast());
         let problem = VrpProblem {
             depot: Depot { coordinates: prague() },
@@ -391,6 +420,7 @@ mod tests {
                 &matrices,
                 chrono::NaiveDate::from_ymd_opt(2026, 1, 26).unwrap(),
             )
+            .await
             .unwrap();
 
         // All stops should be assigned
@@ -404,8 +434,8 @@ mod tests {
         assert!(orders.contains(&3));
     }
 
-    #[test]
-    fn test_solution_has_positive_metrics() {
+    #[tokio::test]
+    async fn test_solution_has_positive_metrics() {
         let solver = VrpSolver::new(SolverConfig::fast());
         let problem = VrpProblem {
             depot: Depot { coordinates: prague() },
@@ -424,6 +454,7 @@ mod tests {
                 &matrices,
                 chrono::NaiveDate::from_ymd_opt(2026, 1, 26).unwrap(),
             )
+            .await
             .unwrap();
 
         assert!(solution.total_distance_meters > 0);

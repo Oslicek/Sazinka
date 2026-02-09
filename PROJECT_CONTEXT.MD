@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-02-04 (v0.17.0 - Multi-user authentication + RBAC)
+> **Last Updated:** 2026-02-09 (v0.18.0 - Unified route components + VRP timeout fix)
 
 ## Overview
 
@@ -203,10 +203,17 @@ sazinka/
 │       │   ├── components/
 │       │   │   ├── common/         # Reusable components
 │       │   │   │   └── JobStatusTimeline.tsx
+│       │   │   ├── planner/        # Route planning components (shared Inbox + Planner)
+│       │   │   │   ├── RouteMapPanel.tsx          # Shared map (MapLibre GL)
+│       │   │   │   ├── RouteDetailTimeline.tsx     # Shared vertical timeline
+│       │   │   │   ├── RouteListPanel.tsx          # Route list for Planner
+│       │   │   │   ├── CandidateRow.tsx            # Inbox candidate row
+│       │   │   │   ├── CandidateDetail.tsx         # Inbox candidate detail
+│       │   │   │   └── SlotSuggestions.tsx          # Smart slot suggestions
 │       │   │   ├── map/            # MapLibre components
 │       │   │   ├── calendar/       # Calendar components
 │       │   │   ├── customers/      # Customer list/detail
-│       │   │   ├── routes/         # Route planner
+│       │   │   ├── timeline/       # Customer timeline (comms + visits)
 │       │   │   └── ui/             # Generic UI components
 │       │   ├── hooks/
 │       │   │   ├── useNats.ts      # NATS connection hook
@@ -248,9 +255,15 @@ sazinka/
 │   │   │   └── route.rs
 │   │   ├── services/
 │   │   │   ├── mod.rs
-│   │   │   ├── vrptw.rs            # Route optimization
+│   │   │   ├── vrp/                # VRP solver (async + timeout + fallback)
+│   │   │   │   ├── mod.rs          # VrpSolver wrapper
+│   │   │   │   ├── adapter.rs      # Pragmatic problem/matrix builder
+│   │   │   │   ├── problem.rs      # Domain problem types
+│   │   │   │   ├── solution.rs     # Domain solution types
+│   │   │   │   └── config.rs       # Solver configuration
+│   │   │   ├── routing/            # Valhalla routing service
 │   │   │   ├── geo.rs              # Haversine, distance matrix
-│   │   │   └── nominatim.rs        # Geocoding client
+│   │   │   └── geocoding.rs        # Geocoding abstraction
 │   │   ├── db/
 │   │   │   ├── mod.rs
 │   │   │   └── queries/            # SQL queries
@@ -474,6 +487,8 @@ pub struct RouteStop {
 | `RateLimiter` | worker/src/services/geocoding.rs | Rate limiting for API calls |
 | `CircuitBreaker` | worker/src/services/geocoding.rs | Failure protection |
 | `AdminHandler` | worker/src/handlers/admin.rs | DB status, reset, Valhalla health |
+| `RouteDetailTimeline` | apps/web/src/components/planner/RouteDetailTimeline.tsx | Shared vertical timeline (Inbox + Planner) |
+| `RouteMapPanel` | apps/web/src/components/planner/RouteMapPanel.tsx | Shared map with route visualization (Inbox + Planner) |
 
 ## Route Optimization Algorithm
 
@@ -616,7 +631,7 @@ The route optimization system uses a two-component architecture for maximum perf
 | **Valhalla** | Calculate real road distances and travel times between all points (distance/time matrix) |
 | **vrp-pragmatic + vrp-core** | Solve VRP using pragmatic JSON + metaheuristics |
 | **RoutingService** | HTTP client for Valhalla API |
-| **VrpSolver** | Wrapper around vrp-pragmatic with fallback heuristic |
+| **VrpSolver** | Async wrapper around vrp-pragmatic with `spawn_blocking`, timeout, and heuristic fallback |
 
 ### Data Flow
 
@@ -725,10 +740,11 @@ vrp-core = "1.25"        # Core solver algorithms
 
 ### Fallback Strategy
 
-The system has two levels of fallback for resilience:
+The system has multiple levels of fallback for resilience:
 
-1. **VRP Solver Fallback:** If vrp-pragmatic fails, falls back to nearest-neighbor heuristic
-2. **Routing Service Fallback:** If Valhalla is unavailable (not configured or health check fails), automatically falls back to MockRoutingService
+1. **VRP Solver Timeout:** `solve()` is async with `spawn_blocking` + `tokio::time::timeout` (config time + 10s buffer). If vrp-pragmatic times out, panics, or returns an error, falls back to nearest-neighbor heuristic with a `SOLVER_FALLBACK` warning.
+2. **VRP Solver Fallback:** If vrp-pragmatic fails, falls back to nearest-neighbor heuristic
+3. **Routing Service Fallback:** If Valhalla is unavailable (not configured or health check fails), automatically falls back to MockRoutingService
 
 ```rust
 // Automatic Valhalla detection with fallback
@@ -1407,22 +1423,14 @@ let base_url = std::env::var("NOMINATIM_URL")
   - 173 frontend tests passing
 
 **In Progress:**
-- [ ] Phase 7B: Async import system frontend integration (services, stores, UI updates)
-
-**Pending:**
-- [ ] Route optimization conversion to async job queue
+- [ ] Phase 5: Production readiness (TLS, rate limiting, managed DB)
 
 **Recently Completed:**
+- [x] Unified route components (Inbox + Planner) — `RouteDetailTimeline` + `RouteMapPanel` shared across both pages (v0.18.0)
+- [x] VRP solver timeout & fallback — async `solve()` with `spawn_blocking` + `tokio::time::timeout`, heuristic fallback (v0.18.0)
+- [x] Phase 9: Planner UI Redesign — route list, detail timeline, user preferences, map integration (v0.17.0)
 - [x] Phase 3.1: Multi-user authentication (JWT + RBAC + worker management)
-  - Login/Register pages, auth store, protected routes, role guards
-  - All handlers use `extract_auth()`, TEMP_USER_ID fully removed
-  - See `PROJECT_MULTIUSER.MD` for details
-
-**Recently Completed:**
 - [x] Phase 7B Backend: Async import processors for all entity types (v0.15.0)
-  - CustomerImportProcessor, DeviceImportProcessor, RevisionImportProcessor
-  - CommunicationImportProcessor, VisitImportProcessor, ZipImportProcessor
-  - All imports now use JetStream job queue with status updates
 
 ### Serialization Notes
 
@@ -1528,6 +1536,29 @@ cargo test
 - MVP focuses on core CRM + route planning
 - Email notifications deferred to later phase
 - Invoicing/billing architecture prepared but not implemented
+
+## Recent Changes (v0.18.0)
+
+- **Unified Route Components (Inbox + Planner):**
+  - `RouteDetailTimeline` — shared vertical timeline component used by both PlanningInbox and Planner
+    - Depot → segment (km, min) → stop (status badge, scheduled/estimated times, address) → ... → depot
+    - Editing actions: onRemoveStop, onOptimize, onDeleteRoute (optional props)
+    - Metrics display, saving indicator, bidirectional map synchronization
+  - `RouteMapPanel` — shared map component used by both pages
+    - Input type unified to `SavedRouteStop[]` (removed `MapStop` interface)
+    - Inbox-specific optional props: `selectedCandidate`, `insertionPreview`
+    - Bidirectional highlight: click stop/segment in timeline ↔ highlight on map
+  - `RouteStopList` component removed (replaced by `RouteDetailTimeline`)
+  - Inline map code (~250 lines) removed from `Planner.tsx` (replaced by `RouteMapPanel`)
+  - Bug fix: `insertionPreview` prop now correctly wired in PlanningInbox
+  - Bug fix: MapLibre "Style is not done loading" race condition fixed (map init no longer re-runs on depot change)
+
+- **VRP Solver Timeout and Time Windows:**
+  - `solver.solve()` is now `async` with `spawn_blocking` + `tokio::time::timeout`
+  - Hard timeout: config time + 10s buffer; prevents stuck optimization
+  - Graceful fallback to nearest-neighbor heuristic on timeout/error/panic
+  - Time windows from revisions now correctly passed to VRP solver via `build_vrp_problem`
+  - `load_customers` fetches `scheduled_time_start`/`scheduled_time_end` from DB
 
 ## Recent Changes (v0.16.0)
 
@@ -1901,9 +1932,12 @@ UI: "Tip: Posádka 2 (+2 min)" - ne spam pro malé rozdíly
 - [x] ~~Functional Calendar page~~ (implemented v0.12.0)
 - [x] ~~Smart plan suggestions~~ (implemented v0.12.0)
 - [x] ~~Geocoding status tracking~~ (implemented v0.12.1)
-- [ ] CRM: Communication log (Phase 4)
-- [ ] CRM: Visit tracking (Phase 4)
-- [ ] CRM: Customer timeline (Phase 4)
+- [x] ~~CRM: Communication log~~ (Phase 4, implemented v0.14.0)
+- [x] ~~CRM: Visit tracking~~ (Phase 4, implemented v0.14.0)
+- [x] ~~CRM: Customer timeline~~ (Phase 4, implemented v0.14.0)
+- [x] ~~Multi-user authentication~~ (Phase 3.1, implemented v0.17.0)
+- [x] ~~Unified route components (Inbox + Planner)~~ (implemented v0.18.0)
+- [x] ~~VRP solver timeout and robustness~~ (implemented v0.18.0)
 - [ ] Email notifications with Resend
 - [ ] Mobile-responsive design
 - [ ] Offline support (Service Worker)

@@ -1,6 +1,6 @@
 # Project Roadmap - Sazinka v1.0 GA
 
-> **Last Updated:** 2026-02-08 (Phase 9 COMPLETED - Planner UI Redesign: filtry, seznam cest, detail timeline, user preferences)
+> **Last Updated:** 2026-02-09 (Phase 9 + Unified route components + VRP timeout fix)
 
 ## Current State Analysis
 
@@ -1622,6 +1622,55 @@ Kompletní přepis Planner stránky z "Plán dne" (DnD, queue preview, inbox dra
 
 ---
 
+## Post-Phase 9: Unified Route Components + VRP Robustness ✅ COMPLETED
+
+> **Status:** Completed (2026-02-09)
+> **Goal:** Sjednocení komponent pro zobrazení trasy (Inbox + Planner) a oprava zaseknuté optimalizace
+
+### Frontend: Unified Route Components ✅
+
+- `RouteDetailTimeline` — sdílená vertikální timeline pro Inbox i Planner
+  - Props pro editing (onRemoveStop, onOptimize, onDeleteRoute) volitelné
+  - Status badges (Potvrzeno/Nepotvrzeno), dohodnuté vs. vypočítané časy, warning ikony
+  - Segmenty mezi zastávkami (km, min)
+  - Bidirectional highlight s mapou (highlightedSegment, onStopClick, onSegmentClick)
+- `RouteMapPanel` — sdílená mapa pro Inbox i Planner
+  - Vstupní typ sjednocen na `SavedRouteStop[]` (odstraněn `MapStop`)
+  - Inbox-only props: `selectedCandidate`, `insertionPreview`
+  - Fix: MapLibre "Style is not done loading" — map init `useEffect` dependency changed to `[]`
+  - Fix: `continue` → `return` in `forEach` callback
+- `RouteStopList` — ODSTRANĚN (nahrazen `RouteDetailTimeline`)
+- `Planner.tsx` — inline MapLibre kód (~250 řádků) nahrazen `<RouteMapPanel />`
+- `PlanningInbox.tsx` — `insertionPreview` prop nyní správně předáván do `RouteMapPanel`
+
+### Backend: VRP Solver Timeout ✅
+
+- `VrpSolver::solve()` je nyní `async`
+  - CPU-bound `solve_pragmatic` zabalena do `tokio::task::spawn_blocking`
+  - Hard timeout: `tokio::time::timeout(config.max_time_seconds + 10s)`
+  - Fallback na nearest-neighbor heuristiku při timeout/panic/error
+  - `SOLVER_FALLBACK` warning přidán do solution při fallbacku
+- `VrpProblem`, `DistanceTimeMatrices`, `SolverConfig` implementují `Clone`
+- `PlannedRouteStop` má pole `stop_index`
+- Časová okna z revizí (`scheduled_time_start`/`scheduled_time_end`) se nyní správně předávají do VRP solveru
+- Duplicitní `tokio::time::timeout` wrapper odstraněn z `handlers/route.rs`
+
+**Files modified:**
+- `apps/web/src/components/planner/RouteDetailTimeline.tsx` + `.module.css`
+- `apps/web/src/components/planner/RouteMapPanel.tsx`
+- `apps/web/src/components/planner/index.ts`
+- `apps/web/src/pages/PlanningInbox.tsx`
+- `apps/web/src/pages/Planner.tsx`
+- `worker/src/services/vrp/mod.rs`
+- `worker/src/handlers/route.rs`
+- `worker/src/handlers/jobs.rs`
+
+**Files deleted:**
+- `apps/web/src/components/planner/RouteStopList.tsx`
+- `apps/web/src/components/planner/RouteStopList.module.css`
+
+---
+
 ## Out of Scope for v1.0
 
 Explicitly excluded:
@@ -1799,4 +1848,19 @@ Phase 9 (Planner UI Redesign): ✅ COMPLETED
     9.5.2 RouteListPanel + RouteDetailTimeline integrace ✅
     9.5.3 Mapa s highlight ✅
     9.5.4 Přepis Planner.module.css ✅
+
+Post-Phase 9 (Unified Components + VRP Fix): ✅ COMPLETED
+  Frontend: Unified Route Components ✅
+    - RouteDetailTimeline sdílená mezi Inbox a Planner ✅
+    - RouteMapPanel sdílená mezi Inbox a Planner ✅
+    - RouteStopList odstraněn ✅
+    - insertionPreview prop opraven v PlanningInbox ✅
+    - MapLibre "Style is not done loading" fix ✅
+    - Bidirectional highlight (timeline ↔ map) ✅
+  
+  Backend: VRP Solver Robustness ✅
+    - solver.solve() async + spawn_blocking + timeout ✅
+    - Nearest-neighbor heuristic fallback ✅
+    - Time windows from revisions to VRP solver ✅
+    - Redundant timeout wrapper removed from route.rs ✅
 ```

@@ -5,16 +5,25 @@
  * Clicking a stop or segment highlights it on the map.
  */
 
-import type { SavedRoute, SavedRouteStop } from '../../services/routeService';
+import type { SavedRouteStop } from '../../services/routeService';
+import type { RouteMetrics } from './CapacityMetrics';
 import styles from './RouteDetailTimeline.module.css';
 
 interface RouteDetailTimelineProps {
-  route: SavedRoute;
   stops: SavedRouteStop[];
   depot: { name: string; lat: number; lng: number } | null;
   selectedStopId: string | null;
+  highlightedSegment: number | null;
   onStopClick: (customerId: string, index: number) => void;
   onSegmentClick: (segmentIndex: number) => void;
+  // Editing actions (optional - Inbox and Planner can both provide these)
+  onRemoveStop?: (stopId: string) => void;
+  onOptimize?: () => void;
+  onDeleteRoute?: () => void;
+  isOptimizing?: boolean;
+  isSaving?: boolean;
+  // Metrics
+  metrics?: RouteMetrics | null;
 }
 
 function formatTime(time: string | null): string {
@@ -59,12 +68,18 @@ function calculateTimeDifference(time1: string | null, time2: string | null): nu
 }
 
 export function RouteDetailTimeline({
-  route: _route,
   stops,
   depot,
   selectedStopId,
+  highlightedSegment,
   onStopClick,
   onSegmentClick,
+  onRemoveStop,
+  onOptimize,
+  onDeleteRoute,
+  isOptimizing = false,
+  isSaving = false,
+  metrics,
 }: RouteDetailTimelineProps) {
   const depotName = depot?.name ?? 'Depo';
 
@@ -94,11 +109,13 @@ export function RouteDetailTimeline({
         const timeDiffEnd = calculateTimeDifference(stop.scheduledTimeEnd, stop.estimatedDeparture);
         const hasSignificantDiff = (timeDiffStart && timeDiffStart > 15) || (timeDiffEnd && timeDiffEnd > 15);
 
+        const isSegmentHighlighted = highlightedSegment === index;
+
         return (
           <div key={stop.id}>
             {/* Segment before this stop */}
             <div
-              className={styles.segment}
+              className={`${styles.segment} ${isSegmentHighlighted ? styles.segmentHighlighted : ''}`}
               onClick={() => onSegmentClick(index)}
               role="button"
               tabIndex={0}
@@ -183,6 +200,19 @@ export function RouteDetailTimeline({
                 
                 <div className={styles.stopAddress}>{stop.address}</div>
               </div>
+              {onRemoveStop && (
+                <button
+                  type="button"
+                  className={styles.removeButton}
+                  onClick={(e) => {
+                    e.stopPropagation(); // Prevent triggering onStopClick
+                    onRemoveStop(stop.id);
+                  }}
+                  title="Odebrat zastávku"
+                >
+                  ✕
+                </button>
+              )}
             </div>
           </div>
         );
@@ -197,6 +227,54 @@ export function RouteDetailTimeline({
       <div className={styles.depotCard}>
         <span className={styles.depotIcon}>&#x1F4CD;</span>
         <span className={styles.depotName}>{depotName}</span>
+      </div>
+
+      {/* Metrics */}
+      {metrics && (
+        <div className={styles.metrics}>
+          <div className={styles.metric}>
+            <span className={styles.metricValue}>{metrics.distanceKm.toFixed(1)} km</span>
+            <span className={styles.metricLabel}>Vzdálenost</span>
+          </div>
+          <div className={styles.metric}>
+            <span className={styles.metricValue}>
+              {metrics.travelTimeMin + metrics.serviceTimeMin > 0
+                ? `${Math.round((metrics.travelTimeMin + metrics.serviceTimeMin) / 60 * 10) / 10} h`
+                : '—'}
+            </span>
+            <span className={styles.metricLabel}>Celkový čas</span>
+          </div>
+          <div className={styles.metric}>
+            <span className={styles.metricValue}>{metrics.loadPercent}%</span>
+            <span className={styles.metricLabel}>Zatížení</span>
+          </div>
+        </div>
+      )}
+
+      {/* Action buttons */}
+      <div className={styles.actions}>
+        {onOptimize && (
+          <button
+            type="button"
+            className={styles.optimizeButton}
+            onClick={onOptimize}
+            disabled={isOptimizing || stops.length < 2}
+          >
+            {isOptimizing ? 'Optimalizuji...' : '🚀 Optimalizovat'}
+          </button>
+        )}
+        {isSaving && (
+          <span className={styles.savingIndicator}>⟳ Ukládám...</span>
+        )}
+        {onDeleteRoute && (
+          <button
+            type="button"
+            className={styles.deleteButton}
+            onClick={onDeleteRoute}
+          >
+            🗑️ Smazat trasu
+          </button>
+        )}
       </div>
     </div>
   );

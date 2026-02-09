@@ -7,19 +7,14 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useSearch, useNavigate } from '@tanstack/react-router';
-import maplibregl from 'maplibre-gl';
 import { useNatsStore } from '../stores/natsStore';
-import {
-  buildStraightLineSegments,
-  splitGeometryIntoSegments,
-} from '../utils/routeGeometry';
 import * as geometryService from '../services/geometryService';
 import * as settingsService from '../services/settingsService';
 import * as routeService from '../services/routeService';
 import type { SavedRoute, SavedRouteStop } from '../services/routeService';
 import { listCrews, type Crew } from '../services/crewService';
 import type { Depot } from '@shared/settings';
-import { RouteListPanel, RouteDetailTimeline } from '../components/planner';
+import { RouteListPanel, RouteDetailTimeline, RouteMapPanel, type MapDepot } from '../components/planner';
 import { PlannerFilters } from '../components/shared/PlannerFilters';
 import styles from './Planner.module.css';
 
@@ -59,17 +54,10 @@ export function Planner() {
   const [isLoadingStops, setIsLoadingStops] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // --- Map ---
+  // --- Map highlighting ---
   const [highlightedSegment, setHighlightedSegment] = useState<number | null>(null);
   const [highlightedStopId, setHighlightedStopId] = useState<string | null>(null);
-  const mapContainer = useRef<HTMLDivElement>(null);
-  const map = useRef<maplibregl.Map | null>(null);
-  const markersRef = useRef<maplibregl.Marker[]>([]);
-  const depotMarkerRef = useRef<maplibregl.Marker | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const segmentClickHandlerRef = useRef<((e: any) => void) | null>(null);
-  const segmentEnterHandlerRef = useRef<(() => void) | null>(null);
-  const segmentLeaveHandlerRef = useRef<(() => void) | null>(null);
+  const [routeGeometry, setRouteGeometry] = useState<[number, number][]>([]);
   const geometryUnsubRef = useRef<(() => void) | null>(null);
 
   // ─── Load settings (crews, depots, user preferences) ─────────────
@@ -178,6 +166,15 @@ export function Planner() {
       setIsLoadingStops(true);
       try {
         const result = await routeService.getRoute({ routeId: selectedRouteId });
+        console.log('[Planner] Route stops loaded:', result.stops.map(s => ({
+          name: s.customerName,
+          revisionId: s.revisionId,
+          revisionStatus: s.revisionStatus,
+          scheduledTimeStart: s.scheduledTimeStart,
+          scheduledTimeEnd: s.scheduledTimeEnd,
+          distanceKm: s.distanceFromPreviousKm,
+          durationMin: s.durationFromPreviousMinutes,
+        })));
         setSelectedRouteStops(result.stops);
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
@@ -226,203 +223,30 @@ export function Planner() {
     setFilterDepotId(value);
   }, []);
 
-  // ─── Map: initialize ─────────────────────────────────────────────
+  // ─── Fetch Valhalla geometry ────────────────────────────────────
 
-  useEffect(() => {
-    if (!mapContainer.current || map.current || !depot) return;
-
-    map.current = new maplibregl.Map({
-      container: mapContainer.current,
-      style: {
-        version: 8,
-        sources: {
-          osm: {
-            type: 'raster',
-            tiles: [
-              'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
-              'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
-              'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
-            ],
-            tileSize: 256,
-            attribution: '&copy; OpenStreetMap contributors',
-          },
-        },
-        layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
-      },
-      center: [depot.lng, depot.lat],
-      zoom: 11,
-    });
-
-    map.current.addControl(new maplibregl.NavigationControl(), 'top-right');
-
-    depotMarkerRef.current = new maplibregl.Marker({ color: '#22c55e' })
-      .setLngLat([depot.lng, depot.lat])
-      .setPopup(new maplibregl.Popup().setHTML(`<strong>Depo</strong><br/>${depot.name || 'Výchozí místo'}`))
-      .addTo(map.current);
-
-    return () => {
-      map.current?.remove();
-      map.current = null;
-      depotMarkerRef.current = null;
-    };
-  }, [depot]);
-
-  // ─── Map: clear markers & route lines ─────────────────────────────
-
-  const clearMarkers = useCallback(() => {
-    markersRef.current.forEach((marker) => marker.remove());
-    markersRef.current = [];
-
-    if (map.current) {
-      if (segmentClickHandlerRef.current) {
-        map.current.off('click', 'route-hit-area', segmentClickHandlerRef.current);
-        segmentClickHandlerRef.current = null;
-      }
-      if (segmentEnterHandlerRef.current) {
-        map.current.off('mouseenter', 'route-hit-area', segmentEnterHandlerRef.current);
-        segmentEnterHandlerRef.current = null;
-      }
-      if (segmentLeaveHandlerRef.current) {
-        map.current.off('mouseleave', 'route-hit-area', segmentLeaveHandlerRef.current);
-        segmentLeaveHandlerRef.current = null;
-      }
-
-      for (const layerId of ['route-highlight', 'route-hit-area', 'route-line']) {
-        if (map.current.getLayer(layerId)) map.current.removeLayer(layerId);
-      }
-      if (map.current.getSource('route-segments')) {
-        map.current.removeSource('route-segments');
-      }
+  const fetchGeometry = useCallback(async (stops: SavedRouteStop[]) => {
+    if (!depot || stops.length === 0) {
+      setRouteGeometry([]);
+      return;
     }
-    setHighlightedSegment(null);
-  }, []);
-
-  // ─── Map: draw route stops ───────────────────────────────────────
-
-  const drawRouteOnMap = useCallback((stops: SavedRouteStop[]) => {
-    if (!map.current || !depot) return;
-    clearMarkers();
-
-    if (stops.length === 0) return;
-
-    // Add markers
-    stops.forEach((stop, index) => {
-      if (!stop.customerLat || !stop.customerLng) return;
-
-      const marker = new maplibregl.Marker({ color: '#3b82f6' })
-        .setLngLat([stop.customerLng, stop.customerLat])
-        .setPopup(
-          new maplibregl.Popup().setHTML(`
-            <strong>${index + 1}. ${stop.customerName}</strong><br/>
-            ${stop.address}<br/>
-            <small>ETA: ${stop.estimatedArrival?.substring(0, 5) || '--:--'} | ETD: ${stop.estimatedDeparture?.substring(0, 5) || '--:--'}</small>
-          `)
-        )
-        .addTo(map.current!);
-
-      const el = marker.getElement();
-      const label = document.createElement('div');
-      label.className = styles.markerLabel;
-      label.textContent = String(index + 1);
-      el.appendChild(label);
-
-      markersRef.current.push(marker);
-    });
-
-    // Draw route segments
-    const waypoints = stops
-      .filter((s) => s.customerLat && s.customerLng)
-      .map((s) => ({
-        coordinates: { lat: s.customerLat!, lng: s.customerLng! },
-        name: s.customerName,
-      }));
-
-    if (waypoints.length === 0) return;
-
-    const segments = buildStraightLineSegments(waypoints, depot);
-
-    const features = segments.map((coords, index) => ({
-      type: 'Feature' as const,
-      properties: { segmentIndex: index },
-      geometry: { type: 'LineString' as const, coordinates: coords },
-    }));
-
-    map.current.addSource('route-segments', {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features },
-    });
-
-    map.current.addLayer({
-      id: 'route-line',
-      type: 'line',
-      source: 'route-segments',
-      layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': '#3b82f6', 'line-width': 4, 'line-opacity': 0.8 },
-    });
-
-    map.current.addLayer({
-      id: 'route-hit-area',
-      type: 'line',
-      source: 'route-segments',
-      layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': 'transparent', 'line-width': 20, 'line-opacity': 0 },
-    });
-
-    map.current.addLayer({
-      id: 'route-highlight',
-      type: 'line',
-      source: 'route-segments',
-      layout: { 'line-join': 'round', 'line-cap': 'round' },
-      paint: { 'line-color': '#f59e0b', 'line-width': 6, 'line-opacity': 0.9 },
-      filter: ['==', ['get', 'segmentIndex'], -1],
-    });
-
-    // Click handler
-    segmentClickHandlerRef.current = (e) => {
-      const feat = e.features;
-      if (feat && feat.length > 0) {
-        const clickedIndex = feat[0].properties?.segmentIndex;
-        if (typeof clickedIndex === 'number') {
-          setHighlightedSegment((prev) => (prev === clickedIndex ? null : clickedIndex));
-        }
-      }
-    };
-    map.current.on('click', 'route-hit-area', segmentClickHandlerRef.current);
-
-    segmentEnterHandlerRef.current = () => {
-      if (map.current) map.current.getCanvas().style.cursor = 'pointer';
-    };
-    segmentLeaveHandlerRef.current = () => {
-      if (map.current) map.current.getCanvas().style.cursor = '';
-    };
-    map.current.on('mouseenter', 'route-hit-area', segmentEnterHandlerRef.current);
-    map.current.on('mouseleave', 'route-hit-area', segmentLeaveHandlerRef.current);
-
-    // Fit bounds
-    const allCoords = segments.flat();
-    const bounds = new maplibregl.LngLatBounds();
-    allCoords.forEach((coord) => bounds.extend(coord));
-    map.current.fitBounds(bounds, { padding: 50 });
-  }, [clearMarkers, depot]);
-
-  // ─── Fetch Valhalla geometry and update map ───────────────────────
-
-  const fetchAndDrawGeometry = useCallback(async (stops: SavedRouteStop[]) => {
-    if (!map.current || !depot || stops.length === 0) return;
 
     const waypoints = stops
       .filter((s) => s.customerLat && s.customerLng)
       .map((s) => ({
-        coordinates: { lat: s.customerLat!, lng: s.customerLng! },
-        name: s.customerName,
+        lat: s.customerLat!,
+        lng: s.customerLng!,
       }));
 
-    if (waypoints.length === 0) return;
+    if (waypoints.length === 0) {
+      setRouteGeometry([]);
+      return;
+    }
 
     // Build locations: depot → stops → depot
     const locations = [
       { lat: depot.lat, lng: depot.lng },
-      ...waypoints.map((w) => ({ lat: w.coordinates.lat, lng: w.coordinates.lng })),
+      ...waypoints,
       { lat: depot.lat, lng: depot.lng },
     ];
 
@@ -438,20 +262,9 @@ export function Planner() {
       const unsubscribe = await geometryService.subscribeToGeometryJobStatus(
         jobResponse.jobId,
         (update) => {
-          if (update.status.type === 'completed' && map.current) {
+          if (update.status.type === 'completed') {
             const geometry = update.status.coordinates as [number, number][];
-            const segments = splitGeometryIntoSegments(geometry, waypoints, depot);
-
-            // Update the existing GeoJSON source with real geometry
-            const source = map.current.getSource('route-segments') as maplibregl.GeoJSONSource | undefined;
-            if (source) {
-              const features = segments.map((coords, index) => ({
-                type: 'Feature' as const,
-                properties: { segmentIndex: index },
-                geometry: { type: 'LineString' as const, coordinates: coords },
-              }));
-              source.setData({ type: 'FeatureCollection', features });
-            }
+            setRouteGeometry(geometry);
 
             if (geometryUnsubRef.current) {
               geometryUnsubRef.current();
@@ -459,6 +272,7 @@ export function Planner() {
             }
           } else if (update.status.type === 'failed') {
             console.warn('Geometry job failed:', update.status.error);
+            setRouteGeometry([]);
             if (geometryUnsubRef.current) {
               geometryUnsubRef.current();
               geometryUnsubRef.current = null;
@@ -470,15 +284,14 @@ export function Planner() {
       geometryUnsubRef.current = unsubscribe;
     } catch (err) {
       console.warn('Failed to fetch route geometry:', err);
+      setRouteGeometry([]);
     }
   }, [depot]);
 
-  // ─── Redraw map when stops change ────────────────────────────────
+  // ─── Fetch geometry when stops change ────────────────────────────
 
   useEffect(() => {
-    drawRouteOnMap(selectedRouteStops);
-    // Then fetch real road geometry asynchronously
-    fetchAndDrawGeometry(selectedRouteStops);
+    fetchGeometry(selectedRouteStops);
 
     return () => {
       if (geometryUnsubRef.current) {
@@ -486,28 +299,13 @@ export function Planner() {
         geometryUnsubRef.current = null;
       }
     };
-  }, [selectedRouteStops, drawRouteOnMap, fetchAndDrawGeometry]);
+  }, [selectedRouteStops, fetchGeometry]);
 
-  // ─── Update highlight layer ──────────────────────────────────────
-
-  useEffect(() => {
-    if (!map.current || !map.current.getLayer('route-highlight')) return;
-    if (highlightedSegment !== null) {
-      map.current.setFilter('route-highlight', ['==', ['get', 'segmentIndex'], highlightedSegment]);
-    } else {
-      map.current.setFilter('route-highlight', ['==', ['get', 'segmentIndex'], -1]);
-    }
-  }, [highlightedSegment]);
-
-  // ─── Fly to stop on map ──────────────────────────────────────────
+  // ─── Handle stop click (timeline → map) ──────────────────────────
 
   const handleStopClick = useCallback((customerId: string, _index: number) => {
     setHighlightedStopId(customerId);
-    const stop = selectedRouteStops.find((s) => s.customerId === customerId);
-    if (stop?.customerLat && stop?.customerLng && map.current) {
-      map.current.flyTo({ center: [stop.customerLng, stop.customerLat], zoom: 14, duration: 800 });
-    }
-  }, [selectedRouteStops]);
+  }, []);
 
   const handleSegmentClick = useCallback((segmentIndex: number) => {
     setHighlightedSegment((prev) => (prev === segmentIndex ? null : segmentIndex));
@@ -608,10 +406,10 @@ export function Planner() {
               <div className={styles.loading}>Nacitam zastávky...</div>
             ) : (
               <RouteDetailTimeline
-                route={selectedRoute}
                 stops={selectedRouteStops}
                 depot={selectedRouteDepot}
                 selectedStopId={highlightedStopId}
+                highlightedSegment={highlightedSegment}
                 onStopClick={handleStopClick}
                 onSegmentClick={handleSegmentClick}
               />
@@ -629,7 +427,18 @@ export function Planner() {
 
       {/* Map */}
       <div className={styles.mapWrapper}>
-        <div ref={mapContainer} className={styles.map} />
+        <RouteMapPanel
+          stops={selectedRouteStops}
+          depot={selectedRouteDepot}
+          routeGeometry={routeGeometry}
+          highlightedStopId={highlightedStopId}
+          highlightedSegment={highlightedSegment}
+          onStopClick={(stopId) => {
+            setHighlightedStopId(stopId);
+          }}
+          onSegmentHighlight={setHighlightedSegment}
+          isLoading={isLoadingStops}
+        />
       </div>
     </div>
   );

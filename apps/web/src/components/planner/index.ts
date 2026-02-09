@@ -1,7 +1,7 @@
 export { SortableStopItem } from './SortableStopItem';
 export { RouteContextHeader, type RouteContext } from './RouteContextHeader';
 export { CapacityMetrics, type RouteMetrics } from './CapacityMetrics';
-export { RouteMapPanel, type MapStop, type MapDepot, type InsertionPreview as MapInsertionPreview, type SelectedCandidate } from './RouteMapPanel';
+export { RouteMapPanel, type MapDepot, type InsertionPreview as MapInsertionPreview, type SelectedCandidate } from './RouteMapPanel';
 export { CandidateRow, type CandidateRowData, type SlotStatus } from './CandidateRow';
 export { CandidateDetail, type CandidateDetailData } from './CandidateDetail';
 export { SlotSuggestions, type SlotSuggestion } from './SlotSuggestions';
@@ -11,6 +11,5 @@ export { ProblemsSegment, type ProblemCandidate, type ProblemType } from './Prob
 export { MultiCrewTip, type CrewComparison } from './MultiCrewTip';
 export { DraftModeBar } from './DraftModeBar';
 export { AddFromInboxDrawer } from './AddFromInboxDrawer';
-export { RouteStopList } from './RouteStopList';
 export { RouteListPanel } from './RouteListPanel';
 export { RouteDetailTimeline } from './RouteDetailTimeline';

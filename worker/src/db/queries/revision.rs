@@ -700,3 +700,37 @@ pub async fn schedule_revision(
 
     Ok(revision)
 }
+
+/// Get scheduled time window for a customer on a specific date.
+/// Returns the time window from the first matching scheduled/upcoming revision.
+pub async fn get_scheduled_time_window(
+    pool: &PgPool,
+    user_id: Uuid,
+    customer_id: Uuid,
+    date: NaiveDate,
+) -> Result<Option<(NaiveTime, NaiveTime)>> {
+    let row = sqlx::query_as::<_, (Option<NaiveTime>, Option<NaiveTime>)>(
+        r#"
+        SELECT scheduled_time_start, scheduled_time_end
+        FROM revisions
+        WHERE user_id = $1
+          AND customer_id = $2
+          AND scheduled_date = $3
+          AND status IN ('scheduled', 'upcoming')
+          AND scheduled_time_start IS NOT NULL
+          AND scheduled_time_end IS NOT NULL
+        ORDER BY scheduled_time_start
+        LIMIT 1
+        "#,
+    )
+    .bind(user_id)
+    .bind(customer_id)
+    .bind(date)
+    .fetch_optional(pool)
+    .await?;
+
+    match row {
+        Some((Some(start), Some(end))) => Ok(Some((start, end))),
+        _ => Ok(None),
+    }
+}
