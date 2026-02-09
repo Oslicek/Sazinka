@@ -11,6 +11,39 @@
   padding: 1rem;
 }
 
+.breakWarnings {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  margin: 0 1rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #f59e0b;
+  background: #fffbeb;
+  border-radius: var(--radius-md);
+}
+
+.breakWarningItem {
+  font-size: 0.8125rem;
+  color: #92400e;
+}
+
+.breakRuleRow {
+  margin: 0 1rem;
+}
+
+.breakRuleToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--color-text);
+}
+
+.breakRuleToggle input {
+  width: 1rem;
+  height: 1rem;
+}
+
 .splitLayout {
   height: 100%;
 }
@@ -26,41 +59,88 @@
   overflow: hidden;
 }
 
-.segmentTabs {
+.filterPanel {
   display: flex;
-  gap: 0.25rem;
+  flex-direction: column;
+  gap: 0.5rem;
   padding: 0.75rem;
   border-bottom: 1px solid var(--color-border);
-  overflow-x: auto;
   flex-shrink: 0;
+  background: var(--color-bg-secondary);
 }
 
-.segmentTab {
-  padding: 0.375rem 0.625rem;
+.filterPanelHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.filterSummary {
   font-size: 0.75rem;
-  font-weight: 500;
-  background: none;
-  border: 1px solid transparent;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.filterResults {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.filterResetButton {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.6875rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
   border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
-  white-space: nowrap;
+  cursor: pointer;
+}
+
+.filterResetButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.filterGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.filterGroupLabel {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.filterChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.filterChip {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  border-radius: var(--radius-full);
+  font-size: 0.6875rem;
+  color: var(--color-text-secondary);
   cursor: pointer;
   transition: all 0.15s;
 }
 
-.segmentTab:hover {
-  background-color: var(--color-bg-secondary);
-}
-
-.segmentTab.active {
-  background-color: var(--color-primary);
-  color: white;
+.filterChip:hover {
   border-color: var(--color-primary);
 }
 
-.segmentTab .count {
-  margin-left: 0.25rem;
-  opacity: 0.8;
+.filterChip.active {
+  color: #fff;
+  background: var(--color-primary);
+  border-color: var(--color-primary);
 }
 
 /* Candidate List */
@@ -704,13 +784,12 @@
     padding: 0.5rem;
   }
 
-  .segmentTabs {
+  .filterPanel {
     padding: 0.5rem;
   }
 
-  .segmentTab {
-    padding: 0.25rem 0.5rem;
-    font-size: 0.6875rem;
+  .filterChip {
+    font-size: 0.625rem;
   }
 
   .candidateRow {

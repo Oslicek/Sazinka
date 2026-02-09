@@ -16,9 +16,6 @@ import {
   VirtualizedInboxList,
   type VirtualizedInboxListRef,
   type CandidateRowData,
-  ProblemsSegment,
-  type ProblemCandidate,
-  type ProblemType,
   MultiCrewTip,
   type CrewComparison,
   type SlotSuggestion,
@@ -27,7 +24,9 @@ import {
 import { DraftModeBar } from '../components/planner/DraftModeBar';
 import { ThreePanelLayout } from '../components/common';
 import type { SavedRouteStop } from '../services/routeService';
+import type { BreakSettings } from '@shared/settings';
 import * as settingsService from '../services/settingsService';
+import { calculateBreakPosition, createBreakStop } from '../utils/breakUtils';
 import * as crewService from '../services/crewService';
 import * as routeService from '../services/routeService';
 import * as insertionService from '../services/insertionService';
@@ -37,9 +36,21 @@ import { listCalendarItems } from '../services/calendarService';
 import type { CalendarItem } from '@shared/calendar';
 import { usePlannerShortcuts } from '../hooks/useKeyboardShortcuts';
 import type { RouteWarning } from '@shared/route';
+import {
+  DEFAULT_INBOX_FILTERS,
+  applyInboxFilters,
+  getActiveFilterCount,
+  hasPhone,
+  hasValidAddress,
+  isScheduledCandidate,
+  toggleFilter,
+  type InboxFilters,
+  type ProblemFilter,
+  type RouteFilter,
+  type ScheduleFilter,
+  type TimeFilter,
+} from './planningInboxFilters';
 import styles from './PlanningInbox.module.css';
-
-type InboxSegment = 'overdue' | 'thisWeek' | 'thisMonth' | 'all' | 'snoozed' | 'problems' | 'scheduled';
 
 interface Depot {
   id: string;
@@ -60,21 +71,18 @@ interface InboxCandidate extends CallQueueItem {
   _scheduledTimeEnd?: string;
 }
 
+const DEFAULT_BREAK_SETTINGS: BreakSettings = {
+  breakEnabled: true,
+  breakDurationMinutes: 45,
+  breakEarliestTime: '11:30',
+  breakLatestTime: '13:00',
+  breakMinKm: 40,
+  breakMaxKm: 120,
+};
+
 // Helper to check if customer is overdue
 function getDaysOverdue(item: CallQueueItem): number {
   return item.daysUntilDue < 0 ? Math.abs(item.daysUntilDue) : 0;
-}
-
-// Helper to check if has phone
-function hasPhone(item: CallQueueItem): boolean {
-  return item.customerPhone !== null && item.customerPhone.trim() !== '';
-}
-
-// Helper to check if has valid address
-function hasValidAddress(item: CallQueueItem): boolean {
-  return item.customerGeocodeStatus === 'success' && 
-         item.customerLat !== null && 
-         item.customerLng !== null;
 }
 
 // Convert priority to CandidateRowData priority type
@@ -107,19 +115,37 @@ export function PlanningInbox() {
   const [crews, setCrews] = useState<crewService.Crew[]>([]);
   const [depots, setDepots] = useState<Depot[]>([]);
   const [defaultServiceDurationMinutes, setDefaultServiceDurationMinutes] = useState(30);
+  const [breakSettings, setBreakSettings] = useState<BreakSettings | null>(null);
+  const [enforceDrivingBreakRule, setEnforceDrivingBreakRule] = useState<boolean>(() => {
+    const raw = localStorage.getItem('planningInbox.enforceDrivingBreakRule');
+    return raw === null ? true : raw === 'true';
+  });
   
   // Route state
   const [routeStops, setRouteStops] = useState<SavedRouteStop[]>([]);
   const [routeGeometry, setRouteGeometry] = useState<[number, number][]>([]);
   const [routeWarnings, setRouteWarnings] = useState<RouteWarning[]>([]);
+  const [breakWarnings, setBreakWarnings] = useState<string[]>([]);
   const [metrics, setMetrics] = useState<RouteMetrics | null>(null);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   const geometryUnsubRef = useRef<(() => void) | null>(null);
   
   // Inbox state - restore from sessionStorage
-  const [segment, setSegment] = useState<InboxSegment>(() => {
-    const saved = sessionStorage.getItem('planningInbox.segment');
-    return (saved as InboxSegment) || 'thisWeek';
+  const [filters, setFilters] = useState<InboxFilters>(() => {
+    const raw = sessionStorage.getItem('planningInbox.filters');
+    if (!raw) return DEFAULT_INBOX_FILTERS;
+
+    try {
+      const parsed = JSON.parse(raw) as Partial<InboxFilters>;
+      return {
+        time: parsed.time ?? DEFAULT_INBOX_FILTERS.time,
+        schedule: parsed.schedule ?? [],
+        route: parsed.route ?? [],
+        problems: parsed.problems ?? [],
+      };
+    } catch {
+      return DEFAULT_INBOX_FILTERS;
+    }
   });
   const [candidates, setCandidates] = useState<InboxCandidate[]>([]);
   const [isLoadingCandidates, setIsLoadingCandidates] = useState(false);
@@ -163,21 +189,11 @@ export function PlanningInbox() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [routeJobProgress, setRouteJobProgress] = useState<string | null>(null);
-  
-  // Problems segment state
-  const [isProblemsCollapsed, setIsProblemsCollapsed] = useState(false);
-  
-  // Segment counts
-  const [segmentCounts, setSegmentCounts] = useState<Record<InboxSegment, number>>({
-    overdue: 0,
-    thisWeek: 0,
-    thisMonth: 0,
-    all: 0,
-    snoozed: 0,
-    problems: 0,
-    scheduled: 0,
-  });
 
+  useEffect(() => {
+    localStorage.setItem('planningInbox.enforceDrivingBreakRule', String(enforceDrivingBreakRule));
+  }, [enforceDrivingBreakRule]);
+  
   // Auto-save route
   const autoSaveFn = useCallback(async () => {
     if (routeStops.length === 0 || !context) return;
@@ -188,11 +204,14 @@ export function PlanningInbox() {
       date: context.date,
       depotId: sanitizeUuid(context.depotId) ?? null,
       stops: routeStops.map((s, index) => ({
-        customerId: s.customerId,
+        customerId: s.stopType === 'customer' ? (s.customerId ?? undefined) : undefined,
         revisionId: sanitizeUuid(s.revisionId),
         order: s.stopOrder ?? index + 1,
         eta: s.estimatedArrival || undefined,
         etd: s.estimatedDeparture || undefined,
+        stopType: s.stopType,
+        breakDurationMinutes: s.stopType === 'break' ? (s.breakDurationMinutes ?? undefined) : undefined,
+        breakTimeStart: s.stopType === 'break' ? (s.breakTimeStart ?? undefined) : undefined,
       })),
       totalDistanceKm: metrics?.distanceKm ?? 0,
       totalDurationMinutes: (metrics?.travelTimeMin ?? 0) + (metrics?.serviceTimeMin ?? 0),
@@ -239,10 +258,11 @@ export function PlanningInbox() {
         setDepots(loadedDepots);
         setCrews(loadedVehicles);
         
-        // Store default service duration from settings
+        // Store default service duration and break settings
         if (settings?.workConstraints?.defaultServiceDurationMinutes) {
           setDefaultServiceDurationMinutes(settings.workConstraints.defaultServiceDurationMinutes);
         }
+        setBreakSettings(settings?.breakSettings ?? DEFAULT_BREAK_SETTINGS);
         
         // Build initial context with whatever data we have
         const primaryDepot = loadedDepots.find((d) => 
@@ -500,14 +520,14 @@ export function PlanningInbox() {
     calculateInsertion();
   }, [isConnected, isRouteAware, selectedCandidateId, routeStops, context, depots, getCachedInsertion]);
 
-  // Load candidates based on segment
+  // Load candidates (filtering is applied client-side via advanced filters)
   const loadCandidates = useCallback(async () => {
     if (!isConnected) return;
     
     setIsLoadingCandidates(true);
     try {
       const response = await getCallQueue({
-        priorityFilter: segment === 'overdue' ? 'overdue' : 'all',
+        priorityFilter: 'all',
         geocodedOnly: isRouteAware,
         limit: 100,
       });
@@ -522,23 +542,13 @@ export function PlanningInbox() {
       
       setCandidates(loadedCandidates);
       setSlotSuggestions([]);
-      
-      setSegmentCounts({
-        overdue: loadedCandidates.filter((c) => getDaysOverdue(c) > 0).length,
-        thisWeek: loadedCandidates.filter((c) => c.daysUntilDue <= 7).length,
-        thisMonth: loadedCandidates.filter((c) => c.daysUntilDue <= 30).length,
-        all: loadedCandidates.length,
-        snoozed: 0, // Would need backend support
-        problems: loadedCandidates.filter((c) => !hasPhone(c) || !hasValidAddress(c)).length,
-        scheduled: loadedCandidates.filter((c) => c.status === 'scheduled' || c.status === 'confirmed').length,
-      });
     } catch (err) {
       console.error('Failed to load candidates:', err);
       setCandidates([]);
     } finally {
       setIsLoadingCandidates(false);
     }
-  }, [isConnected, segment, isRouteAware]);
+  }, [isConnected, isRouteAware]);
 
   useEffect(() => {
     loadCandidates();
@@ -633,7 +643,7 @@ export function PlanningInbox() {
   const selectedCandidateDetail: CandidateDetailData | null = useMemo(() => {
     if (selectedCandidate) {
       // Full candidate data available from call queue
-      const isScheduled = selectedCandidate.status === 'scheduled' || selectedCandidate.status === 'confirmed';
+      const isScheduled = isScheduledCandidate(selectedCandidate);
       
       return {
         id: selectedCandidate.id,
@@ -743,29 +753,14 @@ export function PlanningInbox() {
     };
   }, [selectedCandidate, slotSuggestions, routeStops.length]);
 
+  // Compute set of customer IDs that are currently in the route
+  const inRouteIds = useMemo(() => {
+    return new Set(routeStops.map((s) => s.customerId));
+  }, [routeStops]);
+
   // Sorted candidates for display (pre-ranked by insertion cost)
   const sortedCandidates = useMemo(() => {
-    let filtered = [...candidates];
-    
-    // Filter by segment
-    switch (segment) {
-      case 'overdue':
-        filtered = filtered.filter((c) => getDaysOverdue(c) > 0);
-        break;
-      case 'thisWeek':
-        filtered = filtered.filter((c) => c.daysUntilDue <= 7);
-        break;
-      case 'thisMonth':
-        filtered = filtered.filter((c) => c.daysUntilDue <= 30);
-        break;
-      case 'problems':
-        filtered = filtered.filter((c) => !hasPhone(c) || !hasValidAddress(c));
-        break;
-      case 'scheduled':
-        filtered = filtered.filter((c) => c.status === 'scheduled' || c.status === 'confirmed');
-        break;
-      // 'all' and 'snoozed' show all
-    }
+    const filtered = applyInboxFilters(candidates, filters, inRouteIds) as InboxCandidate[];
     
     if (!isRouteAware) {
       return filtered.sort((a, b) => {
@@ -795,20 +790,15 @@ export function PlanningInbox() {
         return a.deltaMin - b.deltaMin;
       }
       
-      const aOverdue = getDaysOverdue(a);
-      const bOverdue = getDaysOverdue(b);
+      const aOverdue = Math.max(0, -a.daysUntilDue);
+      const bOverdue = Math.max(0, -b.daysUntilDue);
       if (aOverdue !== bOverdue) return bOverdue - aOverdue;
       return a.daysUntilDue - b.daysUntilDue;
     });
-  }, [candidates, isRouteAware, segment]);
+  }, [candidates, filters, inRouteIds, isRouteAware]);
 
   // Keep ref in sync for use in callbacks
   sortedCandidatesRef.current = sortedCandidates;
-
-  // Compute set of customer IDs that are currently in the route
-  const inRouteIds = useMemo(() => {
-    return new Set(routeStops.map((s) => s.customerId));
-  }, [routeStops]);
 
   // Convert to CandidateRowData for VirtualizedInboxList
   const candidateRowData: CandidateRowData[] = useMemo(() => {
@@ -824,35 +814,10 @@ export function PlanningInbox() {
       deltaKm: c.deltaKm,
       deltaMin: c.deltaMin,
       slotStatus: c.slotStatus,
-      isScheduled: c.status === 'scheduled' || c.status === 'confirmed',
+      isScheduled: isScheduledCandidate(c),
       isInRoute: inRouteIds.has(c.customerId),
     }));
   }, [sortedCandidates, inRouteIds]);
-
-  // Problem candidates for ProblemsSegment
-  const problemCandidates: ProblemCandidate[] = useMemo(() => {
-    return candidates
-      .filter((c) => !hasPhone(c) || !hasValidAddress(c))
-      .map((c) => {
-        const problems: ProblemType[] = [];
-        if (!hasPhone(c)) problems.push('no_phone');
-        if (!hasValidAddress(c)) {
-          if (c.customerGeocodeStatus === 'failed') {
-            problems.push('geocode_failed');
-          } else if (!c.customerLat || !c.customerLng) {
-            problems.push('no_coordinates');
-          } else {
-            problems.push('no_address');
-          }
-        }
-        return {
-          id: c.customerId,
-          customerName: c.customerName,
-          city: c.customerCity ?? '',
-          problems,
-        };
-      });
-  }, [candidates]);
 
   // Handle context changes
   const handleDateChange = (date: string) => {
@@ -1062,15 +1027,6 @@ export function PlanningInbox() {
       
       setCandidates((prev) => {
         const updated = prev.filter((c) => c.customerId !== confirmedId);
-        setSegmentCounts({
-          overdue: updated.filter((c) => getDaysOverdue(c) > 0).length,
-          thisWeek: updated.filter((c) => c.daysUntilDue <= 7).length,
-          thisMonth: updated.filter((c) => c.daysUntilDue <= 30).length,
-          all: updated.length,
-          snoozed: 0,
-          problems: updated.filter((c) => !hasPhone(c) || !hasValidAddress(c)).length,
-          scheduled: updated.filter((c) => c.status === 'scheduled' || c.status === 'confirmed').length,
-        });
         return updated;
       });
     }
@@ -1096,15 +1052,6 @@ export function PlanningInbox() {
       // Remove from list and update counts
       setCandidates((prev) => {
         const updated = prev.filter((c) => c.id !== candidate.id);
-        setSegmentCounts({
-          overdue: updated.filter((c) => getDaysOverdue(c) > 0).length,
-          thisWeek: updated.filter((c) => c.daysUntilDue <= 7).length,
-          thisMonth: updated.filter((c) => c.daysUntilDue <= 30).length,
-          all: updated.length,
-          snoozed: 0,
-          problems: updated.filter((c) => !hasPhone(c) || !hasValidAddress(c)).length,
-          scheduled: updated.filter((c) => c.status === 'scheduled' || c.status === 'confirmed').length,
-        });
         return updated;
       });
       setSlotSuggestions([]);
@@ -1152,6 +1099,7 @@ export function PlanningInbox() {
         distanceFromPreviousKm: null,
         durationFromPreviousMinutes: null,
         status: 'draft',
+        stopType: 'customer',
         customerId: candidate.customerId,
         customerName: candidate.customerName,
         address: `${candidate.customerStreet ?? ''}, ${candidate.customerCity ?? ''}`.replace(/^, |, $/g, ''),
@@ -1167,12 +1115,64 @@ export function PlanningInbox() {
     });
 
     if (newStops.length > 0) {
-      setRouteStops((prev) => [...prev, ...newStops]);
+      setRouteStops((prev) => {
+        const updated = [...prev, ...newStops];
+        
+        // Auto-insert break if enabled and we have enough stops
+        if (breakSettings?.breakEnabled && updated.filter(s => s.stopType === 'customer').length >= 2) {
+          const existingBreak = updated.find(s => s.stopType === 'break');
+          const customerStops = updated.filter(s => s.stopType === 'customer');
+          
+          if (!existingBreak) {
+            const effectiveBreakSettings: BreakSettings = {
+              ...breakSettings,
+              breakDurationMinutes: enforceDrivingBreakRule
+                ? Math.max(breakSettings.breakDurationMinutes, 45)
+                : breakSettings.breakDurationMinutes,
+            };
+            // Calculate break position
+            const breakResult = calculateBreakPosition(
+              customerStops,
+              effectiveBreakSettings,
+              context?.workingHoursStart || '08:00',
+              {
+                enforceDrivingBreakRule,
+                maxDrivingMinutes: 270,
+                requiredBreakMinutes: 45,
+              }
+            );
+            
+            if (breakResult.warnings.length > 0) {
+              setBreakWarnings(breakResult.warnings);
+              console.warn('Break insertion warnings:', breakResult.warnings);
+            } else {
+              setBreakWarnings([]);
+            }
+            
+            // Create break stop
+            const breakStop: SavedRouteStop = {
+              ...createBreakStop('', breakResult.position + 1, effectiveBreakSettings, breakResult.estimatedTime),
+              id: crypto.randomUUID(),
+            };
+            
+            // Insert break at calculated position and renumber
+            const withBreak = [
+              ...customerStops.slice(0, breakResult.position),
+              breakStop,
+              ...customerStops.slice(breakResult.position),
+            ];
+            
+            return withBreak.map((s, i) => ({ ...s, stopOrder: i + 1 }));
+          }
+        }
+        
+        return updated;
+      });
       setSelectedIds(new Set());
       setHasChanges(true);
       incrementRouteVersion();
     }
-  }, [selectedIds, inRouteIds, candidates, routeStops.length, incrementRouteVersion]);
+  }, [selectedIds, inRouteIds, candidates, routeStops.length, breakSettings, context, enforceDrivingBreakRule, incrementRouteVersion]);
 
   // Route building: add single candidate from detail panel
   const handleAddToRoute = useCallback((candidateId: string) => {
@@ -1190,6 +1190,7 @@ export function PlanningInbox() {
       distanceFromPreviousKm: null, // Will be calculated
       durationFromPreviousMinutes: null, // Will be calculated
       status: 'draft',
+      stopType: 'customer',
       customerId: candidate.customerId,
       customerName: candidate.customerName,
       address: `${candidate.customerStreet ?? ''}, ${candidate.customerCity ?? ''}`.replace(/^, |, $/g, ''),
@@ -1203,10 +1204,62 @@ export function PlanningInbox() {
       revisionStatus: candidate.status ?? null,
     };
 
-    setRouteStops((prev) => [...prev, newStop]);
+    setRouteStops((prev) => {
+      const updated = [...prev, newStop];
+      
+      // Auto-insert break if enabled and we have enough stops
+      if (breakSettings?.breakEnabled && updated.filter(s => s.stopType === 'customer').length >= 2) {
+        const existingBreak = updated.find(s => s.stopType === 'break');
+        const customerStops = updated.filter(s => s.stopType === 'customer');
+        
+        if (!existingBreak) {
+          const effectiveBreakSettings: BreakSettings = {
+            ...breakSettings,
+            breakDurationMinutes: enforceDrivingBreakRule
+              ? Math.max(breakSettings.breakDurationMinutes, 45)
+              : breakSettings.breakDurationMinutes,
+          };
+          // Calculate break position
+          const breakResult = calculateBreakPosition(
+            customerStops,
+            effectiveBreakSettings,
+            context?.workingHoursStart || '08:00',
+            {
+              enforceDrivingBreakRule,
+              maxDrivingMinutes: 270,
+              requiredBreakMinutes: 45,
+            }
+          );
+          
+          if (breakResult.warnings.length > 0) {
+            setBreakWarnings(breakResult.warnings);
+            console.warn('Break insertion warnings:', breakResult.warnings);
+          } else {
+            setBreakWarnings([]);
+          }
+          
+          // Create break stop
+          const breakStop: SavedRouteStop = {
+            ...createBreakStop('', breakResult.position + 1, effectiveBreakSettings, breakResult.estimatedTime),
+            id: crypto.randomUUID(),
+          };
+          
+          // Insert break at calculated position and renumber
+          const withBreak = [
+            ...customerStops.slice(0, breakResult.position),
+            breakStop,
+            ...customerStops.slice(breakResult.position),
+          ];
+          
+          return withBreak.map((s, i) => ({ ...s, stopOrder: i + 1 }));
+        }
+      }
+      
+      return updated;
+    });
     setHasChanges(true);
     incrementRouteVersion();
-  }, [candidates, inRouteIds, routeStops.length, incrementRouteVersion]);
+  }, [candidates, inRouteIds, routeStops.length, breakSettings, context, enforceDrivingBreakRule, incrementRouteVersion]);
 
   // Route building: remove stop from route
   const handleRemoveFromRoute = useCallback((stopId: string) => {
@@ -1259,8 +1312,11 @@ export function PlanningInbox() {
               const result = update.status.result;
               if (result.stops && result.stops.length > 0) {
                 const optimizedStops: SavedRouteStop[] = result.stops.map((s, i) => {
+                  const isBreak = s.stopType === 'break';
                   // Find original stop to preserve data
-                  const original = routeStops.find((rs) => rs.customerId === s.customerId);
+                  const original = isBreak
+                    ? routeStops.find((rs) => rs.stopType === 'break')
+                    : routeStops.find((rs) => rs.customerId === s.customerId);
                   return {
                     id: original?.id ?? crypto.randomUUID(),
                     routeId: original?.routeId ?? '',
@@ -1271,17 +1327,20 @@ export function PlanningInbox() {
                     distanceFromPreviousKm: null, // Will be calculated
                     durationFromPreviousMinutes: null, // Will be calculated
                     status: original?.status ?? 'draft',
-                    customerId: s.customerId,
-                    customerName: s.customerName,
-                    address: s.address,
-                    customerLat: s.coordinates.lat,
-                    customerLng: s.coordinates.lng,
+                    stopType: isBreak ? 'break' : 'customer',
+                    customerId: isBreak ? null : s.customerId,
+                    customerName: isBreak ? 'Pauza' : s.customerName,
+                    address: isBreak ? '' : s.address,
+                    customerLat: isBreak ? null : s.coordinates.lat,
+                    customerLng: isBreak ? null : s.coordinates.lng,
                     customerPhone: original?.customerPhone ?? null,
                     customerEmail: original?.customerEmail ?? null,
                     scheduledDate: original?.scheduledDate ?? null,
                     scheduledTimeStart: original?.scheduledTimeStart ?? null,
                     scheduledTimeEnd: original?.scheduledTimeEnd ?? null,
                     revisionStatus: original?.revisionStatus ?? null,
+                    breakDurationMinutes: isBreak ? (s.breakDurationMinutes ?? 30) : undefined,
+                    breakTimeStart: isBreak ? (s.breakTimeStart ?? s.eta) : undefined,
                   };
                 });
                 setRouteStops(optimizedStops);
@@ -1336,6 +1395,7 @@ export function PlanningInbox() {
   // Route building: clear all stops
   const handleClearRoute = useCallback(() => {
     setRouteStops([]);
+    setBreakWarnings([]);
     setRouteGeometry([]);
     setMetrics(null);
     setSelectedIds(new Set());
@@ -1424,44 +1484,85 @@ export function PlanningInbox() {
     sessionStorage.setItem('planningInbox.selectedId', id);
   }, []);
 
+  useEffect(() => {
+    sessionStorage.setItem('planningInbox.filters', JSON.stringify(filters));
+  }, [filters]);
+
+  const toggleTimeFilter = useCallback((value: TimeFilter) => {
+    setFilters((prev) => ({ ...prev, time: toggleFilter(prev.time, value) }));
+  }, []);
+
+  const toggleScheduleFilter = useCallback((value: ScheduleFilter) => {
+    setFilters((prev) => ({ ...prev, schedule: toggleFilter(prev.schedule, value) }));
+  }, []);
+
+  const toggleRouteFilter = useCallback((value: RouteFilter) => {
+    setFilters((prev) => ({ ...prev, route: toggleFilter(prev.route, value) }));
+  }, []);
+
+  const toggleProblemFilter = useCallback((value: ProblemFilter) => {
+    setFilters((prev) => ({ ...prev, problems: toggleFilter(prev.problems, value) }));
+  }, []);
+
+  const clearFilters = useCallback(() => {
+    setFilters(DEFAULT_INBOX_FILTERS);
+  }, []);
+
+  const activeFilterCount = getActiveFilterCount(filters);
+
   // Render inbox list panel
   const renderInboxList = () => (
     <div className={styles.inboxPanel}>
-      <div className={styles.segmentTabs}>
-        {([
-          { key: 'overdue', label: 'Po termínu', count: segmentCounts.overdue },
-          { key: 'thisWeek', label: 'Týden', count: segmentCounts.thisWeek },
-          { key: 'thisMonth', label: '30 dní', count: segmentCounts.thisMonth },
-          { key: 'scheduled', label: 'S termínem', count: segmentCounts.scheduled },
-          { key: 'all', label: 'Vše', count: segmentCounts.all },
-          { key: 'problems', label: 'Problémy', count: segmentCounts.problems },
-        ] as const).map(({ key, label, count }) => (
+      <div className={styles.filterPanel}>
+        <div className={styles.filterPanelHeader}>
+          <span className={styles.filterSummary}>
+            Filtry {activeFilterCount > 0 ? `(${activeFilterCount})` : ''}
+          </span>
+          <span className={styles.filterResults}>{sortedCandidates.length} výsledků</span>
           <button
-            key={key}
             type="button"
-            className={`${styles.segmentTab} ${segment === key ? styles.active : ''}`}
-            onClick={() => {
-              setSegment(key);
-              sessionStorage.setItem('planningInbox.segment', key);
-            }}
+            className={styles.filterResetButton}
+            onClick={clearFilters}
+            disabled={activeFilterCount === 0}
           >
-            {label}
-            {count > 0 && <span className={styles.count}>({count})</span>}
+            Reset
           </button>
-        ))}
+        </div>
+
+        <div className={styles.filterGroup}>
+          <span className={styles.filterGroupLabel}>Čas/Priorita</span>
+          <div className={styles.filterChips}>
+            <button type="button" className={`${styles.filterChip} ${filters.time.includes('overdue') ? styles.active : ''}`} onClick={() => toggleTimeFilter('overdue')}>Po termínu</button>
+            <button type="button" className={`${styles.filterChip} ${filters.time.includes('thisWeek') ? styles.active : ''}`} onClick={() => toggleTimeFilter('thisWeek')}>Do 7 dnů</button>
+            <button type="button" className={`${styles.filterChip} ${filters.time.includes('thisMonth') ? styles.active : ''}`} onClick={() => toggleTimeFilter('thisMonth')}>Do 30 dnů</button>
+          </div>
+        </div>
+
+        <div className={styles.filterGroup}>
+          <span className={styles.filterGroupLabel}>Termín</span>
+          <div className={styles.filterChips}>
+            <button type="button" className={`${styles.filterChip} ${filters.schedule.includes('hasTerm') ? styles.active : ''}`} onClick={() => toggleScheduleFilter('hasTerm')}>Má termín</button>
+            <button type="button" className={`${styles.filterChip} ${filters.schedule.includes('noTerm') ? styles.active : ''}`} onClick={() => toggleScheduleFilter('noTerm')}>Nemá termín</button>
+          </div>
+        </div>
+
+        <div className={styles.filterGroup}>
+          <span className={styles.filterGroupLabel}>Trasa</span>
+          <div className={styles.filterChips}>
+            <button type="button" className={`${styles.filterChip} ${filters.route.includes('inRoute') ? styles.active : ''}`} onClick={() => toggleRouteFilter('inRoute')}>V trase</button>
+            <button type="button" className={`${styles.filterChip} ${filters.route.includes('notInRoute') ? styles.active : ''}`} onClick={() => toggleRouteFilter('notInRoute')}>Není v trase</button>
+          </div>
+        </div>
+
+        <div className={styles.filterGroup}>
+          <span className={styles.filterGroupLabel}>Problémy</span>
+          <div className={styles.filterChips}>
+            <button type="button" className={`${styles.filterChip} ${filters.problems.includes('missingPhone') ? styles.active : ''}`} onClick={() => toggleProblemFilter('missingPhone')}>Chybí telefon</button>
+            <button type="button" className={`${styles.filterChip} ${filters.problems.includes('addressIssue') ? styles.active : ''}`} onClick={() => toggleProblemFilter('addressIssue')}>Problém s adresou</button>
+          </div>
+        </div>
       </div>
-      
-      {/* Problems segment at top when viewing problems */}
-      {segment === 'problems' && problemCandidates.length > 0 && (
-        <ProblemsSegment
-          candidates={problemCandidates}
-          isCollapsed={isProblemsCollapsed}
-          onToggleCollapse={() => setIsProblemsCollapsed(!isProblemsCollapsed)}
-          onFixAddress={handleFixAddress}
-          onViewCustomer={handleCandidateSelect}
-        />
-      )}
-      
+
       {/* Multi-crew tip */}
       {isRouteAware && crewComparisons.length > 0 && (
         <MultiCrewTip
@@ -1500,9 +1601,7 @@ export function PlanningInbox() {
         isRouteAware={isRouteAware}
         onCandidateSelect={handleCandidateSelect}
         isLoading={isLoadingCandidates}
-        emptyMessage={segment === 'problems' 
-          ? 'Žádní problémový kandidáti' 
-          : 'Žádní kandidáti v tomto segmentu'}
+        emptyMessage={'Žádní kandidáti pro vybrané filtry'}
         className={styles.candidateList}
         selectable={true}
         selectedIds={selectedIds}
@@ -1723,6 +1822,25 @@ export function PlanningInbox() {
         saveError={saveError}
         onRetry={retrySave}
       />
+      {breakWarnings.length > 0 && (
+        <div className={styles.breakWarnings}>
+          {breakWarnings.map((warning, index) => (
+            <div key={`${warning}-${index}`} className={styles.breakWarningItem}>
+              ⚠️ {warning}
+            </div>
+          ))}
+        </div>
+      )}
+      <div className={styles.breakRuleRow}>
+        <label className={styles.breakRuleToggle}>
+          <input
+            type="checkbox"
+            checked={enforceDrivingBreakRule}
+            onChange={(e) => setEnforceDrivingBreakRule(e.target.checked)}
+          />
+          <span>Vložit pauzu 45 minut nejpozději po 4,5 hodinách kumulovaného řízení</span>
+        </label>
+      </div>
       
       <div className={styles.content}>
         <ThreePanelLayout

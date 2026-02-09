@@ -497,23 +497,19 @@ pub async fn get_revision_suggestions(
 
 use crate::types::revision::{CallQueueItem, CallQueueRequest, CallQueueResponse};
 
-/// Get the call queue
-pub async fn get_call_queue(
-    pool: &PgPool,
-    user_id: Uuid,
-    request: CallQueueRequest,
-) -> Result<CallQueueResponse> {
-    let today = Utc::now().date_naive();
-    let limit = request.limit.unwrap_or(50) as i64;
-    let offset = request.offset.unwrap_or(0) as i64;
+#[derive(Debug, Clone)]
+struct CallQueueSqlParts {
+    where_clause: String,
+    area_pattern: Option<String>,
+    has_device_type: bool,
+}
 
-    // Dynamic query builder: all user-provided values MUST use $N parameterized
-    // bindings. NEVER interpolate user input into SQL via format!().
+fn build_call_queue_sql_parts(request: &CallQueueRequest) -> CallQueueSqlParts {
     let mut conditions = vec![
         "r.user_id = $1".to_string(),
         "r.status IN ('upcoming', 'scheduled')".to_string(),
-        "r.scheduled_date IS NULL".to_string(),
         "(r.snooze_until IS NULL OR r.snooze_until <= $2)".to_string(),
+        "r.due_date BETWEEN $2 - INTERVAL '30 days' AND $2 + INTERVAL '60 days'".to_string(),
     ];
 
     // Next parameter index (after user_id=$1, today=$2, limit=$3, offset=$4)
@@ -527,7 +523,8 @@ pub async fn get_call_queue(
     }
 
     // Device type filter — parameterized to prevent SQL injection
-    if request.device_type.is_some() {
+    let has_device_type = request.device_type.is_some();
+    if has_device_type {
         param_idx += 1;
         conditions.push(format!("d.device_type::text = ${}", param_idx));
     }
@@ -540,11 +537,28 @@ pub async fn get_call_queue(
             _ => {}
         }
     }
+
     if request.geocoded_only.unwrap_or(false) {
         conditions.push("c.geocode_status = 'success'".to_string());
     }
 
-    let where_clause = conditions.join(" AND ");
+    CallQueueSqlParts {
+        where_clause: conditions.join(" AND "),
+        area_pattern,
+        has_device_type,
+    }
+}
+
+/// Get the call queue
+pub async fn get_call_queue(
+    pool: &PgPool,
+    user_id: Uuid,
+    request: CallQueueRequest,
+) -> Result<CallQueueResponse> {
+    let today = Utc::now().date_naive();
+    let limit = request.limit.unwrap_or(50) as i64;
+    let offset = request.offset.unwrap_or(0) as i64;
+    let sql_parts = build_call_queue_sql_parts(&request);
 
     let query = format!(
         r#"
@@ -573,16 +587,17 @@ pub async fn get_call_queue(
         ORDER BY CASE WHEN r.due_date < $2 THEN 0 ELSE 1 END, r.due_date ASC
         LIMIT $3 OFFSET $4
         "#,
-        where_clause
+        sql_parts.where_clause
     );
 
     let mut query_builder = sqlx::query_as::<_, CallQueueItem>(&query)
         .bind(user_id).bind(today).bind(limit).bind(offset);
 
-    if let Some(ref pattern) = area_pattern {
+    if let Some(ref pattern) = sql_parts.area_pattern {
         query_builder = query_builder.bind(pattern);
     }
-    if let Some(ref dt) = request.device_type {
+    if sql_parts.has_device_type {
+        let dt = request.device_type.as_deref().unwrap_or_default();
         query_builder = query_builder.bind(dt);
     }
 
@@ -590,26 +605,27 @@ pub async fn get_call_queue(
 
     let count_query = format!(
         "SELECT COUNT(*) FROM revisions r INNER JOIN customers c ON r.customer_id = c.id INNER JOIN devices d ON r.device_id = d.id WHERE {}",
-        where_clause
+        sql_parts.where_clause
     );
     let mut count_builder = sqlx::query_as::<_, (i64,)>(&count_query)
         .bind(user_id).bind(today);
 
-    if let Some(ref pattern) = area_pattern {
+    if let Some(ref pattern) = sql_parts.area_pattern {
         count_builder = count_builder.bind(pattern);
     }
-    if let Some(ref dt) = request.device_type {
+    if sql_parts.has_device_type {
+        let dt = request.device_type.as_deref().unwrap_or_default();
         count_builder = count_builder.bind(dt);
     }
 
     let total: (i64,) = count_builder.fetch_one(pool).await?;
 
     let overdue_count: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM revisions r WHERE r.user_id = $1 AND r.status IN ('upcoming', 'scheduled') AND r.scheduled_date IS NULL AND (r.snooze_until IS NULL OR r.snooze_until <= $2) AND r.due_date < $2"
+        "SELECT COUNT(*) FROM revisions r WHERE r.user_id = $1 AND r.status IN ('upcoming', 'scheduled') AND (r.snooze_until IS NULL OR r.snooze_until <= $2) AND r.due_date < $2"
     ).bind(user_id).bind(today).fetch_one(pool).await?;
 
     let due_soon_count: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM revisions r WHERE r.user_id = $1 AND r.status IN ('upcoming', 'scheduled') AND r.scheduled_date IS NULL AND (r.snooze_until IS NULL OR r.snooze_until <= $2) AND r.due_date BETWEEN $2 AND $2 + INTERVAL '7 days'"
+        "SELECT COUNT(*) FROM revisions r WHERE r.user_id = $1 AND r.status IN ('upcoming', 'scheduled') AND (r.snooze_until IS NULL OR r.snooze_until <= $2) AND r.due_date BETWEEN $2 AND $2 + INTERVAL '7 days'"
     ).bind(user_id).bind(today).fetch_one(pool).await?;
 
     Ok(CallQueueResponse {
@@ -732,5 +748,48 @@ pub async fn get_scheduled_time_window(
     match row {
         Some((Some(start), Some(end))) => Ok(Some((start, end))),
         _ => Ok(None),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_call_queue_sql_parts;
+    use crate::types::revision::CallQueueRequest;
+
+    #[test]
+    fn call_queue_sql_includes_scheduled_candidates() {
+        let parts = build_call_queue_sql_parts(&CallQueueRequest::default());
+        assert!(!parts.where_clause.contains("r.scheduled_date IS NULL"));
+    }
+
+    #[test]
+    fn call_queue_sql_keeps_due_date_window_guard() {
+        let parts = build_call_queue_sql_parts(&CallQueueRequest::default());
+        assert!(parts.where_clause.contains("r.due_date BETWEEN $2 - INTERVAL '30 days' AND $2 + INTERVAL '60 days'"));
+    }
+
+    #[test]
+    fn call_queue_sql_binds_area_and_device_type_as_parameters() {
+        let req = CallQueueRequest {
+            area: Some("120".to_string()),
+            device_type: Some("powder".to_string()),
+            ..Default::default()
+        };
+        let parts = build_call_queue_sql_parts(&req);
+
+        assert!(parts.where_clause.contains("c.postal_code LIKE $5"));
+        assert!(parts.where_clause.contains("d.device_type::text = $6"));
+        assert_eq!(parts.area_pattern.as_deref(), Some("120%"));
+        assert!(parts.has_device_type);
+    }
+
+    #[test]
+    fn call_queue_sql_respects_geocoded_only_flag() {
+        let req = CallQueueRequest {
+            geocoded_only: Some(true),
+            ..Default::default()
+        };
+        let parts = build_call_queue_sql_parts(&req);
+        assert!(parts.where_clause.contains("c.geocode_status = 'success'"));
     }
 }
