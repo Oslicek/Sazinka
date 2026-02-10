@@ -8,9 +8,16 @@
 
 .header {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.headerMain {
+  display: flex;
   align-items: baseline;
   gap: 0.75rem;
-  margin-bottom: 1rem;
 }
 
 .title {
@@ -23,6 +30,21 @@
 .count {
   font-size: 0.875rem;
   color: var(--color-text-secondary);
+}
+
+.quickCreateBtn {
+  border: 1px solid var(--color-primary);
+  background: var(--color-primary);
+  color: white;
+  border-radius: var(--radius-md);
+  padding: 0.45rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.quickCreateBtn:hover {
+  filter: brightness(0.95);
 }
 
 /* Error */
@@ -107,9 +129,7 @@
 .tableWrapper {
   flex: 1;
   overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+  display: block;
 }
 
 /* Date groups */
@@ -118,6 +138,11 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   overflow: hidden;
+  margin-bottom: 1rem;
+}
+
+.dateGroup:last-child {
+  margin-bottom: 0;
 }
 
 .dateGroupHeader {
@@ -207,6 +232,7 @@
 .thCrew { width: 100px; }
 .thStatus { width: 120px; }
 .thResult { width: 90px; }
+.thActions { width: 110px; }
 
 .tdTime {
   white-space: nowrap;
@@ -240,6 +266,29 @@
 }
 
 .tdResult {
+  color: var(--color-text-secondary);
+}
+
+.tdActions {
+  text-align: right;
+}
+
+.completeBtn {
+  border: 1px solid #16a34a;
+  background: #dcfce7;
+  color: #166534;
+  border-radius: var(--radius-sm);
+  padding: 0.275rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.completeBtn:hover {
+  background: #bbf7d0;
+}
+
+.actionPlaceholder {
   color: var(--color-text-secondary);
 }
 
@@ -279,16 +328,116 @@
   color: #7c3aed;
 }
 
+/* Completion dialog */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+  padding: 16px;
+}
+
+.dialog {
+  width: min(560px, 100%);
+  background: white;
+  border-radius: 14px;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.25);
+  padding: 16px;
+}
+
+.dialogTitle {
+  margin: 0 0 4px 0;
+  font-size: 1.05rem;
+}
+
+.dialogSubtitle {
+  margin: 0 0 10px 0;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.dialogForm {
+  display: grid;
+  gap: 10px;
+}
+
+.dialogField {
+  display: grid;
+  gap: 6px;
+}
+
+.dialogField span {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.dialogField input,
+.dialogField select,
+.dialogField textarea {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.45rem 0.55rem;
+  font-size: 0.875rem;
+  font-family: inherit;
+}
+
+.dialogCheck {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.dialogCancelBtn,
+.dialogSubmitBtn {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  padding: 0.45rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.dialogCancelBtn {
+  background: white;
+  color: var(--color-text);
+}
+
+.dialogSubmitBtn {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+  color: white;
+}
+
 /* Responsive */
 @media (max-width: 900px) {
   .page {
     padding: 0.75rem;
   }
 
+  .header {
+    flex-wrap: wrap;
+  }
+
+  .headerMain {
+    width: 100%;
+  }
+
   .thAddress,
   .tdAddress,
   .thResult,
-  .tdResult {
+  .tdResult,
+  .thActions,
+  .tdActions {
     display: none;
   }
 }
@@ -299,5 +448,18 @@
   .thType,
   .tdType {
     display: none;
+  }
+
+  .quickCreateBtn {
+    width: 100%;
+  }
+
+  .dialogActions {
+    justify-content: stretch;
+  }
+
+  .dialogCancelBtn,
+  .dialogSubmitBtn {
+    flex: 1;
   }
 }

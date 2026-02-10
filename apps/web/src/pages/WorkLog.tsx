@@ -12,8 +12,9 @@ import * as settingsService from '../services/settingsService';
 import * as visitService from '../services/visitService';
 import { listCrews, type Crew } from '../services/crewService';
 import type { Depot } from '@shared/settings';
-import type { Visit } from '@shared/visit';
+import type { Visit, VisitResult } from '@shared/visit';
 import { PlannerFilters } from '../components/shared/PlannerFilters';
+import { QuickVisitDialog } from '../components/worklog';
 import styles from './WorkLog.module.css';
 
 interface WorkLogSearchParams {
@@ -47,6 +48,13 @@ export function WorkLog() {
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
   const [isLoadingVisits, setIsLoadingVisits] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isQuickVisitDialogOpen, setIsQuickVisitDialogOpen] = useState(false);
+  const [visitToComplete, setVisitToComplete] = useState<Visit | null>(null);
+  const [completeResult, setCompleteResult] = useState<VisitResult>('successful');
+  const [completeNotes, setCompleteNotes] = useState('');
+  const [requiresFollowUp, setRequiresFollowUp] = useState(false);
+  const [followUpReason, setFollowUpReason] = useState('');
+  const [isCompleting, setIsCompleting] = useState(false);
 
   // ─── Load settings ──────────────────────────────────────────────
 
@@ -85,30 +93,30 @@ export function WorkLog() {
 
   // ─── Load visits ────────────────────────────────────────────────
 
-  useEffect(() => {
+  const refreshVisits = useCallback(async () => {
     if (!isConnected || isLoadingSettings) return;
+    try {
+      setIsLoadingVisits(true);
+      setError(null);
 
-    async function loadVisits() {
-      try {
-        setIsLoadingVisits(true);
-        setError(null);
+      const response = await visitService.listVisits({
+        dateFrom,
+        dateTo: isDateRange ? dateTo : dateFrom,
+        limit: 500,
+      });
 
-        const response = await visitService.listVisits({
-          dateFrom,
-          dateTo: isDateRange ? dateTo : dateFrom,
-          limit: 500,
-        });
-
-        setVisits(response.visits);
-      } catch (err) {
-        console.error('Failed to load visits:', err);
-        setError('Nepodařilo se načíst záznamy práce');
-      } finally {
-        setIsLoadingVisits(false);
-      }
+      setVisits(response.visits);
+    } catch (err) {
+      console.error('Failed to load visits:', err);
+      setError('Nepodařilo se načíst záznamy práce');
+    } finally {
+      setIsLoadingVisits(false);
     }
-    loadVisits();
   }, [isConnected, isLoadingSettings, dateFrom, dateTo, isDateRange]);
+
+  useEffect(() => {
+    void refreshVisits();
+  }, [refreshVisits]);
 
   // ─── Filter visits by crew and depot (client-side) ──────────────
 
@@ -214,6 +222,43 @@ export function WorkLog() {
     }
   };
 
+  const canQuickComplete = (visit: Visit) => visit.status === 'planned' || visit.status === 'in_progress';
+
+  const openCompleteDialog = (visit: Visit) => {
+    setVisitToComplete(visit);
+    setCompleteResult('successful');
+    setCompleteNotes('');
+    setRequiresFollowUp(false);
+    setFollowUpReason('');
+  };
+
+  const closeCompleteDialog = () => {
+    if (isCompleting) return;
+    setVisitToComplete(null);
+  };
+
+  const handleCompleteVisit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!visitToComplete) return;
+    try {
+      setIsCompleting(true);
+      await visitService.completeVisit({
+        id: visitToComplete.id,
+        result: completeResult,
+        resultNotes: completeNotes.trim() || undefined,
+        requiresFollowUp,
+        followUpReason: requiresFollowUp ? followUpReason.trim() || undefined : undefined,
+      });
+      setVisitToComplete(null);
+      await refreshVisits();
+    } catch (err) {
+      console.error('Failed to complete visit:', err);
+      setError(err instanceof Error ? err.message : 'Nepodařilo se dokončit návštěvu');
+    } finally {
+      setIsCompleting(false);
+    }
+  };
+
   // ─── Group visits by date ───────────────────────────────────────
 
   const groupedVisits = useMemo(() => {
@@ -244,10 +289,19 @@ export function WorkLog() {
   return (
     <div className={styles.page}>
       <div className={styles.header}>
-        <h1 className={styles.title}>Záznam práce</h1>
-        <span className={styles.count}>
-          {filteredVisits.length} {filteredVisits.length === 1 ? 'záznam' : filteredVisits.length >= 2 && filteredVisits.length <= 4 ? 'záznamy' : 'záznamů'}
-        </span>
+        <div className={styles.headerMain}>
+          <h1 className={styles.title}>Záznam práce</h1>
+          <span className={styles.count}>
+            {filteredVisits.length} {filteredVisits.length === 1 ? 'záznam' : filteredVisits.length >= 2 && filteredVisits.length <= 4 ? 'záznamy' : 'záznamů'}
+          </span>
+        </div>
+        <button
+          type="button"
+          className={styles.quickCreateBtn}
+          onClick={() => setIsQuickVisitDialogOpen(true)}
+        >
+          + Rychlý záznam
+        </button>
       </div>
 
       <PlannerFilters
@@ -306,6 +360,7 @@ export function WorkLog() {
                     <th className={styles.thCrew}>Posádka</th>
                     <th className={styles.thStatus}>Stav</th>
                     <th className={styles.thResult}>Výsledek</th>
+                    <th className={styles.thActions}>Akce</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -377,12 +432,104 @@ export function WorkLog() {
                           {visit.result ? visitService.getVisitResultLabel(visit.result) : '–'}
                         </Link>
                       </td>
+                      <td className={styles.tdActions}>
+                        {canQuickComplete(visit) ? (
+                          <button
+                            type="button"
+                            className={styles.completeBtn}
+                            onClick={() => openCompleteDialog(visit)}
+                          >
+                            Dokončit
+                          </button>
+                        ) : (
+                          <span className={styles.actionPlaceholder}>–</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           ))}
+        </div>
+      )}
+
+      <QuickVisitDialog
+        open={isQuickVisitDialogOpen}
+        onClose={() => setIsQuickVisitDialogOpen(false)}
+        onCreated={() => {
+          setIsQuickVisitDialogOpen(false);
+          void refreshVisits();
+        }}
+      />
+
+      {visitToComplete && (
+        <div className={styles.overlay} onClick={closeCompleteDialog}>
+          <div className={styles.dialog} onClick={(e) => e.stopPropagation()}>
+            <h3 className={styles.dialogTitle}>Dokončit návštěvu</h3>
+            <p className={styles.dialogSubtitle}>
+              {visitToComplete.customerName || 'Zákazník'} ({formatDate(visitToComplete.scheduledDate)})
+            </p>
+            <form className={styles.dialogForm} onSubmit={handleCompleteVisit}>
+              <label className={styles.dialogField}>
+                <span>Výsledek</span>
+                <select
+                  value={completeResult}
+                  onChange={(e) => setCompleteResult(e.target.value as VisitResult)}
+                  disabled={isCompleting}
+                >
+                  <option value="successful">{visitService.getVisitResultLabel('successful')}</option>
+                  <option value="partial">{visitService.getVisitResultLabel('partial')}</option>
+                  <option value="failed">{visitService.getVisitResultLabel('failed')}</option>
+                  <option value="customer_absent">{visitService.getVisitResultLabel('customer_absent')}</option>
+                  <option value="rescheduled">{visitService.getVisitResultLabel('rescheduled')}</option>
+                </select>
+              </label>
+
+              <label className={styles.dialogField}>
+                <span>Poznámka</span>
+                <textarea
+                  rows={3}
+                  value={completeNotes}
+                  onChange={(e) => setCompleteNotes(e.target.value)}
+                  placeholder="Krátké shrnutí provedené práce"
+                  disabled={isCompleting}
+                />
+              </label>
+
+              <label className={styles.dialogCheck}>
+                <input
+                  type="checkbox"
+                  checked={requiresFollowUp}
+                  onChange={(e) => setRequiresFollowUp(e.target.checked)}
+                  disabled={isCompleting}
+                />
+                <span>Vyžaduje navazující krok</span>
+              </label>
+
+              {requiresFollowUp && (
+                <label className={styles.dialogField}>
+                  <span>Důvod navazujícího kroku</span>
+                  <input
+                    type="text"
+                    value={followUpReason}
+                    onChange={(e) => setFollowUpReason(e.target.value)}
+                    placeholder="Např. čekáme na materiál"
+                    disabled={isCompleting}
+                  />
+                </label>
+              )}
+
+              <div className={styles.dialogActions}>
+                <button type="button" className={styles.dialogCancelBtn} onClick={closeCompleteDialog} disabled={isCompleting}>
+                  Zrušit
+                </button>
+                <button type="submit" className={styles.dialogSubmitBtn} disabled={isCompleting}>
+                  {isCompleting ? 'Ukládám...' : 'Potvrdit dokončení'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

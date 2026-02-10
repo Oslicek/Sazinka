@@ -1683,6 +1683,43 @@ Kompletní přepis Planner stránky z "Plán dne" (DnD, queue preview, inbox dra
 
 ---
 
+## Phase 10: Záznam práce (v2+) - Backlog
+
+> **Status:** Planned backlog (post-v1)
+> **Goal:** Rozšířit stránku `Záznam práce` z rychlého denního logu na plnohodnotný podklad pro vykazování a fakturaci, bez zpomalení terénního flow.
+
+### UX + Filtrace
+
+- Pokročilé filtry (`stav`, `typ návštěvy`, fulltext zákazník/adresa/poznámka)
+- Alternativní pohledy: kalendář/timeline, agregace podle zákazníka
+- Uložitelné pohledy a rychlé přepínání "Dnes / Tento týden / Vše otevřené"
+
+### Záznam práce + Produktivita
+
+- Šablony textů "Co se dělalo" a doporučené předvyplnění podle poslední návštěvy
+- Hromadné akce (dokončit, změna stavu, přiřazení posádky)
+- Připomínky na konci dne pro návštěvy bez záznamu
+
+### Mobilní terénní režim
+
+- Offline-first zápis s frontou na synchronizaci po připojení
+- Mobilní quick actions (swipe dokončit/duplikovat) a diktování
+- Lepší práce s fotkami v terénu (Před/Po/Detail)
+
+### Reporting + Export
+
+- Souhrny práce za období (čas, počet zásahů, úspěšnost)
+- Export záznamů práce (CSV/XLSX/PDF) pro zákazníka, posádku a depo
+- Přímé napojení na podklady pro fakturaci (čas + materiál + doprava)
+
+### Rozšíření doménového modelu (po V1)
+
+- Materiálové položky na návštěvu (`název`, `množství`, `jednotka`, později cena/DPH)
+- Strukturované časové vykazování (`start/stop`, ruční délka, audit změn)
+- Potvrzení zákazníka/podpis a sdílená rekapitulace po dokončení
+
+---
+
 ## Out of Scope for v1.0
 
 Explicitly excluded:

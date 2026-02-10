@@ -23,6 +23,7 @@
 > - ✅ **InsertionPreview** — vizualizace vložení kandidáta do trasy na mapě (Inbox only)
 > - ✅ **Export+ asynchronně** — export joby běží na workeru a v `Úlohy` lze dokončený export stáhnout přes `Stáhnout export`
 > - ✅ **Název export ZIP podle timezone uživatele** — `export-YYYYMMDD-HHMMSS-XX.zip` (čas ve jméně respektuje timezone uživatele, který export spustil)
+> - ✅ **Záznam práce V1** (`/worklog`) — rychlý záznam návštěvy, rychlé dokončení plánované/probíhající návštěvy, zachované prokliky na den v kalendáři / návštěvu / zákazníka, včetně mobilně-responsivního layoutu
 > 
 > **Změny v navigaci:**
 > - `/planner` → "Plán dne" (sloučeno Plánování + Můj den)
