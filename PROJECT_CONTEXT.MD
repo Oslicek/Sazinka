@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-02-10 (v0.18.5 - VRP point time window mapping + RouteDetailTimeline rendering fix)
+> **Last Updated:** 2026-02-10 (v0.18.6 - VRP break restoration: activity-level timing + jobs handler fix)
 
 ## Overview
 
@@ -2001,6 +2001,7 @@ UI: "Tip: Posádka 2 (+2 min)" - ne spam pro malé rozdíly
 - [x] ~~Unified route components (Inbox + Planner)~~ (implemented v0.18.0)
 - [x] ~~VRP solver timeout and robustness~~ (implemented v0.18.0)
 - [x] ~~VRP point time window mapping (arrival at slot start, service = slot length)~~ (implemented v0.18.5)
+- [x] ~~VRP automatic break placement (activity-level timing + jobs handler)~~ (implemented v0.18.6)
 - [ ] Email notifications with Resend
 - [ ] Mobile-responsive design
 - [ ] Offline support (Service Worker)

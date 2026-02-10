@@ -446,6 +446,24 @@ impl JobProcessor {
                 if matrix_index > 0 {
                     previous_matrix_index = matrix_index;
                 }
+            } else if stop.customer_id.is_nil() {
+                // Break stop from VRP solver
+                planned_stops.push(PlannedRouteStop {
+                    customer_id: Uuid::nil(),
+                    customer_name: "Pauza".to_string(),
+                    address: "Pauza".to_string(),
+                    coordinates: request.start_location,
+                    order: stop.order as i32,
+                    eta: stop.arrival_time,
+                    etd: stop.departure_time,
+                    service_duration_minutes: ((stop.departure_time - stop.arrival_time).num_minutes().max(0)) as i32,
+                    time_window: None,
+                    stop_type: Some("break".to_string()),
+                    break_duration_minutes: Some(((stop.departure_time - stop.arrival_time).num_minutes().max(0)) as i32),
+                    break_time_start: Some(stop.arrival_time),
+                    distance_from_previous_km: None,
+                    duration_from_previous_minutes: None,
+                });
             }
         }
         

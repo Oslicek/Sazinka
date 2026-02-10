@@ -1,6 +1,6 @@
 # Project Roadmap - Sazinka v1.0 GA
 
-> **Last Updated:** 2026-02-10 (VRP point time window mapping + RouteDetailTimeline rendering fix)
+> **Last Updated:** 2026-02-10 (VRP automatic break restoration)
 
 ## Current State Analysis
 
@@ -1713,6 +1713,35 @@ Kompletní přepis Planner stránky z "Plán dne" (DnD, queue preview, inbox dra
 - `worker/src/services/vrp/adapter.rs` — `apply_arrival_buffer` skip for point windows + tests
 - `worker/src/services/vrp/pragmatic.rs` — solver integration test
 - `apps/web/src/components/planner/RouteDetailTimeline.tsx` — falsy zero rendering fix
+
+---
+
+## Post-Phase 9c: VRP Automatic Break Restoration ✅ COMPLETED
+
+> **Status:** Completed (2026-02-10)
+> **Goal:** Obnovit automatické vkládání pauz do optimalizovaných tras
+
+### Bug 1: Break stops dropped in jobs handler ✅
+
+- `worker/src/handlers/jobs.rs` při zpracování řešení od VRP solveru ignoroval break zastávky
+- Loop `for stop in &solution.stops` měl jen `if let Some(customer) = ...` větev
+- Break stop s `customer_id.is_nil()` nebyl matchován a tiše se zahodil
+- **Fix:** Přidána `else if stop.customer_id.is_nil()` větev pro break zastávky (analogie s `route.rs`)
+
+### Bug 2: Break activity timing from stop-level schedule ✅
+
+- `pragmatic.rs::map_solution` používal stop-level `schedule.arrival`/`departure` pro break aktivity
+- Pokud break sdílel stop s jiným jobem, přiřadil se čas příjezdu na lokaci, ne čas samotné pauzy
+- Příklad: vozidlo přijelo v 09:15, break měl být 11:30–12:15, ale v DB se uložilo 09:15
+- **Fix:** Break nyní používá `activity.time` (Interval s `start`/`end`) pro přesné časování
+
+### Test: Solver verifikace ✅
+
+- `solve_pragmatic_with_break_config_includes_break_stop` — ověřuje, že solver vrací break zastávku (nil UUID) a break padne do konfigurovaného okna (11:30–13:00)
+
+**Files modified:**
+- `worker/src/handlers/jobs.rs` — break stop handling
+- `worker/src/services/vrp/pragmatic.rs` — activity-level break timing + test
 
 ---
 

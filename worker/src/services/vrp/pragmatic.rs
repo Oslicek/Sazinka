@@ -116,20 +116,32 @@ fn map_solution(problem: &VrpProblem, solution: &PragmaticSolution) -> RouteSolu
                     continue;
                 }
                 if activity.activity_type == "break" {
-                    let break_duration = (departure_time - arrival_time).num_minutes().max(0) as u32;
+                    // Use activity-level timing when available (a break may share a stop
+                    // with a job, so the stop-level schedule covers the whole visit).
+                    let (break_arrival, break_departure) = activity
+                        .time
+                        .as_ref()
+                        .and_then(|interval| {
+                            let a = parse_time(&interval.start)?;
+                            let d = parse_time(&interval.end)?;
+                            Some((a, d))
+                        })
+                        .unwrap_or((arrival_time, departure_time));
+
+                    let break_duration = (break_departure - break_arrival).num_minutes().max(0) as u32;
                     planned_stops.push(PlannedStop {
                         stop_id: format!("break-{}", planned_stops.len() + 1),
                         customer_id: uuid::Uuid::nil(),
                         customer_name: "Pauza".to_string(),
                         order: (planned_stops.len() + 1) as u32,
-                        arrival_time,
-                        departure_time,
+                        arrival_time: break_arrival,
+                        departure_time: break_departure,
                         waiting_time_minutes: break_duration,
                     });
                     solver_log.push(format!(
                         "break: {}-{}",
-                        arrival_time.format("%H:%M"),
-                        departure_time.format("%H:%M")
+                        break_arrival.format("%H:%M"),
+                        break_departure.format("%H:%M")
                     ));
                     continue;
                 }
@@ -524,6 +536,99 @@ mod tests {
             solution.is_ok(),
             "vrp-pragmatic should accept break config, got error: {:?}",
             solution.err()
+        );
+    }
+
+    /// Verify that the solver actually PLACES a break activity in the solution
+    /// when break_config is provided and a natural gap exists in the schedule.
+    #[test]
+    fn solve_pragmatic_with_break_config_includes_break_stop() {
+        // Build a scenario with a gap between stop 1 and stop 2 that
+        // falls within the break window (11:30–13:00).
+        // Stop 1 scheduled at 08:00-09:00, Stop 2 scheduled at 14:00-15:00.
+        // Travel times are short (10 min), so there's a natural 5h gap.
+        let problem = VrpProblem {
+            depot: Depot { coordinates: Coordinates { lat: 50.0755, lng: 14.4378 } },
+            shift_start: NaiveTime::from_hms_opt(7, 0, 0).unwrap(),
+            shift_end: NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+            stops: vec![
+                VrpStop {
+                    id: "stop-1".to_string(),
+                    customer_id: Uuid::new_v4(),
+                    customer_name: "Morning Customer".to_string(),
+                    coordinates: Coordinates { lat: 49.1951, lng: 16.6068 },
+                    service_duration_minutes: 60,
+                    time_window: Some(super::super::StopTimeWindow {
+                        start: NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
+                        end: NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
+                        is_hard: true,
+                    }),
+                    priority: 1,
+                },
+                VrpStop {
+                    id: "stop-2".to_string(),
+                    customer_id: Uuid::new_v4(),
+                    customer_name: "Afternoon Customer".to_string(),
+                    coordinates: Coordinates { lat: 49.8209, lng: 18.2625 },
+                    service_duration_minutes: 60,
+                    time_window: Some(super::super::StopTimeWindow {
+                        start: NaiveTime::from_hms_opt(14, 0, 0).unwrap(),
+                        end: NaiveTime::from_hms_opt(14, 0, 0).unwrap(),
+                        is_hard: true,
+                    }),
+                    priority: 1,
+                },
+            ],
+            break_config: Some(BreakConfig {
+                earliest_time: NaiveTime::from_hms_opt(11, 30, 0).unwrap(),
+                latest_time: NaiveTime::from_hms_opt(13, 0, 0).unwrap(),
+                duration_minutes: 45,
+            }),
+        };
+
+        let matrices = DistanceTimeMatrices {
+            distances: vec![
+                vec![0, 10000, 20000],
+                vec![10000, 0, 15000],
+                vec![20000, 15000, 0],
+            ],
+            durations: vec![
+                vec![0, 600, 1200],
+                vec![600, 0, 900],
+                vec![1200, 900, 0],
+            ],
+            size: 3,
+        };
+
+        let solution = solve_pragmatic(
+            &problem,
+            &matrices,
+            NaiveDate::from_ymd_opt(2026, 1, 26).unwrap(),
+            &SolverConfig::instant(),
+        ).expect("solver should succeed with break config");
+
+        // Both customer stops should be assigned
+        let customer_stops: Vec<_> = solution.stops.iter().filter(|s| !s.customer_id.is_nil()).collect();
+        assert_eq!(customer_stops.len(), 2, "both customer stops should be assigned");
+
+        // The solution must include a break stop (Uuid::nil customer_id)
+        let break_stop = solution.stops.iter().find(|s| s.customer_id.is_nil());
+        assert!(
+            break_stop.is_some(),
+            "solver should include a break stop (nil UUID) when break_config is provided. \
+            Total stops: {}, solver log: {:?}",
+            solution.stops.len(),
+            solution.solver_log,
+        );
+
+        // Break should fall within the configured window (11:30-13:00)
+        let brk = break_stop.unwrap();
+        let break_start = NaiveTime::from_hms_opt(11, 30, 0).unwrap();
+        let break_end = NaiveTime::from_hms_opt(13, 0, 0).unwrap();
+        assert!(
+            brk.arrival_time >= break_start && brk.arrival_time <= break_end,
+            "break arrival {:?} should be within window {:?}-{:?}",
+            brk.arrival_time, break_start, break_end,
         );
     }
 
