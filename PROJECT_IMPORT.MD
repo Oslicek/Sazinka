@@ -1617,3 +1617,4 @@ Export je zpracováván asynchronně na workeru přes JetStream, nikoliv synchro
 - Po dokončení:
   - uživatel může stahovat výsledek přímo tlačítkem `Stáhnout export` v historii úloh,
   - a zároveň může dostat browser notifikaci při doběhnutí úlohy.
+- Název výsledného ZIP: `export-YYYYMMDD-HHMMSS-XX.zip` (čas je generován podle timezone uživatele, který export spustil).

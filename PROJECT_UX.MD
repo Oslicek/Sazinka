@@ -2,7 +2,7 @@
 
 > **Status:** MVP kompletní + Phase 9 (Planner redesign) + sjednocení komponent Inbox/Planner dokončeno  
 > **Verze:** 0.7  
-> **Datum:** 2026-02-09
+> **Datum:** 2026-02-10
 > 
 > **Implementováno:**
 > - ✅ Fronta k obvolání (`/queue`) - filtry, statistiky, akce
@@ -22,6 +22,7 @@
 > - ✅ **Bidirectional highlight** — klik na zastávku/segment v timeline ↔ zvýraznění na mapě
 > - ✅ **InsertionPreview** — vizualizace vložení kandidáta do trasy na mapě (Inbox only)
 > - ✅ **Export+ asynchronně** — export joby běží na workeru a v `Úlohy` lze dokončený export stáhnout přes `Stáhnout export`
+> - ✅ **Název export ZIP podle timezone uživatele** — `export-YYYYMMDD-HHMMSS-XX.zip` (čas ve jméně respektuje timezone uživatele, který export spustil)
 > 
 > **Změny v navigaci:**
 > - `/planner` → "Plán dne" (sloučeno Plánování + Můj den)

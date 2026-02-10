@@ -1,6 +1,6 @@
 # Project Roadmap - Sazinka v1.0 GA
 
-> **Last Updated:** 2026-02-09 (Export+ async job flow + Jobs download action verified)
+> **Last Updated:** 2026-02-10 (Export+ filename timezone + format alignment)
 
 ## Current State Analysis
 
@@ -24,6 +24,7 @@
 - Async Export+ processing on worker via JetStream (`SAZINKA_EXPORT_JOBS`) ✅
 - Export status streaming into `Úlohy` (`sazinka.job.export.status.*`) ✅
 - Manual download action in Jobs history (`Stáhnout export`) for completed export jobs ✅
+- Export ZIP filename standardized to `export-YYYYMMDD-HHMMSS-XX.zip` with user timezone applied ✅
 
 ---
 
