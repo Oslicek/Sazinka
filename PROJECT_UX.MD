@@ -1418,6 +1418,7 @@ Když je **OFF**:
 - V headeru detailu je akce pro smazání zákazníka (anonymizace).
 - Po kliknutí se otevře potvrzovací dialog s upozorněním, že akce je nevratná a osobní údaje budou trvale anonymizovány bez možnosti undo.
 - Po potvrzení zákazník zmizí ze seznamů/UI, ale historická navázaná data zůstávají zachována v anonymizované podobě.
+- UX copy explicitně komunikuje, že jde o anonymizaci PII (GDPR-style), ne fyzické odstranění historických vazeb.
 
 ---
 

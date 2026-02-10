@@ -124,6 +124,7 @@ customers
 - Záznam je anonymizován (`is_anonymized = TRUE`, `anonymized_at = NOW()`), PII pole jsou vyčištěna.
 - Čtecí dotazy pro zákazníky filtrují `is_anonymized = FALSE`, takže anonymizovaní zákazníci nejsou vidět v UI.
 - Vazby v dalších tabulkách zůstávají zachované (FK integrita), navazující PII je anonymizována.
+- API kontrakt: `sazinka.customer.delete` vrací `deleted: true` i když jde o soft anonymizaci, nikoliv hard delete.
 
 **Proč `geocode_status` nemůže být boolean:**
 

@@ -125,7 +125,7 @@ sazinka.auth.verify             # Verify JWT token
 # Customers
 sazinka.customer.create         # Create new customer
 sazinka.customer.update         # Update customer
-sazinka.customer.delete         # Delete customer
+sazinka.customer.delete         # Delete (anonymize) customer
 sazinka.customer.get            # Get single customer by ID
 sazinka.customer.list           # List customers (with filters)
 
@@ -1580,6 +1580,14 @@ cargo test
   - Confirmed `customer.delete` returns `deleted: true`
   - Confirmed anonymized customer is hidden from `customer.get` (`NOT_FOUND`)
   - Confirmed linked communication remains historically present but with anonymized PII fields
+
+### Customer Delete Contract (current behavior)
+
+- `sazinka.customer.delete` is implemented as **anonymization**, not physical row removal.
+- The customer record is retained for referential integrity (`routes`, `visits`, `work logs` remain valid).
+- Personal fields on `customers` are scrubbed and `is_anonymized` is set to `TRUE`.
+- Linked PII in `communications`, `visits`, and `visit_work_items` is anonymized transactionally.
+- Read endpoints for customer entities hide anonymized customers (`is_anonymized = FALSE` filter).
 
 ## Recent Changes (v0.16.0)
 
