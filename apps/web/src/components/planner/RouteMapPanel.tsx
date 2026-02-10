@@ -198,14 +198,20 @@ export function RouteMapPanel({
     clearMarkers();
 
     stops.forEach((stop, index) => {
-      const isHighlighted = stop.id === highlightedStopId;
+      const markerKey = stop.customerId ?? stop.id;
+      const isHighlighted = stop.id === highlightedStopId || stop.customerId === highlightedStopId;
       const lat = stop.customerLat;
       const lng = stop.customerLng;
       if (!lat || !lng) return; // Skip stops without coordinates
 
-      const marker = new maplibregl.Marker({
-        color: isHighlighted ? '#f59e0b' : '#3b82f6',
-      })
+      const el = document.createElement('div');
+      el.className = `${styles.stopMarker} ${isHighlighted ? styles.stopMarkerHighlighted : ''}`;
+      const label = document.createElement('span');
+      label.className = styles.markerLabel;
+      label.textContent = String(index + 1);
+      el.appendChild(label);
+
+      const marker = new maplibregl.Marker({ element: el })
         .setLngLat([lng, lat])
         .setPopup(
           new maplibregl.Popup().setHTML(`
@@ -216,20 +222,13 @@ export function RouteMapPanel({
         )
         .addTo(mapRef.current!);
 
-      // Add number label
-      const el = marker.getElement();
-      const label = document.createElement('div');
-      label.className = styles.markerLabel;
-      label.textContent = String(index + 1);
-      el.appendChild(label);
-
       // Click handler
       if (onStopClick) {
         el.style.cursor = 'pointer';
-        el.addEventListener('click', () => onStopClick(stop.id));
+        el.addEventListener('click', () => onStopClick(markerKey));
       }
 
-      markersRef.current.set(stop.id, marker);
+      markersRef.current.set(markerKey, marker);
     });
   }, [stops, highlightedStopId, onStopClick, clearMarkers]);
 

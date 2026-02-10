@@ -81,6 +81,8 @@ mod tests {
                 warnings: vec![],
                 unassigned: vec![],
                 geometry: vec![],
+                return_to_depot_distance_km: None,
+                return_to_depot_duration_minutes: None,
             }
         };
         

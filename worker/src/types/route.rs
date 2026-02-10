@@ -20,6 +20,8 @@ pub struct Route {
     pub total_distance_km: Option<f64>,
     pub total_duration_minutes: Option<i32>,
     pub optimization_score: Option<i32>,
+    pub return_to_depot_distance_km: Option<f64>,
+    pub return_to_depot_duration_minutes: Option<i32>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -140,6 +142,12 @@ pub struct RoutePlanResponse {
     /// Empty if route geometry is not available
     #[serde(default)]
     pub geometry: Vec<[f64; 2]>,
+    /// Return leg distance from last stop back to depot (km)
+    #[serde(default)]
+    pub return_to_depot_distance_km: Option<f64>,
+    /// Return leg duration from last stop back to depot (minutes)
+    #[serde(default)]
+    pub return_to_depot_duration_minutes: Option<i32>,
 }
 
 /// A planned stop in the route
@@ -173,4 +181,10 @@ pub struct PlannedRouteStop {
     /// Break start time (for break stops)
     #[serde(default)]
     pub break_time_start: Option<NaiveTime>,
+    /// Distance from previous location in km (Valhalla matrix based)
+    #[serde(default)]
+    pub distance_from_previous_km: Option<f64>,
+    /// Duration from previous location in minutes (Valhalla matrix based)
+    #[serde(default)]
+    pub duration_from_previous_minutes: Option<i32>,
 }

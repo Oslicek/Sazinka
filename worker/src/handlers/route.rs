@@ -1,6 +1,7 @@
 //! Route planning message handlers
 
 use std::sync::Arc;
+use std::collections::HashMap;
 use anyhow::Result;
 use async_nats::{Client, Subscriber};
 use futures::StreamExt;
@@ -74,6 +75,8 @@ pub async fn handle_plan(
                 warnings: vec![],
                 unassigned: vec![],
                 geometry: vec![],
+                return_to_depot_distance_km: None,
+                return_to_depot_duration_minutes: None,
             });
             let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
             continue;
@@ -116,6 +119,8 @@ pub async fn handle_plan(
                 warnings,
                 unassigned: plan_request.customer_ids.clone(),
                 geometry: vec![],
+                return_to_depot_distance_km: None,
+                return_to_depot_duration_minutes: None,
             });
             let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
             continue;
@@ -239,10 +244,27 @@ pub async fn handle_plan(
         };
 
         // Build response
+        let customer_matrix_index: HashMap<Uuid, usize> = valid_customers
+            .iter()
+            .enumerate()
+            .map(|(idx, c)| (c.id, idx + 1)) // 0 is depot
+            .collect();
         let mut planned_stops: Vec<PlannedRouteStop> = Vec::new();
+        let mut previous_matrix_index: usize = 0;
         for stop in &solution.stops {
             // Find original customer
             if let Some(customer) = valid_customers.iter().find(|c| c.id.to_string() == stop.stop_id) {
+                let matrix_index = customer_matrix_index.get(&customer.id).copied().unwrap_or(0);
+                let leg_distance_km = if matrix_index > 0 {
+                    Some(matrices.distance(previous_matrix_index, matrix_index) as f64 / 1000.0)
+                } else {
+                    None
+                };
+                let leg_duration_min = if matrix_index > 0 {
+                    Some((matrices.duration(previous_matrix_index, matrix_index) as i32 + 30) / 60)
+                } else {
+                    None
+                };
                 planned_stops.push(PlannedRouteStop {
                     customer_id: customer.id,
                     customer_name: customer.name.clone().unwrap_or_default(),
@@ -271,7 +293,12 @@ pub async fn handle_plan(
                     stop_type: Some("customer".to_string()),
                     break_duration_minutes: None,
                     break_time_start: None,
+                    distance_from_previous_km: leg_distance_km,
+                    duration_from_previous_minutes: leg_duration_min,
                 });
+                if matrix_index > 0 {
+                    previous_matrix_index = matrix_index;
+                }
             } else if stop.customer_id.is_nil() {
                 planned_stops.push(PlannedRouteStop {
                     customer_id: Uuid::nil(),
@@ -286,6 +313,8 @@ pub async fn handle_plan(
                     stop_type: Some("break".to_string()),
                     break_duration_minutes: Some(((stop.departure_time - stop.arrival_time).num_minutes().max(0)) as i32),
                     break_time_start: Some(stop.arrival_time),
+                    distance_from_previous_km: None,
+                    duration_from_previous_minutes: None,
                 });
             }
         }
@@ -347,6 +376,17 @@ pub async fn handle_plan(
             vec![]
         };
 
+        let return_to_depot_distance_km = if previous_matrix_index > 0 {
+            Some(matrices.distance(previous_matrix_index, 0) as f64 / 1000.0)
+        } else {
+            None
+        };
+        let return_to_depot_duration_minutes = if previous_matrix_index > 0 {
+            Some((matrices.duration(previous_matrix_index, 0) as i32 + 30) / 60)
+        } else {
+            None
+        };
+
         let response = SuccessResponse::new(request.id, RoutePlanResponse {
             stops: planned_stops,
             total_distance_km: solution.total_distance_meters as f64 / 1000.0,
@@ -358,6 +398,8 @@ pub async fn handle_plan(
             warnings,
             unassigned,
             geometry,
+            return_to_depot_distance_km,
+            return_to_depot_duration_minutes,
         });
 
         info!(
@@ -539,11 +581,17 @@ where
 pub struct SaveRouteRequest {
     pub date: NaiveDate,
     #[serde(default, deserialize_with = "deserialize_optional_uuid")]
+    pub crew_id: Option<Uuid>,
+    #[serde(default, deserialize_with = "deserialize_optional_uuid")]
     pub depot_id: Option<Uuid>,
     pub stops: Vec<SaveRouteStop>,
     pub total_distance_km: f64,
     pub total_duration_minutes: i32,
     pub optimization_score: i32,
+    #[serde(default)]
+    pub return_to_depot_distance_km: Option<f64>,
+    #[serde(default)]
+    pub return_to_depot_duration_minutes: Option<i32>,
 }
 
 /// A stop to save
@@ -557,6 +605,8 @@ pub struct SaveRouteStop {
     pub order: i32,
     pub eta: Option<chrono::NaiveTime>,
     pub etd: Option<chrono::NaiveTime>,
+    pub distance_from_previous_km: Option<f64>,
+    pub duration_from_previous_minutes: Option<i32>,
     #[serde(default)]
     pub stop_type: Option<String>,
     pub break_duration_minutes: Option<i32>,
@@ -668,13 +718,15 @@ pub async fn handle_save(
         match queries::route::upsert_route(
             &pool,
             user_id,
-            None, // crew_id - not specified in save request yet
+            payload.crew_id,
             payload.depot_id, // depot_id from request
             payload.date,
             "draft",
             Some(payload.total_distance_km),
             Some(payload.total_duration_minutes),
             Some(payload.optimization_score),
+            payload.return_to_depot_distance_km,
+            payload.return_to_depot_duration_minutes,
         ).await {
             Ok(route) => {
                 // Delete existing stops
@@ -698,8 +750,8 @@ pub async fn handle_save(
                         stop.order,
                         stop.eta,
                         stop.etd,
-                        None, // distance
-                        None, // duration
+                        stop.distance_from_previous_km,
+                        stop.duration_from_previous_minutes,
                         stop_type,
                         stop.break_duration_minutes,
                         stop.break_time_start,

@@ -28,6 +28,8 @@ export interface SaveRouteStop {
   order: number;
   eta?: string;
   etd?: string;
+  distanceFromPreviousKm?: number;
+  durationFromPreviousMinutes?: number;
   stopType?: 'customer' | 'break';
   breakDurationMinutes?: number;
   breakTimeStart?: string;
@@ -35,11 +37,14 @@ export interface SaveRouteStop {
 
 export interface SaveRouteRequest {
   date: string;
+  crewId?: string | null;
   depotId?: string | null;
   stops: SaveRouteStop[];
   totalDistanceKm: number;
   totalDurationMinutes: number;
   optimizationScore: number;
+  returnToDepotDistanceKm?: number | null;
+  returnToDepotDurationMinutes?: number | null;
 }
 
 export interface SaveRouteResponse {
@@ -59,6 +64,8 @@ export interface SavedRoute {
   totalDistanceKm: number | null;
   totalDurationMinutes: number | null;
   optimizationScore: number | null;
+  returnToDepotDistanceKm: number | null;
+  returnToDepotDurationMinutes: number | null;
   stopsCount?: number;
   createdAt: string;
   updatedAt: string;

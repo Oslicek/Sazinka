@@ -7,6 +7,7 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::collections::HashMap;
 use anyhow::Result;
 use async_nats::Client;
 use async_nats::jetstream::{self, Context as JsContext};
@@ -263,6 +264,8 @@ impl JobProcessor {
                 warnings: vec![],
                 unassigned: vec![],
                 geometry: vec![],
+                return_to_depot_distance_km: None,
+                return_to_depot_duration_minutes: None,
             });
         }
         
@@ -300,6 +303,8 @@ impl JobProcessor {
                 warnings,
                 unassigned: request.customer_ids.clone(),
                 geometry: vec![],
+                return_to_depot_distance_km: None,
+                return_to_depot_duration_minutes: None,
             });
         }
         
@@ -385,9 +390,26 @@ impl JobProcessor {
             message: "Sestavování výsledku...".to_string(),
         }).await?;
         
+        let customer_matrix_index: HashMap<Uuid, usize> = valid_customers
+            .iter()
+            .enumerate()
+            .map(|(idx, c)| (c.id, idx + 1)) // 0 is depot
+            .collect();
         let mut planned_stops: Vec<PlannedRouteStop> = Vec::new();
+        let mut previous_matrix_index: usize = 0;
         for stop in &solution.stops {
             if let Some(customer) = valid_customers.iter().find(|c| c.id.to_string() == stop.stop_id) {
+                let matrix_index = customer_matrix_index.get(&customer.id).copied().unwrap_or(0);
+                let leg_distance_km = if matrix_index > 0 {
+                    Some(matrices.distance(previous_matrix_index, matrix_index) as f64 / 1000.0)
+                } else {
+                    None
+                };
+                let leg_duration_min = if matrix_index > 0 {
+                    Some((matrices.duration(previous_matrix_index, matrix_index) as i32 + 30) / 60)
+                } else {
+                    None
+                };
                 planned_stops.push(PlannedRouteStop {
                     customer_id: customer.id,
                     customer_name: customer.name.clone().unwrap_or_default(),
@@ -411,7 +433,12 @@ impl JobProcessor {
                     stop_type: Some("customer".to_string()),
                     break_duration_minutes: None,
                     break_time_start: None,
+                    distance_from_previous_km: leg_distance_km,
+                    duration_from_previous_minutes: leg_duration_min,
                 });
+                if matrix_index > 0 {
+                    previous_matrix_index = matrix_index;
+                }
             }
         }
         
@@ -469,6 +496,17 @@ impl JobProcessor {
             vec![]
         };
         
+        let return_to_depot_distance_km = if previous_matrix_index > 0 {
+            Some(matrices.distance(previous_matrix_index, 0) as f64 / 1000.0)
+        } else {
+            None
+        };
+        let return_to_depot_duration_minutes = if previous_matrix_index > 0 {
+            Some((matrices.duration(previous_matrix_index, 0) as i32 + 30) / 60)
+        } else {
+            None
+        };
+
         Ok(RoutePlanResponse {
             stops: planned_stops,
             total_distance_km: solution.total_distance_meters as f64 / 1000.0,
@@ -480,6 +518,8 @@ impl JobProcessor {
             warnings,
             unassigned,
             geometry,
+            return_to_depot_distance_km,
+            return_to_depot_duration_minutes,
         })
     }
     

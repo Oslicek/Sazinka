@@ -122,6 +122,8 @@ export function PlanningInbox() {
   const [crews, setCrews] = useState<crewService.Crew[]>([]);
   const [depots, setDepots] = useState<Depot[]>([]);
   const [defaultServiceDurationMinutes, setDefaultServiceDurationMinutes] = useState(30);
+  const [defaultWorkingHoursStart, setDefaultWorkingHoursStart] = useState<string | null>(null);
+  const [defaultWorkingHoursEnd, setDefaultWorkingHoursEnd] = useState<string | null>(null);
   const [breakSettings, setBreakSettings] = useState<BreakSettings | null>(null);
   const [enforceDrivingBreakRule, setEnforceDrivingBreakRule] = useState<boolean>(() => {
     const raw = localStorage.getItem('planningInbox.enforceDrivingBreakRule');
@@ -131,6 +133,7 @@ export function PlanningInbox() {
   // Route state
   const [routeStops, setRouteStops] = useState<SavedRouteStop[]>([]);
   const [routeGeometry, setRouteGeometry] = useState<[number, number][]>([]);
+  const [returnToDepotLeg, setReturnToDepotLeg] = useState<{ distanceKm: number | null; durationMinutes: number | null } | null>(null);
   const [routeWarnings, setRouteWarnings] = useState<RouteWarning[]>([]);
   const [breakWarnings, setBreakWarnings] = useState<string[]>([]);
   const [isBreakManuallyAdjusted, setIsBreakManuallyAdjusted] = useState(false);
@@ -206,6 +209,7 @@ export function PlanningInbox() {
       v && v.length >= 8 ? v : undefined;
     await routeService.saveRoute({
       date: context.date,
+      crewId: sanitizeUuid(context.crewId) ?? null,
       depotId: sanitizeUuid(context.depotId) ?? null,
       stops: routeStops.map((s, index) => ({
         customerId: s.stopType === 'customer' ? (s.customerId ?? undefined) : undefined,
@@ -213,6 +217,8 @@ export function PlanningInbox() {
         order: s.stopOrder ?? index + 1,
         eta: s.estimatedArrival || undefined,
         etd: s.estimatedDeparture || undefined,
+        distanceFromPreviousKm: s.distanceFromPreviousKm ?? undefined,
+        durationFromPreviousMinutes: s.durationFromPreviousMinutes ?? undefined,
         stopType: s.stopType,
         breakDurationMinutes: s.stopType === 'break' ? (s.breakDurationMinutes ?? undefined) : undefined,
         breakTimeStart: s.stopType === 'break' ? (s.breakTimeStart ?? undefined) : undefined,
@@ -220,9 +226,11 @@ export function PlanningInbox() {
       totalDistanceKm: metrics?.distanceKm ?? 0,
       totalDurationMinutes: (metrics?.travelTimeMin ?? 0) + (metrics?.serviceTimeMin ?? 0),
       optimizationScore: 0,
+      returnToDepotDistanceKm: returnToDepotLeg?.distanceKm ?? null,
+      returnToDepotDurationMinutes: returnToDepotLeg?.durationMinutes ?? null,
     });
     setHasChanges(false);
-  }, [routeStops, context, metrics]);
+  }, [routeStops, context, metrics, returnToDepotLeg]);
 
   const { isSaving, lastSaved, saveError, retry: retrySave } = useAutoSave({
     saveFn: autoSaveFn,
@@ -266,6 +274,8 @@ export function PlanningInbox() {
         if (settings?.workConstraints?.defaultServiceDurationMinutes) {
           setDefaultServiceDurationMinutes(settings.workConstraints.defaultServiceDurationMinutes);
         }
+        setDefaultWorkingHoursStart(settings?.workConstraints?.workingHoursStart ?? null);
+        setDefaultWorkingHoursEnd(settings?.workConstraints?.workingHoursEnd ?? null);
         setBreakSettings(settings?.breakSettings ?? DEFAULT_BREAK_SETTINGS);
         
         // Build initial context with whatever data we have
@@ -316,6 +326,11 @@ export function PlanningInbox() {
         
         if (response.route && response.stops.length > 0) {
           setRouteStops(response.stops);
+          setReturnToDepotLeg(
+            response.route.returnToDepotDistanceKm != null || response.route.returnToDepotDurationMinutes != null
+              ? { distanceKm: response.route.returnToDepotDistanceKm ?? null, durationMinutes: response.route.returnToDepotDurationMinutes ?? null }
+              : null
+          );
           
           const totalMin = response.route.totalDurationMinutes ?? 0;
           const serviceMin = response.stops.length * 30;
@@ -332,11 +347,13 @@ export function PlanningInbox() {
           });
         } else {
           setRouteStops([]);
+          setReturnToDepotLeg(null);
           setMetrics(null);
         }
       } catch (err) {
         console.error('Failed to load route:', err);
         setRouteStops([]);
+        setReturnToDepotLeg(null);
         setMetrics(null);
       } finally {
         setIsLoadingRoute(false);
@@ -635,6 +652,13 @@ export function PlanningInbox() {
     const depot = depots.find((d) => d.id === context.depotId);
     return depot ? { lat: depot.lat, lng: depot.lng, name: depot.name } : null;
   }, [context?.depotId, depots]);
+
+  const currentCrew = useMemo(
+    () => (context?.crewId ? crews.find((c) => c.id === context.crewId) ?? null : null),
+    [context?.crewId, crews]
+  );
+  const routeStartTime = (currentCrew?.workingHoursStart ?? defaultWorkingHoursStart)?.slice(0, 5) ?? null;
+  const routeEndTime = (currentCrew?.workingHoursEnd ?? defaultWorkingHoursEnd)?.slice(0, 5) ?? null;
 
   // Selected candidate (from candidates list or fallback from route stops)
   const selectedCandidate = useMemo(() => 
@@ -1170,6 +1194,7 @@ export function PlanningInbox() {
         
         return updated;
       });
+      setReturnToDepotLeg(null);
       setSelectedIds(new Set());
       setHasChanges(true);
       incrementRouteVersion();
@@ -1257,6 +1282,7 @@ export function PlanningInbox() {
       
       return updated;
     });
+    setReturnToDepotLeg(null);
     setHasChanges(true);
     incrementRouteVersion();
   }, [candidates, inRouteIds, routeStops.length, breakSettings, context, enforceDrivingBreakRule, incrementRouteVersion]);
@@ -1268,6 +1294,7 @@ export function PlanningInbox() {
       // Renumber
       return filtered.map((s, i) => ({ ...s, stopOrder: i + 1 }));
     });
+    setReturnToDepotLeg(null);
     setHasChanges(true);
     incrementRouteVersion();
   }, [incrementRouteVersion]);
@@ -1275,6 +1302,10 @@ export function PlanningInbox() {
   // Route building: optimize route via VRP solver
   const handleOptimizeRoute = useCallback(async () => {
     if (routeStops.length < 2 || !context) return;
+    const customerIds = routeStops
+      .filter((s) => s.stopType === 'customer' && !!s.customerId)
+      .map((s) => s.customerId as string);
+    if (customerIds.length < 2) return;
 
     const depot = depots.find((d) => d.id === context.depotId);
     
@@ -1287,7 +1318,6 @@ export function PlanningInbox() {
     setRouteJobProgress('Odesílám do optimalizátoru...');
 
     try {
-      const customerIds = routeStops.map((s) => s.customerId);
       const jobResponse = await routeService.submitRoutePlanJob({
         customerIds,
         date: context.date,
@@ -1324,8 +1354,8 @@ export function PlanningInbox() {
                     stopOrder: i + 1,
                     estimatedArrival: s.eta,
                     estimatedDeparture: s.etd,
-                    distanceFromPreviousKm: null, // Will be calculated
-                    durationFromPreviousMinutes: null, // Will be calculated
+                    distanceFromPreviousKm: s.distanceFromPreviousKm ?? null,
+                    durationFromPreviousMinutes: s.durationFromPreviousMinutes ?? null,
                     status: original?.status ?? 'draft',
                     stopType: isBreak ? 'break' : 'customer',
                     customerId: isBreak ? null : s.customerId,
@@ -1344,6 +1374,10 @@ export function PlanningInbox() {
                   };
                 });
                 setRouteStops(optimizedStops);
+                setReturnToDepotLeg({
+                  distanceKm: result.returnToDepotDistanceKm ?? null,
+                  durationMinutes: result.returnToDepotDurationMinutes ?? null,
+                });
 
                 // Store solver warnings (LATE_ARRIVAL, INSUFFICIENT_BUFFER, etc.)
                 setRouteWarnings(result.warnings ?? []);
@@ -1440,6 +1474,7 @@ export function PlanningInbox() {
   // Route building: clear all stops
   const handleClearRoute = useCallback(() => {
     setRouteStops([]);
+    setReturnToDepotLeg(null);
     setBreakWarnings([]);
     setRouteGeometry([]);
     setMetrics(null);
@@ -1932,6 +1967,10 @@ export function PlanningInbox() {
             isSaving={isSaving}
             metrics={metrics}
             warnings={routeWarnings}
+            routeStartTime={routeStartTime}
+            routeEndTime={routeEndTime}
+            returnToDepotDistanceKm={returnToDepotLeg?.distanceKm ?? null}
+            returnToDepotDurationMinutes={returnToDepotLeg?.durationMinutes ?? null}
           />
         </div>
       </div>

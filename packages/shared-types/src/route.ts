@@ -115,6 +115,10 @@ export interface RoutePlanResponse {
   unassigned: string[];
   /** Route geometry as GeoJSON coordinates [[lng, lat], ...] */
   geometry?: [number, number][];
+  /** Return leg distance from last stop back to depot (km) */
+  returnToDepotDistanceKm?: number;
+  /** Return leg duration from last stop back to depot (minutes) */
+  returnToDepotDurationMinutes?: number;
 }
 
 export interface PlannedRouteStop {
@@ -142,4 +146,8 @@ export interface PlannedRouteStop {
   breakDurationMinutes?: number;
   /** Break start time (for break stops) */
   breakTimeStart?: string;
+  /** Distance from previous location in km (Valhalla matrix based) */
+  distanceFromPreviousKm?: number;
+  /** Duration from previous location in minutes (Valhalla matrix based) */
+  durationFromPreviousMinutes?: number;
 }

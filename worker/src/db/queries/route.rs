@@ -38,7 +38,9 @@ pub async fn get_route_for_date(
         SELECT
             id, user_id, crew_id, depot_id, date, status::text,
             total_distance_km, total_duration_minutes,
-            optimization_score, created_at, updated_at
+            optimization_score,
+            return_to_depot_distance_km, return_to_depot_duration_minutes,
+            created_at, updated_at
         FROM routes
         WHERE user_id = $1 AND date = $2
         "#
@@ -62,7 +64,9 @@ pub async fn get_route_by_id(
         SELECT
             id, user_id, crew_id, depot_id, date, status::text,
             total_distance_km, total_duration_minutes,
-            optimization_score, created_at, updated_at
+            optimization_score,
+            return_to_depot_distance_km, return_to_depot_duration_minutes,
+            created_at, updated_at
         FROM routes
         WHERE id = $1 AND user_id = $2
         "#
@@ -89,6 +93,8 @@ pub struct RouteWithCrewInfo {
     pub total_distance_km: Option<f64>,
     pub total_duration_minutes: Option<i32>,
     pub optimization_score: Option<i32>,
+    pub return_to_depot_distance_km: Option<f64>,
+    pub return_to_depot_duration_minutes: Option<i32>,
     pub stops_count: Option<i64>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -113,6 +119,8 @@ pub async fn list_routes_for_date(
             r.total_distance_km,
             r.total_duration_minutes,
             r.optimization_score,
+            r.return_to_depot_distance_km,
+            r.return_to_depot_duration_minutes,
             COUNT(rs.id) as stops_count,
             r.created_at,
             r.updated_at
@@ -143,17 +151,19 @@ pub async fn upsert_route(
     total_distance_km: Option<f64>,
     total_duration_minutes: Option<i32>,
     optimization_score: Option<i32>,
+    return_to_depot_distance_km: Option<f64>,
+    return_to_depot_duration_minutes: Option<i32>,
 ) -> Result<Route> {
     // Two-step upsert to handle NULL crew_id (NULL != NULL in SQL unique index)
     let existing = if let Some(cid) = crew_id {
         sqlx::query_as::<_, Route>(
-            "SELECT id, user_id, crew_id, depot_id, date, status::text, total_distance_km, total_duration_minutes, optimization_score, created_at, updated_at FROM routes WHERE user_id = $1 AND date = $2 AND crew_id = $3"
+            "SELECT id, user_id, crew_id, depot_id, date, status::text, total_distance_km, total_duration_minutes, optimization_score, return_to_depot_distance_km, return_to_depot_duration_minutes, created_at, updated_at FROM routes WHERE user_id = $1 AND date = $2 AND crew_id = $3"
         )
         .bind(user_id).bind(date).bind(cid)
         .fetch_optional(pool).await?
     } else {
         sqlx::query_as::<_, Route>(
-            "SELECT id, user_id, crew_id, depot_id, date, status::text, total_distance_km, total_duration_minutes, optimization_score, created_at, updated_at FROM routes WHERE user_id = $1 AND date = $2 AND crew_id IS NULL"
+            "SELECT id, user_id, crew_id, depot_id, date, status::text, total_distance_km, total_duration_minutes, optimization_score, return_to_depot_distance_km, return_to_depot_duration_minutes, created_at, updated_at FROM routes WHERE user_id = $1 AND date = $2 AND crew_id IS NULL"
         )
         .bind(user_id).bind(date)
         .fetch_optional(pool).await?
@@ -168,12 +178,16 @@ pub async fn upsert_route(
                 total_distance_km = $3,
                 total_duration_minutes = $4,
                 optimization_score = $5,
+                return_to_depot_distance_km = $6,
+                return_to_depot_duration_minutes = $7,
                 updated_at = NOW()
             WHERE id = $1
             RETURNING
                 id, user_id, crew_id, depot_id, date, status::text,
                 total_distance_km, total_duration_minutes,
-                optimization_score, created_at, updated_at
+                optimization_score,
+                return_to_depot_distance_km, return_to_depot_duration_minutes,
+                created_at, updated_at
             "#
         )
         .bind(existing_route.id)
@@ -181,6 +195,8 @@ pub async fn upsert_route(
         .bind(total_distance_km)
         .bind(total_duration_minutes)
         .bind(optimization_score)
+        .bind(return_to_depot_distance_km)
+        .bind(return_to_depot_duration_minutes)
         .fetch_one(pool).await?
     } else {
         // Insert new route
@@ -189,13 +205,17 @@ pub async fn upsert_route(
             INSERT INTO routes (
                 id, user_id, crew_id, depot_id, date, status,
                 total_distance_km, total_duration_minutes,
-                optimization_score, created_at, updated_at
+                optimization_score,
+                return_to_depot_distance_km, return_to_depot_duration_minutes,
+                created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6::route_status, $7, $8, $9, NOW(), NOW())
+            VALUES ($1, $2, $3, $4, $5, $6::route_status, $7, $8, $9, $10, $11, NOW(), NOW())
             RETURNING
                 id, user_id, crew_id, depot_id, date, status::text,
                 total_distance_km, total_duration_minutes,
-                optimization_score, created_at, updated_at
+                optimization_score,
+                return_to_depot_distance_km, return_to_depot_duration_minutes,
+                created_at, updated_at
             "#
         )
         .bind(Uuid::new_v4())
@@ -207,6 +227,8 @@ pub async fn upsert_route(
         .bind(total_distance_km)
         .bind(total_duration_minutes)
         .bind(optimization_score)
+        .bind(return_to_depot_distance_km)
+        .bind(return_to_depot_duration_minutes)
         .fetch_one(pool).await?
     };
 
@@ -362,6 +384,8 @@ pub async fn list_routes(
             r.total_distance_km,
             r.total_duration_minutes,
             r.optimization_score,
+            r.return_to_depot_distance_km,
+            r.return_to_depot_duration_minutes,
             COUNT(rs.id) as stops_count,
             r.created_at,
             r.updated_at

@@ -104,6 +104,8 @@ export function Planner() {
   const [crews, setCrews] = useState<Crew[]>([]);
   const [depots, setDepots] = useState<Depot[]>([]);
   const [breakSettings, setBreakSettings] = useState<BreakSettings | null>(null);
+  const [defaultWorkingHoursStart, setDefaultWorkingHoursStart] = useState<string | null>(null);
+  const [defaultWorkingHoursEnd, setDefaultWorkingHoursEnd] = useState<string | null>(null);
   const [breakWarnings, setBreakWarnings] = useState<string[]>([]);
   const [manuallyAdjustedBreakIds, setManuallyAdjustedBreakIds] = useState<Set<string>>(new Set());
   const [routes, setRoutes] = useState<SavedRoute[]>([]);
@@ -123,6 +125,7 @@ export function Planner() {
   const [highlightedSegment, setHighlightedSegment] = useState<number | null>(null);
   const [highlightedStopId, setHighlightedStopId] = useState<string | null>(null);
   const [routeGeometry, setRouteGeometry] = useState<[number, number][]>([]);
+  const [returnToDepotLeg, setReturnToDepotLeg] = useState<{ distanceKm: number | null; durationMinutes: number | null } | null>(null);
   const geometryUnsubRef = useRef<(() => void) | null>(null);
 
   // --- Route warnings (from optimization) ---
@@ -146,6 +149,8 @@ export function Planner() {
         setCrews(crewList);
         setDepots(settings.depots);
         setBreakSettings(settings.breakSettings ?? null);
+        setDefaultWorkingHoursStart(settings.workConstraints?.workingHoursStart ?? null);
+        setDefaultWorkingHoursEnd(settings.workConstraints?.workingHoursEnd ?? null);
 
         // Apply user preferences as default filter values (only if no URL params)
         const prefs = settings.preferences;
@@ -247,6 +252,11 @@ export function Planner() {
           durationMin: s.durationFromPreviousMinutes,
         })));
         setSelectedRouteStops(result.stops);
+        setReturnToDepotLeg(
+          result.route?.returnToDepotDistanceKm != null || result.route?.returnToDepotDurationMinutes != null
+            ? { distanceKm: result.route.returnToDepotDistanceKm ?? null, durationMinutes: result.route.returnToDepotDurationMinutes ?? null }
+            : null
+        );
         setMetrics(
           calculateMetrics(result.stops, {
             distanceKm: result.route?.totalDistanceKm,
@@ -268,6 +278,7 @@ export function Planner() {
         console.error('Failed to load route stops:', detail);
         setError(`Nepodařilo se načíst zastávky trasy: ${detail}`);
         setSelectedRouteStops([]);
+        setReturnToDepotLeg(null);
         setMetrics(null);
       } finally {
         setIsLoadingStops(false);
@@ -410,6 +421,7 @@ export function Planner() {
         .filter((s) => s.id !== stopId)
         .map((s, idx) => ({ ...s, stopOrder: idx + 1 }))
     );
+    setReturnToDepotLeg(null);
   }, []);
 
   const handleAddBreak = useCallback(() => {
@@ -447,6 +459,7 @@ export function Planner() {
       next.splice(insertAt, 0, breakStop);
       return next.map((s, idx) => ({ ...s, stopOrder: idx + 1 }));
     });
+    setReturnToDepotLeg(null);
   }, [selectedRouteId, breakSettings]);
 
   const handleUpdateBreak = useCallback((stopId: string, patch: { breakTimeStart?: string; breakDurationMinutes?: number }) => {
@@ -474,6 +487,7 @@ export function Planner() {
         };
       })
     );
+    setReturnToDepotLeg(null);
   }, []);
 
   useEffect(() => {
@@ -504,6 +518,7 @@ export function Planner() {
       await routeService.deleteRoute(selectedRouteId);
       setSelectedRouteId(null);
       setSelectedRouteStops([]);
+      setReturnToDepotLeg(null);
       setRouteGeometry([]);
       // Reload route list
       loadRoutes();
@@ -552,6 +567,10 @@ export function Planner() {
     return null;
   })();
 
+  const selectedRouteCrew = selectedRoute?.crewId ? crews.find((c) => c.id === selectedRoute.crewId) : null;
+  const routeStartTime = (selectedRouteCrew?.workingHoursStart ?? defaultWorkingHoursStart)?.slice(0, 5) ?? null;
+  const routeEndTime = (selectedRouteCrew?.workingHoursEnd ?? defaultWorkingHoursEnd)?.slice(0, 5) ?? null;
+
   const handleOptimizeRoute = useCallback(async () => {
     if (!selectedRoute || selectedRouteStops.length < 2) return;
 
@@ -591,8 +610,8 @@ export function Planner() {
                   stopOrder: i + 1,
                   estimatedArrival: s.eta,
                   estimatedDeparture: s.etd,
-                  distanceFromPreviousKm: null,
-                  durationFromPreviousMinutes: null,
+                  distanceFromPreviousKm: s.distanceFromPreviousKm ?? null,
+                  durationFromPreviousMinutes: s.durationFromPreviousMinutes ?? null,
                   status: original?.status ?? 'draft',
                   stopType: isBreak ? 'break' : 'customer',
                   customerId: isBreak ? null : s.customerId,
@@ -612,6 +631,10 @@ export function Planner() {
               });
 
               setSelectedRouteStops(optimizedStops);
+              setReturnToDepotLeg({
+                distanceKm: result.returnToDepotDistanceKm ?? null,
+                durationMinutes: result.returnToDepotDurationMinutes ?? null,
+              });
               if (result.geometry && result.geometry.length > 0) {
                 setRouteGeometry(result.geometry);
               }
@@ -726,6 +749,10 @@ export function Planner() {
                 isOptimizing={isOptimizing}
                 metrics={metrics}
                 warnings={routeWarnings}
+                routeStartTime={routeStartTime}
+                routeEndTime={routeEndTime}
+                returnToDepotDistanceKm={returnToDepotLeg?.distanceKm ?? null}
+                returnToDepotDurationMinutes={returnToDepotLeg?.durationMinutes ?? null}
               />
             )}
           </div>

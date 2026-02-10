@@ -30,6 +30,10 @@ interface RouteDetailTimelineProps {
   metrics?: RouteMetrics | null;
   // Warnings from solver (LATE_ARRIVAL, INSUFFICIENT_BUFFER, etc.)
   warnings?: RouteWarning[];
+  routeStartTime?: string | null; // HH:MM, working day start
+  routeEndTime?: string | null; // HH:MM, working day end
+  returnToDepotDistanceKm?: number | null;
+  returnToDepotDurationMinutes?: number | null;
 }
 
 function formatTime(time: string | null): string {
@@ -55,15 +59,6 @@ function formatDurationHm(durationMinutes: number | null): string {
   const h = Math.floor(durationMinutes / 60);
   const m = durationMinutes % 60;
   return `${h}h ${String(m).padStart(2, '0')}min`;
-}
-
-function diffMinutes(start: string | null, end: string | null): number | null {
-  const s = parseTimeToMinutes(start ?? '');
-  const e = parseTimeToMinutes(end ?? '');
-  if (s == null || e == null) return null;
-  let d = e - s;
-  if (d < 0) d += 24 * 60;
-  return d;
 }
 
 function getTotalDuration(metrics: RouteMetrics): number {
@@ -142,6 +137,8 @@ export function RouteDetailTimeline({
   isSaving = false,
   metrics,
   warnings = [],
+  returnToDepotDistanceKm = null,
+  returnToDepotDurationMinutes = null,
 }: RouteDetailTimelineProps) {
   const depotName = depot?.name ?? 'Depo';
 
@@ -162,6 +159,16 @@ export function RouteDetailTimeline({
       </div>
     );
   }
+
+  const mapSegmentIndexByStopIndex: Array<number | null> = (() => {
+    let mapIndex = 0;
+    return stops.map((stop) => {
+      if (stop.customerLat == null || stop.customerLng == null) return null;
+      const current = mapIndex;
+      mapIndex += 1;
+      return current;
+    });
+  })();
 
   return (
     <div className={styles.container}>
@@ -184,14 +191,12 @@ export function RouteDetailTimeline({
         const timeDiffEnd = calculateTimeDifference(stop.scheduledTimeEnd, stop.estimatedDeparture);
         const hasSignificantDiff = (timeDiffStart && timeDiffStart > 15) || (timeDiffEnd && timeDiffEnd > 15);
 
-        const isSegmentHighlighted = highlightedSegment === index;
-        const previousStop = index > 0 ? stops[index - 1] : null;
+        const mapSegmentIndex = mapSegmentIndexByStopIndex[index];
+        const isSegmentHighlighted = mapSegmentIndex != null && highlightedSegment === mapSegmentIndex;
         const segmentArrival = stop.estimatedArrival ?? null;
-        const fallbackDuration = diffMinutes(previousStop?.estimatedDeparture ?? null, segmentArrival);
-        const segmentDuration = stop.durationFromPreviousMinutes ?? fallbackDuration;
+        const segmentDuration = stop.durationFromPreviousMinutes ?? null;
 
         const segmentStart = (() => {
-          if (previousStop?.estimatedDeparture) return previousStop.estimatedDeparture;
           if (segmentArrival && segmentDuration != null) {
             const arrivalMin = parseTimeToMinutes(segmentArrival);
             if (arrivalMin != null) {
@@ -208,22 +213,22 @@ export function RouteDetailTimeline({
         const segmentDistanceKm =
           stop.distanceFromPreviousKm != null && stop.distanceFromPreviousKm > 0
             ? stop.distanceFromPreviousKm
-            : metrics && segmentDuration && metrics.travelTimeMin > 0 && metrics.distanceKm > 0
-              ? (segmentDuration * metrics.distanceKm) / metrics.travelTimeMin
-              : null;
+            : null;
 
         return (
           <div key={stop.id}>
             {/* Segment before this stop */}
             <div
               className={`${styles.segment} ${isSegmentHighlighted ? styles.segmentHighlighted : ''}`}
-              onClick={() => onSegmentClick(index)}
+              onClick={() => {
+                if (mapSegmentIndex != null) onSegmentClick(mapSegmentIndex);
+              }}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
-                  onSegmentClick(index);
+                  if (mapSegmentIndex != null) onSegmentClick(mapSegmentIndex);
                 }
               }}
             >
@@ -398,9 +403,58 @@ export function RouteDetailTimeline({
       })}
 
       {/* Return segment to depot */}
-      <div className={styles.segment}>
-        <div className={styles.segmentLine} />
-      </div>
+      {(() => {
+        const mappableStopCount = mapSegmentIndexByStopIndex.filter((v) => v != null).length;
+        const returnSegmentIndex = mappableStopCount;
+        const isReturnSegmentHighlighted = highlightedSegment === returnSegmentIndex;
+        const lastStop = stops[stops.length - 1];
+        const returnSegmentStart = lastStop.estimatedDeparture ?? null;
+        const inferredReturnEnd = (() => {
+          if (returnSegmentStart && returnToDepotDurationMinutes != null && returnToDepotDurationMinutes > 0) {
+            const startMin = parseTimeToMinutes(returnSegmentStart);
+            if (startMin != null) return minutesToTime(startMin + returnToDepotDurationMinutes);
+          }
+          return null;
+        })();
+        const returnDuration = returnToDepotDurationMinutes != null
+          ? returnToDepotDurationMinutes
+          : null;
+        const returnDistance = returnToDepotDistanceKm != null
+          ? returnToDepotDistanceKm
+          : null;
+        const returnTimeRange =
+          returnSegmentStart && inferredReturnEnd
+            ? `${formatTime(returnSegmentStart)}–${formatTime(inferredReturnEnd)}`
+            : '—';
+
+        return (
+          <div
+            className={`${styles.segment} ${isReturnSegmentHighlighted ? styles.segmentHighlighted : ''}`}
+            onClick={() => onSegmentClick(returnSegmentIndex)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onSegmentClick(returnSegmentIndex);
+              }
+            }}
+          >
+            <div className={styles.segmentLine} />
+            <div className={styles.segmentInfo}>
+              <span className={styles.segmentTime}>{returnTimeRange}</span>
+              <span className={styles.segmentSeparator}>•</span>
+              {returnDistance != null && returnDistance > 0 ? (
+                <span className={styles.segmentDistance}>{returnDistance.toFixed(1)} km</span>
+              ) : (
+                <span className={styles.segmentDistance}>—</span>
+              )}
+              <span className={styles.segmentSeparator}>•</span>
+              <span className={styles.segmentDuration}>{formatDurationHm(returnDuration)}</span>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* End depot */}
       <div className={styles.depotCard}>
