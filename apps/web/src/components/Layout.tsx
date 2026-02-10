@@ -53,11 +53,11 @@ export function Layout({ children }: LayoutProps) {
         
         <nav className={styles.nav}>
           <NavLink to="/calendar">Kalendář</NavLink>
-          <NavLink to="/inbox">Fronta</NavLink>
-          <NavLink to="/planner">Plán dne</NavLink>
-          <NavLink to="/routes">Trasy</NavLink>
-          <NavLink to="/customers">Zákazníci</NavLink>
+          <NavLink to="/inbox">Inbox</NavLink>
+          <NavLink to="/planner">Plán</NavLink>
           <NavLink to="/worklog">Záznam</NavLink>
+          <NavLink to="/customers">Zákazníci</NavLink>
+          <NavLink to="/routes">Trasy</NavLink>
           <NavLink to="/jobs">Úlohy</NavLink>
           {showSettings && <NavLink to="/settings">Nastavení</NavLink>}
           {showAdmin && <NavLink to="/admin">Admin</NavLink>}
@@ -108,11 +108,11 @@ export function Layout({ children }: LayoutProps) {
             
             <div className={styles.menuItems}>
               <MenuLink to="/calendar" onClick={handleMenuItemClick}>Kalendář</MenuLink>
-              <MenuLink to="/inbox" onClick={handleMenuItemClick}>Fronta</MenuLink>
-              <MenuLink to="/planner" onClick={handleMenuItemClick}>Plán dne</MenuLink>
-              <MenuLink to="/routes" onClick={handleMenuItemClick}>Trasy</MenuLink>
-              <MenuLink to="/customers" onClick={handleMenuItemClick}>Zákazníci</MenuLink>
+              <MenuLink to="/inbox" onClick={handleMenuItemClick}>Inbox</MenuLink>
+              <MenuLink to="/planner" onClick={handleMenuItemClick}>Plán</MenuLink>
               <MenuLink to="/worklog" onClick={handleMenuItemClick}>Záznam</MenuLink>
+              <MenuLink to="/customers" onClick={handleMenuItemClick}>Zákazníci</MenuLink>
+              <MenuLink to="/routes" onClick={handleMenuItemClick}>Trasy</MenuLink>
               <MenuLink to="/jobs" onClick={handleMenuItemClick}>Úlohy</MenuLink>
               {showSettings && <MenuLink to="/settings" onClick={handleMenuItemClick}>Nastavení</MenuLink>}
               {showAdmin && <MenuLink to="/admin" onClick={handleMenuItemClick}>Admin</MenuLink>}
