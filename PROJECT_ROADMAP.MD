@@ -1665,6 +1665,7 @@ Kompletní přepis Planner stránky z "Plán dne" (DnD, queue preview, inbox dra
 - `PlannedRouteStop` má pole `stop_index`
 - Časová okna z revizí (`scheduled_time_start`/`scheduled_time_end`) se nyní správně předávají do VRP solveru
 - Duplicitní `tokio::time::timeout` wrapper odstraněn z `handlers/route.rs`
+- Opraven formát break payloadu pro `vrp-pragmatic` (`required break`: `time + duration`), odstraněn parser fail `VehicleBreak` a nechtěný fallback na heuristiku v běžném scénáři s pauzou
 
 **Files modified:**
 - `apps/web/src/components/planner/RouteDetailTimeline.tsx` + `.module.css`

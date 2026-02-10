@@ -1209,3 +1209,69 @@ Technická poznámka:
 
 Závěr:
 - Implementace anonymizačního mazání je funkční v runtime toku (auth -> create -> delete -> verify).
+
+## 2026-02-10T07:55:00Z — Cursor Agent (gpt-5.3-codex)
+
+### Investigace: proč optimalizace ignoruje časová okna
+
+Uživatel nahlásil, že výsledek optimalizace nerespektuje dohodnutá okna. Proběhla cílená investigace runtime toku Planner/Inbox -> worker.
+
+#### Potvrzené nálezy
+
+1. **Použitý solver časová okna podporuje a v kódu jsou zapnutá**
+   - `worker/src/services/vrp/adapter.rs` mapuje stop time windows do pragmatického JSON pole `times`.
+   - `worker/src/handlers/jobs.rs` skládá `VrpStop.time_window` z `scheduled_time_start/end`.
+   - `worker/src/services/vrp/pragmatic.rs` obsahuje post-solve validaci příjezdu vůči oknu (`LATE_ARRIVAL`, `INSUFFICIENT_BUFFER`), což potvrzuje zamýšlenou práci s hard windows.
+
+2. **V konkrétním scénáři jsou časová okna v datech opravdu přítomná**
+   - V PostgreSQL (`route_stops` + `revisions`) byly pro problematickou trasu potvrzeny záznamy:
+     - Jan Kučera: `14:00-15:00`
+     - Veronika Černý: `08:00-09:00`
+     - TeploPlus group a.s.: `11:00-12:00`
+   - Tedy problém není v tom, že by okna v DB chyběla.
+
+3. **Klíčový runtime fakt: vrp-pragmatic se v produkčním toku nespouští**
+   - Worker log (`terminals/500840.txt`) opakovaně hlásí:
+     - `Solving VRP with 3 stops using vrp-pragmatic`
+     - `vrp-pragmatic failed, falling back to heuristic: Failed to deserialize pragmatic problem`
+   - Následně je vrácena trasa z fallback heuristiky.
+
+4. **Důsledek pro uživatele**
+   - Fallback heuristika nemá plnou constraint logiku pragmatického solveru, proto výsledné pořadí/ETA mohou být v rozporu s dohodnutými okny.
+   - To přesně odpovídá pozorovanému chování v UI.
+
+#### Pracovní hypotéza (ještě bez finální opravy)
+
+- Primární podezření: nevalidní pragmatický payload při serializaci/deserializaci (pravděpodobně kolem části `fleet.vehicles[].shifts[].breaks` v kombinaci s aktuálními user break settings), což způsobí pád parseru před samotným solve.
+- Bez odstranění této chyby bude systém dál padat do heuristiky a okna budou prakticky nespolehlivě respektována.
+
+#### Průběžné technické kroky
+
+- Přidán cílený test do `worker/src/services/vrp/pragmatic.rs` pro scénář `break_config` + pragmatic solve (reprodukce deserializačního problému na úrovni testu).
+- Opraven test compile break v `worker/src/types/job.rs` (doplněno `crew_id: None` do inicializace `RoutePlanJobRequest` v testu).
+
+## 2026-02-10T08:02:00Z — Cursor Agent (gpt-5.3-codex)
+
+### Oprava: pád `vrp-pragmatic` na deserializaci break payloadu
+
+#### Root cause
+
+- Payload posílaný do `vrp-pragmatic` měl neplatný tvar `VehicleBreak`:
+  - používal `time: { earliest, latest }` + `places: [...]`.
+- V `vrp-pragmatic` 1.25.0 je to nevalidní kombinace:
+  - **Optional break**: `time` musí být pole (`["start","end"]` nebo `[offsetStart, offsetEnd]`) + `places`
+  - **Required break**: `time: { earliest, latest }` + `duration`
+- Výsledek: parser fail `data did not match any variant of untagged enum VehicleBreak` a fallback na heuristiku.
+
+#### Provedená oprava
+
+- `worker/src/services/vrp/adapter.rs`:
+  - změna break payloadu na **required break** variantu:
+    - zachováno `time: { earliest, latest }`
+    - `places` nahrazeno `duration` (v sekundách)
+
+#### Testy
+
+- ✅ `solve_pragmatic_with_break_config_returns_solution` (nový test v `worker/src/services/vrp/pragmatic.rs`)
+- ✅ `build_pragmatic_problem_with_break_deserializes_vehicle_break` (nový regresní test v `worker/src/services/vrp/adapter.rs`)
+- ✅ `solve_pragmatic_small_problem_returns_all_stops` (smoke test bez break configu)

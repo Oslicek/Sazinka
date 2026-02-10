@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-02-11 (v0.18.2 - Customer anonymization runtime re-validation)
+> **Last Updated:** 2026-02-10 (v0.18.4 - VRP pragmatic break payload deserialization fix)
 
 ## Overview
 
@@ -1593,6 +1593,18 @@ cargo test
 - **Break UX improvements in shared timeline:**
   - Break card compacted (removed extra empty bottom row)
   - Auto-inserted breaks are floating by default; break warnings are surfaced only after manual break edits
+
+## Recent Changes (v0.18.4)
+
+- **VRP pragmatic break payload fix (time windows no longer bypassed by fallback in this scenario):**
+  - Fixed invalid break payload shape sent to `vrp-pragmatic` in `worker/src/services/vrp/adapter.rs`
+  - Switched break serialization to valid required-break format: `time { earliest/latest } + duration`
+  - Removed deserialization failure `data did not match any variant of untagged enum VehicleBreak` that previously triggered heuristic fallback
+  - Added regression tests in:
+    - `worker/src/services/vrp/pragmatic.rs` (`solve_pragmatic_with_break_config_returns_solution`)
+    - `worker/src/services/vrp/adapter.rs` (`build_pragmatic_problem_with_break_deserializes_vehicle_break`)
+- **Observed runtime effect:**
+  - Route optimization now uses pragmatic solver in break-config scenario and respects agreed time windows significantly better than before
 
 ### Customer Delete Contract (current behavior)
 

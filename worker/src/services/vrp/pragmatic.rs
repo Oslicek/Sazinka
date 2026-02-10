@@ -288,7 +288,7 @@ mod tests {
     use uuid::Uuid;
 
     use crate::types::Coordinates;
-    use super::super::{Depot, VrpStop};
+    use super::super::{BreakConfig, Depot, VrpStop};
 
     fn test_problem() -> VrpProblem {
         VrpProblem {
@@ -487,6 +487,43 @@ mod tests {
             long_solution.total_duration_seconds,
             short_solution.total_duration_seconds,
             duration_difference
+        );
+    }
+
+    #[test]
+    fn solve_pragmatic_with_break_config_returns_solution() {
+        let mut problem = test_problem();
+        problem.break_config = Some(BreakConfig {
+            earliest_time: NaiveTime::from_hms_opt(11, 30, 0).unwrap(),
+            latest_time: NaiveTime::from_hms_opt(13, 0, 0).unwrap(),
+            duration_minutes: 45,
+        });
+
+        let matrices = DistanceTimeMatrices {
+            distances: vec![
+                vec![0, 10000, 20000],
+                vec![10000, 0, 15000],
+                vec![20000, 15000, 0],
+            ],
+            durations: vec![
+                vec![0, 600, 1200],
+                vec![600, 0, 900],
+                vec![1200, 900, 0],
+            ],
+            size: 3,
+        };
+
+        let solution = solve_pragmatic(
+            &problem,
+            &matrices,
+            NaiveDate::from_ymd_opt(2026, 1, 26).unwrap(),
+            &SolverConfig::instant(),
+        );
+
+        assert!(
+            solution.is_ok(),
+            "vrp-pragmatic should accept break config, got error: {:?}",
+            solution.err()
         );
     }
 

@@ -125,6 +125,7 @@ mod tests {
             customer_ids: vec![Uuid::nil()],
             date: chrono::NaiveDate::from_ymd_opt(2026, 1, 29).unwrap(),
             start_location: crate::types::Coordinates { lat: 50.0, lng: 14.0 },
+            crew_id: None,
         };
         
         let json = serde_json::to_string(&request).unwrap();

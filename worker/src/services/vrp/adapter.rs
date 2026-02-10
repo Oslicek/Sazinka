@@ -136,10 +136,7 @@ pub fn build_pragmatic_problem_with_buffer(
                                 "earliest": format_rfc3339(date, break_cfg.earliest_time),
                                 "latest": format_rfc3339(date, break_cfg.latest_time)
                             },
-                            "places": [{
-                                "duration": (break_cfg.duration_minutes as i64) * 60,
-                                "tag": "lunch_break"
-                            }]
+                            "duration": (break_cfg.duration_minutes as i64) * 60
                         })]
                     } else {
                         vec![]
@@ -201,11 +198,11 @@ mod tests {
     use super::*;
     use chrono::NaiveDate;
     use uuid::Uuid;
-    use vrp_pragmatic::format::problem::Problem;
+    use vrp_pragmatic::format::problem::{Problem, VehicleBreak};
 
     use crate::types::Coordinates;
     use crate::services::routing::DistanceTimeMatrices;
-    use super::super::{Depot, VrpStop, VrpProblem};
+    use super::super::{BreakConfig, Depot, VrpStop, VrpProblem};
 
     fn test_problem() -> VrpProblem {
         VrpProblem {
@@ -423,5 +420,31 @@ mod tests {
         let times = place["times"].as_array().unwrap();
         let start_str = times[0][0].as_str().unwrap();
         assert!(start_str.starts_with("2026-01-26T10:00:00Z"));
+    }
+
+    #[test]
+    fn build_pragmatic_problem_with_break_deserializes_vehicle_break() {
+        let date = NaiveDate::from_ymd_opt(2026, 1, 26).unwrap();
+        let mut problem = test_problem();
+        problem.break_config = Some(BreakConfig {
+            earliest_time: NaiveTime::from_hms_opt(11, 30, 0).unwrap(),
+            latest_time: NaiveTime::from_hms_opt(13, 0, 0).unwrap(),
+            duration_minutes: 45,
+        });
+
+        let json = build_pragmatic_problem(&problem, date);
+        let parsed: Problem = serde_json::from_value(json).unwrap();
+
+        let breaks = parsed.fleet.vehicles[0].shifts[0]
+            .breaks
+            .as_ref()
+            .expect("expected one configured break");
+        assert_eq!(breaks.len(), 1);
+        match &breaks[0] {
+            VehicleBreak::Required { duration, .. } => {
+                assert_eq!(*duration, 45.0 * 60.0);
+            }
+            _ => panic!("expected required break variant"),
+        }
     }
 }

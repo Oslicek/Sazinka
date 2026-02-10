@@ -1349,6 +1349,7 @@ Když je **OFF**:
   - Sjednocené akce na obou stránkách: `Optimalizovat`, `Přidat pauzu`, `Smazat trasu`
 - `RouteMapPanel` — sdílená mapa MapLibre GL (piny, segmenty, polyline, highlight, v Inbox navíc selectedCandidate a insertionPreview)
 - Bidirectional highlight: klik v timeline ↔ zvýraznění na mapě, klik na segment/zastávku na mapě ↔ zvýraznění v timeline
+- VRP optimalizace s pauzou: opraven backend payload pauzy pro `vrp-pragmatic` (required break), aby se optimalizace nepřepínala na heuristický fallback kvůli chybě deserializace
 
 **Nastavení uživatele (Settings → Moje nastavení):**
 - Defaultní posádka a depo se ukládají do DB (`users.default_crew_id`, `users.default_depot_id`)

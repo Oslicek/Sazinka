@@ -400,7 +400,14 @@ impl JobProcessor {
                     eta: stop.arrival_time,
                     etd: stop.departure_time,
                     service_duration_minutes: service_duration as i32,
-                    time_window: None,
+                    time_window: match (customer.scheduled_time_start, customer.scheduled_time_end) {
+                        (Some(start), Some(end)) => Some(crate::types::TimeWindow {
+                            start,
+                            end,
+                            is_hard: true,
+                        }),
+                        _ => None,
+                    },
                     stop_type: Some("customer".to_string()),
                     break_duration_minutes: None,
                     break_time_start: None,
@@ -482,7 +489,8 @@ impl JobProcessor {
         
         for customer_id in customer_ids {
             if let Some(customer) = queries::customer::get_customer(&self.pool, user_id, *customer_id).await? {
-                // Load scheduled time window from visits for this customer on this date
+                // Load scheduled time window primarily from revisions (source of agreed schedule),
+                // then fall back to visits for legacy/derived workflows.
                 let (tw_start, tw_end) = self.load_scheduled_time_window(user_id, *customer_id, date).await;
                 
                 customers.push(CustomerForRoute {
@@ -502,13 +510,30 @@ impl JobProcessor {
         Ok(customers)
     }
     
-    /// Load scheduled time window for a customer on a given date from visits table
+    /// Load scheduled time window for a customer on a given date.
+    ///
+    /// Priority:
+    /// 1) `revisions` (authoritative source for agreed schedule)
+    /// 2) `visits` fallback (legacy/derived schedule records)
     async fn load_scheduled_time_window(
         &self,
         user_id: Uuid,
         customer_id: Uuid,
         date: chrono::NaiveDate,
     ) -> (Option<chrono::NaiveTime>, Option<chrono::NaiveTime>) {
+        match queries::revision::get_scheduled_time_window(&self.pool, user_id, customer_id, date).await {
+            Ok(Some((start, end))) => {
+                return (Some(start), Some(end));
+            }
+            Ok(None) => {}
+            Err(e) => {
+                warn!(
+                    "Failed to load revision time window for customer {} on {}: {}",
+                    customer_id, date, e
+                );
+            }
+        }
+
         let result = sqlx::query_as::<_, (Option<chrono::NaiveTime>, Option<chrono::NaiveTime>)>(
             r#"
             SELECT scheduled_time_start, scheduled_time_end
