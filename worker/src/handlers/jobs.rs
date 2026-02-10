@@ -233,22 +233,24 @@ impl JobProcessor {
     ) -> Result<RoutePlanResponse> {
         let user_id = request.user_id.unwrap_or(Uuid::nil());
 
-        // Load crew-specific settings for arrival buffer
-        let arrival_buffer_percent = if let Some(crew_id) = request.crew_id {
+        // Load crew (if specified) for working hours and arrival buffer
+        let crew = if let Some(crew_id) = request.crew_id {
             match queries::crew::get_crew(&self.pool, crew_id, user_id).await {
-                Ok(Some(crew)) => {
-                    info!("Job: using crew '{}' arrival buffer: {}%", crew.name, crew.arrival_buffer_percent);
-                    crew.arrival_buffer_percent
+                Ok(Some(c)) => {
+                    info!("Job: using crew '{}': working hours {:?}-{:?}, buffer {}%",
+                        c.name, c.working_hours_start, c.working_hours_end, c.arrival_buffer_percent);
+                    Some(c)
                 }
                 _ => {
-                    warn!("Job: crew {} not found, using default buffer", crew_id);
-                    10.0
+                    warn!("Job: crew {} not found, using user settings", crew_id);
+                    None
                 }
             }
         } else {
-            10.0
+            None
         };
 
+        let arrival_buffer_percent = crew.as_ref().map(|c| c.arrival_buffer_percent).unwrap_or(10.0);
         let solver = VrpSolver::new(SolverConfig::with_buffer(5, 500, arrival_buffer_percent));
         
         // Validate request
@@ -314,7 +316,7 @@ impl JobProcessor {
             message: "Načítání nastavení...".to_string(),
         }).await?;
         
-        let (shift_start, shift_end, service_duration, break_config) = match queries::settings::get_user_settings(&self.pool, user_id).await {
+        let (user_shift_start, user_shift_end, service_duration, break_config) = match queries::settings::get_user_settings(&self.pool, user_id).await {
             Ok(Some(settings)) => {
                 let break_cfg = if settings.break_enabled {
                     Some(BreakConfig {
@@ -336,6 +338,11 @@ impl JobProcessor {
                 )
             }
         };
+
+        // Crew working hours take priority over user settings
+        let shift_start = crew.as_ref().map(|c| c.working_hours_start).unwrap_or(user_shift_start);
+        let shift_end = crew.as_ref().map(|c| c.working_hours_end).unwrap_or(user_shift_end);
+        info!("Job: route planning shift: {:?}-{:?} (crew override: {})", shift_start, shift_end, crew.is_some());
         
         // Build VRP problem
         let vrp_problem = self.build_vrp_problem(
@@ -609,13 +616,27 @@ impl JobProcessor {
         let stops: Vec<VrpStop> = customers
             .iter()
             .map(|c| {
-                let time_window = match (c.scheduled_time_start, c.scheduled_time_end) {
-                    (Some(start), Some(end)) => Some(StopTimeWindow {
-                        start,
-                        end,
-                        is_hard: true,
-                    }),
-                    _ => None,
+                // For scheduled customers: time window = point arrival at slot start,
+                // service duration = actual slot length (end - start).
+                let (time_window, stop_service_duration) = match (c.scheduled_time_start, c.scheduled_time_end) {
+                    (Some(start), Some(end)) => {
+                        let slot_minutes = (end - start).num_minutes().max(1) as u32;
+                        info!(
+                            "VRP stop {} ({}) scheduled {:?}-{:?} → arrival window={:?}, service={}min",
+                            c.id,
+                            c.name.as_deref().unwrap_or("?"),
+                            start, end, start, slot_minutes,
+                        );
+                        (
+                            Some(StopTimeWindow {
+                                start,
+                                end: start, // Arrival must be at slot start
+                                is_hard: true,
+                            }),
+                            slot_minutes,
+                        )
+                    }
+                    _ => (None, service_duration_minutes),
                 };
                 VrpStop {
                     id: c.id.to_string(),
@@ -625,7 +646,7 @@ impl JobProcessor {
                         lat: c.lat.unwrap(),
                         lng: c.lng.unwrap(),
                     },
-                    service_duration_minutes,
+                    service_duration_minutes: stop_service_duration,
                     time_window,
                     priority: 1,
                 }

@@ -189,7 +189,7 @@ export function RouteDetailTimeline({
         // Calculate time difference between scheduled and estimated
         const timeDiffStart = calculateTimeDifference(stop.scheduledTimeStart, stop.estimatedArrival);
         const timeDiffEnd = calculateTimeDifference(stop.scheduledTimeEnd, stop.estimatedDeparture);
-        const hasSignificantDiff = (timeDiffStart && timeDiffStart > 15) || (timeDiffEnd && timeDiffEnd > 15);
+        const hasSignificantDiff = (timeDiffStart != null && timeDiffStart > 15) || (timeDiffEnd != null && timeDiffEnd > 15);
 
         const mapSegmentIndex = mapSegmentIndexByStopIndex[index];
         const isSegmentHighlighted = mapSegmentIndex != null && highlightedSegment === mapSegmentIndex;

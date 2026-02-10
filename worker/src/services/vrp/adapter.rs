@@ -37,7 +37,11 @@ fn apply_arrival_buffer(
     avg_segment_seconds: u64,
     buffer_percent: f64,
 ) -> StopTimeWindow {
-    if buffer_percent <= 0.0 || avg_segment_seconds == 0 || !window.is_hard {
+    // Skip buffer for point windows (start == end): these represent scheduled
+    // visits where service must start at exactly the agreed time.
+    if buffer_percent <= 0.0 || avg_segment_seconds == 0 || !window.is_hard
+        || window.start == window.end
+    {
         return window.clone();
     }
     let buffer_seconds = (avg_segment_seconds as f64 * buffer_percent / 100.0).round() as i64;
@@ -410,6 +414,22 @@ mod tests {
     }
 
     #[test]
+    fn apply_arrival_buffer_noop_for_point_window() {
+        // Point windows (start == end) represent scheduled visits;
+        // buffer must NOT shift them.
+        let window = StopTimeWindow {
+            start: NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
+            end: NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
+            is_hard: true,
+        };
+
+        let adjusted = apply_arrival_buffer(&window, 3600, 10.0);
+        // Must remain unchanged despite non-zero buffer
+        assert_eq!(adjusted.start, NaiveTime::from_hms_opt(10, 0, 0).unwrap());
+        assert_eq!(adjusted.end, NaiveTime::from_hms_opt(10, 0, 0).unwrap());
+    }
+
+    #[test]
     fn build_pragmatic_problem_without_buffer_unchanged() {
         let date = NaiveDate::from_ymd_opt(2026, 1, 26).unwrap();
         let problem = test_problem();
@@ -420,6 +440,67 @@ mod tests {
         let times = place["times"].as_array().unwrap();
         let start_str = times[0][0].as_str().unwrap();
         assert!(start_str.starts_with("2026-01-26T10:00:00Z"));
+    }
+
+    /// Verify that a point time window (start == end) serializes correctly
+    /// and is accepted by the vrp-pragmatic deserializer.
+    /// This is how we model scheduled visits: arrival must be exactly at slot start.
+    #[test]
+    fn build_pragmatic_problem_with_point_time_window_is_valid() {
+        let date = NaiveDate::from_ymd_opt(2026, 1, 26).unwrap();
+        let problem = VrpProblem {
+            depot: Depot {
+                coordinates: Coordinates { lat: 50.0755, lng: 14.4378 },
+            },
+            shift_start: NaiveTime::from_hms_opt(7, 0, 0).unwrap(),
+            shift_end: NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+            stops: vec![
+                VrpStop {
+                    id: "scheduled-1".to_string(),
+                    customer_id: Uuid::new_v4(),
+                    customer_name: "Scheduled Customer".to_string(),
+                    coordinates: Coordinates { lat: 49.1951, lng: 16.6068 },
+                    // Service = slot length (08:00-09:00 = 60 min)
+                    service_duration_minutes: 60,
+                    // Point window: arrival must be at 08:00
+                    time_window: Some(StopTimeWindow {
+                        start: NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
+                        end: NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
+                        is_hard: true,
+                    }),
+                    priority: 1,
+                },
+                VrpStop {
+                    id: "unscheduled-1".to_string(),
+                    customer_id: Uuid::new_v4(),
+                    customer_name: "Unscheduled Customer".to_string(),
+                    coordinates: Coordinates { lat: 49.8209, lng: 18.2625 },
+                    // Default service duration from settings
+                    service_duration_minutes: 30,
+                    time_window: None,
+                    priority: 1,
+                },
+            ],
+            break_config: None,
+        };
+
+        let json = build_pragmatic_problem(&problem, date);
+
+        // Scheduled customer: duration = 60min = 3600s, point window [08:00, 08:00]
+        let place_scheduled = &json["plan"]["jobs"][0]["services"][0]["places"][0];
+        assert_eq!(place_scheduled["duration"], 3600);
+        let times = place_scheduled["times"].as_array().unwrap();
+        assert_eq!(times[0][0].as_str().unwrap(), "2026-01-26T08:00:00Z");
+        assert_eq!(times[0][1].as_str().unwrap(), "2026-01-26T08:00:00Z");
+
+        // Unscheduled customer: duration = 30min = 1800s, no window
+        let place_unscheduled = &json["plan"]["jobs"][1]["services"][0]["places"][0];
+        assert_eq!(place_unscheduled["duration"], 1800);
+        assert!(place_unscheduled["times"].is_null());
+
+        // Must deserialize without errors
+        let parsed: Problem = serde_json::from_value(json).unwrap();
+        assert_eq!(parsed.plan.jobs.len(), 2);
     }
 
     #[test]

@@ -74,6 +74,30 @@ describe('splitGeometryIntoSegments', () => {
       expect(seg.length).toBeGreaterThanOrEqual(2);
     }
   });
+
+  it('anchors first and last segment to geometry endpoints', () => {
+    const geometry: [number, number][] = [
+      [14.0, 50.0],
+      [14.1, 50.05],
+      [14.2, 50.1],
+      [14.3, 50.15],
+      [14.4, 50.2],
+      [14.5, 50.25],
+    ];
+    const stops: RouteWaypoint[] = [
+      { coordinates: { lat: 50.1, lng: 14.2 } },
+      { coordinates: { lat: 50.2, lng: 14.4 } },
+    ];
+    const depot = { lat: 50.0, lng: 14.0 };
+
+    const segments = splitGeometryIntoSegments(geometry, stops, depot);
+
+    expect(segments.length).toBe(3);
+    expect(segments[0][0]).toEqual(geometry[0]);
+    expect(segments[segments.length - 1][segments[segments.length - 1].length - 1]).toEqual(
+      geometry[geometry.length - 1]
+    );
+  });
 });
 
 describe('getSegmentLabel', () => {

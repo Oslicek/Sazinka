@@ -5,7 +5,7 @@
  * Right panel: map with route visualization
  */
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useSearch, useNavigate } from '@tanstack/react-router';
 import { useNatsStore } from '../stores/natsStore';
 import * as geometryService from '../services/geometryService';
@@ -407,7 +407,10 @@ export function Planner() {
   }, []);
 
   const handleSegmentClick = useCallback((segmentIndex: number) => {
-    setHighlightedSegment((prev) => (prev === segmentIndex ? null : segmentIndex));
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix-1',hypothesisId:'H2',location:'Planner.tsx:handleSegmentClick',message:'timeline segment click',data:{segmentIndex},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    setHighlightedSegment(segmentIndex);
   }, []);
 
   const handleRemoveStop = useCallback((stopId: string) => {
@@ -555,7 +558,7 @@ export function Planner() {
 
   // ─── Get depot for selected route ────────────────────────────────
 
-  const selectedRouteDepot: { name: string; lat: number; lng: number } | null = (() => {
+  const selectedRouteDepot: { name: string; lat: number; lng: number } | null = useMemo(() => {
     if (selectedRoute?.crewId) {
       const crew = crews.find((c) => c.id === selectedRoute.crewId);
       if (crew?.homeDepotId) {
@@ -565,7 +568,7 @@ export function Planner() {
     }
     if (depot) return { lat: depot.lat, lng: depot.lng, name: depot.name || 'Depo' };
     return null;
-  })();
+  }, [selectedRoute?.crewId, crews, depots, depot]);
 
   const selectedRouteCrew = selectedRoute?.crewId ? crews.find((c) => c.id === selectedRoute.crewId) : null;
   const routeStartTime = (selectedRouteCrew?.workingHoursStart ?? defaultWorkingHoursStart)?.slice(0, 5) ?? null;

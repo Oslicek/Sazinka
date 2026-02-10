@@ -43,15 +43,33 @@ export function splitGeometryIntoSegments(
 
   if (geometry.length === 0 || waypoints.length < 2) return [];
 
-  // For each waypoint, find closest geometry point index (monotonically forward)
+  // For each waypoint, find closest geometry point index (monotonically forward).
+  // Force first/last waypoint to geometry boundaries so the route always starts
+  // and ends exactly at the rendered geometry endpoints.
   const waypointIndices: number[] = [];
   let searchStart = 0;
+  const lastGeometryIndex = geometry.length - 1;
 
-  for (const wp of waypoints) {
+  for (let wpIndex = 0; wpIndex < waypoints.length; wpIndex += 1) {
+    const wp = waypoints[wpIndex];
+    if (wpIndex === 0) {
+      waypointIndices.push(0);
+      searchStart = 0;
+      continue;
+    }
+    if (wpIndex === waypoints.length - 1) {
+      waypointIndices.push(lastGeometryIndex);
+      searchStart = lastGeometryIndex;
+      continue;
+    }
+
+    // Keep enough points for remaining waypoints to preserve monotonicity.
+    const remainingWaypoints = waypoints.length - 1 - wpIndex;
+    const searchEnd = Math.max(searchStart, lastGeometryIndex - remainingWaypoints);
     let minDist = Infinity;
     let minIdx = searchStart;
 
-    for (let i = searchStart; i < geometry.length; i++) {
+    for (let i = searchStart; i <= searchEnd; i++) {
       const dx = geometry[i][0] - wp[0];
       const dy = geometry[i][1] - wp[1];
       const dist = dx * dx + dy * dy;
@@ -62,7 +80,7 @@ export function splitGeometryIntoSegments(
     }
 
     waypointIndices.push(minIdx);
-    searchStart = minIdx;
+    searchStart = Math.min(lastGeometryIndex, Math.max(searchStart, minIdx + 1));
   }
 
   // Slice geometry into segments

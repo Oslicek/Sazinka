@@ -1,6 +1,6 @@
 # Project Roadmap - Sazinka v1.0 GA
 
-> **Last Updated:** 2026-02-10 (Export+ filename timezone + format alignment)
+> **Last Updated:** 2026-02-10 (VRP point time window mapping + RouteDetailTimeline rendering fix)
 
 ## Current State Analysis
 
@@ -1680,6 +1680,39 @@ Kompletní přepis Planner stránky z "Plán dne" (DnD, queue preview, inbox dra
 **Files deleted:**
 - `apps/web/src/components/planner/RouteStopList.tsx`
 - `apps/web/src/components/planner/RouteStopList.module.css`
+
+---
+
+## Post-Phase 9b: VRP Time Window Mapping + Timeline Rendering Fix ✅ COMPLETED
+
+> **Status:** Completed (2026-02-10)
+> **Goal:** Opravit mapování časových oken pro VRP solver a UI rendering bug v RouteDetailTimeline
+
+### Backend: VRP Point Time Window Mapping ✅
+
+- Zákaznická návštěva `scheduled_time_start`/`scheduled_time_end` se nyní mapuje jako **pracovní slot**, nikoliv rozsah příjezdu
+- VRP solver dostává **bodové časové okno** `[start, start]` — posádka musí přijet přesně na začátek slotu
+- `service_duration_minutes` se počítá jako `end - start` (skutečná délka slotu), ne fixní default
+- `apply_arrival_buffer` přeskakuje bodová okna (`start == end`), aby nedošlo k nežádoucímu posunu
+- Solver odjíždí z depa co nejpozději, přijíždí ke každému zákazníku na začátek jeho slotu
+- Přidány unit testy:
+  - `build_pragmatic_problem_with_point_time_window_is_valid`
+  - `apply_arrival_buffer_noop_for_point_window`
+  - `solve_pragmatic_with_point_time_window_assigns_stop`
+
+### Frontend: RouteDetailTimeline Rendering Fix ✅
+
+- Opravena React "falsy zero" chyba v `RouteDetailTimeline.tsx`
+- Výraz `(timeDiffStart && timeDiffStart > 15)` vracel číslo `0` místo `false`, když `timeDiffStart === 0`
+- React vykresloval `0` jako text vedle "Dohodnuto" časů (černý ovál s nulou)
+- Fix: nahrazeno `timeDiffStart != null && timeDiffStart > 15` pro explicitní boolean kontrolu
+
+**Files modified:**
+- `worker/src/handlers/route.rs` — VRP point time window mapping
+- `worker/src/handlers/jobs.rs` — VRP point time window mapping
+- `worker/src/services/vrp/adapter.rs` — `apply_arrival_buffer` skip for point windows + tests
+- `worker/src/services/vrp/pragmatic.rs` — solver integration test
+- `apps/web/src/components/planner/RouteDetailTimeline.tsx` — falsy zero rendering fix
 
 ---
 

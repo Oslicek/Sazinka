@@ -126,12 +126,28 @@ pub async fn handle_plan(
             continue;
         }
 
-        // Load user settings for working hours and service duration
-        let (shift_start, shift_end, service_duration, break_config) = match queries::settings::get_user_settings(&pool, user_id).await {
+        // Load crew (if specified) for working hours and arrival buffer
+        let crew = if let Some(crew_id) = plan_request.crew_id {
+            match queries::crew::get_crew(&pool, crew_id, user_id).await {
+                Ok(Some(c)) => {
+                    info!("Using crew '{}': working hours {:?}-{:?}, buffer {}%",
+                        c.name, c.working_hours_start, c.working_hours_end, c.arrival_buffer_percent);
+                    Some(c)
+                }
+                _ => {
+                    warn!("Crew {} not found, using user settings", crew_id);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        let arrival_buffer_percent = crew.as_ref().map(|c| c.arrival_buffer_percent).unwrap_or(10.0);
+
+        // Load user settings for service duration, break config, and fallback working hours
+        let (user_shift_start, user_shift_end, service_duration, break_config) = match queries::settings::get_user_settings(&pool, user_id).await {
             Ok(Some(settings)) => {
-                let start = settings.working_hours_start;
-                let end = settings.working_hours_end;
-                let duration = settings.default_service_duration_minutes as u32;
                 let break_cfg = if settings.break_enabled {
                     Some(BreakConfig {
                         earliest_time: settings.break_earliest_time,
@@ -141,14 +157,9 @@ pub async fn handle_plan(
                 } else {
                     None
                 };
-                info!(
-                    "Route planning using user settings: working hours {:?}-{:?}, service duration {} min",
-                    start, end, duration
-                );
-                (start, end, duration, break_cfg)
+                (settings.working_hours_start, settings.working_hours_end, settings.default_service_duration_minutes as u32, break_cfg)
             }
             Ok(None) => {
-                // User not found in database
                 warn!("User {} not found in database, using default settings", user_id);
                 (
                     chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
@@ -158,7 +169,6 @@ pub async fn handle_plan(
                 )
             }
             Err(e) => {
-                // Database error
                 warn!("Failed to load user settings: {}, using defaults", e);
                 (
                     chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
@@ -169,7 +179,12 @@ pub async fn handle_plan(
             }
         };
 
-        // Build VRP problem with user settings
+        // Crew working hours take priority over user settings
+        let shift_start = crew.as_ref().map(|c| c.working_hours_start).unwrap_or(user_shift_start);
+        let shift_end = crew.as_ref().map(|c| c.working_hours_end).unwrap_or(user_shift_end);
+        info!("Route planning shift: {:?}-{:?} (crew override: {})", shift_start, shift_end, crew.is_some());
+
+        // Build VRP problem
         let vrp_problem = build_vrp_problem(
             &plan_request.start_location,
             &valid_customers,
@@ -193,7 +208,6 @@ pub async fn handle_plan(
             Ok(m) => (m, false),
             Err(e) => {
                 warn!("Primary routing service failed: {}. Falling back to mock routing.", e);
-                // Fallback to mock routing
                 let mock_service = crate::services::routing::MockRoutingService::new();
                 match mock_service.get_matrices(&locations).await {
                     Ok(m) => (m, true),
@@ -205,22 +219,6 @@ pub async fn handle_plan(
                     }
                 }
             }
-        };
-
-        // Load crew-specific settings for arrival buffer
-        let arrival_buffer_percent = if let Some(crew_id) = plan_request.crew_id {
-            match queries::crew::get_crew(&pool, crew_id, user_id).await {
-                Ok(Some(crew)) => {
-                    info!("Using crew '{}' arrival buffer: {}%", crew.name, crew.arrival_buffer_percent);
-                    crew.arrival_buffer_percent
-                }
-                _ => {
-                    warn!("Crew {} not found, using default buffer", crew_id);
-                    10.0
-                }
-            }
-        } else {
-            10.0
         };
 
         // Solve VRP - solver handles timeout and spawn_blocking internally
@@ -488,24 +486,30 @@ fn build_vrp_problem(
     let stops: Vec<VrpStop> = customers
         .iter()
         .map(|c| {
-            let time_window = match (c.scheduled_time_start, c.scheduled_time_end) {
-                (Some(start), Some(end)) => Some(StopTimeWindow {
-                    start,
-                    end,
-                    is_hard: true, // Hard constraint - route must respect scheduled time windows
-                }),
-                _ => None,
+            // For scheduled customers: time window = point arrival at slot start,
+            // service duration = actual slot length (end - start).
+            // The solver must arrive at the beginning of the visit slot,
+            // and the service takes the full agreed duration.
+            let (time_window, stop_service_duration) = match (c.scheduled_time_start, c.scheduled_time_end) {
+                (Some(start), Some(end)) => {
+                    let slot_minutes = (end - start).num_minutes().max(1) as u32;
+                    info!(
+                        "VRP stop {} ({}) scheduled {:?}-{:?} → arrival window={:?}, service={}min",
+                        c.id,
+                        c.name.as_deref().unwrap_or("?"),
+                        start, end, start, slot_minutes,
+                    );
+                    (
+                        Some(StopTimeWindow {
+                            start,
+                            end: start, // Arrival must be at slot start
+                            is_hard: true,
+                        }),
+                        slot_minutes,
+                    )
+                }
+                _ => (None, service_duration_minutes),
             };
-
-            if time_window.is_some() {
-                info!(
-                    "VRP stop {} ({}) has time window {:?}-{:?}",
-                    c.id,
-                    c.name.as_deref().unwrap_or("?"),
-                    c.scheduled_time_start,
-                    c.scheduled_time_end,
-                );
-            }
 
             VrpStop {
                 id: c.id.to_string(),
@@ -515,7 +519,7 @@ fn build_vrp_problem(
                     lat: c.lat.unwrap(),
                     lng: c.lng.unwrap(),
                 },
-                service_duration_minutes,
+                service_duration_minutes: stop_service_duration,
                 time_window,
                 priority: 1,
             }

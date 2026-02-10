@@ -188,8 +188,7 @@ export function RouteMapPanel({
       mapRef.current.removeSource('route');
     }
 
-    setHighlightedSegment(null);
-  }, [setHighlightedSegment]);
+  }, []);
 
   // Update stop markers
   useEffect(() => {
@@ -329,6 +328,7 @@ export function RouteMapPanel({
         coordinates: { lat: s.customerLat!, lng: s.customerLng! },
         name: s.customerName,
       }));
+    const stopsWithoutCoords = stops.filter((s) => !(s.customerLat && s.customerLng)).length;
 
     // Use a fake depot at the first stop's location if no depot is set
     const effectiveDepot = depot ?? { lat: stops[0].customerLat!, lng: stops[0].customerLng! };
@@ -343,6 +343,25 @@ export function RouteMapPanel({
     }
 
     if (segments.length === 0) return;
+
+    const expectedSegments = waypoints.length + 1;
+    const hasGeometry = !!(routeGeometry && routeGeometry.length > 0);
+    const startsAtGeometryStart = hasGeometry ? (
+      segments[0]?.[0]?.[0] === routeGeometry![0]?.[0] &&
+      segments[0]?.[0]?.[1] === routeGeometry![0]?.[1]
+    ) : null;
+    const lastSegment = segments[segments.length - 1];
+    const lastPoint = lastSegment?.[lastSegment.length - 1];
+    const geometryLast = hasGeometry ? routeGeometry![routeGeometry!.length - 1] : null;
+    const endsAtGeometryEnd = hasGeometry ? (
+      !!lastPoint &&
+      !!geometryLast &&
+      lastPoint[0] === geometryLast[0] &&
+      lastPoint[1] === geometryLast[1]
+    ) : null;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix-1',hypothesisId:'H3',location:'RouteMapPanel.tsx:route-build',message:'route segmentation summary',data:{stopsCount:stops.length,waypointsCount:waypoints.length,stopsWithoutCoords,segmentsCount:segments.length,expectedSegments,hasGeometry,geometryLength:routeGeometry?.length ?? 0,startsAtGeometryStart,endsAtGeometryEnd},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     // Build GeoJSON FeatureCollection with segmentIndex property
     const features = segments.map((coords, index) => ({
@@ -416,9 +435,17 @@ export function RouteMapPanel({
       const feat = e.features;
       if (feat && feat.length > 0) {
         const clickedIndex = feat[0].properties?.segmentIndex;
-        if (typeof clickedIndex === 'number') {
-          const newValue = highlightedSegment === clickedIndex ? null : clickedIndex;
-          setHighlightedSegment(newValue);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix-1',hypothesisId:'H1',location:'RouteMapPanel.tsx:segment-click',message:'map segment click raw index',data:{clickedIndexType:typeof clickedIndex,clickedIndexValue:clickedIndex,highlightedSegment},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        if (typeof clickedIndex === 'number' && Number.isFinite(clickedIndex)) {
+          // Keep clicked segment highlighted until user explicitly clears it.
+          setHighlightedSegment(clickedIndex);
+        } else if (typeof clickedIndex === 'string') {
+          const parsed = Number(clickedIndex);
+          if (Number.isFinite(parsed)) {
+            setHighlightedSegment(parsed);
+          }
         }
       }
     };
@@ -433,7 +460,7 @@ export function RouteMapPanel({
     };
     mapRef.current.on('mouseenter', 'route-hit-area', segmentEnterHandlerRef.current);
     mapRef.current.on('mouseleave', 'route-hit-area', segmentLeaveHandlerRef.current);
-  }, [stops, depot, routeGeometry, clearRouteLayers, mapLoaded]);
+  }, [stops, depot, routeGeometry, clearRouteLayers, mapLoaded, setHighlightedSegment]);
 
   // Update highlight filter when highlightedSegment changes
   useEffect(() => {
@@ -445,6 +472,9 @@ export function RouteMapPanel({
     } else {
       mapRef.current.setFilter('route-highlight', ['==', ['get', 'segmentIndex'], -1]);
     }
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix-1',hypothesisId:'H2',location:'RouteMapPanel.tsx:highlight-filter',message:'highlight filter updated',data:{highlightedSegment},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
   }, [highlightedSegment]);
 
   // Update insertion preview marker
@@ -530,6 +560,10 @@ export function RouteMapPanel({
         depot?.name || 'Depo',
       )
     : null;
+
+  // #region agent log
+  if (highlightedSegment !== null && segmentInfo) { fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix-1',hypothesisId:'H4',location:'RouteMapPanel.tsx:segment-info',message:'segment overlay rendered',data:{highlightedSegment,fromName:segmentInfo.fromName,toName:segmentInfo.toName},timestamp:Date.now()})}).catch(()=>{}); }
+  // #endregion
 
   return (
     <div className={`${styles.container} ${className ?? ''}`}>

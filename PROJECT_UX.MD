@@ -1,7 +1,7 @@
 # Sazinka - Workflow & UI Koncept
 
-> **Status:** MVP kompletní + Phase 9 (Planner redesign) + sjednocení komponent Inbox/Planner dokončeno  
-> **Verze:** 0.7  
+> **Status:** MVP kompletní + Phase 9 (Planner redesign) + sjednocení komponent Inbox/Planner dokončeno + VRP point time windows  
+> **Verze:** 0.7.1  
 > **Datum:** 2026-02-10
 > 
 > **Implementováno:**
@@ -1345,7 +1345,7 @@ Když je **OFF**:
 
 **Komponenty (sdílené s Inbox):**
 - `RouteListPanel` — seznam tras s kartami (datum, posádka, zastávky, vzdálenost, čas)
-- `RouteDetailTimeline` — sdílená vertikální timeline: depo → segment (čas od–do, km, trvání) → zastávka (status badge, dohodnuté/vypočítané časy) → ... → depo
+- `RouteDetailTimeline` — sdílená vertikální timeline: depo → segment (čas od–do, km, trvání) → zastávka (status badge, dohodnuté/vypočítané časy, warning ikona při rozdílu >15 min) → ... → depo
   - Ve spodním route summary: `Vzdálenost`, `Celkový čas`, `Zatížení` + sekundární údaj `z toho jízda`
   - Sjednocené akce na obou stránkách: `Optimalizovat`, `Přidat pauzu`, `Smazat trasu`
 - `RouteMapPanel` — sdílená mapa MapLibre GL (piny, segmenty, polyline, highlight, v Inbox navíc selectedCandidate a insertionPreview)

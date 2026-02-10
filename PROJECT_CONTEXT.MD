@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-02-10 (v0.18.4 - VRP pragmatic break payload deserialization fix)
+> **Last Updated:** 2026-02-10 (v0.18.5 - VRP point time window mapping + RouteDetailTimeline rendering fix)
 
 ## Overview
 
@@ -732,6 +732,14 @@ vrp-core = "1.25"        # Core solver algorithms
 - Hard and soft time window constraints
 - Service duration per stop
 - Single crew (tradesperson) model
+
+**Time Window Mapping (Point Arrival):**
+Scheduled customer visits are mapped to VRP solver constraints as follows:
+- The customer's `scheduled_time_start`/`scheduled_time_end` define a **work slot**, not an arrival range.
+- VRP solver receives a **point time window** `[start, start]` — the crew must arrive exactly at the slot start.
+- `service_duration_minutes` is computed as `end - start` (the actual slot length), not a fixed default.
+- `apply_arrival_buffer` skips point time windows (`start == end`) to prevent unintended window shifts.
+- The solver departs from depot as late as possible, arrives at each customer at the start of their slot, and finishes at the slot end.
 
 **Performance:**
 - 10 stops: ~50ms solve time
@@ -1992,6 +2000,7 @@ UI: "Tip: Posádka 2 (+2 min)" - ne spam pro malé rozdíly
 - [x] ~~Multi-user authentication~~ (Phase 3.1, implemented v0.17.0)
 - [x] ~~Unified route components (Inbox + Planner)~~ (implemented v0.18.0)
 - [x] ~~VRP solver timeout and robustness~~ (implemented v0.18.0)
+- [x] ~~VRP point time window mapping (arrival at slot start, service = slot length)~~ (implemented v0.18.5)
 - [ ] Email notifications with Resend
 - [ ] Mobile-responsive design
 - [ ] Offline support (Service Worker)

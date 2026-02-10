@@ -527,6 +527,61 @@ mod tests {
         );
     }
 
+    /// Verify that the solver handles point time windows (start == end)
+    /// correctly — the stop must still be assigned and arrival is at/before the window.
+    #[test]
+    fn solve_pragmatic_with_point_time_window_assigns_stop() {
+        let problem = VrpProblem {
+            depot: Depot { coordinates: Coordinates { lat: 50.0755, lng: 14.4378 } },
+            shift_start: NaiveTime::from_hms_opt(7, 0, 0).unwrap(),
+            shift_end: NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+            stops: vec![
+                VrpStop {
+                    id: "scheduled-1".to_string(),
+                    customer_id: Uuid::new_v4(),
+                    customer_name: "Scheduled Customer".to_string(),
+                    coordinates: Coordinates { lat: 49.1951, lng: 16.6068 },
+                    // Slot 10:00-11:00 → service = 60 min, arrival = exactly 10:00
+                    service_duration_minutes: 60,
+                    time_window: Some(super::super::StopTimeWindow {
+                        start: NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
+                        end: NaiveTime::from_hms_opt(10, 0, 0).unwrap(), // Point window
+                        is_hard: true,
+                    }),
+                    priority: 1,
+                },
+            ],
+            break_config: None,
+        };
+
+        // Travel time depot→stop = 600s (10 min), so vehicle can easily arrive by 10:00
+        let matrices = DistanceTimeMatrices {
+            distances: vec![vec![0, 10000], vec![10000, 0]],
+            durations: vec![vec![0, 600], vec![600, 0]],
+            size: 2,
+        };
+
+        let solution = solve_pragmatic(
+            &problem,
+            &matrices,
+            NaiveDate::from_ymd_opt(2026, 1, 26).unwrap(),
+            &SolverConfig::instant(),
+        ).expect("solver should accept point time window");
+
+        assert_eq!(solution.stops.len(), 1, "scheduled stop must be assigned");
+        assert!(solution.unassigned.is_empty(), "no stops should be unassigned");
+
+        // Arrival must be at or before 10:00
+        let arrival = solution.stops[0].arrival_time;
+        let window_start = NaiveTime::from_hms_opt(10, 0, 0).unwrap();
+        assert!(
+            arrival <= window_start,
+            "arrival {} should be at or before window start {}",
+            arrival.format("%H:%M:%S"),
+            window_start.format("%H:%M:%S"),
+        );
+    }
+
     // ==========================================================================
     // Post-solve validation tests
     // ==========================================================================
