@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use crate::auth;
 use crate::db::queries;
+use crate::services::insertion::{calculate_insertion_positions, StopMeta};
 use crate::services::routing::{RoutingService, MockRoutingService};
 use crate::services::vrp::{VrpSolver, VrpProblem, VrpStop, Depot, SolverConfig, StopTimeWindow, BreakConfig};
 use crate::types::{
@@ -1287,9 +1288,21 @@ pub async fn handle_insertion_calculate(
         };
 
         let calc_req = &request.payload;
+        let workday_start = calc_req
+            .workday_start
+            .as_deref()
+            .and_then(|t| chrono::NaiveTime::parse_from_str(t, "%H:%M").ok())
+            .unwrap_or_else(|| chrono::NaiveTime::from_hms_opt(8, 0, 0).expect("valid time"));
+        let workday_end = calc_req
+            .workday_end
+            .as_deref()
+            .and_then(|t| chrono::NaiveTime::parse_from_str(t, "%H:%M").ok())
+            .unwrap_or_else(|| chrono::NaiveTime::from_hms_opt(17, 0, 0).expect("valid time"));
 
         // If no route stops, insertion is trivially at position 0
         if calc_req.route_stops.is_empty() {
+            let arrival = workday_start;
+            let departure = arrival + chrono::Duration::minutes(calc_req.candidate.service_duration_minutes as i64);
             let response = SuccessResponse::new(request.id, CalculateInsertionResponse {
                 candidate_id: calc_req.candidate.id.clone(),
                 best_position: Some(InsertionPosition {
@@ -1298,8 +1311,8 @@ pub async fn handle_insertion_calculate(
                     insert_before_name: "Depo".to_string(),
                     delta_km: 0.0,
                     delta_min: 0.0,
-                    estimated_arrival: "08:00".to_string(),
-                    estimated_departure: "08:30".to_string(),
+                    estimated_arrival: arrival.format("%H:%M").to_string(),
+                    estimated_departure: departure.format("%H:%M").to_string(),
                     status: "ok".to_string(),
                     conflict_reason: None,
                 }),
@@ -1342,91 +1355,49 @@ pub async fn handle_insertion_calculate(
         // Matrix indices:
         // 0 = candidate
         // 1 = depot
-        // 2+ = route stops (index i in route_stops = matrix index i+2)
-        let candidate_idx = 0;
-        let depot_idx = 1;
-
-        // Calculate insertion cost at each position
-        // Position i means: insert between stop[i] and stop[i+1]
-        // Position -1 means: insert after depot (first position)
-        let mut positions: Vec<InsertionPosition> = Vec::new();
-        let num_stops = calc_req.route_stops.len();
-
-        for insert_idx in 0..=num_stops {
-            // Current route order: depot -> stop[0] -> stop[1] -> ... -> stop[n-1] -> depot
-            // Insert position insert_idx means:
-            //   - insert_idx = 0: insert after depot, before stop[0]
-            //   - insert_idx = k: insert after stop[k-1], before stop[k]
-            //   - insert_idx = num_stops: insert after stop[n-1], before return to depot
-            
-            // Matrix indices for "from" and "to" nodes
-            let from_matrix_idx = if insert_idx == 0 { depot_idx } else { insert_idx + 1 }; // +1 because depot is at index 1
-            let to_matrix_idx = if insert_idx >= num_stops { depot_idx } else { insert_idx + 2 }; // +2 because first stop is at index 2
-
-            // Current edge cost (from -> to without candidate)
-            let current_distance_m = matrices.distances[from_matrix_idx][to_matrix_idx] as f64;
-            let current_time_s = matrices.durations[from_matrix_idx][to_matrix_idx] as f64;
-            let current_distance_km = current_distance_m / 1000.0;
-            let current_time_min = current_time_s / 60.0;
-
-            // New costs with candidate insertion:
-            // from -> candidate: matrices[from_matrix_idx][candidate_idx]
-            // candidate -> to: matrices[candidate_idx][to_matrix_idx]
-            let dist_from_to_candidate = matrices.distances[from_matrix_idx][candidate_idx] as f64;
-            let dist_candidate_to_next = matrices.distances[candidate_idx][to_matrix_idx] as f64;
-            let time_from_to_candidate = matrices.durations[from_matrix_idx][candidate_idx] as f64;
-            let time_candidate_to_next = matrices.durations[candidate_idx][to_matrix_idx] as f64;
-
-            let new_distance_km = (dist_from_to_candidate + dist_candidate_to_next) / 1000.0;
-            let new_time_min = (time_from_to_candidate + time_candidate_to_next) / 60.0;
-
-            let delta_km = new_distance_km - current_distance_km;
-            let delta_min = new_time_min - current_time_min + calc_req.candidate.service_duration_minutes as f64;
-
-            // Determine names
-            let insert_after_name = if insert_idx == 0 {
-                "Depo".to_string()
-            } else {
-                calc_req.route_stops[insert_idx - 1].name.clone()
-            };
-
-            let insert_before_name = if insert_idx >= num_stops {
-                "Depo".to_string()
-            } else {
-                calc_req.route_stops[insert_idx].name.clone()
-            };
-
-            // Estimate arrival/departure times (simplified)
-            let base_time = chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap();
-            let accumulated_min = (insert_idx as f64) * 45.0 + delta_min / 2.0; // Rough estimate
-            let arrival = base_time + chrono::Duration::minutes(accumulated_min as i64);
-            let departure = arrival + chrono::Duration::minutes(calc_req.candidate.service_duration_minutes as i64);
-
-            // Determine status based on delta
-            let status = if delta_min < 15.0 {
-                "ok"
-            } else if delta_min < 30.0 {
-                "tight"
-            } else {
-                "conflict"
-            };
-
-            positions.push(InsertionPosition {
-                insert_after_index: (insert_idx as i32) - 1,
-                insert_after_name,
-                insert_before_name,
-                delta_km,
-                delta_min,
-                estimated_arrival: arrival.format("%H:%M").to_string(),
-                estimated_departure: departure.format("%H:%M").to_string(),
-                status: status.to_string(),
-                conflict_reason: if status == "conflict" { Some("Vysoký časový dopad".to_string()) } else { None },
-            });
-        }
-
-        // Sort by delta_min to find best
-        positions.sort_by(|a, b| a.delta_min.partial_cmp(&b.delta_min).unwrap_or(std::cmp::Ordering::Equal));
-
+        // 2+ = route stops
+        let stop_indices: Vec<usize> = (0..calc_req.route_stops.len()).map(|i| i + 2).collect();
+        let stops_meta: Vec<StopMeta> = calc_req
+            .route_stops
+            .iter()
+            .map(|s| StopMeta {
+                name: s.name.clone(),
+                arrival_time: s
+                    .arrival_time
+                    .as_deref()
+                    .and_then(|t| chrono::NaiveTime::parse_from_str(t, "%H:%M").ok()),
+                departure_time: s
+                    .departure_time
+                    .as_deref()
+                    .and_then(|t| chrono::NaiveTime::parse_from_str(t, "%H:%M").ok()),
+                time_window_start: None,
+                time_window_end: None,
+            })
+            .collect();
+        let computed = calculate_insertion_positions(
+            &matrices,
+            0,
+            1,
+            &stop_indices,
+            &stops_meta,
+            calc_req.candidate.service_duration_minutes as i32,
+            workday_start,
+            workday_end,
+        );
+        let positions: Vec<InsertionPosition> = computed
+            .iter()
+            .map(|p| InsertionPosition {
+                insert_after_index: p.insert_after_index,
+                insert_after_name: p.insert_after_name.clone(),
+                insert_before_name: p.insert_before_name.clone(),
+                delta_km: p.delta_km,
+                delta_min: p.delta_min,
+                estimated_arrival: p.estimated_arrival.format("%H:%M").to_string(),
+                estimated_departure: p.estimated_departure.format("%H:%M").to_string(),
+                status: p.status.clone(),
+                conflict_reason: p.conflict_reason.clone(),
+            })
+            .collect();
         let best_position = positions.first().cloned();
         let is_feasible = best_position.as_ref().map(|p| p.status != "conflict").unwrap_or(false);
 

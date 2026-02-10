@@ -151,6 +151,9 @@ export interface CallQueueItem {
   userId: string;
   status: string;
   dueDate: string;
+  scheduledDate: string | null;
+  scheduledTimeStart: string | null;
+  scheduledTimeEnd: string | null;
   snoozeUntil: string | null;
   snoozeReason: string | null;
   customerName: string;

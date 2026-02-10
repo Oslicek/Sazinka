@@ -267,6 +267,9 @@ pub struct CallQueueItem {
     pub user_id: Uuid,
     pub status: String,
     pub due_date: NaiveDate,
+    pub scheduled_date: Option<NaiveDate>,
+    pub scheduled_time_start: Option<NaiveTime>,
+    pub scheduled_time_end: Option<NaiveTime>,
     pub snooze_until: Option<NaiveDate>,
     pub snooze_reason: Option<String>,
     

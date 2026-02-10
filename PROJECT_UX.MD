@@ -1,7 +1,7 @@
 # Sazinka - Workflow & UI Koncept
 
-> **Status:** MVP kompletní + Phase 9 (Planner redesign) + sjednocení komponent Inbox/Planner dokončeno + VRP point time windows  
-> **Verze:** 0.7.1  
+> **Status:** MVP kompletní + Phase 9 (Planner redesign) + sjednocení komponent + Smart Slot Heuristics (multi-crew, Valhalla)  
+> **Verze:** 0.8.0  
 > **Datum:** 2026-02-10
 > 
 > **Implementováno:**
@@ -180,36 +180,49 @@ Hlavní pracovní obrazovka pro dispečerku i řemeslníka-sólistu.
 │ │  (čísla = počet volných slotů)                                 │ │
 │ └─────────────────────────────────────────────────────────────────┘ │
 │                                                                     │
-│ DOPORUČENÉ SLOTY PRO 30.01.2026                                    │
+│ DOPORUČENÉ SLOTY PRO 30.01.2026 (Multi-crew, Valhalla)             │
 │ ┌─────────────────────────────────────────────────────────────────┐ │
-│ │ ⭐ 10:15 - 11:00  │ Nejlepší pro trasu │ +0 min      │ [Vybrat]│ │
-│ │    08:30 - 09:15  │ Ranní slot         │ +8 min      │ [Vybrat]│ │
-│ │    13:45 - 14:30  │ Po obědě           │ +12 min     │ [Vybrat]│ │
-│ │    15:30 - 16:15  │ Odpolední          │ +18 min     │ [Vybrat]│ │
+│ │ 🚐 Posádka P1 (5 zastávek, 78% dne)                            │ │
+│ │ ├─ ⭐ 10:15 - 11:00  │ 92%  │ +8min │ OK    │ [Vybrat]        │ │
+│ │ ├─    14:00 - 15:00  │ 71%  │ +22min│ Těsný │ [Vybrat]        │ │
+│ │                                                                 │ │
+│ │ 🚐 Posádka P2 (3 zastávky, 45% dne)                            │ │
+│ │ ├─    10:30 - 11:30  │ 85%  │ +12min│ OK    │ [Vybrat]        │ │
 │ └─────────────────────────────────────────────────────────────────┘ │
 │                                                                     │
-│ NEBO VLASTNÍ ČAS                                                   │
-│ [Časové okno: ___:___ - ___:___]  ⚠️ +25 min navíc k trase        │
+│ NEBO VLASTNÍ ČAS  (real-time validace, debounced 500ms)            │
+│ [Časové okno: ___:___ - ___:___]                                   │
+│ ❌ Slot se překrývá s návštěvou Dvořáková (error)                  │
+│ ⚠️ Před slotem je minimální časová rezerva (warning)               │
+│ → Odhadovaný příjezd: 10:03 | Rezerva: 12 min                     │
 │                                                                     │
 ├─────────────────────────────────────────────────────────────────────┤
 │                              [Zrušit]  [✓ Domluvit návštěvu]       │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-**Algoritmus nabídky slotů:**
+**Algoritmus nabídky slotů (v2 — multi-crew, Valhalla):**
 
-Aplikace v pozadí:
-1. Vezme již domluvené zakázky v ten den pro vybraný vůz
-2. Vypočte odhad příjezdu a dopad na trasu
-3. Nabídne 3-5 nejlepších slotů:
-   - "Nejbližší k trase" (minimální objížďka)
-   - "Nejkratší celková cesta"
-   - "Bez rizika zpoždění"
+Aplikace v pozadí (`sazinka.slots.suggest.v2`):
+1. Pro **všechny aktivní posádky** (nebo vybranou podmnožinu) načte existující trasu + naplánované revize
+2. Pomocí **Valhalla** spočítá matice vzdáleností/časů (reálné souřadnice zákazníků z DB)
+3. Pro každou posádku najde **optimální inserční pozice** (sdílená logika `calculate_insertion_positions`)
+4. Ohodnotí každý slot **skórovací funkcí**:
+   - 40% travel (delta_minutes) — menší objížďka = lepší
+   - 25% fit (slack_before + slack_after) — více rezervy = lepší
+   - 20% preference — shoda s preferovaným časem zákazníka
+   - 15% balance — vyrovnané vytížení posádek
+5. Status badge: **OK** (zelený), **Těsný** (žlutý, slack <15 min), **Konflikt** (červený)
 
-Každý slot ukazuje:
-- Předpokládaný čas příjezdu (např. 10:20)
-- Servis do (např. 11:05)
-- Dopad na trasu ("+12 min" nebo "−5 min")
+**Validace ručně zadaného slotu** (`sazinka.slots.validate`):
+- Překryv s existující návštěvou (error)
+- Nedosažitelný čas — cestovní doba nestihne (error)
+- Mimo pracovní dobu (error)
+- Minimální rezerva <15 min (warning)
+- Přetížený den >90% (warning)
+- Zasahuje do okna pauzy (warning)
+
+Pokud validace vrátí `feasible: false`, zobrazí se **warning box** s možností "Přesto naplánovat" nebo "Vybrat jiný slot".
 
 ---
 

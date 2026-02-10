@@ -127,6 +127,7 @@ export function Planner() {
   const [routeGeometry, setRouteGeometry] = useState<[number, number][]>([]);
   const [returnToDepotLeg, setReturnToDepotLeg] = useState<{ distanceKm: number | null; durationMinutes: number | null } | null>(null);
   const geometryUnsubRef = useRef<(() => void) | null>(null);
+  const activeGeometryJobRef = useRef<string | null>(null);
 
   // --- Route warnings (from optimization) ---
   // Note: Saved routes don't have warnings stored in DB yet, so this will be empty
@@ -252,6 +253,9 @@ export function Planner() {
           durationMin: s.durationFromPreviousMinutes,
         })));
         setSelectedRouteStops(result.stops);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix-7',hypothesisId:'H14',location:'Planner.tsx:loadStops',message:'planner loaded route by routeId',data:{routeId:selectedRouteId,date:result.route?.date ?? null,stops:result.stops.map((s,i)=>({i,id:s.id,customerId:s.customerId,name:s.customerName,lng:s.customerLng,lat:s.customerLat,stopOrder:s.stopOrder,address:s.address}))},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         setReturnToDepotLeg(
           result.route?.returnToDepotDistanceKm != null || result.route?.returnToDepotDurationMinutes != null
             ? { distanceKm: result.route.returnToDepotDistanceKm ?? null, durationMinutes: result.route.returnToDepotDurationMinutes ?? null }
@@ -348,6 +352,7 @@ export function Planner() {
       ...waypoints,
       { lat: depot.lat, lng: depot.lng },
     ];
+    const geometryRunRouteId = selectedRouteId;
 
     try {
       // Cancel previous subscription
@@ -357,12 +362,28 @@ export function Planner() {
       }
 
       const jobResponse = await geometryService.submitGeometryJob(locations);
+      activeGeometryJobRef.current = jobResponse.jobId;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix-6',hypothesisId:'H12',location:'Planner.tsx:fetchGeometry-submit',message:'geometry job submitted',data:{routeId:geometryRunRouteId,jobId:jobResponse.jobId,locationsCount:locations.length,stopsCount:stops.length,waypointsCount:waypoints.length,stops:stops.map((s,i)=>({i,id:s.id,customerId:s.customerId,name:s.customerName,lng:s.customerLng,lat:s.customerLat,stopOrder:s.stopOrder})),locations},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
 
       const unsubscribe = await geometryService.subscribeToGeometryJobStatus(
         jobResponse.jobId,
         (update) => {
           if (update.status.type === 'completed') {
             const geometry = update.status.coordinates as [number, number][];
+            const first = geometry[0] ?? null;
+            const last = geometry[geometry.length - 1] ?? null;
+            const distanceToDepotKm = last
+              ? Math.sqrt(
+                ((last[0] - depot.lng) * 111.32) ** 2 +
+                ((last[1] - depot.lat) * 111.32) ** 2
+              )
+              : null;
+            const isStaleJob = activeGeometryJobRef.current !== jobResponse.jobId;
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix-2',hypothesisId:isStaleJob?'H7':'H6',location:'Planner.tsx:fetchGeometry-completed',message:'geometry job completed',data:{routeId:geometryRunRouteId,jobId:jobResponse.jobId,isStaleJob,geometryPoints:geometry.length,first,last,depot:{lat:depot.lat,lng:depot.lng},distanceToDepotKm},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
             setRouteGeometry(geometry);
 
             if (geometryUnsubRef.current) {
@@ -371,6 +392,9 @@ export function Planner() {
             }
           } else if (update.status.type === 'failed') {
             console.warn('Geometry job failed:', update.status.error);
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix-2',hypothesisId:'H6',location:'Planner.tsx:fetchGeometry-failed',message:'geometry job failed',data:{routeId:geometryRunRouteId,jobId:jobResponse.jobId,error:update.status.error},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion
             setRouteGeometry([]);
             if (geometryUnsubRef.current) {
               geometryUnsubRef.current();
@@ -383,9 +407,12 @@ export function Planner() {
       geometryUnsubRef.current = unsubscribe;
     } catch (err) {
       console.warn('Failed to fetch route geometry:', err);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix-2',hypothesisId:'H6',location:'Planner.tsx:fetchGeometry-error',message:'geometry request failed before completion',data:{routeId:geometryRunRouteId,error:err instanceof Error ? err.message : String(err)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       setRouteGeometry([]);
     }
-  }, [depot]);
+  }, [depot, selectedRouteId]);
 
   // ─── Fetch geometry when stops change ────────────────────────────
 
@@ -410,7 +437,7 @@ export function Planner() {
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix-1',hypothesisId:'H2',location:'Planner.tsx:handleSegmentClick',message:'timeline segment click',data:{segmentIndex},timestamp:Date.now()})}).catch(()=>{});
     // #endregion
-    setHighlightedSegment(segmentIndex);
+    setHighlightedSegment((prev) => (prev === segmentIndex ? null : segmentIndex));
   }, []);
 
   const handleRemoveStop = useCallback((stopId: string) => {
@@ -777,6 +804,8 @@ export function Planner() {
           routeGeometry={routeGeometry}
           highlightedStopId={highlightedStopId}
           highlightedSegment={highlightedSegment}
+          debugSource="planner"
+          debugRouteId={selectedRouteId}
           onStopClick={(stopId) => {
             setHighlightedStopId(stopId);
           }}

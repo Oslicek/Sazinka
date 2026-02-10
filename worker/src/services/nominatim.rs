@@ -50,7 +50,12 @@ impl NominatimClient {
 
     /// Geocode an address to coordinates
     pub async fn geocode(&self, address: &str, city: &str, postal_code: &str) -> Result<Option<Coordinates>> {
-        let full_address = format!("{}, {}, {}, Czech Republic", address, postal_code, city);
+        let pc = postal_code.trim();
+        let full_address = if pc.is_empty() {
+            format!("{}, {}, Czech Republic", address, city)
+        } else {
+            format!("{}, {}, {}, Czech Republic", address, pc, city)
+        };
 
         let url = format!(
             "{}/search?q={}&format=json&countrycodes=cz&limit=1",

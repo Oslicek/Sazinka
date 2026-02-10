@@ -538,3 +538,141 @@
   font-size: 0.7rem;
   color: #6b7280;
 }
+
+/* ── V2: Crew-grouped slots ── */
+
+.crewSlotGroups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.crewGroup {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.crewGroupHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.4rem 0.75rem;
+  background: #f3f4f6;
+  font-size: 0.8rem;
+}
+
+.crewGroupName {
+  font-weight: 600;
+  color: #374151;
+}
+
+.crewGroupLoad {
+  color: #6b7280;
+  font-size: 0.75rem;
+}
+
+.crewGroup .slotList {
+  padding: 0.5rem 0.75rem;
+}
+
+.slotButtonSelected {
+  border-color: var(--color-primary) !important;
+  background: #eff6ff !important;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+}
+
+.slotStatusBadge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: white;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* ── Warnings ── */
+
+.slotWarnings,
+.validationWarnings {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+}
+
+.warningItem {
+  font-size: 0.8rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 4px;
+  line-height: 1.3;
+}
+
+.warningError {
+  background: #fef2f2;
+  color: #991b1b;
+  border-left: 3px solid #ef4444;
+}
+
+.warningWarn {
+  background: #fffbeb;
+  color: #92400e;
+  border-left: 3px solid #f59e0b;
+}
+
+.conflictName {
+  font-weight: 600;
+}
+
+.validationMeta {
+  font-size: 0.75rem;
+  color: #6b7280;
+  margin-top: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background: #f9fafb;
+  border-radius: 4px;
+}
+
+.inputError {
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 1px #ef4444;
+}
+
+/* ── Warning confirmation ── */
+
+.warningConfirmBox {
+  background: #fffbeb;
+  border: 1px solid #f59e0b;
+  border-radius: 8px;
+  padding: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.warningConfirmBox p {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #92400e;
+  margin: 0 0 0.5rem 0;
+}
+
+.warningConfirmActions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.warningConfirmBtn {
+  padding: 0.4rem 0.75rem;
+  border: none;
+  border-radius: 6px;
+  background: #f97316;
+  color: white;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.warningConfirmBtn:hover {
+  background: #ea580c;
+}

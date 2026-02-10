@@ -5,6 +5,7 @@ pub mod export_processor;
 pub mod geo;
 pub mod geocoding;
 pub mod import_processor;
+pub mod insertion;
 pub mod job_history;
 pub mod nominatim;
 pub mod routing;

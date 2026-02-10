@@ -14,38 +14,55 @@
 }
 
 .stopMarker {
+  --marker-fill: #2563eb;
+  width: 30px;
+  height: 36px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  /* NOTE: Do NOT set position here!
+     MapLibre sets position: absolute on the .maplibregl-marker wrapper.
+     Setting position: relative here overrides it (same CSS specificity,
+     but CSS modules load later in Vite), causing markers to enter
+     normal document flow and drift vertically based on DOM order. */
+  background: transparent;
+}
+
+.stopMarker::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: #2563eb;
+  background: var(--marker-fill);
   border: 2px solid #ffffff;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
 }
 
 .stopMarker::after {
   content: '';
   position: absolute;
-  bottom: -6px;
+  bottom: 1px;
   left: 50%;
   transform: translateX(-50%) rotate(45deg);
   width: 10px;
   height: 10px;
-  background: inherit;
+  background: var(--marker-fill);
   border-right: 2px solid #ffffff;
   border-bottom: 2px solid #ffffff;
+  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .stopMarkerHighlighted {
-  background: #f59e0b;
+  --marker-fill: #f59e0b;
 }
 
 /* Marker label */
 .markerLabel {
   position: relative;
+  top: 8px;
   z-index: 1;
   color: white;
   font-size: 0.75rem;
@@ -183,6 +200,23 @@
 .segmentInfoClose:hover {
   background-color: var(--color-bg-secondary);
   border-color: var(--color-text-secondary);
+}
+
+/* Zoom level indicator */
+.zoomLevel {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  z-index: 5;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Mobile */

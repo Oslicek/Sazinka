@@ -1,6 +1,6 @@
 # Project Roadmap - Sazinka v1.0 GA
 
-> **Last Updated:** 2026-02-10 (VRP automatic break restoration)
+> **Last Updated:** 2026-02-10 (v0.19.0 - Smart Slot Heuristics)
 
 ## Current State Analysis
 
@@ -1975,4 +1975,33 @@ Post-Phase 9 (Unified Components + VRP Fix): ✅ COMPLETED
     - Nearest-neighbor heuristic fallback ✅
     - Time windows from revisions to VRP solver ✅
     - Redundant timeout wrapper removed from route.rs ✅
+
+Phase 10: Smart Slot Heuristics (v0.19.0): ✅ COMPLETED
+  Backend: Multi-Crew Slot Suggestion ✅
+    - Shared insertion logic extracted to services/insertion.rs ✅
+    - calculate_insertion_positions() shared by route + slots ✅
+    - sazinka.slots.suggest.v2 handler (multi-crew, Valhalla) ✅
+    - Scoring function (travel 40% + fit 25% + preference 20% + balance 15%) ✅
+    - Real customer coordinates from DB (not fake UUID-based) ✅
+    - Per-crew depot resolution ✅
+    - Scheduled revisions without route included in day stops ✅
+  Backend: Slot Validation ✅
+    - sazinka.slots.validate endpoint ✅
+    - Overlap detection (error) ✅
+    - Unreachable time check (error) ✅
+    - Outside working hours check (error) ✅
+    - No slack warning (<15min) ✅
+    - Overloaded day warning (>90%) ✅
+    - Break conflict warning ✅
+  Backend: Tests ✅
+    - 10 insertion logic unit tests ✅
+    - 11 scoring + validation function tests ✅
+  Frontend: CallQueue UI ✅
+    - slotService.ts v2 types + suggestSlotsV2() + validateSlot() ✅
+    - Crew selector in schedule modal ✅
+    - Slots grouped by crew with load indicator ✅
+    - Status badges (OK / Tight / Conflict) ✅
+    - Real-time validation on manual time input (debounced 500ms) ✅
+    - Warning confirmation before scheduling conflicting slots ✅
+    - groupSuggestionsByCrew() + getStatusColor() utilities ✅
 ```

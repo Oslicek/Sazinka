@@ -564,7 +564,9 @@ pub async fn get_call_queue(
         r#"
         SELECT
             r.id, r.device_id, r.customer_id, r.user_id,
-            r.status::text, r.due_date, r.snooze_until, r.snooze_reason,
+            r.status::text, r.due_date,
+            r.scheduled_date, r.scheduled_time_start, r.scheduled_time_end,
+            r.snooze_until, r.snooze_reason,
             c.name as customer_name, c.phone as customer_phone,
             c.email as customer_email, c.street as customer_street,
             c.city as customer_city, c.postal_code as customer_postal_code,

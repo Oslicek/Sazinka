@@ -188,6 +188,8 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     
     // Slots subjects
     let slots_suggest_sub = client.subscribe("sazinka.slots.suggest").await?;
+    let slots_suggest_v2_sub = client.subscribe("sazinka.slots.suggest.v2").await?;
+    let slots_validate_sub = client.subscribe("sazinka.slots.validate").await?;
     
     // Settings subjects
     let settings_get_sub = client.subscribe("sazinka.settings.get").await?;
@@ -273,6 +275,8 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let client_revision_snooze = client.clone();
     let client_revision_schedule = client.clone();
     let client_slots_suggest = client.clone();
+    let client_slots_suggest_v2 = client.clone();
+    let client_slots_validate = client.clone();
     
     let pool_customer_create = pool.clone();
     let pool_customer_list = pool.clone();
@@ -311,6 +315,8 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_revision_snooze = pool.clone();
     let pool_revision_schedule = pool.clone();
     let pool_slots_suggest = pool.clone();
+    let pool_slots_suggest_v2 = pool.clone();
+    let pool_slots_validate = pool.clone();
     
     // Settings handler clones
     let client_settings_get = client.clone();
@@ -401,6 +407,8 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let routing_plan = Arc::clone(&routing_service);
     let routing_insertion = Arc::clone(&routing_service);
     let routing_insertion_batch = Arc::clone(&routing_service);
+    let routing_slots_suggest_v2 = Arc::clone(&routing_service);
+    let routing_slots_validate = Arc::clone(&routing_service);
     
     // JWT secret clones for customer handlers
     let jwt_secret_customer_create = Arc::clone(&jwt_secret);
@@ -444,6 +452,8 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     
     // JWT secret clones for slots handler
     let jwt_secret_slots_suggest = Arc::clone(&jwt_secret);
+    let jwt_secret_slots_suggest_v2 = Arc::clone(&jwt_secret);
+    let jwt_secret_slots_validate = Arc::clone(&jwt_secret);
     
     // JWT secret clones for settings handlers
     let jwt_secret_settings_get = Arc::clone(&jwt_secret);
@@ -697,6 +707,26 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     // Slots handlers
     let slots_suggest_handle = tokio::spawn(async move {
         slots::handle_suggest(client_slots_suggest, slots_suggest_sub, pool_slots_suggest, jwt_secret_slots_suggest).await
+    });
+    let slots_suggest_v2_handle = tokio::spawn(async move {
+        slots::handle_suggest_v2(
+            client_slots_suggest_v2,
+            slots_suggest_v2_sub,
+            pool_slots_suggest_v2,
+            jwt_secret_slots_suggest_v2,
+            routing_slots_suggest_v2,
+        )
+        .await
+    });
+    let slots_validate_handle = tokio::spawn(async move {
+        slots::handle_validate(
+            client_slots_validate,
+            slots_validate_sub,
+            pool_slots_validate,
+            jwt_secret_slots_validate,
+            routing_slots_validate,
+        )
+        .await
     });
     
     // Settings handlers
@@ -1426,6 +1456,8 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         revision_snooze_handle.boxed(),
         revision_schedule_handle.boxed(),
         slots_suggest_handle.boxed(),
+        slots_suggest_v2_handle.boxed(),
+        slots_validate_handle.boxed(),
         settings_get_handle.boxed(),
         settings_work_handle.boxed(),
         settings_business_handle.boxed(),

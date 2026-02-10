@@ -1275,3 +1275,323 @@ Uživatel nahlásil, že výsledek optimalizace nerespektuje dohodnutá okna. Pr
 - ✅ `solve_pragmatic_with_break_config_returns_solution` (nový test v `worker/src/services/vrp/pragmatic.rs`)
 - ✅ `build_pragmatic_problem_with_break_deserializes_vehicle_break` (nový regresní test v `worker/src/services/vrp/adapter.rs`)
 - ✅ `solve_pragmatic_small_problem_returns_all_stops` (smoke test bez break configu)
+
+## 2026-02-10T16:00:00Z — Cursor Agent
+
+### Opravy: Inbox – trasa zmizí při návratu + chybějící termín v detailu zákazníka
+
+#### 1) Trasa zmizí při návratu do Inboxu
+
+**Root cause**: Předchozí pokus o sjednocení načítání trasy přes `routeService.listRoutes()` selhal — trasy vytvořené auto-save v Inboxu neměly přiřazené `crew_id`, takže `listRoutes` s filtrem na crew/depot vrátil 0 výsledků.
+
+**Oprava**: Vrácen spolehlivý `routeService.getRoute({ date })` přístup. Inbox i Planner nyní načítají tutéž trasu `0d6dace0-…` (potvrzeno runtime logy — `routeId` se shoduje na obou stránkách).
+
+#### 2) Dohodnutý termín se nezobrazuje v detailu zákazníka
+
+**Root cause**: Backend `CallQueueItem` (Rust struct + SQL) neobsahoval pole `scheduled_date`, `scheduled_time_start`, `scheduled_time_end`. Frontend `isScheduledCandidate()` korektně detekoval `status === 'scheduled'`, ale samotné datum/čas neexistovaly na objektu.
+
+**Oprava**:
+- Rust: přidány `scheduled_date`, `scheduled_time_start`, `scheduled_time_end` do `CallQueueItem` + SQL dotazu
+- TypeScript: přidána pole do `CallQueueItem` interface
+- PlanningInbox: mapování `item.scheduledDate → _scheduledDate` při vytváření `InboxCandidate`
+
+### Investigace: Chybné geokódování „Masarykova 71, Břeclav"
+
+#### Pozorování uživatele
+1. Adresa „Masarykova 71, Břeclav" se na mapě zobrazuje v obci **Ladná** (severně od Břeclavi), nikoli v Břeclavi
+2. Trasa na mapě končí v Ladné — protože Valhalla routuje k uloženým souřadnicím
+3. Při velmi malém zoomu se marker #3 (kapka) posouvá vizuálně daleko od skutečné pozice (až na Jadran) — marker snapping na road geometry endpoint zesiluje chybu s klesajícím zoomem
+4. Na stránce detailu zákazníka je na mapě vidět pin v Ladné, ne v Břeclavi — potvrzuje, že chyba je v DB souřadnicích
+
+#### Runtime důkazy (debug logy)
+- Customer `85c023a9-f59d-4a99-8ddd-8469c3044b30` (TeploPlus group a.s.)
+  - DB souřadnice: `lat=48.8057863, lng=16.8724925`
+  - Snapped souřadnice (z Valhalla): `[16.872575, 48.805667]` (snap distance 0.016 km = 16 m)
+  - Obě sady ukazují do Ladné, cca 5 km severně od Břeclavi
+  - Skutečná Masarykova ulice v Břeclavi je přibližně: `lat≈48.759, lng≈16.882`
+
+#### Analýza
+- **Příčina**: Nominatim (geocoder) přiřadil adresu „Masarykova 71, Břeclav" k bodu v Ladné
+  - Ladná je malá obec severně od Břeclavi, kde existuje ulice „Masarykova"
+  - Nominatim nesprávně preferoval shodu názvu ulice v Ladné nad skutečnou Masarykovou v Břeclavi (nebo geocoder nerozlišil katastrální území)
+- **Není to chyba frontendové komponenty** — mapa správně zobrazuje to, co je v DB
+- **Valhalla routing**: trasa korektně routuje k souřadnicím v DB (Ladná), proto cesta vede do Ladné
+
+#### Marker „posouvání" při nízkém zoomu
+Marker snapping (přichytávání markeru k nejbližšímu bodu na road geometry) funguje korektně. Problém:
+1. Marker se snapne na road-snapped bod (16 m od DB souřadnic) — OK
+2. Při nízkém zoomu je pixel offset mezi geokódovaným bodem (Ladná) a skutečnou adresou (Břeclav) zanedbatelný, ale marker drift může být vizuálně výraznější kvůli Mercator projekci
+
+#### Podrobná investigace Nominatim API
+
+Otestovány **4 varianty** dotazu na veřejné Nominatim API:
+
+| # | Dotaz | Výsledek |
+|---|-------|----------|
+| 1 | `q=Masarykova 71, , Břeclav, Czech Republic` (prázdné PSČ → double comma) | **Timeout** — Nominatim nedokáže zpracovat `, ,` |
+| 2 | `q=Masarykova 71, 690 02, Břeclav, Czech Republic` (správné PSČ Břeclavi) | **Ladná** (48.805, 16.872) — ne Břeclav |
+| 3 | `q=Masarykova 71, Břeclav` (jednoduchý dotaz) | **Ladná** (48.805, 16.872) |
+| 4 | `street=Masarykova 71 & city=Břeclav & country=cz` (strukturovaný dotaz) | **Ladná** (48.805, 16.872) |
+
+**Zjištění**: Všechny varianty vracejí **Ladnou**, ne Břeclav. Problém je v datech **OpenStreetMap** — ulice „Masarykova" s číslem 71 existuje v OSM pouze v obci Ladná (okres Břeclav), nikoli v samotné Břeclavi.
+
+Oba vrácené výsledky:
+- `166/71, Masarykova, Ladna, okres Breclav, 691 46` → lat=48.8057863, lng=16.8724925
+- `71/10, Masarykova, Ladna, okres Breclav, 691 46` → lat=48.8034013, lng=16.8667863
+
+#### Dva nalezené problémy
+
+**1) OSM data issue (nelze opravit na naší straně)**
+- V OSM chybí „Masarykova" v Břeclavi, existuje pouze v Ladné
+- Nominatim vrací Ladnou i při explicitním `city=Břeclav`
+- **Řešení**: Manuální korekce souřadnic v aplikaci (budoucí funkce „Opravit polohu" na stránce zákazníka)
+
+**2) Bug: double-comma v Nominatim dotazu při prázdném PSČ**
+- Geocode format: `"{address}, {postal_code}, {city}, Czech Republic"`
+- Pokud PSČ je prázdné: `"Masarykova 71, , Břeclav, Czech Republic"` → `, ,` způsobuje timeout
+- **Oprava**: Dynamicky vynechat PSČ z dotazu, pokud je prázdné
+
+#### Doporučení
+1. **Opravit double-comma bug** v `nominatim.rs` — pokud PSČ je prázdné, formátovat dotaz bez něj ✅ opraveno
+2. Přidat na stránku zákazníka tlačítko **„Opravit polohu"** pro manuální korekci souřadnic (drag-and-drop pin)
+3. Přidat **post-geocoding validaci**: po geokódování provést reverse-geocode a ověřit, že vrácené město odpovídá zadanému městu
+4. Zvážit **alternativní geocoder** jako fallback (Photon, MapTiler, Google Geocoding API) pro případy, kdy Nominatim selhává
+5. Konkrétně pro zákazníka TeploPlus: manuální oprava souřadnic není potřeba — Ladná je bývalou součástí Břeclavi a adresa odpovídá
+
+### Oprava: Marker drift při změně zoomu (špendlík #3 putuje na Jadran)
+
+#### Root cause
+
+CSS property `position: relative` na třídě `.stopMarker` (v `RouteMapPanel.module.css`) **přepisovala** MapLibre's `position: absolute` na třídě `.maplibregl-marker`.
+
+**Proč**: Obě třídy mají stejnou CSS specifitu (jedna třída). V Vite dev serveru se CSS modul načte PO MapLibre CSS, takže CSS module „vyhrává" díky cascade order.
+
+**Důsledek**: Markery s `position: relative` vstoupily do normálního document flow místo absolutního pozicování. Každý marker měl offset odpovídající jeho pozici ve flow:
+- Marker #1: flow offset = 0px
+- Marker #2: flow offset = 36px (výška markeru #1)
+- Marker #3: flow offset = 72px (výška markerů #1 + #2)
+
+MapLibre transform `translate(-50%, -100%) translate(Xpx, Ypx)` kompenzuje pouze jednu výšku (-36px via `-100%`). Netto offset:
+- Marker #1: 0 - 36 = -36px ✅ (správné pro anchor: bottom)
+- Marker #2: 36 - 36 = 0px (náhodou vypadá OK)
+- Marker #3: 72 - 36 = +36px ❌ (**posunut dolů o 36px**)
+
+Při zoom level ~3 (Evropa): 1px ≈ 300-600 km → 36px = 10 000 - 20 000 km → marker v Mediteránu!
+
+#### Provedená oprava
+
+- `RouteMapPanel.module.css`: odebrán `position: relative` z `.stopMarker`
+  - MapLibre automaticky přidá `position: absolute` přes `.maplibregl-marker` class
+  - Pseudo-elementy `::before`/`::after` (absolute positioned) stále fungují — parent s `position: absolute` je positioned element
+  - Label `position: relative; top: 8px` funguje nezávisle na parentu
+
+#### Přidáno
+- Zoom level indikátor v levém horním rohu mapy (třída `.zoomLevel`)
+- Explicitní inline dimenze (`el.style.width = '30px'; el.style.height = '36px'`) jako pojistka pro případ CSS timing problémů
+
+## 2026-02-02T12:00:00Z — Cursor Agent (claude-4.6-opus-max-thinking)
+
+### Smart Slot Heuristics — stav implementace (checkpoint)
+
+#### Kontext
+Implementace dle plánu v `smart_slot_heuristics_798e5ec5.plan.md`. Cíl: multi-crew Valhalla-backed slot suggestion s validací a varováními v CallQueue.
+
+#### Stav jednotlivých fází
+
+| Fáze | Popis | Stav |
+|------|-------|------|
+| **1A** | Extrahovat sdílenou inserční logiku z `route.rs` do `worker/src/services/insertion.rs` | ✅ Hotovo |
+| **1B** | Refaktorovat `handle_insertion_calculate` aby používal sdílenou funkci | ✅ Hotovo |
+| **1C** | Implementovat `sazinka.slots.suggest.v2` handler s multi-crew + Valhalla | ✅ Hotovo |
+| **1D** | Implementovat skórovací funkci (travel + fit + preference + balance) | ✅ Hotovo |
+| **1E** | TDD testy pro insertion + scoring + multi-crew suggester | 🔧 Právě přidáno |
+| **2A** | Implementovat `sazinka.slots.validate` endpoint | ✅ Hotovo |
+| **2B** | Implementovat validační kontroly (overlap, unreachable, no_slack, overloaded, break_conflict) | ✅ Hotovo |
+| **2C** | TDD testy pro validaci | ⏳ Pending |
+| **3A** | Aktualizovat `slotService.ts` na v2 typy | ⏳ Pending |
+| **3B** | Přepracovat CallQueue schedule modal (crew selector, seskupené sloty, validace) | ⏳ Pending |
+| **3C** | Implementovat warning UI před potvrzením konfliktních slotů | ⏳ Pending |
+| **Docs** | Aktualizovat PROJECT_UX.MD, PROJECT_CONTEXT.MD, PROJECT_ROADMAP.MD | ⏳ Pending |
+
+#### Opravené kompilační chyby
+
+Při investigaci stavu byly nalezeny 2 kompilační chyby v `worker/src/handlers/slots.rs`:
+
+1. **Chybějící import `SuccessResponse`** — typ používaný v `handle_suggest_v2` a `handle_validate` nebyl importován.
+   - Oprava: přidán `SuccessResponse` do `use crate::types::{...}` importu.
+
+2. **Typový mismatch `depot.lat`/`depot.lng`** — funkce `resolve_depot_for_crew` používala `if let (Some(lat), Some(lng)) = (depot.lat, depot.lng)`, ale `Depot.lat` a `Depot.lng` jsou `f64`, ne `Option<f64>`.
+   - Oprava: změněno na přímý přístup `Coordinates { lat: depot.lat, lng: depot.lng }`.
+
+Po opravě: `cargo check` prošel bez chyb.
+
+#### Přidané testy (1E — rozpracováno)
+
+**`worker/src/services/insertion.rs`** — 8 testů:
+- `test_time_overlap_full` — plný překryv dvou identických intervalů
+- `test_time_overlap_partial` — 30min překryv přesahujících intervalů
+- `test_time_overlap_none` — žádný překryv
+- `test_time_overlap_adjacent` — sousedící intervaly (overlap = 0)
+- `test_status_from_delta` — kategorizace ok/tight/conflict
+- `test_mismatched_indices_meta_returns_empty` — guard clause
+- `test_empty_route_single_position` — prázdná trasa, 1 inserční pozice
+- `test_single_stop_two_positions` — 1 zastávka, 2 pozice
+- `test_positions_sorted_by_delta_min` — řazení dle delta
+- `test_conflict_when_schedule_too_tight` — konflikt při nedostatku času
+
+**`worker/src/handlers/slots.rs`** — 10 testů:
+- `test_preference_score_full_overlap` — plný překryv s preferencí → 100%
+- `test_preference_score_half_overlap` — poloviční překryv → ~50%
+- `test_preference_score_no_overlap` — žádný překryv → 0%
+- `test_preference_score_no_preference_gives_default` — bez preference → 70%
+- `test_day_load_percent_empty` — prázdný den → 0%
+- `test_day_load_percent_half_day` — poloviční vytížení → 50%
+- `test_day_load_percent_full` — plné vytížení → 100%
+- `test_slot_score_prefers_less_travel` — menší cestování = vyšší skóre
+- `test_slot_score_prefers_matching_preference` — shoda s preferencí = vyšší skóre
+- `test_slot_score_prefers_balanced_load` — vyrovnané vytížení posádek = vyšší skóre
+- `test_minutes_between` — výpočet rozdílu minut
+
+#### Architektura backendu (hotovo)
+
+```
+NATS subjects:
+  sazinka.slots.suggest.v2  → handle_suggest_v2()  — multi-crew slot suggestions
+  sazinka.slots.validate    → handle_validate()    — real-time slot validation
+
+Sdílená logika:
+  worker/src/services/insertion.rs
+    └─ calculate_insertion_positions() — používá route.insertion.calculate i slots.suggest.v2
+
+Nové typy (slots.rs):
+  SuggestSlotsV2Request   — date, customer_id, service_duration, preferred_time, crew_ids
+  SuggestSlotsV2Response  — suggestions: Vec<CrewSlotSuggestion>, warnings: Vec<SlotWarning>
+  CrewSlotSuggestion      — crew_id, start/end_time, score, delta_travel, slack, status
+  ValidateSlotRequest     — date, customer_id, crew_id, time_start, time_end
+  ValidateSlotResponse    — feasible, warnings, estimated_arrival, slack
+  SlotWarning             — severity (error/warning), warning_type, message
+```
+
+#### Co zbývá (další session)
+
+1. **Spustit testy** (`cargo test services::insertion` a `cargo test handlers::slots::tests`) — ověřit, že projdou
+2. **Fáze 2C**: Doplnit testy pro validační endpoint (unit testy pro čisté funkce)
+3. **Fáze 3A**: Aktualizovat `apps/web/src/services/slotService.ts` — přidat v2 typy a `suggestSlotsV2()`, `validateSlot()` funkce
+4. **Fáze 3B**: Přepracovat schedule modal v `CallQueue.tsx`:
+   - Přidat crew selector (dropdown, default "všechny")
+   - Seskupit sloty dle posádky s load indikátorem
+   - Status badge na každém slotu (zelený ok / žlutý tight / červený conflict)
+   - Real-time validace při ručním zadání času (debounced 500ms `validateSlot()`)
+5. **Fáze 3C**: Warning box před potvrzením konfliktního slotu ("Přesto potvrdit" / "Vybrat jiný slot")
+6. **Docs**: Aktualizovat PROJECT_UX.MD, PROJECT_CONTEXT.MD, PROJECT_ROADMAP.MD
+
+#### Soubory upravené v této session
+
+- `worker/src/handlers/slots.rs` — oprava importu SuccessResponse, oprava depot.lat/lng typů, přidání test modulu
+- `worker/src/services/insertion.rs` — přidání test modulu
+
+## 2026-02-10T17:00:00Z — Cursor Agent
+
+### Investigace: Putující marker #3 při změně zoomu
+
+#### Pozorování uživatele
+- Marker #3 (TeploPlus group a.s., „Masarykova 71, Břeclav") se při zoomování posouvá na jih
+- Při velmi malém zoomu putuje až nad Středozemní moře / na Jadran
+- Markery #1 a #2 zůstávají přibližně na správných místech
+- Projevuje se **v Inboxu i v Planneru** (obě stránky sdílejí `RouteMapPanel`)
+- V Inboxu jsou na pozici zákazníka dva markery: kulatý (selectedCandidateMarker) + kapka s číslem 3 (stopMarker)
+- V Planneru je jen kapka — ale chování je stejné
+
+#### Ověřená fakta
+- **Souřadnice v DB jsou správné** — `lat=48.8057863, lng=16.8724925` (Ladná, OK — viz geokódování výše)
+- **Snapped souřadnice jsou správné** — `[16.872575, 48.805667]`, snap distance pouhých 16 m
+- **`setLngLat` volání je ve správném formátu** — `[lng, lat]` dle MapLibre API
+- **Všechny markery jsou vytvářeny identickým kódem** ve `forEach` smyčce (řádky 234–274 v `RouteMapPanel.tsx`)
+- **Jediný rozdíl** markeru #3: má třídu `stopMarkerHighlighted` (barva `#f59e0b` místo `#2563eb`)
+- CSS třída `stopMarkerHighlighted` mění **pouze** CSS proměnnou `--marker-fill` — žádný vliv na rozměry
+
+#### Verze a konfigurace
+- **MapLibre GL JS**: 4.7.1 (pnpm)
+- **Marker config**: `new maplibregl.Marker({ element: el, anchor: 'bottom', offset: [0, 7] })`
+- **Marker CSS**: `.stopMarker` — `width: 30px; height: 36px; display: flex; position: relative`
+- **Globální CSS reset**: `* { box-sizing: border-box; margin: 0; padding: 0; }` — platí i pro maplibregl interní elementy
+
+#### Hlavní hypotéza: Nesprávný výpočet anchor offsetu
+
+MapLibre Marker s `anchor: 'bottom'` interně čte `offsetHeight` elementu a počítá transform offset jako `translateY(-offsetHeight)`. Pokud je `offsetHeight` nulová nebo nesprávná:
+- S výškou 0: marker se ukotvuje svým **horním** okrajem místo **spodního**
+- Při vysokém zoomu: chyba je zanedbatelná (36px = pár metrů)
+- Při nízkém zoomu: 36px = stovky km → marker se vizuálně posune o stovky km na jih
+
+**Proč by to postihovalo jen marker #3?**
+- Dosud **nepotvrzeno**, že #1 a #2 nejsou také postiženy — při nízkém zoomu jsou blízko středu mapy, takže drift nemusí být tak viditelný
+- Nebo: highlighted CSS třída vyžaduje přepočet CSS proměnných, což může ovlivnit timing layoutu
+
+#### Root cause (potvrzeno analýzou zdrojového kódu MapLibre GL JS 4.7.1)
+
+Soubor `node_modules/.../maplibre-gl/src/ui/anchor.ts`, řádek 14:
+```typescript
+'bottom': 'translate(-50%,-100%)',
+```
+
+Soubor `node_modules/.../maplibre-gl/src/ui/marker.ts`, řádek 631:
+```typescript
+DOM.setTransform(this._element, `${anchorTranslate[this._anchor]} translate(${this._pos.x}px, ${this._pos.y}px) ...`);
+```
+
+**Mechanismus chyby:**
+1. `anchor: 'bottom'` generuje CSS `translate(-50%, -100%)`
+2. CSS `translate(-100%)` závisí na **aktuální CSS výšce elementu**
+3. Custom marker element je vytvořen přes `document.createElement('div')` a CSS module class je přiřazena
+4. Pokud browser ještě neaplikoval CSS module stylesheet (Vite HMR, race condition), element má `height: auto` — výška je jen ~12px (z labelu) místo 36px
+5. `translate(-100%)` pak posouvá marker nahoru jen o 12px místo 36px
+6. **Při vysokém zoomu**: 24px rozdíl = pár metrů → nepostřehnutelné
+7. **Při nízkém zoomu (level 3–5)**: 24px ≈ 4° latitude ≈ **450 km** → marker se vizuálně přesune na Jadran
+
+**Proč hlavně marker #3:**
+- Pravděpodobně jsou postiženy VŠECHNY markery, ale #1 a #2 jsou blíže středu mapy / sobě, takže drift není tak viditelný
+- Marker #3 je highlighted (oranžový) → přitahuje pozornost
+
+#### Oprava
+
+Nahrazen `anchor: 'bottom'` za `anchor: 'top-left'` s explicitním pixelovým offsetem. MapLibre pro `top-left` generuje `translate(0, 0)` — žádné CSS procenta, žádná závislost na CSS timing.
+
+**Stop markery** (30×36px, tip na bottom-center):
+```typescript
+// Dříve: anchor: 'bottom', offset: [0, 7]
+// Nyní:
+anchor: 'top-left', offset: [-15, -36]
+```
+
+**Selected candidate marker** (28×28px kruh, střed):
+```typescript
+// Dříve: default (anchor: 'center')
+// Nyní:
+anchor: 'top-left', offset: [-14, -14]
+```
+
+**Preview marker** (24×24px kruh):
+```typescript
+// Dříve: default (anchor: 'center')
+// Nyní:
+anchor: 'top-left', offset: [-12, -12]
+```
+
+Depot marker neovlivněn — používá nativní MapLibre SVG marker (`{ color: '#22c55e' }`).
+
+#### Přidáno: Zoom level indikátor
+V levém horním rohu mapy malé číslo `Z X.X` zobrazující aktuální zoom level.
+- `RouteMapPanel.tsx`: stav `zoomLevel` + handler na `map.on('zoom')` + render `<div className={styles.zoomLevel}>`
+- `RouteMapPanel.module.css`: styl `.zoomLevel`
+
+#### Oprava: Double-comma bug v Nominatim dotazu
+
+Při prázdném PSČ geocoding dotaz obsahoval `", , "` (double comma), což způsobovalo timeout Nominatim API.
+
+**Soubor**: `worker/src/services/nominatim.rs`
+**Změna**: Pokud `postal_code` je prázdný, formát dotazu vynechá PSČ:
+- Dříve: `"{address}, {postal_code}, {city}, Czech Republic"` → `"Masarykova 71, , Břeclav, Czech Republic"`
+- Nyní: `"{address}, {city}, Czech Republic"` → `"Masarykova 71, Břeclav, Czech Republic"`
+
+#### Poznámka ke geokódování Ladná/Břeclav
+Uživatel potvrdil, že adresa „Masarykova 71, Břeclav" geokódovaná na Ladnou je **v pořádku** — Masarykova ulice v Břeclavi neexistuje, existuje pouze v Ladné (dříve součást Břeclavi). Nominatim výsledek je tedy správný.

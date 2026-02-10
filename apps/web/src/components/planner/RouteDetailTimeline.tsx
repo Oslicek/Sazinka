@@ -5,6 +5,7 @@
  * Clicking a stop or segment highlights it on the map.
  */
 
+import { useEffect } from 'react';
 import type { SavedRouteStop } from '../../services/routeService';
 import type { RouteMetrics } from './CapacityMetrics';
 import type { RouteWarning } from '@shared/route';
@@ -141,6 +142,12 @@ export function RouteDetailTimeline({
   returnToDepotDurationMinutes = null,
 }: RouteDetailTimelineProps) {
   const depotName = depot?.name ?? 'Depo';
+
+  useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'post-fix-2',hypothesisId:'H17',location:'RouteDetailTimeline.tsx:actions',message:'route action bar render state',data:{stopsCount:stops.length,hasOnOptimize:!!onOptimize,hasOnAddBreak:!!onAddBreak,hasOnDeleteRoute:!!onDeleteRoute,isOptimizing,isSaving},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+  }, [stops.length, onOptimize, onAddBreak, onDeleteRoute, isOptimizing, isSaving]);
 
   // Build per-stop warning map: stopIndex (0-based) → warnings[]
   const warningsByStop = new Map<number, RouteWarning[]>();

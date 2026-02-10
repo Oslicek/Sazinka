@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useNatsStore } from '../stores/natsStore';
 import {
@@ -10,10 +10,17 @@ import {
   type CallQueueResponse,
 } from '../services/revisionService';
 import {
-  suggestSlots,
+  suggestSlotsV2,
+  validateSlot,
   formatSlotTime,
-  type SuggestedSlot,
+  getStatusColor,
+  groupSuggestionsByCrew,
+  type CrewSlotSuggestion,
+  type SlotWarning,
+  type SuggestSlotsV2Response,
+  type ValidateSlotResponse,
 } from '../services/slotService';
+import { listCrews, type Crew } from '../services/crewService';
 import { getToken } from '@/utils/auth';
 import styles from './CallQueue.module.css';
 
@@ -63,10 +70,22 @@ export function CallQueue() {
   const [scheduleTimeStart, setScheduleTimeStart] = useState('');
   const [scheduleTimeEnd, setScheduleTimeEnd] = useState('');
   const [scheduleDuration, setScheduleDuration] = useState(30);
-  
-  // Slot suggestions
-  const [suggestedSlots, setSuggestedSlots] = useState<SuggestedSlot[]>([]);
+  const [selectedCrewId, setSelectedCrewId] = useState<string>('');
+
+  // Crews
+  const [crews, setCrews] = useState<Crew[]>([]);
+
+  // Slot suggestions (v2 — multi-crew)
+  const [v2Response, setV2Response] = useState<SuggestSlotsV2Response | null>(null);
   const [loadingSlots, setLoadingSlots] = useState(false);
+
+  // Validation
+  const [validation, setValidation] = useState<ValidateSlotResponse | null>(null);
+  const [validating, setValidating] = useState(false);
+  const validateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Confirmation warnings
+  const [showWarningConfirm, setShowWarningConfirm] = useState(false);
 
   const loadQueue = useCallback(async () => {
     if (!isConnected) return;
@@ -93,6 +112,12 @@ export function CallQueue() {
     loadQueue();
   }, [loadQueue]);
 
+  // Load crews once when connected
+  useEffect(() => {
+    if (!isConnected) return;
+    listCrews(true).then(setCrews).catch(() => setCrews([]));
+  }, [isConnected]);
+
   const handleSnooze = async () => {
     if (!selectedItem || !snoozeDate) return;
     
@@ -114,33 +139,64 @@ export function CallQueue() {
 
   const loadSlotSuggestions = useCallback(async (date: string) => {
     if (!selectedItem || !date) {
-      setSuggestedSlots([]);
+      setV2Response(null);
       return;
     }
-    
+
     setLoadingSlots(true);
+    setValidation(null);
     try {
-      const response = await suggestSlots({
+      const response = await suggestSlotsV2({
         date,
-        customerCoordinates: {
-          lat: selectedItem.customerLat || 50.0,
-          lng: selectedItem.customerLng || 14.4,
-        },
+        customerId: selectedItem.customerId,
         serviceDurationMinutes: scheduleDuration,
-        maxSuggestions: 5,
+        crewIds: selectedCrewId ? [selectedCrewId] : undefined,
+        maxPerCrew: 3,
       });
-      setSuggestedSlots(response.slots);
+      setV2Response(response);
     } catch (err) {
       console.error('Failed to load slot suggestions:', err);
-      setSuggestedSlots([]);
+      setV2Response(null);
     } finally {
       setLoadingSlots(false);
     }
-  }, [selectedItem, scheduleDuration]);
+  }, [selectedItem, scheduleDuration, selectedCrewId]);
+
+  // Debounced validation when manually editing time inputs
+  const triggerValidation = useCallback((crewId: string, timeStart: string, timeEnd: string) => {
+    if (validateTimerRef.current) clearTimeout(validateTimerRef.current);
+    if (!selectedItem || !scheduleDate || !crewId || !timeStart || !timeEnd) {
+      setValidation(null);
+      return;
+    }
+    setValidating(true);
+    validateTimerRef.current = setTimeout(async () => {
+      try {
+        const result = await validateSlot({
+          date: scheduleDate,
+          customerId: selectedItem.customerId,
+          crewId,
+          timeStart,
+          timeEnd,
+        });
+        setValidation(result);
+      } catch {
+        setValidation(null);
+      } finally {
+        setValidating(false);
+      }
+    }, 500);
+  }, [selectedItem, scheduleDate]);
 
   const handleSchedule = async () => {
     if (!selectedItem || !scheduleDate) return;
-    
+
+    // If there are validation errors, show warning confirmation first
+    if (validation && !validation.feasible && !showWarningConfirm) {
+      setShowWarningConfirm(true);
+      return;
+    }
+
     try {
       await scheduleRevision({
         id: selectedItem.id,
@@ -148,27 +204,33 @@ export function CallQueue() {
         timeWindowStart: scheduleTimeStart || undefined,
         timeWindowEnd: scheduleTimeEnd || undefined,
         durationMinutes: scheduleDuration,
+        assignedCrewId: selectedCrewId || undefined,
       });
-      
+
       const scheduledDateValue = scheduleDate;
-      
+
       setShowScheduleModal(false);
       setSelectedItem(null);
       setScheduleDate('');
       setScheduleTimeStart('');
       setScheduleTimeEnd('');
-      setSuggestedSlots([]);
-      
-      // Navigate to planner for the scheduled date
+      setSelectedCrewId('');
+      setV2Response(null);
+      setValidation(null);
+      setShowWarningConfirm(false);
+
       navigate({ to: '/planner', search: { date: scheduledDateValue } });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to schedule revision');
     }
   };
 
-  const selectSlot = (slot: SuggestedSlot) => {
+  const selectSlot = (slot: CrewSlotSuggestion) => {
     setScheduleTimeStart(formatSlotTime(slot.startTime));
     setScheduleTimeEnd(formatSlotTime(slot.endTime));
+    setSelectedCrewId(slot.crewId);
+    setValidation(null);
+    setShowWarningConfirm(false);
   };
 
   const formatDate = (dateStr: string) => {
@@ -432,55 +494,105 @@ export function CallQueue() {
               </div>
             )}
 
-            <div className={styles.formGroup}>
-              <label>Datum:</label>
-              <input
-                type="date"
-                value={scheduleDate}
-                onChange={(e) => {
-                  setScheduleDate(e.target.value);
-                  loadSlotSuggestions(e.target.value);
-                }}
-                min={new Date().toISOString().split('T')[0]}
-              />
+            <div className={styles.formRow}>
+              <div className={styles.formGroup}>
+                <label>Datum:</label>
+                <input
+                  type="date"
+                  value={scheduleDate}
+                  onChange={(e) => {
+                    setScheduleDate(e.target.value);
+                    setValidation(null);
+                    setShowWarningConfirm(false);
+                    loadSlotSuggestions(e.target.value);
+                  }}
+                  min={new Date().toISOString().split('T')[0]}
+                />
+              </div>
+              <div className={styles.formGroup}>
+                <label>Posádka:</label>
+                <select
+                  value={selectedCrewId}
+                  onChange={(e) => {
+                    setSelectedCrewId(e.target.value);
+                    setValidation(null);
+                    setShowWarningConfirm(false);
+                    if (scheduleDate) loadSlotSuggestions(scheduleDate);
+                  }}
+                >
+                  <option value="">Všechny posádky</option>
+                  {crews.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            {/* Smart Slot Suggestions */}
+            {/* Smart Slot Suggestions — grouped by crew */}
             {scheduleDate && (
               <div className={styles.slotSuggestions}>
                 <label>Doporučené sloty:</label>
                 {loadingSlots ? (
                   <div className={styles.loadingSlots}>Načítám...</div>
-                ) : suggestedSlots.length > 0 ? (
-                  <div className={styles.slotList}>
-                    {suggestedSlots.map((slot, index) => (
-                      <button
-                        key={index}
-                        type="button"
-                        className={styles.slotButton}
-                        onClick={() => selectSlot(slot)}
-                        title={slot.reason}
-                      >
-                        <span className={styles.slotTime}>
-                          {formatSlotTime(slot.startTime)} - {formatSlotTime(slot.endTime)}
-                        </span>
-                        <span 
-                          className={styles.slotScore}
-                          style={{ 
-                            color: slot.score >= 80 ? 'var(--color-success)' : 
-                                   slot.score >= 60 ? 'var(--color-warning)' : 'var(--color-error)'
-                          }}
-                        >
-                          {slot.score}%
-                        </span>
-                        {slot.deltaTravelMinutes > 0 && (
-                          <span className={styles.slotDelta}>+{slot.deltaTravelMinutes}min</span>
-                        )}
-                      </button>
+                ) : v2Response && v2Response.suggestions.length > 0 ? (
+                  <div className={styles.crewSlotGroups}>
+                    {Array.from(groupSuggestionsByCrew(v2Response.suggestions)).map(([crewId, group]) => (
+                      <div key={crewId} className={styles.crewGroup}>
+                        <div className={styles.crewGroupHeader}>
+                          <span className={styles.crewGroupName}>{group.crewName}</span>
+                          <span className={styles.crewGroupLoad}>{group.dayLoadPercent}% dne</span>
+                        </div>
+                        <div className={styles.slotList}>
+                          {group.suggestions.map((slot, index) => (
+                            <button
+                              key={index}
+                              type="button"
+                              className={`${styles.slotButton} ${
+                                selectedCrewId === slot.crewId &&
+                                scheduleTimeStart === formatSlotTime(slot.startTime) &&
+                                scheduleTimeEnd === formatSlotTime(slot.endTime)
+                                  ? styles.slotButtonSelected
+                                  : ''
+                              }`}
+                              onClick={() => selectSlot(slot)}
+                              title={slot.reason}
+                            >
+                              <span className={styles.slotTime}>
+                                {formatSlotTime(slot.startTime)} - {formatSlotTime(slot.endTime)}
+                              </span>
+                              <span
+                                className={styles.slotScore}
+                                style={{ color: getStatusColor(slot.status) }}
+                              >
+                                {slot.score}%
+                              </span>
+                              <span
+                                className={styles.slotStatusBadge}
+                                style={{ backgroundColor: getStatusColor(slot.status) }}
+                              >
+                                {slot.status === 'ok' ? 'OK' : slot.status === 'tight' ? 'Těsný' : 'Konflikt'}
+                              </span>
+                              {slot.deltaTravelMinutes > 0 && (
+                                <span className={styles.slotDelta}>+{slot.deltaTravelMinutes}min</span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 ) : (
                   <div className={styles.noSlots}>Žádné návrhy pro tento den</div>
+                )}
+                {/* Global warnings from v2 */}
+                {v2Response && v2Response.warnings.length > 0 && (
+                  <div className={styles.slotWarnings}>
+                    {v2Response.warnings.map((w, i) => (
+                      <div key={i} className={`${styles.warningItem} ${w.severity === 'error' ? styles.warningError : styles.warningWarn}`}>
+                        {w.severity === 'error' ? '❌' : '⚠️'} {w.message}
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             )}
@@ -491,7 +603,12 @@ export function CallQueue() {
                 <input
                   type="time"
                   value={scheduleTimeStart}
-                  onChange={(e) => setScheduleTimeStart(e.target.value)}
+                  className={validation && !validation.feasible ? styles.inputError : ''}
+                  onChange={(e) => {
+                    setScheduleTimeStart(e.target.value);
+                    setShowWarningConfirm(false);
+                    triggerValidation(selectedCrewId, e.target.value, scheduleTimeEnd);
+                  }}
                 />
               </div>
               <div className={styles.formGroup}>
@@ -499,16 +616,44 @@ export function CallQueue() {
                 <input
                   type="time"
                   value={scheduleTimeEnd}
-                  onChange={(e) => setScheduleTimeEnd(e.target.value)}
+                  className={validation && !validation.feasible ? styles.inputError : ''}
+                  onChange={(e) => {
+                    setScheduleTimeEnd(e.target.value);
+                    setShowWarningConfirm(false);
+                    triggerValidation(selectedCrewId, scheduleTimeStart, e.target.value);
+                  }}
                 />
               </div>
             </div>
+
+            {/* Validation result */}
+            {validating && <div className={styles.loadingSlots}>Ověřuji...</div>}
+            {validation && validation.warnings.length > 0 && (
+              <div className={styles.validationWarnings}>
+                {validation.warnings.map((w, i) => (
+                  <div key={i} className={`${styles.warningItem} ${w.severity === 'error' ? styles.warningError : styles.warningWarn}`}>
+                    {w.severity === 'error' ? '❌' : '⚠️'} {w.message}
+                    {w.conflictingCustomer && <span className={styles.conflictName}> ({w.conflictingCustomer})</span>}
+                  </div>
+                ))}
+                {validation.estimatedArrival && (
+                  <div className={styles.validationMeta}>
+                    Odhadovaný příjezd: {formatSlotTime(validation.estimatedArrival)}
+                    {validation.slackBeforeMinutes != null && ` | Rezerva před: ${validation.slackBeforeMinutes} min`}
+                    {validation.slackAfterMinutes != null && ` | Rezerva po: ${validation.slackAfterMinutes} min`}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className={styles.formGroup}>
               <label>Předpokládaná doba (min):</label>
               <select
                 value={scheduleDuration}
-                onChange={(e) => setScheduleDuration(Number(e.target.value))}
+                onChange={(e) => {
+                  setScheduleDuration(Number(e.target.value));
+                  if (scheduleDate) loadSlotSuggestions(scheduleDate);
+                }}
               >
                 <option value={15}>15 min</option>
                 <option value={30}>30 min</option>
@@ -519,8 +664,62 @@ export function CallQueue() {
               </select>
             </div>
 
+            {/* Warning confirmation */}
+            {showWarningConfirm && validation && !validation.feasible && (
+              <div className={styles.warningConfirmBox}>
+                <p>Slot má konflikty. Chcete přesto pokračovat?</p>
+                <div className={styles.warningConfirmActions}>
+                  <button
+                    className={styles.warningConfirmBtn}
+                    onClick={() => {
+                      setShowWarningConfirm(false);
+                      // Force schedule despite warnings
+                      (async () => {
+                        try {
+                          await scheduleRevision({
+                            id: selectedItem.id,
+                            scheduledDate: scheduleDate,
+                            timeWindowStart: scheduleTimeStart || undefined,
+                            timeWindowEnd: scheduleTimeEnd || undefined,
+                            durationMinutes: scheduleDuration,
+                            assignedCrewId: selectedCrewId || undefined,
+                          });
+                          const d = scheduleDate;
+                          setShowScheduleModal(false);
+                          setSelectedItem(null);
+                          setScheduleDate('');
+                          setScheduleTimeStart('');
+                          setScheduleTimeEnd('');
+                          setSelectedCrewId('');
+                          setV2Response(null);
+                          setValidation(null);
+                          setShowWarningConfirm(false);
+                          navigate({ to: '/planner', search: { date: d } });
+                        } catch (err) {
+                          setError(err instanceof Error ? err.message : 'Failed to schedule revision');
+                        }
+                      })();
+                    }}
+                  >
+                    Přesto naplánovat
+                  </button>
+                  <button
+                    className={styles.cancelButton}
+                    onClick={() => setShowWarningConfirm(false)}
+                  >
+                    Vybrat jiný slot
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className={styles.modalActions}>
-              <button className={styles.cancelButton} onClick={() => setShowScheduleModal(false)}>
+              <button className={styles.cancelButton} onClick={() => {
+                setShowScheduleModal(false);
+                setShowWarningConfirm(false);
+                setValidation(null);
+                setV2Response(null);
+              }}>
                 Zrušit
               </button>
               <button

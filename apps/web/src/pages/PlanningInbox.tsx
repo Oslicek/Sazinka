@@ -132,6 +132,7 @@ export function PlanningInbox() {
   
   // Route state
   const [routeStops, setRouteStops] = useState<SavedRouteStop[]>([]);
+  const [loadedRouteId, setLoadedRouteId] = useState<string | null>(null);
   const [routeGeometry, setRouteGeometry] = useState<[number, number][]>([]);
   const [returnToDepotLeg, setReturnToDepotLeg] = useState<{ distanceKm: number | null; durationMinutes: number | null } | null>(null);
   const [routeWarnings, setRouteWarnings] = useState<RouteWarning[]>([]);
@@ -323,8 +324,12 @@ export function PlanningInbox() {
       setIsLoadingRoute(true);
       try {
         const response = await routeService.getRoute({ date: dateToLoad });
+        setLoadedRouteId(response.route?.id ?? null);
         
         if (response.route && response.stops.length > 0) {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'post-fix-3',hypothesisId:'H14',location:'PlanningInbox.tsx:loadRoute',message:'inbox loaded route by date',data:{date:dateToLoad,routeId:response.route.id,crewId:response.route.crewId ?? null,depotId:response.route.depotId ?? null,stops:response.stops.map((s,i)=>({i,id:s.id,customerId:s.customerId,name:s.customerName,lng:s.customerLng,lat:s.customerLat,stopOrder:s.stopOrder,address:s.address}))},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
           setRouteStops(response.stops);
           setReturnToDepotLeg(
             response.route.returnToDepotDistanceKm != null || response.route.returnToDepotDurationMinutes != null
@@ -347,12 +352,14 @@ export function PlanningInbox() {
           });
         } else {
           setRouteStops([]);
+          setLoadedRouteId(null);
           setReturnToDepotLeg(null);
           setMetrics(null);
         }
       } catch (err) {
         console.error('Failed to load route:', err);
         setRouteStops([]);
+        setLoadedRouteId(null);
         setReturnToDepotLeg(null);
         setMetrics(null);
       } finally {
@@ -559,6 +566,10 @@ export function PlanningInbox() {
         deltaMin: undefined,
         slotStatus: undefined,
         suggestedSlots: undefined,
+        // Populate local scheduled fields from backend data
+        _scheduledDate: item.scheduledDate ?? undefined,
+        _scheduledTimeStart: item.scheduledTimeStart ?? undefined,
+        _scheduledTimeEnd: item.scheduledTimeEnd ?? undefined,
       }));
       
       setCandidates(loadedCandidates);
@@ -1924,6 +1935,8 @@ export function PlanningInbox() {
               depot={null}
               routeGeometry={dayOverviewGeometry}
               highlightedStopId={scheduledConfirmation.candidateId}
+              debugSource="inbox-day-overview"
+              debugRouteId={null}
               selectedCandidate={null}
               isLoading={dayOverview.isLoading}
             />
@@ -1941,6 +1954,8 @@ export function PlanningInbox() {
             routeGeometry={routeGeometry}
             highlightedStopId={selectedCandidateId}
             highlightedSegment={highlightedSegment}
+            debugSource="inbox-main"
+            debugRouteId={loadedRouteId}
             selectedCandidate={selectedCandidateForMap}
             insertionPreview={insertionPreviewForMap}
             onSegmentHighlight={setHighlightedSegment}

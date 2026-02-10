@@ -43,6 +43,10 @@ interface RouteMapPanelProps {
   onSegmentHighlight?: (segmentIndex: number | null) => void;
   /** Currently highlighted segment (controlled mode) */
   highlightedSegment?: number | null;
+  /** Debug source tag (planner / inbox / day overview) */
+  debugSource?: string;
+  /** Debug route id */
+  debugRouteId?: string | null;
 }
 
 export function RouteMapPanel({
@@ -57,6 +61,8 @@ export function RouteMapPanel({
   className,
   onSegmentHighlight,
   highlightedSegment: controlledHighlightedSegment,
+  debugSource,
+  debugRouteId,
 }: RouteMapPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -69,9 +75,11 @@ export function RouteMapPanel({
   const segmentClickHandlerRef = useRef<((e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => void) | null>(null);
   const segmentEnterHandlerRef = useRef<(() => void) | null>(null);
   const segmentLeaveHandlerRef = useRef<(() => void) | null>(null);
+  const highlightedSegmentRef = useRef<number | null>(null);
 
   // Track whether map style has finished loading (needed before addSource/addLayer)
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState<number>(11);
 
   // Internal segment highlight state (used when not controlled)
   const [internalHighlightedSegment, setInternalHighlightedSegment] = useState<number | null>(null);
@@ -88,6 +96,10 @@ export function RouteMapPanel({
       setInternalHighlightedSegment(value);
     }
   }, [onSegmentHighlight]);
+
+  useEffect(() => {
+    highlightedSegmentRef.current = highlightedSegment ?? null;
+  }, [highlightedSegment]);
 
   // Initialize map (only once - depot changes are handled by fitBounds/flyTo)
   useEffect(() => {
@@ -127,6 +139,10 @@ export function RouteMapPanel({
 
     mapRef.current.on('load', () => {
       setMapLoaded(true);
+    });
+
+    mapRef.current.on('zoom', () => {
+      setZoomLevel(mapRef.current?.getZoom() ?? 0);
     });
 
     return () => {
@@ -196,11 +212,31 @@ export function RouteMapPanel({
 
     clearMarkers();
 
+    const snappedCoordByStopId = new Map<string, [number, number]>();
+    if (routeGeometry && routeGeometry.length > 0 && depot) {
+      const mappableStops = stops.filter((s) => s.customerLat != null && s.customerLng != null);
+      if (mappableStops.length > 0) {
+        const waypoints = mappableStops.map((s) => ({
+          coordinates: { lat: s.customerLat!, lng: s.customerLng! },
+          name: s.customerName,
+        }));
+        const snappedSegments = splitGeometryIntoSegments(routeGeometry, waypoints, depot);
+        for (let i = 0; i < mappableStops.length; i += 1) {
+          const seg = snappedSegments[i];
+          const end = seg?.[seg.length - 1];
+          if (end) {
+            snappedCoordByStopId.set(mappableStops[i].id, end);
+          }
+        }
+      }
+    }
+
     stops.forEach((stop, index) => {
       const markerKey = stop.customerId ?? stop.id;
       const isHighlighted = stop.id === highlightedStopId || stop.customerId === highlightedStopId;
-      const lat = stop.customerLat;
-      const lng = stop.customerLng;
+      const snapped = snappedCoordByStopId.get(stop.id);
+      const lat = snapped ? snapped[1] : stop.customerLat;
+      const lng = snapped ? snapped[0] : stop.customerLng;
       if (!lat || !lng) return; // Skip stops without coordinates
 
       const el = document.createElement('div');
@@ -210,7 +246,18 @@ export function RouteMapPanel({
       label.textContent = String(index + 1);
       el.appendChild(label);
 
-      const marker = new maplibregl.Marker({ element: el })
+      // Use 'top-left' anchor with explicit pixel offset instead of 'bottom'.
+      // 'bottom' uses CSS translate(-50%,-100%) which depends on the element's
+      // computed height. If CSS module hasn't loaded yet, the height may be wrong
+      // (e.g. 12px from label content instead of 36px from CSS), causing the
+      // marker to drift hundreds of km south at low zoom levels.
+      // With 'top-left' + fixed offset, positioning is independent of CSS timing.
+      // Marker is 30×36px; bottom-center tip is at (15, 36) from top-left.
+      const marker = new maplibregl.Marker({
+        element: el,
+        anchor: 'top-left',
+        offset: [-15, -36],
+      })
         .setLngLat([lng, lat])
         .setPopup(
           new maplibregl.Popup().setHTML(`
@@ -229,7 +276,25 @@ export function RouteMapPanel({
 
       markersRef.current.set(markerKey, marker);
     });
-  }, [stops, highlightedStopId, onStopClick, clearMarkers]);
+    // #region agent log – marker dimensions diagnostic
+    const markerDiag = Array.from(markersRef.current.entries()).map(([key, m]) => {
+      const ll = m.getLngLat();
+      const mEl = m.getElement();
+      const child = mEl.firstElementChild as HTMLElement | null;
+      return {
+        key,
+        lng: ll.lng,
+        lat: ll.lat,
+        wrapperW: mEl.offsetWidth,
+        wrapperH: mEl.offsetHeight,
+        childW: child?.offsetWidth,
+        childH: child?.offsetHeight,
+        wrapperTransform: mEl.style.transform,
+      };
+    });
+    fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'marker-drift-1',hypothesisId:'H18',location:'RouteMapPanel.tsx:markers-build',message:'markers rendered with dimension diagnostics',data:{debugSource:debugSource ?? null,debugRouteId:debugRouteId ?? null,markerCount:markersRef.current.size,snappedCount:snappedCoordByStopId.size,markers:markerDiag,stops:stops.map((s,i)=>({i,id:s.id,customerId:s.customerId,name:s.customerName,lng:s.customerLng,lat:s.customerLat,stopOrder:s.stopOrder,snapped:snappedCoordByStopId.get(s.id) ?? null}))},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+  }, [stops, highlightedStopId, onStopClick, clearMarkers, routeGeometry, depot]);
 
   // Show selected candidate location on the map (before adding to route)
   useEffect(() => {
@@ -253,7 +318,9 @@ export function RouteMapPanel({
     const el = document.createElement('div');
     el.className = styles.selectedCandidateMarker;
 
-    selectedCandidateMarkerRef.current = new maplibregl.Marker({ element: el })
+    // Use 'top-left' with fixed pixel offset to avoid CSS-timing dependency.
+    // Circle marker is 28×28px; center is at (14, 14).
+    selectedCandidateMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'top-left', offset: [-14, -14] })
       .setLngLat([lng, lat])
       .setPopup(
         new maplibregl.Popup({ offset: 25 }).setHTML(
@@ -359,8 +426,116 @@ export function RouteMapPanel({
       lastPoint[0] === geometryLast[0] &&
       lastPoint[1] === geometryLast[1]
     ) : null;
+    const endToDepotKm = hasGeometry && geometryLast && depot
+      ? Math.sqrt(
+        ((geometryLast[0] - depot.lng) * 111.32) ** 2 +
+        ((geometryLast[1] - depot.lat) * 111.32) ** 2
+      )
+      : null;
+    const endToLastWaypointKm = hasGeometry && geometryLast && waypoints.length > 0
+      ? Math.sqrt(
+        ((geometryLast[0] - waypoints[waypoints.length - 1].coordinates.lng) * 111.32) ** 2 +
+        ((geometryLast[1] - waypoints[waypoints.length - 1].coordinates.lat) * 111.32) ** 2
+      )
+      : null;
+    const endToDepotPx = hasGeometry && geometryLast && depot && mapRef.current
+      ? (() => {
+          const endPx = mapRef.current!.project([geometryLast[0], geometryLast[1]]);
+          const depotPx = mapRef.current!.project([depot.lng, depot.lat]);
+          return Math.hypot(endPx.x - depotPx.x, endPx.y - depotPx.y);
+        })()
+      : null;
+    const endToLastWaypointPx = hasGeometry && geometryLast && waypoints.length > 0 && mapRef.current
+      ? (() => {
+          const endPx = mapRef.current!.project([geometryLast[0], geometryLast[1]]);
+          const wp = waypoints[waypoints.length - 1].coordinates;
+          const wpPx = mapRef.current!.project([wp.lng, wp.lat]);
+          return Math.hypot(endPx.x - wpPx.x, endPx.y - wpPx.y);
+        })()
+      : null;
+    const waypointSnapDistancesKm = hasGeometry
+      ? waypoints.map((w, idx) => {
+          let best = Infinity;
+          for (let i = 0; i < routeGeometry!.length; i += 1) {
+            const dx = routeGeometry![i][0] - w.coordinates.lng;
+            const dy = routeGeometry![i][1] - w.coordinates.lat;
+            const d = Math.sqrt(((dx * 111.32) ** 2) + ((dy * 111.32) ** 2));
+            if (d < best) best = d;
+          }
+          return { index: idx, name: w.name ?? `wp-${idx + 1}`, km: best };
+        })
+      : [];
+    const depotSnapDistanceKm = hasGeometry && depot
+      ? (() => {
+          let best = Infinity;
+          for (let i = 0; i < routeGeometry!.length; i += 1) {
+            const dx = routeGeometry![i][0] - depot.lng;
+            const dy = routeGeometry![i][1] - depot.lat;
+            const d = Math.sqrt(((dx * 111.32) ** 2) + ((dy * 111.32) ** 2));
+            if (d < best) best = d;
+          }
+          return best;
+        })()
+      : null;
+    const maxWaypointSnapKm = waypointSnapDistancesKm.length > 0
+      ? Math.max(...waypointSnapDistancesKm.map((x) => x.km))
+      : null;
+    const mapZoom = mapRef.current?.getZoom?.() ?? null;
+    const targetChain: [number, number][] = depot
+      ? [
+          [effectiveDepot.lng, effectiveDepot.lat],
+          ...waypoints.map((w) => [w.coordinates.lng, w.coordinates.lat] as [number, number]),
+          [effectiveDepot.lng, effectiveDepot.lat],
+        ]
+      : waypoints.map((w) => [w.coordinates.lng, w.coordinates.lat] as [number, number]);
+    const segmentEndpointDistancesKm = targetChain.length >= 2
+      ? segments.slice(0, Math.min(segments.length, targetChain.length - 1)).map((seg, i) => {
+          const segStart = seg?.[0];
+          const segEnd = seg?.[seg.length - 1];
+          const tgtStart = targetChain[i];
+          const tgtEnd = targetChain[i + 1];
+          const startKm = segStart && tgtStart
+            ? Math.sqrt((((segStart[0]-tgtStart[0])*111.32)**2)+(((segStart[1]-tgtStart[1])*111.32)**2))
+            : null;
+          const endKm = segEnd && tgtEnd
+            ? Math.sqrt((((segEnd[0]-tgtEnd[0])*111.32)**2)+(((segEnd[1]-tgtEnd[1])*111.32)**2))
+            : null;
+          return { i, startKm, endKm, segPoints: seg.length };
+        })
+      : [];
+    let maxSegmentStartErrKm: number | null = null;
+    let maxSegmentEndErrKm: number | null = null;
+    if (targetChain.length >= 2 && segments.length > 0) {
+      let startMax = 0;
+      let endMax = 0;
+      const comparable = Math.min(segments.length, targetChain.length - 1);
+      for (let i = 0; i < comparable; i += 1) {
+        const seg = segments[i];
+        const segStart = seg?.[0];
+        const segEnd = seg?.[seg.length - 1];
+        const tgtStart = targetChain[i];
+        const tgtEnd = targetChain[i + 1];
+        if (segStart && tgtStart) {
+          const startErr = Math.sqrt(
+            ((segStart[0] - tgtStart[0]) * 111.32) ** 2 +
+            ((segStart[1] - tgtStart[1]) * 111.32) ** 2
+          );
+          startMax = Math.max(startMax, startErr);
+        }
+        if (segEnd && tgtEnd) {
+          const endErr = Math.sqrt(
+            ((segEnd[0] - tgtEnd[0]) * 111.32) ** 2 +
+            ((segEnd[1] - tgtEnd[1]) * 111.32) ** 2
+          );
+          endMax = Math.max(endMax, endErr);
+        }
+      }
+      maxSegmentStartErrKm = startMax;
+      maxSegmentEndErrKm = endMax;
+    }
+    const markerVisualTipOffsetPx = 0;
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix-1',hypothesisId:'H3',location:'RouteMapPanel.tsx:route-build',message:'route segmentation summary',data:{stopsCount:stops.length,waypointsCount:waypoints.length,stopsWithoutCoords,segmentsCount:segments.length,expectedSegments,hasGeometry,geometryLength:routeGeometry?.length ?? 0,startsAtGeometryStart,endsAtGeometryEnd},timestamp:Date.now()})}).catch(()=>{});
+    fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix-7',hypothesisId:'H11',location:'RouteMapPanel.tsx:route-build',message:'route segmentation summary',data:{debugSource:debugSource ?? null,debugRouteId:debugRouteId ?? null,stopsCount:stops.length,waypointsCount:waypoints.length,stopsWithoutCoords,segmentsCount:segments.length,expectedSegments,hasGeometry,geometryLength:routeGeometry?.length ?? 0,startsAtGeometryStart,endsAtGeometryEnd,endToDepotKm,endToLastWaypointKm,endToDepotPx,endToLastWaypointPx,maxSegmentStartErrKm,maxSegmentEndErrKm,mapZoom,markerVisualTipOffsetPx,depotSnapDistanceKm,maxWaypointSnapKm,waypointSnapDistancesKm,segmentEndpointDistancesKm,stopSignature:stops.map((s,i)=>`${i}:${s.id}:${s.customerId}:${s.customerLat},${s.customerLng}`)},timestamp:Date.now()})}).catch(()=>{});
     // #endregion
 
     // Build GeoJSON FeatureCollection with segmentIndex property
@@ -436,15 +611,14 @@ export function RouteMapPanel({
       if (feat && feat.length > 0) {
         const clickedIndex = feat[0].properties?.segmentIndex;
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix-1',hypothesisId:'H1',location:'RouteMapPanel.tsx:segment-click',message:'map segment click raw index',data:{clickedIndexType:typeof clickedIndex,clickedIndexValue:clickedIndex,highlightedSegment},timestamp:Date.now()})}).catch(()=>{});
+        fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix-3',hypothesisId:'H1',location:'RouteMapPanel.tsx:segment-click',message:'map segment click raw index',data:{clickedIndexType:typeof clickedIndex,clickedIndexValue:clickedIndex,currentHighlightedRef:highlightedSegmentRef.current},timestamp:Date.now()})}).catch(()=>{});
         // #endregion
         if (typeof clickedIndex === 'number' && Number.isFinite(clickedIndex)) {
-          // Keep clicked segment highlighted until user explicitly clears it.
-          setHighlightedSegment(clickedIndex);
+          setHighlightedSegment(highlightedSegmentRef.current === clickedIndex ? null : clickedIndex);
         } else if (typeof clickedIndex === 'string') {
           const parsed = Number(clickedIndex);
           if (Number.isFinite(parsed)) {
-            setHighlightedSegment(parsed);
+            setHighlightedSegment(highlightedSegmentRef.current === parsed ? null : parsed);
           }
         }
       }
@@ -501,7 +675,8 @@ export function RouteMapPanel({
     const el = document.createElement('div');
     el.className = styles.previewMarker;
 
-    previewMarkerRef.current = new maplibregl.Marker({ element: el })
+    // Preview marker is 24×24px circle; center at (12, 12).
+    previewMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'top-left', offset: [-12, -12] })
       .setLngLat([insertionPreview.coordinates.lng, insertionPreview.coordinates.lat])
       .setPopup(
         new maplibregl.Popup().setHTML(`
@@ -573,6 +748,7 @@ export function RouteMapPanel({
         </div>
       )}
       <div ref={containerRef} className={styles.map} />
+      <div className={styles.zoomLevel}>Z {zoomLevel.toFixed(1)}</div>
       {stops.length === 0 && !isLoading && !selectedCandidate && (
         <div className={styles.emptyHint}>
           Zatím žádné zastávky v trase

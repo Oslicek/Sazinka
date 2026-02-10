@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-02-10 (v0.18.6 - VRP break restoration: activity-level timing + jobs handler fix)
+> **Last Updated:** 2026-02-10 (v0.19.0 - Smart Slot Heuristics: multi-crew Valhalla-backed suggestion + validation)
 
 ## Overview
 
@@ -1793,7 +1793,9 @@ ALTER TABLE revisions ADD COLUMN snoozed_at TIMESTAMPTZ;
 | Operace | Cílová latence | Poznámka |
 |---------|----------------|----------|
 | UI highlight kandidáta | ≤150ms | Jen UI, bez výpočtů |
-| Slot suggestions | 400-700ms | Akceptovatelné se skeletonem |
+| Slot suggestions (v1) | 400-700ms | Akceptovatelné se skeletonem |
+| Slot suggestions v2 (multi-crew) | 800-2000ms | Valhalla matrices per crew |
+| Slot validation | 300-600ms | Single crew, real-time debounced |
 | Kompletní route recalc | ≤1200ms | S progressive loading |
 
 #### Matrix Calculation Strategy
@@ -2002,6 +2004,7 @@ UI: "Tip: Posádka 2 (+2 min)" - ne spam pro malé rozdíly
 - [x] ~~VRP solver timeout and robustness~~ (implemented v0.18.0)
 - [x] ~~VRP point time window mapping (arrival at slot start, service = slot length)~~ (implemented v0.18.5)
 - [x] ~~VRP automatic break placement (activity-level timing + jobs handler)~~ (implemented v0.18.6)
+- [x] ~~Smart Slot Heuristics: multi-crew Valhalla-backed slot suggestion + validation~~ (implemented v0.19.0)
 - [ ] Email notifications with Resend
 - [ ] Mobile-responsive design
 - [ ] Offline support (Service Worker)
