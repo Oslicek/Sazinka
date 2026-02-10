@@ -19,6 +19,8 @@ interface RouteDetailTimelineProps {
   onSegmentClick: (segmentIndex: number) => void;
   // Editing actions (optional - Inbox and Planner can both provide these)
   onRemoveStop?: (stopId: string) => void;
+  onAddBreak?: () => void;
+  onUpdateBreak?: (stopId: string, patch: { breakTimeStart?: string; breakDurationMinutes?: number }) => void;
   onOptimize?: () => void;
   onDeleteRoute?: () => void;
   deleteRouteLabel?: string; // Custom label for delete button (default: "Smazat trasu")
@@ -35,9 +37,37 @@ function formatTime(time: string | null): string {
   return time.substring(0, 5);
 }
 
-function formatScheduledDate(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00');
-  return d.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'numeric', year: 'numeric' });
+function parseTimeToMinutes(time: string): number | null {
+  const [h, m] = time.split(':').map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  return h * 60 + m;
+}
+
+function minutesToTime(minutes: number): string {
+  const normalized = ((minutes % (24 * 60)) + (24 * 60)) % (24 * 60);
+  const h = Math.floor(normalized / 60);
+  const m = normalized % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function formatDurationHm(durationMinutes: number | null): string {
+  if (durationMinutes == null || durationMinutes <= 0) return '—';
+  const h = Math.floor(durationMinutes / 60);
+  const m = durationMinutes % 60;
+  return `${h}h ${String(m).padStart(2, '0')}min`;
+}
+
+function diffMinutes(start: string | null, end: string | null): number | null {
+  const s = parseTimeToMinutes(start ?? '');
+  const e = parseTimeToMinutes(end ?? '');
+  if (s == null || e == null) return null;
+  let d = e - s;
+  if (d < 0) d += 24 * 60;
+  return d;
+}
+
+function getTotalDuration(metrics: RouteMetrics): number {
+  return Math.max(0, Math.round(metrics.travelTimeMin + metrics.serviceTimeMin));
 }
 
 function getStatusBadge(
@@ -103,6 +133,8 @@ export function RouteDetailTimeline({
   onStopClick,
   onSegmentClick,
   onRemoveStop,
+  onAddBreak,
+  onUpdateBreak,
   onOptimize,
   onDeleteRoute,
   deleteRouteLabel = 'Smazat trasu',
@@ -140,8 +172,11 @@ export function RouteDetailTimeline({
       </div>
 
       {stops.map((stop, index) => {
+        const isBreak = stop.stopType === 'break';
         const hasScheduledTime = !!(stop.scheduledTimeStart && stop.scheduledTimeEnd);
-        const badge = getStatusBadge(stop.revisionStatus, hasScheduledTime);
+        const badge = isBreak 
+          ? { label: 'Pauza', className: styles.badgeBreak }
+          : getStatusBadge(stop.revisionStatus, hasScheduledTime);
         const isSelected = stop.customerId === selectedStopId;
         
         // Calculate time difference between scheduled and estimated
@@ -150,6 +185,32 @@ export function RouteDetailTimeline({
         const hasSignificantDiff = (timeDiffStart && timeDiffStart > 15) || (timeDiffEnd && timeDiffEnd > 15);
 
         const isSegmentHighlighted = highlightedSegment === index;
+        const previousStop = index > 0 ? stops[index - 1] : null;
+        const segmentArrival = stop.estimatedArrival ?? null;
+        const fallbackDuration = diffMinutes(previousStop?.estimatedDeparture ?? null, segmentArrival);
+        const segmentDuration = stop.durationFromPreviousMinutes ?? fallbackDuration;
+
+        const segmentStart = (() => {
+          if (previousStop?.estimatedDeparture) return previousStop.estimatedDeparture;
+          if (segmentArrival && segmentDuration != null) {
+            const arrivalMin = parseTimeToMinutes(segmentArrival);
+            if (arrivalMin != null) {
+              return minutesToTime(arrivalMin - segmentDuration);
+            }
+          }
+          return null;
+        })();
+
+        const segmentTimeRange =
+          segmentStart && segmentArrival
+            ? `${formatTime(segmentStart)}–${formatTime(segmentArrival)}`
+            : '—';
+        const segmentDistanceKm =
+          stop.distanceFromPreviousKm != null && stop.distanceFromPreviousKm > 0
+            ? stop.distanceFromPreviousKm
+            : metrics && segmentDuration && metrics.travelTimeMin > 0 && metrics.distanceKm > 0
+              ? (segmentDuration * metrics.distanceKm) / metrics.travelTimeMin
+              : null;
 
         return (
           <div key={stop.id}>
@@ -168,40 +229,101 @@ export function RouteDetailTimeline({
             >
               <div className={styles.segmentLine} />
               <div className={styles.segmentInfo}>
-                {stop.distanceFromPreviousKm != null && stop.distanceFromPreviousKm > 0 ? (
-                  <span className={styles.segmentDistance}>{stop.distanceFromPreviousKm.toFixed(1)} km</span>
+                <span className={styles.segmentTime}>{segmentTimeRange}</span>
+                <span className={styles.segmentSeparator}>•</span>
+                {segmentDistanceKm != null && segmentDistanceKm > 0 ? (
+                  <span className={styles.segmentDistance}>{segmentDistanceKm.toFixed(1)} km</span>
                 ) : (
                   <span className={styles.segmentDistance}>—</span>
                 )}
                 <span className={styles.segmentSeparator}>•</span>
-                {stop.durationFromPreviousMinutes != null && stop.durationFromPreviousMinutes > 0 ? (
-                  <span className={styles.segmentDuration}>{stop.durationFromPreviousMinutes} min</span>
-                ) : (
-                  <span className={styles.segmentDuration}>—</span>
-                )}
+                <span className={styles.segmentDuration}>{formatDurationHm(segmentDuration)}</span>
               </div>
             </div>
 
-            {/* Stop card */}
-            <div
-              className={`${styles.stopCard} ${isSelected ? styles.stopCardSelected : ''}`}
-              data-selected={isSelected}
-              onClick={() => onStopClick(stop.customerId, index)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  onStopClick(stop.customerId, index);
-                }
-              }}
-            >
-              <div className={styles.stopOrder}>{index + 1}</div>
-              <div className={styles.stopContent}>
-                <div className={styles.stopHeader}>
-                  <span className={styles.stopName}>{stop.customerName}</span>
-                  <span className={`${styles.badge} ${badge.className}`}>{badge.label}</span>
+            {/* Stop card (or break card) */}
+            {isBreak ? (
+              <div className={`${styles.breakCard} ${isSelected ? styles.stopCardSelected : ''}`}>
+                <div className={styles.breakIcon}>☕</div>
+                <div className={styles.stopContent}>
+                  <div className={styles.stopHeader}>
+                    <span className={styles.stopName}>Pauza</span>
+                    <span className={`${styles.badge} ${badge.className}`}>{badge.label}</span>
+                  </div>
+                  <div className={styles.breakMetaRow}>
+                    <div className={styles.breakField}>
+                      <span className={styles.breakFieldLabel}>Začátek:</span>
+                      <div className={styles.stopTime}>
+                        {onUpdateBreak ? (
+                          <input
+                            type="time"
+                            className={styles.breakInput}
+                            value={stop.breakTimeStart?.substring(0, 5) || '12:00'}
+                            onChange={(e) => onUpdateBreak(stop.id, { breakTimeStart: e.target.value })}
+                          />
+                        ) : (
+                          <span>{formatTime(stop.breakTimeStart || null)}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className={styles.breakField}>
+                      <span className={styles.breakFieldLabel}>Délka:</span>
+                      <div className={styles.stopTime}>
+                        {onUpdateBreak ? (
+                          <input
+                            type="number"
+                            min={1}
+                            max={240}
+                            className={styles.breakInputNumber}
+                            value={stop.breakDurationMinutes ?? 30}
+                            onChange={(e) =>
+                              onUpdateBreak(stop.id, {
+                                breakDurationMinutes: Math.max(1, parseInt(e.target.value || '30', 10)),
+                              })
+                            }
+                          />
+                        ) : (
+                          <span>{stop.breakDurationMinutes ?? 30} min</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  
                 </div>
+                {onRemoveStop && (
+                  <button
+                    type="button"
+                    className={styles.removeButton}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRemoveStop(stop.id);
+                    }}
+                    title="Odstranit pauzu"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div
+                className={`${styles.stopCard} ${isSelected ? styles.stopCardSelected : ''}`}
+                data-selected={isSelected}
+                onClick={() => onStopClick(stop.customerId ?? '', index)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onStopClick(stop.customerId ?? '', index);
+                  }
+                }}
+              >
+                <div className={styles.stopOrder}>{index + 1}</div>
+                <div className={styles.stopContent}>
+                  <div className={styles.stopHeader}>
+                    <span className={styles.stopName}>{stop.customerName}</span>
+                    <span className={`${styles.badge} ${badge.className}`}>{badge.label}</span>
+                  </div>
                 
                 {/* Show both scheduled and estimated times */}
                 {hasScheduledTime ? (
@@ -238,38 +360,39 @@ export function RouteDetailTimeline({
                   </div>
                 )}
                 
-                <div className={styles.stopAddress}>{stop.address}</div>
-                
-                {/* Per-stop warnings (LATE_ARRIVAL, INSUFFICIENT_BUFFER) */}
-                {warningsByStop.has(index) && (
-                  <div className={styles.stopWarnings}>
-                    {warningsByStop.get(index)!.map((w, wi) => (
-                      <div
-                        key={wi}
-                        className={`${styles.stopWarning} ${w.warningType === 'LATE_ARRIVAL' ? styles.stopWarningDanger : styles.stopWarningCaution}`}
-                        title={w.message}
-                      >
-                        <span className={styles.stopWarningIcon}>{getWarningIcon(w.warningType)}</span>
-                        <span>{getWarningLabel(w.warningType)}</span>
-                      </div>
-                    ))}
-                  </div>
+                  <div className={styles.stopAddress}>{stop.address}</div>
+                  
+                  {/* Per-stop warnings (LATE_ARRIVAL, INSUFFICIENT_BUFFER) */}
+                  {warningsByStop.has(index) && (
+                    <div className={styles.stopWarnings}>
+                      {warningsByStop.get(index)!.map((w, wi) => (
+                        <div
+                          key={wi}
+                          className={`${styles.stopWarning} ${w.warningType === 'LATE_ARRIVAL' ? styles.stopWarningDanger : styles.stopWarningCaution}`}
+                          title={w.message}
+                        >
+                          <span className={styles.stopWarningIcon}>{getWarningIcon(w.warningType)}</span>
+                          <span>{getWarningLabel(w.warningType)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {onRemoveStop && (
+                  <button
+                    type="button"
+                    className={styles.removeButton}
+                    onClick={(e) => {
+                      e.stopPropagation(); // Prevent triggering onStopClick
+                      onRemoveStop(stop.id);
+                    }}
+                    title="Odebrat zastávku"
+                  >
+                    ✕
+                  </button>
                 )}
               </div>
-              {onRemoveStop && (
-                <button
-                  type="button"
-                  className={styles.removeButton}
-                  onClick={(e) => {
-                    e.stopPropagation(); // Prevent triggering onStopClick
-                    onRemoveStop(stop.id);
-                  }}
-                  title="Odebrat zastávku"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
+            )}
           </div>
         );
       })}
@@ -294,11 +417,12 @@ export function RouteDetailTimeline({
           </div>
           <div className={styles.metric}>
             <span className={styles.metricValue}>
-              {metrics.travelTimeMin + metrics.serviceTimeMin > 0
-                ? `${Math.round((metrics.travelTimeMin + metrics.serviceTimeMin) / 60 * 10) / 10} h`
-                : '—'}
+              {formatDurationHm(getTotalDuration(metrics))}
             </span>
             <span className={styles.metricLabel}>Celkový čas</span>
+            <span className={styles.metricHint}>
+              z toho jízda {formatDurationHm(Math.max(0, Math.round(metrics.travelTimeMin)))}
+            </span>
           </div>
           <div className={styles.metric}>
             <span className={styles.metricValue}>{metrics.loadPercent}%</span>
@@ -317,6 +441,15 @@ export function RouteDetailTimeline({
             disabled={isOptimizing || stops.length < 2}
           >
             {isOptimizing ? 'Optimalizuji...' : '🚀 Optimalizovat'}
+          </button>
+        )}
+        {onAddBreak && (
+          <button
+            type="button"
+            className={styles.addBreakButton}
+            onClick={onAddBreak}
+          >
+            ☕ Přidat pauzu
           </button>
         )}
         {isSaving && (

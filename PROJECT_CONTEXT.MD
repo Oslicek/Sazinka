@@ -1541,9 +1541,9 @@ cargo test
 
 - **Unified Route Components (Inbox + Planner):**
   - `RouteDetailTimeline` — shared vertical timeline component used by both PlanningInbox and Planner
-    - Depot → segment (km, min) → stop (status badge, scheduled/estimated times, address) → ... → depot
-    - Editing actions: onRemoveStop, onOptimize, onDeleteRoute (optional props)
-    - Metrics display, saving indicator, bidirectional map synchronization
+    - Depot → segment (čas od–do, km, trvání) → stop (status badge, scheduled/estimated times, address) → ... → depot
+    - Unified action bar: `Optimalizovat`, `Přidat pauzu`, `Smazat trasu` (Inbox + Planner)
+    - Metrics display includes total time + "z toho jízda", saving indicator, bidirectional map synchronization
   - `RouteMapPanel` — shared map component used by both pages
     - Input type unified to `SavedRouteStop[]` (removed `MapStop` interface)
     - Inbox-specific optional props: `selectedCandidate`, `insertionPreview`
@@ -1580,6 +1580,19 @@ cargo test
   - Confirmed `customer.delete` returns `deleted: true`
   - Confirmed anonymized customer is hidden from `customer.get` (`NOT_FOUND`)
   - Confirmed linked communication remains historically present but with anonymized PII fields
+
+## Recent Changes (v0.18.3)
+
+- **Planner ↔ Inbox metric consistency for identical routes:**
+  - `Planner` now prioritizes persisted route totals (`totalDistanceKm`, `totalDurationMinutes`) when computing summary metrics
+  - Fixes divergence where Planner sometimes used only `first ETA -> last ETD` window and showed lower total time/load
+  - "Z toho jízda" is now aligned with Inbox for the same route/day
+- **Route detail parity (Inbox + Planner):**
+  - Shared `RouteDetailTimeline` now renders identical action buttons and route info block on both pages
+  - Segment rows now show `čas od–do`, `km`, and duration (`h/min`) consistently
+- **Break UX improvements in shared timeline:**
+  - Break card compacted (removed extra empty bottom row)
+  - Auto-inserted breaks are floating by default; break warnings are surfaced only after manual break edits
 
 ### Customer Delete Contract (current behavior)
 

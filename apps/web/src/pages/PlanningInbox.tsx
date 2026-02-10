@@ -133,6 +133,7 @@ export function PlanningInbox() {
   const [routeGeometry, setRouteGeometry] = useState<[number, number][]>([]);
   const [routeWarnings, setRouteWarnings] = useState<RouteWarning[]>([]);
   const [breakWarnings, setBreakWarnings] = useState<string[]>([]);
+  const [isBreakManuallyAdjusted, setIsBreakManuallyAdjusted] = useState(false);
   const [metrics, setMetrics] = useState<RouteMetrics | null>(null);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   const geometryUnsubRef = useRef<(() => void) | null>(null);
@@ -1145,16 +1146,14 @@ export function PlanningInbox() {
               }
             );
             
-            if (breakResult.warnings.length > 0) {
-              setBreakWarnings(breakResult.warnings);
-              console.warn('Break insertion warnings:', breakResult.warnings);
-            } else {
-              setBreakWarnings([]);
-            }
+            // Keep heuristic diagnostics, but do not show them until user manually
+            // adjusts break parameters.
+            setBreakWarnings(breakResult.warnings);
+            setIsBreakManuallyAdjusted(false);
             
             // Create break stop
             const breakStop: SavedRouteStop = {
-              ...createBreakStop('', breakResult.position + 1, effectiveBreakSettings, breakResult.estimatedTime),
+              ...createBreakStop('', breakResult.position + 1, effectiveBreakSettings, breakResult.estimatedTime, { floating: true }),
               id: crypto.randomUUID(),
             };
             
@@ -1234,16 +1233,14 @@ export function PlanningInbox() {
             }
           );
           
-          if (breakResult.warnings.length > 0) {
-            setBreakWarnings(breakResult.warnings);
-            console.warn('Break insertion warnings:', breakResult.warnings);
-          } else {
-            setBreakWarnings([]);
-          }
+          // Keep heuristic diagnostics, but do not show them until user manually
+          // adjusts break parameters.
+          setBreakWarnings(breakResult.warnings);
+          setIsBreakManuallyAdjusted(false);
           
           // Create break stop
           const breakStop: SavedRouteStop = {
-            ...createBreakStop('', breakResult.position + 1, effectiveBreakSettings, breakResult.estimatedTime),
+            ...createBreakStop('', breakResult.position + 1, effectiveBreakSettings, breakResult.estimatedTime, { floating: true }),
             id: crypto.randomUUID(),
           };
           
@@ -1394,6 +1391,51 @@ export function PlanningInbox() {
       setTimeout(() => setRouteJobProgress(null), 8000);
     }
   }, [routeStops, context, depots]);
+
+  // Route building: add floating break manually
+  const handleAddBreak = useCallback(() => {
+    if (!breakSettings) return;
+    setRouteStops((prev) => {
+      const existingBreak = prev.find((s) => s.stopType === 'break');
+      if (existingBreak) return prev;
+
+      const customerStops = prev.filter((s) => s.stopType === 'customer');
+      const effectiveBreakSettings: BreakSettings = {
+        ...breakSettings,
+        breakDurationMinutes: enforceDrivingBreakRule
+          ? Math.max(breakSettings.breakDurationMinutes, 45)
+          : breakSettings.breakDurationMinutes,
+      };
+
+      const breakResult = calculateBreakPosition(
+        customerStops,
+        effectiveBreakSettings,
+        context?.workingHoursStart || '08:00',
+        {
+          enforceDrivingBreakRule,
+          maxDrivingMinutes: 270,
+          requiredBreakMinutes: 45,
+        }
+      );
+
+      setBreakWarnings(breakResult.warnings);
+      setIsBreakManuallyAdjusted(false);
+
+      const breakStop: SavedRouteStop = {
+        ...createBreakStop('', breakResult.position + 1, effectiveBreakSettings, breakResult.estimatedTime, { floating: true }),
+        id: crypto.randomUUID(),
+      };
+
+      const withBreak = [
+        ...customerStops.slice(0, breakResult.position),
+        breakStop,
+        ...customerStops.slice(breakResult.position),
+      ];
+      return withBreak.map((s, i) => ({ ...s, stopOrder: i + 1 }));
+    });
+    setHasChanges(true);
+    incrementRouteVersion();
+  }, [breakSettings, context, enforceDrivingBreakRule, incrementRouteVersion]);
 
   // Route building: clear all stops
   const handleClearRoute = useCallback(() => {
@@ -1882,9 +1924,10 @@ export function PlanningInbox() {
             }}
             onSegmentClick={setHighlightedSegment}
             onRemoveStop={handleRemoveFromRoute}
+            onAddBreak={handleAddBreak}
             onOptimize={handleOptimizeRoute}
             onDeleteRoute={handleClearRoute}
-            deleteRouteLabel="Vyčistit"
+            deleteRouteLabel="Smazat trasu"
             isOptimizing={isOptimizing}
             isSaving={isSaving}
             metrics={metrics}
@@ -1973,7 +2016,7 @@ export function PlanningInbox() {
         saveError={saveError}
         onRetry={retrySave}
       />
-      {breakWarnings.length > 0 && (
+      {isBreakManuallyAdjusted && breakWarnings.length > 0 && (
         <div className={styles.breakWarnings}>
           {breakWarnings.map((warning, index) => (
             <div key={`${warning}-${index}`} className={styles.breakWarningItem}>

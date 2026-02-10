@@ -1648,6 +1648,11 @@ Kompletní přepis Planner stránky z "Plán dne" (DnD, queue preview, inbox dra
 - `RouteStopList` — ODSTRANĚN (nahrazen `RouteDetailTimeline`)
 - `Planner.tsx` — inline MapLibre kód (~250 řádků) nahrazen `<RouteMapPanel />`
 - `PlanningInbox.tsx` — `insertionPreview` prop nyní správně předáván do `RouteMapPanel`
+- **Inbox/Planner parity hardening (post-unification):**
+  - `RouteDetailTimeline` akce sjednoceny na obou stránkách: `Optimalizovat`, `Přidat pauzu`, `Smazat trasu`
+  - Segmenty v timeline zobrazují konzistentně `čas od–do`, `km`, `trvání`
+  - Metriky planneru pro uložené trasy sjednoceny s Inboxem použitím persisted route totals
+  - Informační blok doplněn o sekundární údaj `z toho jízda`
 
 ### Backend: VRP Solver Timeout ✅
 
