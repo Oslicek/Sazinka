@@ -16,6 +16,19 @@ pub struct VrpProblem {
     pub shift_start: NaiveTime,
     /// Working hours end
     pub shift_end: NaiveTime,
+    /// Optional break configuration
+    pub break_config: Option<BreakConfig>,
+}
+
+/// Break configuration for VRP solver
+#[derive(Debug, Clone)]
+pub struct BreakConfig {
+    /// Earliest time for break
+    pub earliest_time: NaiveTime,
+    /// Latest time for break
+    pub latest_time: NaiveTime,
+    /// Break duration in minutes
+    pub duration_minutes: u32,
 }
 
 /// Depot (starting/ending point)
@@ -70,6 +83,7 @@ mod tests {
             stops: vec![],
             shift_start: NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
             shift_end: NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+            break_config: None,
         };
 
         assert!(problem.stops.is_empty());

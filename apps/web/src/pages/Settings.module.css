@@ -202,6 +202,20 @@
   max-width: 140px;
 }
 
+.checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--color-text);
+}
+
+.checkboxLabel input[type="checkbox"] {
+  width: auto;
+  cursor: pointer;
+}
+
 .hint {
   font-size: 0.75rem;
   color: var(--color-text-secondary);

@@ -2,10 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNatsStore } from '../stores/natsStore';
 import { createRequest } from '@shared/messages';
 import { getToken } from '@/utils/auth';
-import * as exportService from '../services/exportService';
 import { importCustomersBatch, submitGeocodeAllPending } from '../services/customerService';
 import { ImportModal, type ImportEntityType } from '../components/import';
 import { ImportCustomersModal } from '../components/customers/ImportCustomersModal';
+import { ExportPlusPanel } from '../components/shared/ExportPlusPanel';
 import styles from './Admin.module.css';
 
 interface ServiceStatus {
@@ -53,13 +53,6 @@ export function Admin() {
   const [isResettingDb, setIsResettingDb] = useState(false);
   const [logFilter, setLogFilter] = useState<string>('all');
   const [autoRefresh, setAutoRefresh] = useState(false);
-  
-  // Export state
-  const [isExportingCustomers, setIsExportingCustomers] = useState(false);
-  const [isExportingRevisions, setIsExportingRevisions] = useState(false);
-  const [exportDateFrom, setExportDateFrom] = useState('');
-  const [exportDateTo, setExportDateTo] = useState('');
-  const [exportStatus, setExportStatus] = useState<string>('all');
   
   // Import state
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -339,34 +332,6 @@ export function Admin() {
     setIsResettingDb(false);
   };
 
-  // Export customers
-  const handleExportCustomers = async () => {
-    setIsExportingCustomers(true);
-    try {
-      await exportService.exportCustomers();
-    } catch (e) {
-      console.error('Export failed:', e);
-      alert('Export zákazníků selhal: ' + String(e));
-    }
-    setIsExportingCustomers(false);
-  };
-
-  // Export revisions
-  const handleExportRevisions = async () => {
-    setIsExportingRevisions(true);
-    try {
-      await exportService.exportRevisions({
-        dateFrom: exportDateFrom || undefined,
-        dateTo: exportDateTo || undefined,
-        status: exportStatus !== 'all' ? exportStatus : undefined,
-      });
-    } catch (e) {
-      console.error('Export failed:', e);
-      alert('Export revizí selhal: ' + String(e));
-    }
-    setIsExportingRevisions(false);
-  };
-
   // Initial health check
   useEffect(() => {
     if (connected) {
@@ -557,73 +522,7 @@ export function Admin() {
         <div className={styles.sectionHeader}>
           <h2>Export dat</h2>
         </div>
-
-        <div className={styles.exportContainer}>
-          {/* Customers Export */}
-          <div className={styles.exportCard}>
-            <h3>Export zákazníků</h3>
-            <p className={styles.exportDescription}>
-              Exportuje všechny zákazníky do CSV souboru ve formátu kompatibilním s importem.
-            </p>
-            <button
-              type="button"
-              className={styles.primaryButton}
-              onClick={handleExportCustomers}
-              disabled={isExportingCustomers || !connected}
-            >
-              {isExportingCustomers ? 'Exportuji...' : '📥 Exportovat zákazníky'}
-            </button>
-          </div>
-
-          {/* Revisions Export */}
-          <div className={styles.exportCard}>
-            <h3>Export revizí</h3>
-            <p className={styles.exportDescription}>
-              Exportuje revize do CSV souboru. Můžete filtrovat podle data a stavu.
-            </p>
-            
-            <div className={styles.exportFilters}>
-              <div className={styles.filterGroup}>
-                <label>Od data</label>
-                <input
-                  type="date"
-                  value={exportDateFrom}
-                  onChange={(e) => setExportDateFrom(e.target.value)}
-                />
-              </div>
-              <div className={styles.filterGroup}>
-                <label>Do data</label>
-                <input
-                  type="date"
-                  value={exportDateTo}
-                  onChange={(e) => setExportDateTo(e.target.value)}
-                />
-              </div>
-              <div className={styles.filterGroup}>
-                <label>Stav</label>
-                <select
-                  value={exportStatus}
-                  onChange={(e) => setExportStatus(e.target.value)}
-                >
-                  <option value="all">Všechny</option>
-                  <option value="pending">Čekající</option>
-                  <option value="scheduled">Naplánované</option>
-                  <option value="completed">Dokončené</option>
-                  <option value="cancelled">Zrušené</option>
-                </select>
-              </div>
-            </div>
-            
-            <button
-              type="button"
-              className={styles.primaryButton}
-              onClick={handleExportRevisions}
-              disabled={isExportingRevisions || !connected}
-            >
-              {isExportingRevisions ? 'Exportuji...' : '📥 Exportovat revize'}
-            </button>
-          </div>
-        </div>
+        <ExportPlusPanel adminMode />
       </section>
 
       {/* Import Section */}

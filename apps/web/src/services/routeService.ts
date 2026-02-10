@@ -23,11 +23,14 @@ function isErrorResponse(response: NatsResponse<unknown>): response is ErrorResp
 }
 
 export interface SaveRouteStop {
-  customerId: string;
+  customerId?: string;
   revisionId?: string;
   order: number;
   eta?: string;
   etd?: string;
+  stopType?: 'customer' | 'break';
+  breakDurationMinutes?: number;
+  breakTimeStart?: string;
 }
 
 export interface SaveRouteRequest {
@@ -71,9 +74,10 @@ export interface SavedRouteStop {
   distanceFromPreviousKm: number | null;
   durationFromPreviousMinutes: number | null;
   status: string;
-  customerId: string;
-  customerName: string;
-  address: string;
+  stopType: 'customer' | 'break';
+  customerId: string | null;
+  customerName: string | null;
+  address: string | null;
   customerLat: number | null;
   customerLng: number | null;
   customerPhone: string | null;
@@ -82,6 +86,9 @@ export interface SavedRouteStop {
   scheduledTimeStart: string | null;
   scheduledTimeEnd: string | null;
   revisionStatus: string | null;
+  // Break stop fields (only for stopType === 'break')
+  breakDurationMinutes?: number | null;
+  breakTimeStart?: string | null; // HH:MM format
 }
 
 export interface GetRouteResponse {
@@ -99,6 +106,7 @@ export function toSaveRouteStop(stop: PlannedRouteStop, revisionId?: string): Sa
     order: stop.order,
     eta: stop.eta,
     etd: stop.etd,
+    stopType: 'customer',
   };
 }
 
@@ -107,9 +115,9 @@ export function toSaveRouteStop(stop: PlannedRouteStop, revisionId?: string): Sa
  */
 export function toPlannedRouteStop(stop: SavedRouteStop): PlannedRouteStop {
   return {
-    customerId: stop.customerId,
-    customerName: stop.customerName,
-    address: stop.address,
+    customerId: stop.customerId ?? '',
+    customerName: stop.customerName ?? (stop.stopType === 'break' ? 'Pauza' : ''),
+    address: stop.address ?? '',
     coordinates: {
       lat: stop.customerLat ?? 0,
       lng: stop.customerLng ?? 0,

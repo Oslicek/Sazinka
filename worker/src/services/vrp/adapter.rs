@@ -129,6 +129,20 @@ pub fn build_pragmatic_problem_with_buffer(
                     "end": {
                         "latest": format_rfc3339(date, problem.shift_end),
                         "location": { "index": 0 }
+                    },
+                    "breaks": if let Some(ref break_cfg) = problem.break_config {
+                        vec![json!({
+                            "time": {
+                                "earliest": format_rfc3339(date, break_cfg.earliest_time),
+                                "latest": format_rfc3339(date, break_cfg.latest_time)
+                            },
+                            "places": [{
+                                "duration": (break_cfg.duration_minutes as i64) * 60,
+                                "tag": "lunch_break"
+                            }]
+                        })]
+                    } else {
+                        vec![]
                     }
                 }],
                 "capacity": [1000]
@@ -224,6 +238,7 @@ mod tests {
                     priority: 1,
                 },
             ],
+            break_config: None,
         }
     }
 

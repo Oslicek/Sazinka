@@ -115,6 +115,24 @@ fn map_solution(problem: &VrpProblem, solution: &PragmaticSolution) -> RouteSolu
                 if activity.activity_type == "departure" || activity.activity_type == "arrival" {
                     continue;
                 }
+                if activity.activity_type == "break" {
+                    let break_duration = (departure_time - arrival_time).num_minutes().max(0) as u32;
+                    planned_stops.push(PlannedStop {
+                        stop_id: format!("break-{}", planned_stops.len() + 1),
+                        customer_id: uuid::Uuid::nil(),
+                        customer_name: "Pauza".to_string(),
+                        order: (planned_stops.len() + 1) as u32,
+                        arrival_time,
+                        departure_time,
+                        waiting_time_minutes: break_duration,
+                    });
+                    solver_log.push(format!(
+                        "break: {}-{}",
+                        arrival_time.format("%H:%M"),
+                        departure_time.format("%H:%M")
+                    ));
+                    continue;
+                }
 
                 let stop_id = activity.job_id.as_str();
                 if let Some(definition) = stop_by_id.get(stop_id) {
@@ -297,6 +315,7 @@ mod tests {
                     priority: 1,
                 },
             ],
+            break_config: None,
         }
     }
 
@@ -355,6 +374,7 @@ mod tests {
                     priority: 1,
                 },
             ],
+            break_config: None,
         };
 
         // Very short travel times to isolate service duration effect
@@ -415,6 +435,7 @@ mod tests {
                     priority: 1,
                 },
             ],
+            break_config: None,
         };
 
         let long_problem = VrpProblem {
@@ -432,6 +453,7 @@ mod tests {
                     priority: 1,
                 },
             ],
+            break_config: None,
         };
 
         let matrices = DistanceTimeMatrices {

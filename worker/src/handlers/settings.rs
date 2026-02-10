@@ -16,7 +16,7 @@ use crate::types::{
     Depot, CreateDepotRequest, UpdateDepotRequest, DeleteDepotRequest,
     ListDepotsResponse, UserSettings,
     UpdateWorkConstraintsRequest, UpdateBusinessInfoRequest, UpdateEmailTemplatesRequest,
-    UpdatePreferencesRequest,
+    UpdatePreferencesRequest, UpdateBreakSettingsRequest,
 };
 
 // ============================================================================
@@ -80,6 +80,7 @@ pub async fn handle_get_settings(
                     business_info: user.to_business_info(),
                     email_templates: user.to_email_templates(),
                     preferences: user.to_preferences(),
+                    break_settings: user.to_break_settings(),
                     depots,
                 };
 
@@ -701,6 +702,75 @@ pub async fn handle_update_preferences(
             }
             Err(e) => {
                 error!("Failed to update preferences: {}", e);
+                let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// Update Break Settings Handler
+// ============================================================================
+
+/// Handle settings.break.update messages
+pub async fn handle_update_break_settings(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+    jwt_secret: Arc<String>,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received settings.break.update message");
+
+        let reply = match msg.reply {
+            Some(ref reply) => reply.clone(),
+            None => {
+                warn!("Message without reply subject");
+                continue;
+            }
+        };
+
+        let request: Request<UpdateBreakSettingsRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("Failed to parse request: {}", e);
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        let auth_info = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info,
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+        // Break settings require customer or admin role
+        if auth_info.role != "customer" && auth_info.role != "admin" {
+            let error = ErrorResponse::new(request.id, "FORBIDDEN", "Break settings access requires customer or admin role");
+            let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            continue;
+        }
+        let user_id = auth_info.data_user_id();
+
+        match queries::settings::update_break_settings(&pool, user_id, &request.payload).await {
+            Ok(_) => {
+                if let Ok(Some(user)) = queries::settings::get_user_settings(&pool, user_id).await {
+                    let response = SuccessResponse::new(request.id, user.to_break_settings());
+                    let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+                } else {
+                    let error = ErrorResponse::new(request.id, "USER_NOT_FOUND", "User not found");
+                    let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                }
+            }
+            Err(e) => {
+                error!("Failed to update break settings: {}", e);
                 let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
             }

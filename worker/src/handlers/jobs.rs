@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 use crate::db::queries;
 use crate::services::routing::{RoutingService, MockRoutingService};
-use crate::services::vrp::{VrpSolver, VrpProblem, VrpStop, Depot, SolverConfig, StopTimeWindow};
+use crate::services::vrp::{VrpSolver, VrpProblem, VrpStop, Depot, SolverConfig, StopTimeWindow, BreakConfig};
 use crate::types::{
     Coordinates, ErrorResponse, Request, SuccessResponse,
     JobSubmitResponse, JobStatus, JobStatusUpdate, QueuedJob, RoutePlanJobRequest,
@@ -309,15 +309,25 @@ impl JobProcessor {
             message: "Načítání nastavení...".to_string(),
         }).await?;
         
-        let (shift_start, shift_end, service_duration) = match queries::settings::get_user_settings(&self.pool, user_id).await {
+        let (shift_start, shift_end, service_duration, break_config) = match queries::settings::get_user_settings(&self.pool, user_id).await {
             Ok(Some(settings)) => {
-                (settings.working_hours_start, settings.working_hours_end, settings.default_service_duration_minutes as u32)
+                let break_cfg = if settings.break_enabled {
+                    Some(BreakConfig {
+                        earliest_time: settings.break_earliest_time,
+                        latest_time: settings.break_latest_time,
+                        duration_minutes: settings.break_duration_minutes as u32,
+                    })
+                } else {
+                    None
+                };
+                (settings.working_hours_start, settings.working_hours_end, settings.default_service_duration_minutes as u32, break_cfg)
             }
             _ => {
                 (
                     chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
                     chrono::NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
                     30u32,
+                    None,
                 )
             }
         };
@@ -329,6 +339,7 @@ impl JobProcessor {
             shift_start,
             shift_end,
             service_duration,
+            break_config,
         );
         
         // Build location list for matrix
@@ -390,6 +401,9 @@ impl JobProcessor {
                     etd: stop.departure_time,
                     service_duration_minutes: service_duration as i32,
                     time_window: None,
+                    stop_type: Some("customer".to_string()),
+                    break_duration_minutes: None,
+                    break_time_start: None,
                 });
             }
         }
@@ -525,6 +539,7 @@ impl JobProcessor {
         shift_start: chrono::NaiveTime,
         shift_end: chrono::NaiveTime,
         service_duration_minutes: u32,
+        break_config: Option<BreakConfig>,
     ) -> VrpProblem {
         let stops: Vec<VrpStop> = customers
             .iter()
@@ -557,6 +572,7 @@ impl JobProcessor {
             stops,
             shift_start,
             shift_end,
+            break_config,
         }
     }
 }

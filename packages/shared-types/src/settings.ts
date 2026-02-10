@@ -52,6 +52,16 @@ export interface WorkConstraints {
   reminderDaysBefore: number[];
 }
 
+// Break/pause settings
+export interface BreakSettings {
+  breakEnabled: boolean;
+  breakDurationMinutes: number;
+  breakEarliestTime: string;   // "HH:MM"
+  breakLatestTime: string;     // "HH:MM"
+  breakMinKm: number;
+  breakMaxKm: number;
+}
+
 // Business/Personal info
 export interface BusinessInfo {
   name: string;
@@ -89,6 +99,8 @@ export interface UserSettings {
   depots: Depot[];
   // User preferences (default crew/depot)
   preferences: UserPreferences;
+  // Break settings
+  breakSettings: BreakSettings;
 }
 
 // Update requests
@@ -116,6 +128,15 @@ export interface UpdateBusinessInfoRequest {
 export interface UpdateEmailTemplatesRequest {
   emailSubjectTemplate?: string;
   emailBodyTemplate?: string;
+}
+
+export interface UpdateBreakSettingsRequest {
+  breakEnabled?: boolean;
+  breakDurationMinutes?: number;
+  breakEarliestTime?: string;
+  breakLatestTime?: string;
+  breakMinKm?: number;
+  breakMaxKm?: number;
 }
 
 // List depots response

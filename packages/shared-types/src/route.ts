@@ -136,4 +136,10 @@ export interface PlannedRouteStop {
   serviceDurationMinutes: number;
   /** Time window constraint (if any) */
   timeWindow?: TimeWindow;
+  /** Stop type (customer or break) */
+  stopType?: 'customer' | 'break';
+  /** Break duration in minutes (for break stops) */
+  breakDurationMinutes?: number;
+  /** Break start time (for break stops) */
+  breakTimeStart?: string;
 }

@@ -9,7 +9,7 @@ mod config;
 mod adapter;
 mod pragmatic;
 
-pub use problem::{VrpProblem, VrpStop, Depot, StopTimeWindow};
+pub use problem::{VrpProblem, VrpStop, Depot, StopTimeWindow, BreakConfig};
 pub use solution::{RouteSolution, PlannedStop, RouteWarning};
 pub use config::SolverConfig;
 pub use adapter::{build_pragmatic_problem, build_pragmatic_problem_with_buffer, build_pragmatic_matrix, DEFAULT_PROFILE};
@@ -385,6 +385,7 @@ mod tests {
             stops: vec![],
             shift_start: NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
             shift_end: NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+            break_config: None,
         };
 
         let matrices = mock_matrices(1);
@@ -410,6 +411,7 @@ mod tests {
             stops: vec![make_stop("Customer A", 50.1, 14.5)],
             shift_start: NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
             shift_end: NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+            break_config: None,
         };
 
         let matrices = mock_matrices(2); // depot + 1 stop
@@ -438,6 +440,7 @@ mod tests {
             ],
             shift_start: NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
             shift_end: NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+            break_config: None,
         };
 
         let matrices = mock_matrices(4); // depot + 3 stops
@@ -472,6 +475,7 @@ mod tests {
             ],
             shift_start: NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
             shift_end: NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+            break_config: None,
         };
 
         let matrices = mock_matrices(3);
@@ -533,6 +537,7 @@ mod tests {
                     priority: 1,
                 },
             ],
+            break_config: None,
         };
 
         // Create a matrix where stop 2 is closest to depot, then stop 1
@@ -593,6 +598,7 @@ mod tests {
                     priority: 1,
                 },
             ],
+            break_config: None,
         };
 
         let matrices = DistanceTimeMatrices {

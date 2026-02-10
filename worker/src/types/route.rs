@@ -164,4 +164,13 @@ pub struct PlannedRouteStop {
     pub service_duration_minutes: i32,
     /// Time window (if any)
     pub time_window: Option<TimeWindow>,
+    /// Stop type (customer or break)
+    #[serde(default)]
+    pub stop_type: Option<String>,
+    /// Break duration in minutes (for break stops)
+    #[serde(default)]
+    pub break_duration_minutes: Option<i32>,
+    /// Break start time (for break stops)
+    #[serde(default)]
+    pub break_time_start: Option<NaiveTime>,
 }

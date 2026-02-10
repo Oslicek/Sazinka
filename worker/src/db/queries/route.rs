@@ -13,7 +13,7 @@ use crate::types::route::Route;
 pub struct SavedRouteStop {
     pub id: Uuid,
     pub route_id: Uuid,
-    pub customer_id: Uuid,
+    pub customer_id: Option<Uuid>,
     pub visit_id: Option<Uuid>,
     pub revision_id: Option<Uuid>,
     pub stop_order: i32,
@@ -22,6 +22,9 @@ pub struct SavedRouteStop {
     pub distance_from_previous_km: Option<f64>,
     pub duration_from_previous_minutes: Option<i32>,
     pub status: String,
+    pub stop_type: String,
+    pub break_duration_minutes: Option<i32>,
+    pub break_time_start: Option<NaiveTime>,
 }
 
 /// Get route for a specific date and optional crew
@@ -217,11 +220,11 @@ pub async fn delete_route_stops(pool: &PgPool, route_id: Uuid) -> Result<()> {
     Ok(())
 }
 
-/// Insert a route stop (customer_id based, with optional visit_id and revision_id)
+/// Insert a route stop (supports both customer and break stops)
 pub async fn insert_route_stop(
     pool: &PgPool,
     route_id: Uuid,
-    customer_id: Uuid,
+    customer_id: Option<Uuid>,
     visit_id: Option<Uuid>,
     revision_id: Option<Uuid>,
     stop_order: i32,
@@ -229,6 +232,9 @@ pub async fn insert_route_stop(
     estimated_departure: Option<NaiveTime>,
     distance_from_previous_km: Option<f64>,
     duration_from_previous_minutes: Option<i32>,
+    stop_type: String,
+    break_duration_minutes: Option<i32>,
+    break_time_start: Option<NaiveTime>,
 ) -> Result<SavedRouteStop> {
     let stop = sqlx::query_as::<_, SavedRouteStop>(
         r#"
@@ -236,14 +242,14 @@ pub async fn insert_route_stop(
             id, route_id, customer_id, visit_id, revision_id,
             stop_order, estimated_arrival, estimated_departure,
             distance_from_previous_km, duration_from_previous_minutes,
-            status
+            status, stop_type, break_duration_minutes, break_time_start
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending')
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', $11, $12, $13)
         RETURNING
             id, route_id, customer_id, visit_id, revision_id,
             stop_order, estimated_arrival, estimated_departure,
             distance_from_previous_km, duration_from_previous_minutes,
-            status
+            status, stop_type, break_duration_minutes, break_time_start
         "#
     )
     .bind(Uuid::new_v4())
@@ -256,6 +262,9 @@ pub async fn insert_route_stop(
     .bind(estimated_departure)
     .bind(distance_from_previous_km)
     .bind(duration_from_previous_minutes)
+    .bind(stop_type)
+    .bind(break_duration_minutes)
+    .bind(break_time_start)
     .fetch_one(pool)
     .await?;
     
@@ -268,7 +277,7 @@ pub async fn insert_route_stop(
 pub struct RouteStopWithInfo {
     pub id: Uuid,
     pub route_id: Uuid,
-    pub customer_id: Uuid,
+    pub customer_id: Option<Uuid>,
     pub visit_id: Option<Uuid>,
     pub revision_id: Option<Uuid>,
     pub stop_order: i32,
@@ -277,6 +286,7 @@ pub struct RouteStopWithInfo {
     pub distance_from_previous_km: Option<f64>,
     pub duration_from_previous_minutes: Option<i32>,
     pub status: String,
+    pub stop_type: String,
     pub customer_name: Option<String>,
     pub address: Option<String>,
     pub customer_lat: Option<f64>,
@@ -287,6 +297,8 @@ pub struct RouteStopWithInfo {
     pub scheduled_time_start: Option<NaiveTime>,
     pub scheduled_time_end: Option<NaiveTime>,
     pub revision_status: Option<String>,
+    pub break_duration_minutes: Option<i32>,
+    pub break_time_start: Option<NaiveTime>,
 }
 
 /// Get all stops for a route with customer info
@@ -301,7 +313,7 @@ pub async fn get_route_stops_with_info(
             rs.visit_id, rs.revision_id,
             rs.stop_order, rs.estimated_arrival, rs.estimated_departure,
             rs.distance_from_previous_km, rs.duration_from_previous_minutes,
-            rs.status,
+            rs.status, rs.stop_type,
             c.name as customer_name,
             CONCAT(COALESCE(c.street, ''), ', ', COALESCE(c.city, '')) as address,
             c.lat as customer_lat,
@@ -311,9 +323,11 @@ pub async fn get_route_stops_with_info(
             rev.scheduled_date,
             rev.scheduled_time_start,
             rev.scheduled_time_end,
-            rev.status::text as revision_status
+            rev.status::text as revision_status,
+            rs.break_duration_minutes,
+            rs.break_time_start
         FROM route_stops rs
-        INNER JOIN customers c ON rs.customer_id = c.id
+        LEFT JOIN customers c ON rs.customer_id = c.id
         LEFT JOIN revisions rev ON rs.revision_id = rev.id
         WHERE rs.route_id = $1
         ORDER BY rs.stop_order ASC

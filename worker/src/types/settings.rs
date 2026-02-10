@@ -110,6 +110,18 @@ pub struct UserPreferences {
     pub default_depot_id: Option<Uuid>,
 }
 
+/// Break/pause settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BreakSettings {
+    pub break_enabled: bool,
+    pub break_duration_minutes: i32,
+    pub break_earliest_time: String,  // "HH:MM"
+    pub break_latest_time: String,    // "HH:MM"
+    pub break_min_km: f64,
+    pub break_max_km: f64,
+}
+
 /// Combined user settings response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -119,6 +131,7 @@ pub struct UserSettings {
     pub email_templates: EmailTemplateSettings,
     pub depots: Vec<Depot>,
     pub preferences: UserPreferences,
+    pub break_settings: BreakSettings,
 }
 
 /// Update work constraints request
@@ -164,6 +177,18 @@ pub struct UpdatePreferencesRequest {
     pub default_depot_id: Option<Uuid>,
 }
 
+/// Update break settings request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateBreakSettingsRequest {
+    pub break_enabled: Option<bool>,
+    pub break_duration_minutes: Option<i32>,
+    pub break_earliest_time: Option<String>,
+    pub break_latest_time: Option<String>,
+    pub break_min_km: Option<f64>,
+    pub break_max_km: Option<f64>,
+}
+
 /// Extended user with all settings fields (for DB queries)
 #[derive(Debug, Clone, FromRow)]
 pub struct UserWithSettings {
@@ -191,6 +216,12 @@ pub struct UserWithSettings {
     pub email_body_template: Option<String>,
     pub default_crew_id: Option<Uuid>,
     pub default_depot_id: Option<Uuid>,
+    pub break_enabled: bool,
+    pub break_duration_minutes: i32,
+    pub break_earliest_time: NaiveTime,
+    pub break_latest_time: NaiveTime,
+    pub break_min_km: f64,
+    pub break_max_km: f64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -239,6 +270,18 @@ impl UserWithSettings {
         UserPreferences {
             default_crew_id: self.default_crew_id,
             default_depot_id: self.default_depot_id,
+        }
+    }
+
+    /// Convert to break settings
+    pub fn to_break_settings(&self) -> BreakSettings {
+        BreakSettings {
+            break_enabled: self.break_enabled,
+            break_duration_minutes: self.break_duration_minutes,
+            break_earliest_time: self.break_earliest_time.format("%H:%M").to_string(),
+            break_latest_time: self.break_latest_time.format("%H:%M").to_string(),
+            break_min_km: self.break_min_km,
+            break_max_km: self.break_max_km,
         }
     }
 }

@@ -1,0 +1,14 @@
+{
+  "service_limits": {
+    "auto": {
+      "max_distance": 10000000,
+      "max_locations": 50,
+      "max_matrix_distance": 5000000,
+      "max_matrix_locations": 50
+    },
+    "sources_to_targets": {
+      "max_distance": 5000000,
+      "max_locations": 50
+    }
+  }
+}

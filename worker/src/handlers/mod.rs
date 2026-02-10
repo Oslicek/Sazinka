@@ -5,6 +5,7 @@ pub mod auth;
 pub mod communication;
 pub mod customer;
 pub mod device;
+pub mod export;
 pub mod geocode;
 pub mod import;
 pub mod import_processors;
@@ -194,6 +195,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let settings_business_update_sub = client.subscribe("sazinka.settings.business.update").await?;
     let settings_email_update_sub = client.subscribe("sazinka.settings.email.update").await?;
     let settings_preferences_update_sub = client.subscribe("sazinka.settings.preferences.update").await?;
+    let settings_break_update_sub = client.subscribe("sazinka.settings.break.update").await?;
     
     // Depot subjects
     let depot_list_sub = client.subscribe("sazinka.depot.list").await?;
@@ -316,6 +318,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let client_settings_business = client.clone();
     let client_settings_email = client.clone();
     let client_settings_preferences = client.clone();
+    let client_settings_break = client.clone();
     
     // Depot handler clones
     let client_depot_list = client.clone();
@@ -330,6 +333,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_settings_business = pool.clone();
     let pool_settings_email = pool.clone();
     let pool_settings_preferences = pool.clone();
+    let pool_settings_break = pool.clone();
     
     // Depot pool clones
     let pool_depot_list = pool.clone();
@@ -447,6 +451,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let jwt_secret_settings_business = Arc::clone(&jwt_secret);
     let jwt_secret_settings_email = Arc::clone(&jwt_secret);
     let jwt_secret_settings_preferences = Arc::clone(&jwt_secret);
+    let jwt_secret_settings_break = Arc::clone(&jwt_secret);
     
     // JWT secret clones for depot handlers
     let jwt_secret_depot_list = Arc::clone(&jwt_secret);
@@ -713,6 +718,10 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     
     let settings_preferences_handle = tokio::spawn(async move {
         settings::handle_update_preferences(client_settings_preferences, settings_preferences_update_sub, pool_settings_preferences, jwt_secret_settings_preferences).await
+    });
+    
+    let settings_break_handle = tokio::spawn(async move {
+        settings::handle_update_break_settings(client_settings_break, settings_break_update_sub, pool_settings_break, jwt_secret_settings_break).await
     });
     
     // Depot handlers
@@ -1075,6 +1084,72 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         }
     });
 
+    // Start Export+ processor
+    let client_export = client.clone();
+    let pool_export = pool.clone();
+    let jwt_secret_export = Arc::clone(&jwt_secret);
+    tokio::spawn(async move {
+        match crate::services::export_processor::ExportProcessor::new(client_export.clone(), pool_export).await {
+            Ok(processor) => {
+                let processor = Arc::new(processor);
+
+                let export_submit_sub = match client_export.subscribe("sazinka.export.submit").await {
+                    Ok(sub) => sub,
+                    Err(e) => {
+                        error!("Failed to subscribe to export.submit: {}", e);
+                        return;
+                    }
+                };
+                let export_download_sub = match client_export.subscribe("sazinka.export.download").await {
+                    Ok(sub) => sub,
+                    Err(e) => {
+                        error!("Failed to subscribe to export.download: {}", e);
+                        return;
+                    }
+                };
+
+                let client_submit = client_export.clone();
+                let processor_submit = Arc::clone(&processor);
+                let jwt_secret_submit = Arc::clone(&jwt_secret_export);
+                tokio::spawn(async move {
+                    if let Err(e) =
+                        export::handle_export_submit(client_submit, export_submit_sub, jwt_secret_submit, processor_submit).await
+                    {
+                        error!("Export submit handler error: {}", e);
+                    }
+                });
+
+                let client_download = client_export.clone();
+                let processor_download = Arc::clone(&processor);
+                let jwt_secret_download = Arc::clone(&jwt_secret_export);
+                tokio::spawn(async move {
+                    if let Err(e) = export::handle_export_download(
+                        client_download,
+                        export_download_sub,
+                        jwt_secret_download,
+                        processor_download,
+                    )
+                    .await
+                    {
+                        error!("Export download handler error: {}", e);
+                    }
+                });
+
+                let processor_main = Arc::clone(&processor);
+                tokio::spawn(async move {
+                    if let Err(e) = processor_main.start_processing().await {
+                        error!("Export processor error: {}", e);
+                    }
+                });
+
+                info!("Export processor started");
+            }
+            Err(e) => {
+                error!("Failed to create export processor: {}", e);
+            }
+        }
+    });
+
     // Start geocoding processor and handlers
     let client_geocode = client.clone();
     let pool_geocode = pool.clone();
@@ -1356,6 +1431,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         settings_business_handle.boxed(),
         settings_email_handle.boxed(),
         settings_preferences_handle.boxed(),
+        settings_break_handle.boxed(),
         depot_list_handle.boxed(),
         depot_create_handle.boxed(),
         depot_update_handle.boxed(),

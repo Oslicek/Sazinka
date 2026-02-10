@@ -11,7 +11,7 @@ use uuid::Uuid;
 use crate::auth;
 use crate::db::queries;
 use crate::services::routing::{RoutingService, MockRoutingService};
-use crate::services::vrp::{VrpSolver, VrpProblem, VrpStop, Depot, SolverConfig, StopTimeWindow};
+use crate::services::vrp::{VrpSolver, VrpProblem, VrpStop, Depot, SolverConfig, StopTimeWindow, BreakConfig};
 use crate::types::{
     Coordinates, ErrorResponse, Request, SuccessResponse,
     RoutePlanRequest, RoutePlanResponse, PlannedRouteStop, RouteWarning, WorkingHours,
@@ -122,16 +122,25 @@ pub async fn handle_plan(
         }
 
         // Load user settings for working hours and service duration
-        let (shift_start, shift_end, service_duration) = match queries::settings::get_user_settings(&pool, user_id).await {
+        let (shift_start, shift_end, service_duration, break_config) = match queries::settings::get_user_settings(&pool, user_id).await {
             Ok(Some(settings)) => {
                 let start = settings.working_hours_start;
                 let end = settings.working_hours_end;
                 let duration = settings.default_service_duration_minutes as u32;
+                let break_cfg = if settings.break_enabled {
+                    Some(BreakConfig {
+                        earliest_time: settings.break_earliest_time,
+                        latest_time: settings.break_latest_time,
+                        duration_minutes: settings.break_duration_minutes as u32,
+                    })
+                } else {
+                    None
+                };
                 info!(
                     "Route planning using user settings: working hours {:?}-{:?}, service duration {} min",
                     start, end, duration
                 );
-                (start, end, duration)
+                (start, end, duration, break_cfg)
             }
             Ok(None) => {
                 // User not found in database
@@ -140,6 +149,7 @@ pub async fn handle_plan(
                     chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
                     chrono::NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
                     30u32,
+                    None,
                 )
             }
             Err(e) => {
@@ -149,6 +159,7 @@ pub async fn handle_plan(
                     chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
                     chrono::NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
                     30u32,
+                    None,
                 )
             }
         };
@@ -160,6 +171,7 @@ pub async fn handle_plan(
             shift_start,
             shift_end,
             service_duration,
+            break_config,
         );
 
         // Build location list for matrix (depot + customers)
@@ -256,6 +268,24 @@ pub async fn handle_plan(
                         }),
                         _ => None,
                     },
+                    stop_type: Some("customer".to_string()),
+                    break_duration_minutes: None,
+                    break_time_start: None,
+                });
+            } else if stop.customer_id.is_nil() {
+                planned_stops.push(PlannedRouteStop {
+                    customer_id: Uuid::nil(),
+                    customer_name: "Pauza".to_string(),
+                    address: "Pauza".to_string(),
+                    coordinates: plan_request.start_location,
+                    order: stop.order as i32,
+                    eta: stop.arrival_time,
+                    etd: stop.departure_time,
+                    service_duration_minutes: ((stop.departure_time - stop.arrival_time).num_minutes().max(0)) as i32,
+                    time_window: None,
+                    stop_type: Some("break".to_string()),
+                    break_duration_minutes: Some(((stop.departure_time - stop.arrival_time).num_minutes().max(0)) as i32),
+                    break_time_start: Some(stop.arrival_time),
                 });
             }
         }
@@ -411,6 +441,7 @@ fn build_vrp_problem(
     shift_start: chrono::NaiveTime,
     shift_end: chrono::NaiveTime,
     service_duration_minutes: u32,
+    break_config: Option<BreakConfig>,
 ) -> VrpProblem {
     let stops: Vec<VrpStop> = customers
         .iter()
@@ -456,6 +487,7 @@ fn build_vrp_problem(
         stops,
         shift_start,
         shift_end,
+        break_config,
     }
 }
 
@@ -518,13 +550,17 @@ pub struct SaveRouteRequest {
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveRouteStop {
-    #[serde(deserialize_with = "deserialize_uuid_tolerant")]
-    pub customer_id: Uuid,
+    #[serde(default, deserialize_with = "deserialize_optional_uuid")]
+    pub customer_id: Option<Uuid>,
     #[serde(default, deserialize_with = "deserialize_optional_uuid")]
     pub revision_id: Option<Uuid>,
     pub order: i32,
     pub eta: Option<chrono::NaiveTime>,
     pub etd: Option<chrono::NaiveTime>,
+    #[serde(default)]
+    pub stop_type: Option<String>,
+    pub break_duration_minutes: Option<i32>,
+    pub break_time_start: Option<chrono::NaiveTime>,
 }
 
 /// Response after saving a route
@@ -619,7 +655,13 @@ pub async fn handle_save(
         let payload = request.payload;
         info!("Saving route for date {} with {} stops", payload.date, payload.stops.len());
         for (i, stop) in payload.stops.iter().enumerate() {
-            debug!("  Stop {}: customer_id={}, revision_id={:?}", i, stop.customer_id, stop.revision_id);
+            debug!(
+                "  Stop {}: type={:?}, customer_id={:?}, revision_id={:?}",
+                i,
+                stop.stop_type,
+                stop.customer_id,
+                stop.revision_id
+            );
         }
 
         // Upsert route
@@ -646,6 +688,7 @@ pub async fn handle_save(
                 // Insert new stops
                 let mut saved_count = 0;
                 for stop in &payload.stops {
+                    let stop_type = stop.stop_type.clone().unwrap_or_else(|| "customer".to_string());
                     if let Err(e) = queries::route::insert_route_stop(
                         &pool,
                         route.id,
@@ -657,6 +700,9 @@ pub async fn handle_save(
                         stop.etd,
                         None, // distance
                         None, // duration
+                        stop_type,
+                        stop.break_duration_minutes,
+                        stop.break_time_start,
                     ).await {
                         warn!("Failed to insert stop: {}", e);
                     } else {
@@ -1581,6 +1627,7 @@ mod tests {
             chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
             chrono::NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
             30,
+            None,
         );
 
         assert!(problem.stops.is_empty());
@@ -1620,6 +1667,7 @@ mod tests {
             chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
             chrono::NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
             30,
+            None,
         );
 
         assert_eq!(problem.stops.len(), 2);
@@ -1650,6 +1698,7 @@ mod tests {
             chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
             chrono::NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
             45, // Custom service duration
+            None,
         );
 
         assert_eq!(problem.stops.len(), 1);
@@ -1679,6 +1728,7 @@ mod tests {
             chrono::NaiveTime::from_hms_opt(9, 0, 0).unwrap(),
             chrono::NaiveTime::from_hms_opt(16, 0, 0).unwrap(),
             30,
+            None,
         );
 
         assert_eq!(problem.shift_start.hour(), 9);

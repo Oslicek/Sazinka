@@ -24,6 +24,7 @@ Thumbs.db
 
 # Logs
 logs/*.log
+logs/worker.log.*
 npm-debug.log*
 pnpm-debug.log*
 
@@ -42,3 +43,19 @@ worker/target/
 
 # Docker volumes
 postgres_data/
+
+# Local assistant/editor artifacts
+.specstory/
+.cursorindexingignore
+
+# Local diagnostic outputs
+build_output*.txt
+build2.txt
+cargo_check_output.txt
+tsc_errors*.txt
+worker/*_errors.txt
+worker/check_output.txt
+
+# Local runtime artifacts
+worker/logs/
+worker/exports/

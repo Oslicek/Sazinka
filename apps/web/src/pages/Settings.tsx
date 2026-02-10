@@ -3,7 +3,6 @@ import { useNatsStore } from '../stores/natsStore';
 import * as settingsService from '../services/settingsService';
 import * as crewService from '../services/crewService';
 import * as workerService from '../services/workerService';
-import * as exportService from '../services/exportService';
 import { importCustomersBatch } from '../services/customerService';
 import type { Crew } from '../services/crewService';
 import type { UserPublic } from '@shared/auth';
@@ -12,13 +11,24 @@ import type {
   WorkConstraints,
   BusinessInfo,
   EmailTemplateSettings,
+  BreakSettings,
   Depot,
 } from '@shared/settings';
 import { ImportModal, type ImportEntityType } from '../components/import';
 import { ImportCustomersModal } from '../components/customers/ImportCustomersModal';
+import { ExportPlusPanel } from '../components/shared/ExportPlusPanel';
 import styles from './Settings.module.css';
 
-type SettingsTab = 'preferences' | 'work' | 'business' | 'email' | 'depots' | 'crews' | 'workers' | 'import-export';
+type SettingsTab = 'preferences' | 'work' | 'business' | 'email' | 'breaks' | 'depots' | 'crews' | 'workers' | 'import-export';
+
+const DEFAULT_BREAK_SETTINGS: BreakSettings = {
+  breakEnabled: true,
+  breakDurationMinutes: 45,
+  breakEarliestTime: '11:30',
+  breakLatestTime: '13:00',
+  breakMinKm: 40,
+  breakMaxKm: 120,
+};
 
 export function Settings() {
   const { isConnected } = useNatsStore();
@@ -30,13 +40,6 @@ export function Settings() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  
-  // Export state
-  const [isExportingCustomers, setIsExportingCustomers] = useState(false);
-  const [isExportingRevisions, setIsExportingRevisions] = useState(false);
-  const [exportDateFrom, setExportDateFrom] = useState('');
-  const [exportDateTo, setExportDateTo] = useState('');
-  const [exportStatus, setExportStatus] = useState<string>('all');
   
   // Import state
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -77,33 +80,6 @@ export function Settings() {
     setTimeout(() => setSuccess(null), 3000);
   };
 
-  // Export handlers
-  const handleExportCustomers = async () => {
-    setIsExportingCustomers(true);
-    try {
-      await exportService.exportCustomers();
-    } catch (e) {
-      console.error('Export failed:', e);
-      setError('Export zákazníků selhal: ' + String(e));
-    }
-    setIsExportingCustomers(false);
-  };
-
-  const handleExportRevisions = async () => {
-    setIsExportingRevisions(true);
-    try {
-      await exportService.exportRevisions({
-        dateFrom: exportDateFrom || undefined,
-        dateTo: exportDateTo || undefined,
-        status: exportStatus !== 'all' ? exportStatus : undefined,
-      });
-    } catch (e) {
-      console.error('Export failed:', e);
-      setError('Export revizí selhal: ' + String(e));
-    }
-    setIsExportingRevisions(false);
-  };
-
   // Import handlers
   const handleOpenImport = (entityType: ImportEntityType) => {
     setImportEntityType(entityType);
@@ -132,6 +108,7 @@ export function Settings() {
     { id: 'work', label: 'Pracovní doba' },
     { id: 'business', label: 'Firemní údaje' },
     { id: 'email', label: 'E-mailové šablony' },
+    { id: 'breaks', label: 'Pauzy' },
     { id: 'depots', label: 'Depa' },
     { id: 'crews', label: 'Posádky' },
     { id: 'workers', label: 'Pracovníci' },
@@ -265,6 +242,27 @@ export function Settings() {
           />
         )}
 
+        {activeTab === 'breaks' && settings && (
+          <BreakSettingsForm
+            data={settings.breakSettings ?? DEFAULT_BREAK_SETTINGS}
+            saving={saving}
+            onSave={async (data) => {
+              setSaving(true);
+              setError(null);
+              try {
+                const updated = await settingsService.updateBreakSettings(data);
+                setSettings((prev) => prev ? { ...prev, breakSettings: updated } : null);
+                showSuccess('Nastavení pauz uloženo');
+              } catch (e) {
+                console.error('Failed to update break settings:', e);
+                setError('Nepodařilo se uložit nastavení pauz');
+              } finally {
+                setSaving(false);
+              }
+            }}
+          />
+        )}
+
         {activeTab === 'depots' && settings && (
           <DepotsManager
             depots={settings.depots}
@@ -298,73 +296,10 @@ export function Settings() {
             {/* Export Section */}
             <section className={styles.section}>
               <h2 className={styles.sectionTitle}>Export dat</h2>
-
-              <div className={styles.exportContainer}>
-                {/* Customers Export */}
-                <div className={styles.exportCard}>
-                  <h3>Export zákazníků</h3>
-                  <p className={styles.exportDescription}>
-                    Exportuje všechny zákazníky do CSV souboru ve formátu kompatibilním s importem.
-                  </p>
-                  <button
-                    type="button"
-                    className={styles.exportButton}
-                    onClick={handleExportCustomers}
-                    disabled={isExportingCustomers || !isConnected}
-                  >
-                    {isExportingCustomers ? 'Exportuji...' : '📥 Exportovat zákazníky'}
-                  </button>
-                </div>
-
-                {/* Revisions Export */}
-                <div className={styles.exportCard}>
-                  <h3>Export revizí</h3>
-                  <p className={styles.exportDescription}>
-                    Exportuje revize do CSV souboru. Můžete filtrovat podle data a stavu.
-                  </p>
-
-                  <div className={styles.exportFilters}>
-                    <div className={styles.filterGroup}>
-                      <label>Od data</label>
-                      <input
-                        type="date"
-                        value={exportDateFrom}
-                        onChange={(e) => setExportDateFrom(e.target.value)}
-                      />
-                    </div>
-                    <div className={styles.filterGroup}>
-                      <label>Do data</label>
-                      <input
-                        type="date"
-                        value={exportDateTo}
-                        onChange={(e) => setExportDateTo(e.target.value)}
-                      />
-                    </div>
-                    <div className={styles.filterGroup}>
-                      <label>Stav</label>
-                      <select
-                        value={exportStatus}
-                        onChange={(e) => setExportStatus(e.target.value)}
-                      >
-                        <option value="all">Všechny</option>
-                        <option value="pending">Čekající</option>
-                        <option value="scheduled">Naplánované</option>
-                        <option value="completed">Dokončené</option>
-                        <option value="cancelled">Zrušené</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    className={styles.exportButton}
-                    onClick={handleExportRevisions}
-                    disabled={isExportingRevisions || !isConnected}
-                  >
-                    {isExportingRevisions ? 'Exportuji...' : '📥 Exportovat revize'}
-                  </button>
-                </div>
-              </div>
+              <ExportPlusPanel
+                crewOptions={crews.map((c) => ({ id: c.id, label: c.name }))}
+                depotOptions={(settings?.depots || []).map((d) => ({ id: d.id, label: d.name }))}
+              />
             </section>
 
             {/* Import Section */}
@@ -853,6 +788,150 @@ function EmailTemplatesForm({ data, saving, onSave }: EmailTemplatesFormProps) {
             value={formData.emailBodyTemplate}
             onChange={(e) => setFormData({ ...formData, emailBodyTemplate: e.target.value })}
           />
+        </div>
+      </div>
+
+      <div className={styles.formActions}>
+        <button type="submit" className="btn-primary" disabled={saving}>
+          {saving ? 'Ukládám...' : 'Uložit změny'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// ============================================================================
+// Break Settings Form
+// ============================================================================
+
+interface BreakSettingsFormProps {
+  data?: BreakSettings;
+  saving: boolean;
+  onSave: (data: Partial<BreakSettings>) => void;
+}
+
+function BreakSettingsForm({ data, saving, onSave }: BreakSettingsFormProps) {
+  const resolvedData = data ?? DEFAULT_BREAK_SETTINGS;
+  const [enforceDrivingBreakRule, setEnforceDrivingBreakRule] = useState<boolean>(() => {
+    const raw = localStorage.getItem('planningInbox.enforceDrivingBreakRule');
+    return raw === null ? true : raw === 'true';
+  });
+  const [formData, setFormData] = useState({
+    breakEnabled: resolvedData.breakEnabled,
+    breakDurationMinutes: resolvedData.breakDurationMinutes,
+    breakEarliestTime: resolvedData.breakEarliestTime,
+    breakLatestTime: resolvedData.breakLatestTime,
+    breakMinKm: resolvedData.breakMinKm,
+    breakMaxKm: resolvedData.breakMaxKm,
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    localStorage.setItem('planningInbox.enforceDrivingBreakRule', String(enforceDrivingBreakRule));
+    onSave(formData);
+  };
+
+  return (
+    <form className={styles.form} onSubmit={handleSubmit}>
+      <div className={styles.formSection}>
+        <h3>Automatická pauza v trasách</h3>
+        <p className={styles.hint}>
+          Nastavte, zda se má do nově vytvořených tras automaticky vkládat obědová pauza.
+        </p>
+        
+        <div className={styles.formGroup}>
+          <label className={styles.checkboxLabel}>
+            <input
+              type="checkbox"
+              checked={formData.breakEnabled}
+              onChange={(e) => setFormData({ ...formData, breakEnabled: e.target.checked })}
+            />
+            <span>Automaticky vkládat pauzu do nových tras</span>
+          </label>
+        </div>
+
+        <div className={styles.formGroup}>
+          <label htmlFor="duration">Délka pauzy (minuty)</label>
+          <input
+            type="number"
+            id="duration"
+            min="1"
+            max="180"
+            value={formData.breakDurationMinutes}
+            onChange={(e) => setFormData({ ...formData, breakDurationMinutes: parseInt(e.target.value) || 30 })}
+            disabled={!formData.breakEnabled}
+          />
+        </div>
+
+        <div className={styles.formRow}>
+          <div className={styles.formGroup}>
+            <label htmlFor="earliestTime">Časové rozmezí - od</label>
+            <input
+              type="time"
+              id="earliestTime"
+              value={formData.breakEarliestTime}
+              onChange={(e) => setFormData({ ...formData, breakEarliestTime: e.target.value })}
+              disabled={!formData.breakEnabled}
+            />
+          </div>
+          <div className={styles.formGroup}>
+            <label htmlFor="latestTime">Časové rozmezí - do</label>
+            <input
+              type="time"
+              id="latestTime"
+              value={formData.breakLatestTime}
+              onChange={(e) => setFormData({ ...formData, breakLatestTime: e.target.value })}
+              disabled={!formData.breakEnabled}
+            />
+          </div>
+        </div>
+
+        <p className={styles.hint}>
+          Pauza bude umístěna v čase mezi {formData.breakEarliestTime} a {formData.breakLatestTime}.
+        </p>
+
+        <div className={styles.formRow}>
+          <div className={styles.formGroup}>
+            <label htmlFor="minKm">Rozmezí najetých km - od</label>
+            <input
+              type="number"
+              id="minKm"
+              min="0"
+              max="500"
+              step="1"
+              value={formData.breakMinKm}
+              onChange={(e) => setFormData({ ...formData, breakMinKm: parseFloat(e.target.value) || 0 })}
+              disabled={!formData.breakEnabled}
+            />
+          </div>
+          <div className={styles.formGroup}>
+            <label htmlFor="maxKm">Rozmezí najetých km - do</label>
+            <input
+              type="number"
+              id="maxKm"
+              min="0"
+              max="500"
+              step="1"
+              value={formData.breakMaxKm}
+              onChange={(e) => setFormData({ ...formData, breakMaxKm: parseFloat(e.target.value) || 0 })}
+              disabled={!formData.breakEnabled}
+            />
+          </div>
+        </div>
+
+        <p className={styles.hint}>
+          Pauza bude umístěna po najetí {formData.breakMinKm} až {formData.breakMaxKm} km od startu.
+        </p>
+
+        <div className={styles.formGroup}>
+          <label className={styles.checkboxLabel}>
+            <input
+              type="checkbox"
+              checked={enforceDrivingBreakRule}
+              onChange={(e) => setEnforceDrivingBreakRule(e.target.checked)}
+            />
+            <span>Vložit pauzu 45 minut nejpozději po 4,5 hodinách kumulovaného řízení</span>
+          </label>
         </div>
       </div>
 

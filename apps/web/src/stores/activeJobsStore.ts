@@ -23,7 +23,8 @@ export type JobType =
   | 'import.work_log'
   | 'import.zip'
   | 'geocode' 
-  | 'route';
+  | 'route'
+  | 'export';
 
 // Human-readable names for job types
 const JOB_TYPE_NAMES: Record<JobType, string> = {
@@ -35,7 +36,18 @@ const JOB_TYPE_NAMES: Record<JobType, string> = {
   'import.zip': 'Import ZIP',
   'geocode': 'Geokódování',
   'route': 'Plánování trasy',
+  'export': 'Export dat',
 };
+
+interface ExportJobStatusUpdate {
+  jobId: string;
+  timestamp: string;
+  status:
+    | { type: 'queued'; position?: number }
+    | { type: 'processing'; progress?: number; message?: string }
+    | { type: 'completed'; result?: { fileName?: string } }
+    | { type: 'failed'; error: string };
+}
 
 // Active job info
 export interface ActiveJob {
@@ -213,6 +225,13 @@ export const useActiveJobsStore = create<ActiveJobsState>((set, get) => ({
         (update) => handleGeocodeJobStatusUpdate(update)
       );
       unsubscribeFunctions.push(unsubGeocode);
+
+      // Subscribe to export job status updates
+      const unsubExport = await natsState.subscribe<ExportJobStatusUpdate>(
+        'sazinka.job.export.status.*',
+        (update) => handleExportJobStatusUpdate(update)
+      );
+      unsubscribeFunctions.push(unsubExport);
       
       set({ unsubscribeFunctions, isSubscribed: true });
     } catch (error) {
@@ -467,6 +486,67 @@ function handleGeocodeJobStatusUpdate(update: GeocodeJobStatusUpdate) {
       id: jobId,
       type: 'geocode',
       name: 'Geokódování',
+      status: jobStatus,
+      progress,
+      progressText,
+      startedAt: new Date(update.timestamp),
+      completedAt,
+      error,
+    });
+  }
+}
+
+/**
+ * Handle export job status updates
+ */
+function handleExportJobStatusUpdate(update: ExportJobStatusUpdate) {
+  const store = useActiveJobsStore.getState();
+  const jobId = update.jobId;
+  const status = update.status;
+
+  let jobStatus: ActiveJob['status'];
+  let progress: number | undefined;
+  let progressText: string | undefined;
+  let error: string | undefined;
+  let completedAt: Date | undefined;
+
+  if (status.type === 'queued') {
+    jobStatus = 'queued';
+    progressText = status.position ? `Pozice ve frontě: ${status.position}` : 'Ve frontě';
+  } else if (status.type === 'processing') {
+    jobStatus = 'processing';
+    progress = status.progress;
+    progressText = status.message || 'Export běží...';
+  } else if (status.type === 'completed') {
+    jobStatus = 'completed';
+    progress = 100;
+    const fileName = status.result?.fileName;
+    progressText = fileName ? `Dokončeno: ${fileName}` : 'Export dokončen';
+    completedAt = new Date();
+  } else if (status.type === 'failed') {
+    jobStatus = 'failed';
+    error = status.error;
+    progressText = 'Export selhal';
+    completedAt = new Date();
+  } else {
+    return;
+  }
+
+  const existingJob = store.jobs.get(jobId);
+
+  if (existingJob) {
+    store.updateJob(jobId, {
+      status: jobStatus,
+      progress,
+      progressText,
+      error,
+      completedAt,
+    });
+  } else {
+    store.addJob({
+      id: jobId,
+      type: 'export',
+      name: JOB_TYPE_NAMES.export,
       status: jobStatus,
       progress,
       progressText,

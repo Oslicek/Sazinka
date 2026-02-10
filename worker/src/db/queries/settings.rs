@@ -9,7 +9,7 @@ use crate::types::settings::{
     Depot, CreateDepotRequest, UpdateDepotRequest,
     UserWithSettings, UpdateWorkConstraintsRequest,
     UpdateBusinessInfoRequest, UpdateEmailTemplatesRequest,
-    UpdatePreferencesRequest,
+    UpdatePreferencesRequest, UpdateBreakSettingsRequest,
 };
 
 // ============================================================================
@@ -32,6 +32,9 @@ pub async fn get_user_settings(pool: &PgPool, user_id: Uuid) -> Result<Option<Us
             ico, dic,
             email_subject_template, email_body_template,
             default_crew_id, default_depot_id,
+            break_enabled, break_duration_minutes,
+            break_earliest_time, break_latest_time,
+            break_min_km, break_max_km,
             created_at, updated_at
         FROM users
         WHERE id = $1
@@ -161,6 +164,46 @@ pub async fn update_preferences(
     .bind(user_id)
     .bind(req.default_crew_id)
     .bind(req.default_depot_id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Update break settings
+pub async fn update_break_settings(
+    pool: &PgPool,
+    user_id: Uuid,
+    req: &UpdateBreakSettingsRequest,
+) -> Result<()> {
+    // Parse time strings if provided
+    let earliest_time = req.break_earliest_time.as_ref()
+        .map(|s| NaiveTime::parse_from_str(s, "%H:%M"))
+        .transpose()?;
+    
+    let latest_time = req.break_latest_time.as_ref()
+        .map(|s| NaiveTime::parse_from_str(s, "%H:%M"))
+        .transpose()?;
+
+    sqlx::query(
+        r#"
+        UPDATE users SET
+            break_enabled = COALESCE($2, break_enabled),
+            break_duration_minutes = COALESCE($3, break_duration_minutes),
+            break_earliest_time = COALESCE($4, break_earliest_time),
+            break_latest_time = COALESCE($5, break_latest_time),
+            break_min_km = COALESCE($6, break_min_km),
+            break_max_km = COALESCE($7, break_max_km)
+        WHERE id = $1
+        "#
+    )
+    .bind(user_id)
+    .bind(req.break_enabled)
+    .bind(req.break_duration_minutes)
+    .bind(earliest_time)
+    .bind(latest_time)
+    .bind(req.break_min_km)
+    .bind(req.break_max_km)
     .execute(pool)
     .await?;
 

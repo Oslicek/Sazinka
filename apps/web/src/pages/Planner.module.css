@@ -118,6 +118,19 @@
   flex-shrink: 0;
 }
 
+.warningBox {
+  background: #fffbeb;
+  border: 1px solid #f59e0b;
+  color: #92400e;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-md);
+  margin-bottom: 0.75rem;
+  font-size: 0.8125rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
 /* ── Section headers ── */
 
 .sectionHeader {

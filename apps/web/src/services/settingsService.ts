@@ -8,9 +8,11 @@ import type {
   WorkConstraints,
   BusinessInfo,
   EmailTemplateSettings,
+  BreakSettings,
   UpdateWorkConstraintsRequest,
   UpdateBusinessInfoRequest,
   UpdateEmailTemplatesRequest,
+  UpdateBreakSettingsRequest,
 } from '@shared/settings';
 import type { SuccessResponse, ErrorResponse } from '@shared/messages';
 import { createRequest } from '@shared/messages';
@@ -122,6 +124,27 @@ export async function updateEmailTemplates(
 
   const response = await deps.request<typeof request, NatsResponse<EmailTemplateSettings>>(
     'sazinka.settings.email.update',
+    request
+  );
+
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+
+  return response.payload;
+}
+
+/**
+ * Update break settings
+ */
+export async function updateBreakSettings(
+  data: UpdateBreakSettingsRequest,
+  deps: SettingsServiceDeps = getDefaultDeps()
+): Promise<BreakSettings> {
+  const request = createRequest(getToken(), data);
+
+  const response = await deps.request<typeof request, NatsResponse<BreakSettings>>(
+    'sazinka.settings.break.update',
     request
   );
 
