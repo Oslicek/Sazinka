@@ -55,8 +55,8 @@ impl EmailConfig {
     /// Create config from environment variables
     pub fn from_env() -> Option<Self> {
         let api_key = std::env::var("RESEND_API_KEY").ok()?;
-        let from_email = std::env::var("EMAIL_FROM_ADDRESS").unwrap_or_else(|_| "noreply@sazinka.cz".to_string());
-        let from_name = std::env::var("EMAIL_FROM_NAME").unwrap_or_else(|_| "Sazinka".to_string());
+        let from_email = std::env::var("EMAIL_FROM_ADDRESS").unwrap_or_else(|_| "noreply@ariadline.cz".to_string());
+        let from_name = std::env::var("EMAIL_FROM_NAME").unwrap_or_else(|_| "Ariadline".to_string());
         
         Some(Self::new(&api_key, &from_email, &from_name))
     }

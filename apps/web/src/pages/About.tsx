@@ -4,12 +4,12 @@ export function About() {
   return (
     <div className={styles.container}>
       <div className={styles.card}>
-        <h1 className={styles.title}>O službě Sazinka</h1>
+        <h1 className={styles.title}>O službě Ariadline</h1>
         
         <section className={styles.section}>
-          <h2>Co je Sazinka?</h2>
+          <h2>Co je Ariadline?</h2>
           <p>
-            Sazinka je CRM systém pro revizní techniky a další řemeslníky, 
+            Ariadline je CRM systém pro revizní techniky a další řemeslníky, 
             kteří pravidelně navštěvují své zákazníky. Pomáhá s plánováním 
             revizí, optimalizací tras a komunikací se zákazníky.
           </p>

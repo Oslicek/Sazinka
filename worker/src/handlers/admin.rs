@@ -419,7 +419,7 @@ async fn reset_database(pool: &PgPool) -> Result<()> {
     sqlx::query(
         r#"
         INSERT INTO users (id, email, password_hash, name, phone, business_name, street, city, postal_code, lat, lng)
-        VALUES ($1, 'admin@sazinka.cz', 'not-set', 'Výchozí uživatel', '+420000000000', 'Sazinka s.r.o.', 
+        VALUES ($1, 'admin@ariadline.cz', 'not-set', 'Výchozí uživatel', '+420000000000', 'Ariadline s.r.o.', 
                 'Václavské náměstí 1', 'Praha', '11000', 50.0755, 14.4378)
         ON CONFLICT (id) DO NOTHING
         "#

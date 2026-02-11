@@ -47,7 +47,7 @@ export function Layout({ children }: LayoutProps) {
           </button>
           
           <div className={styles.logo}>
-            <Link to="/">Sazinka</Link>
+            <Link to="/">Ariadline</Link>
           </div>
         </div>
         

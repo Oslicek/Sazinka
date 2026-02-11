@@ -33,7 +33,7 @@ export function Login() {
     <div className={styles.container}>
       <div className={styles.card}>
         <div className={styles.header}>
-          <h1 className={styles.title}>Sazinka</h1>
+          <h1 className={styles.title}>Ariadline</h1>
           <p className={styles.subtitle}>Přihlášení do systému</p>
         </div>
 

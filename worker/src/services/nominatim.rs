@@ -38,7 +38,7 @@ impl NominatimClient {
     /// Create a new client
     pub fn new(base_url: &str) -> Self {
         let client = reqwest::Client::builder()
-            .user_agent("Sazinka/1.0 (https://sazinka.cz)")
+            .user_agent("Ariadline/1.0 (https://ariadline.cz)")
             .build()
             .expect("Failed to create HTTP client");
 
