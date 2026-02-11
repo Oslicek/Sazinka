@@ -1,6 +1,12 @@
 import '@testing-library/jest-dom';
 import { vi } from 'vitest';
 
+// Mock URL.createObjectURL for jsdom (required by maplibre-gl)
+if (typeof window !== 'undefined') {
+  window.URL.createObjectURL = vi.fn(() => 'blob:mock-url') as typeof window.URL.createObjectURL;
+  window.URL.revokeObjectURL = vi.fn();
+}
+
 // Mock NATS WebSocket module before any imports
 vi.mock('nats.ws', () => {
   const mockConnection = {

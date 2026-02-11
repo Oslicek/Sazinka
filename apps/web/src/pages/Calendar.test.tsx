@@ -90,10 +90,9 @@ describe('Calendar', () => {
     render(<Calendar />);
     
     await waitFor(() => {
-      expect(screen.getByText('1')).toBeInTheDocument(); // scheduled
-      expect(screen.getByText('1')).toBeInTheDocument(); // overdue
-      expect(screen.getByText('1')).toBeInTheDocument(); // completed
-      expect(screen.getByText('1')).toBeInTheDocument(); // pending
+      // Each stat is 1: scheduled, overdue, completed, pending
+      const ones = screen.getAllByText('1');
+      expect(ones.length).toBe(4);
     });
   });
 
@@ -103,7 +102,8 @@ describe('Calendar', () => {
     render(<Calendar />);
     
     await waitFor(() => {
-      expect(screen.getByText(/Nepodařilo se načíst kalendář/)).toBeInTheDocument();
+      // Calendar sets error from err.message when fetch fails, or fallback "Nepodařilo se načíst kalendář"
+      expect(screen.getByText(/Connection failed|Nepodařilo se načíst kalendář/)).toBeInTheDocument();
     });
   });
 

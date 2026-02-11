@@ -102,7 +102,7 @@ describe('DayCell', () => {
     };
 
     const { container } = render(<DayCell day={todayDay} items={[]} />);
-    const cell = container.querySelector('.today');
+    const cell = container.querySelector('[class*="today"]');
     expect(cell).toBeInTheDocument();
   });
 
@@ -116,7 +116,7 @@ describe('DayCell', () => {
     };
 
     const { container } = render(<DayCell day={saturdayDay} items={[]} />);
-    const cell = container.querySelector('.weekend');
+    const cell = container.querySelector('[class*="weekend"]');
     expect(cell).toBeInTheDocument();
   });
 
@@ -129,7 +129,7 @@ describe('DayCell', () => {
       <DayCell day={mockDay} items={items} workloadMinutes={600} capacityMinutes={480} />
     );
     
-    const cell = container.querySelector('.overCapacity');
+    const cell = container.querySelector('[class*="overCapacity"]');
     expect(cell).toBeInTheDocument();
   });
 

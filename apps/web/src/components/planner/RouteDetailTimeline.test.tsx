@@ -1,22 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { RouteDetailTimeline } from './RouteDetailTimeline';
-import type { SavedRoute, SavedRouteStop } from '../../services/routeService';
-
-const mockRoute: SavedRoute = {
-  id: 'r1',
-  userId: 'u1',
-  crewId: 'c1',
-  crewName: 'Petr',
-  date: '2026-01-26',
-  status: 'optimized',
-  totalDistanceKm: 48.2,
-  totalDurationMinutes: 200,
-  optimizationScore: 85,
-  stopsCount: 2,
-  createdAt: '2026-01-25T10:00:00',
-  updatedAt: '2026-01-25T10:00:00',
-};
+import type { SavedRouteStop } from '../../services/routeService';
 
 const mockStops: SavedRouteStop[] = [
   {
@@ -37,7 +22,7 @@ const mockStops: SavedRouteStop[] = [
     scheduledDate: '2026-01-25',
     scheduledTimeStart: '09:00:00',
     scheduledTimeEnd: '09:45:00',
-    revisionStatus: 'scheduled',
+    revisionStatus: 'confirmed',
   },
   {
     id: 's2',
@@ -67,10 +52,10 @@ describe('RouteDetailTimeline', () => {
   it('should render depot at start and end', () => {
     render(
       <RouteDetailTimeline
-        route={mockRoute}
         stops={mockStops}
         depot={mockDepot}
         selectedStopId={null}
+        highlightedSegment={null}
         onStopClick={() => {}}
         onSegmentClick={() => {}}
       />
@@ -82,10 +67,10 @@ describe('RouteDetailTimeline', () => {
   it('should render all stops with customer names', () => {
     render(
       <RouteDetailTimeline
-        route={mockRoute}
         stops={mockStops}
         depot={mockDepot}
         selectedStopId={null}
+        highlightedSegment={null}
         onStopClick={() => {}}
         onSegmentClick={() => {}}
       />
@@ -97,32 +82,31 @@ describe('RouteDetailTimeline', () => {
   it('should render time windows for stops', () => {
     render(
       <RouteDetailTimeline
-        route={mockRoute}
         stops={mockStops}
         depot={mockDepot}
         selectedStopId={null}
+        highlightedSegment={null}
         onStopClick={() => {}}
         onSegmentClick={() => {}}
       />
     );
-    expect(screen.getByText(/09:00/)).toBeInTheDocument();
-    expect(screen.getByText(/09:45/)).toBeInTheDocument();
+    // Dohodnuto: 09:00–09:45 or Vypočítáno - formatTime gives HH:MM (appears in segment + stop)
+    expect(screen.getAllByText(/09:00/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/09:45/).length).toBeGreaterThanOrEqual(1);
   });
 
   it('should show confirmation badges for stops', () => {
     render(
       <RouteDetailTimeline
-        route={mockRoute}
         stops={mockStops}
         depot={mockDepot}
         selectedStopId={null}
+        highlightedSegment={null}
         onStopClick={() => {}}
         onSegmentClick={() => {}}
       />
     );
-    // "Potvrzeno" for confirmed and "Nepotvrzeno" for scheduled
-    const badges = screen.getAllByText(/potvrzeno/i);
-    expect(badges.length).toBe(2);
+    // First stop: revisionStatus 'confirmed' -> "Potvrzeno"; Second: 'upcoming' -> "Nepotvrzeno"
     expect(screen.getByText('Potvrzeno')).toBeInTheDocument();
     expect(screen.getByText('Nepotvrzeno')).toBeInTheDocument();
   });
@@ -130,16 +114,17 @@ describe('RouteDetailTimeline', () => {
   it('should render segments with distance and duration', () => {
     render(
       <RouteDetailTimeline
-        route={mockRoute}
         stops={mockStops}
         depot={mockDepot}
         selectedStopId={null}
+        highlightedSegment={null}
         onStopClick={() => {}}
         onSegmentClick={() => {}}
       />
     );
     expect(screen.getByText(/12\.5 km/i)).toBeInTheDocument();
-    expect(screen.getByText(/18 min/i)).toBeInTheDocument();
+    // formatDurationHm outputs "0h 18min" for 18 minutes
+    expect(screen.getByText(/18.*min/i)).toBeInTheDocument();
     expect(screen.getByText(/8\.3 km/i)).toBeInTheDocument();
   });
 
@@ -147,10 +132,10 @@ describe('RouteDetailTimeline', () => {
     const onStopClick = vi.fn();
     render(
       <RouteDetailTimeline
-        route={mockRoute}
         stops={mockStops}
         depot={mockDepot}
         selectedStopId={null}
+        highlightedSegment={null}
         onStopClick={onStopClick}
         onSegmentClick={() => {}}
       />
@@ -163,10 +148,10 @@ describe('RouteDetailTimeline', () => {
     const onSegmentClick = vi.fn();
     render(
       <RouteDetailTimeline
-        route={mockRoute}
         stops={mockStops}
         depot={mockDepot}
         selectedStopId={null}
+        highlightedSegment={null}
         onStopClick={() => {}}
         onSegmentClick={onSegmentClick}
       />
@@ -179,10 +164,10 @@ describe('RouteDetailTimeline', () => {
   it('should highlight selected stop', () => {
     const { container } = render(
       <RouteDetailTimeline
-        route={mockRoute}
         stops={mockStops}
         depot={mockDepot}
         selectedStopId="cust1"
+        highlightedSegment={null}
         onStopClick={() => {}}
         onSegmentClick={() => {}}
       />
@@ -194,10 +179,10 @@ describe('RouteDetailTimeline', () => {
   it('should render empty state when no stops', () => {
     render(
       <RouteDetailTimeline
-        route={mockRoute}
         stops={[]}
         depot={mockDepot}
         selectedStopId={null}
+        highlightedSegment={null}
         onStopClick={() => {}}
         onSegmentClick={() => {}}
       />

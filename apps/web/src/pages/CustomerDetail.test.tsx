@@ -4,6 +4,11 @@ import userEvent from '@testing-library/user-event';
 import { CustomerDetail } from './CustomerDetail';
 import type { Customer } from '@shared/customer';
 
+// Mock deviceService to avoid useNatsStore.getState in DeviceList
+vi.mock('../services/deviceService', () => ({
+  listDevices: vi.fn(() => Promise.resolve({ items: [], total: 0 })),
+}));
+
 // Mock the customerService
 vi.mock('../services/customerService', () => ({
   getCustomer: vi.fn(),
@@ -18,6 +23,7 @@ const mockNavigate = vi.fn();
 vi.mock('@tanstack/react-router', () => ({
   useParams: vi.fn(() => ({ customerId: 'test-customer-id' })),
   useNavigate: vi.fn(() => mockNavigate),
+  useSearch: vi.fn(() => ({})),
   Link: ({ children, to }: { children: React.ReactNode; to: string }) => (
     <a href={to}>{children}</a>
   ),
@@ -182,7 +188,8 @@ describe('CustomerDetail', () => {
       render(<CustomerDetail />);
 
       await waitFor(() => {
-        expect(screen.getByText(/poloha.*není.*k dispozici/i)).toBeInTheDocument();
+        // CustomerWorkspace shows "Mapa není k dispozici" when no coordinates
+        expect(screen.getByText(/mapa.*není.*k dispozici|poloha.*není.*k dispozici/i)).toBeInTheDocument();
       });
     });
   });
@@ -216,7 +223,8 @@ describe('CustomerDetail', () => {
       render(<CustomerDetail />);
 
       await waitFor(() => {
-        expect(screen.getByRole('link', { name: /zpět/i })).toBeInTheDocument();
+        // Back link shows "← Zákazníci"
+        expect(screen.getByRole('link', { name: /zákazníci/i })).toBeInTheDocument();
       });
     });
 
@@ -226,7 +234,7 @@ describe('CustomerDetail', () => {
       render(<CustomerDetail />);
 
       await waitFor(() => {
-        const backLink = screen.getByRole('link', { name: /zpět/i });
+        const backLink = screen.getByRole('link', { name: /zákazníci/i });
         expect(backLink).toHaveAttribute('href', '/customers');
       });
     });

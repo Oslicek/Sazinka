@@ -147,11 +147,14 @@ describe('Dashboard', () => {
   });
 
   it('should calculate completion rate correctly', async () => {
+    // 4 planned (scheduled+in_progress), 2 completed = 50%
     const mockWeekItems: CalendarItem[] = [
       { id: '1', type: 'revision', date: '2026-01-25', status: 'scheduled', title: 'A' },
       { id: '2', type: 'revision', date: '2026-01-26', status: 'scheduled', title: 'B' },
-      { id: '3', type: 'revision', date: '2026-01-27', status: 'completed', title: 'C' },
-      { id: '4', type: 'revision', date: '2026-01-28', status: 'completed', title: 'D' },
+      { id: '3', type: 'revision', date: '2026-01-27', status: 'scheduled', title: 'C' },
+      { id: '4', type: 'revision', date: '2026-01-28', status: 'scheduled', title: 'D' },
+      { id: '5', type: 'revision', date: '2026-01-29', status: 'completed', title: 'E' },
+      { id: '6', type: 'revision', date: '2026-01-30', status: 'completed', title: 'F' },
     ];
 
     vi.mocked(getRevisionStats).mockResolvedValue({
@@ -165,7 +168,7 @@ describe('Dashboard', () => {
     render(<Dashboard />);
 
     await waitFor(() => {
-      // 2 completed out of 2 scheduled + 2 completed = 50%
+      // 2 completed out of 4 planned = 50%
       expect(screen.getByText('50%')).toBeInTheDocument();
     });
   });
@@ -189,9 +192,11 @@ describe('Dashboard', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Rizika v příštích 7 dnech')).toBeInTheDocument();
-      expect(screen.getByText('1 položek')).toBeInTheDocument(); // overdue
-      expect(screen.getByText('2 položek')).toBeInTheDocument(); // unassigned
-      expect(screen.getByText('1 položek')).toBeInTheDocument(); // follow-ups
+      // "1 položek" appears for overdue and follow-ups; "2 položek" for unassigned
+      const onePolozek = screen.getAllByText('1 položek');
+      const twoPolozek = screen.getAllByText('2 položek');
+      expect(onePolozek.length).toBeGreaterThanOrEqual(2); // overdue + follow-ups
+      expect(twoPolozek.length).toBeGreaterThanOrEqual(1); // unassigned
     });
   });
 
