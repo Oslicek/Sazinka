@@ -139,8 +139,8 @@ pub struct WorkingHours {
 impl Default for WorkingHours {
     fn default() -> Self {
         Self {
-            start: NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
-            end: NaiveTime::from_hms_opt(23, 59, 59).unwrap(),
+            start: NaiveTime::from_hms_opt(0, 0, 0).expect("valid static full-day start"),
+            end: NaiveTime::from_hms_opt(23, 59, 59).expect("valid static full-day end"),
         }
     }
 }

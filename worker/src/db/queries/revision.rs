@@ -191,10 +191,12 @@ pub async fn list_upcoming_revisions(
         WHERE r.user_id = $1
           AND r.due_date >= $2
           AND r.due_date <= $3
-          AND r.status NOT IN ('completed', 'cancelled')
+          AND r.status NOT IN ('{}', '{}')
         ORDER BY r.due_date ASC
         "#,
-        REVISION_COLS
+        REVISION_COLS,
+        RevisionStatus::Completed.as_str(),
+        RevisionStatus::Cancelled.as_str()
     );
     
     let revisions = sqlx::query_as::<_, Revision>(&query)
@@ -305,10 +307,12 @@ pub async fn list_overdue_revisions(pool: &PgPool, user_id: Uuid) -> Result<Vec<
         FROM revisions r
         WHERE r.user_id = $1
           AND r.due_date < $2
-          AND r.status NOT IN ('completed', 'cancelled')
+          AND r.status NOT IN ('{}', '{}')
         ORDER BY r.due_date ASC
         "#,
-        REVISION_COLS
+        REVISION_COLS,
+        RevisionStatus::Completed.as_str(),
+        RevisionStatus::Cancelled.as_str()
     );
     
     let revisions = sqlx::query_as::<_, Revision>(&query)
@@ -332,10 +336,12 @@ pub async fn list_due_soon_revisions(pool: &PgPool, user_id: Uuid, days: i32) ->
         WHERE r.user_id = $1
           AND r.due_date >= $2
           AND r.due_date <= $3
-          AND r.status NOT IN ('completed', 'cancelled')
+          AND r.status NOT IN ('{}', '{}')
         ORDER BY r.due_date ASC
         "#,
-        REVISION_COLS
+        REVISION_COLS,
+        RevisionStatus::Completed.as_str(),
+        RevisionStatus::Cancelled.as_str()
     );
     
     let revisions = sqlx::query_as::<_, Revision>(&query)
@@ -354,17 +360,39 @@ pub async fn get_revision_stats(pool: &PgPool, user_id: Uuid) -> Result<Revision
     let week_end = today + chrono::Duration::days(7);
     let month_start = NaiveDate::from_ymd_opt(today.year(), today.month(), 1).unwrap_or(today);
     
-    let overdue: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM revisions WHERE user_id = $1 AND due_date < $2 AND status NOT IN ('completed', 'cancelled')"
-    ).bind(user_id).bind(today).fetch_one(pool).await?;
+    let overdue_query = format!(
+        "SELECT COUNT(*) FROM revisions WHERE user_id = $1 AND due_date < $2 AND status NOT IN ('{}', '{}')",
+        RevisionStatus::Completed.as_str(),
+        RevisionStatus::Cancelled.as_str()
+    );
+    let overdue: (i64,) = sqlx::query_as(&overdue_query)
+        .bind(user_id)
+        .bind(today)
+        .fetch_one(pool)
+        .await?;
     
-    let due_this_week: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM revisions WHERE user_id = $1 AND due_date >= $2 AND due_date <= $3 AND status NOT IN ('completed', 'cancelled')"
-    ).bind(user_id).bind(today).bind(week_end).fetch_one(pool).await?;
+    let due_this_week_query = format!(
+        "SELECT COUNT(*) FROM revisions WHERE user_id = $1 AND due_date >= $2 AND due_date <= $3 AND status NOT IN ('{}', '{}')",
+        RevisionStatus::Completed.as_str(),
+        RevisionStatus::Cancelled.as_str()
+    );
+    let due_this_week: (i64,) = sqlx::query_as(&due_this_week_query)
+        .bind(user_id)
+        .bind(today)
+        .bind(week_end)
+        .fetch_one(pool)
+        .await?;
     
-    let scheduled_today: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM revisions WHERE user_id = $1 AND scheduled_date = $2 AND status NOT IN ('completed', 'cancelled')"
-    ).bind(user_id).bind(today).fetch_one(pool).await?;
+    let scheduled_today_query = format!(
+        "SELECT COUNT(*) FROM revisions WHERE user_id = $1 AND scheduled_date = $2 AND status NOT IN ('{}', '{}')",
+        RevisionStatus::Completed.as_str(),
+        RevisionStatus::Cancelled.as_str()
+    );
+    let scheduled_today: (i64,) = sqlx::query_as(&scheduled_today_query)
+        .bind(user_id)
+        .bind(today)
+        .fetch_one(pool)
+        .await?;
     
     let completed_this_month: (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM revisions WHERE user_id = $1 AND status = $2::revision_status AND completed_at >= $3"
@@ -451,7 +479,7 @@ pub async fn get_revision_suggestions(
             FROM revisions r
             INNER JOIN customers c ON r.customer_id = c.id
             WHERE r.user_id = $1
-              AND r.status NOT IN ('completed', 'cancelled')
+              AND r.status NOT IN ('{}', '{}')
               AND (r.scheduled_date IS NULL OR r.scheduled_date = $3)
               AND c.lat IS NOT NULL AND c.lng IS NOT NULL
               AND {exclude}
@@ -460,7 +488,9 @@ pub async fn get_revision_suggestions(
         ORDER BY priority_score DESC, days_until_due ASC
         LIMIT $4
         "#,
-        exclude = exclude_param
+        RevisionStatus::Completed.as_str(),
+        RevisionStatus::Cancelled.as_str(),
+        exclude = exclude_param,
     );
     
     let mut query_builder = sqlx::query_as::<_, RevisionSuggestion>(&query)
@@ -478,11 +508,13 @@ pub async fn get_revision_suggestions(
         r#"
         SELECT COUNT(*) FROM revisions r
         INNER JOIN customers c ON r.customer_id = c.id
-        WHERE r.user_id = $1 AND r.status NOT IN ('completed', 'cancelled')
+        WHERE r.user_id = $1 AND r.status NOT IN ('{}', '{}')
           AND (r.scheduled_date IS NULL OR r.scheduled_date = $2)
           AND c.lat IS NOT NULL AND c.lng IS NOT NULL AND {exclude}
         "#,
-        exclude = count_exclude
+        RevisionStatus::Completed.as_str(),
+        RevisionStatus::Cancelled.as_str(),
+        exclude = count_exclude,
     );
     
     let mut count_builder = sqlx::query_as::<_, (i64,)>(&count_query)
@@ -549,7 +581,7 @@ fn build_call_queue_sql_parts(request: &CallQueueRequest) -> CallQueueSqlParts {
     }
 
     if request.geocoded_only.unwrap_or(false) {
-        conditions.push("c.geocode_status = 'success'".to_string());
+        conditions.push("c.geocode_status = 'success'::geocode_status".to_string());
     }
 
     CallQueueSqlParts {

@@ -593,11 +593,45 @@ impl JobProcessor {
                             customer.name.as_deref().unwrap_or("?"),
                             fe_tw.start, fe_tw.end,
                         );
-                        self.load_scheduled_time_window(user_id, *customer_id, date).await
+                        match queries::revision::get_scheduled_time_window_with_fallback(
+                            &self.pool,
+                            user_id,
+                            *customer_id,
+                            date,
+                        )
+                        .await
+                        {
+                            Ok(Some((start, end))) => (Some(start), Some(end)),
+                            Ok(None) => (None, None),
+                            Err(e) => {
+                                warn!(
+                                    "Failed to load fallback time window for customer {} on {}: {}",
+                                    customer_id, date, e
+                                );
+                                (None, None)
+                            }
+                        }
                     }
                 } else {
                     // Priority 2+3: DB lookup (revisions, then visits)
-                    self.load_scheduled_time_window(user_id, *customer_id, date).await
+                    match queries::revision::get_scheduled_time_window_with_fallback(
+                        &self.pool,
+                        user_id,
+                        *customer_id,
+                        date,
+                    )
+                    .await
+                    {
+                        Ok(Some((start, end))) => (Some(start), Some(end)),
+                        Ok(None) => (None, None),
+                        Err(e) => {
+                            warn!(
+                                "Failed to load fallback time window for customer {} on {}: {}",
+                                customer_id, date, e
+                            );
+                            (None, None)
+                        }
+                    }
                 };
                 
                 customers.push(CustomerForRoute {
@@ -615,52 +649,6 @@ impl JobProcessor {
         }
         
         Ok(customers)
-    }
-    
-    /// Load scheduled time window for a customer on a given date.
-    ///
-    /// Priority:
-    /// 1) `revisions` (authoritative source for agreed schedule)
-    /// 2) `visits` fallback (legacy/derived schedule records)
-    async fn load_scheduled_time_window(
-        &self,
-        user_id: Uuid,
-        customer_id: Uuid,
-        date: chrono::NaiveDate,
-    ) -> (Option<chrono::NaiveTime>, Option<chrono::NaiveTime>) {
-        match queries::revision::get_scheduled_time_window(&self.pool, user_id, customer_id, date).await {
-            Ok(Some((start, end))) => {
-                return (Some(start), Some(end));
-            }
-            Ok(None) => {}
-            Err(e) => {
-                warn!(
-                    "Failed to load revision time window for customer {} on {}: {}",
-                    customer_id, date, e
-                );
-            }
-        }
-
-        let result = sqlx::query_as::<_, (Option<chrono::NaiveTime>, Option<chrono::NaiveTime>)>(
-            r#"
-            SELECT scheduled_time_start, scheduled_time_end
-            FROM visits
-            WHERE user_id = $1 AND customer_id = $2 AND scheduled_date = $3
-              AND status NOT IN ('cancelled', 'completed')
-            ORDER BY scheduled_time_start ASC NULLS LAST
-            LIMIT 1
-            "#
-        )
-        .bind(user_id)
-        .bind(customer_id)
-        .bind(date)
-        .fetch_optional(&self.pool)
-        .await;
-        
-        match result {
-            Ok(Some((start, end))) => (start, end),
-            _ => (None, None),
-        }
     }
     
     /// Build VRP problem from customers

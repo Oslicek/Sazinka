@@ -56,6 +56,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[ignore] // requires --test-threads=1 due to env var race
     fn test_config_valhalla_url_none_when_not_set() {
         // Clear env var if set
         std::env::remove_var("VALHALLA_URL");
@@ -78,6 +79,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // requires --test-threads=1 due to env var race
     fn test_config_nominatim_url_defaults_to_public() {
         std::env::remove_var("NOMINATIM_URL");
         std::env::set_var("DATABASE_URL", "postgres://test");

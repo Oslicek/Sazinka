@@ -27,6 +27,7 @@ import type { SavedRouteStop } from '../services/routeService';
 import type { BreakSettings } from '@shared/settings';
 import * as settingsService from '../services/settingsService';
 import { calculateBreakPosition, createBreakStop } from '../utils/breakUtils';
+import { logger } from '../utils/logger';
 import * as crewService from '../services/crewService';
 import * as routeService from '../services/routeService';
 import * as insertionService from '../services/insertionService';
@@ -257,10 +258,10 @@ export function PlanningInbox() {
         const loadedVehicles = crewsResult.status === 'fulfilled' ? crewsResult.value : [];
         
         if (settingsResult.status === 'rejected') {
-          console.warn('Failed to load settings:', settingsResult.reason);
+          logger.warn('Failed to load settings:', settingsResult.reason);
         }
         if (crewsResult.status === 'rejected') {
-          console.warn('Failed to load crews (worker may not be running):', crewsResult.reason);
+          logger.warn('Failed to load crews (worker may not be running):', crewsResult.reason);
         }
         
         const loadedDepots = settings ? settings.depots.map((d) => ({
@@ -300,7 +301,7 @@ export function PlanningInbox() {
           setRouteContext(initialContext.date, initialContext.crewId);
         }
       } catch (err) {
-        console.error('Failed to load settings:', err);
+        logger.error('Failed to load settings:', err);
         // Still set a minimal context so the page is usable
         setContext({
           date: new Date().toISOString().split('T')[0],
@@ -355,7 +356,7 @@ export function PlanningInbox() {
           setMetrics(null);
         }
       } catch (err) {
-        console.error('Failed to load route:', err);
+        logger.error('Failed to load route:', err);
         setRouteStops([]);
         setLoadedRouteId(null);
         setReturnToDepotLeg(null);
@@ -397,23 +398,23 @@ export function PlanningInbox() {
         geometryUnsubRef.current = null;
       }
 
-      console.log('[PlanningInbox] Submitting geometry job for', locations.length, 'locations');
+      logger.info('[PlanningInbox] Submitting geometry job for', locations.length, 'locations');
       const jobResponse = await geometryService.submitGeometryJob(locations);
-      console.log('[PlanningInbox] Geometry job submitted, jobId:', jobResponse.jobId);
+      logger.info('[PlanningInbox] Geometry job submitted, jobId:', jobResponse.jobId);
 
       const unsubscribe = await geometryService.subscribeToGeometryJobStatus(
         jobResponse.jobId,
         (update) => {
-          console.log('[PlanningInbox] Geometry job status update:', update);
+          logger.info('[PlanningInbox] Geometry job status update:', update);
           if (update.status.type === 'completed') {
-            console.log('[PlanningInbox] Setting route geometry, coordinates count:', update.status.coordinates.length);
+            logger.info('[PlanningInbox] Setting route geometry, coordinates count:', update.status.coordinates.length);
             setRouteGeometry(update.status.coordinates);
             if (geometryUnsubRef.current) {
               geometryUnsubRef.current();
               geometryUnsubRef.current = null;
             }
           } else if (update.status.type === 'failed') {
-            console.warn('Geometry job failed:', update.status.error);
+            logger.warn('Geometry job failed:', update.status.error);
             // Keep existing geometry or clear it
             if (geometryUnsubRef.current) {
               geometryUnsubRef.current();
@@ -425,7 +426,7 @@ export function PlanningInbox() {
 
       geometryUnsubRef.current = unsubscribe;
     } catch (err) {
-      console.warn('Failed to submit geometry job:', err);
+      logger.warn('Failed to submit geometry job:', err);
     }
   }, []);
 
@@ -544,7 +545,7 @@ export function PlanningInbox() {
           );
         }
       } catch (err) {
-        console.error('Failed to calculate insertion:', err);
+        logger.error('Failed to calculate insertion:', err);
         setSlotSuggestions([]);
       } finally {
         setIsCalculatingSlots(false);
@@ -581,7 +582,7 @@ export function PlanningInbox() {
       setCandidates(loadedCandidates);
       setSlotSuggestions([]);
     } catch (err) {
-      console.error('Failed to load candidates:', err);
+      logger.error('Failed to load candidates:', err);
       setCandidates([]);
     } finally {
       setIsLoadingCandidates(false);
@@ -656,7 +657,7 @@ export function PlanningInbox() {
           })
         );
       } catch (err) {
-        console.error('Failed to calculate batch insertion:', err);
+        logger.error('Failed to calculate batch insertion:', err);
       }
     }
     
@@ -986,11 +987,11 @@ export function PlanningInbox() {
           );
           dayOverviewGeometryUnsubRef.current = unsubscribe;
         } catch (err) {
-          console.warn('Failed to get day overview geometry:', err);
+          logger.warn('Failed to get day overview geometry:', err);
         }
       }
     } catch (err) {
-      console.error('Failed to load day overview:', err);
+      logger.error('Failed to load day overview:', err);
       setDayOverview({ date, items: [], isLoading: false });
     }
   }, [candidates]);
@@ -1049,7 +1050,7 @@ export function PlanningInbox() {
       
       setHasChanges(true);
     } catch (err) {
-      console.error('Failed to schedule:', err);
+      logger.error('Failed to schedule:', err);
     }
   }, [candidates, incrementRouteVersion, loadDayOverview]);
   
@@ -1101,7 +1102,7 @@ export function PlanningInbox() {
       });
       setSlotSuggestions([]);
     } catch (err) {
-      console.error('Failed to snooze:', err);
+      logger.error('Failed to snooze:', err);
     }
   }, [candidates, selectNextCandidate]);
 
@@ -1481,7 +1482,7 @@ export function PlanningInbox() {
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error('Failed to optimize route:', message, err);
+      logger.error('Failed to optimize route:', message, err);
       setRouteJobProgress(`Chyba: ${message}`);
       setIsOptimizing(false);
       setTimeout(() => setRouteJobProgress(null), 8000);

@@ -46,6 +46,10 @@ function normalizeAlias(value: string | undefined, aliases: Record<string, strin
   return aliases[cleaned] || null;
 }
 
+function setMappedValue<T extends object>(target: T, key: keyof T, value: string): void {
+  (target as Record<string, string>)[key as string] = value;
+}
+
 function parseDate(value: string | undefined): string | null {
   if (!value) return null;
   const cleaned = cleanValue(value);
@@ -129,7 +133,7 @@ export function parseDeviceCsv(csvContent: string): { data: CsvDeviceRow[]; erro
     for (const [key, value] of Object.entries(row)) {
       const propName = DEVICE_HEADER_MAP[key];
       if (propName && value !== undefined && value !== '') {
-        (cleaned as any)[propName] = value;
+        setMappedValue(cleaned, propName, value);
       }
     }
     return cleaned;
@@ -247,7 +251,7 @@ export function parseRevisionCsv(csvContent: string): { data: CsvRevisionRow[]; 
     for (const [key, value] of Object.entries(row)) {
       const propName = REVISION_HEADER_MAP[key];
       if (propName && value !== undefined && value !== '') {
-        (cleaned as any)[propName] = value;
+        setMappedValue(cleaned, propName, value);
       }
     }
     return cleaned;
@@ -376,7 +380,7 @@ export function parseCommunicationCsv(csvContent: string): { data: CsvCommunicat
     for (const [key, value] of Object.entries(row)) {
       const propName = COMMUNICATION_HEADER_MAP[key];
       if (propName && value !== undefined && value !== '') {
-        (cleaned as any)[propName] = value;
+        setMappedValue(cleaned, propName, value);
       }
     }
     return cleaned;
@@ -527,7 +531,7 @@ export function parseWorkLogCsv(csvContent: string): { data: CsvWorkLogRow[]; er
     for (const [key, value] of Object.entries(row)) {
       const propName = WORK_LOG_HEADER_MAP[key];
       if (propName && value !== undefined && value !== '') {
-        (cleaned as any)[propName] = value;
+        setMappedValue(cleaned, propName, value);
       }
     }
     return cleaned;

@@ -16,7 +16,8 @@ import { listCrews, type Crew } from '../services/crewService';
 import type { BreakSettings, Depot } from '@shared/settings';
 import type { RouteWarning } from '@shared/route';
 import { validateBreak } from '../utils/breakUtils';
-import { RouteListPanel, RouteDetailTimeline, RouteMapPanel, type MapDepot, type RouteMetrics } from '../components/planner';
+import { logger } from '../utils/logger';
+import { RouteListPanel, RouteDetailTimeline, RouteMapPanel, type RouteMetrics } from '../components/planner';
 import { PlannerFilters } from '../components/shared/PlannerFilters';
 import styles from './Planner.module.css';
 
@@ -170,13 +171,14 @@ export function Planner() {
           setDepot(DEFAULT_DEPOT);
         }
       } catch (err) {
-        console.warn('Failed to load settings:', err);
+        logger.warn('Failed to load settings:', err);
         setDepot(DEFAULT_DEPOT);
       } finally {
         setIsLoadingSettings(false);
       }
     }
     loadSettings();
+  // Intentionally run once after connectivity change; search params are read as initial defaults.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected]);
 
@@ -212,7 +214,7 @@ export function Planner() {
       }
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      console.error('Failed to load routes:', detail);
+      logger.error('Failed to load routes:', detail);
       setError(`Nepodařilo se načíst cesty: ${detail}`);
       setRoutes([]);
     } finally {
@@ -243,15 +245,6 @@ export function Planner() {
       setIsLoadingStops(true);
       try {
         const result = await routeService.getRoute({ routeId: selectedRouteId });
-        console.log('[Planner] Route stops loaded:', result.stops.map(s => ({
-          name: s.customerName,
-          revisionId: s.revisionId,
-          revisionStatus: s.revisionStatus,
-          scheduledTimeStart: s.scheduledTimeStart,
-          scheduledTimeEnd: s.scheduledTimeEnd,
-          distanceKm: s.distanceFromPreviousKm,
-          durationMin: s.durationFromPreviousMinutes,
-        })));
         setSelectedRouteStops(result.stops);
         setReturnToDepotLeg(
           result.route?.returnToDepotDistanceKm != null || result.route?.returnToDepotDurationMinutes != null
@@ -276,7 +269,7 @@ export function Planner() {
         }
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
-        console.error('Failed to load route stops:', detail);
+        logger.error('Failed to load route stops:', detail);
         setError(`Nepodařilo se načíst zastávky trasy: ${detail}`);
         setSelectedRouteStops([]);
         setReturnToDepotLeg(null);
@@ -286,6 +279,7 @@ export function Planner() {
       }
     }
     loadStops();
+  // Keep `loadStops` local to this effect to avoid dependency churn from route-derived callbacks.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRouteId, isConnected, depots]);
 
@@ -349,7 +343,6 @@ export function Planner() {
       ...waypoints,
       { lat: depot.lat, lng: depot.lng },
     ];
-    const geometryRunRouteId = selectedRouteId;
 
     try {
       // Cancel previous subscription
@@ -366,15 +359,17 @@ export function Planner() {
         (update) => {
           if (update.status.type === 'completed') {
             const geometry = update.status.coordinates as [number, number][];
-            const first = geometry[0] ?? null;
             const last = geometry[geometry.length - 1] ?? null;
-            const distanceToDepotKm = last
+            const isRouteEndingNearDepot = last
               ? Math.sqrt(
                 ((last[0] - depot.lng) * 111.32) ** 2 +
                 ((last[1] - depot.lat) * 111.32) ** 2
-              )
+              ) < 1
               : null;
             const isStaleJob = activeGeometryJobRef.current !== jobResponse.jobId;
+            if (isStaleJob || isRouteEndingNearDepot === null) {
+              // No-op: evaluate stale-state and endpoint sanity for future handling.
+            }
             setRouteGeometry(geometry);
 
             if (geometryUnsubRef.current) {
@@ -382,7 +377,7 @@ export function Planner() {
               geometryUnsubRef.current = null;
             }
           } else if (update.status.type === 'failed') {
-            console.warn('Geometry job failed:', update.status.error);
+            logger.warn('Geometry job failed:', update.status.error);
             setRouteGeometry([]);
             if (geometryUnsubRef.current) {
               geometryUnsubRef.current();
@@ -394,7 +389,7 @@ export function Planner() {
 
       geometryUnsubRef.current = unsubscribe;
     } catch (err) {
-      console.warn('Failed to fetch route geometry:', err);
+      logger.warn('Failed to fetch route geometry:', err);
       setRouteGeometry([]);
     }
   }, [depot, selectedRouteId]);

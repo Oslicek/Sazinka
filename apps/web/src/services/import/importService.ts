@@ -50,6 +50,10 @@ export interface PostalCodeResult {
   issues: ImportIssue[];
 }
 
+function setMappedValue<T extends object>(target: T, key: keyof T, value: string): void {
+  (target as Record<string, string>)[key as string] = value;
+}
+
 export interface EmailResult {
   email: string | null;
   issues: ImportIssue[];
@@ -135,7 +139,7 @@ export function parseCsv(csvContent: string): ParseResult {
       if (value !== undefined && value !== '') {
         const propName = HEADER_MAP[lowerCol];
         if (propName) {
-          (cleaned as any)[propName] = value;
+          setMappedValue(cleaned, propName, value);
         }
       }
     }

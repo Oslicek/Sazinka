@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { connect, NatsConnection, JSONCodec } from 'nats.ws';
+import { logger } from '../utils/logger';
 
 interface NatsState {
   connection: NatsConnection | null;
@@ -125,7 +126,7 @@ export const useNatsStore = create<NatsState>((set, get) => ({
           const data = codec.decode(msg.data) as T;
           callback(data);
         } catch (error) {
-          console.error('Failed to decode message:', error);
+          logger.error('Failed to decode message:', error);
         }
       }
     })();

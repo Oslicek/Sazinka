@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 use crate::auth;
 use crate::db::queries;
+use crate::defaults::DEFAULT_SERVICE_DURATION_MINUTES;
 use crate::services::insertion::{calculate_insertion_positions, time_overlap_minutes, StopMeta};
 use crate::services::routing::{MockRoutingService, RoutingService};
 use crate::services::slot_suggester::{
@@ -138,7 +139,9 @@ pub async fn handle_suggest(
                 };
                 
                 let arrival = rev.scheduled_time_start?;
-                let duration = rev.duration_minutes.unwrap_or(30);
+                let duration = rev
+                    .duration_minutes
+                    .unwrap_or(DEFAULT_SERVICE_DURATION_MINUTES as i32);
                 let departure = add_minutes(arrival, duration);
                 
                 Some(ExistingStop {
@@ -381,7 +384,7 @@ async fn build_crew_day_stops(
                 let end = s.estimated_departure.or(s.scheduled_time_end);
                 let duration = match (start, end) {
                     (Some(a), Some(b)) if b > a => minutes_between(a, b),
-                    _ => 30,
+                    _ => DEFAULT_SERVICE_DURATION_MINUTES as i32,
                 };
                 out.push(CrewDayStop {
                     customer_name: s.customer_name.unwrap_or_else(|| "Zákazník".to_string()),
@@ -423,7 +426,9 @@ async fn build_crew_day_stops(
         };
         existing_customer_ids.insert(rev.customer_id);
         let start = rev.scheduled_time_start;
-        let duration = rev.duration_minutes.unwrap_or(30);
+        let duration = rev
+            .duration_minutes
+            .unwrap_or(DEFAULT_SERVICE_DURATION_MINUTES as i32);
         let departure = start.map(|s| add_minutes(s, duration));
         out.push(CrewDayStop {
             customer_name: c.name.unwrap_or_else(|| "Zákazník".to_string()),

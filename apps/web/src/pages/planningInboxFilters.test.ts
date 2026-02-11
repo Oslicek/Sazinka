@@ -232,7 +232,7 @@ describe('planningInboxFilters', () => {
       },
     });
 
-    expect(summary).toContain('Čas:');
+    expect(summary).toContain('Nová revize:');
     expect(summary).toContain('Termín = Má');
   });
 

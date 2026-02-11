@@ -72,7 +72,7 @@ describe('calendarService', () => {
         total: 1,
       });
 
-      const result = await listCalendarItems('user-1', {
+      const result = await listCalendarItems({
         startDate: '2026-01-01',
         endDate: '2026-01-31',
       });
@@ -88,7 +88,7 @@ describe('calendarService', () => {
       vi.mocked(listVisits).mockResolvedValue({ visits: [], total: 0 });
       vi.mocked(listCommunications).mockResolvedValue({ communications: [], total: 0 });
 
-      await listCalendarItems('user-1', {
+      await listCalendarItems({
         startDate: '2026-01-01',
         endDate: '2026-01-31',
         types: ['revision'],
@@ -109,7 +109,7 @@ describe('calendarService', () => {
       vi.mocked(listVisits).mockResolvedValue({ visits: [], total: 0 });
       vi.mocked(listCommunications).mockResolvedValue({ communications: [], total: 0 });
 
-      const result = await listCalendarItems('user-1', {
+      const result = await listCalendarItems({
         startDate: '2026-01-01',
         endDate: '2026-01-31',
         status: ['scheduled'],
@@ -129,7 +129,7 @@ describe('calendarService', () => {
       vi.mocked(listVisits).mockResolvedValue({ visits: [], total: 0 });
       vi.mocked(listCommunications).mockResolvedValue({ communications: [], total: 0 });
 
-      const result = await listCalendarItems('user-1', {
+      const result = await listCalendarItems({
         startDate: '2026-01-01',
         endDate: '2026-01-31',
         crewId: 'crew-1',
@@ -149,7 +149,7 @@ describe('calendarService', () => {
       vi.mocked(listVisits).mockResolvedValue({ visits: [], total: 0 });
       vi.mocked(listCommunications).mockResolvedValue({ communications: [], total: 0 });
 
-      const result = await listCalendarItems('user-1', {
+      const result = await listCalendarItems({
         startDate: '2026-01-01',
         endDate: '2026-01-31',
         customerQuery: 'ABC',
@@ -188,7 +188,7 @@ describe('calendarService', () => {
       vi.mocked(listVisits).mockResolvedValue({ visits: [], total: 0 });
       vi.mocked(listCommunications).mockResolvedValue({ communications: [], total: 0 });
 
-      const result = await listCalendarItems('user-1', {
+      const result = await listCalendarItems({
         startDate: '2026-01-01',
         endDate: '2026-01-31',
       });

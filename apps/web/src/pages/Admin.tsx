@@ -6,6 +6,7 @@ import { importCustomersBatch, submitGeocodeAllPending } from '../services/custo
 import { ImportModal, type ImportEntityType } from '../components/import';
 import { ImportCustomersModal } from '../components/customers/ImportCustomersModal';
 import { ExportPlusPanel } from '../components/shared/ExportPlusPanel';
+import { logger } from '../utils/logger';
 import styles from './Admin.module.css';
 
 interface ServiceStatus {
@@ -33,6 +34,52 @@ interface LogEntry {
   message: string;
   target?: string;
 }
+
+type ApiEnvelope<T> = { payload?: T };
+
+interface PingResponse {
+  timestamp?: number;
+}
+
+interface AdminDbStatus {
+  connected: boolean;
+  sizeHuman?: string;
+  size_human?: string;
+  sizeBytes?: number;
+  size_bytes?: number;
+  tables?: { name: string; rows: number; size: string }[];
+}
+
+interface AdminServiceAvailability {
+  available: boolean;
+  url?: string;
+  version?: string;
+}
+
+interface AdminJetStreamStatus {
+  available: boolean;
+  streams?: { messages?: number }[];
+  consumers?: { pending?: number }[];
+}
+
+interface AdminGeocodeStatus {
+  available: boolean;
+  pendingCustomers?: number;
+  failedCustomers?: number;
+  streamMessages?: number;
+}
+
+interface AdminLogsResponse {
+  logs?: LogEntry[];
+}
+
+const unwrapPayload = <T,>(response: ApiEnvelope<T> | T): T => {
+  if (typeof response === 'object' && response !== null && 'payload' in response) {
+    const payload = (response as ApiEnvelope<T>).payload;
+    return (payload ?? response) as T;
+  }
+  return response as T;
+};
 
 export function Admin() {
   const { request, isConnected: connected } = useNatsStore();
@@ -121,7 +168,7 @@ export function Admin() {
     // Check Worker via ping
     try {
       const startTime = Date.now();
-      const pingResponse = await request<any, any>('sazinka.ping', { timestamp: startTime });
+      await request<{ timestamp: number }, PingResponse>('sazinka.ping', { timestamp: startTime });
       const responseTime = Date.now() - startTime;
       const workerIdx = newServices.findIndex(s => s.name === 'Worker');
       if (workerIdx >= 0) {
@@ -146,9 +193,8 @@ export function Admin() {
 
     // Check PostgreSQL via admin endpoint
     try {
-      const response = await request<any, any>('sazinka.admin.db.status', createRequest(getToken(), {}));
-      // Response is wrapped in { id, timestamp, payload: {...} }
-      const dbResult = response.payload || response;
+      const response = await request<unknown, ApiEnvelope<AdminDbStatus> | AdminDbStatus>('sazinka.admin.db.status', createRequest(getToken(), {}));
+      const dbResult = unwrapPayload(response);
       const pgIdx = newServices.findIndex(s => s.name === 'PostgreSQL');
       if (pgIdx >= 0) {
         newServices[pgIdx] = {
@@ -178,8 +224,8 @@ export function Admin() {
 
     // Check Valhalla
     try {
-      const response = await request<any, any>('sazinka.admin.valhalla.status', createRequest(getToken(), {}));
-      const valhallaResult = response.payload || response;
+      const response = await request<unknown, ApiEnvelope<AdminServiceAvailability> | AdminServiceAvailability>('sazinka.admin.valhalla.status', createRequest(getToken(), {}));
+      const valhallaResult = unwrapPayload(response);
       const valhallaIdx = newServices.findIndex(s => s.name === 'Valhalla');
       if (valhallaIdx >= 0) {
         newServices[valhallaIdx] = {
@@ -203,8 +249,8 @@ export function Admin() {
 
     // Check Nominatim
     try {
-      const response = await request<any, any>('sazinka.admin.nominatim.status', createRequest(getToken(), {}));
-      const nominatimResult = response.payload || response;
+      const response = await request<unknown, ApiEnvelope<AdminServiceAvailability> | AdminServiceAvailability>('sazinka.admin.nominatim.status', createRequest(getToken(), {}));
+      const nominatimResult = unwrapPayload(response);
       const nominatimIdx = newServices.findIndex(s => s.name === 'Nominatim');
       if (nominatimIdx >= 0) {
         // If URL is configured but not available, it's likely importing/starting
@@ -236,8 +282,8 @@ export function Admin() {
 
     // Check JetStream
     try {
-      const response = await request<any, any>('sazinka.admin.jetstream.status', createRequest(getToken(), {}));
-      const jsResult = response.payload || response;
+      const response = await request<unknown, ApiEnvelope<AdminJetStreamStatus> | AdminJetStreamStatus>('sazinka.admin.jetstream.status', createRequest(getToken(), {}));
+      const jsResult = unwrapPayload(response);
       const jsIdx = newServices.findIndex(s => s.name === 'JetStream');
       if (jsIdx >= 0) {
         const streamInfo = jsResult.streams?.[0];
@@ -267,8 +313,8 @@ export function Admin() {
 
     // Check Geocoding status
     try {
-      const response = await request<any, any>('sazinka.admin.geocode.status', createRequest(getToken(), {}));
-      const geocodeResult = response.payload || response;
+      const response = await request<unknown, ApiEnvelope<AdminGeocodeStatus> | AdminGeocodeStatus>('sazinka.admin.geocode.status', createRequest(getToken(), {}));
+      const geocodeResult = unwrapPayload(response);
       const geocodeIdx = newServices.findIndex(s => s.name === 'Geocoding');
       if (geocodeIdx >= 0) {
         const pendingCustomers = geocodeResult.pendingCustomers || 0;
@@ -306,12 +352,11 @@ export function Admin() {
   const loadLogs = useCallback(async () => {
     setIsLoadingLogs(true);
     try {
-      const response = await request<any, any>('sazinka.admin.logs', createRequest(getToken(), { limit: 100, level: logFilter }));
-      // Response is wrapped in { id, timestamp, payload: { logs: [...] } }
-      const result = response.payload || response;
+      const response = await request<unknown, ApiEnvelope<AdminLogsResponse> | AdminLogsResponse>('sazinka.admin.logs', createRequest(getToken(), { limit: 100, level: logFilter }));
+      const result = unwrapPayload(response);
       setLogs(result.logs || []);
     } catch (e) {
-      console.error('Failed to load logs:', e);
+      logger.error('Failed to load logs:', e);
     }
     setIsLoadingLogs(false);
   }, [request, logFilter]);

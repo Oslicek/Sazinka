@@ -2,6 +2,7 @@
 
 use chrono::{NaiveTime, Timelike};
 
+use crate::defaults::DEFAULT_SERVICE_DURATION_MINUTES;
 use crate::services::routing::DistanceTimeMatrices;
 
 #[derive(Debug, Clone)]
@@ -95,7 +96,7 @@ pub fn calculate_insertion_positions(
             stops_meta[insert_idx - 1].departure_time.unwrap_or_else(|| {
                 stops_meta[insert_idx - 1]
                     .arrival_time
-                    .map(|t| add_minutes(t, 30))
+                    .map(|t| add_minutes(t, DEFAULT_SERVICE_DURATION_MINUTES as i64))
                     .unwrap_or(workday_start)
             })
         };

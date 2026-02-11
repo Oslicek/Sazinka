@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import {
   createRootRoute,
   createRoute,
@@ -6,25 +7,30 @@ import {
 } from '@tanstack/react-router';
 
 import { Layout } from '@/components/Layout';
+import { PageLoader } from '@/components/PageLoader';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
-import { Dashboard } from '@/pages/Dashboard';
-import { Customers } from '@/pages/Customers';
-import { CustomerDetail } from '@/pages/CustomerDetail';
-import { CustomerSummary } from '@/pages/CustomerSummary';
-import { Calendar } from '@/pages/Calendar';
-import { Planner } from '@/pages/Planner';
-import { PlanningInbox } from '@/pages/PlanningInbox';
-import { Admin } from '@/pages/Admin';
-import { Settings } from '@/pages/Settings';
-import { RevisionDetail } from '@/pages/RevisionDetail';
-import { VisitDetail } from '@/pages/VisitDetail';
-import { WorkItemDetail } from '@/pages/WorkItemDetail';
-import { Jobs } from '@/pages/Jobs';
-import { WorkLog } from '@/pages/WorkLog';
-import { Routes as RoutesPage } from '@/pages/Routes';
+
+// --- Eager imports (needed immediately) ---
 import { Login } from '@/pages/Login';
-import { Register } from '@/pages/Register';
-import { About } from '@/pages/About';
+import { Calendar } from '@/pages/Calendar';
+
+// --- Lazy imports (loaded on navigate) ---
+const Register = lazy(() => import('@/pages/Register').then(m => ({ default: m.Register })));
+const Dashboard = lazy(() => import('@/pages/Dashboard').then(m => ({ default: m.Dashboard })));
+const Customers = lazy(() => import('@/pages/Customers').then(m => ({ default: m.Customers })));
+const CustomerDetail = lazy(() => import('@/pages/CustomerDetail').then(m => ({ default: m.CustomerDetail })));
+const CustomerSummary = lazy(() => import('@/pages/CustomerSummary').then(m => ({ default: m.CustomerSummary })));
+const Planner = lazy(() => import('@/pages/Planner').then(m => ({ default: m.Planner })));
+const PlanningInbox = lazy(() => import('@/pages/PlanningInbox').then(m => ({ default: m.PlanningInbox })));
+const Admin = lazy(() => import('@/pages/Admin').then(m => ({ default: m.Admin })));
+const Settings = lazy(() => import('@/pages/Settings').then(m => ({ default: m.Settings })));
+const RevisionDetail = lazy(() => import('@/pages/RevisionDetail').then(m => ({ default: m.RevisionDetail })));
+const VisitDetail = lazy(() => import('@/pages/VisitDetail').then(m => ({ default: m.VisitDetail })));
+const WorkItemDetail = lazy(() => import('@/pages/WorkItemDetail').then(m => ({ default: m.WorkItemDetail })));
+const Jobs = lazy(() => import('@/pages/Jobs').then(m => ({ default: m.Jobs })));
+const WorkLog = lazy(() => import('@/pages/WorkLog').then(m => ({ default: m.WorkLog })));
+const RoutesPage = lazy(() => import('@/pages/Routes').then(m => ({ default: m.Routes })));
+const About = lazy(() => import('@/pages/About').then(m => ({ default: m.About })));
 
 // Root route with layout (only for authenticated pages)
 const rootRoute = createRootRoute({
@@ -42,7 +48,11 @@ const loginRoute = createRoute({
 const registerRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/register',
-  component: Register,
+  component: () => (
+    <Suspense fallback={<PageLoader />}>
+      <Register />
+    </Suspense>
+  ),
 });
 
 // --- Layout wrapper for authenticated pages ---
@@ -53,7 +63,9 @@ const layoutRoute = createRoute({
   component: () => (
     <ProtectedRoute>
       <Layout>
-        <Outlet />
+        <Suspense fallback={<PageLoader />}>
+          <Outlet />
+        </Suspense>
       </Layout>
     </ProtectedRoute>
   ),

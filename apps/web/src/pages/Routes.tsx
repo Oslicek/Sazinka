@@ -78,6 +78,7 @@ export function Routes() {
       }
     }
     loadSettings();
+  // Intentionally keyed by connection only; URL search params are applied as initial defaults.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected]);
 

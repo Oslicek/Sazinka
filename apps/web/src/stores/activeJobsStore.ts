@@ -13,6 +13,7 @@ import type {
   ImportReport,
 } from '@shared/import';
 import { useNatsStore } from './natsStore';
+import { logger } from '../utils/logger';
 
 // Job types - all import types plus other background jobs
 export type JobType = 
@@ -235,7 +236,7 @@ export const useActiveJobsStore = create<ActiveJobsState>((set, get) => ({
       
       set({ unsubscribeFunctions, isSubscribed: true });
     } catch (error) {
-      console.error('Failed to start job subscriptions:', error);
+      logger.error('Failed to start job subscriptions:', error);
     }
   },
 

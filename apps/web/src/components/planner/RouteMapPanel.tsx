@@ -5,6 +5,7 @@ import {
   buildStraightLineSegments,
   getSegmentLabel,
 } from '../../utils/routeGeometry';
+import { logger } from '../../utils/logger';
 import type { SavedRouteStop } from '../../services/routeService';
 import styles from './RouteMapPanel.module.css';
 
@@ -61,8 +62,8 @@ export function RouteMapPanel({
   className,
   onSegmentHighlight,
   highlightedSegment: controlledHighlightedSegment,
-  debugSource,
-  debugRouteId,
+  debugSource: _debugSource,
+  debugRouteId: _debugRouteId,
 }: RouteMapPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -150,6 +151,7 @@ export function RouteMapPanel({
       mapRef.current = null;
       setMapLoaded(false);
     };
+  // Map instance must be created exactly once per mount; recreating on prop changes leaks handlers.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -218,7 +220,7 @@ export function RouteMapPanel({
       if (mappableStops.length > 0) {
         const waypoints = mappableStops.map((s) => ({
           coordinates: { lat: s.customerLat!, lng: s.customerLng! },
-          name: s.customerName,
+          name: s.customerName ?? undefined,
         }));
         const snappedSegments = splitGeometryIntoSegments(routeGeometry, waypoints, depot);
         for (let i = 0; i < mappableStops.length; i += 1) {
@@ -368,26 +370,25 @@ export function RouteMapPanel({
 
     if (stops.length === 0) return;
 
-    console.log('[RouteMapPanel] Rendering route with', stops.length, 'stops, routeGeometry length:', routeGeometry?.length || 0, 'depot:', !!depot);
+    logger.info('[RouteMapPanel] Rendering route with', stops.length, 'stops, routeGeometry length:', routeGeometry?.length || 0, 'depot:', !!depot);
 
     // Build segments using shared utilities
     const waypoints = stops
       .filter((s) => s.customerLat && s.customerLng)
       .map((s) => ({
         coordinates: { lat: s.customerLat!, lng: s.customerLng! },
-        name: s.customerName,
+        name: s.customerName ?? undefined,
       }));
-    const stopsWithoutCoords = stops.filter((s) => !(s.customerLat && s.customerLng)).length;
 
     // Use a fake depot at the first stop's location if no depot is set
     const effectiveDepot = depot ?? { lat: stops[0].customerLat!, lng: stops[0].customerLng! };
 
     let segments: [number, number][][];
     if (routeGeometry && routeGeometry.length > 0) {
-      console.log('[RouteMapPanel] Using Valhalla geometry');
+      logger.info('[RouteMapPanel] Using Valhalla geometry');
       segments = splitGeometryIntoSegments(routeGeometry, waypoints, effectiveDepot);
     } else {
-      console.log('[RouteMapPanel] Using straight line segments (no Valhalla geometry)');
+      logger.info('[RouteMapPanel] Using straight line segments (no Valhalla geometry)');
       segments = buildStraightLineSegments(waypoints, depot ? effectiveDepot : null);
     }
 
@@ -607,7 +608,7 @@ export function RouteMapPanel({
   const segmentInfo = highlightedSegment !== null && stops.length > 0
     ? getSegmentLabel(
         highlightedSegment,
-        stops.map((s) => ({ name: s.customerName })),
+        stops.map((s) => ({ name: s.customerName ?? undefined })),
         depot?.name || 'Depo',
       )
     : null;
