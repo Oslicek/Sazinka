@@ -219,7 +219,9 @@ impl VrpSolver {
         route
     }
 
-    /// Build solution from ordered stop indices
+    /// Build solution from ordered stop indices.
+    /// Respects hard time windows: if a crew arrives early, it waits until
+    /// the window opens. If it arrives late, a warning is emitted.
     fn build_solution(
         &self,
         problem: &VrpProblem,
@@ -227,6 +229,7 @@ impl VrpSolver {
         ordered_indices: &[usize],
     ) -> RouteSolution {
         let mut planned_stops = Vec::new();
+        let mut warnings = Vec::new();
         let mut total_distance: u64 = 0;
         let mut total_duration: u64 = 0;
         
@@ -247,7 +250,35 @@ impl VrpSolver {
             total_duration += travel_duration;
             
             // Calculate arrival time
-            let arrival_time = add_seconds_to_time(current_time, travel_duration as i64);
+            let mut arrival_time = add_seconds_to_time(current_time, travel_duration as i64);
+            let mut waiting_time_minutes: u32 = 0;
+            
+            // Respect hard time windows: wait if early, warn if late
+            if let Some(ref tw) = stop.time_window {
+                if tw.is_hard {
+                    if arrival_time < tw.start {
+                        // Arrived early — wait until window opens
+                        let wait_secs = time_diff_seconds(arrival_time, tw.start);
+                        waiting_time_minutes = (wait_secs / 60).max(1) as u32;
+                        total_duration += wait_secs as u64;
+                        arrival_time = tw.start;
+                    } else if arrival_time > tw.end {
+                        // Arrived late — emit warning
+                        let late_secs = time_diff_seconds(tw.end, arrival_time);
+                        let late_mins = (late_secs + 59) / 60; // round up
+                        warnings.push(RouteWarning {
+                            stop_id: Some(stop.id.clone()),
+                            warning_type: "LATE_ARRIVAL".to_string(),
+                            message: format!(
+                                "Příjezd k {} opožděn o {} min (dohodnuto do {})",
+                                stop.customer_name,
+                                late_mins,
+                                tw.end.format("%H:%M"),
+                            ),
+                        });
+                    }
+                }
+            }
             
             // Service time
             let service_seconds = stop.service_duration_minutes as i64 * 60;
@@ -262,7 +293,7 @@ impl VrpSolver {
                 order: (order + 1) as u32,
                 arrival_time,
                 departure_time,
-                waiting_time_minutes: 0,
+                waiting_time_minutes,
             });
             
             current_time = departure_time;
@@ -298,7 +329,7 @@ impl VrpSolver {
             algorithm: "heuristic".to_string(),
             solve_time_ms: 0,
             solver_log: vec![],
-            warnings: vec![],
+            warnings,
             unassigned: vec![],
         }
     }
@@ -310,6 +341,12 @@ fn add_seconds_to_time(time: NaiveTime, seconds: i64) -> NaiveTime {
     let wrapped = total_seconds % 86400; // Wrap at midnight
     NaiveTime::from_num_seconds_from_midnight_opt(wrapped as u32, 0)
         .unwrap_or(time)
+}
+
+/// Positive difference between two NaiveTimes in seconds (assumes same day, earlier < later).
+fn time_diff_seconds(earlier: NaiveTime, later: NaiveTime) -> i64 {
+    let diff = later.num_seconds_from_midnight() as i64 - earlier.num_seconds_from_midnight() as i64;
+    diff.max(0)
 }
 
 impl Default for VrpSolver {
@@ -559,6 +596,95 @@ mod tests {
         
         // Should visit stop 2 first (closer to depot), then stop 1
         assert_eq!(route, vec![2, 1]);
+    }
+
+    #[test]
+    fn test_heuristic_waits_for_hard_time_window() {
+        // If crew arrives early at a stop with a hard time window,
+        // it must wait until the window opens. This guards the
+        // "wait if early" logic in build_solution.
+        let solver = VrpSolver::default();
+
+        let problem = VrpProblem {
+            depot: Depot { coordinates: Coordinates { lat: 50.0, lng: 14.0 } },
+            shift_start: NaiveTime::from_hms_opt(7, 0, 0).unwrap(),
+            shift_end: NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+            stops: vec![
+                VrpStop {
+                    id: "s1".to_string(),
+                    customer_id: Uuid::new_v4(),
+                    customer_name: "A".to_string(),
+                    coordinates: Coordinates { lat: 49.5, lng: 15.0 },
+                    service_duration_minutes: 60,
+                    // Hard window: arrive at 10:00
+                    time_window: Some(StopTimeWindow {
+                        start: NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
+                        end: NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
+                        is_hard: true,
+                    }),
+                    priority: 1,
+                },
+            ],
+            break_config: None,
+        };
+
+        // Travel time from depot: 10 min → arrive at 07:10, must wait until 10:00
+        let matrices = DistanceTimeMatrices {
+            distances: vec![vec![0, 10000], vec![10000, 0]],
+            durations: vec![vec![0, 600], vec![600, 0]], // 10 min
+            size: 2,
+        };
+
+        let ordered = solver.nearest_neighbor(&problem, &matrices);
+        let solution = solver.build_solution(&problem, &matrices, &ordered);
+
+        assert_eq!(solution.stops.len(), 1);
+        // Crew leaves at 07:00, travels 10 min, waits until 10:00
+        assert_eq!(solution.stops[0].arrival_time, NaiveTime::from_hms_opt(10, 0, 0).unwrap());
+        assert!(solution.stops[0].waiting_time_minutes > 0, "Should have waiting time");
+        // Departs after 60-min service at 11:00
+        assert_eq!(solution.stops[0].departure_time, NaiveTime::from_hms_opt(11, 0, 0).unwrap());
+    }
+
+    #[test]
+    fn test_heuristic_warns_on_late_arrival() {
+        // If crew arrives after time window end, a LATE_ARRIVAL warning must be emitted.
+        let solver = VrpSolver::default();
+
+        let problem = VrpProblem {
+            depot: Depot { coordinates: Coordinates { lat: 50.0, lng: 14.0 } },
+            shift_start: NaiveTime::from_hms_opt(7, 0, 0).unwrap(),
+            shift_end: NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+            stops: vec![
+                VrpStop {
+                    id: "s1".to_string(),
+                    customer_id: Uuid::new_v4(),
+                    customer_name: "Opožděný".to_string(),
+                    coordinates: Coordinates { lat: 49.5, lng: 15.0 },
+                    service_duration_minutes: 30,
+                    // Window ends at 07:30, but travel takes 1 hour → late
+                    time_window: Some(StopTimeWindow {
+                        start: NaiveTime::from_hms_opt(7, 0, 0).unwrap(),
+                        end: NaiveTime::from_hms_opt(7, 30, 0).unwrap(),
+                        is_hard: true,
+                    }),
+                    priority: 1,
+                },
+            ],
+            break_config: None,
+        };
+
+        let matrices = DistanceTimeMatrices {
+            distances: vec![vec![0, 50000], vec![50000, 0]],
+            durations: vec![vec![0, 3600], vec![3600, 0]], // 1 hour travel
+            size: 2,
+        };
+
+        let ordered = solver.nearest_neighbor(&problem, &matrices);
+        let solution = solver.build_solution(&problem, &matrices, &ordered);
+
+        assert!(!solution.warnings.is_empty(), "Should have late arrival warning");
+        assert_eq!(solution.warnings[0].warning_type, "LATE_ARRIVAL");
     }
 
     #[test]

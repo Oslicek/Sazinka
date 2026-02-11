@@ -4,7 +4,9 @@
  */
 
 import type { SuccessResponse, ErrorResponse } from '@shared/messages';
+import { createRequest } from '@shared/messages';
 import { useNatsStore } from '../stores/natsStore';
+import { getToken } from '@/utils/auth';
 
 // Types for insertion calculation
 export interface RouteStop {
@@ -116,10 +118,11 @@ export async function calculateInsertion(
   request: CalculateInsertionRequest
 ): Promise<CalculateInsertionResponse> {
   const { request: natsRequest } = useNatsStore.getState();
+  const req = createRequest(getToken(), request);
   
-  const response = await natsRequest<CalculateInsertionRequest, NatsResponse<CalculateInsertionResponse>>(
+  const response = await natsRequest<typeof req, NatsResponse<CalculateInsertionResponse>>(
     'sazinka.route.insertion.calculate',
-    request
+    req
   );
   
   if (isErrorResponse(response)) {
@@ -137,10 +140,11 @@ export async function calculateBatchInsertion(
   request: CalculateBatchInsertionRequest
 ): Promise<CalculateBatchInsertionResponse> {
   const { request: natsRequest } = useNatsStore.getState();
+  const req = createRequest(getToken(), request);
   
-  const response = await natsRequest<CalculateBatchInsertionRequest, NatsResponse<CalculateBatchInsertionResponse>>(
+  const response = await natsRequest<typeof req, NatsResponse<CalculateBatchInsertionResponse>>(
     'sazinka.route.insertion.batch',
-    request
+    req
   );
   
   if (isErrorResponse(response)) {

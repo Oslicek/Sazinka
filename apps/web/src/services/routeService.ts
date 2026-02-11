@@ -33,6 +33,8 @@ export interface SaveRouteStop {
   stopType?: 'customer' | 'break';
   breakDurationMinutes?: number;
   breakTimeStart?: string;
+  /** Optional status override (e.g. "unassigned"). Defaults to "pending" on backend. */
+  status?: string;
 }
 
 export interface SaveRouteRequest {
@@ -293,6 +295,15 @@ export async function listRoutes(
 // Route Planning Job Queue (async)
 // ==========================================================================
 
+/** Time window for a specific customer, passed from the saved route stops */
+export interface CustomerTimeWindow {
+  customerId: string;
+  /** Scheduled time start, e.g. "14:00" */
+  start: string;
+  /** Scheduled time end, e.g. "15:00" */
+  end: string;
+}
+
 /** Request to submit a route planning job */
 export interface RoutePlanJobRequest {
   customerIds: string[];
@@ -300,6 +311,8 @@ export interface RoutePlanJobRequest {
   startLocation: Coordinates;
   /** Optional crew ID - if provided, crew-specific settings (arrival buffer) are used */
   crewId?: string;
+  /** Time windows from the saved route stops. Takes priority over DB lookup. */
+  timeWindows?: CustomerTimeWindow[];
 }
 
 /** Response from submitting a route planning job */
@@ -335,6 +348,7 @@ export async function submitRoutePlanJob(
     date: request.date,
     startLocation: request.startLocation,
     ...(request.crewId ? { crewId: request.crewId } : {}),
+    ...(request.timeWindows && request.timeWindows.length > 0 ? { timeWindows: request.timeWindows } : {}),
   });
   
   const response = await deps.request<typeof req, NatsResponse<RoutePlanJobSubmitResponse>>(

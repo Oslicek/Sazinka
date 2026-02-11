@@ -253,9 +253,6 @@ export function Planner() {
           durationMin: s.durationFromPreviousMinutes,
         })));
         setSelectedRouteStops(result.stops);
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix-7',hypothesisId:'H14',location:'Planner.tsx:loadStops',message:'planner loaded route by routeId',data:{routeId:selectedRouteId,date:result.route?.date ?? null,stops:result.stops.map((s,i)=>({i,id:s.id,customerId:s.customerId,name:s.customerName,lng:s.customerLng,lat:s.customerLat,stopOrder:s.stopOrder,address:s.address}))},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         setReturnToDepotLeg(
           result.route?.returnToDepotDistanceKm != null || result.route?.returnToDepotDurationMinutes != null
             ? { distanceKm: result.route.returnToDepotDistanceKm ?? null, durationMinutes: result.route.returnToDepotDurationMinutes ?? null }
@@ -363,9 +360,6 @@ export function Planner() {
 
       const jobResponse = await geometryService.submitGeometryJob(locations);
       activeGeometryJobRef.current = jobResponse.jobId;
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix-6',hypothesisId:'H12',location:'Planner.tsx:fetchGeometry-submit',message:'geometry job submitted',data:{routeId:geometryRunRouteId,jobId:jobResponse.jobId,locationsCount:locations.length,stopsCount:stops.length,waypointsCount:waypoints.length,stops:stops.map((s,i)=>({i,id:s.id,customerId:s.customerId,name:s.customerName,lng:s.customerLng,lat:s.customerLat,stopOrder:s.stopOrder})),locations},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
 
       const unsubscribe = await geometryService.subscribeToGeometryJobStatus(
         jobResponse.jobId,
@@ -381,9 +375,6 @@ export function Planner() {
               )
               : null;
             const isStaleJob = activeGeometryJobRef.current !== jobResponse.jobId;
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix-2',hypothesisId:isStaleJob?'H7':'H6',location:'Planner.tsx:fetchGeometry-completed',message:'geometry job completed',data:{routeId:geometryRunRouteId,jobId:jobResponse.jobId,isStaleJob,geometryPoints:geometry.length,first,last,depot:{lat:depot.lat,lng:depot.lng},distanceToDepotKm},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
             setRouteGeometry(geometry);
 
             if (geometryUnsubRef.current) {
@@ -392,9 +383,6 @@ export function Planner() {
             }
           } else if (update.status.type === 'failed') {
             console.warn('Geometry job failed:', update.status.error);
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix-2',hypothesisId:'H6',location:'Planner.tsx:fetchGeometry-failed',message:'geometry job failed',data:{routeId:geometryRunRouteId,jobId:jobResponse.jobId,error:update.status.error},timestamp:Date.now()})}).catch(()=>{});
-            // #endregion
             setRouteGeometry([]);
             if (geometryUnsubRef.current) {
               geometryUnsubRef.current();
@@ -407,9 +395,6 @@ export function Planner() {
       geometryUnsubRef.current = unsubscribe;
     } catch (err) {
       console.warn('Failed to fetch route geometry:', err);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix-2',hypothesisId:'H6',location:'Planner.tsx:fetchGeometry-error',message:'geometry request failed before completion',data:{routeId:geometryRunRouteId,error:err instanceof Error ? err.message : String(err)},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       setRouteGeometry([]);
     }
   }, [depot, selectedRouteId]);
@@ -434,9 +419,6 @@ export function Planner() {
   }, []);
 
   const handleSegmentClick = useCallback((segmentIndex: number) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix-1',hypothesisId:'H2',location:'Planner.tsx:handleSegmentClick',message:'timeline segment click',data:{segmentIndex},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     setHighlightedSegment((prev) => (prev === segmentIndex ? null : segmentIndex));
   }, []);
 
@@ -614,12 +596,22 @@ export function Planner() {
     setIsOptimizing(true);
     setError(null);
 
+    // Extract time windows from saved route stops
+    const timeWindows = customerStops
+      .filter((s) => s.scheduledTimeStart && s.scheduledTimeEnd)
+      .map((s) => ({
+        customerId: s.customerId!,
+        start: s.scheduledTimeStart!,
+        end: s.scheduledTimeEnd!,
+      }));
+
     try {
       const jobResponse = await routeService.submitRoutePlanJob({
         customerIds: customerStops.map((s) => s.customerId!),
         date: selectedRoute.date,
         startLocation,
         crewId: selectedRoute.crewId || undefined,
+        timeWindows: timeWindows.length > 0 ? timeWindows : undefined,
       });
 
       const unsubscribe = await routeService.subscribeToRouteJobStatus(jobResponse.jobId, (update) => {
@@ -659,6 +651,29 @@ export function Planner() {
                   breakTimeStart: isBreak ? (s.breakTimeStart ?? s.eta) : undefined,
                 };
               });
+
+              // Re-attach unassigned stops at the end with a warning
+              const unassignedIds = new Set(result.unassigned ?? []);
+              if (unassignedIds.size > 0) {
+                const unassignedOriginals = originalStops.filter(
+                  (rs) => rs.customerId && unassignedIds.has(rs.customerId)
+                );
+                let order = optimizedStops.length;
+                for (const orig of unassignedOriginals) {
+                  order++;
+                  optimizedStops.push({
+                    ...orig,
+                    stopOrder: order,
+                    estimatedArrival: null,
+                    estimatedDeparture: null,
+                    distanceFromPreviousKm: null,
+                    durationFromPreviousMinutes: null,
+                    status: 'unassigned',
+                  });
+                }
+                const names = unassignedOriginals.map((rs) => rs.customerName).join(', ');
+                setError(`Optimalizátor nemohl zařadit: ${names}. Dohodnuté časy nelze dodržet.`);
+              }
 
               setSelectedRouteStops(optimizedStops);
               setReturnToDepotLeg({

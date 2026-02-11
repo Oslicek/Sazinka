@@ -143,12 +143,6 @@ export function RouteDetailTimeline({
 }: RouteDetailTimelineProps) {
   const depotName = depot?.name ?? 'Depo';
 
-  useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'post-fix-2',hypothesisId:'H17',location:'RouteDetailTimeline.tsx:actions',message:'route action bar render state',data:{stopsCount:stops.length,hasOnOptimize:!!onOptimize,hasOnAddBreak:!!onAddBreak,hasOnDeleteRoute:!!onDeleteRoute,isOptimizing,isSaving},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-  }, [stops.length, onOptimize, onAddBreak, onDeleteRoute, isOptimizing, isSaving]);
-
   // Build per-stop warning map: stopIndex (0-based) → warnings[]
   const warningsByStop = new Map<number, RouteWarning[]>();
   for (const w of warnings) {
@@ -190,7 +184,9 @@ export function RouteDetailTimeline({
         const hasScheduledTime = !!(stop.scheduledTimeStart && stop.scheduledTimeEnd);
         const badge = isBreak 
           ? { label: 'Pauza', className: styles.badgeBreak }
-          : getStatusBadge(stop.revisionStatus, hasScheduledTime);
+          : stop.status === 'unassigned'
+            ? { label: 'Nezařazeno', className: styles.badgeUnassigned }
+            : getStatusBadge(stop.revisionStatus, hasScheduledTime);
         const isSelected = stop.customerId === selectedStopId;
         
         // Calculate time difference between scheduled and estimated
@@ -318,7 +314,7 @@ export function RouteDetailTimeline({
               </div>
             ) : (
               <div
-                className={`${styles.stopCard} ${isSelected ? styles.stopCardSelected : ''}`}
+                className={`${styles.stopCard} ${isSelected ? styles.stopCardSelected : ''} ${stop.status === 'unassigned' ? styles.stopCardUnassigned : ''}`}
                 data-selected={isSelected}
                 onClick={() => onStopClick(stop.customerId ?? '', index)}
                 role="button"

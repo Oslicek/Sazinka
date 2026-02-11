@@ -135,6 +135,20 @@
   border-radius: var(--radius-sm);
 }
 
+/* Two-column detail layout */
+.detailColumns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.detailColumnLeft,
+.detailColumnRight {
+  display: flex;
+  flex-direction: column;
+}
+
 /* Sections */
 .section {
   margin-bottom: 1rem;

@@ -18,12 +18,13 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::db::queries;
+use crate::defaults::{default_work_end, default_work_start, DEFAULT_SERVICE_DURATION_MINUTES};
 use crate::services::routing::{RoutingService, MockRoutingService};
 use crate::services::vrp::{VrpSolver, VrpProblem, VrpStop, Depot, SolverConfig, StopTimeWindow, BreakConfig};
 use crate::types::{
     Coordinates, ErrorResponse, Request, SuccessResponse,
     JobSubmitResponse, JobStatus, JobStatusUpdate, QueuedJob, RoutePlanJobRequest,
-    RoutePlanResponse, PlannedRouteStop, RouteWarning,
+    PlannedRouteStop, RoutePlanResponse, RouteWarning, StopType,
 };
 
 // Stream and consumer names
@@ -277,7 +278,7 @@ impl JobProcessor {
             message: "Načítání zákazníků z databáze...".to_string(),
         }).await?;
         
-        let customers = self.load_customers_for_route(user_id, &request.customer_ids, request.date).await?;
+        let customers = self.load_customers_for_route(user_id, &request.customer_ids, request.date, &request.time_windows).await?;
         
         // Filter customers with valid coordinates
         let (valid_customers, invalid_ids): (Vec<_>, Vec<_>) = customers
@@ -331,9 +332,9 @@ impl JobProcessor {
             }
             _ => {
                 (
-                    chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
-                    chrono::NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
-                    30u32,
+                    default_work_start(),
+                    default_work_end(),
+                    DEFAULT_SERVICE_DURATION_MINUTES,
                     None,
                 )
             }
@@ -357,10 +358,9 @@ impl JobProcessor {
         // Build location list for matrix
         let mut locations = vec![request.start_location];
         for customer in &valid_customers {
-            locations.push(Coordinates {
-                lat: customer.lat.unwrap(),
-                lng: customer.lng.unwrap(),
-            });
+            if let Some(coords) = customer_coordinates(customer) {
+                locations.push(coords);
+            }
         }
         
         // Get distance/time matrices
@@ -421,10 +421,7 @@ impl JobProcessor {
                     customer_id: customer.id,
                     customer_name: customer.name.clone().unwrap_or_default(),
                     address: format!("{}, {} {}", customer.street.as_deref().unwrap_or(""), customer.city.as_deref().unwrap_or(""), customer.postal_code.as_deref().unwrap_or("")),
-                    coordinates: Coordinates {
-                        lat: customer.lat.unwrap(),
-                        lng: customer.lng.unwrap(),
-                    },
+                    coordinates: customer_coordinates(customer).unwrap_or(request.start_location),
                     order: stop.order as i32,
                     eta: stop.arrival_time,
                     etd: stop.departure_time,
@@ -437,7 +434,7 @@ impl JobProcessor {
                         }),
                         _ => None,
                     },
-                    stop_type: Some("customer".to_string()),
+                    stop_type: Some(StopType::Customer),
                     break_duration_minutes: None,
                     break_time_start: None,
                     distance_from_previous_km: leg_distance_km,
@@ -447,7 +444,8 @@ impl JobProcessor {
                     previous_matrix_index = matrix_index;
                 }
             } else if stop.customer_id.is_nil() {
-                // Break stop from VRP solver
+                // Break stop from VRP solver — crew stays at the previous
+                // location, so the travel leg is 0 km / 0 min.
                 planned_stops.push(PlannedRouteStop {
                     customer_id: Uuid::nil(),
                     customer_name: "Pauza".to_string(),
@@ -458,11 +456,11 @@ impl JobProcessor {
                     etd: stop.departure_time,
                     service_duration_minutes: ((stop.departure_time - stop.arrival_time).num_minutes().max(0)) as i32,
                     time_window: None,
-                    stop_type: Some("break".to_string()),
+                    stop_type: Some(StopType::Break),
                     break_duration_minutes: Some(((stop.departure_time - stop.arrival_time).num_minutes().max(0)) as i32),
                     break_time_start: Some(stop.arrival_time),
-                    distance_from_previous_km: None,
-                    duration_from_previous_minutes: None,
+                    distance_from_previous_km: Some(0.0),
+                    duration_from_previous_minutes: Some(0),
                 });
             }
         }
@@ -548,15 +546,59 @@ impl JobProcessor {
         })
     }
     
-    /// Load customers for route planning
-    async fn load_customers_for_route(&self, user_id: Uuid, customer_ids: &[Uuid], date: chrono::NaiveDate) -> Result<Vec<CustomerForRoute>> {
+    /// Load customers for route planning.
+    ///
+    /// Time window resolution priority:
+    /// 1) Frontend-provided time windows (from saved route stops — what the user sees)
+    /// 2) `revisions` table (authoritative DB source)
+    /// 3) `visits` table (legacy fallback)
+    async fn load_customers_for_route(
+        &self,
+        user_id: Uuid,
+        customer_ids: &[Uuid],
+        date: chrono::NaiveDate,
+        frontend_time_windows: &[crate::types::CustomerTimeWindow],
+    ) -> Result<Vec<CustomerForRoute>> {
+        // Build a lookup map from frontend time windows
+        let fe_tw_map: HashMap<Uuid, &crate::types::CustomerTimeWindow> = frontend_time_windows
+            .iter()
+            .map(|tw| (tw.customer_id, tw))
+            .collect();
+        
         let mut customers = Vec::new();
         
         for customer_id in customer_ids {
             if let Some(customer) = queries::customer::get_customer(&self.pool, user_id, *customer_id).await? {
-                // Load scheduled time window primarily from revisions (source of agreed schedule),
-                // then fall back to visits for legacy/derived workflows.
-                let (tw_start, tw_end) = self.load_scheduled_time_window(user_id, *customer_id, date).await;
+                // Priority 1: Frontend-provided time windows (what the user sees in the UI)
+                let (tw_start, tw_end) = if let Some(fe_tw) = fe_tw_map.get(customer_id) {
+                    // Accept both "HH:MM" and "HH:MM:SS" formats
+                    let start = chrono::NaiveTime::parse_from_str(&fe_tw.start, "%H:%M:%S")
+                        .or_else(|_| chrono::NaiveTime::parse_from_str(&fe_tw.start, "%H:%M"))
+                        .ok();
+                    let end = chrono::NaiveTime::parse_from_str(&fe_tw.end, "%H:%M:%S")
+                        .or_else(|_| chrono::NaiveTime::parse_from_str(&fe_tw.end, "%H:%M"))
+                        .ok();
+                    if start.is_some() && end.is_some() {
+                        info!(
+                            "Customer {} ({}): using frontend time window {:?}-{:?}",
+                            customer_id,
+                            customer.name.as_deref().unwrap_or("?"),
+                            start, end,
+                        );
+                        (start, end)
+                    } else {
+                        warn!(
+                            "Customer {} ({}): invalid frontend time window '{}'-'{}', falling back to DB",
+                            customer_id,
+                            customer.name.as_deref().unwrap_or("?"),
+                            fe_tw.start, fe_tw.end,
+                        );
+                        self.load_scheduled_time_window(user_id, *customer_id, date).await
+                    }
+                } else {
+                    // Priority 2+3: DB lookup (revisions, then visits)
+                    self.load_scheduled_time_window(user_id, *customer_id, date).await
+                };
                 
                 customers.push(CustomerForRoute {
                     id: customer.id,
@@ -633,14 +675,18 @@ impl JobProcessor {
     ) -> VrpProblem {
         let stops: Vec<VrpStop> = customers
             .iter()
-            .map(|c| {
-                // For scheduled customers: time window = point arrival at slot start,
-                // service duration = actual slot length (end - start).
+            .filter_map(|c| {
+                let coordinates = customer_coordinates(c)?;
+                // For scheduled customers: point time window [start, start]
+                // forces the solver to arrive at exactly the agreed time.
+                // Service duration = full slot length (end - start).
+                // If the solver can't meet the constraint, it marks the stop
+                // as unassigned — the frontend will keep it with a warning.
                 let (time_window, stop_service_duration) = match (c.scheduled_time_start, c.scheduled_time_end) {
                     (Some(start), Some(end)) => {
                         let slot_minutes = (end - start).num_minutes().max(1) as u32;
                         info!(
-                            "VRP stop {} ({}) scheduled {:?}-{:?} → arrival window={:?}, service={}min",
+                            "VRP stop {} ({}) scheduled {:?}-{:?} → point window={:?}, service={}min",
                             c.id,
                             c.name.as_deref().unwrap_or("?"),
                             start, end, start, slot_minutes,
@@ -648,7 +694,7 @@ impl JobProcessor {
                         (
                             Some(StopTimeWindow {
                                 start,
-                                end: start, // Arrival must be at slot start
+                                end: start, // Point arrival at slot start
                                 is_hard: true,
                             }),
                             slot_minutes,
@@ -656,18 +702,15 @@ impl JobProcessor {
                     }
                     _ => (None, service_duration_minutes),
                 };
-                VrpStop {
+                Some(VrpStop {
                     id: c.id.to_string(),
                     customer_id: c.id,
                     customer_name: c.name.clone().unwrap_or_default(),
-                    coordinates: Coordinates {
-                        lat: c.lat.unwrap(),
-                        lng: c.lng.unwrap(),
-                    },
+                    coordinates,
                     service_duration_minutes: stop_service_duration,
                     time_window,
                     priority: 1,
-                }
+                })
             })
             .collect();
         
@@ -679,6 +722,13 @@ impl JobProcessor {
             break_config,
         }
     }
+}
+
+fn customer_coordinates(customer: &CustomerForRoute) -> Option<Coordinates> {
+    Some(Coordinates {
+        lat: customer.lat?,
+        lng: customer.lng?,
+    })
 }
 
 /// Simple customer data for route planning

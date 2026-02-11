@@ -494,32 +494,14 @@ pub struct RouteStop {
 
 **Vehicle Routing Problem with Time Windows (VRPTW)**
 
-For MVP, we use Haversine distance × 1.3 coefficient for road distance estimation.
+> **See [PROJECT_SOLVER.MD](./PROJECT_SOLVER.MD) for comprehensive solver documentation** including architecture diagrams, data flow, time window mapping, configuration, test coverage, and troubleshooting.
 
-```rust
-// Simplified VRPTW approach for 5-12 stops
-
-pub fn optimize_route(stops: Vec<Stop>, start: Coordinates) -> OptimizedRoute {
-    // 1. Calculate distance matrix (Haversine × 1.3)
-    let matrix = calculate_distance_matrix(&stops, &start);
-    
-    // 2. Classify time windows
-    //    - HARD: exact time (±15 min tolerance)
-    //    - SOFT: range (e.g., 9:00-12:00)
-    //    - OPEN: anytime
-    
-    // 3. Initial solution: Nearest neighbor with time window priority
-    let mut route = nearest_neighbor_with_time_windows(&stops, &matrix);
-    
-    // 4. Local optimization: 2-opt, Or-opt swaps
-    route = local_search_improvement(route, &matrix);
-    
-    // 5. Feasibility check and warnings
-    let (route, warnings) = check_feasibility(route);
-    
-    OptimizedRoute { stops: route, warnings, score: calculate_score(&route) }
-}
-```
+Key points:
+- **Primary solver:** `vrp-pragmatic` (pure Rust metaheuristic) with `spawn_blocking` + timeout
+- **Fallback solver:** nearest-neighbor heuristic (time-window-aware)
+- **Routing engine:** Valhalla (self-hosted) for real road distance/time matrices
+- **Time window resolution:** Frontend-provided `timeWindows` → `revisions` table → `visits` table
+- **Point arrival mapping:** Scheduled visits use `[start, start]` window, service = slot length
 
 ## Geocoding Safety Architecture
 
@@ -717,34 +699,13 @@ services:
 
 ### VRP Solver (vrp-pragmatic + vrp-core)
 
-Pure Rust implementation inspired by Google OR-Tools:
+> **Full documentation:** [PROJECT_SOLVER.MD](./PROJECT_SOLVER.MD)
 
-```toml
-# worker/Cargo.toml
-[dependencies]
-vrp-pragmatic = "1.25"   # High-level JSON API
-vrp-core = "1.25"        # Core solver algorithms
-```
+Pure Rust implementation using `vrp-pragmatic` (v1.25) with guided local search metaheuristics.
 
-**Features:**
-- VRP (with time windows supported via pragmatic format)
-- Guided local search metaheuristic
-- Hard and soft time window constraints
-- Service duration per stop
-- Single crew (tradesperson) model
+**Key features:** Hard/soft time windows, point arrival mapping, arrival buffer, service duration per stop, mandatory breaks, single crew model, async execution with timeout + heuristic fallback.
 
-**Time Window Mapping (Point Arrival):**
-Scheduled customer visits are mapped to VRP solver constraints as follows:
-- The customer's `scheduled_time_start`/`scheduled_time_end` define a **work slot**, not an arrival range.
-- VRP solver receives a **point time window** `[start, start]` — the crew must arrive exactly at the slot start.
-- `service_duration_minutes` is computed as `end - start` (the actual slot length), not a fixed default.
-- `apply_arrival_buffer` skips point time windows (`start == end`) to prevent unintended window shifts.
-- The solver departs from depot as late as possible, arrives at each customer at the start of their slot, and finishes at the slot end.
-
-**Performance:**
-- 10 stops: ~50ms solve time
-- 50 stops: ~500ms solve time
-- Memory: ~10MB per request
+**Time window data flow (v0.18.6+):** Frontend passes `timeWindows` directly in the optimization request. This takes priority over database lookups, ensuring the solver sees exactly the same constraints the user configured in the UI.
 
 ### Fallback Strategy
 
@@ -1535,6 +1496,7 @@ cargo test
 ## Related Documentation
 
 - [CSV Import Format](./PROJECT_IMPORT.MD) – Specifikace importu zákazníků z CSV
+- [Solver Architecture](./PROJECT_SOLVER.MD) – VRP solver, time windows, adapter, fallback, testing
 
 ## Notes
 

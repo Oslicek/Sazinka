@@ -5,7 +5,7 @@ use uuid::Uuid;
 use chrono::{Datelike, NaiveDate, NaiveTime, Utc};
 use anyhow::Result;
 
-use crate::types::revision::{Revision, CreateRevisionRequest, UpdateRevisionRequest, RevisionStats};
+use crate::types::revision::{CreateRevisionRequest, Revision, RevisionStats, RevisionStatus, UpdateRevisionRequest};
 
 // Common column list for Revision queries
 const REVISION_COLS: &str = r#"
@@ -37,7 +37,7 @@ pub async fn create_revision(
     user_id: Uuid,
     req: &CreateRevisionRequest,
 ) -> Result<Revision> {
-    let status = req.status.as_deref().unwrap_or("upcoming");
+    let status = req.status.as_deref().unwrap_or(RevisionStatus::Upcoming.as_str());
     
     let query = format!(
         r#"
@@ -139,7 +139,7 @@ pub async fn complete_revision(
     let query = format!(
         r#"
         UPDATE revisions SET
-            status = 'completed',
+            status = $6::revision_status,
             result = $3::revision_result,
             findings = $4,
             duration_minutes = COALESCE($5, duration_minutes),
@@ -157,6 +157,7 @@ pub async fn complete_revision(
     .bind(result)
     .bind(findings)
     .bind(duration_minutes)
+    .bind(RevisionStatus::Completed.as_str())
     .fetch_optional(pool)
     .await?;
 
@@ -366,8 +367,13 @@ pub async fn get_revision_stats(pool: &PgPool, user_id: Uuid) -> Result<Revision
     ).bind(user_id).bind(today).fetch_one(pool).await?;
     
     let completed_this_month: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM revisions WHERE user_id = $1 AND status = 'completed' AND completed_at >= $2"
-    ).bind(user_id).bind(month_start).fetch_one(pool).await?;
+        "SELECT COUNT(*) FROM revisions WHERE user_id = $1 AND status = $2::revision_status AND completed_at >= $3"
+    )
+    .bind(user_id)
+    .bind(RevisionStatus::Completed.as_str())
+    .bind(month_start)
+    .fetch_one(pool)
+    .await?;
     
     Ok(RevisionStats {
         overdue: overdue.0,
@@ -507,7 +513,11 @@ struct CallQueueSqlParts {
 fn build_call_queue_sql_parts(request: &CallQueueRequest) -> CallQueueSqlParts {
     let mut conditions = vec![
         "r.user_id = $1".to_string(),
-        "r.status IN ('upcoming', 'scheduled')".to_string(),
+        format!(
+            "r.status IN ('{}', '{}')",
+            RevisionStatus::Upcoming.as_str(),
+            RevisionStatus::Scheduled.as_str()
+        ),
         "(r.snooze_until IS NULL OR r.snooze_until <= $2)".to_string(),
         "r.due_date BETWEEN $2 - INTERVAL '30 days' AND $2 + INTERVAL '60 days'".to_string(),
     ];
@@ -622,13 +632,27 @@ pub async fn get_call_queue(
 
     let total: (i64,) = count_builder.fetch_one(pool).await?;
 
-    let overdue_count: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM revisions r WHERE r.user_id = $1 AND r.status IN ('upcoming', 'scheduled') AND (r.snooze_until IS NULL OR r.snooze_until <= $2) AND r.due_date < $2"
-    ).bind(user_id).bind(today).fetch_one(pool).await?;
+    let overdue_count_query = format!(
+        "SELECT COUNT(*) FROM revisions r WHERE r.user_id = $1 AND r.status IN ('{}', '{}') AND (r.snooze_until IS NULL OR r.snooze_until <= $2) AND r.due_date < $2",
+        RevisionStatus::Upcoming.as_str(),
+        RevisionStatus::Scheduled.as_str()
+    );
+    let overdue_count: (i64,) = sqlx::query_as(&overdue_count_query)
+        .bind(user_id)
+        .bind(today)
+        .fetch_one(pool)
+        .await?;
 
-    let due_soon_count: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM revisions r WHERE r.user_id = $1 AND r.status IN ('upcoming', 'scheduled') AND (r.snooze_until IS NULL OR r.snooze_until <= $2) AND r.due_date BETWEEN $2 AND $2 + INTERVAL '7 days'"
-    ).bind(user_id).bind(today).fetch_one(pool).await?;
+    let due_soon_count_query = format!(
+        "SELECT COUNT(*) FROM revisions r WHERE r.user_id = $1 AND r.status IN ('{}', '{}') AND (r.snooze_until IS NULL OR r.snooze_until <= $2) AND r.due_date BETWEEN $2 AND $2 + INTERVAL '7 days'",
+        RevisionStatus::Upcoming.as_str(),
+        RevisionStatus::Scheduled.as_str()
+    );
+    let due_soon_count: (i64,) = sqlx::query_as(&due_soon_count_query)
+        .bind(user_id)
+        .bind(today)
+        .fetch_one(pool)
+        .await?;
 
     Ok(CallQueueResponse {
         items,
@@ -727,20 +751,23 @@ pub async fn get_scheduled_time_window(
     customer_id: Uuid,
     date: NaiveDate,
 ) -> Result<Option<(NaiveTime, NaiveTime)>> {
-    let row = sqlx::query_as::<_, (Option<NaiveTime>, Option<NaiveTime>)>(
+    let query = format!(
         r#"
         SELECT scheduled_time_start, scheduled_time_end
         FROM revisions
         WHERE user_id = $1
           AND customer_id = $2
           AND scheduled_date = $3
-          AND status IN ('scheduled', 'upcoming')
+          AND status IN ('{}', '{}')
           AND scheduled_time_start IS NOT NULL
           AND scheduled_time_end IS NOT NULL
         ORDER BY scheduled_time_start
         LIMIT 1
         "#,
-    )
+        RevisionStatus::Scheduled.as_str(),
+        RevisionStatus::Upcoming.as_str()
+    );
+    let row = sqlx::query_as::<_, (Option<NaiveTime>, Option<NaiveTime>)>(&query)
     .bind(user_id)
     .bind(customer_id)
     .bind(date)
@@ -751,6 +778,47 @@ pub async fn get_scheduled_time_window(
         Some((Some(start), Some(end))) => Ok(Some((start, end))),
         _ => Ok(None),
     }
+}
+
+/// Get scheduled time window for a customer with legacy visits fallback.
+pub async fn get_scheduled_time_window_with_fallback(
+    pool: &PgPool,
+    user_id: Uuid,
+    customer_id: Uuid,
+    date: NaiveDate,
+) -> Result<Option<(NaiveTime, NaiveTime)>> {
+    if let Some(window) = get_scheduled_time_window(pool, user_id, customer_id, date).await? {
+        return Ok(Some(window));
+    }
+
+    let query = format!(
+        r#"
+        SELECT scheduled_time_start, scheduled_time_end
+        FROM visits
+        WHERE user_id = $1
+          AND customer_id = $2
+          AND scheduled_date = $3
+          AND status NOT IN ('{}', '{}')
+          AND scheduled_time_start IS NOT NULL
+          AND scheduled_time_end IS NOT NULL
+        ORDER BY scheduled_time_start ASC NULLS LAST
+        LIMIT 1
+        "#,
+        RevisionStatus::Cancelled.as_str(),
+        RevisionStatus::Completed.as_str()
+    );
+
+    let row = sqlx::query_as::<_, (Option<NaiveTime>, Option<NaiveTime>)>(&query)
+        .bind(user_id)
+        .bind(customer_id)
+        .bind(date)
+        .fetch_optional(pool)
+        .await?;
+
+    Ok(match row {
+        Some((Some(start), Some(end))) => Some((start, end)),
+        _ => None,
+    })
 }
 
 #[cfg(test)]

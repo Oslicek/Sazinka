@@ -328,7 +328,7 @@ export function buildFilterSummary(expression: InboxFilterExpression): string {
       if (t === 'DUE_IN_7_DAYS') return 'Do 7 dnů';
       return 'Do 30 dnů';
     });
-    groupParts.push(`Čas: (${labels.join(` ${groups.time.operator} `)})`);
+    groupParts.push(`Nová revize: (${labels.join(` ${groups.time.operator} `)})`);
   }
 
   if (groups.problems.enabled && groups.problems.selected.length > 0) {

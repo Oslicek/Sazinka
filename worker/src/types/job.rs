@@ -128,12 +128,121 @@ mod tests {
             date: chrono::NaiveDate::from_ymd_opt(2026, 1, 29).unwrap(),
             start_location: crate::types::Coordinates { lat: 50.0, lng: 14.0 },
             crew_id: None,
+            time_windows: vec![],
         };
         
         let json = serde_json::to_string(&request).unwrap();
         assert!(json.contains("userId"));
         assert!(json.contains("customerIds"));
         assert!(json.contains("startLocation"));
+    }
+
+    // ==========================================================================
+    // CustomerTimeWindow and time_windows field tests
+    // ==========================================================================
+
+    #[test]
+    fn test_customer_time_window_serializes_to_camel_case() {
+        let tw = CustomerTimeWindow {
+            customer_id: Uuid::nil(),
+            start: "08:00".to_string(),
+            end: "09:00".to_string(),
+        };
+
+        let json = serde_json::to_string(&tw).unwrap();
+        // Must use camelCase keys to match frontend conventions
+        assert!(json.contains("customerId"), "Expected camelCase customerId, got: {}", json);
+        assert!(json.contains("\"start\":\"08:00\""));
+        assert!(json.contains("\"end\":\"09:00\""));
+    }
+
+    #[test]
+    fn test_customer_time_window_deserializes_from_camel_case() {
+        let json = r#"{
+            "customerId": "00000000-0000-0000-0000-000000000001",
+            "start": "14:00",
+            "end": "15:00"
+        }"#;
+
+        let tw: CustomerTimeWindow = serde_json::from_str(json).unwrap();
+        assert_eq!(tw.customer_id, Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
+        assert_eq!(tw.start, "14:00");
+        assert_eq!(tw.end, "15:00");
+    }
+
+    #[test]
+    fn test_route_plan_job_request_with_time_windows_deserializes() {
+        // This simulates what the frontend sends via NATS
+        let json = r#"{
+            "customerIds": ["00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002"],
+            "date": "2026-02-10",
+            "startLocation": { "lat": 49.19, "lng": 16.60 },
+            "timeWindows": [
+                { "customerId": "00000000-0000-0000-0000-000000000001", "start": "08:00", "end": "09:00" },
+                { "customerId": "00000000-0000-0000-0000-000000000002", "start": "10:00", "end": "11:00" }
+            ]
+        }"#;
+
+        let request: RoutePlanJobRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(request.customer_ids.len(), 2);
+        assert_eq!(request.time_windows.len(), 2);
+        assert_eq!(request.time_windows[0].start, "08:00");
+        assert_eq!(request.time_windows[0].end, "09:00");
+        assert_eq!(request.time_windows[1].start, "10:00");
+        assert_eq!(request.time_windows[1].end, "11:00");
+    }
+
+    #[test]
+    fn test_route_plan_job_request_without_time_windows_uses_default() {
+        // When the frontend omits timeWindows, serde(default) should give empty vec
+        let json = r#"{
+            "customerIds": ["00000000-0000-0000-0000-000000000001"],
+            "date": "2026-02-10",
+            "startLocation": { "lat": 49.19, "lng": 16.60 }
+        }"#;
+
+        let request: RoutePlanJobRequest = serde_json::from_str(json).unwrap();
+        assert!(request.time_windows.is_empty(), "time_windows should default to empty vec when omitted");
+    }
+
+    #[test]
+    fn test_route_plan_job_request_with_empty_time_windows_array() {
+        // Frontend sends explicit empty array
+        let json = r#"{
+            "customerIds": ["00000000-0000-0000-0000-000000000001"],
+            "date": "2026-02-10",
+            "startLocation": { "lat": 49.19, "lng": 16.60 },
+            "timeWindows": []
+        }"#;
+
+        let request: RoutePlanJobRequest = serde_json::from_str(json).unwrap();
+        assert!(request.time_windows.is_empty());
+    }
+
+    #[test]
+    fn test_route_plan_job_request_roundtrip_preserves_time_windows() {
+        let cid = Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap();
+        let request = RoutePlanJobRequest {
+            user_id: Some(Uuid::nil()),
+            customer_ids: vec![cid],
+            date: chrono::NaiveDate::from_ymd_opt(2026, 2, 10).unwrap(),
+            start_location: crate::types::Coordinates { lat: 49.19, lng: 16.60 },
+            crew_id: None,
+            time_windows: vec![
+                CustomerTimeWindow {
+                    customer_id: cid,
+                    start: "08:00".to_string(),
+                    end: "09:00".to_string(),
+                },
+            ],
+        };
+
+        let json = serde_json::to_string(&request).unwrap();
+        let deserialized: RoutePlanJobRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.time_windows.len(), 1);
+        assert_eq!(deserialized.time_windows[0].customer_id, cid);
+        assert_eq!(deserialized.time_windows[0].start, "08:00");
+        assert_eq!(deserialized.time_windows[0].end, "09:00");
     }
 
     // Priority tests
@@ -314,6 +423,18 @@ impl Default for JobPriority {
     }
 }
 
+/// Time window passed from the frontend for a specific customer.
+/// Contains the scheduled start/end times as "HH:MM" strings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomerTimeWindow {
+    pub customer_id: Uuid,
+    /// Scheduled time start, e.g. "14:00"
+    pub start: String,
+    /// Scheduled time end, e.g. "15:00"
+    pub end: String,
+}
+
 /// Request to plan a route (stored in job queue)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -330,6 +451,10 @@ pub struct RoutePlanJobRequest {
     /// Crew ID — if provided, crew-specific settings (arrival buffer) are used
     #[serde(default)]
     pub crew_id: Option<Uuid>,
+    /// Time windows for customers, passed directly from the saved route stops.
+    /// Takes priority over DB lookup (revisions/visits) when present.
+    #[serde(default)]
+    pub time_windows: Vec<CustomerTimeWindow>,
 }
 
 /// A job stored in the JetStream queue

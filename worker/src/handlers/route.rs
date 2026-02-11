@@ -11,12 +11,13 @@ use uuid::Uuid;
 
 use crate::auth;
 use crate::db::queries;
+use crate::defaults::{default_work_end, default_work_start, DEFAULT_SERVICE_DURATION_MINUTES};
 use crate::services::insertion::{calculate_insertion_positions, StopMeta};
 use crate::services::routing::{RoutingService, MockRoutingService};
 use crate::services::vrp::{VrpSolver, VrpProblem, VrpStop, Depot, SolverConfig, StopTimeWindow, BreakConfig};
 use crate::types::{
     Coordinates, ErrorResponse, Request, SuccessResponse,
-    RoutePlanRequest, RoutePlanResponse, PlannedRouteStop, RouteWarning, WorkingHours,
+    PlannedRouteStop, RoutePlanRequest, RoutePlanResponse, RouteStatus, RouteWarning, StopType, WorkingHours,
 };
 
 /// Handle route.plan messages
@@ -163,18 +164,18 @@ pub async fn handle_plan(
             Ok(None) => {
                 warn!("User {} not found in database, using default settings", user_id);
                 (
-                    chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
-                    chrono::NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
-                    30u32,
+                    default_work_start(),
+                    default_work_end(),
+                    DEFAULT_SERVICE_DURATION_MINUTES,
                     None,
                 )
             }
             Err(e) => {
                 warn!("Failed to load user settings: {}, using defaults", e);
                 (
-                    chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
-                    chrono::NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
-                    30u32,
+                    default_work_start(),
+                    default_work_end(),
+                    DEFAULT_SERVICE_DURATION_MINUTES,
                     None,
                 )
             }
@@ -198,10 +199,9 @@ pub async fn handle_plan(
         // Build location list for matrix (depot + customers)
         let mut locations = vec![plan_request.start_location];
         for customer in &valid_customers {
-            locations.push(Coordinates {
-                lat: customer.lat.unwrap(),
-                lng: customer.lng.unwrap(),
-            });
+            if let Some(coords) = customer_coordinates(customer) {
+                locations.push(coords);
+            }
         }
 
         // Get distance/time matrices (with fallback to mock if Valhalla fails)
@@ -273,10 +273,7 @@ pub async fn handle_plan(
                         customer.city.as_deref().unwrap_or(""),
                         customer.postal_code.as_deref().unwrap_or("")
                     ),
-                    coordinates: Coordinates {
-                        lat: customer.lat.unwrap(),
-                        lng: customer.lng.unwrap(),
-                    },
+                    coordinates: customer_coordinates(customer).unwrap_or(plan_request.start_location),
                     order: stop.order as i32,
                     eta: stop.arrival_time,
                     etd: stop.departure_time,
@@ -289,7 +286,7 @@ pub async fn handle_plan(
                         }),
                         _ => None,
                     },
-                    stop_type: Some("customer".to_string()),
+                    stop_type: Some(StopType::Customer),
                     break_duration_minutes: None,
                     break_time_start: None,
                     distance_from_previous_km: leg_distance_km,
@@ -299,6 +296,8 @@ pub async fn handle_plan(
                     previous_matrix_index = matrix_index;
                 }
             } else if stop.customer_id.is_nil() {
+                // Break stop — crew stays at the previous location,
+                // so the travel leg is 0 km / 0 min.
                 planned_stops.push(PlannedRouteStop {
                     customer_id: Uuid::nil(),
                     customer_name: "Pauza".to_string(),
@@ -309,11 +308,11 @@ pub async fn handle_plan(
                     etd: stop.departure_time,
                     service_duration_minutes: ((stop.departure_time - stop.arrival_time).num_minutes().max(0)) as i32,
                     time_window: None,
-                    stop_type: Some("break".to_string()),
+                    stop_type: Some(StopType::Break),
                     break_duration_minutes: Some(((stop.departure_time - stop.arrival_time).num_minutes().max(0)) as i32),
                     break_time_start: Some(stop.arrival_time),
-                    distance_from_previous_km: None,
-                    duration_from_previous_minutes: None,
+                    distance_from_previous_km: Some(0.0),
+                    duration_from_previous_minutes: Some(0),
                 });
             }
         }
@@ -441,7 +440,7 @@ async fn load_customers(
     for customer_id in customer_ids {
         if let Some(customer) = queries::customer::get_customer(pool, user_id, *customer_id).await? {
             // Try to find a scheduled revision for this customer on the given date
-            let (tw_start, tw_end) = match queries::revision::get_scheduled_time_window(
+            let (tw_start, tw_end) = match queries::revision::get_scheduled_time_window_with_fallback(
                 pool, user_id, *customer_id, date,
             ).await {
                 Ok(Some((start, end))) => {
@@ -486,16 +485,18 @@ fn build_vrp_problem(
 ) -> VrpProblem {
     let stops: Vec<VrpStop> = customers
         .iter()
-        .map(|c| {
-            // For scheduled customers: time window = point arrival at slot start,
-            // service duration = actual slot length (end - start).
-            // The solver must arrive at the beginning of the visit slot,
-            // and the service takes the full agreed duration.
+        .filter_map(|c| {
+            let coordinates = customer_coordinates(c)?;
+            // For scheduled customers: point time window [start, start]
+            // forces the solver to arrive at exactly the agreed time.
+            // Service duration = full slot length (end - start).
+            // If the solver can't meet the constraint, it marks the stop
+            // as unassigned — the frontend will keep it with a warning.
             let (time_window, stop_service_duration) = match (c.scheduled_time_start, c.scheduled_time_end) {
                 (Some(start), Some(end)) => {
                     let slot_minutes = (end - start).num_minutes().max(1) as u32;
                     info!(
-                        "VRP stop {} ({}) scheduled {:?}-{:?} → arrival window={:?}, service={}min",
+                        "VRP stop {} ({}) scheduled {:?}-{:?} → point window={:?}, service={}min",
                         c.id,
                         c.name.as_deref().unwrap_or("?"),
                         start, end, start, slot_minutes,
@@ -503,7 +504,7 @@ fn build_vrp_problem(
                     (
                         Some(StopTimeWindow {
                             start,
-                            end: start, // Arrival must be at slot start
+                            end: start, // Point arrival at slot start
                             is_hard: true,
                         }),
                         slot_minutes,
@@ -512,18 +513,15 @@ fn build_vrp_problem(
                 _ => (None, service_duration_minutes),
             };
 
-            VrpStop {
+            Some(VrpStop {
                 id: c.id.to_string(),
                 customer_id: c.id,
                 customer_name: c.name.clone().unwrap_or_default(),
-                coordinates: Coordinates {
-                    lat: c.lat.unwrap(),
-                    lng: c.lng.unwrap(),
-                },
+                coordinates,
                 service_duration_minutes: stop_service_duration,
                 time_window,
                 priority: 1,
-            }
+            })
         })
         .collect();
 
@@ -536,6 +534,13 @@ fn build_vrp_problem(
         shift_end,
         break_config,
     }
+}
+
+fn customer_coordinates(customer: &CustomerForRoute) -> Option<Coordinates> {
+    Some(Coordinates {
+        lat: customer.lat?,
+        lng: customer.lng?,
+    })
 }
 
 /// Create mock routing service (for tests and when Valhalla unavailable)
@@ -613,9 +618,12 @@ pub struct SaveRouteStop {
     pub distance_from_previous_km: Option<f64>,
     pub duration_from_previous_minutes: Option<i32>,
     #[serde(default)]
-    pub stop_type: Option<String>,
+    pub stop_type: Option<StopType>,
     pub break_duration_minutes: Option<i32>,
     pub break_time_start: Option<chrono::NaiveTime>,
+    /// Optional status override (e.g. "unassigned"). Defaults to "pending".
+    #[serde(default)]
+    pub status: Option<String>,
 }
 
 /// Response after saving a route
@@ -726,7 +734,7 @@ pub async fn handle_save(
             payload.crew_id,
             payload.depot_id, // depot_id from request
             payload.date,
-            "draft",
+            RouteStatus::Draft.as_str(),
             Some(payload.total_distance_km),
             Some(payload.total_duration_minutes),
             Some(payload.optimization_score),
@@ -745,7 +753,7 @@ pub async fn handle_save(
                 // Insert new stops
                 let mut saved_count = 0;
                 for stop in &payload.stops {
-                    let stop_type = stop.stop_type.clone().unwrap_or_else(|| "customer".to_string());
+                    let stop_type = stop.stop_type.unwrap_or(StopType::Customer).as_str().to_string();
                     if let Err(e) = queries::route::insert_route_stop(
                         &pool,
                         route.id,
@@ -760,6 +768,7 @@ pub async fn handle_save(
                         stop_type,
                         stop.break_duration_minutes,
                         stop.break_time_start,
+                        stop.status.as_deref(),
                     ).await {
                         warn!("Failed to insert stop: {}", e);
                     } else {
@@ -1292,12 +1301,12 @@ pub async fn handle_insertion_calculate(
             .workday_start
             .as_deref()
             .and_then(|t| chrono::NaiveTime::parse_from_str(t, "%H:%M").ok())
-            .unwrap_or_else(|| chrono::NaiveTime::from_hms_opt(8, 0, 0).expect("valid time"));
+            .unwrap_or_else(default_work_start);
         let workday_end = calc_req
             .workday_end
             .as_deref()
             .and_then(|t| chrono::NaiveTime::parse_from_str(t, "%H:%M").ok())
-            .unwrap_or_else(|| chrono::NaiveTime::from_hms_opt(17, 0, 0).expect("valid time"));
+            .unwrap_or_else(default_work_end);
 
         // If no route stops, insertion is trivially at position 0
         if calc_req.route_stops.is_empty() {
@@ -1651,8 +1660,8 @@ mod tests {
         let problem = build_vrp_problem(
             &prague(),
             &[],
-            chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
-            chrono::NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+            default_work_start(),
+            default_work_end(),
             30,
             None,
         );
@@ -1691,8 +1700,8 @@ mod tests {
         let problem = build_vrp_problem(
             &prague(),
             &customers,
-            chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
-            chrono::NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+            default_work_start(),
+            default_work_end(),
             30,
             None,
         );
@@ -1722,8 +1731,8 @@ mod tests {
         let problem = build_vrp_problem(
             &prague(),
             &customers,
-            chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap(),
-            chrono::NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
+            default_work_start(),
+            default_work_end(),
             45, // Custom service duration
             None,
         );

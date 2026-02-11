@@ -223,6 +223,7 @@ export function PlanningInbox() {
         stopType: s.stopType,
         breakDurationMinutes: s.stopType === 'break' ? (s.breakDurationMinutes ?? undefined) : undefined,
         breakTimeStart: s.stopType === 'break' ? (s.breakTimeStart ?? undefined) : undefined,
+        status: s.status === 'unassigned' ? 'unassigned' : undefined,
       })),
       totalDistanceKm: metrics?.distanceKm ?? 0,
       totalDurationMinutes: (metrics?.travelTimeMin ?? 0) + (metrics?.serviceTimeMin ?? 0),
@@ -327,9 +328,6 @@ export function PlanningInbox() {
         setLoadedRouteId(response.route?.id ?? null);
         
         if (response.route && response.stops.length > 0) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'post-fix-3',hypothesisId:'H14',location:'PlanningInbox.tsx:loadRoute',message:'inbox loaded route by date',data:{date:dateToLoad,routeId:response.route.id,crewId:response.route.crewId ?? null,depotId:response.route.depotId ?? null,stops:response.stops.map((s,i)=>({i,id:s.id,customerId:s.customerId,name:s.customerName,lng:s.customerLng,lat:s.customerLat,stopOrder:s.stopOrder,address:s.address}))},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
           setRouteStops(response.stops);
           setReturnToDepotLeg(
             response.route.returnToDepotDistanceKm != null || response.route.returnToDepotDurationMinutes != null
@@ -372,7 +370,13 @@ export function PlanningInbox() {
 
   // Fetch Valhalla route geometry when route stops change
   const fetchRouteGeometry = useCallback(async (stops: SavedRouteStop[], depot: { lat: number; lng: number } | null) => {
-    if (stops.length < 1) {
+    // Only use customer stops with valid coordinates for geometry routing.
+    // Break stops have null coordinates and would corrupt Valhalla's route.
+    const routableStops = stops.filter(
+      (s) => s.stopType !== 'break' && s.customerLat != null && s.customerLng != null
+    );
+
+    if (routableStops.length < 1) {
       setRouteGeometry([]);
       return;
     }
@@ -381,10 +385,10 @@ export function PlanningInbox() {
     const locations = depot
       ? [
           { lat: depot.lat, lng: depot.lng },
-          ...stops.map((s) => ({ lat: s.customerLat ?? 0, lng: s.customerLng ?? 0 })),
+          ...routableStops.map((s) => ({ lat: s.customerLat!, lng: s.customerLng! })),
           { lat: depot.lat, lng: depot.lng },
         ]
-      : stops.map((s) => ({ lat: s.customerLat ?? 0, lng: s.customerLng ?? 0 }));
+      : routableStops.map((s) => ({ lat: s.customerLat!, lng: s.customerLng! }));
 
     try {
       // Cancel previous subscription
@@ -488,13 +492,15 @@ export function PlanningInbox() {
       setIsCalculatingSlots(true);
       try {
         const response = await insertionService.calculateInsertion({
-          routeStops: routeStops.map((stop) => ({
-            id: stop.id,
-            name: stop.customerName,
-            coordinates: { lat: stop.customerLat!, lng: stop.customerLng! },
-            arrivalTime: stop.estimatedArrival ?? undefined,
-            departureTime: stop.estimatedDeparture ?? undefined,
-          })),
+          routeStops: routeStops
+            .filter((s) => s.stopType === 'customer' && s.customerLat && s.customerLng)
+            .map((stop) => ({
+              id: stop.id,
+              name: stop.customerName ?? '',
+              coordinates: { lat: stop.customerLat!, lng: stop.customerLng! },
+              arrivalTime: stop.estimatedArrival ?? undefined,
+              departureTime: stop.estimatedDeparture ?? undefined,
+            })),
           depot: { lat: depot!.lat, lng: depot!.lng },
           candidate: {
             id: candidate!.id,
@@ -1313,9 +1319,9 @@ export function PlanningInbox() {
   // Route building: optimize route via VRP solver
   const handleOptimizeRoute = useCallback(async () => {
     if (routeStops.length < 2 || !context) return;
-    const customerIds = routeStops
-      .filter((s) => s.stopType === 'customer' && !!s.customerId)
-      .map((s) => s.customerId as string);
+    const customerStops = routeStops
+      .filter((s) => s.stopType === 'customer' && !!s.customerId);
+    const customerIds = customerStops.map((s) => s.customerId as string);
     if (customerIds.length < 2) return;
 
     const depot = depots.find((d) => d.id === context.depotId);
@@ -1324,6 +1330,17 @@ export function PlanningInbox() {
     const startLocation = depot
       ? { lat: depot.lat, lng: depot.lng }
       : { lat: routeStops[0].customerLat ?? 0, lng: routeStops[0].customerLng ?? 0 };
+
+    // Extract time windows from saved route stops so the optimizer
+    // can respect the agreed schedule even when revisions table doesn't
+    // have matching records.
+    const timeWindows = customerStops
+      .filter((s) => s.scheduledTimeStart && s.scheduledTimeEnd)
+      .map((s) => ({
+        customerId: s.customerId as string,
+        start: s.scheduledTimeStart!,
+        end: s.scheduledTimeEnd!,
+      }));
 
     setIsOptimizing(true);
     setRouteJobProgress('Odesílám do optimalizátoru...');
@@ -1334,6 +1351,7 @@ export function PlanningInbox() {
         date: context.date,
         startLocation,
         crewId: context.crewId || undefined,
+        timeWindows: timeWindows.length > 0 ? timeWindows : undefined,
       });
 
       setRouteJobProgress('Ve frontě...');
@@ -1384,6 +1402,27 @@ export function PlanningInbox() {
                     breakTimeStart: isBreak ? (s.breakTimeStart ?? s.eta) : undefined,
                   };
                 });
+                // Re-attach unassigned stops at the end with a warning
+                const unassignedIds = new Set(result.unassigned ?? []);
+                if (unassignedIds.size > 0) {
+                  const unassignedOriginals = routeStops.filter(
+                    (rs) => rs.customerId && unassignedIds.has(rs.customerId)
+                  );
+                  let order = optimizedStops.length;
+                  for (const orig of unassignedOriginals) {
+                    order++;
+                    optimizedStops.push({
+                      ...orig,
+                      stopOrder: order,
+                      estimatedArrival: null,
+                      estimatedDeparture: null,
+                      distanceFromPreviousKm: null,
+                      durationFromPreviousMinutes: null,
+                      status: 'unassigned',
+                    });
+                  }
+                }
+
                 setRouteStops(optimizedStops);
                 setReturnToDepotLeg({
                   distanceKm: result.returnToDepotDistanceKm ?? null,
@@ -1391,7 +1430,19 @@ export function PlanningInbox() {
                 });
 
                 // Store solver warnings (LATE_ARRIVAL, INSUFFICIENT_BUFFER, etc.)
-                setRouteWarnings(result.warnings ?? []);
+                const allWarnings = [...(result.warnings ?? [])];
+                if (unassignedIds.size > 0) {
+                  const names = routeStops
+                    .filter((rs) => rs.customerId && unassignedIds.has(rs.customerId))
+                    .map((rs) => rs.customerName)
+                    .join(', ');
+                  allWarnings.push({
+                    warningType: 'UNASSIGNED_STOPS',
+                    message: `Optimalizátor nemohl zařadit: ${names}. Zastávky zůstávají v trase, ale nemají vypočítaný čas.`,
+                    stopIndex: null,
+                  });
+                }
+                setRouteWarnings(allWarnings);
 
                 // Capture Valhalla geometry from VRP result
                 if (result.geometry && result.geometry.length > 0) {
@@ -1616,6 +1667,17 @@ export function PlanningInbox() {
     }));
   }, []);
 
+  const clearTimeFilters = useCallback(() => {
+    setActivePresetId(null);
+    setFilters((prev) => ({
+      ...prev,
+      groups: {
+        ...prev.groups,
+        time: { ...prev.groups.time, selected: [], enabled: false },
+      },
+    }));
+  }, []);
+
   const toggleProblemFilter = useCallback((value: ProblemToken) => {
     setActivePresetId(null);
     setFilters((prev) => ({
@@ -1702,11 +1764,12 @@ export function PlanningInbox() {
         </div>
 
         <div className={styles.filterGroup}>
-          <span className={styles.filterGroupLabel}>Čas/Priorita</span>
+          <span className={styles.filterGroupLabel}>Nová revize</span>
           <div className={styles.filterChips}>
             <button type="button" className={`${styles.filterChip} ${filters.groups.time.selected.includes('OVERDUE') ? styles.active : ''}`} onClick={() => toggleTimeFilter('OVERDUE')}>Po termínu</button>
             <button type="button" className={`${styles.filterChip} ${filters.groups.time.selected.includes('DUE_IN_7_DAYS') ? styles.active : ''}`} onClick={() => toggleTimeFilter('DUE_IN_7_DAYS')}>Do 7 dnů</button>
             <button type="button" className={`${styles.filterChip} ${filters.groups.time.selected.includes('DUE_IN_30_DAYS') ? styles.active : ''}`} onClick={() => toggleTimeFilter('DUE_IN_30_DAYS')}>Do 30 dnů</button>
+            <button type="button" className={`${styles.filterChip} ${filters.groups.time.selected.length === 0 ? styles.active : ''}`} onClick={() => clearTimeFilters()}>Kdykoliv</button>
           </div>
         </div>
 
@@ -1753,7 +1816,7 @@ export function PlanningInbox() {
             </div>
 
             <div className={styles.advancedRow}>
-              <span className={styles.filterGroupLabel}>Logika časových podmínek</span>
+              <span className={styles.filterGroupLabel}>Logika revizních podmínek</span>
               <div className={styles.groupOperatorSwitch}>
                 <button
                   type="button"

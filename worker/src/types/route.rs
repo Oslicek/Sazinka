@@ -16,7 +16,7 @@ pub struct Route {
     pub crew_id: Option<Uuid>,
     pub depot_id: Option<Uuid>,
     pub date: NaiveDate,
-    pub status: String,
+    pub status: RouteStatus,
     pub total_distance_km: Option<f64>,
     pub total_duration_minutes: Option<i32>,
     pub optimization_score: Option<i32>,
@@ -27,14 +27,43 @@ pub struct Route {
 }
 
 /// Route status
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[serde(rename_all = "snake_case")]
+#[sqlx(type_name = "route_status", rename_all = "snake_case")]
 pub enum RouteStatus {
     Draft,
     Optimized,
     Confirmed,
     InProgress,
     Completed,
+}
+
+impl RouteStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            RouteStatus::Draft => "draft",
+            RouteStatus::Optimized => "optimized",
+            RouteStatus::Confirmed => "confirmed",
+            RouteStatus::InProgress => "in_progress",
+            RouteStatus::Completed => "completed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StopType {
+    Customer,
+    Break,
+}
+
+impl StopType {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            StopType::Customer => "customer",
+            StopType::Break => "break",
+        }
+    }
 }
 
 /// A stop on the route
@@ -174,7 +203,7 @@ pub struct PlannedRouteStop {
     pub time_window: Option<TimeWindow>,
     /// Stop type (customer or break)
     #[serde(default)]
-    pub stop_type: Option<String>,
+    pub stop_type: Option<StopType>,
     /// Break duration in minutes (for break stops)
     #[serde(default)]
     pub break_duration_minutes: Option<i32>,

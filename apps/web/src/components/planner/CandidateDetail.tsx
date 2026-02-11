@@ -262,78 +262,81 @@ export function CandidateDetail({
         </div>
       </div>
 
-      {/* Contact section */}
-      <section className={styles.section}>
-        <h4 className={styles.sectionTitle}>Kontakt</h4>
-        
-        {candidate.phone ? (
-          <a href={`tel:${candidate.phone}`} className={styles.phoneLink}>
-            📞 {candidate.phone}
-          </a>
-        ) : (
-          <span className={styles.missingInfo}>📵 Chybí telefon</span>
-        )}
-
-        {candidate.email ? (
-          <a href={`mailto:${candidate.email}`} className={styles.emailLink}>
-            ✉️ {candidate.email}
-          </a>
-        ) : (
-          <span className={styles.missingInfo}>✉️ Chybí email</span>
-        )}
-      </section>
-
-      {/* Address section */}
-      <section className={styles.section}>
-        <h4 className={styles.sectionTitle}>Adresa</h4>
-        <p className={styles.address}>{candidate.street}</p>
-        <p className={styles.address}>
-          {candidate.postalCode && `${candidate.postalCode} `}{candidate.city}
-        </p>
-        {onFixAddress && (
-          <button
-            type="button"
-            className={styles.fixAddressButton}
-            onClick={() => onFixAddress(candidate.id)}
-          >
-            Opravit adresu
-          </button>
-        )}
-      </section>
-
-      {/* Scheduled appointment section */}
-      {candidate.isScheduled && candidate.scheduledDate && (
-        <section className={styles.section}>
-          <h4 className={styles.sectionTitle}>Domluvený termín</h4>
-          <p className={styles.scheduledAppointment}>
-            📅 {new Date(candidate.scheduledDate).toLocaleDateString('cs-CZ', {
-              day: 'numeric',
-              month: 'numeric',
-              year: 'numeric',
-            })}
-            {candidate.scheduledTimeStart && candidate.scheduledTimeEnd && (
-              <span className={styles.scheduledTime}>
-                {' '}🕐 {candidate.scheduledTimeStart.substring(0, 5)} – {candidate.scheduledTimeEnd.substring(0, 5)}
-              </span>
+      {/* Two-column detail layout */}
+      <div className={styles.detailColumns}>
+        {/* Left column: Contact + Address */}
+        <div className={styles.detailColumnLeft}>
+          <section className={styles.section}>
+            <h4 className={styles.sectionTitle}>Kontakt</h4>
+            {candidate.phone ? (
+              <a href={`tel:${candidate.phone}`} className={styles.phoneLink}>
+                📞 {candidate.phone}
+              </a>
+            ) : (
+              <span className={styles.missingInfo}>📵 Chybí telefon</span>
             )}
-          </p>
-        </section>
-      )}
+            {candidate.email ? (
+              <a href={`mailto:${candidate.email}`} className={styles.emailLink}>
+                ✉️ {candidate.email}
+              </a>
+            ) : (
+              <span className={styles.missingInfo}>✉️ Chybí email</span>
+            )}
+          </section>
 
-      {/* Due date section */}
-      <section className={styles.section}>
-        <h4 className={styles.sectionTitle}>Revize nejpozději</h4>
-        <p className={styles.dueDate}>
-          <span className={candidate.priority === 'overdue' ? styles.overdueText : ''}>
-            {dueDateFormatted}
-          </span>
-          {candidate.daysUntilDue > 0 && (
-            <span className={styles.daysRemaining}>
-              (za {candidate.daysUntilDue} dní)
-            </span>
+          <section className={styles.section}>
+            <h4 className={styles.sectionTitle}>Adresa</h4>
+            <p className={styles.address}>{candidate.street}</p>
+            <p className={styles.address}>
+              {candidate.postalCode && `${candidate.postalCode} `}{candidate.city}
+            </p>
+            {onFixAddress && (
+              <button
+                type="button"
+                className={styles.fixAddressButton}
+                onClick={() => onFixAddress(candidate.id)}
+              >
+                Opravit adresu
+              </button>
+            )}
+          </section>
+        </div>
+
+        {/* Right column: Scheduled appointment + Due date */}
+        <div className={styles.detailColumnRight}>
+          {candidate.isScheduled && candidate.scheduledDate && (
+            <section className={styles.section}>
+              <h4 className={styles.sectionTitle}>Domluvený termín</h4>
+              <p className={styles.scheduledAppointment}>
+                📅 {new Date(candidate.scheduledDate).toLocaleDateString('cs-CZ', {
+                  day: 'numeric',
+                  month: 'numeric',
+                  year: 'numeric',
+                })}
+                {candidate.scheduledTimeStart && candidate.scheduledTimeEnd && (
+                  <span className={styles.scheduledTime}>
+                    {' '}🕐 {candidate.scheduledTimeStart.substring(0, 5)} – {candidate.scheduledTimeEnd.substring(0, 5)}
+                  </span>
+                )}
+              </p>
+            </section>
           )}
-        </p>
-      </section>
+
+          <section className={styles.section}>
+            <h4 className={styles.sectionTitle}>Revize nejpozději</h4>
+            <p className={styles.dueDate}>
+              <span className={candidate.priority === 'overdue' ? styles.overdueText : ''}>
+                {dueDateFormatted}
+              </span>
+              {candidate.daysUntilDue > 0 && (
+                <span className={styles.daysRemaining}>
+                  (za {candidate.daysUntilDue} dní)
+                </span>
+              )}
+            </p>
+          </section>
+        </div>
+      </div>
 
       {/* Slot suggestions (route-aware) */}
       {isRouteAware && candidate.suggestedSlots && candidate.suggestedSlots.length > 0 && (

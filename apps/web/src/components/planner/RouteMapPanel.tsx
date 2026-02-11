@@ -276,24 +276,6 @@ export function RouteMapPanel({
 
       markersRef.current.set(markerKey, marker);
     });
-    // #region agent log – marker dimensions diagnostic
-    const markerDiag = Array.from(markersRef.current.entries()).map(([key, m]) => {
-      const ll = m.getLngLat();
-      const mEl = m.getElement();
-      const child = mEl.firstElementChild as HTMLElement | null;
-      return {
-        key,
-        lng: ll.lng,
-        lat: ll.lat,
-        wrapperW: mEl.offsetWidth,
-        wrapperH: mEl.offsetHeight,
-        childW: child?.offsetWidth,
-        childH: child?.offsetHeight,
-        wrapperTransform: mEl.style.transform,
-      };
-    });
-    fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'marker-drift-1',hypothesisId:'H18',location:'RouteMapPanel.tsx:markers-build',message:'markers rendered with dimension diagnostics',data:{debugSource:debugSource ?? null,debugRouteId:debugRouteId ?? null,markerCount:markersRef.current.size,snappedCount:snappedCoordByStopId.size,markers:markerDiag,stops:stops.map((s,i)=>({i,id:s.id,customerId:s.customerId,name:s.customerName,lng:s.customerLng,lat:s.customerLat,stopOrder:s.stopOrder,snapped:snappedCoordByStopId.get(s.id) ?? null}))},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
   }, [stops, highlightedStopId, onStopClick, clearMarkers, routeGeometry, depot]);
 
   // Show selected candidate location on the map (before adding to route)
@@ -308,8 +290,8 @@ export function RouteMapPanel({
 
     if (!selectedCandidate) return;
 
-    // Don't show if candidate is already a route stop (it already has a marker)
-    if (stops.some((s) => s.id === selectedCandidate.id)) return;
+    // Don't show if candidate is already a route stop (it already has a numbered marker)
+    if (stops.some((s) => s.customerId === selectedCandidate.id)) return;
 
     const { lat, lng } = selectedCandidate.coordinates;
     if (!lat || !lng) return;
@@ -411,132 +393,6 @@ export function RouteMapPanel({
 
     if (segments.length === 0) return;
 
-    const expectedSegments = waypoints.length + 1;
-    const hasGeometry = !!(routeGeometry && routeGeometry.length > 0);
-    const startsAtGeometryStart = hasGeometry ? (
-      segments[0]?.[0]?.[0] === routeGeometry![0]?.[0] &&
-      segments[0]?.[0]?.[1] === routeGeometry![0]?.[1]
-    ) : null;
-    const lastSegment = segments[segments.length - 1];
-    const lastPoint = lastSegment?.[lastSegment.length - 1];
-    const geometryLast = hasGeometry ? routeGeometry![routeGeometry!.length - 1] : null;
-    const endsAtGeometryEnd = hasGeometry ? (
-      !!lastPoint &&
-      !!geometryLast &&
-      lastPoint[0] === geometryLast[0] &&
-      lastPoint[1] === geometryLast[1]
-    ) : null;
-    const endToDepotKm = hasGeometry && geometryLast && depot
-      ? Math.sqrt(
-        ((geometryLast[0] - depot.lng) * 111.32) ** 2 +
-        ((geometryLast[1] - depot.lat) * 111.32) ** 2
-      )
-      : null;
-    const endToLastWaypointKm = hasGeometry && geometryLast && waypoints.length > 0
-      ? Math.sqrt(
-        ((geometryLast[0] - waypoints[waypoints.length - 1].coordinates.lng) * 111.32) ** 2 +
-        ((geometryLast[1] - waypoints[waypoints.length - 1].coordinates.lat) * 111.32) ** 2
-      )
-      : null;
-    const endToDepotPx = hasGeometry && geometryLast && depot && mapRef.current
-      ? (() => {
-          const endPx = mapRef.current!.project([geometryLast[0], geometryLast[1]]);
-          const depotPx = mapRef.current!.project([depot.lng, depot.lat]);
-          return Math.hypot(endPx.x - depotPx.x, endPx.y - depotPx.y);
-        })()
-      : null;
-    const endToLastWaypointPx = hasGeometry && geometryLast && waypoints.length > 0 && mapRef.current
-      ? (() => {
-          const endPx = mapRef.current!.project([geometryLast[0], geometryLast[1]]);
-          const wp = waypoints[waypoints.length - 1].coordinates;
-          const wpPx = mapRef.current!.project([wp.lng, wp.lat]);
-          return Math.hypot(endPx.x - wpPx.x, endPx.y - wpPx.y);
-        })()
-      : null;
-    const waypointSnapDistancesKm = hasGeometry
-      ? waypoints.map((w, idx) => {
-          let best = Infinity;
-          for (let i = 0; i < routeGeometry!.length; i += 1) {
-            const dx = routeGeometry![i][0] - w.coordinates.lng;
-            const dy = routeGeometry![i][1] - w.coordinates.lat;
-            const d = Math.sqrt(((dx * 111.32) ** 2) + ((dy * 111.32) ** 2));
-            if (d < best) best = d;
-          }
-          return { index: idx, name: w.name ?? `wp-${idx + 1}`, km: best };
-        })
-      : [];
-    const depotSnapDistanceKm = hasGeometry && depot
-      ? (() => {
-          let best = Infinity;
-          for (let i = 0; i < routeGeometry!.length; i += 1) {
-            const dx = routeGeometry![i][0] - depot.lng;
-            const dy = routeGeometry![i][1] - depot.lat;
-            const d = Math.sqrt(((dx * 111.32) ** 2) + ((dy * 111.32) ** 2));
-            if (d < best) best = d;
-          }
-          return best;
-        })()
-      : null;
-    const maxWaypointSnapKm = waypointSnapDistancesKm.length > 0
-      ? Math.max(...waypointSnapDistancesKm.map((x) => x.km))
-      : null;
-    const mapZoom = mapRef.current?.getZoom?.() ?? null;
-    const targetChain: [number, number][] = depot
-      ? [
-          [effectiveDepot.lng, effectiveDepot.lat],
-          ...waypoints.map((w) => [w.coordinates.lng, w.coordinates.lat] as [number, number]),
-          [effectiveDepot.lng, effectiveDepot.lat],
-        ]
-      : waypoints.map((w) => [w.coordinates.lng, w.coordinates.lat] as [number, number]);
-    const segmentEndpointDistancesKm = targetChain.length >= 2
-      ? segments.slice(0, Math.min(segments.length, targetChain.length - 1)).map((seg, i) => {
-          const segStart = seg?.[0];
-          const segEnd = seg?.[seg.length - 1];
-          const tgtStart = targetChain[i];
-          const tgtEnd = targetChain[i + 1];
-          const startKm = segStart && tgtStart
-            ? Math.sqrt((((segStart[0]-tgtStart[0])*111.32)**2)+(((segStart[1]-tgtStart[1])*111.32)**2))
-            : null;
-          const endKm = segEnd && tgtEnd
-            ? Math.sqrt((((segEnd[0]-tgtEnd[0])*111.32)**2)+(((segEnd[1]-tgtEnd[1])*111.32)**2))
-            : null;
-          return { i, startKm, endKm, segPoints: seg.length };
-        })
-      : [];
-    let maxSegmentStartErrKm: number | null = null;
-    let maxSegmentEndErrKm: number | null = null;
-    if (targetChain.length >= 2 && segments.length > 0) {
-      let startMax = 0;
-      let endMax = 0;
-      const comparable = Math.min(segments.length, targetChain.length - 1);
-      for (let i = 0; i < comparable; i += 1) {
-        const seg = segments[i];
-        const segStart = seg?.[0];
-        const segEnd = seg?.[seg.length - 1];
-        const tgtStart = targetChain[i];
-        const tgtEnd = targetChain[i + 1];
-        if (segStart && tgtStart) {
-          const startErr = Math.sqrt(
-            ((segStart[0] - tgtStart[0]) * 111.32) ** 2 +
-            ((segStart[1] - tgtStart[1]) * 111.32) ** 2
-          );
-          startMax = Math.max(startMax, startErr);
-        }
-        if (segEnd && tgtEnd) {
-          const endErr = Math.sqrt(
-            ((segEnd[0] - tgtEnd[0]) * 111.32) ** 2 +
-            ((segEnd[1] - tgtEnd[1]) * 111.32) ** 2
-          );
-          endMax = Math.max(endMax, endErr);
-        }
-      }
-      maxSegmentStartErrKm = startMax;
-      maxSegmentEndErrKm = endMax;
-    }
-    const markerVisualTipOffsetPx = 0;
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix-7',hypothesisId:'H11',location:'RouteMapPanel.tsx:route-build',message:'route segmentation summary',data:{debugSource:debugSource ?? null,debugRouteId:debugRouteId ?? null,stopsCount:stops.length,waypointsCount:waypoints.length,stopsWithoutCoords,segmentsCount:segments.length,expectedSegments,hasGeometry,geometryLength:routeGeometry?.length ?? 0,startsAtGeometryStart,endsAtGeometryEnd,endToDepotKm,endToLastWaypointKm,endToDepotPx,endToLastWaypointPx,maxSegmentStartErrKm,maxSegmentEndErrKm,mapZoom,markerVisualTipOffsetPx,depotSnapDistanceKm,maxWaypointSnapKm,waypointSnapDistancesKm,segmentEndpointDistancesKm,stopSignature:stops.map((s,i)=>`${i}:${s.id}:${s.customerId}:${s.customerLat},${s.customerLng}`)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
 
     // Build GeoJSON FeatureCollection with segmentIndex property
     const features = segments.map((coords, index) => ({
@@ -610,9 +466,6 @@ export function RouteMapPanel({
       const feat = e.features;
       if (feat && feat.length > 0) {
         const clickedIndex = feat[0].properties?.segmentIndex;
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix-3',hypothesisId:'H1',location:'RouteMapPanel.tsx:segment-click',message:'map segment click raw index',data:{clickedIndexType:typeof clickedIndex,clickedIndexValue:clickedIndex,currentHighlightedRef:highlightedSegmentRef.current},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         if (typeof clickedIndex === 'number' && Number.isFinite(clickedIndex)) {
           setHighlightedSegment(highlightedSegmentRef.current === clickedIndex ? null : clickedIndex);
         } else if (typeof clickedIndex === 'string') {
@@ -646,9 +499,6 @@ export function RouteMapPanel({
     } else {
       mapRef.current.setFilter('route-highlight', ['==', ['get', 'segmentIndex'], -1]);
     }
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix-1',hypothesisId:'H2',location:'RouteMapPanel.tsx:highlight-filter',message:'highlight filter updated',data:{highlightedSegment},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
   }, [highlightedSegment]);
 
   // Update insertion preview marker
@@ -686,26 +536,52 @@ export function RouteMapPanel({
       )
       .addTo(mapRef.current);
 
-    // Draw preview insertion line
-    const prevStop = stops[insertionPreview.insertAfterIndex];
-    const nextStop = stops[insertionPreview.insertBeforeIndex];
+    // Draw preview insertion lines (dashed)
+    // insertAfterIndex can be -1 (insert at start, after depot) or a valid stop index.
+    // insertBeforeIndex can be stops.length (insert at end, before depot return).
+    // In both edge cases, use the depot coordinates as the fallback endpoint.
+    const depotCoord: [number, number] = [depot.lng, depot.lat];
+    const candidateCoord: [number, number] = [insertionPreview.coordinates.lng, insertionPreview.coordinates.lat];
 
-    if (prevStop && nextStop) {
-      const previewCoords: [number, number][] = [
-        [prevStop.coordinates.lng, prevStop.coordinates.lat],
-        [insertionPreview.coordinates.lng, insertionPreview.coordinates.lat],
-        [nextStop.coordinates.lng, nextStop.coordinates.lat],
-      ];
+    const prevPoint: [number, number] | null =
+      insertionPreview.insertAfterIndex >= 0 && insertionPreview.insertAfterIndex < stops.length
+        ? (() => {
+            const s = stops[insertionPreview.insertAfterIndex];
+            return s.customerLng && s.customerLat ? [s.customerLng, s.customerLat] : null;
+          })()
+        : depotCoord; // -1 means "after depot"
 
+    const nextPoint: [number, number] | null =
+      insertionPreview.insertBeforeIndex >= 0 && insertionPreview.insertBeforeIndex < stops.length
+        ? (() => {
+            const s = stops[insertionPreview.insertBeforeIndex];
+            return s.customerLng && s.customerLat ? [s.customerLng, s.customerLat] : null;
+          })()
+        : depotCoord; // >= stops.length means "before depot return"
+
+    // Build line segments: prevPoint → candidate and candidate → nextPoint
+    const features: GeoJSON.Feature<GeoJSON.LineString>[] = [];
+    if (prevPoint) {
+      features.push({
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'LineString', coordinates: [prevPoint, candidateCoord] },
+      });
+    }
+    if (nextPoint) {
+      features.push({
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'LineString', coordinates: [candidateCoord, nextPoint] },
+      });
+    }
+
+    if (features.length > 0) {
       mapRef.current.addSource('preview', {
         type: 'geojson',
         data: {
-          type: 'Feature',
-          properties: {},
-          geometry: {
-            type: 'LineString',
-            coordinates: previewCoords,
-          },
+          type: 'FeatureCollection',
+          features,
         },
       });
 
@@ -735,10 +611,6 @@ export function RouteMapPanel({
         depot?.name || 'Depo',
       )
     : null;
-
-  // #region agent log
-  if (highlightedSegment !== null && segmentInfo) { fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix-1',hypothesisId:'H4',location:'RouteMapPanel.tsx:segment-info',message:'segment overlay rendered',data:{highlightedSegment,fromName:segmentInfo.fromName,toName:segmentInfo.toName},timestamp:Date.now()})}).catch(()=>{}); }
-  // #endregion
 
   return (
     <div className={`${styles.container} ${className ?? ''}`}>

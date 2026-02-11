@@ -36,7 +36,7 @@ pub async fn get_route_for_date(
     let route = sqlx::query_as::<_, Route>(
         r#"
         SELECT
-            id, user_id, crew_id, depot_id, date, status::text,
+            id, user_id, crew_id, depot_id, date, status,
             total_distance_km, total_duration_minutes,
             optimization_score,
             return_to_depot_distance_km, return_to_depot_duration_minutes,
@@ -62,7 +62,7 @@ pub async fn get_route_by_id(
     let route = sqlx::query_as::<_, Route>(
         r#"
         SELECT
-            id, user_id, crew_id, depot_id, date, status::text,
+            id, user_id, crew_id, depot_id, date, status,
             total_distance_km, total_duration_minutes,
             optimization_score,
             return_to_depot_distance_km, return_to_depot_duration_minutes,
@@ -157,13 +157,13 @@ pub async fn upsert_route(
     // Two-step upsert to handle NULL crew_id (NULL != NULL in SQL unique index)
     let existing = if let Some(cid) = crew_id {
         sqlx::query_as::<_, Route>(
-            "SELECT id, user_id, crew_id, depot_id, date, status::text, total_distance_km, total_duration_minutes, optimization_score, return_to_depot_distance_km, return_to_depot_duration_minutes, created_at, updated_at FROM routes WHERE user_id = $1 AND date = $2 AND crew_id = $3"
+            "SELECT id, user_id, crew_id, depot_id, date, status, total_distance_km, total_duration_minutes, optimization_score, return_to_depot_distance_km, return_to_depot_duration_minutes, created_at, updated_at FROM routes WHERE user_id = $1 AND date = $2 AND crew_id = $3"
         )
         .bind(user_id).bind(date).bind(cid)
         .fetch_optional(pool).await?
     } else {
         sqlx::query_as::<_, Route>(
-            "SELECT id, user_id, crew_id, depot_id, date, status::text, total_distance_km, total_duration_minutes, optimization_score, return_to_depot_distance_km, return_to_depot_duration_minutes, created_at, updated_at FROM routes WHERE user_id = $1 AND date = $2 AND crew_id IS NULL"
+            "SELECT id, user_id, crew_id, depot_id, date, status, total_distance_km, total_duration_minutes, optimization_score, return_to_depot_distance_km, return_to_depot_duration_minutes, created_at, updated_at FROM routes WHERE user_id = $1 AND date = $2 AND crew_id IS NULL"
         )
         .bind(user_id).bind(date)
         .fetch_optional(pool).await?
@@ -183,7 +183,7 @@ pub async fn upsert_route(
                 updated_at = NOW()
             WHERE id = $1
             RETURNING
-                id, user_id, crew_id, depot_id, date, status::text,
+                id, user_id, crew_id, depot_id, date, status,
                 total_distance_km, total_duration_minutes,
                 optimization_score,
                 return_to_depot_distance_km, return_to_depot_duration_minutes,
@@ -211,7 +211,7 @@ pub async fn upsert_route(
             )
             VALUES ($1, $2, $3, $4, $5, $6::route_status, $7, $8, $9, $10, $11, NOW(), NOW())
             RETURNING
-                id, user_id, crew_id, depot_id, date, status::text,
+                id, user_id, crew_id, depot_id, date, status,
                 total_distance_km, total_duration_minutes,
                 optimization_score,
                 return_to_depot_distance_km, return_to_depot_duration_minutes,
@@ -257,6 +257,7 @@ pub async fn insert_route_stop(
     stop_type: String,
     break_duration_minutes: Option<i32>,
     break_time_start: Option<NaiveTime>,
+    status: Option<&str>,
 ) -> Result<SavedRouteStop> {
     let stop = sqlx::query_as::<_, SavedRouteStop>(
         r#"
@@ -266,7 +267,7 @@ pub async fn insert_route_stop(
             distance_from_previous_km, duration_from_previous_minutes,
             status, stop_type, break_duration_minutes, break_time_start
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', $11, $12, $13)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, COALESCE($14, 'pending'), $11, $12, $13)
         RETURNING
             id, route_id, customer_id, visit_id, revision_id,
             stop_order, estimated_arrival, estimated_departure,
@@ -287,6 +288,7 @@ pub async fn insert_route_stop(
     .bind(stop_type)
     .bind(break_duration_minutes)
     .bind(break_time_start)
+    .bind(status)
     .fetch_one(pool)
     .await?;
     

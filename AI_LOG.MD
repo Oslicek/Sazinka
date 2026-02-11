@@ -1595,3 +1595,383 @@ Při prázdném PSČ geocoding dotaz obsahoval `", , "` (double comma), což zp�
 
 #### Poznámka ke geokódování Ladná/Břeclav
 Uživatel potvrdil, že adresa „Masarykova 71, Břeclav" geokódovaná na Ladnou je **v pořádku** — Masarykova ulice v Břeclavi neexistuje, existuje pouze v Ladné (dříve součást Břeclavi). Nominatim výsledek je tedy správný.
+
+## 2026-02-10T22:30:00Z — Cursor Agent (claude-4.6-opus-max-thinking)
+
+### Oprava: Chybějící travel data kolem pauzy + unassigned badge
+
+#### Nahlášený problém
+
+Uživatel po optimalizaci trasy (Veronika Černý → Jan Kučera → KomínServis → Pauza → TeploPlus → D1) reportoval:
+- **„Cesty před a po pauze nejsou dopočítány"** — segmenty KomínServis→Pauza a Pauza→TeploPlus zobrazují "— — —" (všechna data chybí)
+- TeploPlus zobrazuje badge "NAPLÁNOVÁNO", ale nemá řádek "Vypočítáno" (žádné ETA/ETD)
+- Segment TeploPlus→D1 zobrazuje "— · 45.9 km · 0h 38min" (distance OK, čas chybí)
+
+#### Analýza
+
+**Problém 1 — Break stop nemá travel data:**
+V `jobs.rs` (řádek 464-465) a `route.rs` (řádek 315-316) měl break stop:
+```rust
+distance_from_previous_km: None,
+duration_from_previous_minutes: None,
+```
+Pauza probíhá na místě předchozí zastávky (posádka nikam nejede), takže správné hodnoty jsou 0 km / 0 min.
+
+**Problém 2 — TeploPlus je unassigned ale zobrazuje se jako "NAPLÁNOVÁNO":**
+VRP solver s point time window `[14:00, 14:00]` nemůže TeploPlus zařadit — pauza končí v 13:45, cesta z Boskovice do Břeclavi trvá ~40 min, takže příjezd v 14:00 je nemožný. Solver označí TeploPlus jako `unassigned`.
+
+Frontend v `PlanningInbox.tsx` správně re-přidává unassigned zastávky se `status: 'unassigned'` a `estimatedArrival: null` / `distanceFromPreviousKm: null`. Ale badge funkce `getStatusBadge()` v `RouteDetailTimeline.tsx` kontroluje pouze `revisionStatus` (z DB), ne `status` (runtime stav). Protože TeploPlus má `scheduledTimeStart/End` a `revisionStatus` není 'confirmed'/'completed'/'cancelled', zobrazí se jako "Naplánováno".
+
+**Problém 3 — Segment Pauza→TeploPlus nemá data:**
+TeploPlus je unassigned → frontend ho přidává s `distanceFromPreviousKm: null` a `durationFromPreviousMinutes: null` → segment zobrazuje "— — —".
+
+#### Provedené opravy
+
+**1. Break travel data — `jobs.rs` + `route.rs`:**
+```rust
+// Dříve:
+distance_from_previous_km: None,
+duration_from_previous_minutes: None,
+// Nyní:
+distance_from_previous_km: Some(0.0),
+duration_from_previous_minutes: Some(0),
+```
+Opraveno v obou handlerech (`jobs.rs` řádek 465-466, `route.rs` řádek 315-316).
+
+**2. Badge pro unassigned zastávky — `RouteDetailTimeline.tsx`:**
+```typescript
+// Dříve:
+const badge = isBreak 
+  ? { label: 'Pauza', className: styles.badgeBreak }
+  : getStatusBadge(stop.revisionStatus, hasScheduledTime);
+// Nyní:
+const badge = isBreak 
+  ? { label: 'Pauza', className: styles.badgeBreak }
+  : stop.status === 'unassigned'
+    ? { label: 'Nezařazeno', className: styles.badgeUnassigned }
+    : getStatusBadge(stop.revisionStatus, hasScheduledTime);
+```
+
+**3. Vizuální styl unassigned zastávky — `RouteDetailTimeline.tsx` + `.module.css`:**
+- Stop karta: přidána CSS třída `stopCardUnassigned` → `opacity: 0.65`, `border-style: dashed`, oranžový border
+- Badge: nový styl `badgeUnassigned` → oranžové pozadí s textem "Nezařazeno"
+
+#### Soubory upravené
+
+| Soubor | Změna |
+|--------|-------|
+| `worker/src/handlers/jobs.rs` | Break stop: `distance_from_previous_km: Some(0.0)`, `duration_from_previous_minutes: Some(0)` |
+| `worker/src/handlers/route.rs` | Break stop: totéž |
+| `apps/web/src/components/planner/RouteDetailTimeline.tsx` | Badge check pro `status === 'unassigned'` → "Nezařazeno"; CSS třída `stopCardUnassigned` |
+| `apps/web/src/components/planner/RouteDetailTimeline.module.css` | Nové styly `.badgeUnassigned` a `.stopCardUnassigned` |
+
+#### Stav
+
+- ✅ Backend opravy hotové (jobs.rs, route.rs)
+- ✅ Frontend opravy hotové (badge, vizuální styl)
+- ✅ Žádné linter errory
+- ⏳ **Čeká na build a restart** — `cargo build --release` nebylo spuštěno (uživatel zastavil práci pro zápis do AI_LOG)
+
+#### Poznámka k unassigned zastávkám
+
+Segment Pauza→TeploPlus bude i po opravě zobrazovat "— — —" protože unassigned zastávky nemají travel data ze solveru. Pro výpočet by bylo potřeba volat Valhalla API zvlášť, což je možné vylepšení pro budoucnost. Aktuální řešení (dashed karta + badge "Nezařazeno") jasně informuje uživatele, že zastávka nebyla solverem zařazena.
+
+## 2026-02-11T00:30:00Z — Cursor Agent (claude-4.6-opus-max-thinking)
+
+### Plán: Lazy loading stránek
+
+Uživatel požádal o zavedení lazy loadingu stránek pro zkrácení počátečního load time aplikace.
+
+#### Aktuální stav
+
+- `apps/web/src/routes/index.tsx` importuje **17 stránek eager** (řádky 10–27). Celý kód všech stránek je v jednom bundlu.
+- V projektu se nepoužívá `React.lazy`, `Suspense`, ani žádná forma code-splittingu.
+- Neexistuje sdílený `PageLoader` / spinner komponent — každá stránka si definuje vlastní.
+- TanStack Router v1.93 podporuje lazy route loading.
+- Vite nemá manuální chunk konfiguraci; dynamické `import()` automaticky vytvoří separátní chunky.
+
+#### Rozhodnutí uživatele
+
+1. **Eager** zůstanou jen 2 stránky:
+   - `Login` — první co uživatel vidí
+   - `Calendar` — landing page po přihlášení
+2. **Lazy** bude 15 stránek (včetně `Register` — použije se jen jednou při registraci, pak je mrtvá váha).
+3. `Suspense` boundary bude v `layoutRoute` (obaluje všechny autentizované stránky). `Register` má vlastní `Suspense` wrapper v `registerRoute`, protože leží mimo `layoutRoute`.
+
+#### Plán implementace (4 kroky)
+
+1. Vytvořit sdílený `PageLoader` komponent (`apps/web/src/components/PageLoader.tsx` + `.module.css`).
+2. Nahradit 15 eager importů za `React.lazy()` v `routes/index.tsx`.
+3. Obalit `<Outlet />` v `layoutRoute` do `<Suspense fallback={<PageLoader />}>`. Přidat `Suspense` wrapper do `registerRoute`.
+4. Ověřit `pnpm build` — Vite musí vytvořit více chunků.
+
+#### Poznámka k menu
+
+Uživatel chtěl přejmenovat menu items ("Fronta" → "Inbox", "Plán dne" → "Plán") a přeřadit pořadí. Kód v `Layout.tsx` (řádky 55–63, 110–118) už odpovídá požadavkům. Screenshot pravděpodobně ukazoval starý build v browseru.
+
+#### Stav
+
+- ⏳ Plán připraven, čeká na implementaci.
+
+## 2026-02-11T09:30:00Z — Cursor Agent (claude-4.6-opus-max-thinking)
+
+### Opravy break travel data + unassigned badge persistence (build + restart)
+
+Byly nasazeny opravy z předchozí session:
+1. **Break stop travel data** — `jobs.rs` + `route.rs`: `distance_from_previous_km: Some(0.0)`, `duration_from_previous_minutes: Some(0)`
+2. **Unassigned status persistence** — celý save pipeline:
+   - Frontend `SaveRouteStop` interface: nové pole `status?: string`
+   - `PlanningInbox.tsx` auto-save: posílá `status: 'unassigned'` pro unassigned zastávky
+   - Backend `SaveRouteStop` struct: nové pole `status: Option<String>`
+   - DB insert query (`route.rs`): `COALESCE($14, 'pending')` místo hardcoded `'pending'`
+
+Worker přebuilděn (debug), Docker kontejnery spuštěny, aplikace restartována.
+
+## 2026-02-11T10:00:00Z — Cursor Agent (claude-4.6-opus-max-thinking)
+
+### Nahlášené problémy (batch 2026-02-11)
+
+#### 1. UI: Filtry v Inboxu — přejmenování + redesign
+
+**Aktuální stav:**
+- Skupina "ČAS/PRIORITA" s volbami "Po termínu / Do 7 dnů / Do 30 dnů"
+- Tlačítko "Pokročilé" vypadá stejně jako ostatní filtry (nelze odlišit)
+- Pokročilé filtry (AND/OR logika, problémy) mají nepřehledné UI
+
+**Požadavek:**
+- Přejmenovat "ČAS/PRIORITA" → "NOVÁ REVIZE" s volbami: Po termínu / Do 7 dnů / Do 30 dnů / Kdykoliv
+- Tlačítko "Pokročilé" musí mít odlišný design od filtrových tlačítek
+- Navrhnout přepracování pokročilých filtrů (lepší UX)
+
+#### 2. UI: Detail zákazníka — dvousloupcový layout
+
+**Aktuální stav:** Jednosloupcový layout (kontakt, adresa, termín, revize pod sebou).
+
+**Požadavek:** Dvousloupcový layout:
+- **Levý sloupec:** Kontakty (telefon, email) + Adresa
+- **Pravý sloupec:** Domluvený termín + Revize nejpozději
+
+#### 3. Bug: Špendlíky na mapě se zobrazují u depa místo u zákazníka
+
+**Pozorování:**
+- Po přidání zákazníků do trasy se špendlíky zobrazují přibližně v Brně-Kuřimi (kde je depo), nikoliv na adresách zákazníků
+- Správně je umístěn pouze první zákazník (Jan Kučera → Kuřim)
+- Před přidáním do trasy je kulatý pulsující marker umístěn správně
+- Po optimalizaci se špendlíky přesunou na správná místa
+
+**Pravděpodobná příčina:** `handleAddToRoute` v `PlanningInbox.tsx` nenastavuje správně `customerLat`/`customerLng` při vytváření `SavedRouteStop`.
+
+#### 4. Bug: Optimalizace nerespektuje časová okna (regrese)
+
+**Pozorování po optimalizaci (6 zastávek):**
+
+| Zastávka | Dohodnuto | Vypočítáno | Problém |
+|----------|-----------|------------|---------|
+| Veronika Černý | 08:00-09:00 | 07:44-08:44 | ⚠️ Příjezd 16 min brzy |
+| Radek Černý | 08:00-12:00 | 09:19-10:19 | ✅ V okně |
+| TeploPlus | 14:00-15:00 | 10:34-11:34 | ❌ 3.5h brzy! |
+| KomínServis | 12:00-13:00 | 12:35-14:20 | ❌ 35 min pozdě |
+| Pauza | 13:00 | 13:00 | ✅ OK |
+| Jan Kučera | 10:00-11:00 | 14:42-15:42 | ❌ 4.5h pozdě! |
+
+Solver zjevně nerespektuje časová okna — optimalizuje pouze na vzdálenost/cestovní čas, řadí zastávky geograficky bez ohledu na dohodnuté časy. Toto dříve fungovalo.
+
+**Stav:** ✅ Opraveno
+
+### Provedené opravy
+
+#### Bug #3: Špendlíky na mapě u depa
+
+**Root cause:** `fetchRouteGeometry` v `PlanningInbox.tsx` posílal VŠECHNY zastávky do Valhalla včetně break stopů (pauza). Break stopy mají `customerLat=null, customerLng=null`, které se přeměnily na `lat=0, lng=0` (Guinejský záliv). To kompletně zdeformovalo geometrii trasy z Valhalla. Následně `splitGeometryIntoSegments` nemohl správně přiřadit body k zastávkám a markery skončily na špatných pozicích.
+
+**Oprava:** `PlanningInbox.tsx` — `fetchRouteGeometry` nyní filtruje break stopy:
+```typescript
+const routableStops = stops.filter(
+  (s) => s.stopType !== 'break' && s.customerLat != null && s.customerLng != null
+);
+```
+
+#### Bug #4: Optimalizace nerespektuje časová okna
+
+**Root cause:** Heuristický fallback `build_solution` v `worker/src/services/vrp/mod.rs` nepracoval s time windows:
+1. Neřadil zastávky podle oken (to bylo opraveno dříve v `nearest_neighbor`)
+2. Ale nikdy **nečekal**, pokud posádka dorazila před začátkem okna — příjezd = čistý kumulativní čas (cestování + servis)
+3. Nehlásel opožděné příjezdy
+
+**Oprava:** `build_solution` nyní:
+- Pokud `arrival_time < window.start` → čeká do začátku okna, počítá waiting time
+- Pokud `arrival_time > window.end` → emituje warning `LATE_ARRIVAL`
+- Přidána helper funkce `time_diff_seconds`
+
+#### UI #1: Filtry — přejmenování + redesign
+
+- **Přejmenováno** "ČAS/PRIORITA" → "NOVÁ REVIZE"
+- **Přidáno** tlačítko "Kdykoliv" (vymaže všechny časové filtry)
+- **Přidána** funkce `clearTimeFilters`
+- **Redesign** tlačítka "Pokročilé" — dashed border, italic, transparentní background (vizuálně odlišné od filter chipů)
+- **Přejmenováno** "Logika časových podmínek" → "Logika revizních podmínek" (konzistence)
+
+#### UI #2: Detail zákazníka — dvousloupcový layout
+
+- **Levý sloupec:** Kontakty (telefon, email) + Adresa
+- **Pravý sloupec:** Domluvený termín + Revize nejpozději
+- **CSS:** Nové třídy `.detailColumns`, `.detailColumnLeft`, `.detailColumnRight` (CSS Grid 1fr 1fr)
+
+### Soubory upravené
+
+| Soubor | Změna |
+|--------|-------|
+| `apps/web/src/pages/PlanningInbox.tsx` | Filter break stops z geometry, přejmenování filtrů, "Kdykoliv" button, `clearTimeFilters` |
+| `apps/web/src/pages/PlanningInbox.module.css` | Redesign `.advancedToggleButton` (dashed, italic, hover efekt) |
+| `apps/web/src/pages/planningInboxFilters.ts` | "Čas" → "Nová revize" v summary textu |
+| `apps/web/src/components/planner/CandidateDetail.tsx` | Dvousloupcový layout (Contact+Address vlevo, Termín+Revize vpravo) |
+| `apps/web/src/components/planner/CandidateDetail.module.css` | `.detailColumns`, `.detailColumnLeft`, `.detailColumnRight` |
+| `worker/src/services/vrp/mod.rs` | `build_solution` respektuje time windows (waiting + warnings), `time_diff_seconds` helper |
+
+### Stav aplikace
+
+- ✅ Worker: debug build, běží
+- ✅ Frontend: Vite dev server na http://localhost:5173/ (HMR aktivní)
+- ✅ Docker: PostgreSQL, NATS, Nominatim, Valhalla — vše běží
+
+## 2026-02-11T11:15:00Z — Cursor Agent (claude-4.6-opus-max-thinking)
+
+### Oprava: Optimalizace stále ignoruje časová okna (root cause nalezena)
+
+#### Nahlášený problém
+
+Po předchozích opravách (v0.18.4: break payload fix, v0.18.5: point time windows) optimalizace stále nerespektuje dohodnutá časová okna. Vrp-pragmatic solver běží (ne fallback heuristika), ale výsledné časy neodpovídají dohodnutým oknům.
+
+#### Root cause
+
+**Data flow mismatch:** Frontend má časová okna na saved route stops (`scheduledTimeStart`, `scheduledTimeEnd`), ale `RoutePlanJobRequest` je nepředával. Backend se spoléhal výhradně na DB lookup z tabulek `revisions` a `visits`:
+
+```
+Frontend (routeStops)         RoutePlanJobRequest       Backend (jobs.rs)
+┌───────────────────┐         ┌─────────────────┐      ┌─────────────────────────┐
+│ stop.scheduledTime│ ──X──>  │ customerIds     │ ──>  │ load_scheduled_time_     │
+│ Start = "14:00"   │         │ date            │      │ window() → revisions DB │
+│ End   = "15:00"   │         │ startLocation   │      │ → visits DB             │
+└───────────────────┘         │ crewId          │      │ → (None, None) ❌       │
+                              │ (NO time windows)│      └─────────────────────────┘
+                              └─────────────────┘
+```
+
+Pokud v tabulce `revisions` nebo `visits` neexistoval odpovídající záznam pro daného zákazníka + datum + status, optimalizátor dostal **žádná časová okna** a řadil zastávky čistě podle vzdálenosti/času.
+
+#### Provedená oprava
+
+**1. Backend — nový typ `CustomerTimeWindow`** (`worker/src/types/job.rs`):
+```rust
+pub struct CustomerTimeWindow {
+    pub customer_id: Uuid,
+    pub start: String,  // "HH:MM"
+    pub end: String,    // "HH:MM"
+}
+```
+
+**2. Backend — rozšíření `RoutePlanJobRequest`** (`worker/src/types/job.rs`):
+```rust
+pub struct RoutePlanJobRequest {
+    // ... existující pole ...
+    #[serde(default)]
+    pub time_windows: Vec<CustomerTimeWindow>,
+}
+```
+
+**3. Backend — prioritizace frontend TW** (`worker/src/handlers/jobs.rs`):
+`load_customers_for_route` nyní přijímá `frontend_time_windows` parametr.
+Priorita:
+1. Frontend-provided time windows (co uživatel vidí v UI)
+2. `revisions` tabulka (DB zdroj)
+3. `visits` tabulka (legacy fallback)
+
+S logováním: `"Customer X: using frontend time window 14:00-15:00"` nebo `"invalid frontend TW, falling back to DB"`.
+
+**4. Frontend — extrakce TW z route stops** (`PlanningInbox.tsx` + `Planner.tsx`):
+```typescript
+const timeWindows = customerStops
+  .filter((s) => s.scheduledTimeStart && s.scheduledTimeEnd)
+  .map((s) => ({
+    customerId: s.customerId as string,
+    start: s.scheduledTimeStart!,
+    end: s.scheduledTimeEnd!,
+  }));
+
+await routeService.submitRoutePlanJob({
+  customerIds, date, startLocation, crewId,
+  timeWindows: timeWindows.length > 0 ? timeWindows : undefined,
+});
+```
+
+**5. Frontend — TypeScript typ** (`routeService.ts`):
+```typescript
+interface CustomerTimeWindow {
+  customerId: string;
+  start: string;  // "HH:MM"
+  end: string;    // "HH:MM"
+}
+
+interface RoutePlanJobRequest {
+  // ... existující pole ...
+  timeWindows?: CustomerTimeWindow[];
+}
+```
+
+#### Oprava UI: Tlačítko "Pokročilé filtry"
+
+- Odstraněn `font-style: italic` (vrácen normální řez písma)
+- Barva textu změněna na `var(--color-primary)` místo `var(--color-text-secondary)`
+- Hover efekt: `background: rgba(37, 99, 235, 0.06)` + `border-style: solid`
+
+#### Testy
+
+- ✅ 49/49 VRP solver testů prošlo
+- ✅ `cargo build` úspěšný
+- ✅ Worker restartován
+- ✅ Frontend HMR aktivní
+
+#### Soubory upravené
+
+| Soubor | Změna |
+|--------|-------|
+| `worker/src/types/job.rs` | Nový `CustomerTimeWindow` typ, `time_windows` pole v `RoutePlanJobRequest` |
+| `worker/src/handlers/jobs.rs` | `load_customers_for_route` přijímá frontend TW, prioritizace FE → revisions → visits |
+| `apps/web/src/services/routeService.ts` | `CustomerTimeWindow` interface, `timeWindows` v `RoutePlanJobRequest` + `submitRoutePlanJob` |
+| `apps/web/src/pages/PlanningInbox.tsx` | Extrakce TW z route stops a předání do `submitRoutePlanJob` |
+| `apps/web/src/pages/Planner.tsx` | Totéž pro Planner page |
+| `apps/web/src/pages/PlanningInbox.module.css` | `.advancedToggleButton`: odstraněn italic, barva na primary |
+
+## 2026-02-02T11:50:00Z — Cursor Agent (claude-4.6-opus-max-thinking)
+
+### Regression guard tests + PROJECT_SOLVER.MD documentation
+
+User confirmed the time window fix is working. Added comprehensive tests and documentation to prevent future regressions.
+
+**New tests (Rust — `worker/src/types/job.rs`, 6 tests):**
+- `test_customer_time_window_serializes_to_camel_case` — guards camelCase serde for `CustomerTimeWindow`
+- `test_customer_time_window_deserializes_from_camel_case` — guards deserialization from frontend JSON
+- `test_route_plan_job_request_with_time_windows_deserializes` — guards full request with `timeWindows` field
+- `test_route_plan_job_request_without_time_windows_uses_default` — guards `#[serde(default)]` for backward compat
+- `test_route_plan_job_request_with_empty_time_windows_array` — guards explicit empty array
+- `test_route_plan_job_request_roundtrip_preserves_time_windows` — guards serialize → deserialize roundtrip
+
+**New tests (Rust — `worker/src/services/vrp/mod.rs`, 2 tests):**
+- `test_heuristic_waits_for_hard_time_window` — guards "wait if early" logic in heuristic fallback
+- `test_heuristic_warns_on_late_arrival` — guards LATE_ARRIVAL warning emission
+
+**New tests (TypeScript — `apps/web/src/services/routeService.test.ts`, 6 tests):**
+- `submits job without timeWindows when none are provided` — guards omission of field
+- `includes timeWindows in payload when provided` — guards correct pass-through
+- `does not include timeWindows when array is empty` — guards empty array exclusion
+- `includes crewId when provided` — guards crew pass-through
+- `throws on error response` — guards error handling
+- `CustomerTimeWindow type shape` — guards interface contract
+
+**New documentation:**
+- Created `PROJECT_SOLVER.MD` — comprehensive solver documentation (architecture, data flow, time window mapping, configuration, module structure, test coverage matrix, key invariants, performance, troubleshooting)
+- Updated `PROJECT_CONTEXT.MD` — replaced inline solver docs with reference to `PROJECT_SOLVER.MD`, updated Related Documentation section
+
+**Test results:**
+- Rust: 51 VRP tests pass, 21 job tests pass (all green)
+- TypeScript: 6 routeService tests pass

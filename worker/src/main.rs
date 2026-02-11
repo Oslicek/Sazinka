@@ -4,6 +4,7 @@
 
 mod auth;
 mod config;
+mod defaults;
 mod db;
 mod handlers;
 mod services;
