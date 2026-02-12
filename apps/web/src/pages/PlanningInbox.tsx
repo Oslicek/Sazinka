@@ -146,6 +146,9 @@ export function PlanningInbox() {
   
   // Timeline view toggle (planning = proportional, compact = classic)
   const [timelineView, setTimelineView] = useState<TimelineView>('planning');
+  
+  // Map collapse/expand state
+  const [mapMode, setMapMode] = useState<'normal' | 'collapsed' | 'fullscreen'>('normal');
 
   // Route state
   const [routeStops, setRouteStops] = useState<SavedRouteStop[]>([]);
@@ -637,13 +640,15 @@ export function PlanningInbox() {
     async function calculateBatch() {
       try {
         const response = await insertionService.calculateBatchInsertion({
-          routeStops: routeStops.map((stop) => ({
-            id: stop.id,
-            name: stop.customerName ?? '',
-            coordinates: { lat: stop.customerLat!, lng: stop.customerLng! },
-            arrivalTime: stop.estimatedArrival ?? undefined,
-            departureTime: stop.estimatedDeparture ?? undefined,
-          })),
+          routeStops: routeStops
+            .filter((s) => s.stopType === 'customer' && s.customerLat && s.customerLng)
+            .map((stop) => ({
+              id: stop.id,
+              name: stop.customerName ?? '',
+              coordinates: { lat: stop.customerLat!, lng: stop.customerLng! },
+              arrivalTime: stop.estimatedArrival ?? undefined,
+              departureTime: stop.estimatedDeparture ?? undefined,
+            })),
           depot: { lat: depot!.lat, lng: depot!.lng },
           candidates: validCandidates.map((c) => ({
             id: c.id,
@@ -2200,22 +2205,54 @@ export function PlanningInbox() {
     }
     
     return (
-      <div className={styles.mapPanel}>
-        <div className={styles.mapSection}>
-          <RouteMapPanel
-            stops={routeStops}
-            depot={currentDepot}
-            routeGeometry={routeGeometry}
-            highlightedStopId={selectedCandidateId}
-            highlightedSegment={highlightedSegment}
-            debugSource="inbox-main"
-            debugRouteId={loadedRouteId}
-            selectedCandidate={selectedCandidateForMap}
-            insertionPreview={insertionPreviewForMap}
-            onSegmentHighlight={setHighlightedSegment}
-            isLoading={isLoadingRoute}
-          />
-        </div>
+      <div className={`${styles.mapPanel} ${mapMode === 'fullscreen' ? styles.mapPanelFullscreen : ''}`}>
+        {mapMode !== 'collapsed' && (
+          <div className={`${styles.mapSection} ${mapMode === 'fullscreen' ? styles.mapSectionFullscreen : ''}`}>
+            <RouteMapPanel
+              stops={routeStops}
+              depot={currentDepot}
+              routeGeometry={routeGeometry}
+              highlightedStopId={selectedCandidateId}
+              highlightedSegment={highlightedSegment}
+              debugSource="inbox-main"
+              debugRouteId={loadedRouteId}
+              selectedCandidate={selectedCandidateForMap}
+              insertionPreview={insertionPreviewForMap}
+              onSegmentHighlight={setHighlightedSegment}
+              isLoading={isLoadingRoute}
+            />
+            <div className={styles.mapControls}>
+              <button
+                type="button"
+                className={styles.mapControlButton}
+                onClick={() => setMapMode(mapMode === 'fullscreen' ? 'normal' : 'fullscreen')}
+                title={mapMode === 'fullscreen' ? 'Zmenšit mapu' : 'Zvětšit mapu na celou stránku'}
+              >
+                {mapMode === 'fullscreen' ? '⊟' : '⊞'}
+              </button>
+              <button
+                type="button"
+                className={styles.mapControlButton}
+                onClick={() => setMapMode('collapsed')}
+                title="Skrýt mapu"
+              >
+                ▲
+              </button>
+            </div>
+          </div>
+        )}
+        {mapMode === 'collapsed' && (
+          <div className={styles.mapCollapsedBar}>
+            <button
+              type="button"
+              className={styles.mapExpandButton}
+              onClick={() => setMapMode('normal')}
+            >
+              ▼ Zobrazit mapu
+            </button>
+          </div>
+        )}
+        {mapMode !== 'fullscreen' && (
         <div className={styles.routeStopSection}>
           <div className={styles.timelineHeader}>
             <TimelineViewToggle value={timelineView} onChange={setTimelineView} />
@@ -2279,6 +2316,7 @@ export function PlanningInbox() {
             />
           )}
         </div>
+        )}
       </div>
     );
   };

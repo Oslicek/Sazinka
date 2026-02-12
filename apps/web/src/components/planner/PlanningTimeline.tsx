@@ -84,9 +84,9 @@ interface PlanningTimelineProps {
 // Constants
 // ---------------------------------------------------------------------------
 
-const PIXELS_PER_MINUTE = 2.5;
-const MIN_ITEM_HEIGHT = 24;
-const MIN_GAP_HEIGHT = 32;
+const PIXELS_PER_MINUTE = 1.25;
+const MIN_ITEM_HEIGHT = 20;
+const MIN_GAP_HEIGHT = 24;
 
 function heightForDuration(minutes: number, minH = MIN_ITEM_HEIGHT): number {
   return Math.max(minH, Math.round(minutes * PIXELS_PER_MINUTE));
@@ -95,6 +95,12 @@ function heightForDuration(minutes: number, minH = MIN_ITEM_HEIGHT): number {
 function formatTime(time: string | null): string {
   if (!time) return '--:--';
   return time.substring(0, 5);
+}
+
+/** Parse "HH:MM" to total minutes from midnight. */
+function parseHm(time: string): number {
+  const parts = time.split(':').map(Number);
+  return (parts[0] ?? 0) * 60 + (parts[1] ?? 0);
 }
 
 function formatDurationHm(minutes: number): string {
@@ -301,6 +307,75 @@ export function PlanningTimeline({
   // Keep a running stop index counter for mapping timeline items to stop indices
   let stopIndex = -1;
 
+  // Compute hour labels from workday start to workday end
+  const hourLabels = useMemo(() => {
+    const startMin = parseHm(workdayStart);
+    const endMin = parseHm(workdayEnd);
+    const labels: { hour: number; label: string }[] = [];
+    // Start from the next full hour after workday start
+    const firstHour = Math.ceil(startMin / 60);
+    const lastHour = Math.floor(endMin / 60);
+    for (let h = firstHour; h <= lastHour; h++) {
+      labels.push({ hour: h, label: `${String(h).padStart(2, '0')}:00` });
+    }
+    return labels;
+  }, [workdayStart, workdayEnd]);
+
+  // Compute cumulative pixel offsets for each timeline item to position hour labels
+  const itemOffsets = useMemo(() => {
+    const offsets: { startPx: number; endPx: number; startMin: number; endMin: number }[] = [];
+    let px = 0;
+    for (const item of timelineItems) {
+      const sMin = item.startTime ? parseHm(item.startTime) : 0;
+      const eMin = item.endTime ? parseHm(item.endTime) : sMin;
+      let h: number;
+      if (item.type === 'depot') {
+        h = 0;
+      } else if (item.type === 'gap') {
+        h = heightForDuration(item.durationMinutes, MIN_GAP_HEIGHT);
+      } else if (item.type === 'travel') {
+        h = heightForDuration(item.durationMinutes, 8);
+      } else {
+        h = heightForDuration(item.durationMinutes);
+      }
+      offsets.push({ startPx: px, endPx: px + h, startMin: sMin, endMin: eMin });
+      px += h;
+    }
+    return offsets;
+  }, [timelineItems]);
+
+  // Map hour → pixel offset by interpolating within timeline items
+  const hourPositions = useMemo(() => {
+    const positions: { label: string; px: number }[] = [];
+    for (const { hour, label } of hourLabels) {
+      const targetMin = hour * 60;
+      // Find the timeline item that spans this minute
+      let px: number | null = null;
+      for (const off of itemOffsets) {
+        if (off.startMin <= targetMin && off.endMin >= targetMin && off.endMin > off.startMin) {
+          const frac = (targetMin - off.startMin) / (off.endMin - off.startMin);
+          px = off.startPx + frac * (off.endPx - off.startPx);
+          break;
+        }
+      }
+      if (px === null) {
+        // Fallback: find closest item
+        for (const off of itemOffsets) {
+          if (off.startMin >= targetMin) {
+            px = off.startPx;
+            break;
+          }
+        }
+      }
+      if (px != null) {
+        positions.push({ label, px });
+      }
+    }
+    return positions;
+  }, [hourLabels, itemOffsets]);
+
+  const totalTimelineHeight = itemOffsets.length > 0 ? itemOffsets[itemOffsets.length - 1].endPx : 0;
+
   if (stops.length === 0) {
     return (
       <div className={styles.container}>
@@ -314,6 +389,22 @@ export function PlanningTimeline({
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
           <div className={styles.timeline}>
+            <div className={styles.timelineWithLabels}>
+              {/* Hour labels gutter */}
+              <div className={styles.hourGutter} style={{ height: totalTimelineHeight }}>
+                {hourPositions.map(({ label, px }) => (
+                  <div
+                    key={label}
+                    className={styles.hourLabel}
+                    style={{ top: px }}
+                  >
+                    <span className={styles.hourText}>{label}</span>
+                    <div className={styles.hourTick} />
+                  </div>
+                ))}
+              </div>
+              {/* Timeline content */}
+              <div className={styles.timelineContent}>
             {timelineItems.map((item) => {
               switch (item.type) {
                 case 'depot':
@@ -404,6 +495,8 @@ export function PlanningTimeline({
                   return null;
               }
             })}
+              </div>
+            </div>
           </div>
         </SortableContext>
       </DndContext>

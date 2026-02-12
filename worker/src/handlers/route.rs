@@ -1806,11 +1806,24 @@ pub async fn handle_recalculate(
             continue;
         }
 
-        // Build locations: depot (0), then stops (1..N)
+        // Build locations for Valhalla: depot (0), then only non-break stops.
+        // Break stops have no physical location (lat/lng = 0,0) and would cause
+        // Valhalla to fail, falling back to the inaccurate mock router.
+        // sequential_schedule already treats breaks as zero-travel, so their
+        // matrix entries are never read – we assign them a dummy index (0 = depot).
         let mut locations: Vec<Coordinates> = Vec::with_capacity(1 + payload.stops.len());
         locations.push(payload.depot);
+
+        let mut stop_matrix_indices: Vec<usize> = Vec::with_capacity(payload.stops.len());
         for s in &payload.stops {
-            locations.push(s.coordinates);
+            if s.stop_type == "break" {
+                // Breaks don't participate in routing; dummy index (never read)
+                stop_matrix_indices.push(0);
+            } else {
+                let idx = locations.len();
+                locations.push(s.coordinates);
+                stop_matrix_indices.push(idx);
+            }
         }
 
         // Fetch routing matrix
@@ -1855,8 +1868,6 @@ pub async fn handle_recalculate(
                 }
             })
             .collect();
-
-        let stop_matrix_indices: Vec<usize> = (1..=payload.stops.len()).collect();
 
         let input = ScheduleInput {
             depot_matrix_idx: 0,

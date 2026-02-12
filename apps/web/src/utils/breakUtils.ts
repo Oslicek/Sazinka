@@ -80,6 +80,9 @@ export function calculateBreakPosition(
   interface PositionCandidate {
     position: number;           // 0-based insert index among customer stops
     breakStartMinutes: number;  // when the break would actually begin
+    gapStart: number;           // when the gap opens (previous stop ends)
+    gapEnd: number;             // when the gap closes (next stop starts)
+    chronoFit: boolean;         // break start falls chronologically within the gap
     distanceKm: number;
     timeValid: boolean;
     kmValid: boolean;
@@ -112,9 +115,16 @@ export function calculateBreakPosition(
     const kmValid = cumulativeKm >= breakSettings.breakMinKm && cumulativeKm <= breakSettings.breakMaxKm;
     const drivingValid = !enforceDrivingBreakRule || cumulativeDrivingMinutes <= maxDrivingMinutes;
 
+    // Does the break start time fall chronologically within this gap?
+    // e.g. break at 11:30 fits in gap 09:00–12:00, but NOT in gap 07:00–08:00.
+    const chronoFit = breakStart >= gapStart && (gapEnd === Infinity || breakStart < gapEnd);
+
     candidates.push({
       position: pos,
       breakStartMinutes: breakStart,
+      gapStart,
+      gapEnd,
+      chronoFit,
       distanceKm: cumulativeKm,
       timeValid,
       kmValid,
@@ -169,10 +179,16 @@ export function calculateBreakPosition(
       });
       warnings.push(`Pauza je mimo rozmezí km (nastaveno ${breakSettings.breakMinKm}-${breakSettings.breakMaxKm} km)`);
     } else {
-      // No time-valid position — pick closest to break window
+      // No time-valid position — pick closest to break window,
+      // preferring positions where the break chronologically fits in the gap.
+      // Without this, a break at 11:30 could be placed before an 08:00 stop.
       const drivingCompliant = candidates.filter((c) => c.drivingValid);
       const pool = drivingCompliant.length > 0 ? drivingCompliant : candidates;
       bestCandidate = pool.reduce((best, current) => {
+        // Prefer chronologically fitting positions over non-fitting ones
+        if (current.chronoFit && !best.chronoFit) return current;
+        if (!current.chronoFit && best.chronoFit) return best;
+
         const bestDiff = Math.min(
           Math.abs(best.breakStartMinutes - breakWindowStart),
           Math.abs(best.breakStartMinutes - breakWindowEnd)

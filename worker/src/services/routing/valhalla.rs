@@ -62,8 +62,9 @@ impl ValhallaClient {
             .map(|c| ValhallaLocation { 
                 lat: c.lat, 
                 lon: c.lng,
-                // Large radius for mock geocoding which generates random coordinates
-                radius: Some(50000), // 50km snapping radius
+                // 500m radius – sufficient for Nominatim-geocoded coordinates
+                // that may be slightly off-road (building centroid vs road edge)
+                radius: Some(500),
             })
             .collect();
 
@@ -72,13 +73,7 @@ impl ValhallaClient {
             targets: locs,
             costing: "auto".to_string(),
             units: "kilometers".to_string(),
-            costing_options: Some(CostingOptions {
-                auto: AutoCostingOptions {
-                    // Increase search radius for snapping to roads (default is ~35m)
-                    // This helps with coordinates that are slightly off-road
-                    search_cutoff: Some(50000), // 50km search radius
-                },
-            }),
+            costing_options: None,
         }
     }
 
@@ -89,7 +84,7 @@ impl ValhallaClient {
             .map(|c| ValhallaLocation { 
                 lat: c.lat, 
                 lon: c.lng,
-                radius: Some(50000), // 50km snapping radius for mock geocoding
+                radius: Some(500),
             })
             .collect();
 
@@ -97,11 +92,7 @@ impl ValhallaClient {
             locations: locs,
             costing: "auto".to_string(),
             directions_type: "none".to_string(), // We only need geometry, not turn-by-turn
-            costing_options: Some(CostingOptions {
-                auto: AutoCostingOptions {
-                    search_cutoff: Some(50000), // 50km
-                },
-            }),
+            costing_options: None,
         }
     }
 
