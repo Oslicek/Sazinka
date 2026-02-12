@@ -1,0 +1,69 @@
+---
+import { getTranslation, type Locale } from '../../i18n/utils';
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const t = (key: string) => getTranslation(locale, key);
+---
+
+<section class="ctaSection">
+  <div class="container ctaInner">
+    <h2 class="ctaTitle">{t('cta.title')}</h2>
+    <p class="ctaSubtitle">{t('cta.subtitle')}</p>
+    <a href="https://app.ariadline.com" class="ctaButton">
+      {t('cta.button')}
+    </a>
+  </div>
+</section>
+
+<style>
+  .ctaSection {
+    padding: 5rem 0;
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
+  }
+
+  .ctaInner {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+    text-align: center;
+  }
+
+  .ctaTitle {
+    font-family: var(--font-heading);
+    font-size: 2.25rem;
+    font-weight: 800;
+    color: white;
+    margin-bottom: 1rem;
+  }
+
+  .ctaSubtitle {
+    font-size: 1.125rem;
+    color: rgba(255, 255, 255, 0.85);
+    margin-bottom: 2rem;
+    line-height: 1.6;
+  }
+
+  .ctaButton {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.875rem 2.5rem;
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--color-primary-dark);
+    background-color: white;
+    border-radius: var(--radius-md);
+    text-decoration: none;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    box-shadow: var(--shadow-md);
+  }
+
+  .ctaButton:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-lg);
+    text-decoration: none;
+  }
+</style>

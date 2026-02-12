@@ -1,0 +1,23 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import Header from '../../../components/layout/Header.astro';
+import Footer from '../../../components/layout/Footer.astro';
+import LegalContent from '../../../components/sections/LegalContent.astro';
+
+const locale = 'sk';
+---
+
+<Layout title="Ochrana osobných údajov | Ariadline" description="Zásady ochrany osobných údajov Ariadline." locale={locale} path="/sk/legal/privacy">
+  <Header slot="header" locale={locale} currentPath="/sk/legal/privacy" />
+  <LegalContent
+    title="Ochrana osobných údajov"
+    intro="Na tejto stránke popisujeme, ako Ariadline spracúva osobné údaje."
+    points={[
+      'Zhromažďujeme iba údaje nevyhnutné na prevádzku služby.',
+      'Prihlásenie na newsletter používa potvrdenie double opt-in.',
+      'Kontaktné požiadavky ukladáme do Cloudflare D1 na účely podpory.',
+      'Kedykoľvek môžete požiadať o prístup, opravu alebo výmaz svojich údajov.',
+    ]}
+  />
+  <Footer slot="footer" locale={locale} />
+</Layout>

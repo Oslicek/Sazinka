@@ -1,0 +1,19 @@
+{
+  "name": "@ariadline/design-tokens",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "variables.css",
+  "exports": {
+    "./variables.css": "./variables.css",
+    "./tokens.json": "./tokens.json"
+  },
+  "scripts": {
+    "build": "tsx src/build.ts",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "tsx": "^4.0.0",
+    "vitest": "^3.2.4"
+  }
+}

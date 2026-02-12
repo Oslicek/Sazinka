@@ -129,13 +129,26 @@ export function CandidateRow({
       {isRouteAware && (candidate.deltaKm !== undefined || candidate.deltaMin !== undefined) && (
         <div className={styles.metrics}>
           {formatDelta(candidate.deltaKm, 'km') && (
-            <span className={styles.deltaKm}>{formatDelta(candidate.deltaKm, 'km')}</span>
+            <span className={styles.deltaKm} title="Přidaná vzdálenost do trasy">
+              {formatDelta(candidate.deltaKm, 'km')}
+            </span>
           )}
           {formatDelta(candidate.deltaMin, 'min') && (
-            <span className={styles.deltaMin}>{formatDelta(candidate.deltaMin, 'min')}</span>
+            <span className={styles.deltaMin} title="Přidaný čas do trasy">
+              {formatDelta(candidate.deltaMin, 'min')}
+            </span>
           )}
           {candidate.slotStatus && (
-            <span className={`${styles.statusIcon} ${styles[candidate.slotStatus]}`}>
+            <span
+              className={`${styles.statusIcon} ${styles[candidate.slotStatus]}`}
+              title={
+                candidate.slotStatus === 'ok'
+                  ? 'Kompatibilní s trasou'
+                  : candidate.slotStatus === 'tight'
+                    ? 'Těsný časový slot'
+                    : 'Časový konflikt'
+              }
+            >
               {getStatusIcon(candidate.slotStatus)}
             </span>
           )}

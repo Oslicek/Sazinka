@@ -5,10 +5,24 @@
  * Clicking a stop or segment highlights it on the map.
  */
 
-import { useEffect } from 'react';
+import { useState, useMemo } from 'react';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 import type { SavedRouteStop } from '../../services/routeService';
 import type { RouteMetrics } from './CapacityMetrics';
 import type { RouteWarning } from '@shared/route';
+import { reorderStops, needsScheduledTimeWarning } from './reorderStops';
+import { ScheduledTimeWarning } from './ScheduledTimeWarning';
 import styles from './RouteDetailTimeline.module.css';
 
 interface RouteDetailTimelineProps {
@@ -18,6 +32,8 @@ interface RouteDetailTimelineProps {
   highlightedSegment: number | null;
   onStopClick: (customerId: string, index: number) => void;
   onSegmentClick: (segmentIndex: number) => void;
+  // Drag-and-drop reorder
+  onReorder?: (newStops: SavedRouteStop[]) => void;
   // Editing actions (optional - Inbox and Planner can both provide these)
   onRemoveStop?: (stopId: string) => void;
   onAddBreak?: () => void;
@@ -128,6 +144,7 @@ export function RouteDetailTimeline({
   highlightedSegment,
   onStopClick,
   onSegmentClick,
+  onReorder,
   onRemoveStop,
   onAddBreak,
   onUpdateBreak,
@@ -142,6 +159,40 @@ export function RouteDetailTimeline({
   returnToDepotDurationMinutes = null,
 }: RouteDetailTimelineProps) {
   const depotName = depot?.name ?? 'Depo';
+
+  // DnD state
+  const [pendingReorder, setPendingReorder] = useState<{
+    from: number;
+    to: number;
+    stop: SavedRouteStop;
+  } | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  );
+
+  const sortableIds = useMemo(() => stops.map((s) => s.id), [stops]);
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !onReorder) return;
+    const fromIndex = stops.findIndex((s) => s.id === active.id);
+    const toIndex = stops.findIndex((s) => s.id === over.id);
+    if (fromIndex === -1 || toIndex === -1) return;
+
+    const warningStop = needsScheduledTimeWarning(stops, fromIndex, toIndex);
+    if (warningStop) {
+      setPendingReorder({ from: fromIndex, to: toIndex, stop: warningStop });
+      return;
+    }
+    onReorder(reorderStops(stops, fromIndex, toIndex));
+  }
+
+  function confirmReorder() {
+    if (!pendingReorder || !onReorder) return;
+    onReorder(reorderStops(stops, pendingReorder.from, pendingReorder.to));
+    setPendingReorder(null);
+  }
 
   // Build per-stop warning map: stopIndex (0-based) → warnings[]
   const warningsByStop = new Map<number, RouteWarning[]>();
@@ -179,6 +230,8 @@ export function RouteDetailTimeline({
         <span className={styles.depotName}>{depotName}</span>
       </div>
 
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
       {stops.map((stop, index) => {
         const isBreak = stop.stopType === 'break';
         const hasScheduledTime = !!(stop.scheduledTimeStart && stop.scheduledTimeEnd);
@@ -404,6 +457,8 @@ export function RouteDetailTimeline({
           </div>
         );
       })}
+      </SortableContext>
+      </DndContext>
 
       {/* Return segment to depot */}
       {(() => {
@@ -522,6 +577,16 @@ export function RouteDetailTimeline({
           </button>
         )}
       </div>
+
+      {pendingReorder && (
+        <ScheduledTimeWarning
+          customerName={pendingReorder.stop.customerName ?? 'Neznámý'}
+          scheduledTimeStart={pendingReorder.stop.scheduledTimeStart!}
+          scheduledTimeEnd={pendingReorder.stop.scheduledTimeEnd ?? pendingReorder.stop.scheduledTimeStart!}
+          onConfirm={confirmReorder}
+          onCancel={() => setPendingReorder(null)}
+        />
+      )}
     </div>
   );
 }

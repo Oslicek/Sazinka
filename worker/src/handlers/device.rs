@@ -15,7 +15,7 @@ use crate::types::{
     ErrorResponse, Request, SuccessResponse,
 };
 use crate::types::device::{
-    CreateDeviceRequest, UpdateDeviceRequest, ListDevicesRequest, DeviceIdRequest, Device,
+    CreateDeviceRequest, UpdateDeviceRequest, ListDevicesRequest, Device,
 };
 
 /// Response for list of devices

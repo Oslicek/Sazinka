@@ -13,7 +13,7 @@ use crate::auth;
 use crate::db::queries;
 use crate::types::{
     CompleteVisitRequest, CreateVisitRequest, ErrorResponse, ListVisitsRequest,
-    ListVisitsResponse, Request, SuccessResponse, UpdateVisitRequest, Visit,
+    ListVisitsResponse, Request, SuccessResponse, UpdateVisitRequest,
 };
 
 /// Handle visit.create messages

@@ -1,0 +1,133 @@
+---
+import { getTranslation, type Locale } from '../../i18n/utils';
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const t = (key: string) => getTranslation(locale, key);
+
+const features = [
+  {
+    icon: '🗺️',
+    key: 'routing',
+    title: t('features.routing.title'),
+    description: t('features.routing.description'),
+  },
+  {
+    icon: '👥',
+    key: 'crm',
+    title: t('features.crm.title'),
+    description: t('features.crm.description'),
+  },
+  {
+    icon: '📅',
+    key: 'calendar',
+    title: t('features.calendar.title'),
+    description: t('features.calendar.description'),
+  },
+];
+---
+
+<section class="featureDetail">
+  <div class="container">
+    <h1 class="pageTitle">{t('features.title')}</h1>
+    {features.map((feature, i) => (
+      <div class:list={['featureBlock', { reversed: i % 2 === 1 }]}>
+        <div class="featureContent">
+          <span class="featureIcon" aria-hidden="true">{feature.icon}</span>
+          <h2 class="featureTitle">{feature.title}</h2>
+          <p class="featureDescription">{feature.description}</p>
+        </div>
+        <div class="featureVisual">
+          <div class="visualPlaceholder">
+            <span>{feature.key} screenshot</span>
+          </div>
+        </div>
+      </div>
+    ))}
+  </div>
+</section>
+
+<style>
+  .featureDetail {
+    padding: 4rem 0;
+  }
+
+  .pageTitle {
+    font-family: var(--font-heading);
+    font-size: 2.5rem;
+    font-weight: 800;
+    text-align: center;
+    margin-bottom: 4rem;
+    color: var(--color-text);
+  }
+
+  .featureBlock {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    align-items: center;
+    margin-bottom: 4rem;
+    padding: 2rem 0;
+  }
+
+  .featureBlock:last-child {
+    margin-bottom: 0;
+  }
+
+  .featureContent {
+    flex: 1;
+    max-width: 480px;
+  }
+
+  .featureIcon {
+    font-size: 2.5rem;
+    display: block;
+    margin-bottom: 1rem;
+  }
+
+  .featureTitle {
+    font-family: var(--font-heading);
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+    color: var(--color-text);
+  }
+
+  .featureDescription {
+    color: var(--color-text-secondary);
+    font-size: 1.0625rem;
+    line-height: 1.7;
+  }
+
+  .featureVisual {
+    flex: 1;
+    max-width: 480px;
+    width: 100%;
+  }
+
+  .visualPlaceholder {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    background-color: var(--color-bg-secondary);
+    border: 2px dashed var(--color-border);
+    border-radius: var(--radius-lg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+  }
+
+  @media (min-width: 768px) {
+    .featureBlock {
+      flex-direction: row;
+    }
+
+    .featureBlock.reversed {
+      flex-direction: row-reverse;
+    }
+  }
+</style>

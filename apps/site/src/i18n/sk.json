@@ -1,0 +1,107 @@
+{
+  "nav": {
+    "home": "Domov",
+    "features": "Funkcie",
+    "pricing": "Cenník",
+    "contact": "Kontakt",
+    "blog": "Blog",
+    "tryFree": "Vyskúšať zadarmo"
+  },
+  "hero": {
+    "title": "Rozmotajte svoj pracovný deň.",
+    "subtitle": "Plánovanie trás a CRM pre remeselníkov, ktoré šetrí čas aj palivo.",
+    "cta": "Vyskúšať zadarmo"
+  },
+  "problem": {
+    "title": "Trávite večery plánovaním trás?",
+    "description": "Ručné plánovanie, zmeškané stretnutia, zbytočne spálené palivo — znie to povedome?"
+  },
+  "solution": {
+    "title": "Ariadline to zvládne za sekundu.",
+    "description": "Optimalizované trasy, automatické pripomienky, všetko na jednom mieste."
+  },
+  "features": {
+    "title": "Funkcie",
+    "routing": {
+      "title": "Inteligentné plánovanie trás",
+      "description": "Automatická optimalizácia denných trás. Šetrite palivo a čas s TSP algoritmami."
+    },
+    "crm": {
+      "title": "Správa zákazníkov",
+      "description": "Všetci zákazníci na jednom mieste. Automatické pripomienky pravidelných revízií."
+    },
+    "calendar": {
+      "title": "Kalendár a plánovanie",
+      "description": "Plánujte svoj týždeň vizuálne. Presúvajte stretnutia s aktualizáciou trás v reálnom čase."
+    }
+  },
+  "pricing": {
+    "title": "Cenník",
+    "free": {
+      "name": "Zadarmo",
+      "description": "Pre jednotlivcov",
+      "price": "Zadarmo",
+      "limit": "Až 50 zákazníkov",
+      "cta": "Začať"
+    },
+    "pro": {
+      "name": "Pro",
+      "description": "Pre rastúce firmy",
+      "price": "Kontaktujte nás",
+      "limit": "Neobmedzený počet zákazníkov",
+      "cta": "Kontaktovať obchod"
+    }
+  },
+  "contact": {
+    "title": "Kontaktujte nás",
+    "description": "Máte otázku? Radi vám odpovieme.",
+    "form": {
+      "email": "Váš e-mail",
+      "emailPlaceholder": "meno@firma.sk",
+      "message": "Správa",
+      "messagePlaceholder": "Ako vám môžeme pomôcť?",
+      "submit": "Odoslať správu",
+      "sending": "Odosielanie...",
+      "success": "Správa odoslaná! ID vášho požiadavku je",
+      "error": "Niečo sa pokazilo. Skúste to prosím znova."
+    },
+    "faq": {
+      "title": "Často kladené otázky"
+    }
+  },
+  "newsletter": {
+    "title": "Zostaňte v obraze",
+    "description": "Dostávajte novinky o produkte a tipy pre optimalizáciu práce.",
+    "emailPlaceholder": "vas@email.sk",
+    "subscribe": "Odoberať",
+    "subscribing": "Prihlasovanie...",
+    "success": "Skontrolujte svoj e-mail a potvrďte odber.",
+    "gdprConsent": "Súhlasím so zasielaním noviniek. Odber môžete kedykoľvek zrušiť.",
+    "error": "Niečo sa pokazilo. Skúste to prosím znova."
+  },
+  "footer": {
+    "copyright": "Ariadline. Všetky práva vyhradené.",
+    "privacy": "Ochrana osobných údajov",
+    "terms": "Obchodné podmienky",
+    "cookies": "Zásady cookies"
+  },
+  "legal": {
+    "privacy": { "title": "Ochrana osobných údajov" },
+    "terms": { "title": "Obchodné podmienky" },
+    "cookies": { "title": "Zásady cookies" }
+  },
+  "meta": {
+    "title": "Ariadline — Rozmotajte svoj pracovný deň",
+    "description": "Plánovanie trás a CRM pre remeselníkov. Šetrite čas, palivo aj peniaze s optimalizovanými trasami a automatizovanou správou zákazníkov."
+  },
+  "notFound": {
+    "title": "Stránka nenájdená",
+    "description": "Stránka, ktorú hľadáte, neexistuje.",
+    "backHome": "Späť na hlavnú stránku"
+  },
+  "cta": {
+    "title": "Pripravení rozmotať svoj pracovný deň?",
+    "subtitle": "Pridajte sa k stovkám remeselníkov, ktorí týždenne šetria hodiny práce.",
+    "button": "Začať zadarmo"
+  }
+}

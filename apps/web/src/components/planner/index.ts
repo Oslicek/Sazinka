@@ -13,3 +13,6 @@ export { DraftModeBar } from './DraftModeBar';
 export { AddFromInboxDrawer } from './AddFromInboxDrawer';
 export { RouteListPanel } from './RouteListPanel';
 export { RouteDetailTimeline } from './RouteDetailTimeline';
+export { PlanningTimeline, type CandidateForInsertion, type GapInsertionInfo } from './PlanningTimeline';
+export { TimelineViewToggle, type TimelineView } from './TimelineViewToggle';
+export { ScheduledTimeWarning } from './ScheduledTimeWarning';

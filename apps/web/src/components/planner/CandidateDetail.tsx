@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from '@tanstack/react-router';
 import { SlotSuggestions, type SlotSuggestion } from './SlotSuggestions';
-import { InsertionPreview, type InsertionInfo } from './InsertionPreview';
 import styles from './CandidateDetail.module.css';
 
 export interface CandidateDetailData {
@@ -21,7 +20,6 @@ export interface CandidateDetailData {
   priority: 'overdue' | 'due_this_week' | 'due_soon' | 'upcoming';
   // Route-aware data
   suggestedSlots?: SlotSuggestion[];
-  insertionInfo?: InsertionInfo;
   // State flags
   isScheduled?: boolean;
   scheduledDate?: string;
@@ -86,12 +84,19 @@ export function CandidateDetail({
     return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
   };
 
-  // Reset scheduling form when candidate changes
+  // Reset scheduling form when candidate changes, pre-fill with existing appointment
   useEffect(() => {
     setIsScheduling(false);
-    setSchedDate(routeDate ?? new Date().toISOString().split('T')[0]);
-    setSchedTimeStart('08:00');
-    setSchedTimeEnd(addMinutesToTime('08:00', defaultServiceDurationMinutes));
+    if (candidate?.isScheduled && candidate.scheduledDate) {
+      // Pre-fill with existing appointment data
+      setSchedDate(candidate.scheduledDate.substring(0, 10));
+      setSchedTimeStart(candidate.scheduledTimeStart?.substring(0, 5) ?? '08:00');
+      setSchedTimeEnd(candidate.scheduledTimeEnd?.substring(0, 5) ?? addMinutesToTime(candidate.scheduledTimeStart?.substring(0, 5) ?? '08:00', defaultServiceDurationMinutes));
+    } else {
+      setSchedDate(routeDate ?? new Date().toISOString().split('T')[0]);
+      setSchedTimeStart('08:00');
+      setSchedTimeEnd(addMinutesToTime('08:00', defaultServiceDurationMinutes));
+    }
     setSchedNotes('');
     setShowSnoozeDropdown(false);
   }, [candidate?.id, routeDate, defaultServiceDurationMinutes]);
@@ -160,30 +165,18 @@ export function CandidateDetail({
       {/* Actions - moved to top */}
       {!isScheduling && (
         <div className={styles.actions} data-testid="candidate-actions">
-          {candidate.suggestedSlots?.length ? (
-            <button
-              type="button"
-              className={styles.actionButton}
-              onClick={() => {
-                onSchedule?.(candidate.id, candidate.suggestedSlots![0]);
-              }}
-            >
-              📅 {candidate.isScheduled ? 'Změnit termín' : 'Domluvit termín'}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className={styles.actionButton}
-              onClick={() => setIsScheduling(true)}
-            >
-              📅 {candidate.isScheduled ? 'Změnit termín' : 'Domluvit termín'}
-            </button>
-          )}
+          <button
+            type="button"
+            className={styles.actionButton}
+            onClick={() => setIsScheduling(true)}
+          >
+            📅 {candidate.isScheduled ? 'Změnit termín' : 'Domluvit termín'}
+          </button>
           {isInRoute ? (
             <button
               type="button"
               className={styles.actionButton}
-              onClick={() => onRemoveFromRoute?.(candidate.id)}
+              onClick={() => onRemoveFromRoute?.(candidate.customerId)}
             >
               ✕ Odebrat z trasy
             </button>
@@ -307,7 +300,12 @@ export function CandidateDetail({
           {candidate.isScheduled && candidate.scheduledDate && (
             <section className={styles.section}>
               <h4 className={styles.sectionTitle}>Domluvený termín</h4>
-              <p className={styles.scheduledAppointment}>
+              <button
+                type="button"
+                className={styles.scheduledAppointmentButton}
+                onClick={() => setIsScheduling(true)}
+                title="Klikněte pro změnu termínu"
+              >
                 📅 {new Date(candidate.scheduledDate).toLocaleDateString('cs-CZ', {
                   day: 'numeric',
                   month: 'numeric',
@@ -318,7 +316,7 @@ export function CandidateDetail({
                     {' '}🕐 {candidate.scheduledTimeStart.substring(0, 5)} – {candidate.scheduledTimeEnd.substring(0, 5)}
                   </span>
                 )}
-              </p>
+              </button>
             </section>
           )}
 
@@ -338,8 +336,8 @@ export function CandidateDetail({
         </div>
       </div>
 
-      {/* Slot suggestions (route-aware) */}
-      {isRouteAware && candidate.suggestedSlots && candidate.suggestedSlots.length > 0 && (
+      {/* Slot suggestions (route-aware) — only for unscheduled candidates */}
+      {isRouteAware && !candidate.isScheduled && candidate.suggestedSlots && candidate.suggestedSlots.length > 0 && (
         <section className={styles.section}>
           <h4 className={styles.sectionTitle}>Doporučené sloty</h4>
           <SlotSuggestions
@@ -348,14 +346,6 @@ export function CandidateDetail({
           />
         </section>
       )}
-
-      {/* Insertion preview (route-aware) */}
-      {isRouteAware && candidate.insertionInfo && (
-        <section className={styles.section}>
-          <InsertionPreview info={candidate.insertionInfo} />
-        </section>
-      )}
-
 
       {/* Notes */}
       {candidate.notes && (

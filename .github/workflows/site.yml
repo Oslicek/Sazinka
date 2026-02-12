@@ -1,0 +1,57 @@
+name: Site CI
+
+on:
+  pull_request:
+    paths:
+      - 'apps/site/**'
+      - 'packages/design-tokens/**'
+      - 'packages/emails/**'
+      - '.github/workflows/site.yml'
+  push:
+    branches:
+      - master
+    paths:
+      - 'apps/site/**'
+      - 'packages/design-tokens/**'
+      - 'packages/emails/**'
+      - '.github/workflows/site.yml'
+
+jobs:
+  site:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test design tokens
+        run: pnpm --filter @ariadline/design-tokens test
+
+      - name: Build design tokens
+        run: pnpm --filter @ariadline/design-tokens build
+
+      - name: Test shared emails
+        run: pnpm --filter @ariadline/emails test
+
+      - name: Test site
+        run: pnpm --filter @ariadline/site test
+
+      - name: Test site workers
+        run: pnpm --filter @ariadline/site test:functions
+
+      - name: Build site
+        run: pnpm --filter @ariadline/site build

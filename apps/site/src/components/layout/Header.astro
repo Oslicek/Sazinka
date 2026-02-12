@@ -1,0 +1,301 @@
+---
+import { getTranslation, getLocalizedPath, LOCALES, type Locale } from '../../i18n/utils';
+
+interface Props {
+  locale: Locale;
+  currentPath: string;
+}
+
+const { locale, currentPath } = Astro.props;
+const t = (key: string) => getTranslation(locale, key);
+
+// Strip locale prefix to get base path for language switcher
+const pathSegments = currentPath.split('/').filter(Boolean);
+if (pathSegments.length > 0 && (LOCALES as readonly string[]).includes(pathSegments[0])) {
+  pathSegments.shift();
+}
+const basePath = '/' + pathSegments.join('/');
+
+const navItems = [
+  { label: t('nav.home'), path: '/' },
+  { label: t('nav.features'), path: '/features' },
+  { label: t('nav.pricing'), path: '/pricing' },
+  { label: t('nav.blog'), path: '/blog' },
+  { label: t('nav.contact'), path: '/contact' },
+];
+---
+
+<header class="header">
+  <div class="container headerInner">
+    <a href={getLocalizedPath(locale, '/')} class="logo">
+      <span class="logoText">Ariadline</span>
+    </a>
+
+    <nav class="nav" aria-label="Main navigation">
+      <ul class="navList">
+        {navItems.map((item) => (
+          <li>
+            <a
+              href={getLocalizedPath(locale, item.path)}
+              class:list={['navLink', { active: currentPath === getLocalizedPath(locale, item.path) }]}
+            >
+              {item.label}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+
+    <div class="headerActions">
+      <!-- Language switcher -->
+      <div class="langSwitcher">
+        {LOCALES.map((loc) => (
+          <a
+            href={getLocalizedPath(loc, basePath)}
+            class:list={['langLink', { active: loc === locale }]}
+            aria-label={`Switch to ${loc}`}
+          >
+            {loc.toUpperCase()}
+          </a>
+        ))}
+      </div>
+
+      <a href="https://app.ariadline.com" class="ctaButton">
+        {t('nav.tryFree')}
+      </a>
+    </div>
+
+    <!-- Mobile hamburger menu (CSS-only) -->
+    <details class="mobileMenu">
+      <summary class="hamburger" aria-label="Open menu">
+        <span class="hamburgerIcon"></span>
+      </summary>
+      <div class="mobileNav">
+        <ul class="mobileNavList">
+          {navItems.map((item) => (
+            <li>
+              <a href={getLocalizedPath(locale, item.path)} class="mobileNavLink">
+                {item.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+        <div class="mobileLangSwitcher">
+          {LOCALES.map((loc) => (
+            <a
+              href={getLocalizedPath(loc, basePath)}
+              class:list={['langLink', { active: loc === locale }]}
+            >
+              {loc.toUpperCase()}
+            </a>
+          ))}
+        </div>
+        <a href="https://app.ariadline.com" class="ctaButton mobileCtaButton">
+          {t('nav.tryFree')}
+        </a>
+      </div>
+    </details>
+  </div>
+</header>
+
+<style>
+  .header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background-color: var(--color-bg);
+    border-bottom: 1px solid var(--color-border);
+    padding: 0.75rem 0;
+  }
+
+  .headerInner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    text-decoration: none;
+    color: var(--color-text);
+  }
+
+  .logoText {
+    font-family: var(--font-heading);
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--color-accent);
+  }
+
+  .nav {
+    display: none;
+  }
+
+  .navList {
+    display: flex;
+    list-style: none;
+    gap: 2rem;
+  }
+
+  .navLink {
+    color: var(--color-text-secondary);
+    font-size: 0.9375rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: color 0.15s ease;
+  }
+
+  .navLink:hover,
+  .navLink.active {
+    color: var(--color-primary);
+    text-decoration: none;
+  }
+
+  .headerActions {
+    display: none;
+    align-items: center;
+    gap: 1.5rem;
+  }
+
+  .langSwitcher {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .langLink {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius-sm);
+    transition: all 0.15s ease;
+  }
+
+  .langLink:hover {
+    color: var(--color-primary);
+    text-decoration: none;
+  }
+
+  .langLink.active {
+    color: var(--color-primary);
+    background-color: var(--color-bg-secondary);
+  }
+
+  .ctaButton {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.5rem 1.25rem;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: white;
+    background-color: var(--color-primary);
+    border-radius: var(--radius-md);
+    text-decoration: none;
+    transition: background-color 0.15s ease;
+  }
+
+  .ctaButton:hover {
+    background-color: var(--color-primary-dark);
+    text-decoration: none;
+  }
+
+  /* Mobile menu */
+  .mobileMenu {
+    display: block;
+  }
+
+  .hamburger {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .hamburger::-webkit-details-marker {
+    display: none;
+  }
+
+  .hamburgerIcon {
+    display: block;
+    width: 1.5rem;
+    height: 2px;
+    background-color: var(--color-text);
+    position: relative;
+  }
+
+  .hamburgerIcon::before,
+  .hamburgerIcon::after {
+    content: '';
+    position: absolute;
+    width: 100%;
+    height: 2px;
+    background-color: var(--color-text);
+    left: 0;
+  }
+
+  .hamburgerIcon::before { top: -6px; }
+  .hamburgerIcon::after { top: 6px; }
+
+  .mobileNav {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--color-bg);
+    border-bottom: 1px solid var(--color-border);
+    padding: 1.5rem;
+    box-shadow: var(--shadow-md);
+  }
+
+  .mobileNavList {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .mobileNavLink {
+    display: block;
+    padding: 0.75rem 0;
+    color: var(--color-text);
+    font-weight: 500;
+    text-decoration: none;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .mobileLangSwitcher {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .mobileCtaButton {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Desktop breakpoint */
+  @media (min-width: 768px) {
+    .nav {
+      display: block;
+    }
+
+    .headerActions {
+      display: flex;
+    }
+
+    .mobileMenu {
+      display: none;
+    }
+  }
+</style>

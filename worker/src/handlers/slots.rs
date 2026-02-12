@@ -578,6 +578,7 @@ pub async fn handle_suggest_v2(
                     departure_time: s.departure_time,
                     time_window_start: s.time_window_start,
                     time_window_end: s.time_window_end,
+                    service_duration_minutes: s.service_duration_minutes,
                 })
                 .collect();
             let insertion_positions = calculate_insertion_positions(

@@ -1,0 +1,39 @@
+---
+import { getCollection, render } from 'astro:content';
+import Layout from '../../../layouts/Layout.astro';
+import Header from '../../../components/layout/Header.astro';
+import Footer from '../../../components/layout/Footer.astro';
+
+const locale = 'sk';
+
+export async function getStaticPaths() {
+  const posts = await getCollection('blog', ({ data }) => data.locale === 'sk');
+  return posts.map((post) => ({
+    params: { slug: post.slug.replace(/^sk\//, '') },
+    props: { post },
+  }));
+}
+
+const { post } = Astro.props;
+const { Content } = await render(post);
+---
+
+<Layout
+  title={`${post.data.title} | Ariadline Blog`}
+  description={post.data.description}
+  locale={locale}
+  path={`/sk/blog/${post.slug}`}
+>
+  <Header slot="header" locale={locale} currentPath={`/sk/blog/${post.slug}`} />
+  <article class="blogPost container">
+    <h1>{post.data.title}</h1>
+    <p class="meta">{post.data.date.toISOString().slice(0, 10)} · {post.data.author}</p>
+    <Content />
+  </article>
+  <Footer slot="footer" locale={locale} />
+</Layout>
+
+<style>
+  .blogPost { padding: 3rem 1.5rem 4rem; max-width: 800px; }
+  .meta { color: var(--color-text-secondary); margin-bottom: 1rem; }
+</style>

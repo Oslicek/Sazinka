@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Ariadline">
+  <rect width="64" height="64" rx="14" fill="#0f172a"/>
+  <path d="M32 10c-12.15 0-22 9.85-22 22s9.85 22 22 22 22-9.85 22-22S44.15 10 32 10zm0 6a16 16 0 0 1 16 16c0 8.84-7.16 16-16 16S16 40.84 16 32s7.16-16 16-16z" fill="#D97706"/>
+  <path d="M32 22l8 20h-5l-1.5-4h-7L25 42h-5l8-20h4zm-2.8 12h5.6L32 26.8 29.2 34z" fill="#fff"/>
+</svg>

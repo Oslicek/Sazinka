@@ -1,0 +1,44 @@
+---
+import { getCollection } from 'astro:content';
+import Layout from '../../../layouts/Layout.astro';
+import Header from '../../../components/layout/Header.astro';
+import Footer from '../../../components/layout/Footer.astro';
+import { getTranslation } from '../../../i18n/utils';
+
+const locale = 'sk';
+const t = (key: string) => getTranslation(locale, key);
+
+const posts = (await getCollection('blog'))
+  .filter((entry) => entry.data.locale === locale)
+  .sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
+---
+
+<Layout title={`Blog | Ariadline`} description={t('meta.description')} locale={locale} path="/sk/blog">
+  <Header slot="header" locale={locale} currentPath="/sk/blog" />
+  <section class="blogListing">
+    <div class="container">
+      <h1>Blog</h1>
+      <div class="posts">
+        {posts.map((post) => (
+          <article class="postCard">
+            <h2><a href={`/sk/blog/${post.slug}`}>{post.data.title}</a></h2>
+            <p class="meta">{post.data.date.toISOString().slice(0, 10)} · {post.data.author}</p>
+            <p>{post.data.description}</p>
+          </article>
+        ))}
+      </div>
+    </div>
+  </section>
+  <Footer slot="footer" locale={locale} />
+</Layout>
+
+<style>
+  .blogListing { padding: 3rem 0 4rem; }
+  .posts { display: grid; gap: 1rem; }
+  .postCard {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 1rem;
+  }
+  .meta { color: var(--color-text-secondary); font-size: 0.9rem; }
+</style>

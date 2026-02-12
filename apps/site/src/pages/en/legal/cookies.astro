@@ -1,0 +1,22 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import Header from '../../../components/layout/Header.astro';
+import Footer from '../../../components/layout/Footer.astro';
+import LegalContent from '../../../components/sections/LegalContent.astro';
+
+const locale = 'en';
+---
+
+<Layout title="Cookie Policy | Ariadline" description="Ariadline cookie policy." locale={locale} path="/en/legal/cookies">
+  <Header slot="header" locale={locale} currentPath="/en/legal/cookies" />
+  <LegalContent
+    title="Cookie Policy"
+    intro="Ariadline marketing website does not use tracking cookies."
+    points={[
+      'Analytics is handled by Umami Cloud in a cookie-free mode.',
+      'Basic technical data may be processed to maintain security and reliability.',
+      'If this policy changes, we will update this page.',
+    ]}
+  />
+  <Footer slot="footer" locale={locale} />
+</Layout>

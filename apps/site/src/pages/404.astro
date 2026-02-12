@@ -1,0 +1,38 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout
+  title="Page not found | Ariadline"
+  description="Requested page was not found."
+  locale="en"
+  path="/404"
+>
+  <section class="notFound container">
+    <h1>Page not found</h1>
+    <p>The page you requested does not exist.</p>
+    <p>Choose language homepage:</p>
+    <p class="links">
+      <a href="/en/">English</a>
+      <a href="/cs/">Čeština</a>
+      <a href="/sk/">Slovenčina</a>
+    </p>
+  </section>
+</Layout>
+
+<style>
+  .notFound {
+    min-height: 60vh;
+    display: grid;
+    align-content: center;
+    gap: 0.8rem;
+    text-align: center;
+    padding: 3rem 1.5rem;
+  }
+
+  .links {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+  }
+</style>

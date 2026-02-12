@@ -12,7 +12,7 @@ mod pragmatic;
 pub use problem::{VrpProblem, VrpStop, Depot, StopTimeWindow, BreakConfig};
 pub use solution::{RouteSolution, PlannedStop, RouteWarning};
 pub use config::SolverConfig;
-pub use adapter::{build_pragmatic_problem, build_pragmatic_problem_with_buffer, build_pragmatic_matrix, DEFAULT_PROFILE};
+pub use adapter::{build_pragmatic_problem_with_buffer, build_pragmatic_matrix, DEFAULT_PROFILE};
 pub use pragmatic::solve_pragmatic;
 
 use anyhow::Result;

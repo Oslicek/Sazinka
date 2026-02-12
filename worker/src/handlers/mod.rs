@@ -24,7 +24,6 @@ use anyhow::Result;
 use async_nats::Client;
 use sqlx::PgPool;
 use tracing::{info, error};
-use tokio::select;
 use futures::StreamExt;
 use uuid::Uuid;
 
@@ -141,6 +140,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let auth_register_sub = client.subscribe("sazinka.auth.register").await?;
     let auth_login_sub = client.subscribe("sazinka.auth.login").await?;
     let auth_verify_sub = client.subscribe("sazinka.auth.verify").await?;
+    let auth_refresh_sub = client.subscribe("sazinka.auth.refresh").await?;
     let auth_worker_create_sub = client.subscribe("sazinka.auth.worker.create").await?;
     let auth_worker_list_sub = client.subscribe("sazinka.auth.worker.list").await?;
     let auth_worker_delete_sub = client.subscribe("sazinka.auth.worker.delete").await?;
@@ -164,6 +164,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let route_list_sub = client.subscribe("sazinka.route.list").await?;
     let route_insertion_sub = client.subscribe("sazinka.route.insertion.calculate").await?;
     let route_insertion_batch_sub = client.subscribe("sazinka.route.insertion.batch").await?;
+    let route_recalculate_sub = client.subscribe("sazinka.route.recalculate").await?;
     
     // Device subjects
     let device_create_sub = client.subscribe("sazinka.device.create").await?;
@@ -253,6 +254,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let client_route_get = client.clone();
     let client_route_insertion = client.clone();
     let client_route_insertion_batch = client.clone();
+    let client_route_recalculate = client.clone();
     
     // Device handler clones
     let client_device_create = client.clone();
@@ -293,6 +295,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_route_get = pool.clone();
     let pool_route_insertion = pool.clone();
     let pool_route_insertion_batch = pool.clone();
+    let pool_route_recalculate = pool.clone();
     
     // Device pool clones
     let pool_device_create = pool.clone();
@@ -407,6 +410,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let routing_plan = Arc::clone(&routing_service);
     let routing_insertion = Arc::clone(&routing_service);
     let routing_insertion_batch = Arc::clone(&routing_service);
+    let routing_recalculate = Arc::clone(&routing_service);
     let routing_slots_suggest_v2 = Arc::clone(&routing_service);
     let routing_slots_validate = Arc::clone(&routing_service);
     
@@ -428,6 +432,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let jwt_secret_route_get = Arc::clone(&jwt_secret);
     let jwt_secret_route_insertion = Arc::clone(&jwt_secret);
     let jwt_secret_route_insertion_batch = Arc::clone(&jwt_secret);
+    let jwt_secret_route_recalculate = Arc::clone(&jwt_secret);
     
     // JWT secret clones for device handlers
     let jwt_secret_device_create = Arc::clone(&jwt_secret);
@@ -522,6 +527,15 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     tokio::spawn(async move {
         if let Err(e) = auth::handle_verify(client_auth_verify, auth_verify_sub, pool_auth_verify, jwt_secret_verify).await {
             error!("Auth verify handler error: {}", e);
+        }
+    });
+
+    let client_auth_refresh = client.clone();
+    let pool_auth_refresh = pool.clone();
+    let jwt_secret_refresh = Arc::clone(&jwt_secret);
+    tokio::spawn(async move {
+        if let Err(e) = auth::handle_refresh(client_auth_refresh, auth_refresh_sub, pool_auth_refresh, jwt_secret_refresh).await {
+            error!("Auth refresh handler error: {}", e);
         }
     });
 
@@ -632,6 +646,10 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
 
     let route_insertion_batch_handle = tokio::spawn(async move {
         route::handle_insertion_batch(client_route_insertion_batch, route_insertion_batch_sub, pool_route_insertion_batch, jwt_secret_route_insertion_batch, routing_insertion_batch).await
+    });
+
+    let route_recalculate_handle = tokio::spawn(async move {
+        route::handle_recalculate(client_route_recalculate, route_recalculate_sub, pool_route_recalculate, jwt_secret_route_recalculate, routing_recalculate).await
     });
 
     // Device handlers
@@ -1438,6 +1456,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         route_list_handle.boxed(),
         route_insertion_handle.boxed(),
         route_insertion_batch_handle.boxed(),
+        route_recalculate_handle.boxed(),
         device_create_handle.boxed(),
         device_list_handle.boxed(),
         device_get_handle.boxed(),

@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use anyhow::Result;
 use async_nats::{Client, Subscriber};
 use async_nats::jetstream::{self, Context as JsContext};
-use chrono::{NaiveDate, NaiveTime, Utc};
+use chrono::{NaiveDate, NaiveTime};
 use futures::StreamExt;
 use sqlx::PgPool;
 use tracing::{debug, error, warn, info};
@@ -15,10 +15,10 @@ use crate::auth;
 use crate::db::queries;
 use crate::types::{
     ErrorResponse, Request, SuccessResponse,
-    ImportBatchResponse, ImportIssue, ImportIssueLevel, ImportIssueCode, ImportReport,
-    ImportDeviceBatchRequest, ImportDeviceRequest,
-    ImportRevisionBatchRequest, ImportRevisionRequest,
-    ImportCommunicationBatchRequest, ImportCommunicationRequest,
+    ImportBatchResponse, ImportIssue, ImportIssueLevel, ImportIssueCode,
+    ImportDeviceBatchRequest,
+    ImportRevisionBatchRequest,
+    ImportCommunicationBatchRequest,
     ImportWorkLogBatchRequest, ImportWorkLogRequest,
     DeviceType, RevisionStatus, RevisionResult,
     CommunicationType, CommunicationDirection,

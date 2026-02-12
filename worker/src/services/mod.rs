@@ -9,6 +9,7 @@ pub mod insertion;
 pub mod job_history;
 pub mod nominatim;
 pub mod routing;
+pub mod sequential_schedule;
 pub mod slot_suggester;
 pub mod sms_processor;
 pub mod valhalla_processor;

@@ -1,0 +1,108 @@
+---
+import { getTranslation, type Locale } from '../../i18n/utils';
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const t = (key: string) => getTranslation(locale, key);
+
+const features = [
+  {
+    icon: '🗺️',
+    title: t('features.routing.title'),
+    description: t('features.routing.description'),
+  },
+  {
+    icon: '👥',
+    title: t('features.crm.title'),
+    description: t('features.crm.description'),
+  },
+  {
+    icon: '📅',
+    title: t('features.calendar.title'),
+    description: t('features.calendar.description'),
+  },
+];
+---
+
+<section class="featuresOverview sectionAlt">
+  <div class="container">
+    <h2 class="sectionTitle">{t('features.title')}</h2>
+    <div class="featuresGrid">
+      {features.map((feature) => (
+        <div class="featureCard">
+          <span class="featureIcon" aria-hidden="true">{feature.icon}</span>
+          <h3 class="featureTitle">{feature.title}</h3>
+          <p class="featureDescription">{feature.description}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  .featuresOverview {
+    padding: 5rem 0;
+    background-color: var(--color-bg-secondary);
+  }
+
+  .sectionTitle {
+    font-family: var(--font-heading);
+    font-size: 2.25rem;
+    font-weight: 700;
+    text-align: center;
+    margin-bottom: 3rem;
+    color: var(--color-text);
+  }
+
+  .featuresGrid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 2rem;
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+
+  .featureCard {
+    background-color: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 2rem;
+    text-align: center;
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+  }
+
+  .featureCard:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+  }
+
+  .featureIcon {
+    font-size: 2.5rem;
+    display: block;
+    margin-bottom: 1rem;
+  }
+
+  .featureTitle {
+    font-family: var(--font-heading);
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+    color: var(--color-text);
+  }
+
+  .featureDescription {
+    color: var(--color-text-secondary);
+    font-size: 1rem;
+    line-height: 1.6;
+    margin-bottom: 0;
+  }
+
+  @media (min-width: 768px) {
+    .featuresGrid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+</style>

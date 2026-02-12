@@ -1,0 +1,96 @@
+---
+import { getTranslation, type Locale } from '../../i18n/utils';
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const t = (key: string) => getTranslation(locale, key);
+---
+
+<section class="problemSolution">
+  <div class="container psInner">
+    <div class="psCard problem">
+      <div class="psIcon">&#x2753;</div>
+      <h2 class="psTitle">{t('problem.title')}</h2>
+      <p class="psDescription">{t('problem.description')}</p>
+    </div>
+    <div class="psArrow" aria-hidden="true">&rarr;</div>
+    <div class="psCard solution">
+      <div class="psIcon">&#x2705;</div>
+      <h2 class="psTitle">{t('solution.title')}</h2>
+      <p class="psDescription">{t('solution.description')}</p>
+    </div>
+  </div>
+</section>
+
+<style>
+  .problemSolution {
+    padding: 5rem 0;
+  }
+
+  .psInner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2rem;
+  }
+
+  .psCard {
+    flex: 1;
+    max-width: 480px;
+    padding: 2.5rem;
+    border-radius: var(--radius-lg);
+    text-align: center;
+  }
+
+  .problem {
+    background-color: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+  }
+
+  .solution {
+    background-color: #eff6ff; /* blue-50 */
+    border: 1px solid var(--color-primary);
+  }
+
+  .psIcon {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .psTitle {
+    font-family: var(--font-heading);
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+    color: var(--color-text);
+  }
+
+  .psDescription {
+    color: var(--color-text-secondary);
+    font-size: 1.0625rem;
+    line-height: 1.6;
+    margin-bottom: 0;
+  }
+
+  .psArrow {
+    font-size: 2rem;
+    color: var(--color-primary);
+    transform: rotate(90deg);
+  }
+
+  @media (min-width: 768px) {
+    .psInner {
+      flex-direction: row;
+    }
+
+    .psArrow {
+      transform: none;
+    }
+  }
+</style>

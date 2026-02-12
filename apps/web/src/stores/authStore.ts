@@ -17,6 +17,7 @@ interface AuthState {
   register: (email: string, password: string, name: string, businessName?: string) => Promise<void>;
   logout: () => void;
   verify: () => Promise<void>;
+  refreshToken: () => Promise<void>;
   getToken: () => string | null;
   getUserId: () => string;
   getRole: () => string;
@@ -131,6 +132,34 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // Network error or NATS not connected yet - keep token, try again later
       // Don't remove token on network errors (user might just be loading)
       set({ isLoading: false });
+    }
+  },
+
+  refreshToken: async () => {
+    const currentToken = get().token;
+    if (!currentToken) return;
+
+    try {
+      const { request } = useNatsStore.getState();
+      const req = createRequest(undefined, { token: currentToken });
+      const response = await request<typeof req, NatsResponse<AuthResponse>>(
+        'sazinka.auth.refresh',
+        req,
+        5000,
+      );
+
+      if ('error' in response) {
+        // Token invalid — force re-login
+        localStorage.removeItem(TOKEN_KEY);
+        set({ isAuthenticated: false, token: null, user: null });
+        return;
+      }
+
+      const { token, user } = response.payload;
+      localStorage.setItem(TOKEN_KEY, token);
+      set({ user, token, isAuthenticated: true });
+    } catch {
+      // Network error — don't logout, just skip refresh
     }
   },
 

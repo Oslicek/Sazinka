@@ -59,7 +59,7 @@ pub fn generate_token(
     secret: &str,
 ) -> Result<String> {
     let now = chrono::Utc::now().timestamp() as usize;
-    let exp = now + 15 * 60; // 15 minutes
+    let exp = now + 8 * 60 * 60; // 8 hours (working day)
 
     let claims = Claims {
         sub: user_id.to_string(),

@@ -13,7 +13,7 @@ use crate::db::queries;
 use crate::services::geocoding::Geocoder;
 use crate::types::{
     EmptyPayload, ErrorResponse, Request, SuccessResponse,
-    Depot, CreateDepotRequest, UpdateDepotRequest, DeleteDepotRequest,
+    CreateDepotRequest, UpdateDepotRequest, DeleteDepotRequest,
     ListDepotsResponse, UserSettings,
     UpdateWorkConstraintsRequest, UpdateBusinessInfoRequest, UpdateEmailTemplatesRequest,
     UpdatePreferencesRequest, UpdateBreakSettingsRequest,
@@ -385,7 +385,7 @@ pub async fn handle_create_depot(
     mut subscriber: Subscriber,
     pool: PgPool,
     jwt_secret: Arc<String>,
-    geocoder: Arc<dyn Geocoder>,
+    _geocoder: Arc<dyn Geocoder>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
         debug!("Received depot.create message");

@@ -581,7 +581,7 @@ fn build_call_queue_sql_parts(request: &CallQueueRequest) -> CallQueueSqlParts {
     }
 
     if request.geocoded_only.unwrap_or(false) {
-        conditions.push("c.geocode_status = 'success'::geocode_status".to_string());
+        conditions.push("c.geocode_status::text = 'success'".to_string());
     }
 
     CallQueueSqlParts {
@@ -892,6 +892,6 @@ mod tests {
             ..Default::default()
         };
         let parts = build_call_queue_sql_parts(&req);
-        assert!(parts.where_clause.contains("c.geocode_status = 'success'"));
+        assert!(parts.where_clause.contains("c.geocode_status::text = 'success'"));
     }
 }

@@ -12,7 +12,7 @@ use uuid::Uuid;
 use crate::auth;
 use crate::db::queries;
 use crate::types::{
-    Communication, CreateCommunicationRequest, ErrorResponse, ListCommunicationsRequest,
+    CreateCommunicationRequest, ErrorResponse, ListCommunicationsRequest,
     ListCommunicationsResponse, Request, SuccessResponse, UpdateCommunicationRequest,
 };
 

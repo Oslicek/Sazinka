@@ -1,0 +1,23 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import Header from '../../../components/layout/Header.astro';
+import Footer from '../../../components/layout/Footer.astro';
+import LegalContent from '../../../components/sections/LegalContent.astro';
+
+const locale = 'en';
+---
+
+<Layout title="Terms of Service | Ariadline" description="Ariadline terms of service." locale={locale} path="/en/legal/terms">
+  <Header slot="header" locale={locale} currentPath="/en/legal/terms" />
+  <LegalContent
+    title="Terms of Service"
+    intro="By using Ariadline, you agree to these terms."
+    points={[
+      'Ariadline is provided as a subscription SaaS service.',
+      'You are responsible for keeping your account credentials secure.',
+      'Service misuse, abuse, or unlawful activity is prohibited.',
+      'We may update these terms and will communicate material changes.',
+    ]}
+  />
+  <Footer slot="footer" locale={locale} />
+</Layout>

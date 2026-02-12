@@ -15,7 +15,7 @@ use anyhow::Result;
 use async_nats::Client;
 use async_nats::jetstream::{self, Context as JsContext};
 use futures::StreamExt;
-use tracing::{info, warn, error, debug};
+use tracing::{info, warn, error};
 use uuid::Uuid;
 
 use crate::services::routing::{ValhallaClient, ValhallaConfig, RoutingService};

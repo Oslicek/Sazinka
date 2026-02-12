@@ -4,7 +4,7 @@ use anyhow::Result;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::types::work_item::{VisitWorkItem, CreateWorkItemRequest, WorkType, WorkResult};
+use crate::types::work_item::{VisitWorkItem, CreateWorkItemRequest, WorkResult};
 
 /// Create a new work item
 pub async fn create_work_item(

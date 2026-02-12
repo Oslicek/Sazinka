@@ -1,0 +1,22 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import Header from '../../../components/layout/Header.astro';
+import Footer from '../../../components/layout/Footer.astro';
+import LegalContent from '../../../components/sections/LegalContent.astro';
+
+const locale = 'cs';
+---
+
+<Layout title="Zásady cookies | Ariadline" description="Zásady používání cookies na webu Ariadline." locale={locale} path="/cs/legal/cookies">
+  <Header slot="header" locale={locale} currentPath="/cs/legal/cookies" />
+  <LegalContent
+    title="Zásady cookies"
+    intro="Marketingový web Ariadline nepoužívá sledovací cookies."
+    points={[
+      'Analytika je řešena přes Umami Cloud v režimu bez cookies.',
+      'Základní technická data mohou být zpracována pro bezpečnost a dostupnost.',
+      'Pokud se zásady změní, tuto stránku aktualizujeme.',
+    ]}
+  />
+  <Footer slot="footer" locale={locale} />
+</Layout>

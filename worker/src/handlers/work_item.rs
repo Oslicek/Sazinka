@@ -16,7 +16,7 @@ use crate::types::{
 use crate::types::work_item::{
     CreateWorkItemRequest, CompleteWorkItemRequest,
     ListWorkItemsRequest, ListWorkItemsResponse,
-    WorkItemIdRequest, VisitWorkItem,
+    WorkItemIdRequest,
 };
 
 /// Handle work_item.create messages

@@ -1,8 +1,8 @@
 # Sazinka - Workflow & UI Koncept
 
-> **Status:** MVP kompletní + Phase 9 (Planner redesign) + sjednocení komponent + Smart Slot Heuristics (multi-crew, Valhalla)  
-> **Verze:** 0.8.0  
-> **Datum:** 2026-02-10
+> **Status:** MVP kompletní + Phase 9 (Planner redesign) + sjednocení komponent + Smart Slot Heuristics (multi-crew, Valhalla) + Auto-recalculation  
+> **Verze:** 0.8.1  
+> **Datum:** 2026-02-12
 > 
 > **Implementováno:**
 > - ✅ Fronta k obvolání (`/queue`) - filtry, statistiky, akce
@@ -24,6 +24,7 @@
 > - ✅ **Export+ asynchronně** — export joby běží na workeru a v `Úlohy` lze dokončený export stáhnout přes `Stáhnout export`
 > - ✅ **Název export ZIP podle timezone uživatele** — `export-YYYYMMDD-HHMMSS-XX.zip` (čas ve jméně respektuje timezone uživatele, který export spustil)
 > - ✅ **Záznam práce V1** (`/worklog`) — rychlý záznam návštěvy, rychlé dokončení plánované/probíhající návštěvy, zachované prokliky na den v kalendáři / návštěvu / zákazníka, včetně mobilně-responsivního layoutu
+> - ✅ **Auto-recalculation** — automatický přepočet ETAs/ETDs po každém vložení zastávky nebo drag-and-drop přesunutí pomocí `sazinka.route.recalculate` (Valhalla matrix + sequential schedule)
 > 
 > **Změny v navigaci:**
 > - `/planner` → "Plán dne" (sloučeno Plánování + Můj den)

@@ -1,0 +1,23 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Header from '../../components/layout/Header.astro';
+import Footer from '../../components/layout/Footer.astro';
+import FeatureDetail from '../../components/sections/FeatureDetail.astro';
+import CTASection from '../../components/sections/CTASection.astro';
+import { getTranslation } from '../../i18n/utils';
+
+const locale = 'sk';
+const t = (key: string) => getTranslation(locale, key);
+---
+
+<Layout
+  title={`${t('features.title')} | Ariadline`}
+  description={t('meta.description')}
+  locale={locale}
+  path="/sk/features"
+>
+  <Header slot="header" locale={locale} currentPath="/sk/features" />
+  <FeatureDetail locale={locale} />
+  <CTASection locale={locale} />
+  <Footer slot="footer" locale={locale} />
+</Layout>

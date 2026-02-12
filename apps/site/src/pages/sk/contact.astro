@@ -1,0 +1,102 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Header from '../../components/layout/Header.astro';
+import Footer from '../../components/layout/Footer.astro';
+import ContactForm from '../../components/react/ContactForm';
+import NewsletterForm from '../../components/react/NewsletterForm';
+import { getTranslation } from '../../i18n/utils';
+
+const locale = 'sk';
+const t = (key: string) => getTranslation(locale, key);
+---
+
+<Layout
+  title={`${t('contact.title')} | Ariadline`}
+  description={t('contact.description')}
+  locale={locale}
+  path="/sk/contact"
+>
+  <Header slot="header" locale={locale} currentPath="/sk/contact" />
+
+  <section class="contactPage">
+    <div class="container contactGrid">
+      <div>
+        <h1>{t('contact.title')}</h1>
+        <p>{t('contact.description')}</p>
+        <ContactForm
+          client:visible
+          locale={locale}
+          labels={{
+            email: t('contact.form.email'),
+            message: t('contact.form.message'),
+            submit: t('contact.form.submit'),
+            sending: t('contact.form.sending'),
+            success: t('contact.form.success'),
+            error: t('contact.form.error'),
+          }}
+        />
+      </div>
+
+      <aside class="newsletterBox">
+        <h2>{t('newsletter.title')}</h2>
+        <p>{t('newsletter.description')}</p>
+        <NewsletterForm
+          client:visible
+          locale={locale}
+          variant="full"
+          labels={{
+            emailPlaceholder: t('newsletter.emailPlaceholder'),
+            subscribe: t('newsletter.subscribe'),
+            subscribing: t('newsletter.subscribing'),
+            gdprConsent: t('newsletter.gdprConsent'),
+            success: t('newsletter.success'),
+            error: t('newsletter.error'),
+          }}
+        />
+      </aside>
+    </div>
+  </section>
+
+  <Footer slot="footer" locale={locale}>
+    <NewsletterForm
+      slot="newsletter"
+      client:visible
+      locale={locale}
+      variant="compact"
+      labels={{
+        emailPlaceholder: t('newsletter.emailPlaceholder'),
+        subscribe: t('newsletter.subscribe'),
+        subscribing: t('newsletter.subscribing'),
+        gdprConsent: t('newsletter.gdprConsent'),
+        success: t('newsletter.success'),
+        error: t('newsletter.error'),
+      }}
+    />
+  </Footer>
+</Layout>
+
+<style>
+  .contactPage {
+    padding: 3rem 0 4rem;
+  }
+
+  .contactGrid {
+    display: grid;
+    gap: 2rem;
+    grid-template-columns: 1fr;
+  }
+
+  .newsletterBox {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 1.2rem;
+    background: var(--color-bg-secondary);
+    align-self: start;
+  }
+
+  @media (min-width: 960px) {
+    .contactGrid {
+      grid-template-columns: 1.4fr 1fr;
+    }
+  }
+</style>

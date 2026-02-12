@@ -14,10 +14,14 @@ use crate::db::queries;
 use crate::defaults::{default_work_end, default_work_start, DEFAULT_SERVICE_DURATION_MINUTES};
 use crate::services::insertion::{calculate_insertion_positions, StopMeta};
 use crate::services::routing::{RoutingService, MockRoutingService};
+use crate::services::sequential_schedule::{
+    self, ScheduleInput, ScheduleStop as SeqScheduleStop,
+    StopType as SeqStopType,
+};
 use crate::services::vrp::{VrpSolver, VrpProblem, VrpStop, Depot, SolverConfig, StopTimeWindow, BreakConfig};
 use crate::types::{
     Coordinates, ErrorResponse, Request, SuccessResponse,
-    PlannedRouteStop, RoutePlanRequest, RoutePlanResponse, RouteStatus, RouteWarning, StopType, WorkingHours,
+    PlannedRouteStop, RoutePlanRequest, RoutePlanResponse, RouteStatus, RouteWarning, StopType,
 };
 
 /// Handle route.plan messages
@@ -624,6 +628,8 @@ pub struct SaveRouteStop {
     /// Optional status override (e.g. "unassigned"). Defaults to "pending".
     #[serde(default)]
     pub status: Option<String>,
+    /// Per-stop service duration (minutes). If None, the global default is used.
+    pub service_duration_minutes: Option<i32>,
 }
 
 /// Response after saving a route
@@ -708,7 +714,8 @@ pub async fn handle_save(
         // Check auth
         let user_id = match auth::extract_auth(&request, &jwt_secret) {
             Ok(info) => info.data_user_id(),
-            Err(_) => {
+            Err(e) => {
+                warn!("Route save auth failed: {}", e);
                 let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
@@ -769,6 +776,7 @@ pub async fn handle_save(
                         stop.break_duration_minutes,
                         stop.break_time_start,
                         stop.status.as_deref(),
+                        stop.service_duration_minutes,
                     ).await {
                         warn!("Failed to insert stop: {}", e);
                     } else {
@@ -1229,6 +1237,10 @@ pub struct RouteStopInput {
     pub coordinates: Coordinates,
     pub arrival_time: Option<String>,
     pub departure_time: Option<String>,
+    /// Scheduled/agreed time window start (HH:MM)
+    pub time_window_start: Option<String>,
+    /// Scheduled/agreed time window end (HH:MM)
+    pub time_window_end: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -1366,6 +1378,7 @@ pub async fn handle_insertion_calculate(
         // 1 = depot
         // 2+ = route stops
         let stop_indices: Vec<usize> = (0..calc_req.route_stops.len()).map(|i| i + 2).collect();
+        let candidate_service = calc_req.candidate.service_duration_minutes as i32;
         let stops_meta: Vec<StopMeta> = calc_req
             .route_stops
             .iter()
@@ -1379,8 +1392,17 @@ pub async fn handle_insertion_calculate(
                     .departure_time
                     .as_deref()
                     .and_then(|t| chrono::NaiveTime::parse_from_str(t, "%H:%M").ok()),
-                time_window_start: None,
-                time_window_end: None,
+                time_window_start: s
+                    .time_window_start
+                    .as_deref()
+                    .and_then(|t| chrono::NaiveTime::parse_from_str(t, "%H:%M").ok()),
+                time_window_end: s
+                    .time_window_end
+                    .as_deref()
+                    .and_then(|t| chrono::NaiveTime::parse_from_str(t, "%H:%M").ok()),
+                // Use candidate's service duration as default for existing stops too
+                // (all stops share the org-level default)
+                service_duration_minutes: candidate_service,
             })
             .collect();
         let computed = calculate_insertion_positions(
@@ -1389,7 +1411,7 @@ pub async fn handle_insertion_calculate(
             1,
             &stop_indices,
             &stops_meta,
-            calc_req.candidate.service_duration_minutes as i32,
+            candidate_service,
             workday_start,
             workday_end,
         );
@@ -1643,6 +1665,234 @@ fn haversine_km(a: Coordinates, b: Coordinates) -> f64 {
 
     let h = (d_lat / 2.0).sin().powi(2) + lat1.cos() * lat2.cos() * (d_lng / 2.0).sin().powi(2);
     2.0 * R * h.sqrt().asin()
+}
+
+// ============================================================================
+// Route Recalculate Handler (quick ETA recalc after insert / reorder)
+// ============================================================================
+
+/// A stop in the recalculation request (sent from frontend)
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecalcStopInput {
+    pub coordinates: Coordinates,
+    pub stop_type: String,
+    pub scheduled_time_start: Option<String>,
+    pub scheduled_time_end: Option<String>,
+    pub service_duration_minutes: Option<i32>,
+    pub break_duration_minutes: Option<i32>,
+    /// Passthrough fields returned unchanged so frontend can match results
+    #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub customer_id: Option<String>,
+    #[serde(default)]
+    pub customer_name: Option<String>,
+}
+
+/// Request payload for route.recalculate
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecalculateRequest {
+    pub depot: Coordinates,
+    pub stops: Vec<RecalcStopInput>,
+    pub workday_start: Option<String>,
+    pub workday_end: Option<String>,
+    pub default_service_duration_minutes: Option<i32>,
+}
+
+/// A single recalculated stop in the response
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecalcStopResult {
+    pub order: i32,
+    pub estimated_arrival: String,
+    pub estimated_departure: String,
+    pub distance_from_previous_km: f64,
+    pub duration_from_previous_minutes: i32,
+    pub service_duration_minutes: i32,
+    /// Passthrough
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub customer_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub customer_name: Option<String>,
+}
+
+/// Response for route.recalculate
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecalculateResponse {
+    pub stops: Vec<RecalcStopResult>,
+    pub return_to_depot_distance_km: f64,
+    pub return_to_depot_duration_minutes: i32,
+    pub total_distance_km: f64,
+    pub total_travel_minutes: i32,
+    pub total_service_minutes: i32,
+}
+
+/// Handle sazinka.route.recalculate
+///
+/// Quick ETA recalculation: receives ordered stops + depot, fetches the Valhalla
+/// distance/time matrix, runs `compute_sequential_schedule`, returns updated
+/// arrival/departure times per stop.
+pub async fn handle_recalculate(
+    client: Client,
+    mut subscriber: Subscriber,
+    _pool: PgPool,
+    _jwt_secret: Arc<String>,
+    routing_service: Arc<dyn RoutingService>,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received route.recalculate message");
+
+        let reply = match msg.reply {
+            Some(ref r) => r.clone(),
+            None => {
+                warn!("route.recalculate: message without reply subject");
+                continue;
+            }
+        };
+
+        let request: Request<RecalculateRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("route.recalculate: failed to parse: {}", e);
+                let err = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+                continue;
+            }
+        };
+
+        let payload = &request.payload;
+        let default_service = payload
+            .default_service_duration_minutes
+            .unwrap_or(DEFAULT_SERVICE_DURATION_MINUTES as i32);
+        let workday_start = payload
+            .workday_start
+            .as_deref()
+            .and_then(|t| chrono::NaiveTime::parse_from_str(t, "%H:%M").ok())
+            .unwrap_or_else(default_work_start);
+
+        // Empty route → trivial response
+        if payload.stops.is_empty() {
+            let resp = SuccessResponse::new(
+                request.id,
+                RecalculateResponse {
+                    stops: vec![],
+                    return_to_depot_distance_km: 0.0,
+                    return_to_depot_duration_minutes: 0,
+                    total_distance_km: 0.0,
+                    total_travel_minutes: 0,
+                    total_service_minutes: 0,
+                },
+            );
+            let _ = client.publish(reply, serde_json::to_vec(&resp)?.into()).await;
+            continue;
+        }
+
+        // Build locations: depot (0), then stops (1..N)
+        let mut locations: Vec<Coordinates> = Vec::with_capacity(1 + payload.stops.len());
+        locations.push(payload.depot);
+        for s in &payload.stops {
+            locations.push(s.coordinates);
+        }
+
+        // Fetch routing matrix
+        let matrices = match routing_service.get_matrices(&locations).await {
+            Ok(m) => m,
+            Err(e) => {
+                warn!("route.recalculate: routing failed: {}. Using mock.", e);
+                match MockRoutingService::new().get_matrices(&locations).await {
+                    Ok(m) => m,
+                    Err(e2) => {
+                        error!("route.recalculate: mock also failed: {}", e2);
+                        let err = ErrorResponse::new(request.id, "ROUTING_ERROR", e.to_string());
+                        let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+                        continue;
+                    }
+                }
+            }
+        };
+
+        // Build ScheduleInput
+        let schedule_stops: Vec<SeqScheduleStop> = payload
+            .stops
+            .iter()
+            .map(|s| {
+                let st = if s.stop_type == "break" {
+                    SeqStopType::Break
+                } else {
+                    SeqStopType::Customer
+                };
+                SeqScheduleStop {
+                    stop_type: st,
+                    scheduled_time_start: s
+                        .scheduled_time_start
+                        .as_deref()
+                        .and_then(|t| chrono::NaiveTime::parse_from_str(t, "%H:%M").ok()),
+                    scheduled_time_end: s
+                        .scheduled_time_end
+                        .as_deref()
+                        .and_then(|t| chrono::NaiveTime::parse_from_str(t, "%H:%M").ok()),
+                    service_duration_minutes: s.service_duration_minutes,
+                    break_duration_minutes: s.break_duration_minutes,
+                }
+            })
+            .collect();
+
+        let stop_matrix_indices: Vec<usize> = (1..=payload.stops.len()).collect();
+
+        let input = ScheduleInput {
+            depot_matrix_idx: 0,
+            stops: schedule_stops,
+            stop_matrix_indices,
+            workday_start,
+            default_service_minutes: default_service,
+        };
+
+        let result = sequential_schedule::compute_sequential_schedule(
+            &input,
+            &matrices.distances,
+            &matrices.durations,
+        );
+
+        // Build response
+        let stops: Vec<RecalcStopResult> = result
+            .stops
+            .iter()
+            .enumerate()
+            .map(|(i, cs)| RecalcStopResult {
+                order: i as i32,
+                estimated_arrival: cs.estimated_arrival.format("%H:%M").to_string(),
+                estimated_departure: cs.estimated_departure.format("%H:%M").to_string(),
+                distance_from_previous_km: cs.distance_from_previous_km,
+                duration_from_previous_minutes: cs.duration_from_previous_minutes,
+                service_duration_minutes: cs.service_duration_minutes,
+                id: payload.stops[i].id.clone(),
+                customer_id: payload.stops[i].customer_id.clone(),
+                customer_name: payload.stops[i].customer_name.clone(),
+            })
+            .collect();
+
+        let resp = SuccessResponse::new(
+            request.id,
+            RecalculateResponse {
+                stops,
+                return_to_depot_distance_km: result.return_to_depot_distance_km,
+                return_to_depot_duration_minutes: result.return_to_depot_duration_minutes,
+                total_distance_km: result.total_distance_km,
+                total_travel_minutes: result.total_travel_minutes,
+                total_service_minutes: result.total_service_minutes,
+            },
+        );
+
+        let _ = client.publish(reply, serde_json::to_vec(&resp)?.into()).await;
+        info!("route.recalculate: computed schedule for {} stops", payload.stops.len());
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

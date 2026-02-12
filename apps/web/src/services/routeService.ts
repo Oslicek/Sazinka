@@ -35,6 +35,8 @@ export interface SaveRouteStop {
   breakTimeStart?: string;
   /** Optional status override (e.g. "unassigned"). Defaults to "pending" on backend. */
   status?: string;
+  /** Per-stop service duration in minutes. If omitted, global default is used. */
+  serviceDurationMinutes?: number;
 }
 
 export interface SaveRouteRequest {
@@ -98,6 +100,8 @@ export interface SavedRouteStop {
   // Break stop fields (only for stopType === 'break')
   breakDurationMinutes?: number | null;
   breakTimeStart?: string | null; // HH:MM format
+  /** Per-stop service duration in minutes */
+  serviceDurationMinutes?: number | null;
 }
 
 export interface GetRouteResponse {
@@ -134,7 +138,7 @@ export function toPlannedRouteStop(stop: SavedRouteStop): PlannedRouteStop {
     order: stop.stopOrder,
     eta: stop.estimatedArrival ?? '08:00',
     etd: stop.estimatedDeparture ?? '08:30',
-    serviceDurationMinutes: 30,
+    serviceDurationMinutes: stop.serviceDurationMinutes ?? 30,
     timeWindow: undefined,
   };
 }
@@ -281,6 +285,77 @@ export async function listRoutes(
   const req = createRequest(getToken(), filters);
   const response = await deps.request<typeof req, NatsResponse<ListRoutesResponse>>(
     'sazinka.route.list',
+    req,
+  );
+
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+
+  return response.payload;
+}
+
+// ==========================================================================
+// Quick route recalculation (ETA/ETD after insert or reorder)
+// ==========================================================================
+
+/** A stop sent in the recalculation request */
+export interface RecalcStopInput {
+  coordinates: { lat: number; lng: number };
+  stopType: string; // 'customer' | 'break'
+  scheduledTimeStart?: string | null;
+  scheduledTimeEnd?: string | null;
+  serviceDurationMinutes?: number | null;
+  breakDurationMinutes?: number | null;
+  /** Passthrough fields returned unchanged */
+  id?: string;
+  customerId?: string;
+  customerName?: string;
+}
+
+/** Request payload for route.recalculate */
+export interface RecalculateRouteRequest {
+  depot: { lat: number; lng: number };
+  stops: RecalcStopInput[];
+  workdayStart?: string;
+  workdayEnd?: string;
+  defaultServiceDurationMinutes?: number;
+}
+
+/** A single recalculated stop returned from backend */
+export interface RecalcStopResult {
+  order: number;
+  estimatedArrival: string;
+  estimatedDeparture: string;
+  distanceFromPreviousKm: number;
+  durationFromPreviousMinutes: number;
+  serviceDurationMinutes: number;
+  id?: string;
+  customerId?: string;
+  customerName?: string;
+}
+
+/** Response from route.recalculate */
+export interface RecalculateRouteResponse {
+  stops: RecalcStopResult[];
+  returnToDepotDistanceKm: number;
+  returnToDepotDurationMinutes: number;
+  totalDistanceKm: number;
+  totalTravelMinutes: number;
+  totalServiceMinutes: number;
+}
+
+/**
+ * Quick recalculation of ETAs/ETDs for an ordered route.
+ * Uses Valhalla matrix + sequential_schedule on backend.
+ */
+export async function recalculateRoute(
+  data: RecalculateRouteRequest,
+  deps = { request: useNatsStore.getState().request }
+): Promise<RecalculateRouteResponse> {
+  const req = createRequest(getToken(), data);
+  const response = await deps.request<typeof req, NatsResponse<RecalculateRouteResponse>>(
+    'sazinka.route.recalculate',
     req,
   );
 

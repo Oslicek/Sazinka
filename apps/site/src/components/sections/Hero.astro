@@ -1,0 +1,131 @@
+---
+import { getTranslation, type Locale } from '../../i18n/utils';
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const t = (key: string) => getTranslation(locale, key);
+---
+
+<section class="hero">
+  <div class="container heroInner">
+    <div class="heroContent">
+      <h1 class="heroTitle">{t('hero.title')}</h1>
+      <p class="heroSubtitle">{t('hero.subtitle')}</p>
+      <a href="https://app.ariadline.com" class="heroCta">
+        {t('hero.cta')}
+      </a>
+    </div>
+    <div class="heroImage">
+      <!-- Placeholder for hero screenshot -->
+      <div class="heroImagePlaceholder" aria-label="Ariadline application screenshot">
+        <span class="placeholderText">App Screenshot</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .hero {
+    padding: 5rem 0 4rem;
+    background: linear-gradient(
+      to bottom,
+      var(--color-bg) 0%,
+      var(--color-bg-secondary) 100%
+    );
+  }
+
+  .heroInner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3rem;
+    text-align: center;
+  }
+
+  .heroContent {
+    max-width: 640px;
+  }
+
+  .heroTitle {
+    font-family: var(--font-heading);
+    font-size: 2.5rem;
+    font-weight: 800;
+    line-height: 1.1;
+    color: var(--color-text);
+    margin-bottom: 1rem;
+  }
+
+  .heroSubtitle {
+    font-size: 1.25rem;
+    color: var(--color-text-secondary);
+    line-height: 1.6;
+    margin-bottom: 2rem;
+  }
+
+  .heroCta {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.875rem 2rem;
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: white;
+    background-color: var(--color-accent);
+    border-radius: var(--radius-md);
+    text-decoration: none;
+    transition: background-color 0.15s ease, transform 0.15s ease;
+    box-shadow: var(--shadow-md);
+  }
+
+  .heroCta:hover {
+    background-color: #b45309; /* darker amber */
+    transform: translateY(-1px);
+    text-decoration: none;
+  }
+
+  .heroImage {
+    max-width: 600px;
+    width: 100%;
+  }
+
+  .heroImagePlaceholder {
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    background-color: var(--color-bg);
+    border: 2px dashed var(--color-border);
+    border-radius: var(--radius-lg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .placeholderText {
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+  }
+
+  @media (min-width: 768px) {
+    .heroInner {
+      flex-direction: row;
+      text-align: left;
+    }
+
+    .heroContent {
+      flex: 1;
+    }
+
+    .heroImage {
+      flex: 1;
+    }
+
+    .heroTitle {
+      font-size: 3.5rem;
+    }
+  }
+</style>

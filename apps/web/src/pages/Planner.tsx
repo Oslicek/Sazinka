@@ -17,7 +17,7 @@ import type { BreakSettings, Depot } from '@shared/settings';
 import type { RouteWarning } from '@shared/route';
 import { validateBreak } from '../utils/breakUtils';
 import { logger } from '../utils/logger';
-import { RouteListPanel, RouteDetailTimeline, RouteMapPanel, type RouteMetrics } from '../components/planner';
+import { RouteListPanel, RouteDetailTimeline, RouteMapPanel, type RouteMetrics, PlanningTimeline, TimelineViewToggle, type TimelineView } from '../components/planner';
 import { PlannerFilters } from '../components/shared/PlannerFilters';
 import styles from './Planner.module.css';
 
@@ -112,6 +112,7 @@ export function Planner() {
   const [routes, setRoutes] = useState<SavedRoute[]>([]);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
   const [selectedRouteStops, setSelectedRouteStops] = useState<SavedRouteStop[]>([]);
+  const [timelineView, setTimelineView] = useState<TimelineView>('compact');
   const [metrics, setMetrics] = useState<RouteMetrics | null>(null);
   const [depot, setDepot] = useState<{ lat: number; lng: number; name?: string } | null>(null);
 
@@ -415,6 +416,10 @@ export function Planner() {
 
   const handleSegmentClick = useCallback((segmentIndex: number) => {
     setHighlightedSegment((prev) => (prev === segmentIndex ? null : segmentIndex));
+  }, []);
+
+  const handleReorder = useCallback((newStops: SavedRouteStop[]) => {
+    setSelectedRouteStops(newStops);
   }, []);
 
   const handleRemoveStop = useCallback((stopId: string) => {
@@ -770,10 +775,11 @@ export function Planner() {
                   )}
                 </span>
               )}
+              <TimelineViewToggle value={timelineView} onChange={setTimelineView} />
             </div>
             {isLoadingStops ? (
               <div className={styles.loading}>Nacitam zastávky...</div>
-            ) : (
+            ) : timelineView === 'compact' ? (
               <RouteDetailTimeline
                 stops={selectedRouteStops}
                 depot={selectedRouteDepot}
@@ -791,6 +797,25 @@ export function Planner() {
                 warnings={routeWarnings}
                 routeStartTime={routeStartTime}
                 routeEndTime={routeEndTime}
+                returnToDepotDistanceKm={returnToDepotLeg?.distanceKm ?? null}
+                returnToDepotDurationMinutes={returnToDepotLeg?.durationMinutes ?? null}
+              />
+            ) : (
+              <PlanningTimeline
+                stops={selectedRouteStops}
+                depot={selectedRouteDepot}
+                selectedStopId={highlightedStopId}
+                onStopClick={handleStopClick}
+                routeStartTime={routeStartTime}
+                routeEndTime={routeEndTime}
+                onReorder={handleReorder}
+                onRemoveStop={handleRemoveStop}
+                onAddBreak={handleAddBreak}
+                onOptimize={handleOptimizeRoute}
+                onDeleteRoute={handleDeleteRoute}
+                isOptimizing={isOptimizing}
+                metrics={metrics}
+                warnings={routeWarnings}
                 returnToDepotDistanceKm={returnToDepotLeg?.distanceKm ?? null}
                 returnToDepotDurationMinutes={returnToDepotLeg?.durationMinutes ?? null}
               />

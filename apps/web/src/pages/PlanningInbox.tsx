@@ -20,11 +20,18 @@ import {
   type CrewComparison,
   type SlotSuggestion,
   RouteDetailTimeline,
+  PlanningTimeline,
+  TimelineViewToggle,
+  type TimelineView,
+  type CandidateForInsertion,
+  type GapInsertionInfo,
 } from '../components/planner';
 import { DraftModeBar } from '../components/planner/DraftModeBar';
 import { ThreePanelLayout } from '../components/common';
 import type { SavedRouteStop } from '../services/routeService';
+import { recalculateRoute, type RecalcStopInput } from '../services/routeService';
 import type { BreakSettings } from '@shared/settings';
+import { insertStopAtPosition } from '../components/planner/insertStop';
 import * as settingsService from '../services/settingsService';
 import { calculateBreakPosition, createBreakStop } from '../utils/breakUtils';
 import { logger } from '../utils/logger';
@@ -131,6 +138,9 @@ export function PlanningInbox() {
     return raw === null ? true : raw === 'true';
   });
   
+  // Timeline view toggle (planning = proportional, compact = classic)
+  const [timelineView, setTimelineView] = useState<TimelineView>('planning');
+
   // Route state
   const [routeStops, setRouteStops] = useState<SavedRouteStop[]>([]);
   const [loadedRouteId, setLoadedRouteId] = useState<string | null>(null);
@@ -222,9 +232,10 @@ export function PlanningInbox() {
         distanceFromPreviousKm: s.distanceFromPreviousKm ?? undefined,
         durationFromPreviousMinutes: s.durationFromPreviousMinutes ?? undefined,
         stopType: s.stopType,
-        breakDurationMinutes: s.stopType === 'break' ? (s.breakDurationMinutes ?? undefined) : undefined,
-        breakTimeStart: s.stopType === 'break' ? (s.breakTimeStart ?? undefined) : undefined,
+        breakDurationMinutes: s.stopType === 'break' ? (s.breakDurationMinutes ?? 45) : undefined,
+        breakTimeStart: s.stopType === 'break' ? (s.breakTimeStart ?? s.estimatedArrival ?? '12:00') : undefined,
         status: s.status === 'unassigned' ? 'unassigned' : undefined,
+        serviceDurationMinutes: s.serviceDurationMinutes ?? undefined,
       })),
       totalDistanceKm: metrics?.distanceKm ?? 0,
       totalDurationMinutes: (metrics?.travelTimeMin ?? 0) + (metrics?.serviceTimeMin ?? 0),
@@ -501,15 +512,19 @@ export function PlanningInbox() {
               coordinates: { lat: stop.customerLat!, lng: stop.customerLng! },
               arrivalTime: stop.estimatedArrival ?? undefined,
               departureTime: stop.estimatedDeparture ?? undefined,
+              timeWindowStart: stop.scheduledTimeStart ?? undefined,
+              timeWindowEnd: stop.scheduledTimeEnd ?? undefined,
             })),
           depot: { lat: depot!.lat, lng: depot!.lng },
           candidate: {
             id: candidate!.id,
             customerId: candidate!.customerId,
             coordinates: { lat: candidate!.customerLat!, lng: candidate!.customerLng! },
-            serviceDurationMinutes: 30,
+            serviceDurationMinutes: defaultServiceDurationMinutes,
           },
           date: context!.date,
+          workdayStart: defaultWorkingHoursStart ?? undefined,
+          workdayEnd: defaultWorkingHoursEnd ?? undefined,
         });
         
         // Convert to SlotSuggestion format
@@ -553,7 +568,7 @@ export function PlanningInbox() {
     }
     
     calculateInsertion();
-  }, [isConnected, isRouteAware, selectedCandidateId, routeStops, context, depots, getCachedInsertion]);
+  }, [isConnected, isRouteAware, selectedCandidateId, routeStops, context, depots, getCachedInsertion, defaultServiceDurationMinutes, defaultWorkingHoursStart, defaultWorkingHoursEnd]);
 
   // Load candidates (filtering is applied client-side via advanced filters)
   const loadCandidates = useCallback(async () => {
@@ -611,7 +626,7 @@ export function PlanningInbox() {
         const response = await insertionService.calculateBatchInsertion({
           routeStops: routeStops.map((stop) => ({
             id: stop.id,
-            name: stop.customerName,
+            name: stop.customerName ?? '',
             coordinates: { lat: stop.customerLat!, lng: stop.customerLng! },
             arrivalTime: stop.estimatedArrival ?? undefined,
             departureTime: stop.estimatedDeparture ?? undefined,
@@ -621,7 +636,7 @@ export function PlanningInbox() {
             id: c.id,
             customerId: c.customerId,
             coordinates: { lat: c.customerLat!, lng: c.customerLng! },
-            serviceDurationMinutes: 30,
+            serviceDurationMinutes: defaultServiceDurationMinutes,
           })),
           date: context!.date,
           bestOnly: true,
@@ -705,16 +720,6 @@ export function PlanningInbox() {
         daysUntilDue: selectedCandidate.daysUntilDue,
         priority: toPriority(selectedCandidate),
         suggestedSlots: slotSuggestions,
-        insertionInfo: slotSuggestions[0] ? {
-          insertAfterIndex: slotSuggestions[0].insertAfterIndex,
-          insertAfterName: slotSuggestions[0].insertAfterName ?? 'Depo',
-          insertBeforeIndex: slotSuggestions[0].insertAfterIndex + 1,
-          insertBeforeName: slotSuggestions[0].insertBeforeName ?? 'Depo',
-          deltaKm: slotSuggestions[0].deltaKm,
-          deltaMin: slotSuggestions[0].deltaMin,
-          estimatedArrival: slotSuggestions[0].timeStart,
-          estimatedDeparture: slotSuggestions[0].timeEnd,
-        } : undefined,
         isScheduled,
         scheduledDate: selectedCandidate._scheduledDate,
         scheduledTimeStart: selectedCandidate._scheduledTimeStart,
@@ -752,9 +757,12 @@ export function PlanningInbox() {
   }, [selectedCandidate, selectedCandidateId, routeStops, slotSuggestions]);
 
   // Selected candidate for map preview (before adding to route)
+  // Only shown for candidates NOT yet in the route (in-route stops already have numbered markers)
   const selectedCandidateForMap: SelectedCandidate | null = useMemo(() => {
     if (selectedCandidate) {
       if (!selectedCandidate.customerLat || !selectedCandidate.customerLng) return null;
+      // Don't show preview marker for candidates already in the route
+      if (routeStops.some((s) => s.customerId === selectedCandidate.customerId)) return null;
       return {
         id: selectedCandidate.customerId,
         name: selectedCandidate.customerName,
@@ -764,28 +772,17 @@ export function PlanningInbox() {
         },
       };
     }
-    // Fallback from route stops
-    if (selectedCandidateId) {
-      const routeStop = routeStops.find((s) => s.customerId === selectedCandidateId);
-      if (routeStop?.customerLat && routeStop?.customerLng) {
-        return {
-          id: routeStop.customerId,
-          name: routeStop.customerName,
-          coordinates: {
-            lat: routeStop.customerLat,
-            lng: routeStop.customerLng,
-          },
-        };
-      }
-    }
     return null;
-  }, [selectedCandidate, selectedCandidateId, routeStops]);
+  }, [selectedCandidate, routeStops]);
 
   // Insertion preview for map (dashed line showing where candidate will be inserted)
+  // Only shown for candidates NOT yet in the route
   const insertionPreviewForMap: InsertionPreview | null = useMemo(() => {
     if (!selectedCandidate || !slotSuggestions[0]) return null;
     if (!selectedCandidate.customerLat || !selectedCandidate.customerLng) return null;
     if (routeStops.length === 0) return null;
+    // Don't show insertion preview for candidates already in the route
+    if (routeStops.some((s) => s.customerId === selectedCandidate.customerId)) return null;
 
     return {
       candidateId: selectedCandidate.customerId,
@@ -797,7 +794,31 @@ export function PlanningInbox() {
       insertAfterIndex: slotSuggestions[0].insertAfterIndex,
       insertBeforeIndex: slotSuggestions[0].insertAfterIndex + 1,
     };
-  }, [selectedCandidate, slotSuggestions, routeStops.length]);
+  }, [selectedCandidate, slotSuggestions, routeStops]);
+
+  // Candidate insertion info for PlanningTimeline gap zones
+  const candidateForInsertion: CandidateForInsertion | null = useMemo(() => {
+    if (!selectedCandidate || slotSuggestions.length === 0) return null;
+    if (routeStops.length === 0) return null;
+    // Don't show for candidates already in the route
+    if (routeStops.some((s) => s.customerId === selectedCandidate.customerId)) return null;
+
+    const gaps: GapInsertionInfo[] = slotSuggestions.map((slot) => ({
+      insertAfterIndex: slot.insertAfterIndex,
+      candidateName: selectedCandidate.customerName,
+      estimatedArrival: slot.timeStart,
+      estimatedDeparture: slot.timeEnd,
+      deltaKm: slot.deltaKm,
+      deltaMin: slot.deltaMin,
+      status: slot.status as 'ok' | 'tight' | 'conflict',
+    }));
+
+    return {
+      candidateId: selectedCandidate.customerId,
+      candidateName: selectedCandidate.customerName,
+      gaps,
+    };
+  }, [selectedCandidate, slotSuggestions, routeStops]);
 
   // Compute set of customer IDs that are currently in the route
   const inRouteIds = useMemo(() => {
@@ -805,11 +826,25 @@ export function PlanningInbox() {
   }, [routeStops]);
 
   // Sorted candidates for display (pre-ranked by insertion cost)
+  // The currently selected candidate is always kept in the list even if it
+  // no longer matches the active filters — it will be removed once the user
+  // clicks on a different candidate.
   const sortedCandidates = useMemo(() => {
     const filtered = applyInboxFilters(candidates, filters, inRouteIds) as InboxCandidate[];
     
+    // Ensure the currently selected candidate stays in the list
+    if (selectedCandidateId && !filtered.some((c) => c.customerId === selectedCandidateId)) {
+      const selected = candidates.find((c) => c.customerId === selectedCandidateId);
+      if (selected) {
+        filtered.unshift(selected);
+      }
+    }
+    
     if (!isRouteAware) {
       return filtered.sort((a, b) => {
+        // Pin selected candidate at top
+        if (a.customerId === selectedCandidateId) return -1;
+        if (b.customerId === selectedCandidateId) return 1;
         const aOverdue = getDaysOverdue(a);
         const bOverdue = getDaysOverdue(b);
         if (aOverdue !== bOverdue) return bOverdue - aOverdue;
@@ -818,6 +853,10 @@ export function PlanningInbox() {
     }
     
     return filtered.sort((a, b) => {
+      // Pin selected candidate at top
+      if (a.customerId === selectedCandidateId) return -1;
+      if (b.customerId === selectedCandidateId) return 1;
+      
       const aValid = hasValidAddress(a);
       const bValid = hasValidAddress(b);
       if (aValid !== bValid) return aValid ? -1 : 1;
@@ -841,7 +880,7 @@ export function PlanningInbox() {
       if (aOverdue !== bOverdue) return bOverdue - aOverdue;
       return a.daysUntilDue - b.daysUntilDue;
     });
-  }, [candidates, filters, inRouteIds, isRouteAware]);
+  }, [candidates, filters, inRouteIds, isRouteAware, selectedCandidateId]);
 
   // Keep ref in sync for use in callbacks
   sortedCandidatesRef.current = sortedCandidates;
@@ -1042,8 +1081,9 @@ export function PlanningInbox() {
         )
       );
       
-      // Move to next candidate automatically
-      selectNextCandidate(candidate.customerId);
+      // Stay on the current candidate (don't auto-advance)
+      // The candidate remains visible even if it no longer matches filters,
+      // and will be removed from the list when the user clicks a different candidate.
       
       // Invalidate route cache since route changed
       incrementRouteVersion();
@@ -1180,7 +1220,7 @@ export function PlanningInbox() {
             const breakResult = calculateBreakPosition(
               customerStops,
               effectiveBreakSettings,
-              context?.workingHoursStart || '08:00',
+              routeStartTime || '08:00',
               {
                 enforceDrivingBreakRule,
                 maxDrivingMinutes: 270,
@@ -1219,8 +1259,68 @@ export function PlanningInbox() {
     }
   }, [selectedIds, inRouteIds, candidates, routeStops.length, breakSettings, context, enforceDrivingBreakRule, incrementRouteVersion]);
 
+  // Quick-recalculate ETAs for the current route after insert/reorder.
+  // Fires in the background – updates stops in-place when the response arrives.
+  const triggerRecalculate = useCallback(async (stopsSnapshot: SavedRouteStop[]) => {
+    const depot = currentDepot;
+    if (!depot || stopsSnapshot.length === 0) return;
+
+    // Build recalc input from the stops snapshot
+    const recalcStops: RecalcStopInput[] = stopsSnapshot.map((s) => ({
+      coordinates: { lat: s.customerLat ?? 0, lng: s.customerLng ?? 0 },
+      stopType: s.stopType,
+      scheduledTimeStart: s.scheduledTimeStart ?? undefined,
+      scheduledTimeEnd: s.scheduledTimeEnd ?? undefined,
+      serviceDurationMinutes: s.serviceDurationMinutes ?? undefined,
+      breakDurationMinutes: s.breakDurationMinutes ?? undefined,
+      id: s.id,
+      customerId: s.customerId ?? undefined,
+      customerName: s.customerName ?? undefined,
+    }));
+
+    try {
+      const result = await recalculateRoute({
+        depot: { lat: depot.lat, lng: depot.lng },
+        stops: recalcStops,
+        workdayStart: routeStartTime || undefined,
+        workdayEnd: routeEndTime || undefined,
+        defaultServiceDurationMinutes,
+      });
+
+      // Merge recalculated times back into stops
+      setRouteStops((prev) => {
+        // Build a lookup by id for quick matching
+        const resultMap = new Map(result.stops.map((r) => [r.id, r]));
+        const updated = prev.map((stop) => {
+          const recalced = resultMap.get(stop.id);
+          if (!recalced) return stop;
+          return {
+            ...stop,
+            estimatedArrival: recalced.estimatedArrival,
+            estimatedDeparture: recalced.estimatedDeparture,
+            distanceFromPreviousKm: recalced.distanceFromPreviousKm,
+            durationFromPreviousMinutes: recalced.durationFromPreviousMinutes,
+            serviceDurationMinutes: recalced.serviceDurationMinutes,
+          };
+        });
+        return updated;
+      });
+
+      // Update return-to-depot leg
+      setReturnToDepotLeg({
+        distanceKm: result.returnToDepotDistanceKm,
+        durationMinutes: result.returnToDepotDurationMinutes,
+      });
+
+      setHasChanges(true);
+    } catch (err) {
+      logger.error('Route recalculation failed:', err);
+      // Non-fatal: the route still exists, just with stale ETAs
+    }
+  }, [currentDepot, routeStartTime, routeEndTime, defaultServiceDurationMinutes]);
+
   // Route building: add single candidate from detail panel
-  const handleAddToRoute = useCallback((candidateId: string) => {
+  const handleAddToRoute = useCallback((candidateId: string, insertAfterIndex?: number) => {
     const candidate = candidates.find((c) => c.id === candidateId || c.customerId === candidateId);
     if (!candidate || !candidate.customerLat || !candidate.customerLng) return;
     if (inRouteIds.has(candidate.customerId)) return;
@@ -1249,8 +1349,13 @@ export function PlanningInbox() {
       revisionStatus: candidate.status ?? null,
     };
 
+    // Use insertAfterIndex when provided (from slot suggestions / PlanningTimeline gaps),
+    // otherwise append at the end.
+    let finalStops: SavedRouteStop[] = [];
+
     setRouteStops((prev) => {
-      const updated = [...prev, newStop];
+      const insertIdx = insertAfterIndex !== undefined ? insertAfterIndex : prev.length;
+      const updated = insertStopAtPosition(prev, newStop, insertIdx);
       
       // Auto-insert break if enabled and we have enough stops
       if (breakSettings?.breakEnabled && updated.filter(s => s.stopType === 'customer').length >= 2) {
@@ -1268,7 +1373,7 @@ export function PlanningInbox() {
           const breakResult = calculateBreakPosition(
             customerStops,
             effectiveBreakSettings,
-            context?.workingHoursStart || '08:00',
+            routeStartTime || '08:00',
             {
               enforceDrivingBreakRule,
               maxDrivingMinutes: 270,
@@ -1276,46 +1381,78 @@ export function PlanningInbox() {
             }
           );
           
-          // Keep heuristic diagnostics, but do not show them until user manually
-          // adjusts break parameters.
           setBreakWarnings(breakResult.warnings);
           setIsBreakManuallyAdjusted(false);
           
-          // Create break stop
           const breakStop: SavedRouteStop = {
             ...createBreakStop('', breakResult.position + 1, effectiveBreakSettings, breakResult.estimatedTime, { floating: true }),
             id: crypto.randomUUID(),
           };
           
-          // Insert break at calculated position and renumber
           const withBreak = [
             ...customerStops.slice(0, breakResult.position),
             breakStop,
             ...customerStops.slice(breakResult.position),
           ];
           
-          return withBreak.map((s, i) => ({ ...s, stopOrder: i + 1 }));
+          finalStops = withBreak.map((s, i) => ({ ...s, stopOrder: i + 1 }));
+          return finalStops;
         }
       }
       
+      finalStops = updated;
       return updated;
     });
     setReturnToDepotLeg(null);
     setHasChanges(true);
     incrementRouteVersion();
-  }, [candidates, inRouteIds, routeStops.length, breakSettings, context, enforceDrivingBreakRule, incrementRouteVersion]);
 
-  // Route building: remove stop from route
-  const handleRemoveFromRoute = useCallback((stopId: string) => {
-    setRouteStops((prev) => {
-      const filtered = prev.filter((s) => s.id !== stopId && s.customerId !== stopId);
-      // Renumber
-      return filtered.map((s, i) => ({ ...s, stopOrder: i + 1 }));
+    // Fire quick recalculation in the background to get updated ETAs
+    // We need a small delay to ensure state is committed before reading it.
+    // Use the finalStops snapshot directly instead.
+    requestAnimationFrame(() => {
+      if (finalStops.length > 0) {
+        triggerRecalculate(finalStops);
+      }
     });
-    setReturnToDepotLeg(null);
+  }, [candidates, inRouteIds, routeStops.length, breakSettings, enforceDrivingBreakRule, incrementRouteVersion, triggerRecalculate, routeStartTime]);
+
+  // Route building: reorder stops via drag-and-drop
+  const handleReorder = useCallback((newStops: SavedRouteStop[]) => {
+    setRouteStops(newStops);
     setHasChanges(true);
     incrementRouteVersion();
-  }, [incrementRouteVersion]);
+    // Auto-recalculate ETAs after reorder
+    triggerRecalculate(newStops);
+  }, [incrementRouteVersion, triggerRecalculate]);
+
+  // Route building: remove stop from route
+  const handleRemoveFromRoute = useCallback(async (stopId: string) => {
+    let remaining: SavedRouteStop[] = [];
+    setRouteStops((prev) => {
+      const filtered = prev.filter((s) => s.id !== stopId && s.customerId !== stopId);
+      remaining = filtered.map((s, i) => ({ ...s, stopOrder: i + 1 }));
+      return remaining;
+    });
+    setReturnToDepotLeg(null);
+    incrementRouteVersion();
+
+    // If no stops remain, delete the route from backend instead of relying on auto-save
+    if (remaining.length === 0 && loadedRouteId) {
+      try {
+        await routeService.deleteRoute(loadedRouteId);
+        setLoadedRouteId(null);
+        setHasChanges(false);
+      } catch (err) {
+        logger.error('Failed to delete route after removing last stop:', err);
+        setHasChanges(true);
+      }
+    } else {
+      setHasChanges(true);
+      // Auto-recalculate ETAs for the remaining stops
+      triggerRecalculate(remaining);
+    }
+  }, [loadedRouteId, incrementRouteVersion, triggerRecalculate]);
 
   // Route building: optimize route via VRP solver
   const handleOptimizeRoute = useCallback(async () => {
@@ -1507,7 +1644,7 @@ export function PlanningInbox() {
       const breakResult = calculateBreakPosition(
         customerStops,
         effectiveBreakSettings,
-        context?.workingHoursStart || '08:00',
+        routeStartTime || '08:00',
         {
           enforceDrivingBreakRule,
           maxDrivingMinutes: 270,
@@ -1534,17 +1671,26 @@ export function PlanningInbox() {
     incrementRouteVersion();
   }, [breakSettings, context, enforceDrivingBreakRule, incrementRouteVersion]);
 
-  // Route building: clear all stops
-  const handleClearRoute = useCallback(() => {
+  // Route building: clear all stops and delete route from backend
+  const handleClearRoute = useCallback(async () => {
+    // If we have a saved route, delete it from the backend
+    if (loadedRouteId) {
+      try {
+        await routeService.deleteRoute(loadedRouteId);
+        setLoadedRouteId(null);
+      } catch (err) {
+        logger.error('Failed to delete route:', err);
+      }
+    }
     setRouteStops([]);
     setReturnToDepotLeg(null);
     setBreakWarnings([]);
     setRouteGeometry([]);
     setMetrics(null);
     setSelectedIds(new Set());
-    setHasChanges(true);
+    setHasChanges(false); // Nothing to save — route is deleted
     incrementRouteVersion();
-  }, [incrementRouteVersion]);
+  }, [loadedRouteId, incrementRouteVersion]);
 
   // Keyboard shortcuts handlers
   const handleMoveUp = useCallback(() => {
@@ -2027,30 +2173,65 @@ export function PlanningInbox() {
           />
         </div>
         <div className={styles.routeStopSection}>
-          <RouteDetailTimeline
-            stops={routeStops}
-            depot={currentDepot ? { ...currentDepot, name: currentDepot.name ?? 'Depo' } : null}
-            selectedStopId={selectedCandidateId}
-            highlightedSegment={highlightedSegment}
-            onStopClick={(customerId) => {
-              setSelectedCandidateId(customerId);
-              setHighlightedSegment(null);
-            }}
-            onSegmentClick={setHighlightedSegment}
-            onRemoveStop={handleRemoveFromRoute}
-            onAddBreak={handleAddBreak}
-            onOptimize={handleOptimizeRoute}
-            onDeleteRoute={handleClearRoute}
-            deleteRouteLabel="Smazat trasu"
-            isOptimizing={isOptimizing}
-            isSaving={isSaving}
-            metrics={metrics}
-            warnings={routeWarnings}
-            routeStartTime={routeStartTime}
-            routeEndTime={routeEndTime}
-            returnToDepotDistanceKm={returnToDepotLeg?.distanceKm ?? null}
-            returnToDepotDurationMinutes={returnToDepotLeg?.durationMinutes ?? null}
-          />
+          <div className={styles.timelineHeader}>
+            <TimelineViewToggle value={timelineView} onChange={setTimelineView} />
+          </div>
+          {timelineView === 'compact' ? (
+            <RouteDetailTimeline
+              stops={routeStops}
+              depot={currentDepot ? { ...currentDepot, name: currentDepot.name ?? 'Depo' } : null}
+              selectedStopId={selectedCandidateId}
+              highlightedSegment={highlightedSegment}
+              onStopClick={(customerId) => {
+                setSelectedCandidateId(customerId);
+                setHighlightedSegment(null);
+              }}
+              onSegmentClick={setHighlightedSegment}
+              onReorder={handleReorder}
+              onRemoveStop={handleRemoveFromRoute}
+              onAddBreak={handleAddBreak}
+              onOptimize={handleOptimizeRoute}
+              onDeleteRoute={handleClearRoute}
+              deleteRouteLabel="Smazat trasu"
+              isOptimizing={isOptimizing}
+              isSaving={isSaving}
+              metrics={metrics}
+              warnings={routeWarnings}
+              routeStartTime={routeStartTime}
+              routeEndTime={routeEndTime}
+              returnToDepotDistanceKm={returnToDepotLeg?.distanceKm ?? null}
+              returnToDepotDurationMinutes={returnToDepotLeg?.durationMinutes ?? null}
+            />
+          ) : (
+            <PlanningTimeline
+              stops={routeStops}
+              depot={currentDepot ? { ...currentDepot, name: currentDepot.name ?? 'Depo' } : null}
+              selectedStopId={selectedCandidateId}
+              onStopClick={(customerId) => {
+                setSelectedCandidateId(customerId);
+                setHighlightedSegment(null);
+              }}
+              onReorder={handleReorder}
+              onRemoveStop={handleRemoveFromRoute}
+              onAddBreak={handleAddBreak}
+              onOptimize={handleOptimizeRoute}
+              onDeleteRoute={handleClearRoute}
+              deleteRouteLabel="Smazat trasu"
+              isOptimizing={isOptimizing}
+              isSaving={isSaving}
+              metrics={metrics}
+              routeStartTime={routeStartTime}
+              routeEndTime={routeEndTime}
+              returnToDepotDistanceKm={returnToDepotLeg?.distanceKm ?? null}
+              returnToDepotDurationMinutes={returnToDepotLeg?.durationMinutes ?? null}
+              candidateForInsertion={candidateForInsertion}
+              onInsertCandidate={(insertAfterIndex) => {
+                if (selectedCandidate) {
+                  handleAddToRoute(selectedCandidate.customerId, insertAfterIndex);
+                }
+              }}
+            />
+          )}
         </div>
       </div>
     );

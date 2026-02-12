@@ -62,7 +62,8 @@
 /* Main content */
 .main {
   flex: 1;
-  min-width: 0;
+  min-width: 5rem;
+  overflow: hidden;
 }
 
 .nameRow {

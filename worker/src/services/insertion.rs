@@ -2,7 +2,6 @@
 
 use chrono::{NaiveTime, Timelike};
 
-use crate::defaults::DEFAULT_SERVICE_DURATION_MINUTES;
 use crate::services::routing::DistanceTimeMatrices;
 
 #[derive(Debug, Clone)]
@@ -12,6 +11,8 @@ pub struct StopMeta {
     pub departure_time: Option<NaiveTime>,
     pub time_window_start: Option<NaiveTime>,
     pub time_window_end: Option<NaiveTime>,
+    /// Service duration at this stop in minutes (used for departure estimation)
+    pub service_duration_minutes: i32,
 }
 
 #[derive(Debug, Clone)]
@@ -82,7 +83,7 @@ pub fn calculate_insertion_positions(
             stops_meta[insert_idx - 1].name.clone()
         };
         let insert_before_name = if insert_idx >= num_stops {
-            "Depo".to_string()
+            "Konec trasy".to_string()
         } else {
             stops_meta[insert_idx].name.clone()
         };
@@ -93,23 +94,30 @@ pub fn calculate_insertion_positions(
         let prev_departure = if insert_idx == 0 {
             workday_start
         } else {
-            stops_meta[insert_idx - 1].departure_time.unwrap_or_else(|| {
-                stops_meta[insert_idx - 1]
-                    .arrival_time
-                    .map(|t| add_minutes(t, DEFAULT_SERVICE_DURATION_MINUTES as i64))
+            let meta = &stops_meta[insert_idx - 1];
+            // Priority: departure_time (from optimization) is most accurate
+            meta.departure_time.unwrap_or_else(|| {
+                // Estimate: crew arrives at time_window_start (or arrival_time),
+                // works for service_duration_minutes, then departs
+                meta.time_window_start
+                    .or(meta.arrival_time)
+                    .map(|t| add_minutes(t, meta.service_duration_minutes as i64))
                     .unwrap_or(workday_start)
             })
         };
 
         let earliest_start = add_minutes(prev_departure, travel_from_min);
         let latest_start = if insert_idx >= num_stops {
-            add_minutes(workday_end, -(candidate_service_minutes as i64 + travel_to_next_min))
-        } else if let Some(next_arrival) = stops_meta[insert_idx].arrival_time {
-            add_minutes(next_arrival, -(candidate_service_minutes as i64 + travel_to_next_min))
-        } else if let Some(next_window_start) = stops_meta[insert_idx].time_window_start {
-            add_minutes(next_window_start, -(candidate_service_minutes as i64 + travel_to_next_min))
+            // Last position: no next stop, constrained only by workday end
+            add_minutes(workday_end, -(candidate_service_minutes as i64))
         } else {
-            add_minutes(workday_end, -(candidate_service_minutes as i64 + travel_to_next_min))
+            let next_meta = &stops_meta[insert_idx];
+            // Use arrival_time (optimized) or time_window_end (latest acceptable arrival)
+            // as the deadline by which we must finish candidate service + travel to next stop
+            let next_deadline = next_meta.arrival_time
+                .or(next_meta.time_window_end)
+                .unwrap_or(workday_end);
+            add_minutes(next_deadline, -(candidate_service_minutes as i64 + travel_to_next_min))
         };
 
         let estimated_arrival = earliest_start;
@@ -286,7 +294,7 @@ mod tests {
         assert_eq!(positions.len(), 1);
         let p = &positions[0];
         assert_eq!(p.insert_after_name, "Depo");
-        assert_eq!(p.insert_before_name, "Depo");
+        assert_eq!(p.insert_before_name, "Konec trasy");
         // delta_km = (5000 + 5000 - 0) / 1000 = 10.0
         assert!((p.delta_km - 10.0).abs() < 0.1);
         assert_eq!(p.status, "ok");
@@ -307,6 +315,7 @@ mod tests {
             departure_time: Some(make_time(9, 30)),
             time_window_start: Some(make_time(9, 0)),
             time_window_end: Some(make_time(9, 30)),
+            service_duration_minutes: 30,
         }];
         let positions = calculate_insertion_positions(
             &matrices,
@@ -325,7 +334,7 @@ mod tests {
             .map(|p| (p.insert_after_name.as_str(), p.insert_before_name.as_str()))
             .collect();
         assert!(names.contains(&("Depo", "Stop A")));
-        assert!(names.contains(&("Stop A", "Depo")));
+        assert!(names.contains(&("Stop A", "Konec trasy")));
     }
 
     #[test]
@@ -349,6 +358,7 @@ mod tests {
                 departure_time: Some(make_time(9, 30)),
                 time_window_start: None,
                 time_window_end: None,
+                service_duration_minutes: 30,
             },
             StopMeta {
                 name: "B".into(),
@@ -356,6 +366,7 @@ mod tests {
                 departure_time: Some(make_time(10, 30)),
                 time_window_start: None,
                 time_window_end: None,
+                service_duration_minutes: 30,
             },
             StopMeta {
                 name: "C".into(),
@@ -363,6 +374,7 @@ mod tests {
                 departure_time: Some(make_time(11, 30)),
                 time_window_start: None,
                 time_window_end: None,
+                service_duration_minutes: 30,
             },
         ];
         let positions = calculate_insertion_positions(
@@ -402,6 +414,7 @@ mod tests {
                 departure_time: Some(make_time(8, 20)),
                 time_window_start: None,
                 time_window_end: None,
+                service_duration_minutes: 30,
             },
             StopMeta {
                 name: "B".into(),
@@ -409,6 +422,7 @@ mod tests {
                 departure_time: Some(make_time(8, 50)),
                 time_window_start: None,
                 time_window_end: None,
+                service_duration_minutes: 30,
             },
         ];
         let positions = calculate_insertion_positions(

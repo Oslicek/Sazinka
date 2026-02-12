@@ -1,0 +1,23 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import Header from '../../../components/layout/Header.astro';
+import Footer from '../../../components/layout/Footer.astro';
+import LegalContent from '../../../components/sections/LegalContent.astro';
+
+const locale = 'en';
+---
+
+<Layout title="Privacy Policy | Ariadline" description="Ariadline privacy policy." locale={locale} path="/en/legal/privacy">
+  <Header slot="header" locale={locale} currentPath="/en/legal/privacy" />
+  <LegalContent
+    title="Privacy Policy"
+    intro="This page explains how Ariadline processes personal data."
+    points={[
+      'We collect only data necessary for service operation.',
+      'Newsletter subscriptions use a double opt-in confirmation process.',
+      'Contact form requests are stored in Cloudflare D1 for support processing.',
+      'You can request access, correction, or deletion of your data at any time.',
+    ]}
+  />
+  <Footer slot="footer" locale={locale} />
+</Layout>

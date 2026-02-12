@@ -1975,3 +1975,61 @@ User confirmed the time window fix is working. Added comprehensive tests and doc
 **Test results:**
 - Rust: 51 VRP tests pass, 21 job tests pass (all green)
 - TypeScript: 6 routeService tests pass
+
+## 2026-02-12 — PROJECT_SITE.MD review snapshot (memory-preservation entry)
+
+### Context
+User requested immediate persistence of analysis to avoid losing context due to low Cursor memory.
+Reviewed current `PROJECT_SITE.MD` state after architecture updates (Astro + Pages Functions + D1 + Umami Cloud + Resend).
+
+### Key remarks (pripominky)
+
+1. **Phase 1 subtotal mismatch**
+   - Table items in Phase 1 sum to ~44h, while subtotal states `~43h`.
+
+2. **Root language redirect implementation detail**
+   - Document prefers static solution for `/` language routing, but static-only behavior should be made explicit:
+     - meta refresh / minimal JS redirect / static language selector landing.
+   - Clarify concrete fallback order to avoid ambiguity.
+
+3. **Performance budget risk**
+   - `JS bundle < 5 KB` target is very strict.
+   - Having `NewsletterForm` also in footer on all pages may increase hydration cost depending on placement and visibility.
+
+4. **Email template ownership**
+   - Templates listed in both `apps/site/src/emails/` and `packages/emails/`.
+   - Recommend defining a single source of truth to avoid drift.
+
+5. **Umami URL currently placeholder-like**
+   - Script URL is intentionally generic (`https://[region].umami.is/script.js`).
+   - Final value must be taken from Umami Cloud dashboard per environment.
+
+6. **Data retention policy not specified**
+   - D1 storage is defined for contacts/newsletter, but retention and deletion policy are not yet documented.
+
+### Questions to resolve (dotazy)
+
+1. **Language behavior on `/`**
+   - Do we want automatic redirect by browser language (JS/meta), or a static language chooser page?
+
+2. **Newsletter consent model**
+   - Single opt-in vs. double opt-in?
+
+3. **Source of truth for newsletter contacts**
+   - D1 primary store vs. Resend Audience primary store (and D1 as audit)?
+
+4. **Ticket ID format for contact form**
+   - UUID-only vs human-readable `REQ-YYYY-NNNNNN`.
+
+5. **Anti-spam depth**
+   - Honeypot + rate limit only, or add Cloudflare Turnstile later?
+
+6. **Resend in Pages Functions**
+   - Open question already tracked: verify SDK compatibility in CF Pages runtime; fallback is direct REST call.
+
+### State consistency check
+- Major architectural conflicts were already resolved in `PROJECT_SITE.MD`:
+  - Pages Functions selected for site API (`/api/contact`, `/api/newsletter`)
+  - Separate app API remains on `api.ariadline.com`
+  - D1 selected for managed SQLite storage
+  - Umami Cloud selected (with future optional self-host migration)

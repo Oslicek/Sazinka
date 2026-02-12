@@ -14,7 +14,7 @@ use crate::db::queries;
 use crate::types::{
     ErrorResponse, Request, SuccessResponse,
     CreateCrewRequest, UpdateCrewRequest, ListCrewsRequest, 
-    DeleteCrewRequest, Crew, CrewListResponse,
+    DeleteCrewRequest, CrewListResponse,
 };
 
 /// Handle crew.create messages

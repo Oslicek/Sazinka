@@ -375,7 +375,6 @@ pub async fn list_customers_extended(
     user_id: Uuid,
     req: &ListCustomersRequest,
 ) -> Result<(Vec<CustomerListItem>, i64)> {
-    let today = Utc::now().date_naive();
     let limit = req.limit.unwrap_or(50) as i64;
     let offset = req.offset.unwrap_or(0) as i64;
 

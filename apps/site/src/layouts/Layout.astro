@@ -1,0 +1,108 @@
+---
+import '@fontsource-variable/inter';
+import '@fontsource-variable/montserrat';
+import '../styles/global.css';
+import { LOCALES, getLocalizedPath, type Locale } from '../i18n/utils';
+
+interface Props {
+  title: string;
+  description: string;
+  locale: Locale;
+  path: string;
+  ogImage?: string;
+}
+
+const { title, description, locale, path, ogImage } = Astro.props;
+
+const siteUrl = 'https://ariadline.com';
+const canonicalUrl = `${siteUrl}${path}`;
+const ogImageUrl = ogImage ? `${siteUrl}${ogImage}` : `${siteUrl}/images/og-default.png`;
+const umamiScriptUrl = import.meta.env.PUBLIC_UMAMI_SCRIPT_URL ?? 'https://eu.umami.is/script.js';
+const umamiWebsiteId = import.meta.env.PUBLIC_UMAMI_WEBSITE_ID ?? 'placeholder-replace-in-production';
+
+// Strip locale prefix from path to get the base path for hreflang
+const pathSegments = path.split('/').filter(Boolean);
+if (pathSegments.length > 0 && (LOCALES as readonly string[]).includes(pathSegments[0])) {
+  pathSegments.shift();
+}
+const basePath = '/' + pathSegments.join('/');
+
+// Map locale to og:locale format
+const ogLocaleMap: Record<Locale, string> = {
+  en: 'en_US',
+  cs: 'cs_CZ',
+  sk: 'sk_SK',
+};
+---
+
+<!doctype html>
+<html lang={locale}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>{title}</title>
+    <meta name="description" content={description} />
+
+    <!-- Canonical -->
+    <link rel="canonical" href={canonicalUrl} />
+
+    <!-- Hreflang -->
+    {LOCALES.map((loc) => (
+      <link
+        rel="alternate"
+        hreflang={loc}
+        href={`${siteUrl}${getLocalizedPath(loc, basePath)}`}
+      />
+    ))}
+    <link
+      rel="alternate"
+      hreflang="x-default"
+      href={`${siteUrl}${getLocalizedPath('en', basePath)}`}
+    />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:image" content={ogImageUrl} />
+    <meta property="og:locale" content={ogLocaleMap[locale]} />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImageUrl} />
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- Umami Analytics -->
+    <script
+      is:inline
+      defer
+      src={umamiScriptUrl}
+      data-website-id={umamiWebsiteId}
+    ></script>
+
+    <!-- Structured Data: Organization -->
+    <script is:inline type="application/ld+json" set:html={JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "Ariadline",
+      "url": siteUrl,
+      "logo": `${siteUrl}/images/logo.svg`,
+      "description": description,
+    })} />
+  </head>
+  <body>
+    <a href="#main-content" class="skipToContent">Skip to content</a>
+    <slot name="header" />
+    <main id="main-content">
+      <slot />
+    </main>
+    <slot name="footer" />
+  </body>
+</html>

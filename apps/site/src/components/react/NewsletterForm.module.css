@@ -1,0 +1,67 @@
+.formFull,
+.formCompact {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+}
+
+.row input[type='email'] {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.65rem 0.8rem;
+  font: inherit;
+}
+
+.row button {
+  border: 0;
+  border-radius: var(--radius-md);
+  padding: 0.65rem 1rem;
+  background: var(--color-accent);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.row button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.consent {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.5rem;
+  align-items: start;
+  font-size: 0.86rem;
+  color: var(--color-text-secondary);
+}
+
+.error {
+  color: var(--color-error);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.success {
+  color: var(--color-success);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.honeypotWrap {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.formCompact .consent {
+  font-size: 0.8rem;
+}

@@ -15,6 +15,10 @@ export interface RouteStop {
   coordinates: { lat: number; lng: number };
   arrivalTime?: string;
   departureTime?: string;
+  /** Scheduled/agreed time window start (HH:MM) */
+  timeWindowStart?: string;
+  /** Scheduled/agreed time window end (HH:MM) */
+  timeWindowEnd?: string;
 }
 
 export interface InsertionCandidate {

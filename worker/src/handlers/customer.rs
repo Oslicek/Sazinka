@@ -12,9 +12,9 @@ use uuid::Uuid;
 use crate::auth;
 use crate::db::queries;
 use crate::types::{
-    CreateCustomerRequest, UpdateCustomerRequest, Customer, ErrorResponse, ListRequest, 
+    CreateCustomerRequest, UpdateCustomerRequest, ErrorResponse, ListRequest, 
     ListResponse, Request, SuccessResponse,
-    ListCustomersRequest, CustomerListResponse, CustomerSummaryResponse,
+    ListCustomersRequest, CustomerListResponse,
 };
 
 /// Handle customer.create messages
@@ -254,7 +254,7 @@ pub async fn handle_update(
         };
 
         // Prepare update request - if address changed and no coordinates provided, reset coords
-        let mut update_request = request.payload.clone();
+        let update_request = request.payload.clone();
         
         let address_changed = update_request.street.is_some() 
             || update_request.city.is_some() 

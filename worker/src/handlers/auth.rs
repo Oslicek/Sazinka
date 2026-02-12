@@ -379,6 +379,88 @@ pub async fn handle_verify(
     Ok(())
 }
 
+/// Handle auth.refresh messages — issue a new token with fresh expiration
+pub async fn handle_refresh(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+    jwt_secret: Arc<String>,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received auth.refresh message");
+
+        let reply = match msg.reply {
+            Some(ref reply) => reply.clone(),
+            None => {
+                warn!("Message without reply subject");
+                continue;
+            }
+        };
+
+        let request: Request<VerifyRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("Failed to parse refresh request: {}", e);
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Validate current token
+        let claims = match auth::validate_token(&request.payload.token, &jwt_secret) {
+            Ok(c) => c,
+            Err(e) => {
+                let error = ErrorResponse::new(request.id, "INVALID_TOKEN", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        let user_id = match Uuid::parse_str(&claims.sub) {
+            Ok(id) => id,
+            Err(e) => {
+                let error = ErrorResponse::new(request.id, "INVALID_TOKEN", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Ensure user still exists
+        match queries::user::get_user(&pool, user_id).await {
+            Ok(Some(user)) => {
+                // Issue a fresh token
+                let owner_id = claims.owner_id.as_deref().and_then(|id| Uuid::parse_str(id).ok());
+                match auth::generate_token(user_id, &user.email, &claims.role, owner_id, &jwt_secret) {
+                    Ok(new_token) => {
+                        let response = SuccessResponse::new(request.id, AuthResponse {
+                            token: new_token,
+                            user: UserPublic::from(user),
+                        });
+                        let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+                    }
+                    Err(e) => {
+                        error!("Failed to generate refresh token: {}", e);
+                        let error = ErrorResponse::new(request.id, "TOKEN_ERROR", e.to_string());
+                        let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                    }
+                }
+            }
+            Ok(None) => {
+                let error = ErrorResponse::new(request.id, "USER_NOT_FOUND", "User no longer exists");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+            Err(e) => {
+                error!("Database error during refresh: {}", e);
+                let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 // =============================================================================
 // Worker management handlers
 // =============================================================================

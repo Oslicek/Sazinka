@@ -1,0 +1,107 @@
+{
+  "nav": {
+    "home": "Home",
+    "features": "Features",
+    "pricing": "Pricing",
+    "contact": "Contact",
+    "blog": "Blog",
+    "tryFree": "Try for free"
+  },
+  "hero": {
+    "title": "Untangle your workday.",
+    "subtitle": "Route planning and CRM for tradespeople that saves you time and fuel.",
+    "cta": "Try for free"
+  },
+  "problem": {
+    "title": "Spending evenings planning routes?",
+    "description": "Manual scheduling, missed appointments, wasted fuel — sound familiar?"
+  },
+  "solution": {
+    "title": "Ariadline does it in seconds.",
+    "description": "Optimized routes, automatic reminders, everything in one place."
+  },
+  "features": {
+    "title": "Features",
+    "routing": {
+      "title": "Smart Route Planning",
+      "description": "Automatic optimization of daily routes. Save fuel and time with TSP-based algorithms."
+    },
+    "crm": {
+      "title": "Customer Management",
+      "description": "All your customers in one place. Automatic reminders for recurring inspections."
+    },
+    "calendar": {
+      "title": "Calendar & Scheduling",
+      "description": "Plan your week visually. Drag and drop appointments with real-time route updates."
+    }
+  },
+  "pricing": {
+    "title": "Pricing",
+    "free": {
+      "name": "Free",
+      "description": "For individual tradespeople",
+      "price": "Free",
+      "limit": "Up to 50 customers",
+      "cta": "Get started"
+    },
+    "pro": {
+      "name": "Pro",
+      "description": "For growing businesses",
+      "price": "Contact us",
+      "limit": "Unlimited customers",
+      "cta": "Contact sales"
+    }
+  },
+  "contact": {
+    "title": "Contact Us",
+    "description": "Have a question? We'd love to hear from you.",
+    "form": {
+      "email": "Your email",
+      "emailPlaceholder": "name@company.com",
+      "message": "Message",
+      "messagePlaceholder": "How can we help you?",
+      "submit": "Send message",
+      "sending": "Sending...",
+      "success": "Message sent! Your ticket ID is",
+      "error": "Something went wrong. Please try again."
+    },
+    "faq": {
+      "title": "Frequently Asked Questions"
+    }
+  },
+  "newsletter": {
+    "title": "Stay in the loop",
+    "description": "Get product updates and tips for optimizing your workflow.",
+    "emailPlaceholder": "your@email.com",
+    "subscribe": "Subscribe",
+    "subscribing": "Subscribing...",
+    "success": "Check your email to confirm your subscription.",
+    "gdprConsent": "I agree to receive newsletters. You can unsubscribe at any time.",
+    "error": "Something went wrong. Please try again."
+  },
+  "footer": {
+    "copyright": "Ariadline. All rights reserved.",
+    "privacy": "Privacy Policy",
+    "terms": "Terms of Service",
+    "cookies": "Cookie Policy"
+  },
+  "legal": {
+    "privacy": { "title": "Privacy Policy" },
+    "terms": { "title": "Terms of Service" },
+    "cookies": { "title": "Cookie Policy" }
+  },
+  "meta": {
+    "title": "Ariadline — Untangle your workday",
+    "description": "Route planning and CRM for tradespeople. Save time, fuel and money with optimized daily routes and automated customer management."
+  },
+  "notFound": {
+    "title": "Page not found",
+    "description": "The page you're looking for doesn't exist.",
+    "backHome": "Go back to homepage"
+  },
+  "cta": {
+    "title": "Ready to untangle your workday?",
+    "subtitle": "Join hundreds of tradespeople who save hours every week.",
+    "button": "Start for free"
+  }
+}

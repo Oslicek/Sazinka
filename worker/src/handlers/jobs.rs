@@ -11,10 +11,10 @@ use std::collections::HashMap;
 use anyhow::Result;
 use async_nats::Client;
 use async_nats::jetstream::{self, Context as JsContext};
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use futures::StreamExt;
 use sqlx::PgPool;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::db::queries;

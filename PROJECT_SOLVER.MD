@@ -1,6 +1,6 @@
 # Solver Architecture
 
-> **Last Updated:** 2026-02-02 (v0.18.6 — frontend time window pass-through, point arrival mapping)
+> **Last Updated:** 2026-02-12 (v0.18.7 — auto-recalculation after insert/reorder)
 
 ## Overview
 
@@ -225,6 +225,120 @@ The production route planning job uses `SolverConfig::with_buffer(5, 500, arriva
 11. Publish JobStatus::Completed with result → Frontend updates
 ```
 
+## Quick Recalculation (Auto-ETA Update)
+
+**Purpose:** After inserting a stop or drag-and-drop reordering, recalculate ETAs/ETDs for the existing order without re-optimizing.
+
+**NATS Subject:** `sazinka.route.recalculate`
+
+**Handler:** `worker/src/handlers/route.rs` — `handle_recalculate()`
+
+**Algorithm:** `worker/src/services/sequential_schedule.rs` — `compute_sequential_schedule()`
+
+### Flow
+
+```
+1. User inserts stop or reorders via drag-and-drop
+   ↓
+2. Frontend calls recalculateRoute({ depot, stops, workdayStart, ... })
+   ↓
+3. Backend fetches Valhalla distance/time matrix
+   ↓
+4. compute_sequential_schedule():
+   - Walk stops in order
+   - Calculate arrival = previous_departure + travel_time
+   - Wait if arrival < scheduled_time_start (for scheduled stops)
+   - Determine service duration (explicit → scheduled window → default)
+   - Calculate departure = arrival + service_duration
+   ↓
+5. Return RecalculateRouteResponse with updated ETAs/ETDs
+   ↓
+6. Frontend merges times back into route stops
+```
+
+### Key Features
+
+- **Pure function:** `compute_sequential_schedule()` has no side effects, fully unit-tested (9 tests)
+- **No reordering:** Preserves user's chosen order (dispatcher already placed stop correctly via slot suggestions)
+- **Respects scheduled times:** Waits if arriving early to a scheduled stop
+- **Fast:** <100ms for typical routes (no metaheuristic search)
+- **Automatic:** Fires after every insert/reorder in `PlanningInbox` and `Planner`
+
+### Data Types
+
+```rust
+// worker/src/services/sequential_schedule.rs
+pub struct ScheduleInput {
+    pub depot_matrix_idx: usize,
+    pub stops: Vec<ScheduleStop>,
+    pub stop_matrix_indices: Vec<usize>,
+    pub workday_start: NaiveTime,
+    pub default_service_minutes: i32,
+}
+
+pub struct ScheduleStop {
+    pub stop_type: StopType,
+    pub scheduled_time_start: Option<NaiveTime>,
+    pub scheduled_time_end: Option<NaiveTime>,
+    pub service_duration_minutes: Option<i32>,
+    pub break_duration_minutes: Option<i32>,
+}
+
+pub struct ScheduleResult {
+    pub stops: Vec<ComputedStopSchedule>,
+    pub total_distance_km: f64,
+    pub total_travel_minutes: i32,
+    pub total_service_minutes: i32,
+    pub return_to_depot_distance_km: f64,
+    pub return_to_depot_duration_minutes: i32,
+}
+```
+
+```typescript
+// apps/web/src/services/routeService.ts
+export interface RecalcStopInput {
+  coordinates: { lat: number; lng: number };
+  stopType: string;
+  scheduledTimeStart?: string | null;
+  scheduledTimeEnd?: string | null;
+  serviceDurationMinutes?: number | null;
+  breakDurationMinutes?: number | null;
+  id?: string;
+  customerId?: string;
+  customerName?: string;
+}
+
+export interface RecalculateRouteRequest {
+  depot: { lat: number; lng: number };
+  stops: RecalcStopInput[];
+  workdayStart?: string;
+  workdayEnd?: string;
+  defaultServiceDurationMinutes?: number;
+}
+```
+
+### Integration Points
+
+```typescript
+// apps/web/src/pages/PlanningInbox.tsx
+const triggerRecalculate = useCallback(async (stopsSnapshot: SavedRouteStop[]) => {
+  const result = await recalculateRoute({ depot, stops, ... });
+  setRouteStops(prev => mergeRecalculatedTimes(prev, result.stops));
+  setReturnToDepotLeg({ distanceKm, durationMinutes });
+}, [currentDepot, routeStartTime, routeEndTime, defaultServiceDurationMinutes]);
+
+const handleAddToRoute = useCallback((candidateId: string, insertAfterIndex?: number) => {
+  const updated = insertStopAtPosition(prev, newStop, insertIdx);
+  setRouteStops(updated);
+  requestAnimationFrame(() => triggerRecalculate(updated));
+}, [...]);
+
+const handleReorder = useCallback((newStops: SavedRouteStop[]) => {
+  setRouteStops(newStops);
+  triggerRecalculate(newStops);
+}, [triggerRecalculate]);
+```
+
 ## Module Structure
 
 ```
@@ -236,19 +350,31 @@ worker/src/services/vrp/
 ├── solution.rs     # RouteSolution, PlannedStop, RouteWarning
 └── config.rs       # SolverConfig presets (instant/fast/default/quality)
 
+worker/src/services/
+└── sequential_schedule.rs  # compute_sequential_schedule(): pure sequential ETA calculator
+
 worker/src/handlers/
-└── jobs.rs         # JobProcessor: load_customers_for_route(), build_vrp_problem(),
-                    #   execute_route_plan(), time window resolution chain
+├── jobs.rs         # JobProcessor: load_customers_for_route(), build_vrp_problem(),
+│                   #   execute_route_plan(), time window resolution chain
+└── route.rs        # handle_recalculate(): quick ETA recalc after insert/reorder
 
 worker/src/types/
 └── job.rs          # CustomerTimeWindow, RoutePlanJobRequest (with time_windows field)
 
 apps/web/src/services/
-└── routeService.ts # CustomerTimeWindow, RoutePlanJobRequest, submitRoutePlanJob()
+└── routeService.ts # CustomerTimeWindow, RoutePlanJobRequest, submitRoutePlanJob(),
+                    #   RecalculateRouteRequest, recalculateRoute()
+
+apps/web/src/components/planner/
+└── insertStop.ts   # insertStopAtPosition(): pure function to insert stop at index
 
 apps/web/src/pages/
 ├── PlanningInbox.tsx  # handleOptimizeRoute() — extracts timeWindows from route stops
+│                      # triggerRecalculate() — auto-recalc after insert/reorder
+│                      # handleAddToRoute() — uses insertStopAtPosition + recalc
+│                      # handleReorder() — auto-recalc after drag-and-drop
 └── Planner.tsx        # handleOptimizeRoute() — same extraction logic
+                       # handleReorder() — auto-recalc after drag-and-drop
 ```
 
 ## Test Coverage

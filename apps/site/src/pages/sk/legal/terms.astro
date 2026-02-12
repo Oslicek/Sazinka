@@ -1,0 +1,23 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import Header from '../../../components/layout/Header.astro';
+import Footer from '../../../components/layout/Footer.astro';
+import LegalContent from '../../../components/sections/LegalContent.astro';
+
+const locale = 'sk';
+---
+
+<Layout title="Obchodné podmienky | Ariadline" description="Obchodné podmienky služby Ariadline." locale={locale} path="/sk/legal/terms">
+  <Header slot="header" locale={locale} currentPath="/sk/legal/terms" />
+  <LegalContent
+    title="Obchodné podmienky"
+    intro="Používaním Ariadline súhlasíte s týmito podmienkami."
+    points={[
+      'Ariadline je poskytovaný ako predplatená SaaS služba.',
+      'Používateľ zodpovedá za ochranu svojich prihlasovacích údajov.',
+      'Zneužitie služby alebo protiprávne použitie je zakázané.',
+      'Podmienky môžeme aktualizovať; zásadné zmeny komunikujeme vopred.',
+    ]}
+  />
+  <Footer slot="footer" locale={locale} />
+</Layout>

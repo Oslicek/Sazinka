@@ -7,6 +7,7 @@ import { routeTree } from './routes';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useAuthStore } from './stores/authStore';
 import { useNatsStore } from './stores/natsStore';
+import { useTokenRefresh } from './hooks/useTokenRefresh';
 import './index.css';
 
 // Create router instance
@@ -39,6 +40,9 @@ function App() {
       verify();
     }
   }, [isConnected, verify]);
+
+  // Periodically refresh JWT token before it expires
+  useTokenRefresh();
 
   return (
     <QueryClientProvider client={queryClient}>

@@ -329,7 +329,7 @@ impl SlotSuggester {
     }
 
     /// Generate human-readable reason for the score
-    fn generate_reason(&self, delta_travel: i32, arrival_time: NaiveTime, position: usize) -> String {
+    fn generate_reason(&self, delta_travel: i32, _arrival_time: NaiveTime, position: usize) -> String {
         let position_desc = if position == 0 {
             "první zastávka".to_string()
         } else if position == self.existing_stops.len() {

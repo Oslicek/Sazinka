@@ -29,16 +29,20 @@ export function InsertionPreview({ info, className }: InsertionPreviewProps) {
       </div>
 
       <div className={styles.flow}>
-        <div className={styles.stop}>
-          <span className={styles.stopNumber}>{info.insertAfterIndex + 1}</span>
-          <span className={styles.stopName}>{info.insertAfterName}</span>
-        </div>
+        {info.insertAfterName !== 'Depo' && (
+          <>
+            <div className={styles.stop}>
+              <span className={styles.stopNumber}>{info.insertAfterIndex + 1}</span>
+              <span className={styles.stopName}>{info.insertAfterName}</span>
+            </div>
 
-        <div className={styles.arrow}>
-          <span className={styles.arrowLine} />
-          <span className={styles.arrowIcon}>↓</span>
-          <span className={styles.arrowLine} />
-        </div>
+            <div className={styles.arrow}>
+              <span className={styles.arrowLine} />
+              <span className={styles.arrowIcon}>↓</span>
+              <span className={styles.arrowLine} />
+            </div>
+          </>
+        )}
 
         <div className={`${styles.stop} ${styles.newStop}`}>
           <span className={styles.stopNumber}>✦</span>
@@ -51,16 +55,20 @@ export function InsertionPreview({ info, className }: InsertionPreviewProps) {
           )}
         </div>
 
-        <div className={styles.arrow}>
-          <span className={styles.arrowLine} />
-          <span className={styles.arrowIcon}>↓</span>
-          <span className={styles.arrowLine} />
-        </div>
+        {info.insertBeforeName !== 'Depo' && info.insertBeforeName !== 'Konec trasy' && (
+          <>
+            <div className={styles.arrow}>
+              <span className={styles.arrowLine} />
+              <span className={styles.arrowIcon}>↓</span>
+              <span className={styles.arrowLine} />
+            </div>
 
-        <div className={styles.stop}>
-          <span className={styles.stopNumber}>{info.insertBeforeIndex + 1}</span>
-          <span className={styles.stopName}>{info.insertBeforeName}</span>
-        </div>
+            <div className={styles.stop}>
+              <span className={styles.stopNumber}>{info.insertBeforeIndex + 1}</span>
+              <span className={styles.stopName}>{info.insertBeforeName}</span>
+            </div>
+          </>
+        )}
       </div>
 
       <div className={styles.impact}>

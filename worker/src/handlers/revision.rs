@@ -16,9 +16,9 @@ use crate::types::{
 };
 use crate::types::revision::{
     CreateRevisionRequest, UpdateRevisionRequest, CompleteRevisionRequest,
-    ListRevisionsRequest, UpcomingRevisionsRequest, RevisionStats, Revision,
+    ListRevisionsRequest, UpcomingRevisionsRequest, Revision,
     SuggestRevisionsRequest, SuggestRevisionsResponse,
-    CallQueueRequest, CallQueueResponse, SnoozeRevisionRequest, ScheduleRevisionRequest,
+    CallQueueRequest, SnoozeRevisionRequest, ScheduleRevisionRequest,
 };
 
 /// Response for list of revisions

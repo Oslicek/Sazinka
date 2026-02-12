@@ -1,7 +1,7 @@
 //! Vehicle Routing Problem with Time Windows (VRPTW) solver
 
 use chrono::{NaiveTime, Timelike};
-use crate::types::{Coordinates, RouteStop, RouteWarning, TimeWindow};
+use crate::types::{Coordinates, RouteWarning, TimeWindow};
 use crate::services::geo;
 
 /// A stop for the VRPTW solver
@@ -126,8 +126,6 @@ impl VrptwSolver {
         }
 
         // For remaining stops, use nearest neighbor
-        let mut current = if order.is_empty() { 0 } else { order[order.len() - 1] + 1 };
-
         while order.len() < n {
             let mut best_next = None;
             let mut best_dist = f64::MAX;
@@ -150,7 +148,6 @@ impl VrptwSolver {
             if let Some(next) = best_next {
                 order.push(next);
                 visited[next] = true;
-                current = next + 1;
             } else {
                 break;
             }
@@ -273,7 +270,7 @@ impl VrptwSolver {
     }
 
     /// Calculate optimization score (0-100)
-    fn calculate_score(&self, order: &[usize], warnings: &[RouteWarning]) -> i32 {
+    fn calculate_score(&self, _order: &[usize], warnings: &[RouteWarning]) -> i32 {
         let mut score = 100;
 
         // Deduct for each warning
