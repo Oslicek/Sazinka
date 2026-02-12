@@ -1,7 +1,7 @@
 # Sazinka - Workflow & UI Koncept
 
 > **Status:** MVP kompletní + Phase 9 (Planner redesign) + sjednocení komponent + Smart Slot Heuristics (multi-crew, Valhalla) + Auto-recalculation + Chronological insertion & break constraints + Routing accuracy fixes + Timeline UX improvements  
-> **Verze:** 0.8.3  
+> **Verze:** 0.8.4  
 > **Datum:** 2026-02-12
 > 
 > **Implementováno:**
@@ -31,6 +31,7 @@
 > - ✅ **Break chronological placement** — při výběru pozice pauzy se preferují mezery, kam pauza chronologicky patří (`chronoFit`), takže pauza v 11:30 se nevloží před zastávku v 08:00
 > - ✅ **Timeline height halved + hourly labels** — výška plánovací timeline snížena na polovinu (`PIXELS_PER_MINUTE: 1.25`), vlevo přidány hodinové značky
 > - ✅ **Collapsible/expandable map** — mapa v Inboxu lze sbalit (zobrazit jen timeline) nebo rozbalit na celou stránku
+> - ✅ **Insertion preview deduplication** — opravena duplicitní vizualizace návrhu vložení kandidáta, kdy break rozdělující mezeru vytvářel dva náhledy místo jednoho; `insertAfterIndex` se přiřazuje jen mezerám před customer stopy
 > 
 > **Změny v navigaci:**
 > - `/planner` → "Plán dne" (sloučeno Plánování + Můj den)
@@ -1593,4 +1594,4 @@ Inbox je prázdný – na tento den nejsou žádné položky k domluvení.
 ---
 
 *Dokument vytvořen: 2026-01-31*  
-*Poslední aktualizace: 2026-02-12 (Routing accuracy, break chronological placement, timeline UX improvements)*
+*Poslední aktualizace: 2026-02-12 (Routing accuracy, break chronological placement, timeline UX improvements, insertion preview dedup)*

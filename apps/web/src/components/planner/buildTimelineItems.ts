@@ -98,6 +98,10 @@ export function buildTimelineItems(
 
   // Track the "current time cursor" as we walk through stops
   let cursor = parseHm(workdayStart);
+  // Customer-only stop counter for matching backend insertion indices
+  // (the backend receives only customer stops, so its insertAfterIndex
+  // is in customer-only space, not the full array including breaks).
+  let customerStopCount = 0;
 
   for (let i = 0; i < stops.length; i++) {
     const stop = stops[i];
@@ -124,13 +128,17 @@ export function buildTimelineItems(
     // --- Gap: if travel end < stop arrival, there's free time ---
     if (arrivalMin != null && cursor < arrivalMin - GAP_THRESHOLD_MINUTES) {
       const gapDuration = arrivalMin - cursor;
+      // Only assign insertAfterIndex to gaps immediately before a customer stop.
+      // This avoids duplicate previews when a break creates an extra gap
+      // between two customer stops (e.g. gap before break + gap after break).
+      const isBeforeCustomerStop = stop.stopType === 'customer';
       items.push({
         type: 'gap',
         id: `gap-${i}`,
         startTime: minutesToHm(cursor),
         endTime: minutesToHm(arrivalMin),
         durationMinutes: gapDuration,
-        insertAfterIndex: i - 1, // -1 means "before first stop"
+        insertAfterIndex: isBeforeCustomerStop ? customerStopCount - 1 : undefined,
       });
       cursor = arrivalMin;
     }
@@ -153,6 +161,11 @@ export function buildTimelineItems(
     });
 
     cursor = stopEnd;
+
+    // Increment customer counter AFTER processing the stop
+    if (stop.stopType === 'customer') {
+      customerStopCount++;
+    }
   }
 
   // --- Return travel to depot ---
