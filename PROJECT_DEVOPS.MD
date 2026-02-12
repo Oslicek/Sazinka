@@ -1743,3 +1743,281 @@ $services = @{
     "Valhalla"   = { (Invoke-WebRequest -Uri http://localhost:8002/status -UseBasicParsing).StatusCode -eq 200 }
 }
 ```
+
+---
+
+## 16. Deployment Ariadline Marketing Site (Cloudflare Pages)
+
+Tento dokument pokrývá nasazení Ariadline marketing webu na Cloudflare Pages.
+
+### 16.1 Předpoklady
+
+- Cloudflare účet
+- Doména `ariadline.com` nakonfigurovaná v Cloudflare
+- Přístup k GitHub repozitáři
+- Resend účet pro transakční e-maily
+
+### 16.2 Cloudflare Pages Setup
+
+#### Vytvoření Pages projektu
+
+1. Přejděte do Cloudflare Dashboard → Pages
+2. Klikněte na "Create a project"
+3. Připojte GitHub repozitář
+4. Nakonfigurujte build nastavení:
+   - **Project name**: `ariadline-site`
+   - **Production branch**: `master`
+   - **Build command**: `cd apps/site && pnpm build`
+   - **Build output directory**: `apps/site/dist`
+   - **Root directory**: `/` (monorepo root)
+
+#### Build nastavení
+
+```yaml
+Build command: cd apps/site && pnpm build
+Build output directory: apps/site/dist
+Node version: 22
+Package manager: pnpm
+```
+
+### 16.3 Environment Variables
+
+Nakonfigurujte v Cloudflare Pages → Settings → Environment variables:
+
+#### Production
+
+| Variable | Value | Poznámky |
+|----------|-------|----------|
+| `RESEND_API_KEY` | `re_xxxxx` | Z Resend dashboardu |
+| `TURNSTILE_SECRET_KEY` | `0x4xxxxx` | Z Cloudflare Turnstile |
+| `NODE_VERSION` | `22` | Vyžadováno pro build |
+
+#### Preview (volitelné)
+
+Použijte testovací API klíče pro preview deploymenty.
+
+### 16.4 D1 Database Setup
+
+#### Vytvoření databáze
+
+```bash
+cd apps/site
+wrangler d1 create ariadline-site-db
+```
+
+Zkopírujte `database_id` z výstupu.
+
+#### Aktualizace wrangler.toml
+
+```toml
+[[d1_databases]]
+binding = "DB"
+database_name = "ariadline-site-db"
+database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+```
+
+#### Spuštění migrací
+
+```bash
+# Production
+wrangler d1 migrations apply ariadline-site-db --remote
+
+# Lokální vývoj
+wrangler d1 migrations apply ariadline-site-db --local
+```
+
+#### Ověření databáze
+
+```bash
+wrangler d1 execute ariadline-site-db --remote --command "SELECT name FROM sqlite_master WHERE type='table'"
+```
+
+Očekávaný výstup:
+- `contacts`
+- `newsletter_subscribers`
+
+### 16.5 Custom Domain
+
+#### Konfigurace DNS
+
+1. Přejděte do Cloudflare Dashboard → DNS
+2. Přidejte CNAME záznam:
+   - **Name**: `@` (nebo `www`)
+   - **Target**: `ariadline-site.pages.dev`
+   - **Proxy status**: Proxied (oranžový mrak)
+
+#### Přidání Custom Domain do Pages
+
+1. Přejděte do Pages → ariadline-site → Custom domains
+2. Klikněte na "Set up a custom domain"
+3. Zadejte `ariadline.com`
+4. Cloudflare automaticky nakonfiguruje SSL
+
+### 16.6 Resend Email Setup
+
+#### Ověření domény
+
+1. Přejděte do Resend Dashboard → Domains
+2. Přidejte doménu: `ariadline.com`
+3. Přidejte DNS záznamy do Cloudflare:
+   - **SPF**: `v=spf1 include:_spf.resend.com ~all`
+   - **DKIM**: (poskytne Resend)
+   - **DMARC**: `v=DMARC1; p=none; rua=mailto:admin@ariadline.com`
+
+#### Vytvoření API klíče
+
+1. Přejděte do Resend Dashboard → API Keys
+2. Vytvořte nový klíč s "Sending access"
+3. Přidejte do Cloudflare Pages environment variables
+
+### 16.7 Cloudflare Turnstile
+
+#### Vytvoření site
+
+1. Přejděte do Cloudflare Dashboard → Turnstile
+2. Klikněte na "Add site"
+3. Nakonfigurujte:
+   - **Site name**: Ariadline Marketing Site
+   - **Domain**: `ariadline.com`
+   - **Widget mode**: Managed (Invisible)
+
+#### Získání klíčů
+
+- **Site key**: Přidejte do `ContactForm.tsx` a `NewsletterForm.tsx`
+- **Secret key**: Přidejte do Cloudflare Pages environment variables
+
+### 16.8 Umami Analytics
+
+#### Setup
+
+1. Zaregistrujte se na [Umami Cloud](https://cloud.umami.is)
+2. Přidejte website: `ariadline.com`
+3. Zkopírujte tracking script URL
+
+#### Konfigurace v Layout.astro
+
+```astro
+<script
+  defer
+  src="https://[region].umami.is/script.js"
+  data-website-id="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+  is:inline
+></script>
+```
+
+### 16.9 GitHub Actions Secrets
+
+Přidejte do repository settings → Secrets and variables → Actions:
+
+| Secret | Value | Účel |
+|--------|-------|------|
+| `CLOUDFLARE_API_TOKEN` | Token s Pages write permissions | Deploy do Pages |
+| `CLOUDFLARE_ACCOUNT_ID` | Vaše account ID | Deploy do Pages |
+
+#### Vytvoření API tokenu
+
+1. Přejděte do Cloudflare Dashboard → My Profile → API Tokens
+2. Klikněte na "Create Token"
+3. Použijte "Edit Cloudflare Workers" template
+4. Scope: Account → Cloudflare Pages → Edit
+5. Zkopírujte token a přidejte do GitHub secrets
+
+### 16.10 Deployment Workflow
+
+#### Automatický deployment
+
+- **Push do `master`**: Nasadí do production (`ariadline.com`)
+- **Pull requesty**: Vytvoří preview deployment (`pr-123.ariadline-site.pages.dev`)
+
+#### Manuální deployment
+
+```bash
+cd apps/site
+pnpm build
+wrangler pages deploy dist --project-name=ariadline-site
+```
+
+### 16.11 Post-Deployment Verification
+
+#### Checklist
+
+- [ ] Web se načte na `https://ariadline.com`
+- [ ] Všechny 3 jazyky fungují (`/en/`, `/cs/`, `/sk/`)
+- [ ] Root `/` správně přesměruje
+- [ ] Kontaktní formulář se úspěšně odešle
+- [ ] Newsletter subscription funguje (zkontrolujte email)
+- [ ] Newsletter confirmation link funguje
+- [ ] D1 databáze ukládá odeslané formuláře
+- [ ] Resend odesílá e-maily
+- [ ] Turnstile brání spamu
+- [ ] Umami trackuje page views
+- [ ] Lighthouse skóre >= 95 ve všech kategoriích
+
+#### Testování formulářů
+
+1. Odešlete kontaktní formulář → Zkontrolujte D1 záznam → Zkontrolujte email
+2. Přihlaste se k newsletteru → Zkontrolujte D1 status=pending → Klikněte na confirmation link → Zkontrolujte D1 status=confirmed
+
+#### Kontrola D1 dat
+
+```bash
+# Zobrazit kontakty
+wrangler d1 execute ariadline-site-db --remote --command "SELECT * FROM contacts ORDER BY created_at DESC LIMIT 5"
+
+# Zobrazit newsletter subscribers
+wrangler d1 execute ariadline-site-db --remote --command "SELECT * FROM newsletter_subscribers ORDER BY created_at DESC LIMIT 5"
+```
+
+### 16.12 Monitoring
+
+#### Cloudflare Analytics
+
+- Pages → ariadline-site → Analytics
+- Monitorujte: Requests, Bandwidth, Errors
+
+#### Umami Analytics
+
+- Sledujte: Page views, Referrers, Devices, Countries
+
+#### Error Logging
+
+Pages Functions chyby se zobrazují v:
+- Cloudflare Dashboard → Workers & Pages → ariadline-site → Logs
+
+### 16.13 Rollback
+
+Pokud deployment selže:
+
+1. Přejděte do Pages → ariadline-site → Deployments
+2. Najděte poslední úspěšný deployment
+3. Klikněte na "..." → "Rollback to this deployment"
+
+### 16.14 Troubleshooting
+
+#### Build selhává
+
+- Zkontrolujte, že Node verze je 22
+- Ověřte, že pnpm je nainstalován
+- Zkontrolujte build logy v Pages dashboardu
+
+#### Formuláře se neodesílají
+
+- Ověřte, že `RESEND_API_KEY` je nastavený
+- Zkontrolujte, že D1 databáze je navázaná v `wrangler.toml`
+- Zkontrolujte Functions logy pro chyby
+
+#### E-maily se neodesílají
+
+- Ověřte, že Resend doména je ověřená
+- Zkontrolujte SPF/DKIM/DMARC záznamy
+- Zkontrolujte Resend dashboard pro delivery logy
+
+#### Turnstile nefunguje
+
+- Ověřte, že site key odpovídá doméně
+- Zkontrolujte secret key v environment variables
+- Ujistěte se, že widget je viditelný (zkontrolujte CSS)
+
+### 16.15 Podpora
+
+Pro problémy kontaktujte: admin@ariadline.com

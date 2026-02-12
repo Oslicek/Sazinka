@@ -55,3 +55,24 @@ jobs:
 
       - name: Build site
         run: pnpm --filter @ariadline/site build
+
+      - name: Run Lighthouse CI
+        uses: treosh/lighthouse-ci-action@v12
+        with:
+          urls: |
+            http://localhost:8080/en/
+            http://localhost:8080/en/features
+            http://localhost:8080/en/pricing
+            http://localhost:8080/en/contact
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+          runs: 3
+          configPath: './apps/site/lighthouserc.json'
+
+      - name: Deploy to Cloudflare Pages
+        if: github.ref == 'refs/heads/master'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy apps/site/dist --project-name=ariadline-site

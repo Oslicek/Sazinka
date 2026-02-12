@@ -32,6 +32,24 @@
   color: #fff;
   cursor: pointer;
   font-weight: 600;
+  transition: background-color 0.15s ease;
+}
+
+.submit:hover:not(:disabled) {
+  background-color: var(--color-primary-dark);
+}
+
+.submit:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Mobile: Full width button */
+@media (max-width: 767px) {
+  .submit {
+    width: 100%;
+    justify-self: stretch;
+  }
 }
 
 .submit:disabled {

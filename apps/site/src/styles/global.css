@@ -83,9 +83,74 @@ img {
 
 /* Section spacing */
 .section {
-  padding: 5rem 0;
+  padding: 3rem 0;
 }
 
 .sectionAlt {
   background-color: var(--color-bg-secondary);
+}
+
+/* Responsive utilities - Mobile first */
+@media (min-width: 768px) {
+  .section {
+    padding: 5rem 0;
+  }
+
+  h1 { font-size: 3.5rem; }
+  h2 { font-size: 2.5rem; }
+}
+
+@media (min-width: 1024px) {
+  .container {
+    padding: 0 2rem;
+  }
+
+  h1 { font-size: 4rem; }
+}
+
+/* Responsive typography */
+@media (max-width: 767px) {
+  h1 { font-size: 2rem; }
+  h2 { font-size: 1.75rem; }
+  h3 { font-size: 1.25rem; }
+  h4 { font-size: 1.125rem; }
+}
+
+/* Utility classes for responsive design */
+.hidden-mobile {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .hidden-mobile {
+    display: block;
+  }
+}
+
+.hidden-desktop {
+  display: block;
+}
+
+@media (min-width: 768px) {
+  .hidden-desktop {
+    display: none;
+  }
+}
+
+/* Focus visible for keyboard navigation (WCAG 2.1) */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Reduced motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

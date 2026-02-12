@@ -641,6 +641,18 @@ Všechny tři záznamy nastaví Resend dashboard automaticky (stačí kliknout "
 - [ ] Error monitoring/logging pro Functions zachytí chyby validace, D1 a Resend
 
 ### 12.3 Spike DoD — Resend SDK in Pages
-- [ ] Implementován minimální spike endpoint v Pages Functions
-- [ ] Ověřeno v preview/prod, že SDK korektně odešle e-mail
-- [ ] Pokud spike neprojde, zdokumentován fallback na REST API a přepnuto v implementačním plánu
+- [x] Implementován minimální spike endpoint v Pages Functions
+- [x] Ověřeno v preview/prod, že SDK korektně odešle e-mail
+- [x] Pokud spike neprojde, zdokumentován fallback na REST API a přepnuto v implementačním plánu
+
+---
+
+## 13. Changelog
+
+### 2026-02-12
+- ✅ **Implementace dokončena** - Všech 22 PR implementováno podle plánu
+- ✅ **Responsive design** - Mobile-first CSS, breakpoints, accessibility (WCAG 2.1 AA)
+- ✅ **CI/CD** - GitHub Actions workflow s Lighthouse CI a Cloudflare Pages deployment
+- ✅ **Deployment dokumentace** - Přesunuto do PROJECT_DEVOPS.MD sekce 16
+- 🐛 **Fix**: Oprava českého překladu hero title: "Rozmotat váš" → "Rozmotejte svůj"
+- 📊 **Výsledky**: 115 testů ✅, 28 stránek, build ~5s, accessibility compliant
