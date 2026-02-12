@@ -365,6 +365,116 @@ describe('buildTimelineItems', () => {
     expect(stopsAfter[1].startTime).toBe('09:40');
   });
 
+  // ── Late arrival / schedule conflict ──
+
+  it('flags a stop as late when travel makes actual arrival later than scheduled start', () => {
+    // Radek ends at 09:00, travel to Alena is 17 min → actual ETA 09:17
+    // But Alena's scheduled time is 09:00. This is a conflict.
+    const stops: SavedRouteStop[] = [
+      makeStop({
+        id: 'radek', stopOrder: 1,
+        estimatedArrival: '08:00', estimatedDeparture: '09:00',
+        scheduledTimeStart: '08:00', scheduledTimeEnd: '09:00',
+        distanceFromPreviousKm: 55, durationFromPreviousMinutes: 40,
+      }),
+      makeStop({
+        id: 'alena', stopOrder: 2,
+        estimatedArrival: '09:00', estimatedDeparture: '10:00',
+        scheduledTimeStart: '09:00', scheduledTimeEnd: '10:00',
+        distanceFromPreviousKm: 17, durationFromPreviousMinutes: 17,
+      }),
+    ];
+    const items = buildTimelineItems(stops, '07:00', '16:00');
+
+    // Find Alena's stop item
+    const alenaItem = items.find((i) => i.stop?.id === 'alena')!;
+    expect(alenaItem).toBeDefined();
+    // She should be flagged as late by 17 minutes
+    expect(alenaItem.lateArrivalMinutes).toBe(17);
+    // The actual arrival should be 09:17
+    expect(alenaItem.actualArrivalTime).toBe('09:17');
+  });
+
+  it('does not flag a stop as late when travel finishes before scheduled start', () => {
+    // Radek ends at 09:00, travel to Alena is 10 min → actual ETA 09:10
+    // Alena's scheduled time is 10:00. No conflict — plenty of time.
+    const stops: SavedRouteStop[] = [
+      makeStop({
+        id: 'radek', stopOrder: 1,
+        estimatedArrival: '08:00', estimatedDeparture: '09:00',
+        scheduledTimeStart: '08:00', scheduledTimeEnd: '09:00',
+        distanceFromPreviousKm: 55, durationFromPreviousMinutes: 40,
+      }),
+      makeStop({
+        id: 'alena', stopOrder: 2,
+        estimatedArrival: '10:00', estimatedDeparture: '11:00',
+        scheduledTimeStart: '10:00', scheduledTimeEnd: '11:00',
+        distanceFromPreviousKm: 17, durationFromPreviousMinutes: 10,
+      }),
+    ];
+    const items = buildTimelineItems(stops, '07:00', '16:00');
+
+    const alenaItem = items.find((i) => i.stop?.id === 'alena')!;
+    expect(alenaItem.lateArrivalMinutes).toBeUndefined();
+    expect(alenaItem.actualArrivalTime).toBeUndefined();
+  });
+
+  it('shows travel segment at full duration even when it overlaps with next scheduled stop', () => {
+    const stops: SavedRouteStop[] = [
+      makeStop({
+        id: 'radek', stopOrder: 1,
+        estimatedArrival: '08:00', estimatedDeparture: '09:00',
+        scheduledTimeStart: '08:00', scheduledTimeEnd: '09:00',
+        distanceFromPreviousKm: 55, durationFromPreviousMinutes: 40,
+      }),
+      makeStop({
+        id: 'alena', stopOrder: 2,
+        estimatedArrival: '09:00', estimatedDeparture: '10:00',
+        scheduledTimeStart: '09:00', scheduledTimeEnd: '10:00',
+        distanceFromPreviousKm: 17, durationFromPreviousMinutes: 17,
+      }),
+    ];
+    const items = buildTimelineItems(stops, '07:00', '16:00');
+
+    // Travel segment to Alena should have full 17 min duration
+    const travelToAlena = items.find((i) => i.id === 'travel-1')!;
+    expect(travelToAlena.durationMinutes).toBe(17);
+    expect(travelToAlena.startTime).toBe('09:00');
+    expect(travelToAlena.endTime).toBe('09:17');
+  });
+
+  it('does not insert a gap between travel and a late stop', () => {
+    // s1 ends at 09:00, travel to s2 is 17 min → arrival 09:17.
+    // s2 scheduled at 09:00 → cursor(09:17) > arrival(09:00) → no gap between.
+    // s1 travel fills exactly: 08:43 + 17 min = 09:00 → no gap before s1 either.
+    const stops: SavedRouteStop[] = [
+      makeStop({
+        id: 's1', stopOrder: 1,
+        estimatedArrival: '08:43', estimatedDeparture: '09:00',
+        scheduledTimeStart: '08:43', scheduledTimeEnd: '09:00',
+        distanceFromPreviousKm: 55, durationFromPreviousMinutes: 43,
+      }),
+      makeStop({
+        id: 's2', stopOrder: 2,
+        estimatedArrival: '09:00', estimatedDeparture: '10:00',
+        scheduledTimeStart: '09:00', scheduledTimeEnd: '10:00',
+        distanceFromPreviousKm: 17, durationFromPreviousMinutes: 17,
+      }),
+    ];
+    const items = buildTimelineItems(stops, '08:00', '16:00');
+
+    // Sequence: depot, travel(43min), stop(s1), travel(17min), stop(s2-late), travel, depot
+    // No gap should appear between the travel and the late stop
+    const itemTypes = types(items);
+    expect(itemTypes).toEqual([
+      'depot', 'travel', 'stop', 'travel', 'stop', 'travel', 'depot',
+    ]);
+
+    // s2 should be flagged as late
+    const s2Item = items.find((i) => i.stop?.id === 's2')!;
+    expect(s2Item.lateArrivalMinutes).toBe(17);
+  });
+
   // ── Unique IDs ──
 
   it('assigns unique IDs to every item', () => {

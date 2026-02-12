@@ -179,7 +179,7 @@ function SortableStopCard({
               <span className={styles.cardName}>{stop.customerName ?? 'Neznámý'}</span>
             </>
           )}
-          <span className={styles.cardTime}>
+          <span className={`${styles.cardTime} ${item.lateArrivalMinutes ? styles.cardTimeLate : ''}`}>
             {formatTime(item.startTime)} – {formatTime(item.endTime)}
           </span>
         </div>
@@ -188,6 +188,12 @@ function SortableStopCard({
         )}
         {item.durationMinutes > 0 && (
           <div className={styles.cardDuration}>{formatDurationHm(item.durationMinutes)}</div>
+        )}
+        {item.lateArrivalMinutes != null && item.lateArrivalMinutes > 0 && (
+          <div className={styles.lateWarning}>
+            <span className={styles.lateWarningIcon}>&#x26A0;</span>
+            Příjezd {formatTime(item.actualArrivalTime ?? null)} ({item.lateArrivalMinutes} min pozdě) — nutné domluvit nový čas
+          </div>
         )}
       </div>
 

@@ -29,6 +29,15 @@ export interface TimelineItem {
   distanceKm?: number;
   /** For 'gap' type: the stop index this gap follows (-1 = before first stop) */
   insertAfterIndex?: number;
+  /**
+   * Minutes by which the actual arrival is later than the scheduled start.
+   * Only set when the crew cannot physically arrive on time due to travel
+   * from the previous stop. Signals that the agreed time slot must be
+   * renegotiated with the customer.
+   */
+  lateArrivalMinutes?: number;
+  /** The actual arrival time (HH:MM) when different from scheduled start. */
+  actualArrivalTime?: string;
 }
 
 export interface ReturnToDepotInfo {
@@ -125,6 +134,19 @@ export function buildTimelineItems(
 
     cursor = travelEnd;
 
+    // --- Late arrival detection ---
+    // Compare the cursor (= actual arrival after travel) against the
+    // stop's scheduled start. If the crew can't arrive on time, flag it.
+    const scheduledStartMin = stop.scheduledTimeStart ? parseHm(stop.scheduledTimeStart) : null;
+    let lateArrivalMinutes: number | undefined;
+    let actualArrivalTime: string | undefined;
+
+    if (scheduledStartMin != null && cursor > scheduledStartMin + GAP_THRESHOLD_MINUTES) {
+      // Crew arrives later than scheduled — conflict
+      lateArrivalMinutes = cursor - scheduledStartMin;
+      actualArrivalTime = minutesToHm(cursor);
+    }
+
     // --- Gap: if travel end < stop arrival, there's free time ---
     if (arrivalMin != null && cursor < arrivalMin - GAP_THRESHOLD_MINUTES) {
       const gapDuration = arrivalMin - cursor;
@@ -158,6 +180,8 @@ export function buildTimelineItems(
       endTime: minutesToHm(stopEnd),
       durationMinutes: stopDuration,
       stop,
+      lateArrivalMinutes,
+      actualArrivalTime,
     });
 
     cursor = stopEnd;
