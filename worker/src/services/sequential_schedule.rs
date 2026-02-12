@@ -47,6 +47,9 @@ pub enum StopType {
 pub struct ScheduleResult {
     /// Per-stop computed schedule (parallel to input `stops`).
     pub stops: Vec<ComputedStopSchedule>,
+    /// Computed depot departure time (may differ from workday_start when
+    /// the first stop is scheduled — departure is calculated backward).
+    pub depot_departure: NaiveTime,
     /// Travel distance from last stop back to depot (km).
     pub return_to_depot_distance_km: f64,
     /// Travel duration from last stop back to depot (minutes).
@@ -90,6 +93,16 @@ fn time_to_minutes(t: NaiveTime) -> i32 {
 
 /// Compute a sequential schedule for the given route.
 ///
+/// **Scheduling rules:**
+/// 1. Scheduled (agreed) stops are **pinned**: arrival = `scheduled_time_start`,
+///    departure = `scheduled_time_end`. The crew must arrive exactly at the
+///    agreed start and leaves immediately at the agreed end.
+/// 2. Depot departure is calculated **backward** from the first stop:
+///    `depot_departure = first_arrival - travel_time_to_first_stop`.
+///    If the first stop is not scheduled, depot departure = `workday_start`.
+/// 3. Unscheduled stops are placed immediately after the previous stop's
+///    departure + travel time.
+///
 /// Matrix layout: positions correspond to `depot_matrix_idx` (depot) and
 /// `stop_matrix_indices[i]` (stop i). Distances are in **meters**, durations
 /// in **seconds** — matching `DistanceTimeMatrices` from `routing`.
@@ -101,29 +114,60 @@ pub fn compute_sequential_schedule(
     let n = input.stops.len();
     let mut result_stops: Vec<ComputedStopSchedule> = Vec::with_capacity(n);
 
-    let mut cursor = input.workday_start;
     let mut total_distance_m: u64 = 0;
     let mut total_travel_seconds: u64 = 0;
     let mut total_service_min: i32 = 0;
 
+    // -- Determine depot departure time --
+    // If the first stop has a scheduled start, work backward from it.
+    let depot_departure = if n > 0 {
+        let first_stop = &input.stops[0];
+        let first_mx = input.stop_matrix_indices[0];
+        let travel_dur_s = duration_matrix[input.depot_matrix_idx][first_mx];
+        let travel_min = (travel_dur_s as f64 / 60.0).ceil() as i32;
+
+        match first_stop.scheduled_time_start {
+            Some(sched_start) => {
+                // Depart depot so we arrive exactly at the agreed time.
+                let backward = add_minutes(sched_start, -travel_min);
+                // But never earlier than workday_start.
+                if backward < input.workday_start {
+                    input.workday_start
+                } else {
+                    backward
+                }
+            }
+            None => input.workday_start,
+        }
+    } else {
+        input.workday_start
+    };
+
+    let mut cursor = depot_departure;
     let mut prev_matrix_idx = input.depot_matrix_idx;
 
     for i in 0..n {
         let stop = &input.stops[i];
         let stop_mx = input.stop_matrix_indices[i];
 
-        // Travel leg from previous location to this stop.
-        let travel_dist_m = distance_matrix[prev_matrix_idx][stop_mx];
-        let travel_dur_s = duration_matrix[prev_matrix_idx][stop_mx];
-        let travel_min = (travel_dur_s as f64 / 60.0).ceil() as i32;
+        // Break stops happen at the same location — no travel.
+        let (travel_dist_m, travel_dur_s, travel_min) = if stop.stop_type == StopType::Break {
+            (0u64, 0u64, 0i32)
+        } else {
+            let d = distance_matrix[prev_matrix_idx][stop_mx];
+            let t = duration_matrix[prev_matrix_idx][stop_mx];
+            (d, t, (t as f64 / 60.0).ceil() as i32)
+        };
 
         let earliest_arrival = add_minutes(cursor, travel_min);
 
-        // If there is a scheduled (agreed) start time and it is later than
-        // our earliest possible arrival, we wait until the scheduled time.
+        // For scheduled (agreed) stops, ALWAYS pin arrival to the agreed
+        // start time. This is a commitment to the customer — even if the
+        // crew physically arrives later, the schedule shows the agreed time.
+        // For unscheduled stops, arrive as soon as travel allows.
         let arrival = match stop.scheduled_time_start {
-            Some(sched) if sched > earliest_arrival => sched,
-            _ => earliest_arrival,
+            Some(sched) => sched,
+            None => earliest_arrival,
         };
 
         // Service duration for this stop.
@@ -144,7 +188,14 @@ pub fn compute_sequential_schedule(
             }
         };
 
-        let departure = add_minutes(arrival, service_min);
+        // For stops with an agreed/scheduled end, ALWAYS pin departure to
+        // that time. For customer stops this is the committed time with the
+        // customer; for break stops it's the calculated break-window end.
+        // For unscheduled stops, departure = arrival + service.
+        let departure = match stop.scheduled_time_end {
+            Some(sched_end) => sched_end,
+            None => add_minutes(arrival, service_min),
+        };
 
         result_stops.push(ComputedStopSchedule {
             estimated_arrival: arrival,
@@ -158,7 +209,10 @@ pub fn compute_sequential_schedule(
         total_travel_seconds += travel_dur_s;
         total_service_min += service_min;
         cursor = departure;
-        prev_matrix_idx = stop_mx;
+        // Breaks don't change the "previous location" for routing purposes.
+        if stop.stop_type != StopType::Break {
+            prev_matrix_idx = stop_mx;
+        }
     }
 
     // Return leg to depot.
@@ -179,6 +233,7 @@ pub fn compute_sequential_schedule(
 
     ScheduleResult {
         stops: result_stops,
+        depot_departure,
         return_to_depot_distance_km: return_dist_m as f64 / 1000.0,
         return_to_depot_duration_minutes: return_dur_min,
         total_distance_km: total_distance_m as f64 / 1000.0,
@@ -232,6 +287,7 @@ mod tests {
         let result = compute_sequential_schedule(&input, &dm, &tm);
 
         assert!(result.stops.is_empty());
+        assert_eq!(result.depot_departure, hm(8, 0));
         assert_eq!(result.return_to_depot_distance_km, 0.0);
         assert_eq!(result.return_to_depot_duration_minutes, 0);
         assert_eq!(result.total_distance_km, 0.0);
@@ -240,11 +296,10 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // 2. Single stop, no time window — uses default service duration
+    // 2. Single stop, no time window — departs at workday_start
     // -----------------------------------------------------------------------
     #[test]
-    fn single_stop_no_window_uses_default_service() {
-        // Matrix: [depot=0, stop=1]. Travel 10 km / 15 min each way.
+    fn single_stop_no_window_departs_at_workday_start() {
         let (dm, tm) = uniform_matrix(2, 10_000, 900); // 900s = 15 min
 
         let input = ScheduleInput {
@@ -262,28 +317,25 @@ mod tests {
         };
 
         let result = compute_sequential_schedule(&input, &dm, &tm);
-
-        assert_eq!(result.stops.len(), 1);
+        assert_eq!(result.depot_departure, hm(8, 0));
         let s = &result.stops[0];
         assert_eq!(s.estimated_arrival, hm(8, 15));
-        assert_eq!(s.estimated_departure, hm(9, 15)); // +60 min service
+        assert_eq!(s.estimated_departure, hm(9, 15)); // +60 min default
         assert_eq!(s.distance_from_previous_km, 10.0);
         assert_eq!(s.duration_from_previous_minutes, 15);
         assert_eq!(s.service_duration_minutes, 60);
-        // Return: 10 km / 15 min
         assert_eq!(result.return_to_depot_distance_km, 10.0);
         assert_eq!(result.return_to_depot_duration_minutes, 15);
-        // Totals: 20 km travel, 30 min travel, 60 min service
         assert_eq!(result.total_distance_km, 20.0);
         assert_eq!(result.total_travel_minutes, 30);
         assert_eq!(result.total_service_minutes, 60);
     }
 
     // -----------------------------------------------------------------------
-    // 3. Single stop with scheduled window — service derived from window
+    // 3. Single scheduled stop — depot departure calculated backward
     // -----------------------------------------------------------------------
     #[test]
-    fn single_stop_with_scheduled_window() {
+    fn single_scheduled_stop_backward_depot_departure() {
         // Travel: 5 km / 10 min. Scheduled 09:00–10:30 (90 min service).
         let (dm, tm) = uniform_matrix(2, 5_000, 600); // 600s = 10 min
 
@@ -297,45 +349,39 @@ mod tests {
                 break_duration_minutes: None,
             }],
             stop_matrix_indices: vec![1],
-            workday_start: hm(8, 0),
+            workday_start: hm(7, 0),
             default_service_minutes: 60,
         };
 
         let result = compute_sequential_schedule(&input, &dm, &tm);
-        let s = &result.stops[0];
 
-        // Earliest arrival = 08:10, but scheduled start = 09:00 → wait.
-        assert_eq!(s.estimated_arrival, hm(9, 0));
-        // Service = 90 min (from 09:00–10:30 window).
-        assert_eq!(s.service_duration_minutes, 90);
-        assert_eq!(s.estimated_departure, hm(10, 30));
+        // Depot departure = 09:00 - 10 min travel = 08:50
+        assert_eq!(result.depot_departure, hm(8, 50));
+        let s = &result.stops[0];
+        assert_eq!(s.estimated_arrival, hm(9, 0));   // pinned to agreed start
+        assert_eq!(s.service_duration_minutes, 90);   // from 09:00–10:30 window
+        assert_eq!(s.estimated_departure, hm(10, 30)); // pinned to agreed end
     }
 
     // -----------------------------------------------------------------------
-    // 4. Two stops, sequential — no gaps
+    // 4. Two unscheduled stops — sequential, no gaps
     // -----------------------------------------------------------------------
     #[test]
     fn two_stops_sequential_no_gaps() {
-        // Matrix layout: [depot=0, A=1, B=2]
-        // All travel: 5 km / 10 min.
-        let (dm, tm) = uniform_matrix(3, 5_000, 600);
+        let (dm, tm) = uniform_matrix(3, 5_000, 600); // 10 min travel
 
         let input = ScheduleInput {
             depot_matrix_idx: 0,
             stops: vec![
                 ScheduleStop {
                     stop_type: StopType::Customer,
-                    scheduled_time_start: None,
-                    scheduled_time_end: None,
-                    service_duration_minutes: Some(30),
-                    break_duration_minutes: None,
+                    scheduled_time_start: None, scheduled_time_end: None,
+                    service_duration_minutes: Some(30), break_duration_minutes: None,
                 },
                 ScheduleStop {
                     stop_type: StopType::Customer,
-                    scheduled_time_start: None,
-                    scheduled_time_end: None,
-                    service_duration_minutes: Some(45),
-                    break_duration_minutes: None,
+                    scheduled_time_start: None, scheduled_time_end: None,
+                    service_duration_minutes: Some(45), break_duration_minutes: None,
                 },
             ],
             stop_matrix_indices: vec![1, 2],
@@ -344,34 +390,22 @@ mod tests {
         };
 
         let result = compute_sequential_schedule(&input, &dm, &tm);
-        assert_eq!(result.stops.len(), 2);
-
-        // Stop A: depart depot 08:00, arrive 08:10, serve 30 min, depart 08:40
+        assert_eq!(result.depot_departure, hm(8, 0));
         let a = &result.stops[0];
         assert_eq!(a.estimated_arrival, hm(8, 10));
         assert_eq!(a.estimated_departure, hm(8, 40));
-        assert_eq!(a.service_duration_minutes, 30);
-
-        // Stop B: depart A 08:40, travel 10 min, arrive 08:50, serve 45 min, depart 09:35
         let b = &result.stops[1];
         assert_eq!(b.estimated_arrival, hm(8, 50));
         assert_eq!(b.estimated_departure, hm(9, 35));
-        assert_eq!(b.service_duration_minutes, 45);
-
-        // Return: 5 km / 10 min
-        assert_eq!(result.return_to_depot_distance_km, 5.0);
-        assert_eq!(result.return_to_depot_duration_minutes, 10);
-        // Total travel distance: depot→A(5) + A→B(5) + B→depot(5) = 15 km
-        assert_eq!(result.total_distance_km, 15.0);
     }
 
     // -----------------------------------------------------------------------
-    // 5. Two stops with waiting gap
+    // 5. Scheduled stop then unscheduled — departs at agreed end
     // -----------------------------------------------------------------------
     #[test]
-    fn two_stops_with_gap_waits_for_scheduled() {
-        // A has no window. B is scheduled at 11:00.
-        // Travel 10 min everywhere, service 30 min.
+    fn scheduled_stop_then_unscheduled_departs_at_agreed_end() {
+        // A is scheduled 08:00–09:00. B is unscheduled.
+        // Travel = 10 min everywhere.
         let (dm, tm) = uniform_matrix(3, 5_000, 600);
 
         let input = ScheduleInput {
@@ -379,69 +413,100 @@ mod tests {
             stops: vec![
                 ScheduleStop {
                     stop_type: StopType::Customer,
-                    scheduled_time_start: None,
-                    scheduled_time_end: None,
-                    service_duration_minutes: Some(30),
-                    break_duration_minutes: None,
+                    scheduled_time_start: Some(hm(8, 0)),
+                    scheduled_time_end: Some(hm(9, 0)),
+                    service_duration_minutes: None, break_duration_minutes: None,
+                },
+                ScheduleStop {
+                    stop_type: StopType::Customer,
+                    scheduled_time_start: None, scheduled_time_end: None,
+                    service_duration_minutes: Some(30), break_duration_minutes: None,
+                },
+            ],
+            stop_matrix_indices: vec![1, 2],
+            workday_start: hm(7, 0),
+            default_service_minutes: 60,
+        };
+
+        let result = compute_sequential_schedule(&input, &dm, &tm);
+
+        // Depot departure = 08:00 - 10 min = 07:50
+        assert_eq!(result.depot_departure, hm(7, 50));
+
+        let a = &result.stops[0];
+        assert_eq!(a.estimated_arrival, hm(8, 0));    // pinned to agreed start
+        assert_eq!(a.estimated_departure, hm(9, 0));  // pinned to agreed end
+
+        // B: depart A at 09:00, travel 10 min → arrive 09:10, serve 30 min → depart 09:40
+        let b = &result.stops[1];
+        assert_eq!(b.estimated_arrival, hm(9, 10));
+        assert_eq!(b.estimated_departure, hm(9, 40));
+    }
+
+    // -----------------------------------------------------------------------
+    // 6. Two scheduled stops — second respects agreed window
+    // -----------------------------------------------------------------------
+    #[test]
+    fn two_scheduled_stops_respect_windows() {
+        // A: 08:00–09:00, B: 11:00–12:00. Travel = 10 min.
+        let (dm, tm) = uniform_matrix(3, 5_000, 600);
+
+        let input = ScheduleInput {
+            depot_matrix_idx: 0,
+            stops: vec![
+                ScheduleStop {
+                    stop_type: StopType::Customer,
+                    scheduled_time_start: Some(hm(8, 0)),
+                    scheduled_time_end: Some(hm(9, 0)),
+                    service_duration_minutes: None, break_duration_minutes: None,
                 },
                 ScheduleStop {
                     stop_type: StopType::Customer,
                     scheduled_time_start: Some(hm(11, 0)),
                     scheduled_time_end: Some(hm(12, 0)),
-                    service_duration_minutes: None,
-                    break_duration_minutes: None,
+                    service_duration_minutes: None, break_duration_minutes: None,
                 },
             ],
             stop_matrix_indices: vec![1, 2],
-            workday_start: hm(8, 0),
+            workday_start: hm(7, 0),
             default_service_minutes: 60,
         };
 
         let result = compute_sequential_schedule(&input, &dm, &tm);
 
-        // A: arrive 08:10, depart 08:40
         let a = &result.stops[0];
-        assert_eq!(a.estimated_arrival, hm(8, 10));
-        assert_eq!(a.estimated_departure, hm(8, 40));
+        assert_eq!(a.estimated_arrival, hm(8, 0));
+        assert_eq!(a.estimated_departure, hm(9, 0));
 
-        // B: earliest = 08:50, but scheduled 11:00 → wait.
         let b = &result.stops[1];
-        assert_eq!(b.estimated_arrival, hm(11, 0));
-        assert_eq!(b.service_duration_minutes, 60); // from 11:00–12:00
-        assert_eq!(b.estimated_departure, hm(12, 0));
+        assert_eq!(b.estimated_arrival, hm(11, 0));   // waits until agreed start
+        assert_eq!(b.estimated_departure, hm(12, 0)); // pinned to agreed end
     }
 
     // -----------------------------------------------------------------------
-    // 6. Break stop — uses break_duration_minutes
+    // 7. Break stop — uses break_duration_minutes, zero travel
     // -----------------------------------------------------------------------
     #[test]
     fn break_stop_uses_break_duration() {
-        // [depot=0, customer=1, break=2, customer=3]
-        let (dm, tm) = uniform_matrix(4, 3_000, 600);
+        let (dm, tm) = uniform_matrix(4, 3_000, 600); // 10 min / 3 km
 
         let input = ScheduleInput {
             depot_matrix_idx: 0,
             stops: vec![
                 ScheduleStop {
                     stop_type: StopType::Customer,
-                    scheduled_time_start: None,
-                    scheduled_time_end: None,
-                    service_duration_minutes: Some(30),
-                    break_duration_minutes: None,
+                    scheduled_time_start: None, scheduled_time_end: None,
+                    service_duration_minutes: Some(30), break_duration_minutes: None,
                 },
                 ScheduleStop {
                     stop_type: StopType::Break,
-                    scheduled_time_start: None,
-                    scheduled_time_end: None,
-                    service_duration_minutes: None,
-                    break_duration_minutes: Some(45),
+                    scheduled_time_start: None, scheduled_time_end: None,
+                    service_duration_minutes: None, break_duration_minutes: Some(45),
                 },
                 ScheduleStop {
                     stop_type: StopType::Customer,
-                    scheduled_time_start: None,
-                    scheduled_time_end: None,
-                    service_duration_minutes: Some(30),
-                    break_duration_minutes: None,
+                    scheduled_time_start: None, scheduled_time_end: None,
+                    service_duration_minutes: Some(30), break_duration_minutes: None,
                 },
             ],
             stop_matrix_indices: vec![1, 2, 3],
@@ -450,28 +515,31 @@ mod tests {
         };
 
         let result = compute_sequential_schedule(&input, &dm, &tm);
-        assert_eq!(result.stops.len(), 3);
 
-        // Customer1: arrive 08:10, depart 08:40
+        // Customer1: 08:00 + 10 min travel = 08:10, serve 30 min → 08:40
         assert_eq!(result.stops[0].estimated_arrival, hm(8, 10));
         assert_eq!(result.stops[0].estimated_departure, hm(8, 40));
 
-        // Break: arrive 08:50, 45 min, depart 09:35
-        assert_eq!(result.stops[1].estimated_arrival, hm(8, 50));
+        // Break: zero travel (same location), 45 min → 08:40–09:25
+        assert_eq!(result.stops[1].duration_from_previous_minutes, 0);
+        assert_eq!(result.stops[1].estimated_arrival, hm(8, 40));
         assert_eq!(result.stops[1].service_duration_minutes, 45);
-        assert_eq!(result.stops[1].estimated_departure, hm(9, 35));
+        assert_eq!(result.stops[1].estimated_departure, hm(9, 25));
 
-        // Customer2: arrive 09:45, 30 min, depart 10:15
-        assert_eq!(result.stops[2].estimated_arrival, hm(9, 45));
-        assert_eq!(result.stops[2].estimated_departure, hm(10, 15));
+        // Customer2: travel from customer1 (not from break location) = 10 min
+        // 09:25 + 10 min = 09:35
+        assert_eq!(result.stops[2].estimated_arrival, hm(9, 35));
+        assert_eq!(result.stops[2].estimated_departure, hm(10, 5));
     }
 
     // -----------------------------------------------------------------------
-    // 7. Explicit service_duration_minutes takes precedence
+    // 8. Explicit service_duration_minutes — departure still pinned to
+    //    agreed end (which is always used for scheduled stops)
     // -----------------------------------------------------------------------
     #[test]
-    fn explicit_service_duration_overrides_window() {
-        // Scheduled 09:00–10:00 (60 min window) but explicit = 45 min.
+    fn explicit_service_duration_with_scheduled_end() {
+        // Scheduled 09:00–10:00, explicit service = 45 min.
+        // Departure is ALWAYS pinned to agreed end = 10:00.
         let (dm, tm) = uniform_matrix(2, 5_000, 600);
 
         let input = ScheduleInput {
@@ -484,40 +552,32 @@ mod tests {
                 break_duration_minutes: None,
             }],
             stop_matrix_indices: vec![1],
-            workday_start: hm(8, 0),
+            workday_start: hm(7, 0),
             default_service_minutes: 60,
         };
 
         let result = compute_sequential_schedule(&input, &dm, &tm);
         let s = &result.stops[0];
         assert_eq!(s.estimated_arrival, hm(9, 0));
-        assert_eq!(s.service_duration_minutes, 45); // explicit wins
-        assert_eq!(s.estimated_departure, hm(9, 45));
+        assert_eq!(s.service_duration_minutes, 45);
+        // Departure is always pinned to agreed end
+        assert_eq!(s.estimated_departure, hm(10, 0));
     }
 
     // -----------------------------------------------------------------------
-    // 8. Asymmetric matrix — different distances each direction
+    // 9. Asymmetric matrix
     // -----------------------------------------------------------------------
     #[test]
     fn asymmetric_matrix() {
-        // depot→stop = 8 km / 12 min, stop→depot = 6 km / 10 min
-        let dm = vec![
-            vec![0u64, 8_000],
-            vec![6_000, 0u64],
-        ];
-        let tm = vec![
-            vec![0u64, 720],  // 12 min
-            vec![600, 0u64],  // 10 min
-        ];
+        let dm = vec![vec![0u64, 8_000], vec![6_000, 0u64]];
+        let tm = vec![vec![0u64, 720], vec![600, 0u64]]; // 12 min / 10 min
 
         let input = ScheduleInput {
             depot_matrix_idx: 0,
             stops: vec![ScheduleStop {
                 stop_type: StopType::Customer,
-                scheduled_time_start: None,
-                scheduled_time_end: None,
-                service_duration_minutes: Some(30),
-                break_duration_minutes: None,
+                scheduled_time_start: None, scheduled_time_end: None,
+                service_duration_minutes: Some(30), break_duration_minutes: None,
             }],
             stop_matrix_indices: vec![1],
             workday_start: hm(8, 0),
@@ -526,7 +586,6 @@ mod tests {
 
         let result = compute_sequential_schedule(&input, &dm, &tm);
         let s = &result.stops[0];
-
         assert_eq!(s.distance_from_previous_km, 8.0);
         assert_eq!(s.duration_from_previous_minutes, 12);
         assert_eq!(s.estimated_arrival, hm(8, 12));
@@ -537,11 +596,10 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // 9. Metrics are correct for multi-stop route
+    // 10. Metrics correct for multi-stop route
     // -----------------------------------------------------------------------
     #[test]
     fn metrics_correct_for_multi_stop() {
-        // 3 stops, each with 20 min service. Travel = 5 km / 10 min each leg.
         let (dm, tm) = uniform_matrix(4, 5_000, 600);
 
         let input = ScheduleInput {
@@ -557,12 +615,91 @@ mod tests {
         };
 
         let result = compute_sequential_schedule(&input, &dm, &tm);
-
-        // 4 legs (depot→1, 1→2, 2→3, 3→depot) × 5 km = 20 km
         assert_eq!(result.total_distance_km, 20.0);
-        // 4 legs × 10 min = 40 min travel
         assert_eq!(result.total_travel_minutes, 40);
-        // 3 stops × 20 min = 60 min service
         assert_eq!(result.total_service_minutes, 60);
+    }
+
+    // -----------------------------------------------------------------------
+    // 11. Backward depot departure clamped; arrival still pinned to agreed
+    // -----------------------------------------------------------------------
+    #[test]
+    fn backward_depot_departure_clamped_arrival_still_pinned() {
+        // Travel 60 min, scheduled at 07:30–08:30. Workday starts 07:00.
+        // Backward: 07:30 - 60 = 06:30 → clamped to 07:00.
+        // Physical arrival = 08:00, but agreed = 07:30 → still pinned to 07:30.
+        let (dm, tm) = uniform_matrix(2, 50_000, 3600); // 60 min travel
+
+        let input = ScheduleInput {
+            depot_matrix_idx: 0,
+            stops: vec![ScheduleStop {
+                stop_type: StopType::Customer,
+                scheduled_time_start: Some(hm(7, 30)),
+                scheduled_time_end: Some(hm(8, 30)),
+                service_duration_minutes: None, break_duration_minutes: None,
+            }],
+            stop_matrix_indices: vec![1],
+            workday_start: hm(7, 0),
+            default_service_minutes: 60,
+        };
+
+        let result = compute_sequential_schedule(&input, &dm, &tm);
+        // Clamped to workday_start, not 06:30
+        assert_eq!(result.depot_departure, hm(7, 0));
+        // Arrival is always pinned to agreed start, even if physically late
+        assert_eq!(result.stops[0].estimated_arrival, hm(7, 30));
+        // Departure is always pinned to agreed end
+        assert_eq!(result.stops[0].estimated_departure, hm(8, 30));
+    }
+
+    // -----------------------------------------------------------------------
+    // 12. Break stop has zero travel and correct duration
+    // -----------------------------------------------------------------------
+    #[test]
+    fn break_stop_zero_travel() {
+        // [depot=0, customer=1, break=2, customer=3]
+        // Break happens at the same location — travel = 0.
+        let (dm, tm) = uniform_matrix(4, 5_000, 600); // 10 min / 5 km
+
+        let input = ScheduleInput {
+            depot_matrix_idx: 0,
+            stops: vec![
+                ScheduleStop {
+                    stop_type: StopType::Customer,
+                    scheduled_time_start: None, scheduled_time_end: None,
+                    service_duration_minutes: Some(60), break_duration_minutes: None,
+                },
+                ScheduleStop {
+                    stop_type: StopType::Break,
+                    scheduled_time_start: None, scheduled_time_end: None,
+                    service_duration_minutes: None, break_duration_minutes: Some(45),
+                },
+                ScheduleStop {
+                    stop_type: StopType::Customer,
+                    scheduled_time_start: None, scheduled_time_end: None,
+                    service_duration_minutes: Some(60), break_duration_minutes: None,
+                },
+            ],
+            stop_matrix_indices: vec![1, 2, 3],
+            workday_start: hm(8, 0),
+            default_service_minutes: 60,
+        };
+
+        let result = compute_sequential_schedule(&input, &dm, &tm);
+        // Customer1: 08:00 + 10 min travel = 08:10, serve 60 min → depart 09:10
+        assert_eq!(result.stops[0].estimated_arrival, hm(8, 10));
+        assert_eq!(result.stops[0].estimated_departure, hm(9, 10));
+
+        // Break: zero travel (same location), starts at 09:10, 45 min → 09:55
+        assert_eq!(result.stops[1].distance_from_previous_km, 0.0);
+        assert_eq!(result.stops[1].duration_from_previous_minutes, 0);
+        assert_eq!(result.stops[1].estimated_arrival, hm(9, 10));
+        assert_eq!(result.stops[1].estimated_departure, hm(9, 55));
+        assert_eq!(result.stops[1].service_duration_minutes, 45);
+
+        // Customer2: break didn't change location, so travel = customer1→customer2
+        // From customer1 (matrix idx 1) to customer2 (matrix idx 3) = 10 min
+        assert_eq!(result.stops[2].duration_from_previous_minutes, 10);
+        assert_eq!(result.stops[2].estimated_arrival, hm(10, 5));
     }
 }

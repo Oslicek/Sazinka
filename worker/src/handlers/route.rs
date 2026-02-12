@@ -1725,6 +1725,9 @@ pub struct RecalcStopResult {
 #[serde(rename_all = "camelCase")]
 pub struct RecalculateResponse {
     pub stops: Vec<RecalcStopResult>,
+    /// Computed depot departure time (may be earlier than workday_start
+    /// when the first stop is scheduled — backward-calculated).
+    pub depot_departure: String,
     pub return_to_depot_distance_km: f64,
     pub return_to_depot_duration_minutes: i32,
     pub total_distance_km: f64,
@@ -1734,6 +1737,16 @@ pub struct RecalculateResponse {
 
 /// Handle sazinka.route.recalculate
 ///
+/// Parse time from various formats: "HH:MM", "HH:MM:SS", "HH:MM:SS.xxx"
+fn parse_time_flexible(s: &str) -> Option<chrono::NaiveTime> {
+    let trimmed = s.trim();
+    // Try HH:MM first, then HH:MM:SS
+    chrono::NaiveTime::parse_from_str(trimmed, "%H:%M")
+        .or_else(|_| chrono::NaiveTime::parse_from_str(trimmed, "%H:%M:%S"))
+        .or_else(|_| chrono::NaiveTime::parse_from_str(&trimmed[..8.min(trimmed.len())], "%H:%M:%S"))
+        .ok()
+}
+
 /// Quick ETA recalculation: receives ordered stops + depot, fetches the Valhalla
 /// distance/time matrix, runs `compute_sequential_schedule`, returns updated
 /// arrival/departure times per stop.
@@ -1772,7 +1785,7 @@ pub async fn handle_recalculate(
         let workday_start = payload
             .workday_start
             .as_deref()
-            .and_then(|t| chrono::NaiveTime::parse_from_str(t, "%H:%M").ok())
+            .and_then(parse_time_flexible)
             .unwrap_or_else(default_work_start);
 
         // Empty route → trivial response
@@ -1781,6 +1794,7 @@ pub async fn handle_recalculate(
                 request.id,
                 RecalculateResponse {
                     stops: vec![],
+                    depot_departure: workday_start.format("%H:%M").to_string(),
                     return_to_depot_distance_km: 0.0,
                     return_to_depot_duration_minutes: 0,
                     total_distance_km: 0.0,
@@ -1831,11 +1845,11 @@ pub async fn handle_recalculate(
                     scheduled_time_start: s
                         .scheduled_time_start
                         .as_deref()
-                        .and_then(|t| chrono::NaiveTime::parse_from_str(t, "%H:%M").ok()),
+                        .and_then(parse_time_flexible),
                     scheduled_time_end: s
                         .scheduled_time_end
                         .as_deref()
-                        .and_then(|t| chrono::NaiveTime::parse_from_str(t, "%H:%M").ok()),
+                        .and_then(parse_time_flexible),
                     service_duration_minutes: s.service_duration_minutes,
                     break_duration_minutes: s.break_duration_minutes,
                 }
@@ -1880,6 +1894,7 @@ pub async fn handle_recalculate(
             request.id,
             RecalculateResponse {
                 stops,
+                depot_departure: result.depot_departure.format("%H:%M").to_string(),
                 return_to_depot_distance_km: result.return_to_depot_distance_km,
                 return_to_depot_duration_minutes: result.return_to_depot_duration_minutes,
                 total_distance_km: result.total_distance_km,

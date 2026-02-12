@@ -5,7 +5,7 @@ import type { SavedRouteStop } from '../services/routeService';
  * Result of break position calculation
  */
 export interface BreakPositionResult {
-  /** Suggested position (1-based index where break should be inserted) */
+  /** Suggested position (0-based index where break should be inserted among customer stops) */
   position: number;
   /** Warnings if constraints cannot be fully satisfied */
   warnings: string[];
@@ -25,10 +25,30 @@ export interface BreakConstraintOptions {
   requiredBreakMinutes?: number;
 }
 
+/** Parse "HH:MM" or "HH:MM:SS" to total minutes from midnight, or null. */
+function parseMins(t: string | null | undefined): number | null {
+  if (!t) return null;
+  const p = t.split(':').map(Number);
+  if (p.length < 2 || !Number.isFinite(p[0]) || !Number.isFinite(p[1])) return null;
+  return p[0] * 60 + p[1];
+}
+
+/** Format total minutes as "HH:MM". */
+function fmtMins(m: number): string {
+  const h = Math.floor(m / 60) % 24;
+  const mm = m % 60;
+  return `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+
 /**
- * Calculate optimal position for a break in a route based on constraints
- * 
- * @param stops - Current route stops (without break)
+ * Calculate optimal position for a break in a route based on constraints.
+ *
+ * The algorithm considers the **gap** between consecutive stops (not just the
+ * departure time of the preceding stop).  If the break time-window falls
+ * within a gap — even if the gap starts earlier — the position is valid and
+ * the break will start at `max(gapStart, breakWindowStart)`.
+ *
+ * @param stops - Current route stops (customer only, no break)
  * @param breakSettings - Break configuration
  * @param startTime - Route start time (HH:MM)
  * @returns Break position and warnings
@@ -49,15 +69,17 @@ export function calculateBreakPosition(
     return { position: 0, warnings, estimatedTime: null, estimatedDistanceKm: null };
   }
 
-  // Parse start time
-  const [startHour, startMin] = startTime.split(':').map(Number);
-  let currentMinutes = startHour * 60 + startMin;
-  let cumulativeKm = 0;
+  const breakWindowStart = parseMins(breakSettings.breakEarliestTime) ?? 690; // 11:30
+  const breakWindowEnd = parseMins(breakSettings.breakLatestTime) ?? 780;   // 13:00
+  const breakDuration = breakSettings.breakDurationMinutes;
 
-  // Calculate cumulative time and distance for each position
+  let cursor = parseMins(startTime) ?? 480; // route start
+  let cumulativeKm = 0;
+  let cumulativeDrivingMinutes = 0;
+
   interface PositionCandidate {
-    position: number; // 1-based position (insert after stop[position-1])
-    timeMinutes: number;
+    position: number;           // 0-based insert index among customer stops
+    breakStartMinutes: number;  // when the break would actually begin
     distanceKm: number;
     timeValid: boolean;
     kmValid: boolean;
@@ -66,71 +88,74 @@ export function calculateBreakPosition(
   }
 
   const candidates: PositionCandidate[] = [];
-  let cumulativeDrivingMinutes = 0;
 
-  // Position 0: before all stops (right after depot)
-  candidates.push({
-    position: 0,
-    timeMinutes: currentMinutes,
-    distanceKm: 0,
-    timeValid: false, // Usually too early
-    kmValid: cumulativeKm >= breakSettings.breakMinKm && cumulativeKm <= breakSettings.breakMaxKm,
-    drivingValid: !enforceDrivingBreakRule,
-    cumulativeDrivingMinutes,
-  });
+  // Evaluate every gap: position 0 = before all stops, position i = after stop[i-1]
+  for (let pos = 0; pos <= stops.length; pos++) {
+    // ── Gap boundaries ──
+    const gapStart = cursor;
 
-  // Calculate for each stop position
-  for (let i = 0; i < stops.length; i++) {
-    const stop = stops[i];
-    
-    // Add travel time to this stop
-    if (stop.durationFromPreviousMinutes) {
-      currentMinutes += stop.durationFromPreviousMinutes;
-      cumulativeDrivingMinutes += stop.durationFromPreviousMinutes;
-    } else if (stop.distanceFromPreviousKm) {
-      // Fallback estimate for cumulative driving time (40 km/h average)
-      cumulativeDrivingMinutes += stop.distanceFromPreviousKm * 1.5;
-    }
-    
-    // Add service time at this stop
-    const serviceDuration = 30; // Default, could be from stop data
-    currentMinutes += serviceDuration;
-    
-    // Add travel distance
-    if (stop.distanceFromPreviousKm) {
-      cumulativeKm += stop.distanceFromPreviousKm;
+    // Gap ends when the *next* stop needs to begin (its scheduledTimeStart)
+    let gapEnd = Infinity;
+    if (pos < stops.length) {
+      const nextStart = parseMins(stops[pos].scheduledTimeStart);
+      if (nextStart !== null) gapEnd = nextStart;
     }
 
-    // Check if this position (after stop i) satisfies constraints
-    const [earliestHour, earliestMin] = breakSettings.breakEarliestTime.split(':').map(Number);
-    const [latestHour, latestMin] = breakSettings.breakLatestTime.split(':').map(Number);
-    const earliestMinutes = earliestHour * 60 + earliestMin;
-    const latestMinutes = latestHour * 60 + latestMin;
+    // The break would start at the later of: gap start or break-window open
+    const breakStart = Math.max(gapStart, breakWindowStart);
+    const breakEnd = breakStart + breakDuration;
 
-    const timeValid = currentMinutes >= earliestMinutes && currentMinutes <= latestMinutes;
+    // Time-valid: break starts within the configured window AND fits before the next stop
+    const fitsInGap = gapEnd === Infinity || breakEnd <= gapEnd;
+    const timeValid = breakStart >= breakWindowStart && breakStart <= breakWindowEnd && fitsInGap;
+
     const kmValid = cumulativeKm >= breakSettings.breakMinKm && cumulativeKm <= breakSettings.breakMaxKm;
     const drivingValid = !enforceDrivingBreakRule || cumulativeDrivingMinutes <= maxDrivingMinutes;
 
     candidates.push({
-      position: i + 1,
-      timeMinutes: currentMinutes,
+      position: pos,
+      breakStartMinutes: breakStart,
       distanceKm: cumulativeKm,
       timeValid,
       kmValid,
       drivingValid,
       cumulativeDrivingMinutes,
     });
+
+    // ── Advance cursor past stop[pos] ──
+    if (pos < stops.length) {
+      const stop = stops[pos];
+
+      // Travel
+      if (stop.durationFromPreviousMinutes) {
+        cumulativeDrivingMinutes += stop.durationFromPreviousMinutes;
+      }
+      if (stop.distanceFromPreviousKm) {
+        cumulativeKm += stop.distanceFromPreviousKm;
+      }
+
+      // Determine when the stop ends
+      const endMin = parseMins(stop.scheduledTimeEnd)
+        ?? parseMins(stop.estimatedDeparture);
+      if (endMin !== null && endMin > cursor) {
+        cursor = endMin;
+      } else {
+        // Fallback: add travel + service estimate
+        if (stop.durationFromPreviousMinutes) {
+          cursor += stop.durationFromPreviousMinutes;
+        }
+        cursor += (stop.serviceDurationMinutes ?? 30);
+      }
+    }
   }
 
-  // Find best position: all enabled constraints satisfied
+  // ── Select best position ──
   let bestCandidate = candidates.find((c) => c.timeValid && c.kmValid && c.drivingValid);
 
   if (!bestCandidate) {
-    // No perfect match - find best compromise
     // Priority: time constraint > km constraint
     const timeValidCandidates = candidates.filter((c) => c.timeValid && c.drivingValid);
     if (timeValidCandidates.length > 0) {
-      // Pick the one closest to km range
       bestCandidate = timeValidCandidates.reduce((best, current) => {
         const bestKmDiff = Math.min(
           Math.abs(best.distanceKm - breakSettings.breakMinKm),
@@ -144,27 +169,22 @@ export function calculateBreakPosition(
       });
       warnings.push(`Pauza je mimo rozmezí km (nastaveno ${breakSettings.breakMinKm}-${breakSettings.breakMaxKm} km)`);
     } else {
-      // No time-valid position - pick closest to time range
+      // No time-valid position — pick closest to break window
       const drivingCompliant = candidates.filter((c) => c.drivingValid);
       const pool = drivingCompliant.length > 0 ? drivingCompliant : candidates;
       bestCandidate = pool.reduce((best, current) => {
-        const [earliestHour, earliestMin] = breakSettings.breakEarliestTime.split(':').map(Number);
-        const [latestHour, latestMin] = breakSettings.breakLatestTime.split(':').map(Number);
-        const earliestMinutes = earliestHour * 60 + earliestMin;
-        const latestMinutes = latestHour * 60 + latestMin;
-        
-        const bestTimeDiff = Math.min(
-          Math.abs(best.timeMinutes - earliestMinutes),
-          Math.abs(best.timeMinutes - latestMinutes)
+        const bestDiff = Math.min(
+          Math.abs(best.breakStartMinutes - breakWindowStart),
+          Math.abs(best.breakStartMinutes - breakWindowEnd)
         );
-        const currentTimeDiff = Math.min(
-          Math.abs(current.timeMinutes - earliestMinutes),
-          Math.abs(current.timeMinutes - latestMinutes)
+        const curDiff = Math.min(
+          Math.abs(current.breakStartMinutes - breakWindowStart),
+          Math.abs(current.breakStartMinutes - breakWindowEnd)
         );
-        return currentTimeDiff < bestTimeDiff ? current : best;
+        return curDiff < bestDiff ? current : best;
       });
       warnings.push(`Pauza je mimo časové rozmezí (nastaveno ${breakSettings.breakEarliestTime}-${breakSettings.breakLatestTime})`);
-      
+
       if (!bestCandidate.kmValid) {
         warnings.push(`Pauza je mimo rozmezí km (nastaveno ${breakSettings.breakMinKm}-${breakSettings.breakMaxKm} km)`);
       }
@@ -182,21 +202,27 @@ export function calculateBreakPosition(
     }
   }
 
-  // Format time
-  const hour = Math.floor(bestCandidate.timeMinutes / 60);
-  const min = bestCandidate.timeMinutes % 60;
-  const timeStr = `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
-
   return {
     position: bestCandidate.position,
     warnings,
-    estimatedTime: timeStr,
+    estimatedTime: fmtMins(bestCandidate.breakStartMinutes),
     estimatedDistanceKm: bestCandidate.distanceKm,
   };
 }
 
 /**
- * Create a break stop object
+ * Create a break stop object.
+ *
+ * `estimatedTime` is always used for `estimatedArrival` / `estimatedDeparture`
+ * so the timeline renders the break at the correct time even before the
+ * backend recalculates.
+ *
+ * `scheduledTimeStart` / `scheduledTimeEnd` are also set to the calculated
+ * break time so that the backend's sequential schedule pins the break at the
+ * correct time instead of placing it immediately after the previous stop.
+ *
+ * For "floating" breaks, `breakTimeStart` is left null (meaning the break
+ * is not user-pinned and can be repositioned by the next insertion).
  */
 export function createBreakStop(
   routeId: string,
@@ -206,14 +232,14 @@ export function createBreakStop(
   options: { floating?: boolean } = {}
 ): Omit<SavedRouteStop, 'id'> {
   const isFloating = options.floating ?? true;
-  const breakStart = isFloating ? null : estimatedTime;
+  const breakEnd = estimatedTime ? addMinutes(estimatedTime, breakSettings.breakDurationMinutes) : null;
 
   return {
     routeId,
     revisionId: null,
     stopOrder,
-    estimatedArrival: breakStart,
-    estimatedDeparture: breakStart ? addMinutes(breakStart, breakSettings.breakDurationMinutes) : null,
+    estimatedArrival: estimatedTime,
+    estimatedDeparture: breakEnd,
     distanceFromPreviousKm: null,
     durationFromPreviousMinutes: null,
     status: 'pending',
@@ -226,11 +252,12 @@ export function createBreakStop(
     customerPhone: null,
     customerEmail: null,
     scheduledDate: null,
-    scheduledTimeStart: null,
-    scheduledTimeEnd: null,
+    // Set scheduled times so the backend pins the break at the correct time
+    scheduledTimeStart: estimatedTime,
+    scheduledTimeEnd: breakEnd,
     revisionStatus: null,
     breakDurationMinutes: breakSettings.breakDurationMinutes,
-    breakTimeStart: breakStart,
+    breakTimeStart: isFloating ? null : estimatedTime,
   };
 }
 

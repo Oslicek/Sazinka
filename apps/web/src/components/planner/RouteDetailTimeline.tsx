@@ -49,6 +49,8 @@ interface RouteDetailTimelineProps {
   warnings?: RouteWarning[];
   routeStartTime?: string | null; // HH:MM, working day start
   routeEndTime?: string | null; // HH:MM, working day end
+  /** Computed depot departure (backward-calculated from first scheduled stop). */
+  depotDeparture?: string | null;
   returnToDepotDistanceKm?: number | null;
   returnToDepotDurationMinutes?: number | null;
 }

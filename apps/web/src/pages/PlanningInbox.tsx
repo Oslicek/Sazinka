@@ -31,7 +31,7 @@ import { ThreePanelLayout } from '../components/common';
 import type { SavedRouteStop } from '../services/routeService';
 import { recalculateRoute, type RecalcStopInput } from '../services/routeService';
 import type { BreakSettings } from '@shared/settings';
-import { insertStopAtPosition } from '../components/planner/insertStop';
+import { insertStopAtPosition, findChronologicalPosition } from '../components/planner/insertStop';
 import * as settingsService from '../services/settingsService';
 import { calculateBreakPosition, createBreakStop } from '../utils/breakUtils';
 import { logger } from '../utils/logger';
@@ -66,6 +66,12 @@ import {
   type TriState,
 } from './planningInboxFilters';
 import styles from './PlanningInbox.module.css';
+
+/** Parse "HH:MM" or "HH:MM:SS" to total minutes from midnight. */
+function parseTimeMins(t: string): number {
+  const p = t.split(':').map(Number);
+  return (p[0] ?? 0) * 60 + (p[1] ?? 0);
+}
 
 interface Depot {
   id: string;
@@ -146,12 +152,16 @@ export function PlanningInbox() {
   const [loadedRouteId, setLoadedRouteId] = useState<string | null>(null);
   const [routeGeometry, setRouteGeometry] = useState<[number, number][]>([]);
   const [returnToDepotLeg, setReturnToDepotLeg] = useState<{ distanceKm: number | null; durationMinutes: number | null } | null>(null);
+  /** Computed depot departure (backward-calculated from first scheduled stop). */
+  const [depotDeparture, setDepotDeparture] = useState<string | null>(null);
   const [routeWarnings, setRouteWarnings] = useState<RouteWarning[]>([]);
   const [breakWarnings, setBreakWarnings] = useState<string[]>([]);
   const [isBreakManuallyAdjusted, setIsBreakManuallyAdjusted] = useState(false);
   const [metrics, setMetrics] = useState<RouteMetrics | null>(null);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   const geometryUnsubRef = useRef<(() => void) | null>(null);
+  /** Stops waiting for recalculation after route load. */
+  const pendingRecalcStopsRef = useRef<SavedRouteStop[] | null>(null);
   
   // Inbox state - restore from sessionStorage
   const [filters, setFilters] = useState<InboxFilterExpression>(() => {
@@ -360,6 +370,9 @@ export function PlanningInbox() {
             slackMin: Math.max(0, workingDayMin - totalMin),
             stopCount: response.stops.length,
           });
+
+          // Mark that we need to recalculate ETAs for the loaded route
+          pendingRecalcStopsRef.current = response.stops;
         } else {
           setRouteStops([]);
           setLoadedRouteId(null);
@@ -1163,102 +1176,6 @@ export function PlanningInbox() {
     });
   }, []);
 
-  // Route building: add selected candidates to route
-  const handleAddSelectedToRoute = useCallback(() => {
-    if (selectedIds.size === 0) return;
-
-    const newStops: SavedRouteStop[] = [];
-    selectedIds.forEach((customerId) => {
-      // Skip if already in route
-      if (inRouteIds.has(customerId)) return;
-
-      const candidate = candidates.find((c) => c.customerId === customerId);
-      if (!candidate || !candidate.customerLat || !candidate.customerLng) return;
-
-      newStops.push({
-        id: crypto.randomUUID(),
-        routeId: '',
-        revisionId: candidate.id,
-        stopOrder: routeStops.length + newStops.length + 1,
-        estimatedArrival: null,
-        estimatedDeparture: null,
-        distanceFromPreviousKm: null,
-        durationFromPreviousMinutes: null,
-        status: 'draft',
-        stopType: 'customer',
-        customerId: candidate.customerId,
-        customerName: candidate.customerName,
-        address: `${candidate.customerStreet ?? ''}, ${candidate.customerCity ?? ''}`.replace(/^, |, $/g, ''),
-        customerLat: candidate.customerLat,
-        customerLng: candidate.customerLng,
-        customerPhone: candidate.customerPhone ?? null,
-        customerEmail: candidate.customerEmail ?? null,
-        scheduledDate: candidate._scheduledDate ?? null,
-        scheduledTimeStart: candidate._scheduledTimeStart ?? null,
-        scheduledTimeEnd: candidate._scheduledTimeEnd ?? null,
-        revisionStatus: candidate.status ?? null,
-      });
-    });
-
-    if (newStops.length > 0) {
-      setRouteStops((prev) => {
-        const updated = [...prev, ...newStops];
-        
-        // Auto-insert break if enabled and we have enough stops
-        if (breakSettings?.breakEnabled && updated.filter(s => s.stopType === 'customer').length >= 2) {
-          const existingBreak = updated.find(s => s.stopType === 'break');
-          const customerStops = updated.filter(s => s.stopType === 'customer');
-          
-          if (!existingBreak) {
-            const effectiveBreakSettings: BreakSettings = {
-              ...breakSettings,
-              breakDurationMinutes: enforceDrivingBreakRule
-                ? Math.max(breakSettings.breakDurationMinutes, 45)
-                : breakSettings.breakDurationMinutes,
-            };
-            // Calculate break position
-            const breakResult = calculateBreakPosition(
-              customerStops,
-              effectiveBreakSettings,
-              routeStartTime || '08:00',
-              {
-                enforceDrivingBreakRule,
-                maxDrivingMinutes: 270,
-                requiredBreakMinutes: 45,
-              }
-            );
-            
-            // Keep heuristic diagnostics, but do not show them until user manually
-            // adjusts break parameters.
-            setBreakWarnings(breakResult.warnings);
-            setIsBreakManuallyAdjusted(false);
-            
-            // Create break stop
-            const breakStop: SavedRouteStop = {
-              ...createBreakStop('', breakResult.position + 1, effectiveBreakSettings, breakResult.estimatedTime, { floating: true }),
-              id: crypto.randomUUID(),
-            };
-            
-            // Insert break at calculated position and renumber
-            const withBreak = [
-              ...customerStops.slice(0, breakResult.position),
-              breakStop,
-              ...customerStops.slice(breakResult.position),
-            ];
-            
-            return withBreak.map((s, i) => ({ ...s, stopOrder: i + 1 }));
-          }
-        }
-        
-        return updated;
-      });
-      setReturnToDepotLeg(null);
-      setSelectedIds(new Set());
-      setHasChanges(true);
-      incrementRouteVersion();
-    }
-  }, [selectedIds, inRouteIds, candidates, routeStops.length, breakSettings, context, enforceDrivingBreakRule, incrementRouteVersion]);
-
   // Quick-recalculate ETAs for the current route after insert/reorder.
   // Fires in the background – updates stops in-place when the response arrives.
   const triggerRecalculate = useCallback(async (stopsSnapshot: SavedRouteStop[]) => {
@@ -1312,12 +1229,133 @@ export function PlanningInbox() {
         durationMinutes: result.returnToDepotDurationMinutes,
       });
 
+      // Update depot departure (backward-calculated from first scheduled stop)
+      setDepotDeparture(result.depotDeparture ?? null);
+
       setHasChanges(true);
     } catch (err) {
       logger.error('Route recalculation failed:', err);
       // Non-fatal: the route still exists, just with stale ETAs
     }
   }, [currentDepot, routeStartTime, routeEndTime, defaultServiceDurationMinutes]);
+
+  // Auto-recalculate ETAs when a route was just loaded from the database
+  useEffect(() => {
+    const pending = pendingRecalcStopsRef.current;
+    if (pending && pending.length > 0 && currentDepot) {
+      pendingRecalcStopsRef.current = null;
+      triggerRecalculate(pending);
+    }
+  }, [triggerRecalculate, currentDepot]);
+
+  // Route building: add selected candidates to route
+  const handleAddSelectedToRoute = useCallback(() => {
+    if (selectedIds.size === 0) return;
+
+    const newStops: SavedRouteStop[] = [];
+    selectedIds.forEach((customerId) => {
+      // Skip if already in route
+      if (inRouteIds.has(customerId)) return;
+
+      const candidate = candidates.find((c) => c.customerId === customerId);
+      if (!candidate || !candidate.customerLat || !candidate.customerLng) return;
+
+      newStops.push({
+        id: crypto.randomUUID(),
+        routeId: '',
+        revisionId: candidate.id,
+        stopOrder: routeStops.length + newStops.length + 1,
+        estimatedArrival: null,
+        estimatedDeparture: null,
+        distanceFromPreviousKm: null,
+        durationFromPreviousMinutes: null,
+        status: 'draft',
+        stopType: 'customer',
+        customerId: candidate.customerId,
+        customerName: candidate.customerName,
+        address: `${candidate.customerStreet ?? ''}, ${candidate.customerCity ?? ''}`.replace(/^, |, $/g, ''),
+        customerLat: candidate.customerLat,
+        customerLng: candidate.customerLng,
+        customerPhone: candidate.customerPhone ?? null,
+        customerEmail: candidate.customerEmail ?? null,
+        // Use slot-picker override first, then fall back to already-agreed appointment
+        scheduledDate: candidate._scheduledDate ?? candidate.scheduledDate ?? null,
+        scheduledTimeStart: candidate._scheduledTimeStart ?? candidate.scheduledTimeStart ?? null,
+        scheduledTimeEnd: candidate._scheduledTimeEnd ?? candidate.scheduledTimeEnd ?? null,
+        revisionStatus: candidate.status ?? null,
+      });
+    });
+
+    if (newStops.length > 0) {
+      setRouteStops((prev) => {
+        // Merge new stops into existing list in chronological order
+        // First, strip any existing break – we'll recalculate its position
+        const prevCustomers = prev.filter(s => s.stopType === 'customer');
+
+        // Sort all customer stops (existing + new) by scheduledTimeStart
+        const allCustomers = [...prevCustomers, ...newStops].sort((a, b) => {
+          const aMin = a.scheduledTimeStart ? parseTimeMins(a.scheduledTimeStart) : Infinity;
+          const bMin = b.scheduledTimeStart ? parseTimeMins(b.scheduledTimeStart) : Infinity;
+          return aMin - bMin;
+        });
+
+        // Auto-insert / reposition break if enabled and enough customer stops
+        if (breakSettings?.breakEnabled && allCustomers.length >= 2) {
+          const effectiveBreakSettings: BreakSettings = {
+            ...breakSettings,
+            breakDurationMinutes: enforceDrivingBreakRule
+              ? Math.max(breakSettings.breakDurationMinutes, 45)
+              : breakSettings.breakDurationMinutes,
+          };
+          const breakResult = calculateBreakPosition(
+            allCustomers,
+            effectiveBreakSettings,
+            routeStartTime || '08:00',
+            {
+              enforceDrivingBreakRule,
+              maxDrivingMinutes: 270,
+              requiredBreakMinutes: 45,
+            }
+          );
+
+          setBreakWarnings(breakResult.warnings);
+          setIsBreakManuallyAdjusted(false);
+
+          const existingBreak = prev.find(s => s.stopType === 'break');
+          const breakStop: SavedRouteStop = {
+            ...createBreakStop('', breakResult.position + 1, effectiveBreakSettings, breakResult.estimatedTime, { floating: true }),
+            id: existingBreak?.id ?? crypto.randomUUID(),
+          };
+
+          const withBreak = [
+            ...allCustomers.slice(0, breakResult.position),
+            breakStop,
+            ...allCustomers.slice(breakResult.position),
+          ];
+
+          return withBreak.map((s, i) => ({ ...s, stopOrder: i + 1 }));
+        }
+
+        return allCustomers.map((s, i) => ({ ...s, stopOrder: i + 1 }));
+      });
+      setReturnToDepotLeg(null);
+      setSelectedIds(new Set());
+      setHasChanges(true);
+      incrementRouteVersion();
+
+      // Trigger recalculation for the new stops
+      setRouteStops((current) => {
+        if (current.length > 0) {
+          if (currentDepot) {
+            triggerRecalculate(current);
+          } else {
+            pendingRecalcStopsRef.current = current;
+          }
+        }
+        return current; // no mutation, just read
+      });
+    }
+  }, [selectedIds, inRouteIds, candidates, routeStops.length, breakSettings, context, enforceDrivingBreakRule, incrementRouteVersion, triggerRecalculate, currentDepot]);
 
   // Route building: add single candidate from detail panel
   const handleAddToRoute = useCallback((candidateId: string, insertAfterIndex?: number) => {
@@ -1343,63 +1381,67 @@ export function PlanningInbox() {
       customerLng: candidate.customerLng,
       customerPhone: candidate.customerPhone ?? null,
       customerEmail: candidate.customerEmail ?? null,
-      scheduledDate: candidate._scheduledDate ?? null,
-      scheduledTimeStart: candidate._scheduledTimeStart ?? null,
-      scheduledTimeEnd: candidate._scheduledTimeEnd ?? null,
+      // Use slot-picker override first, then fall back to already-agreed appointment
+      scheduledDate: candidate._scheduledDate ?? candidate.scheduledDate ?? null,
+      scheduledTimeStart: candidate._scheduledTimeStart ?? candidate.scheduledTimeStart ?? null,
+      scheduledTimeEnd: candidate._scheduledTimeEnd ?? candidate.scheduledTimeEnd ?? null,
       revisionStatus: candidate.status ?? null,
     };
 
     // Use insertAfterIndex when provided (from slot suggestions / PlanningTimeline gaps),
-    // otherwise append at the end.
+    // otherwise find the correct chronological position by scheduledTimeStart.
     let finalStops: SavedRouteStop[] = [];
 
     setRouteStops((prev) => {
-      const insertIdx = insertAfterIndex !== undefined ? insertAfterIndex : prev.length;
+      // Determine where to insert the new customer stop
+      const insertIdx = insertAfterIndex !== undefined
+        ? insertAfterIndex
+        : findChronologicalPosition(prev, newStop);
       const updated = insertStopAtPosition(prev, newStop, insertIdx);
-      
-      // Auto-insert break if enabled and we have enough stops
-      if (breakSettings?.breakEnabled && updated.filter(s => s.stopType === 'customer').length >= 2) {
+
+      // Separate customer stops from breaks – we always recalculate break position
+      const customerStops = updated.filter(s => s.stopType === 'customer');
+
+      // Auto-insert / reposition break if enabled and we have enough customer stops
+      if (breakSettings?.breakEnabled && customerStops.length >= 2) {
+        const effectiveBreakSettings: BreakSettings = {
+          ...breakSettings,
+          breakDurationMinutes: enforceDrivingBreakRule
+            ? Math.max(breakSettings.breakDurationMinutes, 45)
+            : breakSettings.breakDurationMinutes,
+        };
+        // Calculate optimal break position from scratch (on customer stops only)
+        const breakResult = calculateBreakPosition(
+          customerStops,
+          effectiveBreakSettings,
+          routeStartTime || '08:00',
+          {
+            enforceDrivingBreakRule,
+            maxDrivingMinutes: 270,
+            requiredBreakMinutes: 45,
+          }
+        );
+
+        setBreakWarnings(breakResult.warnings);
+        setIsBreakManuallyAdjusted(false);
+
+        // Preserve existing break id if one already existed, otherwise create new
         const existingBreak = updated.find(s => s.stopType === 'break');
-        const customerStops = updated.filter(s => s.stopType === 'customer');
-        
-        if (!existingBreak) {
-          const effectiveBreakSettings: BreakSettings = {
-            ...breakSettings,
-            breakDurationMinutes: enforceDrivingBreakRule
-              ? Math.max(breakSettings.breakDurationMinutes, 45)
-              : breakSettings.breakDurationMinutes,
-          };
-          // Calculate break position
-          const breakResult = calculateBreakPosition(
-            customerStops,
-            effectiveBreakSettings,
-            routeStartTime || '08:00',
-            {
-              enforceDrivingBreakRule,
-              maxDrivingMinutes: 270,
-              requiredBreakMinutes: 45,
-            }
-          );
-          
-          setBreakWarnings(breakResult.warnings);
-          setIsBreakManuallyAdjusted(false);
-          
-          const breakStop: SavedRouteStop = {
-            ...createBreakStop('', breakResult.position + 1, effectiveBreakSettings, breakResult.estimatedTime, { floating: true }),
-            id: crypto.randomUUID(),
-          };
-          
-          const withBreak = [
-            ...customerStops.slice(0, breakResult.position),
-            breakStop,
-            ...customerStops.slice(breakResult.position),
-          ];
-          
-          finalStops = withBreak.map((s, i) => ({ ...s, stopOrder: i + 1 }));
-          return finalStops;
-        }
+        const breakStop: SavedRouteStop = {
+          ...createBreakStop('', breakResult.position + 1, effectiveBreakSettings, breakResult.estimatedTime, { floating: true }),
+          id: existingBreak?.id ?? crypto.randomUUID(),
+        };
+
+        const withBreak = [
+          ...customerStops.slice(0, breakResult.position),
+          breakStop,
+          ...customerStops.slice(breakResult.position),
+        ];
+
+        finalStops = withBreak.map((s, i) => ({ ...s, stopOrder: i + 1 }));
+        return finalStops;
       }
-      
+
       finalStops = updated;
       return updated;
     });
@@ -1407,15 +1449,17 @@ export function PlanningInbox() {
     setHasChanges(true);
     incrementRouteVersion();
 
-    // Fire quick recalculation in the background to get updated ETAs
-    // We need a small delay to ensure state is committed before reading it.
-    // Use the finalStops snapshot directly instead.
-    requestAnimationFrame(() => {
-      if (finalStops.length > 0) {
+    // Fire quick recalculation in the background to get updated ETAs.
+    // Use the finalStops snapshot directly (not state).
+    // If depot is not ready yet, queue for the pending-recalc effect.
+    if (finalStops.length > 0) {
+      if (currentDepot) {
         triggerRecalculate(finalStops);
+      } else {
+        pendingRecalcStopsRef.current = finalStops;
       }
-    });
-  }, [candidates, inRouteIds, routeStops.length, breakSettings, enforceDrivingBreakRule, incrementRouteVersion, triggerRecalculate, routeStartTime]);
+    }
+  }, [candidates, inRouteIds, routeStops.length, breakSettings, enforceDrivingBreakRule, incrementRouteVersion, triggerRecalculate, routeStartTime, currentDepot]);
 
   // Route building: reorder stops via drag-and-drop
   const handleReorder = useCallback((newStops: SavedRouteStop[]) => {
@@ -2199,6 +2243,7 @@ export function PlanningInbox() {
               warnings={routeWarnings}
               routeStartTime={routeStartTime}
               routeEndTime={routeEndTime}
+              depotDeparture={depotDeparture}
               returnToDepotDistanceKm={returnToDepotLeg?.distanceKm ?? null}
               returnToDepotDurationMinutes={returnToDepotLeg?.durationMinutes ?? null}
             />
@@ -2222,6 +2267,7 @@ export function PlanningInbox() {
               metrics={metrics}
               routeStartTime={routeStartTime}
               routeEndTime={routeEndTime}
+              depotDeparture={depotDeparture}
               returnToDepotDistanceKm={returnToDepotLeg?.distanceKm ?? null}
               returnToDepotDurationMinutes={returnToDepotLeg?.durationMinutes ?? null}
               candidateForInsertion={candidateForInsertion}

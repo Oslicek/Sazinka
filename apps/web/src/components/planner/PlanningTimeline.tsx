@@ -71,6 +71,8 @@ interface PlanningTimelineProps {
   warnings?: RouteWarning[];
   routeStartTime?: string | null;
   routeEndTime?: string | null;
+  /** Computed depot departure (backward-calculated from first scheduled stop). */
+  depotDeparture?: string | null;
   returnToDepotDistanceKm?: number | null;
   returnToDepotDurationMinutes?: number | null;
   // Candidate insertion
@@ -220,6 +222,7 @@ export function PlanningTimeline({
   metrics,
   routeStartTime,
   routeEndTime,
+  depotDeparture,
   returnToDepotDistanceKm,
   returnToDepotDurationMinutes,
   candidateForInsertion,

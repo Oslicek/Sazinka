@@ -1,7 +1,7 @@
 # Sazinka - Workflow & UI Koncept
 
-> **Status:** MVP kompletní + Phase 9 (Planner redesign) + sjednocení komponent + Smart Slot Heuristics (multi-crew, Valhalla) + Auto-recalculation  
-> **Verze:** 0.8.1  
+> **Status:** MVP kompletní + Phase 9 (Planner redesign) + sjednocení komponent + Smart Slot Heuristics (multi-crew, Valhalla) + Auto-recalculation + Chronological insertion & break constraints  
+> **Verze:** 0.8.2  
 > **Datum:** 2026-02-12
 > 
 > **Implementováno:**
@@ -25,6 +25,8 @@
 > - ✅ **Název export ZIP podle timezone uživatele** — `export-YYYYMMDD-HHMMSS-XX.zip` (čas ve jméně respektuje timezone uživatele, který export spustil)
 > - ✅ **Záznam práce V1** (`/worklog`) — rychlý záznam návštěvy, rychlé dokončení plánované/probíhající návštěvy, zachované prokliky na den v kalendáři / návštěvu / zákazníka, včetně mobilně-responsivního layoutu
 > - ✅ **Auto-recalculation** — automatický přepočet ETAs/ETDs po každém vložení zastávky nebo drag-and-drop přesunutí pomocí `sazinka.route.recalculate` (Valhalla matrix + sequential schedule)
+> - ✅ **Chronological insertion** — nové zastávky se automaticky vkládají v chronologickém pořadí podle `scheduledTimeStart`, nikoliv na konec trasy
+> - ✅ **Break constraint enforcement** — pauza respektuje nakonfigurované časové okno (např. 11:30-13:00) a vkládá se do správné mezery mezi zastávkami, ne hned po předchozí zastávce
 > 
 > **Změny v navigaci:**
 > - `/planner` → "Plán dne" (sloučeno Plánování + Můj den)

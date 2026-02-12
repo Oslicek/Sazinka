@@ -74,7 +74,8 @@ export function buildTimelineItems(
 ): TimelineItem[] {
   const items: TimelineItem[] = [];
 
-  // Start depot
+  // Always start from workday start — gaps before the first scheduled stop
+  // represent available time where another candidate could be inserted.
   items.push({
     type: 'depot',
     id: 'depot-start',
@@ -137,7 +138,9 @@ export function buildTimelineItems(
     // --- Stop or break ---
     const isBreak = stop.stopType === 'break';
     const stopStart = arrivalMin ?? cursor;
-    const stopEnd = departureMin ?? stopStart;
+    // For breaks without estimated departure, use breakDurationMinutes
+    const stopEnd = departureMin
+      ?? (isBreak && stop.breakDurationMinutes ? stopStart + stop.breakDurationMinutes : stopStart);
     const stopDuration = Math.max(0, stopEnd - stopStart);
 
     items.push({

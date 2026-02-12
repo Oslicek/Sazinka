@@ -338,6 +338,8 @@ export interface RecalcStopResult {
 /** Response from route.recalculate */
 export interface RecalculateRouteResponse {
   stops: RecalcStopResult[];
+  /** Computed depot departure time (backward-calculated from first scheduled stop). */
+  depotDeparture: string;
   returnToDepotDistanceKm: number;
   returnToDepotDurationMinutes: number;
   totalDistanceKm: number;

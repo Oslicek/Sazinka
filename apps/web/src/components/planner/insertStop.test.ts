@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { insertStopAtPosition } from './insertStop';
+import { insertStopAtPosition, findChronologicalPosition } from './insertStop';
 import type { SavedRouteStop } from '../../services/routeService';
 
 // ---------------------------------------------------------------------------
@@ -118,5 +118,73 @@ describe('insertStopAtPosition', () => {
     expect(result[0].customerName).toBe('Alice');
     expect(result[0].scheduledTimeStart).toBe('09:00');
     expect(result[1].customerName).toBe('NewGuy');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// findChronologicalPosition
+// ---------------------------------------------------------------------------
+
+describe('findChronologicalPosition', () => {
+  it('returns 0 for an empty list', () => {
+    const newStop = makeStop({ id: 'x', stopOrder: 0, scheduledTimeStart: '10:00' });
+    expect(findChronologicalPosition([], newStop)).toBe(0);
+  });
+
+  it('appends if no scheduledTimeStart on new stop', () => {
+    const stops = [
+      makeStop({ id: 'a', stopOrder: 1, scheduledTimeStart: '08:00' }),
+    ];
+    const newStop = makeStop({ id: 'x', stopOrder: 0 }); // no scheduledTimeStart
+    expect(findChronologicalPosition(stops, newStop)).toBe(stops.length);
+  });
+
+  it('inserts before the first stop when earlier', () => {
+    const stops = [
+      makeStop({ id: 'a', stopOrder: 1, scheduledTimeStart: '10:00' }),
+      makeStop({ id: 'b', stopOrder: 2, scheduledTimeStart: '14:00' }),
+    ];
+    const newStop = makeStop({ id: 'x', stopOrder: 0, scheduledTimeStart: '08:00' });
+    expect(findChronologicalPosition(stops, newStop)).toBe(0);
+  });
+
+  it('inserts between two stops in chronological order', () => {
+    const stops = [
+      makeStop({ id: 'a', stopOrder: 1, scheduledTimeStart: '08:00' }),
+      makeStop({ id: 'b', stopOrder: 2, scheduledTimeStart: '14:00' }),
+    ];
+    const newStop = makeStop({ id: 'x', stopOrder: 0, scheduledTimeStart: '10:00' });
+    expect(findChronologicalPosition(stops, newStop)).toBe(1);
+  });
+
+  it('appends when later than all existing stops', () => {
+    const stops = [
+      makeStop({ id: 'a', stopOrder: 1, scheduledTimeStart: '08:00' }),
+      makeStop({ id: 'b', stopOrder: 2, scheduledTimeStart: '10:00' }),
+    ];
+    const newStop = makeStop({ id: 'x', stopOrder: 0, scheduledTimeStart: '14:00' });
+    expect(findChronologicalPosition(stops, newStop)).toBe(2);
+  });
+
+  it('skips break stops when determining position', () => {
+    const stops = [
+      makeStop({ id: 'a', stopOrder: 1, scheduledTimeStart: '08:00' }),
+      makeStop({ id: 'brk', stopOrder: 2, stopType: 'break' }),
+      makeStop({ id: 'b', stopOrder: 3, scheduledTimeStart: '14:00' }),
+    ];
+    const newStop = makeStop({ id: 'x', stopOrder: 0, scheduledTimeStart: '10:00' });
+    // Should insert at index 1 (before the break), since the next customer (14:00) is later
+    // Actually, breaks don't have scheduledTimeStart so we skip them. The function
+    // iterates in order: 'a' (08:00 < 10:00 → continue), 'brk' (skip, not customer), 'b' (14:00 > 10:00 → return 2)
+    expect(findChronologicalPosition(stops, newStop)).toBe(2);
+  });
+
+  it('handles HH:MM:SS format', () => {
+    const stops = [
+      makeStop({ id: 'a', stopOrder: 1, scheduledTimeStart: '08:00:00' }),
+      makeStop({ id: 'b', stopOrder: 2, scheduledTimeStart: '14:00:00' }),
+    ];
+    const newStop = makeStop({ id: 'x', stopOrder: 0, scheduledTimeStart: '10:00' });
+    expect(findChronologicalPosition(stops, newStop)).toBe(1);
   });
 });
