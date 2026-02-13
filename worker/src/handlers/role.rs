@@ -149,7 +149,7 @@ pub async fn handle_list(
             }
         };
 
-        let request: Request<()> = match serde_json::from_slice(&msg.payload) {
+        let request: Request<serde_json::Value> = match serde_json::from_slice(&msg.payload) {
             Ok(req) => req,
             Err(e) => {
                 error!("Failed to parse request: {}", e);
