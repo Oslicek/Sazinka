@@ -320,6 +320,10 @@ export interface RecalculateRouteRequest {
   workdayStart?: string;
   workdayEnd?: string;
   defaultServiceDurationMinutes?: number;
+  /** Percentage buffer added to travel time (e.g. 10 = +10%). */
+  arrivalBufferPercent?: number;
+  /** Fixed buffer in minutes added to every travel segment. */
+  arrivalBufferFixedMinutes?: number;
 }
 
 /** A single recalculated stop returned from backend */

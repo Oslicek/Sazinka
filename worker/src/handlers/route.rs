@@ -1717,6 +1717,12 @@ pub struct RecalculateRequest {
     pub workday_start: Option<String>,
     pub workday_end: Option<String>,
     pub default_service_duration_minutes: Option<i32>,
+    /// Percentage buffer added to travel time (0 = none).
+    #[serde(default)]
+    pub arrival_buffer_percent: f64,
+    /// Fixed buffer in minutes added to every travel segment (0 = none).
+    #[serde(default)]
+    pub arrival_buffer_fixed_minutes: f64,
 }
 
 /// A single recalculated stop in the response
@@ -1797,6 +1803,8 @@ pub async fn handle_recalculate(
         };
 
         let payload = &request.payload;
+        info!("route.recalculate: buffer_percent={}, buffer_fixed_min={}, stops={}",
+            payload.arrival_buffer_percent, payload.arrival_buffer_fixed_minutes, payload.stops.len());
         let default_service = payload
             .default_service_duration_minutes
             .unwrap_or(DEFAULT_SERVICE_DURATION_MINUTES as i32);
@@ -1893,6 +1901,8 @@ pub async fn handle_recalculate(
             stop_matrix_indices,
             workday_start,
             default_service_minutes: default_service,
+            arrival_buffer_percent: payload.arrival_buffer_percent,
+            arrival_buffer_fixed_minutes: payload.arrival_buffer_fixed_minutes,
         };
 
         let result = sequential_schedule::compute_sequential_schedule(

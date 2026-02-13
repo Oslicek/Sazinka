@@ -20,6 +20,11 @@ pub struct ScheduleInput {
     pub workday_start: NaiveTime,
     /// Default service duration for customer stops without an explicit value.
     pub default_service_minutes: i32,
+    /// Percentage buffer added to travel time (e.g. 10.0 = +10%).
+    /// Travel time is multiplied by `(1 + arrival_buffer_percent / 100)`.
+    pub arrival_buffer_percent: f64,
+    /// Fixed buffer in minutes added to every travel segment on top of percentage.
+    pub arrival_buffer_fixed_minutes: f64,
 }
 
 /// A single stop descriptor fed into the schedule computation.
@@ -87,6 +92,14 @@ fn time_to_minutes(t: NaiveTime) -> i32 {
     (t.num_seconds_from_midnight() / 60) as i32
 }
 
+/// Apply arrival buffer to a raw travel duration in seconds.
+/// Returns the buffered duration: `raw * (1 + percent/100) + fixed_minutes * 60`.
+fn apply_travel_buffer(raw_seconds: u64, buffer_percent: f64, buffer_fixed_minutes: f64) -> u64 {
+    let after_percent = raw_seconds as f64 * (1.0 + buffer_percent / 100.0);
+    let after_fixed = after_percent + buffer_fixed_minutes * 60.0;
+    after_fixed.ceil() as u64
+}
+
 // ---------------------------------------------------------------------------
 // Core computation
 // ---------------------------------------------------------------------------
@@ -126,7 +139,8 @@ pub fn compute_sequential_schedule(
     let depot_departure = if n > 0 {
         let first_stop = &input.stops[0];
         let first_mx = input.stop_matrix_indices[0];
-        let travel_dur_s = duration_matrix[input.depot_matrix_idx][first_mx];
+        let raw_dur_s = duration_matrix[input.depot_matrix_idx][first_mx];
+        let travel_dur_s = apply_travel_buffer(raw_dur_s, input.arrival_buffer_percent, input.arrival_buffer_fixed_minutes);
         let travel_min = (travel_dur_s as f64 / 60.0).ceil() as i32;
 
         match first_stop.scheduled_time_start {
@@ -158,7 +172,9 @@ pub fn compute_sequential_schedule(
             (0u64, 0u64, 0i32)
         } else {
             let d = distance_matrix[prev_matrix_idx][stop_mx];
-            let t = duration_matrix[prev_matrix_idx][stop_mx];
+            let raw_t = duration_matrix[prev_matrix_idx][stop_mx];
+            // Apply arrival buffer: multiply by (1 + percent/100), then add fixed minutes.
+            let t = apply_travel_buffer(raw_t, input.arrival_buffer_percent, input.arrival_buffer_fixed_minutes);
             (d, t, (t as f64 / 60.0).ceil() as i32)
         };
 
@@ -254,11 +270,12 @@ pub fn compute_sequential_schedule(
     } else {
         0
     };
-    let return_dur_s = if n > 0 {
+    let raw_return_dur_s = if n > 0 {
         duration_matrix[prev_matrix_idx][input.depot_matrix_idx]
     } else {
         0
     };
+    let return_dur_s = apply_travel_buffer(raw_return_dur_s, input.arrival_buffer_percent, input.arrival_buffer_fixed_minutes);
     let return_dur_min = (return_dur_s as f64 / 60.0).ceil() as i32;
 
     total_distance_m += return_dist_m;
@@ -315,6 +332,8 @@ mod tests {
             stop_matrix_indices: vec![],
             workday_start: hm(8, 0),
             default_service_minutes: 60,
+            arrival_buffer_percent: 0.0,
+            arrival_buffer_fixed_minutes: 0.0,
         };
         let (dm, tm) = uniform_matrix(1, 10_000, 600);
         let result = compute_sequential_schedule(&input, &dm, &tm);
@@ -347,6 +366,8 @@ mod tests {
             stop_matrix_indices: vec![1],
             workday_start: hm(8, 0),
             default_service_minutes: 60,
+            arrival_buffer_percent: 0.0,
+            arrival_buffer_fixed_minutes: 0.0,
         };
 
         let result = compute_sequential_schedule(&input, &dm, &tm);
@@ -384,6 +405,8 @@ mod tests {
             stop_matrix_indices: vec![1],
             workday_start: hm(7, 0),
             default_service_minutes: 60,
+            arrival_buffer_percent: 0.0,
+            arrival_buffer_fixed_minutes: 0.0,
         };
 
         let result = compute_sequential_schedule(&input, &dm, &tm);
@@ -420,6 +443,8 @@ mod tests {
             stop_matrix_indices: vec![1, 2],
             workday_start: hm(8, 0),
             default_service_minutes: 60,
+            arrival_buffer_percent: 0.0,
+            arrival_buffer_fixed_minutes: 0.0,
         };
 
         let result = compute_sequential_schedule(&input, &dm, &tm);
@@ -459,6 +484,8 @@ mod tests {
             stop_matrix_indices: vec![1, 2],
             workday_start: hm(7, 0),
             default_service_minutes: 60,
+            arrival_buffer_percent: 0.0,
+            arrival_buffer_fixed_minutes: 0.0,
         };
 
         let result = compute_sequential_schedule(&input, &dm, &tm);
@@ -503,6 +530,8 @@ mod tests {
             stop_matrix_indices: vec![1, 2],
             workday_start: hm(7, 0),
             default_service_minutes: 60,
+            arrival_buffer_percent: 0.0,
+            arrival_buffer_fixed_minutes: 0.0,
         };
 
         let result = compute_sequential_schedule(&input, &dm, &tm);
@@ -545,6 +574,8 @@ mod tests {
             stop_matrix_indices: vec![1, 2, 3],
             workday_start: hm(8, 0),
             default_service_minutes: 60,
+            arrival_buffer_percent: 0.0,
+            arrival_buffer_fixed_minutes: 0.0,
         };
 
         let result = compute_sequential_schedule(&input, &dm, &tm);
@@ -587,6 +618,8 @@ mod tests {
             stop_matrix_indices: vec![1],
             workday_start: hm(9, 5),
             default_service_minutes: 60,
+            arrival_buffer_percent: 0.0,
+            arrival_buffer_fixed_minutes: 0.0,
         };
 
         let result = compute_sequential_schedule(&input, &dm, &tm);
@@ -615,6 +648,8 @@ mod tests {
             stop_matrix_indices: vec![1],
             workday_start: hm(7, 0),
             default_service_minutes: 60,
+            arrival_buffer_percent: 0.0,
+            arrival_buffer_fixed_minutes: 0.0,
         };
 
         let result = compute_sequential_schedule(&input, &dm, &tm);
@@ -645,6 +680,8 @@ mod tests {
             stop_matrix_indices: vec![1],
             workday_start: hm(9, 0),
             default_service_minutes: 60,
+            arrival_buffer_percent: 0.0,
+            arrival_buffer_fixed_minutes: 0.0,
         };
 
         let result = compute_sequential_schedule(&input, &dm, &tm);
@@ -671,6 +708,8 @@ mod tests {
             stop_matrix_indices: vec![1],
             workday_start: hm(8, 0),
             default_service_minutes: 60,
+            arrival_buffer_percent: 0.0,
+            arrival_buffer_fixed_minutes: 0.0,
         };
 
         let result = compute_sequential_schedule(&input, &dm, &tm);
@@ -701,6 +740,8 @@ mod tests {
             stop_matrix_indices: vec![1, 2, 3],
             workday_start: hm(8, 0),
             default_service_minutes: 60,
+            arrival_buffer_percent: 0.0,
+            arrival_buffer_fixed_minutes: 0.0,
         };
 
         let result = compute_sequential_schedule(&input, &dm, &tm);
@@ -730,6 +771,8 @@ mod tests {
             stop_matrix_indices: vec![1],
             workday_start: hm(7, 0),
             default_service_minutes: 60,
+            arrival_buffer_percent: 0.0,
+            arrival_buffer_fixed_minutes: 0.0,
         };
 
         let result = compute_sequential_schedule(&input, &dm, &tm);
@@ -772,6 +815,8 @@ mod tests {
             stop_matrix_indices: vec![1, 2, 3],
             workday_start: hm(8, 0),
             default_service_minutes: 60,
+            arrival_buffer_percent: 0.0,
+            arrival_buffer_fixed_minutes: 0.0,
         };
 
         let result = compute_sequential_schedule(&input, &dm, &tm);
@@ -790,5 +835,94 @@ mod tests {
         // From customer1 (matrix idx 1) to customer2 (matrix idx 3) = 10 min
         assert_eq!(result.stops[2].duration_from_previous_minutes, 10);
         assert_eq!(result.stops[2].estimated_arrival, hm(10, 5));
+    }
+
+    #[test]
+    fn buffer_increases_travel_time() {
+        // depot → customer: raw 2400s (40 min), 60 km
+        let dm = vec![vec![0, 60_000], vec![60_000, 0]];
+        let tm = vec![vec![0, 2400], vec![2400, 0]];
+
+        // 10% buffer + 5 min fixed:
+        // 2400 * 1.10 = 2640s, + 300s = 2940s → ceil(2940/60) = 49 min
+        let input = ScheduleInput {
+            depot_matrix_idx: 0,
+            stops: vec![ScheduleStop {
+                stop_type: StopType::Customer,
+                scheduled_time_start: None,
+                scheduled_time_end: None,
+                service_duration_minutes: Some(60),
+                break_duration_minutes: None,
+            }],
+            stop_matrix_indices: vec![1],
+            workday_start: hm(7, 0),
+            default_service_minutes: 60,
+            arrival_buffer_percent: 10.0,
+            arrival_buffer_fixed_minutes: 5.0,
+        };
+
+        let result = compute_sequential_schedule(&input, &dm, &tm);
+        // Buffered travel = 49 min → arrive at 07:49
+        assert_eq!(result.stops[0].duration_from_previous_minutes, 49);
+        assert_eq!(result.stops[0].estimated_arrival, hm(7, 49));
+        assert_eq!(result.stops[0].estimated_departure, hm(8, 49));
+        // Return leg is also buffered
+        assert_eq!(result.return_to_depot_duration_minutes, 49);
+    }
+
+    #[test]
+    fn buffer_affects_backward_depot_departure() {
+        // depot → customer: raw 1800s (30 min), 40 km
+        let dm = vec![vec![0, 40_000], vec![40_000, 0]];
+        let tm = vec![vec![0, 1800], vec![1800, 0]];
+
+        // 20% buffer + 0 fixed:
+        // 1800 * 1.20 = 2160s → ceil(2160/60) = 36 min
+        let input = ScheduleInput {
+            depot_matrix_idx: 0,
+            stops: vec![ScheduleStop {
+                stop_type: StopType::Customer,
+                scheduled_time_start: Some(hm(9, 0)),
+                scheduled_time_end: Some(hm(10, 0)),
+                service_duration_minutes: None,
+                break_duration_minutes: None,
+            }],
+            stop_matrix_indices: vec![1],
+            workday_start: hm(7, 0),
+            default_service_minutes: 60,
+            arrival_buffer_percent: 20.0,
+            arrival_buffer_fixed_minutes: 0.0,
+        };
+
+        let result = compute_sequential_schedule(&input, &dm, &tm);
+        // Backward: 09:00 - 36 min = 08:24 depot departure
+        assert_eq!(result.depot_departure, hm(8, 24));
+        assert_eq!(result.stops[0].duration_from_previous_minutes, 36);
+    }
+
+    #[test]
+    fn zero_buffer_matches_raw_travel() {
+        // Ensure zero buffer doesn't alter anything.
+        let dm = vec![vec![0, 50_000], vec![50_000, 0]];
+        let tm = vec![vec![0, 2340], vec![2340, 0]]; // 39 min raw
+
+        let input = ScheduleInput {
+            depot_matrix_idx: 0,
+            stops: vec![ScheduleStop {
+                stop_type: StopType::Customer,
+                scheduled_time_start: None,
+                scheduled_time_end: None,
+                service_duration_minutes: Some(60),
+                break_duration_minutes: None,
+            }],
+            stop_matrix_indices: vec![1],
+            workday_start: hm(7, 0),
+            default_service_minutes: 60,
+            arrival_buffer_percent: 0.0,
+            arrival_buffer_fixed_minutes: 0.0,
+        };
+
+        let result = compute_sequential_schedule(&input, &dm, &tm);
+        assert_eq!(result.stops[0].duration_from_previous_minutes, 39);
     }
 }

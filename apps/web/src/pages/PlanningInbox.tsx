@@ -1056,12 +1056,17 @@ export function PlanningInbox() {
     }));
 
     try {
+      const bufferPct = currentCrew?.arrivalBufferPercent ?? 0;
+      const bufferFixed = currentCrew?.arrivalBufferFixedMinutes ?? 0;
+      console.log('[recalculate] crew buffer: percent=', bufferPct, 'fixed=', bufferFixed, 'crewId=', currentCrew?.id);
       const result = await recalculateRoute({
         depot: { lat: depot.lat, lng: depot.lng },
         stops: recalcStops,
         workdayStart: routeStartTime || undefined,
         workdayEnd: routeEndTime || undefined,
         defaultServiceDurationMinutes,
+        arrivalBufferPercent: bufferPct,
+        arrivalBufferFixedMinutes: bufferFixed,
       });
 
       // Merge recalculated times back into stops
@@ -1097,7 +1102,7 @@ export function PlanningInbox() {
       logger.error('Route recalculation failed:', err);
       // Non-fatal: the route still exists, just with stale ETAs
     }
-  }, [currentDepot, routeStartTime, routeEndTime, defaultServiceDurationMinutes]);
+  }, [currentDepot, routeStartTime, routeEndTime, defaultServiceDurationMinutes, currentCrew?.arrivalBufferPercent, currentCrew?.arrivalBufferFixedMinutes]);
 
   // Auto-recalculate when working hours or depot changes (but not on initial load)
   const prevWorkingHoursRef = useRef<{ start: string | null; end: string | null; depotId: string | null }>({
