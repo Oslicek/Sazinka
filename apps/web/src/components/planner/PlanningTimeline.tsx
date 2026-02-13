@@ -525,6 +525,9 @@ export function PlanningTimeline({
           <div className={styles.metric}>
             <span className={styles.metricValue}>{formatDurationHm(getTotalDuration(metrics))}</span>
             <span className={styles.metricLabel}>Celkový čas</span>
+            <span className={styles.metricBreakdown}>
+              jízda {formatDurationHm(metrics.travelTimeMin)} · práce {formatDurationHm(metrics.serviceTimeMin)}
+            </span>
           </div>
           <div className={styles.metric}>
             <span className={styles.metricValue}>{metrics.loadPercent}%</span>

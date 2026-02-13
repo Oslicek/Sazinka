@@ -412,6 +412,14 @@
   color: var(--color-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.03em;
+}
+
+.metricBreakdown {
+  display: block;
+  font-size: 0.625rem;
+  color: var(--color-text-tertiary, #9ca3af);
+  margin-top: 0.125rem;
+  font-weight: 400;
   margin-top: 0.0625rem;
 }
 

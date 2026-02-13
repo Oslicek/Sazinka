@@ -535,7 +535,7 @@ export function RouteDetailTimeline({
             </span>
             <span className={styles.metricLabel}>Celkový čas</span>
             <span className={styles.metricHint}>
-              z toho jízda {formatDurationHm(Math.max(0, Math.round(metrics.travelTimeMin)))}
+              jízda {formatDurationHm(Math.max(0, Math.round(metrics.travelTimeMin)))} · práce {formatDurationHm(Math.max(0, Math.round(metrics.serviceTimeMin)))}
             </span>
           </div>
           <div className={styles.metric}>
