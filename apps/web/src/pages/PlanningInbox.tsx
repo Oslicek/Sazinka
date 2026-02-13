@@ -27,7 +27,7 @@ import {
   type GapInsertionInfo,
 } from '../components/planner';
 import { DraftModeBar } from '../components/planner/DraftModeBar';
-import { ThreePanelLayout } from '../components/common';
+import { CollapseButton, ThreePanelLayout } from '../components/common';
 import type { SavedRouteStop } from '../services/routeService';
 import { recalculateRoute, type RecalcStopInput } from '../services/routeService';
 import type { BreakSettings } from '@shared/settings';
@@ -1951,142 +1951,143 @@ export function PlanningInbox() {
   const renderInboxList = () => (
     <div className={styles.inboxPanel}>
       <div className={styles.filterPanel}>
+        {/* Always-visible row: presets + count + reset + expand toggle */}
         <div className={styles.filterPanelHeader}>
-          <span className={styles.filterSummary}>
-            Filtry {activeFilterCount > 0 ? `(${activeFilterCount})` : ''}
+          <div className={styles.filterPresets}>
+            {FILTER_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                className={`${styles.filterChip} ${activePresetId === preset.id ? styles.active : ''}`}
+                onClick={() => applyPreset(preset.id)}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          <span className={styles.filterResults}>
+            {sortedCandidates.length}
+            {activeFilterCount > 0 && !isAdvancedFiltersOpen && hasAdvancedActive && (
+              <span className={styles.advancedHint} title="Pokročilé podmínky aktivní">*</span>
+            )}
           </span>
-          {!isAdvancedFiltersOpen && hasAdvancedActive && (
-            <span className={styles.advancedHint}>pokročilé podmínky aktivní</span>
-          )}
-          <span className={styles.filterResults}>{sortedCandidates.length} výsledků</span>
-          <button
-            type="button"
-            className={styles.advancedToggleButton}
-            onClick={() => setIsAdvancedFiltersOpen((prev) => !prev)}
-          >
-            {isAdvancedFiltersOpen ? 'Skrýt pokročilé' : 'Pokročilé'}
-          </button>
           <button
             type="button"
             className={styles.filterResetButton}
             onClick={clearFilters}
             disabled={activeFilterCount === 0}
+            title="Resetovat filtry"
           >
             Reset
           </button>
+          <CollapseButton
+            collapsed={!isAdvancedFiltersOpen}
+            onClick={() => setIsAdvancedFiltersOpen((prev) => !prev)}
+            title={isAdvancedFiltersOpen ? 'Sbalit filtry' : 'Rozbalit filtry'}
+          />
         </div>
 
-        <div className={styles.filterPresets}>
-          {FILTER_PRESETS.map((preset) => (
-            <button
-              key={preset.id}
-              type="button"
-              className={`${styles.filterChip} ${activePresetId === preset.id ? styles.active : ''}`}
-              onClick={() => applyPreset(preset.id)}
-            >
-              {preset.label}
-            </button>
-          ))}
-        </div>
-
-        <div className={styles.filterGroup}>
-          <span className={styles.filterGroupLabel}>Nová revize</span>
-          <div className={styles.filterChips}>
-            <button type="button" className={`${styles.filterChip} ${filters.groups.time.selected.includes('OVERDUE') ? styles.active : ''}`} onClick={() => toggleTimeFilter('OVERDUE')}>Po termínu</button>
-            <button type="button" className={`${styles.filterChip} ${filters.groups.time.selected.includes('DUE_IN_7_DAYS') ? styles.active : ''}`} onClick={() => toggleTimeFilter('DUE_IN_7_DAYS')}>Do 7 dnů</button>
-            <button type="button" className={`${styles.filterChip} ${filters.groups.time.selected.includes('DUE_IN_30_DAYS') ? styles.active : ''}`} onClick={() => toggleTimeFilter('DUE_IN_30_DAYS')}>Do 30 dnů</button>
-            <button type="button" className={`${styles.filterChip} ${filters.groups.time.selected.length === 0 ? styles.active : ''}`} onClick={() => clearTimeFilters()}>Kdykoliv</button>
-          </div>
-        </div>
-
-        <div className={styles.filterGroup}>
-          <span className={styles.filterGroupLabel}>Termín</span>
-          <div className={styles.filterTriState}>
-            <button type="button" className={`${styles.filterChip} ${filters.groups.hasTerm === 'ANY' ? styles.active : ''}`} onClick={() => setTriState('hasTerm', 'ANY')}>Neřešit</button>
-            <button type="button" className={`${styles.filterChip} ${filters.groups.hasTerm === 'YES' ? styles.active : ''}`} onClick={() => setTriState('hasTerm', 'YES')}>Má termín</button>
-            <button type="button" className={`${styles.filterChip} ${filters.groups.hasTerm === 'NO' ? styles.active : ''}`} onClick={() => setTriState('hasTerm', 'NO')}>Nemá termín</button>
-          </div>
-        </div>
-
-        <div className={styles.filterGroup}>
-          <span className={styles.filterGroupLabel}>Trasa</span>
-          <div className={styles.filterTriState}>
-            <button type="button" className={`${styles.filterChip} ${filters.groups.inRoute === 'ANY' ? styles.active : ''}`} onClick={() => setTriState('inRoute', 'ANY')}>Neřešit</button>
-            <button type="button" className={`${styles.filterChip} ${filters.groups.inRoute === 'YES' ? styles.active : ''}`} onClick={() => setTriState('inRoute', 'YES')}>V trase</button>
-            <button type="button" className={`${styles.filterChip} ${filters.groups.inRoute === 'NO' ? styles.active : ''}`} onClick={() => setTriState('inRoute', 'NO')}>Není v trase</button>
-          </div>
-        </div>
-
+        {/* Expandable section: detailed filters */}
         {isAdvancedFiltersOpen && (
-          <div className={styles.advancedPanel}>
-            <div className={styles.advancedPanelHeader}>Pokročilé filtry</div>
-
-            <div className={styles.advancedRow}>
-              <span className={styles.filterGroupLabel}>Logika mezi skupinami</span>
-              <div className={styles.rootOperatorSwitch}>
-                <button
-                  type="button"
-                  className={`${styles.operatorButton} ${filters.rootOperator === 'AND' ? styles.active : ''}`}
-                  onClick={() => setRootOperator('AND')}
-                >
-                  AND
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.operatorButton} ${filters.rootOperator === 'OR' ? styles.active : ''}`}
-                  onClick={() => setRootOperator('OR')}
-                >
-                  OR
-                </button>
-              </div>
-            </div>
-
-            <div className={styles.advancedRow}>
-              <span className={styles.filterGroupLabel}>Logika revizních podmínek</span>
-              <div className={styles.groupOperatorSwitch}>
-                <button
-                  type="button"
-                  className={`${styles.operatorButton} ${filters.groups.time.operator === 'OR' ? styles.active : ''}`}
-                  onClick={() => setGroupOperator('time', 'OR')}
-                >
-                  OR
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.operatorButton} ${filters.groups.time.operator === 'AND' ? styles.active : ''}`}
-                  onClick={() => setGroupOperator('time', 'AND')}
-                >
-                  AND
-                </button>
+          <div className={styles.filterExpandedSection}>
+            <div className={styles.filterGroup}>
+              <span className={styles.filterGroupLabel}>Nová revize</span>
+              <div className={styles.filterChips}>
+                <button type="button" className={`${styles.filterChip} ${filters.groups.time.selected.includes('OVERDUE') ? styles.active : ''}`} onClick={() => toggleTimeFilter('OVERDUE')}>Po termínu</button>
+                <button type="button" className={`${styles.filterChip} ${filters.groups.time.selected.includes('DUE_IN_7_DAYS') ? styles.active : ''}`} onClick={() => toggleTimeFilter('DUE_IN_7_DAYS')}>Do 7 dnů</button>
+                <button type="button" className={`${styles.filterChip} ${filters.groups.time.selected.includes('DUE_IN_30_DAYS') ? styles.active : ''}`} onClick={() => toggleTimeFilter('DUE_IN_30_DAYS')}>Do 30 dnů</button>
+                <button type="button" className={`${styles.filterChip} ${filters.groups.time.selected.length === 0 ? styles.active : ''}`} onClick={() => clearTimeFilters()}>Kdykoliv</button>
               </div>
             </div>
 
             <div className={styles.filterGroup}>
-              <span className={styles.filterGroupLabel}>Problémy</span>
-              <div className={styles.groupOperatorSwitch}>
-                <button
-                  type="button"
-                  className={`${styles.operatorButton} ${filters.groups.problems.operator === 'OR' ? styles.active : ''}`}
-                  onClick={() => setGroupOperator('problems', 'OR')}
-                >
-                  OR
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.operatorButton} ${filters.groups.problems.operator === 'AND' ? styles.active : ''}`}
-                  onClick={() => setGroupOperator('problems', 'AND')}
-                >
-                  AND
-                </button>
-              </div>
-              <div className={styles.filterChips}>
-                <button type="button" className={`${styles.filterChip} ${filters.groups.problems.selected.includes('MISSING_PHONE') ? styles.active : ''}`} onClick={() => toggleProblemFilter('MISSING_PHONE')}>Chybí telefon</button>
-                <button type="button" className={`${styles.filterChip} ${filters.groups.problems.selected.includes('ADDRESS_ISSUE') ? styles.active : ''}`} onClick={() => toggleProblemFilter('ADDRESS_ISSUE')}>Problém s adresou</button>
-                <button type="button" className={`${styles.filterChip} ${filters.groups.problems.selected.includes('GEOCODE_FAILED') ? styles.active : ''}`} onClick={() => toggleProblemFilter('GEOCODE_FAILED')}>Geokód selhal</button>
+              <span className={styles.filterGroupLabel}>Termín</span>
+              <div className={styles.filterTriState}>
+                <button type="button" className={`${styles.filterChip} ${filters.groups.hasTerm === 'ANY' ? styles.active : ''}`} onClick={() => setTriState('hasTerm', 'ANY')}>Neřešit</button>
+                <button type="button" className={`${styles.filterChip} ${filters.groups.hasTerm === 'YES' ? styles.active : ''}`} onClick={() => setTriState('hasTerm', 'YES')}>Má termín</button>
+                <button type="button" className={`${styles.filterChip} ${filters.groups.hasTerm === 'NO' ? styles.active : ''}`} onClick={() => setTriState('hasTerm', 'NO')}>Nemá termín</button>
               </div>
             </div>
 
-            <div className={styles.filterSummaryText}>{filterSummary}</div>
+            <div className={styles.filterGroup}>
+              <span className={styles.filterGroupLabel}>Trasa</span>
+              <div className={styles.filterTriState}>
+                <button type="button" className={`${styles.filterChip} ${filters.groups.inRoute === 'ANY' ? styles.active : ''}`} onClick={() => setTriState('inRoute', 'ANY')}>Neřešit</button>
+                <button type="button" className={`${styles.filterChip} ${filters.groups.inRoute === 'YES' ? styles.active : ''}`} onClick={() => setTriState('inRoute', 'YES')}>V trase</button>
+                <button type="button" className={`${styles.filterChip} ${filters.groups.inRoute === 'NO' ? styles.active : ''}`} onClick={() => setTriState('inRoute', 'NO')}>Není v trase</button>
+              </div>
+            </div>
+
+            <div className={styles.advancedPanel}>
+              <div className={styles.advancedPanelHeader}>Pokročilé</div>
+
+              <div className={styles.advancedRow}>
+                <span className={styles.filterGroupLabel}>Logika mezi skupinami</span>
+                <div className={styles.rootOperatorSwitch}>
+                  <button
+                    type="button"
+                    className={`${styles.operatorButton} ${filters.rootOperator === 'AND' ? styles.active : ''}`}
+                    onClick={() => setRootOperator('AND')}
+                  >
+                    AND
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.operatorButton} ${filters.rootOperator === 'OR' ? styles.active : ''}`}
+                    onClick={() => setRootOperator('OR')}
+                  >
+                    OR
+                  </button>
+                </div>
+              </div>
+
+              <div className={styles.advancedRow}>
+                <span className={styles.filterGroupLabel}>Logika revizních podmínek</span>
+                <div className={styles.groupOperatorSwitch}>
+                  <button
+                    type="button"
+                    className={`${styles.operatorButton} ${filters.groups.time.operator === 'OR' ? styles.active : ''}`}
+                    onClick={() => setGroupOperator('time', 'OR')}
+                  >
+                    OR
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.operatorButton} ${filters.groups.time.operator === 'AND' ? styles.active : ''}`}
+                    onClick={() => setGroupOperator('time', 'AND')}
+                  >
+                    AND
+                  </button>
+                </div>
+              </div>
+
+              <div className={styles.filterGroup}>
+                <span className={styles.filterGroupLabel}>Problémy</span>
+                <div className={styles.groupOperatorSwitch}>
+                  <button
+                    type="button"
+                    className={`${styles.operatorButton} ${filters.groups.problems.operator === 'OR' ? styles.active : ''}`}
+                    onClick={() => setGroupOperator('problems', 'OR')}
+                  >
+                    OR
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.operatorButton} ${filters.groups.problems.operator === 'AND' ? styles.active : ''}`}
+                    onClick={() => setGroupOperator('problems', 'AND')}
+                  >
+                    AND
+                  </button>
+                </div>
+                <div className={styles.filterChips}>
+                  <button type="button" className={`${styles.filterChip} ${filters.groups.problems.selected.includes('MISSING_PHONE') ? styles.active : ''}`} onClick={() => toggleProblemFilter('MISSING_PHONE')}>Chybí telefon</button>
+                  <button type="button" className={`${styles.filterChip} ${filters.groups.problems.selected.includes('ADDRESS_ISSUE') ? styles.active : ''}`} onClick={() => toggleProblemFilter('ADDRESS_ISSUE')}>Problém s adresou</button>
+                  <button type="button" className={`${styles.filterChip} ${filters.groups.problems.selected.includes('GEOCODE_FAILED') ? styles.active : ''}`} onClick={() => toggleProblemFilter('GEOCODE_FAILED')}>Geokód selhal</button>
+                </div>
+              </div>
+
+              <div className={styles.filterSummaryText}>{filterSummary}</div>
+            </div>
           </div>
         )}
       </div>
@@ -2260,26 +2261,23 @@ export function PlanningInbox() {
               >
                 {mapMode === 'fullscreen' ? '⊟' : '⊞'}
               </button>
-              <button
-                type="button"
-                className={styles.mapControlButton}
+              <CollapseButton
+                collapsed={false}
                 onClick={() => setMapMode('collapsed')}
                 title="Skrýt mapu"
-              >
-                ▲
-              </button>
+                variant="overlay"
+              />
             </div>
           </div>
         )}
         {mapMode === 'collapsed' && (
           <div className={styles.mapCollapsedBar}>
-            <button
-              type="button"
-              className={styles.mapExpandButton}
+            <span className={styles.mapCollapsedLabel}>Mapa</span>
+            <CollapseButton
+              collapsed={true}
               onClick={() => setMapMode('normal')}
-            >
-              ▼ Zobrazit mapu
-            </button>
+              title="Zobrazit mapu"
+            />
           </div>
         )}
         {mapMode !== 'fullscreen' && (

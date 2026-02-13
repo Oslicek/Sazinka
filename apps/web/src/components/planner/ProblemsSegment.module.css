@@ -39,15 +39,7 @@
   margin-left: auto;
 }
 
-.chevron {
-  font-size: 0.625rem;
-  color: var(--color-text-secondary);
-  transition: transform 0.2s;
-}
-
-.chevron.collapsed {
-  transform: rotate(-90deg);
-}
+/* Chevron handled by CollapseButton component */
 
 /* List */
 .list {

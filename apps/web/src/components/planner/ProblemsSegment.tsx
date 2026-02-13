@@ -1,3 +1,4 @@
+import { CollapseButton } from '../common';
 import styles from './ProblemsSegment.module.css';
 
 export type ProblemType = 'no_phone' | 'no_address' | 'geocode_failed' | 'no_coordinates';
@@ -52,9 +53,10 @@ export function ProblemsSegment({
         <span className={styles.headerDescription}>
           Kandidáti, které nelze optimalizovat
         </span>
-        <span className={`${styles.chevron} ${isCollapsed ? styles.collapsed : ''}`}>
-          ▼
-        </span>
+        <CollapseButton
+          collapsed={isCollapsed}
+          onClick={() => { /* handled by parent button */ }}
+        />
       </button>
 
       {!isCollapsed && (

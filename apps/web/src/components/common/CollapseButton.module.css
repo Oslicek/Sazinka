@@ -1,0 +1,43 @@
+.collapseButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.collapseButton:hover {
+  background: var(--color-bg-secondary);
+  color: var(--color-text);
+}
+
+.collapseButton svg {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.2s ease;
+}
+
+.collapseButton[data-collapsed="true"] svg {
+  transform: rotate(-90deg);
+}
+
+/* Variant for overlay on top of other content (e.g. map) */
+.overlay {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border-radius: var(--radius-sm);
+}
+
+.overlay:hover {
+  background: var(--color-bg-secondary);
+  border-color: var(--color-primary);
+}

@@ -26,7 +26,7 @@ export interface InboxFilterExpression {
   groups: InboxFilterGroups;
 }
 
-export type FilterPresetId = 'ALL' | 'URGENT' | 'THIS_WEEK' | 'HAS_TERM' | 'PROBLEMS';
+export type FilterPresetId = 'ALL' | 'URGENT' | 'THIS_WEEK' | 'THIS_MONTH' | 'HAS_TERM' | 'PROBLEMS';
 
 export interface FilterPreset {
   id: FilterPresetId;
@@ -66,6 +66,7 @@ export const FILTER_PRESETS: FilterPreset[] = [
   { id: 'ALL', label: 'Vše' },
   { id: 'URGENT', label: 'Akutní' },
   { id: 'THIS_WEEK', label: 'Do 7 dnů' },
+  { id: 'THIS_MONTH', label: 'Do 30 dnů' },
   { id: 'HAS_TERM', label: 'Má termín' },
   { id: 'PROBLEMS', label: 'Problémové' },
 ];
@@ -167,6 +168,18 @@ export function applyFilterPreset(
         groups: {
           ...base.groups,
           time: { enabled: true, operator: 'OR', selected: ['DUE_IN_7_DAYS'] },
+          problems: { enabled: false, operator: 'OR', selected: [] },
+          hasTerm: 'ANY',
+          inRoute: 'ANY',
+        },
+      };
+    case 'THIS_MONTH':
+      return {
+        ...base,
+        rootOperator: 'AND',
+        groups: {
+          ...base.groups,
+          time: { enabled: true, operator: 'OR', selected: ['DUE_IN_30_DAYS'] },
           problems: { enabled: false, operator: 'OR', selected: [] },
           hasTerm: 'ANY',
           inRoute: 'ANY',
