@@ -1097,6 +1097,18 @@ export function PlanningInbox() {
       // Update depot departure (backward-calculated from first scheduled stop)
       setDepotDeparture(result.depotDeparture ?? null);
 
+      // Update metrics from recalculation result
+      const workingDayMin = 9 * 60; // TODO: use actual working hours
+      const totalMin = result.totalTravelMinutes + result.totalServiceMinutes;
+      setMetrics({
+        distanceKm: result.totalDistanceKm ?? 0,
+        travelTimeMin: result.totalTravelMinutes,
+        serviceTimeMin: result.totalServiceMinutes,
+        loadPercent: Math.round((totalMin / workingDayMin) * 100),
+        slackMin: Math.max(0, workingDayMin - totalMin),
+        stopCount: result.stops.length,
+      });
+
       setHasChanges(true);
     } catch (err) {
       logger.error('Route recalculation failed:', err);
