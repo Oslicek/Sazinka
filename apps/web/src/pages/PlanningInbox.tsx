@@ -815,28 +815,9 @@ export function PlanningInbox() {
   }, [selectedCandidate, slotSuggestions, routeStops]);
 
   // Candidate insertion info for PlanningTimeline gap zones
-  const candidateForInsertion: CandidateForInsertion | null = useMemo(() => {
-    if (!selectedCandidate || slotSuggestions.length === 0) return null;
-    if (routeStops.length === 0) return null;
-    // Don't show for candidates already in the route
-    if (routeStops.some((s) => s.customerId === selectedCandidate.customerId)) return null;
-
-    const gaps: GapInsertionInfo[] = slotSuggestions.map((slot) => ({
-      insertAfterIndex: slot.insertAfterIndex,
-      candidateName: selectedCandidate.customerName,
-      estimatedArrival: slot.timeStart,
-      estimatedDeparture: slot.timeEnd,
-      deltaKm: slot.deltaKm,
-      deltaMin: slot.deltaMin,
-      status: slot.status as 'ok' | 'tight' | 'conflict',
-    }));
-
-    return {
-      candidateId: selectedCandidate.customerId,
-      candidateName: selectedCandidate.customerName,
-      gaps,
-    };
-  }, [selectedCandidate, slotSuggestions, routeStops]);
+  // Disabled: automatic previews clutter the timeline and confuse users.
+  // Gap zones remain clickable to insert the selected candidate.
+  const candidateForInsertion: CandidateForInsertion | null = null;
 
   // Compute set of customer IDs that are currently in the route
   const inRouteIds = useMemo(() => {
