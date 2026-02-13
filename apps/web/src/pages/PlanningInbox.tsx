@@ -4,7 +4,6 @@ import { useNatsStore } from '../stores/natsStore';
 import { useRouteCacheStore } from '../stores/routeCacheStore';
 import { useAutoSave } from '../hooks/useAutoSave';
 import { 
-  RouteContextHeader, 
   type RouteContext,
   type RouteMetrics,
   RouteMapPanel,
@@ -2421,18 +2420,65 @@ export function PlanningInbox() {
 
   return (
     <div className={styles.page}>
-      <RouteContextHeader
-        context={context}
-        metrics={metrics}
-        isRouteAware={isRouteAware}
-        onRouteAwareToggle={setIsRouteAware}
-        onDateChange={handleDateChange}
-        onCrewChange={handleCrewChange}
-        onDepotChange={handleDepotChange}
-        crews={crews}
-        depots={depots}
-        isLoading={isLoadingRoute}
-      />
+      <header className={styles.header}>
+        <h1 className={styles.title}>Plánovací inbox</h1>
+        
+        <div className={styles.contextSelectors}>
+          <div className={styles.selector}>
+            <label htmlFor="route-date">Den</label>
+            <input
+              id="route-date"
+              type="date"
+              value={context?.date ?? ''}
+              onChange={(e) => handleDateChange(e.target.value)}
+              className={styles.dateInput}
+            />
+          </div>
+
+          <div className={styles.selector}>
+            <label htmlFor="route-crew">Posádka</label>
+            <select
+              id="route-crew"
+              value={context?.crewId ?? ''}
+              onChange={(e) => handleCrewChange(e.target.value)}
+              className={styles.select}
+            >
+              <option value="">Vyberte posádku</option>
+              {crews.map((crew) => (
+                <option key={crew.id} value={crew.id}>{crew.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className={styles.selector}>
+            <label htmlFor="route-depot">Depo</label>
+            <select
+              id="route-depot"
+              value={context?.depotId ?? ''}
+              onChange={(e) => handleDepotChange(e.target.value)}
+              className={styles.select}
+            >
+              <option value="">Vyberte depo</option>
+              {depots.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className={styles.routeAwareToggle}>
+            <label className={styles.toggleLabel}>
+              <input
+                type="checkbox"
+                checked={isRouteAware}
+                onChange={(e) => setIsRouteAware(e.target.checked)}
+                className={styles.toggleInput}
+              />
+              <span className={styles.toggleSwitch} />
+              <span className={styles.toggleText}>Route-aware</span>
+            </label>
+          </div>
+        </div>
+      </header>
       
       <DraftModeBar
         hasChanges={hasChanges}
