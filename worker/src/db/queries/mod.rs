@@ -5,6 +5,7 @@ pub mod customer;
 pub mod device;
 pub mod import;
 pub mod revision;
+pub mod role;
 pub mod route;
 pub mod settings;
 pub mod user;

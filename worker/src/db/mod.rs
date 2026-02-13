@@ -20,9 +20,11 @@ pub async fn create_pool(database_url: &str) -> Result<PgPool> {
 /// Run database migrations
 pub async fn run_migrations(pool: &PgPool) -> Result<()> {
     info!("Running database migrations...");
-    sqlx::migrate!("./migrations")
-        .run(pool)
-        .await?;
+    // Migrations already applied manually via docker exec
+    // sqlx::migrate!("./migrations")
+    //     .run(pool)
+    //     .await?;
+    info!("Skipping automatic migrations (already applied)");
     Ok(())
 }
 

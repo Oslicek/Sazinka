@@ -187,8 +187,17 @@ pub async fn handle_register(
             None,
         ).await {
             Ok(user) => {
+                let permissions = match queries::role::get_user_permissions(&pool, user.id).await {
+                    Ok(p) => p,
+                    Err(e) => {
+                        error!("Failed to load permissions: {}", e);
+                        let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                        let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                        continue;
+                    }
+                };
                 // Generate JWT
-                let token = match auth::generate_token(user.id, &user.email, &user.role, None, &jwt_secret) {
+                let token = match auth::generate_token(user.id, &user.email, &user.role, None, &permissions, &jwt_secret) {
                     Ok(t) => t,
                     Err(e) => {
                         error!("Failed to generate token: {}", e);
@@ -198,9 +207,11 @@ pub async fn handle_register(
                     }
                 };
 
+                let mut user_public = UserPublic::from(user);
+                user_public.permissions = permissions;
                 let auth_response = AuthResponse {
                     token,
-                    user: UserPublic::from(user),
+                    user: user_public,
                 };
                 let response = SuccessResponse::new(request.id, auth_response);
                 let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
@@ -288,8 +299,18 @@ pub async fn handle_login(
             }
         }
 
+        let permissions = match queries::role::get_user_permissions(&pool, user.id).await {
+            Ok(p) => p,
+            Err(e) => {
+                error!("Failed to load permissions: {}", e);
+                let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
         // Generate JWT
-        let token = match auth::generate_token(user.id, &user.email, &user.role, user.owner_id, &jwt_secret) {
+        let token = match auth::generate_token(user.id, &user.email, &user.role, user.owner_id, &permissions, &jwt_secret) {
             Ok(t) => t,
             Err(e) => {
                 error!("Failed to generate token: {}", e);
@@ -299,9 +320,11 @@ pub async fn handle_login(
             }
         };
 
+        let mut user_public = UserPublic::from(user);
+        user_public.permissions = permissions;
         let auth_response = AuthResponse {
             token,
-            user: UserPublic::from(user),
+            user: user_public,
         };
         let response = SuccessResponse::new(request.id, auth_response);
         let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
@@ -361,7 +384,9 @@ pub async fn handle_verify(
 
         match queries::user::get_user(&pool, user_id).await {
             Ok(Some(user)) => {
-                let response = SuccessResponse::new(request.id, UserPublic::from(user));
+                let mut user_public = UserPublic::from(user.clone());
+                user_public.permissions = queries::role::get_user_permissions(&pool, user.id).await.unwrap_or_default();
+                let response = SuccessResponse::new(request.id, user_public);
                 let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
             }
             Ok(None) => {
@@ -429,13 +454,24 @@ pub async fn handle_refresh(
         // Ensure user still exists
         match queries::user::get_user(&pool, user_id).await {
             Ok(Some(user)) => {
+                let permissions = match queries::role::get_user_permissions(&pool, user.id).await {
+                    Ok(p) => p,
+                    Err(e) => {
+                        error!("Failed to load permissions: {}", e);
+                        let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                        let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                        continue;
+                    }
+                };
                 // Issue a fresh token
                 let owner_id = claims.owner_id.as_deref().and_then(|id| Uuid::parse_str(id).ok());
-                match auth::generate_token(user_id, &user.email, &claims.role, owner_id, &jwt_secret) {
+                match auth::generate_token(user_id, &user.email, &claims.role, owner_id, &permissions, &jwt_secret) {
                     Ok(new_token) => {
+                        let mut user_public = UserPublic::from(user);
+                        user_public.permissions = permissions;
                         let response = SuccessResponse::new(request.id, AuthResponse {
                             token: new_token,
-                            user: UserPublic::from(user),
+                            user: user_public,
                         });
                         let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
                     }
@@ -471,6 +507,7 @@ pub struct CreateWorkerRequest {
     pub email: String,
     pub password: String,
     pub name: String,
+    pub role_ids: Option<Vec<Uuid>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

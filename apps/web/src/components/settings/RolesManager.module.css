@@ -1,0 +1,236 @@
+.rolesManager {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.loading,
+.error {
+  padding: 2rem;
+  text-align: center;
+}
+
+.error p {
+  color: var(--color-error);
+  margin-bottom: 1rem;
+}
+
+/* Role List */
+.rolesList {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.rolesHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.rolesHeader h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.emptyState {
+  padding: 3rem 2rem;
+  text-align: center;
+  background: var(--color-bg-secondary);
+  border-radius: 8px;
+}
+
+.emptyState p {
+  margin: 0.5rem 0;
+}
+
+.emptyStateHint {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+.rolesGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.roleCard {
+  padding: 1.25rem;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  transition: box-shadow 0.2s;
+}
+
+.roleCard:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.roleCardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.roleName {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.roleActions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.roleActionButton {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.125rem;
+  padding: 0.25rem;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.roleActionButton:hover {
+  opacity: 1;
+}
+
+.rolePermissions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.permissionCount {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+/* Role Editor */
+.roleEditor {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.editorHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.25rem 1.5rem;
+  background: var(--color-bg-secondary);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.editorHeader h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.closeButton {
+  background: none;
+  border: none;
+  font-size: 1.75rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  padding: 0;
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+}
+
+.closeButton:hover {
+  color: var(--color-text);
+}
+
+.editorContent {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.formGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.formLabel {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--color-text);
+}
+
+.formInput {
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 1rem;
+  background: var(--color-bg);
+  color: var(--color-text);
+  transition: border-color 0.2s;
+}
+
+.formInput:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.permissionSectionTitle {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.permissionGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.75rem;
+}
+
+.permissionCheckbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.permissionCheckbox:hover {
+  background: var(--color-bg-secondary);
+}
+
+.permissionCheckbox input[type="checkbox"] {
+  cursor: pointer;
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.permissionCheckbox span {
+  font-size: 0.875rem;
+  color: var(--color-text);
+}
+
+.editorActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+}

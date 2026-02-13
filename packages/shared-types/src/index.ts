@@ -11,3 +11,4 @@ export * from './visit';
 export * from './workItem';
 export * from './import';
 export * from './auth';
+export * from './roles';

@@ -12,6 +12,7 @@ pub mod import_processors;
 pub mod jobs;
 pub mod ping;
 pub mod revision;
+pub mod role;
 pub mod route;
 pub mod settings;
 pub mod slots;
@@ -567,6 +568,16 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     });
 
     info!("Auth handlers started");
+
+    // Start RBAC role handlers
+    let client_role = client.clone();
+    let pool_role = pool.clone();
+    let jwt_secret_role = Arc::clone(&jwt_secret);
+    tokio::spawn(async move {
+        if let Err(e) = role::start_handlers(client_role, pool_role, jwt_secret_role).await {
+            error!("Role handlers error: {}", e);
+        }
+    });
 
     // Spawn handlers
     let ping_handle = tokio::spawn(async move {

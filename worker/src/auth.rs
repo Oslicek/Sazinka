@@ -23,6 +23,8 @@ pub struct Claims {
     /// Owner ID (for workers - the customer who created them)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub owner_id: Option<String>,
+    #[serde(default)]
+    pub permissions: Vec<String>,
     /// Issued at (unix timestamp)
     pub iat: usize,
     /// Expiration (unix timestamp)
@@ -56,6 +58,7 @@ pub fn generate_token(
     email: &str,
     role: &str,
     owner_id: Option<Uuid>,
+    permissions: &[String],
     secret: &str,
 ) -> Result<String> {
     let now = chrono::Utc::now().timestamp() as usize;
@@ -66,6 +69,7 @@ pub fn generate_token(
         email: email.to_string(),
         role: role.to_string(),
         owner_id: owner_id.map(|id| id.to_string()),
+        permissions: permissions.to_vec(),
         iat: now,
         exp,
     };
@@ -198,7 +202,7 @@ mod tests {
     #[test]
     fn test_generate_and_validate_token() {
         let user_id = Uuid::new_v4();
-        let token = generate_token(user_id, "test@example.com", "customer", None, TEST_SECRET).unwrap();
+        let token = generate_token(user_id, "test@example.com", "customer", None, &["*".to_string()], TEST_SECRET).unwrap();
 
         let claims = validate_token(&token, TEST_SECRET).unwrap();
         assert_eq!(claims.sub, user_id.to_string());
@@ -211,7 +215,7 @@ mod tests {
     fn test_generate_token_with_owner_id() {
         let user_id = Uuid::new_v4();
         let owner_id = Uuid::new_v4();
-        let token = generate_token(user_id, "worker@example.com", "worker", Some(owner_id), TEST_SECRET).unwrap();
+        let token = generate_token(user_id, "worker@example.com", "worker", Some(owner_id), &["page:inbox".to_string()], TEST_SECRET).unwrap();
 
         let claims = validate_token(&token, TEST_SECRET).unwrap();
         assert_eq!(claims.sub, user_id.to_string());
@@ -222,7 +226,7 @@ mod tests {
     #[test]
     fn test_validate_token_wrong_secret() {
         let user_id = Uuid::new_v4();
-        let token = generate_token(user_id, "test@example.com", "customer", None, TEST_SECRET).unwrap();
+        let token = generate_token(user_id, "test@example.com", "customer", None, &["*".to_string()], TEST_SECRET).unwrap();
 
         let result = validate_token(&token, "wrong-secret");
         assert!(result.is_err());
@@ -239,7 +243,7 @@ mod tests {
         let user_id = Uuid::new_v4();
         
         for role in &["admin", "customer", "worker"] {
-            let token = generate_token(user_id, "test@example.com", role, None, TEST_SECRET).unwrap();
+            let token = generate_token(user_id, "test@example.com", role, None, &["*".to_string()], TEST_SECRET).unwrap();
             let claims = validate_token(&token, TEST_SECRET).unwrap();
             assert_eq!(claims.role, *role);
         }
@@ -260,7 +264,7 @@ mod tests {
     #[test]
     fn test_extract_auth_with_valid_token() {
         let user_id = Uuid::new_v4();
-        let token = generate_token(user_id, "test@example.com", "admin", None, TEST_SECRET).unwrap();
+        let token = generate_token(user_id, "test@example.com", "admin", None, &["*".to_string()], TEST_SECRET).unwrap();
         
         let request = make_request_with_token::<serde_json::Value>(Some(token), None);
         let auth = extract_auth(&request, TEST_SECRET).unwrap();
@@ -274,7 +278,7 @@ mod tests {
     fn test_extract_auth_with_worker_token() {
         let user_id = Uuid::new_v4();
         let owner_id = Uuid::new_v4();
-        let token = generate_token(user_id, "worker@example.com", "worker", Some(owner_id), TEST_SECRET).unwrap();
+        let token = generate_token(user_id, "worker@example.com", "worker", Some(owner_id), &["page:planner".to_string()], TEST_SECRET).unwrap();
         
         let request = make_request_with_token::<serde_json::Value>(Some(token), None);
         let auth = extract_auth(&request, TEST_SECRET).unwrap();
@@ -289,7 +293,7 @@ mod tests {
     #[test]
     fn test_extract_auth_data_user_id_for_customer() {
         let user_id = Uuid::new_v4();
-        let token = generate_token(user_id, "customer@example.com", "customer", None, TEST_SECRET).unwrap();
+        let token = generate_token(user_id, "customer@example.com", "customer", None, &["*".to_string()], TEST_SECRET).unwrap();
         
         let request = make_request_with_token::<serde_json::Value>(Some(token), None);
         let auth = extract_auth(&request, TEST_SECRET).unwrap();
@@ -302,7 +306,7 @@ mod tests {
     fn test_extract_auth_token_takes_priority_over_user_id() {
         let token_user_id = Uuid::new_v4();
         let legacy_user_id = Uuid::new_v4();
-        let token = generate_token(token_user_id, "test@example.com", "admin", None, TEST_SECRET).unwrap();
+        let token = generate_token(token_user_id, "test@example.com", "admin", None, &["*".to_string()], TEST_SECRET).unwrap();
         
         // Both token and user_id present — token should win
         let request = make_request_with_token::<serde_json::Value>(Some(token), Some(legacy_user_id));

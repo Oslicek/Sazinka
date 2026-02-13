@@ -21,6 +21,10 @@ interface AuthState {
   getToken: () => string | null;
   getUserId: () => string;
   getRole: () => string;
+
+  // Permission helpers
+  hasPermission: (key: string) => boolean;
+  hasAnyPermission: (keys: string[]) => boolean;
 }
 
 type NatsResponse<T> = { payload: T } | { error: { code: string; message: string } };
@@ -175,5 +179,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const user = get().user;
     if (!user) throw new Error('Not authenticated');
     return user.role;
+  },
+
+  hasPermission: (key: string) => {
+    const user = get().user;
+    if (!user) return false;
+    // admin and customer have full access
+    if (user.role === 'admin' || user.role === 'customer') return true;
+    const perms = user.permissions ?? [];
+    return perms.includes('*') || perms.includes(key);
+  },
+
+  hasAnyPermission: (keys: string[]) => {
+    const user = get().user;
+    if (!user) return false;
+    if (user.role === 'admin' || user.role === 'customer') return true;
+    const perms = user.permissions ?? [];
+    if (perms.includes('*')) return true;
+    return keys.some((k) => perms.includes(k));
   },
 }));

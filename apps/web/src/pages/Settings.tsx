@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNatsStore } from '../stores/natsStore';
+import { useAuthStore } from '../stores/authStore';
 import * as settingsService from '../services/settingsService';
 import * as crewService from '../services/crewService';
 import * as workerService from '../services/workerService';
+import * as roleService from '../services/roleService';
 import { importCustomersBatch } from '../services/customerService';
 import type { Crew } from '../services/crewService';
-import type { UserPublic } from '@shared/auth';
+import type { UserPublic, RoleWithPermissions } from '@shared/auth';
 import type {
   UserSettings,
   WorkConstraints,
@@ -17,9 +19,10 @@ import type {
 import { ImportModal, type ImportEntityType } from '../components/import';
 import { ImportCustomersModal } from '../components/customers/ImportCustomersModal';
 import { ExportPlusPanel } from '../components/shared/ExportPlusPanel';
+import { RolesManager } from '../components/settings/RolesManager';
 import styles from './Settings.module.css';
 
-type SettingsTab = 'preferences' | 'work' | 'business' | 'email' | 'breaks' | 'depots' | 'crews' | 'workers' | 'import-export';
+type SettingsTab = 'preferences' | 'work' | 'business' | 'email' | 'breaks' | 'depots' | 'crews' | 'workers' | 'import-export' | 'roles';
 
 const DEFAULT_BREAK_SETTINGS: BreakSettings = {
   breakEnabled: true,
@@ -32,6 +35,8 @@ const DEFAULT_BREAK_SETTINGS: BreakSettings = {
 
 export function Settings() {
   const { isConnected } = useNatsStore();
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const user = useAuthStore((s) => s.user);
   const [activeTab, setActiveTab] = useState<SettingsTab>('preferences');
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [crews, setCrews] = useState<Crew[]>([]);
@@ -102,18 +107,22 @@ export function Settings() {
     return importCustomersBatch(customers);
   }, []);
 
-  // Tab components
-  const tabs: { id: SettingsTab; label: string }[] = [
-    { id: 'preferences', label: 'Moje nastavení' },
-    { id: 'work', label: 'Pracovní doba' },
-    { id: 'business', label: 'Firemní údaje' },
-    { id: 'email', label: 'E-mailové šablony' },
-    { id: 'breaks', label: 'Pauzy' },
-    { id: 'depots', label: 'Depa' },
-    { id: 'crews', label: 'Posádky' },
-    { id: 'workers', label: 'Pracovníci' },
-    { id: 'import-export', label: 'Import & Export' },
+  // Tab components - all available tabs
+  const allTabs: { id: SettingsTab; label: string; permission: string }[] = [
+    { id: 'preferences', label: 'Moje nastavení', permission: 'settings:preferences' },
+    { id: 'work', label: 'Pracovní doba', permission: 'settings:work' },
+    { id: 'business', label: 'Firemní údaje', permission: 'settings:business' },
+    { id: 'email', label: 'E-mailové šablony', permission: 'settings:email' },
+    { id: 'breaks', label: 'Pauzy', permission: 'settings:breaks' },
+    { id: 'depots', label: 'Depa', permission: 'settings:depots' },
+    { id: 'crews', label: 'Posádky', permission: 'settings:crews' },
+    { id: 'workers', label: 'Pracovníci', permission: 'settings:workers' },
+    { id: 'import-export', label: 'Import & Export', permission: 'settings:import-export' },
+    { id: 'roles', label: 'Role', permission: 'settings:roles' },
   ];
+
+  // Filter tabs based on user permissions
+  const tabs = allTabs.filter((tab) => hasPermission(tab.permission));
 
   if (loading) {
     return (
@@ -287,6 +296,15 @@ export function Settings() {
             onUpdate={async () => {
               const updatedWorkers = await workerService.listWorkers().catch(() => [] as UserPublic[]);
               setWorkers(updatedWorkers);
+            }}
+          />
+        )}
+
+        {activeTab === 'roles' && (
+          <RolesManager
+            onUpdate={async () => {
+              // Optionally reload settings or other data if needed
+              await loadSettings();
             }}
           />
         )}
@@ -1503,16 +1521,54 @@ function WorkersManager({ workers, onUpdate }: WorkersManagerProps) {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [roles, setRoles] = useState<RoleWithPermissions[]>([]);
+  const [workerRoles, setWorkerRoles] = useState<Map<string, RoleWithPermissions[]>>(new Map());
+  const [editingWorkerRoles, setEditingWorkerRoles] = useState<string | null>(null);
+  const [selectedRoleIds, setSelectedRoleIds] = useState<Set<string>>(new Set());
 
   // Form state
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [initialRoleIds, setInitialRoleIds] = useState<Set<string>>(new Set());
+
+  // Load roles on mount
+  useEffect(() => {
+    const loadRoles = async () => {
+      try {
+        const data = await roleService.listRoles();
+        setRoles(data);
+      } catch (e) {
+        console.error('Failed to load roles:', e);
+      }
+    };
+    loadRoles();
+  }, []);
+
+  // Load worker roles
+  useEffect(() => {
+    const loadWorkerRoles = async () => {
+      const rolesMap = new Map<string, RoleWithPermissions[]>();
+      for (const worker of workers) {
+        try {
+          const roles = await roleService.getUserRoles(worker.id);
+          rolesMap.set(worker.id, roles);
+        } catch (e) {
+          console.error(`Failed to load roles for worker ${worker.id}:`, e);
+        }
+      }
+      setWorkerRoles(rolesMap);
+    };
+    if (workers.length > 0) {
+      loadWorkerRoles();
+    }
+  }, [workers]);
 
   const resetForm = () => {
     setName('');
     setEmail('');
     setPassword('');
+    setInitialRoleIds(new Set());
     setShowForm(false);
     setError(null);
   };
@@ -1529,7 +1585,8 @@ function WorkersManager({ workers, onUpdate }: WorkersManagerProps) {
     setSaving(true);
     setError(null);
     try {
-      await workerService.createWorker({ email, password, name });
+      const roleIds = Array.from(initialRoleIds);
+      await workerService.createWorker({ email, password, name, roleIds });
       resetForm();
       await onUpdate();
     } catch (e) {
@@ -1547,6 +1604,54 @@ function WorkersManager({ workers, onUpdate }: WorkersManagerProps) {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Nepodařilo se smazat pracovníka');
     }
+  };
+
+  const handleEditRoles = (workerId: string) => {
+    const currentRoles = workerRoles.get(workerId) || [];
+    setSelectedRoleIds(new Set(currentRoles.map((r) => r.id)));
+    setEditingWorkerRoles(workerId);
+  };
+
+  const handleSaveRoles = async () => {
+    if (!editingWorkerRoles) return;
+    try {
+      await roleService.setUserRoles({
+        userId: editingWorkerRoles,
+        roleIds: Array.from(selectedRoleIds),
+      });
+      setEditingWorkerRoles(null);
+      setSelectedRoleIds(new Set());
+      // Reload worker roles
+      const roles = await roleService.getUserRoles(editingWorkerRoles);
+      setWorkerRoles(new Map(workerRoles.set(editingWorkerRoles, roles)));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Nepodařilo se uložit role');
+    }
+  };
+
+  const handleCancelEditRoles = () => {
+    setEditingWorkerRoles(null);
+    setSelectedRoleIds(new Set());
+  };
+
+  const toggleRole = (roleId: string) => {
+    const newSet = new Set(selectedRoleIds);
+    if (newSet.has(roleId)) {
+      newSet.delete(roleId);
+    } else {
+      newSet.add(roleId);
+    }
+    setSelectedRoleIds(newSet);
+  };
+
+  const toggleInitialRole = (roleId: string) => {
+    const newSet = new Set(initialRoleIds);
+    if (newSet.has(roleId)) {
+      newSet.delete(roleId);
+    } else {
+      newSet.add(roleId);
+    }
+    setInitialRoleIds(newSet);
   };
 
   return (
@@ -1601,6 +1706,25 @@ function WorkersManager({ workers, onUpdate }: WorkersManagerProps) {
               />
             </div>
           </div>
+          
+          {roles.length > 0 && (
+            <div className={styles.formGroup} style={{ marginTop: '1rem' }}>
+              <label className={styles.label}>Role (volitelné)</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem' }}>
+                {roles.map((role) => (
+                  <label key={role.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={initialRoleIds.has(role.id)}
+                      onChange={() => toggleInitialRole(role.id)}
+                    />
+                    <span>{role.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+          
           <div className={styles.formActions}>
             <button className={styles.saveButton} onClick={handleSubmit} disabled={saving}>
               {saving ? 'Ukládám...' : 'Vytvořit pracovníka'}
@@ -1624,8 +1748,36 @@ function WorkersManager({ workers, onUpdate }: WorkersManagerProps) {
               <div className={styles.crewInfo}>
                 <span className={styles.crewName}>{worker.name}</span>
                 <span className={styles.crewDetail}>{worker.email}</span>
+                {workerRoles.get(worker.id) && workerRoles.get(worker.id)!.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem' }}>
+                    {workerRoles.get(worker.id)!.map((role) => (
+                      <span
+                        key={role.id}
+                        style={{
+                          padding: '0.25rem 0.5rem',
+                          background: 'var(--color-primary)',
+                          color: 'white',
+                          borderRadius: '4px',
+                          fontSize: '0.75rem',
+                          fontWeight: 500,
+                        }}
+                      >
+                        {role.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className={styles.crewActions}>
+                {roles.length > 0 && (
+                  <button
+                    className={styles.editCrewButton}
+                    onClick={() => handleEditRoles(worker.id)}
+                    title="Upravit role"
+                  >
+                    🔑
+                  </button>
+                )}
                 <button
                   className={styles.deleteCrewButton}
                   onClick={() => handleDelete(worker.id, worker.name)}

@@ -15,13 +15,14 @@ export function Layout({ children }: LayoutProps) {
   const activeJobsCount = useActiveJobsStore((s) => s.activeCount);
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const hasPermission = useAuthStore((s) => s.hasPermission);
   const navigate = useNavigate();
 
   const role = user?.role ?? 'worker';
 
   // Role-based navigation
   const showAdmin = role === 'admin';
-  const showSettings = role === 'admin' || role === 'customer';
+  const showSettings = hasPermission('page:settings');
 
   const handleLogout = () => {
     logout();
@@ -52,13 +53,13 @@ export function Layout({ children }: LayoutProps) {
         </div>
         
         <nav className={styles.nav}>
-          <NavLink to="/calendar">Kalendář</NavLink>
-          <NavLink to="/inbox">Inbox</NavLink>
-          <NavLink to="/planner">Plán</NavLink>
-          <NavLink to="/worklog">Záznam</NavLink>
-          <NavLink to="/customers">Zákazníci</NavLink>
-          <NavLink to="/routes">Trasy</NavLink>
-          <NavLink to="/jobs">Úlohy</NavLink>
+          {hasPermission('page:calendar') && <NavLink to="/calendar">Kalendář</NavLink>}
+          {hasPermission('page:inbox') && <NavLink to="/inbox">Inbox</NavLink>}
+          {hasPermission('page:planner') && <NavLink to="/planner">Plán</NavLink>}
+          {hasPermission('page:worklog') && <NavLink to="/worklog">Záznam</NavLink>}
+          {hasPermission('page:customers') && <NavLink to="/customers">Zákazníci</NavLink>}
+          {hasPermission('page:routes') && <NavLink to="/routes">Trasy</NavLink>}
+          {hasPermission('page:jobs') && <NavLink to="/jobs">Úlohy</NavLink>}
           {showSettings && <NavLink to="/settings">Nastavení</NavLink>}
           {showAdmin && <NavLink to="/admin">Admin</NavLink>}
         </nav>
@@ -107,19 +108,19 @@ export function Layout({ children }: LayoutProps) {
             </div>
             
             <div className={styles.menuItems}>
-              <MenuLink to="/calendar" onClick={handleMenuItemClick}>Kalendář</MenuLink>
-              <MenuLink to="/inbox" onClick={handleMenuItemClick}>Inbox</MenuLink>
-              <MenuLink to="/planner" onClick={handleMenuItemClick}>Plán</MenuLink>
-              <MenuLink to="/worklog" onClick={handleMenuItemClick}>Záznam</MenuLink>
-              <MenuLink to="/customers" onClick={handleMenuItemClick}>Zákazníci</MenuLink>
-              <MenuLink to="/routes" onClick={handleMenuItemClick}>Trasy</MenuLink>
-              <MenuLink to="/jobs" onClick={handleMenuItemClick}>Úlohy</MenuLink>
+              {hasPermission('page:calendar') && <MenuLink to="/calendar" onClick={handleMenuItemClick}>Kalendář</MenuLink>}
+              {hasPermission('page:inbox') && <MenuLink to="/inbox" onClick={handleMenuItemClick}>Inbox</MenuLink>}
+              {hasPermission('page:planner') && <MenuLink to="/planner" onClick={handleMenuItemClick}>Plán</MenuLink>}
+              {hasPermission('page:worklog') && <MenuLink to="/worklog" onClick={handleMenuItemClick}>Záznam</MenuLink>}
+              {hasPermission('page:customers') && <MenuLink to="/customers" onClick={handleMenuItemClick}>Zákazníci</MenuLink>}
+              {hasPermission('page:routes') && <MenuLink to="/routes" onClick={handleMenuItemClick}>Trasy</MenuLink>}
+              {hasPermission('page:jobs') && <MenuLink to="/jobs" onClick={handleMenuItemClick}>Úlohy</MenuLink>}
               {showSettings && <MenuLink to="/settings" onClick={handleMenuItemClick}>Nastavení</MenuLink>}
               {showAdmin && <MenuLink to="/admin" onClick={handleMenuItemClick}>Admin</MenuLink>}
               
               <div className={styles.menuDivider} />
               
-              <MenuLink to="/about" onClick={handleMenuItemClick}>O službě</MenuLink>
+              {hasPermission('page:about') && <MenuLink to="/about" onClick={handleMenuItemClick}>O službě</MenuLink>}
             </div>
           </nav>
         </>

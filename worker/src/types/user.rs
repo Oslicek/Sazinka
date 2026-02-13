@@ -53,6 +53,8 @@ pub struct UserPublic {
     pub role: String,
     pub phone: Option<String>,
     pub business_name: Option<String>,
+    #[serde(default)]
+    pub permissions: Vec<String>,
 }
 
 impl From<User> for UserPublic {
@@ -64,6 +66,7 @@ impl From<User> for UserPublic {
             role: user.role,
             phone: user.phone,
             business_name: user.business_name,
+            permissions: Vec::new(),
         }
     }
 }

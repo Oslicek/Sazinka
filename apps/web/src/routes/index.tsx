@@ -84,7 +84,11 @@ const indexRoute = createRoute({
 const customersRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: '/customers',
-  component: Customers,
+  component: () => (
+    <ProtectedRoute requiredPermission="page:customers">
+      <Customers />
+    </ProtectedRoute>
+  ),
 });
 
 // Customer summary (static route - must be before dynamic $customerId route)
@@ -105,21 +109,33 @@ const customerDetailRoute = createRoute({
 const calendarRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: '/calendar',
-  component: Calendar,
+  component: () => (
+    <ProtectedRoute requiredPermission="page:calendar">
+      <Calendar />
+    </ProtectedRoute>
+  ),
 });
 
 // Route planner
 const plannerRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: '/planner',
-  component: Planner,
+  component: () => (
+    <ProtectedRoute requiredPermission="page:planner">
+      <Planner />
+    </ProtectedRoute>
+  ),
 });
 
 // Planning Inbox (route-aware)
 const inboxRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: '/inbox',
-  component: PlanningInbox,
+  component: () => (
+    <ProtectedRoute requiredPermission="page:inbox">
+      <PlanningInbox />
+    </ProtectedRoute>
+  ),
 });
 
 // Admin - requires admin role
@@ -133,12 +149,12 @@ const adminRoute = createRoute({
   ),
 });
 
-// Settings - requires customer or admin role
+// Settings - requires page:settings permission (customer/admin always have it)
 const settingsRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: '/settings',
   component: () => (
-    <ProtectedRoute roles={['customer', 'admin']}>
+    <ProtectedRoute requiredPermission="page:settings">
       <Settings />
     </ProtectedRoute>
   ),
@@ -187,28 +203,44 @@ const workItemDetailRoute = createRoute({
 const jobsRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: '/jobs',
-  component: Jobs,
+  component: () => (
+    <ProtectedRoute requiredPermission="page:jobs">
+      <Jobs />
+    </ProtectedRoute>
+  ),
 });
 
 // Work Log
 const workLogRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: '/worklog',
-  component: WorkLog,
+  component: () => (
+    <ProtectedRoute requiredPermission="page:worklog">
+      <WorkLog />
+    </ProtectedRoute>
+  ),
 });
 
 // Routes overview
 const routesRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: '/routes',
-  component: RoutesPage,
+  component: () => (
+    <ProtectedRoute requiredPermission="page:routes">
+      <RoutesPage />
+    </ProtectedRoute>
+  ),
 });
 
 // About page
 const aboutRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: '/about',
-  component: About,
+  component: () => (
+    <ProtectedRoute requiredPermission="page:about">
+      <About />
+    </ProtectedRoute>
+  ),
 });
 
 // Route tree
