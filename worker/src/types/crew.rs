@@ -17,6 +17,8 @@ pub struct Crew {
     pub is_active: bool,
     /// Arrival buffer as percentage of preceding segment duration (default 10%)
     pub arrival_buffer_percent: f64,
+    /// Fixed arrival buffer in minutes added on top of percentage buffer (default 0)
+    pub arrival_buffer_fixed_minutes: f64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -33,6 +35,8 @@ pub struct CreateCrewRequest {
     pub working_hours_end: Option<NaiveTime>,
     /// Arrival buffer as percentage of preceding segment duration (default 10%)
     pub arrival_buffer_percent: Option<f64>,
+    /// Fixed arrival buffer in minutes added on top of percentage buffer (default 0)
+    pub arrival_buffer_fixed_minutes: Option<f64>,
 }
 
 /// Request to update an existing crew
@@ -48,6 +52,8 @@ pub struct UpdateCrewRequest {
     pub is_active: Option<bool>,
     /// Arrival buffer as percentage of preceding segment duration
     pub arrival_buffer_percent: Option<f64>,
+    /// Fixed arrival buffer in minutes added on top of percentage buffer
+    pub arrival_buffer_fixed_minutes: Option<f64>,
 }
 
 /// Request to list crews
@@ -106,6 +112,7 @@ mod tests {
             working_hours_end: NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
             is_active: true,
             arrival_buffer_percent: 10.0,
+            arrival_buffer_fixed_minutes: 0.0,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
@@ -151,11 +158,13 @@ mod tests {
             working_hours_end: NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
             is_active: true,
             arrival_buffer_percent: 12.5,
+            arrival_buffer_fixed_minutes: 5.0,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
         let json = serde_json::to_string(&crew).unwrap();
         assert!(json.contains("\"arrivalBufferPercent\":12.5"));
+        assert!(json.contains("\"arrivalBufferFixedMinutes\":5.0"));
     }
 
     #[test]
@@ -192,6 +201,7 @@ mod tests {
             working_hours_end: NaiveTime::from_hms_opt(17, 0, 0).unwrap(),
             is_active: true,
             arrival_buffer_percent: 10.0,
+            arrival_buffer_fixed_minutes: 0.0,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };

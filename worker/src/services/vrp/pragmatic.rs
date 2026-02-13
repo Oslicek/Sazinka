@@ -32,6 +32,7 @@ pub fn solve_pragmatic(
         date,
         Some(matrices),
         config.arrival_buffer_percent,
+        config.arrival_buffer_fixed_minutes,
     );
     let problem_format: Problem = serde_json::from_value(problem_json)
         .context("Failed to deserialize pragmatic problem")?;

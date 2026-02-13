@@ -252,7 +252,8 @@ impl JobProcessor {
         };
 
         let arrival_buffer_percent = crew.as_ref().map(|c| c.arrival_buffer_percent).unwrap_or(10.0);
-        let solver = VrpSolver::new(SolverConfig::with_buffer(5, 500, arrival_buffer_percent));
+        let arrival_buffer_fixed_minutes = crew.as_ref().map(|c| c.arrival_buffer_fixed_minutes).unwrap_or(0.0);
+        let solver = VrpSolver::new(SolverConfig::with_buffer(5, 500, arrival_buffer_percent, arrival_buffer_fixed_minutes));
         
         // Validate request
         if request.customer_ids.is_empty() {

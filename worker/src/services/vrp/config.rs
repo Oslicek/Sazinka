@@ -10,6 +10,8 @@ pub struct SolverConfig {
     /// Arrival buffer as percentage of preceding segment duration (0-100)
     /// e.g. 10.0 means arrive 10% of segment duration before window start
     pub arrival_buffer_percent: f64,
+    /// Fixed arrival buffer in minutes added on top of percentage buffer (default 0)
+    pub arrival_buffer_fixed_minutes: f64,
 }
 
 impl Default for SolverConfig {
@@ -18,6 +20,7 @@ impl Default for SolverConfig {
             max_time_seconds: 30,
             max_generations: 3000,
             arrival_buffer_percent: 10.0,
+            arrival_buffer_fixed_minutes: 0.0,
         }
     }
 }
@@ -29,15 +32,22 @@ impl SolverConfig {
             max_time_seconds,
             max_generations,
             arrival_buffer_percent: 10.0,
+            arrival_buffer_fixed_minutes: 0.0,
         }
     }
 
     /// Create config with all values including buffer
-    pub fn with_buffer(max_time_seconds: u32, max_generations: usize, arrival_buffer_percent: f64) -> Self {
+    pub fn with_buffer(
+        max_time_seconds: u32,
+        max_generations: usize,
+        arrival_buffer_percent: f64,
+        arrival_buffer_fixed_minutes: f64,
+    ) -> Self {
         Self {
             max_time_seconds,
             max_generations,
             arrival_buffer_percent,
+            arrival_buffer_fixed_minutes,
         }
     }
 
@@ -49,6 +59,7 @@ impl SolverConfig {
             max_time_seconds: 5,
             max_generations: 500,
             arrival_buffer_percent: 10.0,
+            arrival_buffer_fixed_minutes: 0.0,
         }
     }
 
@@ -60,6 +71,7 @@ impl SolverConfig {
             max_time_seconds: 60,
             max_generations: 10000,
             arrival_buffer_percent: 10.0,
+            arrival_buffer_fixed_minutes: 0.0,
         }
     }
 
@@ -71,6 +83,7 @@ impl SolverConfig {
             max_time_seconds: 2,
             max_generations: 200,
             arrival_buffer_percent: 10.0,
+            arrival_buffer_fixed_minutes: 0.0,
         }
     }
 }
@@ -122,9 +135,10 @@ mod tests {
 
     #[test]
     fn test_with_buffer_config() {
-        let config = SolverConfig::with_buffer(10, 1000, 15.0);
+        let config = SolverConfig::with_buffer(10, 1000, 15.0, 5.0);
         assert_eq!(config.max_time_seconds, 10);
         assert_eq!(config.max_generations, 1000);
         assert!((config.arrival_buffer_percent - 15.0).abs() < f64::EPSILON);
+        assert!((config.arrival_buffer_fixed_minutes - 5.0).abs() < f64::EPSILON);
     }
 }

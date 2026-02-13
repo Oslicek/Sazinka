@@ -1234,6 +1234,7 @@ function CrewsManager({ crews, onUpdate }: CrewsManagerProps) {
       await crewService.createCrew({
         name: data.name,
         arrivalBufferPercent: data.arrivalBufferPercent,
+        arrivalBufferFixedMinutes: data.arrivalBufferFixedMinutes,
         workingHoursStart: data.workingHoursStart,
         workingHoursEnd: data.workingHoursEnd,
       });
@@ -1257,6 +1258,7 @@ function CrewsManager({ crews, onUpdate }: CrewsManagerProps) {
         id: editingCrew.id,
         name: data.name,
         arrivalBufferPercent: data.arrivalBufferPercent,
+        arrivalBufferFixedMinutes: data.arrivalBufferFixedMinutes,
         workingHoursStart: data.workingHoursStart,
         workingHoursEnd: data.workingHoursEnd,
       });
@@ -1311,7 +1313,7 @@ function CrewsManager({ crews, onUpdate }: CrewsManagerProps) {
                 <small>
                   {crew.workingHoursStart?.slice(0, 5) || '08:00'}–{crew.workingHoursEnd?.slice(0, 5) || '17:00'}
                   {' · '}
-                  Rezerva {crew.arrivalBufferPercent ?? 10} %
+                  Rezerva {crew.arrivalBufferPercent ?? 10} %{(crew.arrivalBufferFixedMinutes ?? 0) > 0 ? ` + ${crew.arrivalBufferFixedMinutes} min` : ''}
                 </small>
               </div>
               <div className={styles.depotActions}>
@@ -1379,6 +1381,7 @@ function CrewsManager({ crews, onUpdate }: CrewsManagerProps) {
 interface CrewFormData {
   name: string;
   arrivalBufferPercent: number;
+  arrivalBufferFixedMinutes: number;
   workingHoursStart: string;
   workingHoursEnd: string;
 }
@@ -1394,6 +1397,7 @@ function CrewForm({ crew, saving, onSave, onCancel }: CrewFormProps) {
   const [formData, setFormData] = useState<CrewFormData>({
     name: crew?.name || '',
     arrivalBufferPercent: crew?.arrivalBufferPercent ?? 10,
+    arrivalBufferFixedMinutes: crew?.arrivalBufferFixedMinutes ?? 0,
     workingHoursStart: crew?.workingHoursStart || '08:00:00',
     workingHoursEnd: crew?.workingHoursEnd || '17:00:00',
   });
@@ -1454,6 +1458,23 @@ function CrewForm({ crew, saving, onSave, onCancel }: CrewFormProps) {
         <p className={styles.bufferHint}>
           Procento doby přejezdu, o které posádka přijede dříve před naplánovaným oknem.
           Např. 10 % z 60minutového přejezdu = příjezd 6 minut před oknem.
+        </p>
+      </div>
+
+      <div className={styles.formGroup}>
+        <label htmlFor="crewBufferFixed">Fixní rezerva příjezdu (min)</label>
+        <input
+          type="number"
+          id="crewBufferFixed"
+          value={formData.arrivalBufferFixedMinutes}
+          onChange={(e) => setFormData({ ...formData, arrivalBufferFixedMinutes: parseFloat(e.target.value) || 0 })}
+          min={0}
+          max={120}
+          step={1}
+        />
+        <p className={styles.bufferHint}>
+          Pevná časová rezerva v minutách přidaná ke každému přejezdu navíc k procentuální rezervě.
+          Celková rezerva = (přejezd × procento) + fixní minuty.
         </p>
       </div>
       

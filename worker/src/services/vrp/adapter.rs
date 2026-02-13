@@ -29,24 +29,32 @@ fn avg_travel_time_to(matrices: &DistanceTimeMatrices, target_index: usize) -> u
     if count > 0 { sum / count } else { 0 }
 }
 
-/// Shift a time window start earlier by `buffer_percent` of the estimated segment duration.
+/// Shift a time window start earlier by `buffer_percent` of the estimated segment duration
+/// plus `buffer_fixed_minutes` of fixed time.
 /// Returns a new StopTimeWindow with adjusted start.
 /// The end is kept as-is (hard deadline).
 fn apply_arrival_buffer(
     window: &StopTimeWindow,
     avg_segment_seconds: u64,
     buffer_percent: f64,
+    buffer_fixed_minutes: f64,
 ) -> StopTimeWindow {
     // Skip buffer for point windows (start == end): these represent scheduled
     // visits where service must start at exactly the agreed time.
-    if buffer_percent <= 0.0 || avg_segment_seconds == 0 || !window.is_hard
-        || window.start == window.end
-    {
+    let has_percent = buffer_percent > 0.0 && avg_segment_seconds > 0;
+    let has_fixed = buffer_fixed_minutes > 0.0;
+    if (!has_percent && !has_fixed) || !window.is_hard || window.start == window.end {
         return window.clone();
     }
-    let buffer_seconds = (avg_segment_seconds as f64 * buffer_percent / 100.0).round() as i64;
+    let percent_buffer_secs = if has_percent {
+        (avg_segment_seconds as f64 * buffer_percent / 100.0).round() as i64
+    } else {
+        0
+    };
+    let fixed_buffer_secs = (buffer_fixed_minutes * 60.0).round() as i64;
+    let total_buffer_secs = percent_buffer_secs + fixed_buffer_secs;
     let start_total_secs = window.start.num_seconds_from_midnight() as i64;
-    let new_start_secs = (start_total_secs - buffer_seconds).max(0) as u32;
+    let new_start_secs = (start_total_secs - total_buffer_secs).max(0) as u32;
     StopTimeWindow {
         start: NaiveTime::from_num_seconds_from_midnight_opt(new_start_secs, 0)
             .unwrap_or(window.start),
@@ -62,17 +70,19 @@ pub fn build_pragmatic_problem(
     problem: &VrpProblem,
     date: NaiveDate,
 ) -> Value {
-    build_pragmatic_problem_with_buffer(problem, date, None, 0.0)
+    build_pragmatic_problem_with_buffer(problem, date, None, 0.0, 0.0)
 }
 
 /// Build pragmatic problem JSON with buffer support.
 /// `matrices`: if provided, used to estimate segment durations for buffer calculation.
 /// `buffer_percent`: percentage of segment duration to arrive early (0 = no buffer).
+/// `buffer_fixed_minutes`: fixed minutes to arrive early on top of percentage (0 = no fixed buffer).
 pub fn build_pragmatic_problem_with_buffer(
     problem: &VrpProblem,
     date: NaiveDate,
     matrices: Option<&DistanceTimeMatrices>,
     buffer_percent: f64,
+    buffer_fixed_minutes: f64,
 ) -> Value {
     let jobs: Vec<Value> = problem
         .stops
@@ -86,11 +96,11 @@ pub fn build_pragmatic_problem_with_buffer(
 
             let place = match &stop.time_window {
                 Some(window) => {
-                    // Apply buffer if matrices are available and buffer > 0
+                    // Apply buffer if matrices are available and any buffer > 0
                     let adjusted = if let Some(m) = matrices {
-                        if buffer_percent > 0.0 && window.is_hard {
+                        if (buffer_percent > 0.0 || buffer_fixed_minutes > 0.0) && window.is_hard {
                             let avg_secs = avg_travel_time_to(m, index + 1);
-                            apply_arrival_buffer(window, avg_secs, buffer_percent)
+                            apply_arrival_buffer(window, avg_secs, buffer_percent, buffer_fixed_minutes)
                         } else {
                             window.clone()
                         }
@@ -337,9 +347,37 @@ mod tests {
             is_hard: true,
         };
 
-        // 10% of 600s segment = 60s buffer
-        let adjusted = apply_arrival_buffer(&window, 600, 10.0);
+        // 10% of 600s segment = 60s buffer (no fixed)
+        let adjusted = apply_arrival_buffer(&window, 600, 10.0, 0.0);
         assert_eq!(adjusted.start, NaiveTime::from_hms_opt(9, 59, 0).unwrap());
+        assert_eq!(adjusted.end, NaiveTime::from_hms_opt(12, 0, 0).unwrap());
+    }
+
+    #[test]
+    fn apply_arrival_buffer_with_fixed_minutes() {
+        let window = StopTimeWindow {
+            start: NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
+            end: NaiveTime::from_hms_opt(12, 0, 0).unwrap(),
+            is_hard: true,
+        };
+
+        // 10% of 600s = 60s + 5 min fixed = 360s → total 360s = 6 min
+        let adjusted = apply_arrival_buffer(&window, 600, 10.0, 5.0);
+        assert_eq!(adjusted.start, NaiveTime::from_hms_opt(9, 54, 0).unwrap());
+        assert_eq!(adjusted.end, NaiveTime::from_hms_opt(12, 0, 0).unwrap());
+    }
+
+    #[test]
+    fn apply_arrival_buffer_fixed_only() {
+        let window = StopTimeWindow {
+            start: NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
+            end: NaiveTime::from_hms_opt(12, 0, 0).unwrap(),
+            is_hard: true,
+        };
+
+        // 0% + 10 min fixed = 600s
+        let adjusted = apply_arrival_buffer(&window, 600, 0.0, 10.0);
+        assert_eq!(adjusted.start, NaiveTime::from_hms_opt(9, 50, 0).unwrap());
         assert_eq!(adjusted.end, NaiveTime::from_hms_opt(12, 0, 0).unwrap());
     }
 
@@ -352,7 +390,7 @@ mod tests {
         };
 
         // 50% of 3600s = 1800s buffer, but start is only 30s from midnight
-        let adjusted = apply_arrival_buffer(&window, 3600, 50.0);
+        let adjusted = apply_arrival_buffer(&window, 3600, 50.0, 0.0);
         assert_eq!(adjusted.start, NaiveTime::from_hms_opt(0, 0, 0).unwrap());
     }
 
@@ -364,20 +402,20 @@ mod tests {
             is_hard: false,
         };
 
-        let adjusted = apply_arrival_buffer(&window, 600, 10.0);
+        let adjusted = apply_arrival_buffer(&window, 600, 10.0, 0.0);
         // Soft windows are not shifted
         assert_eq!(adjusted.start, window.start);
     }
 
     #[test]
-    fn apply_arrival_buffer_noop_for_zero_percent() {
+    fn apply_arrival_buffer_noop_for_zero_both() {
         let window = StopTimeWindow {
             start: NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
             end: NaiveTime::from_hms_opt(12, 0, 0).unwrap(),
             is_hard: true,
         };
 
-        let adjusted = apply_arrival_buffer(&window, 600, 0.0);
+        let adjusted = apply_arrival_buffer(&window, 600, 0.0, 0.0);
         assert_eq!(adjusted.start, window.start);
     }
 
@@ -403,7 +441,7 @@ mod tests {
 
         // 10% buffer: avg to stop-1 = (3600+5400)/2=4500s, 10% = 450s = 7min30s
         // Original window: 10:00-12:00 → Shifted to 09:52:30-12:00
-        let json = build_pragmatic_problem_with_buffer(&problem, date, Some(&matrices), 10.0);
+        let json = build_pragmatic_problem_with_buffer(&problem, date, Some(&matrices), 10.0, 0.0);
         let place = &json["plan"]["jobs"][0]["services"][0]["places"][0];
         let times = place["times"].as_array().unwrap();
         let start_str = times[0][0].as_str().unwrap();
@@ -423,7 +461,7 @@ mod tests {
             is_hard: true,
         };
 
-        let adjusted = apply_arrival_buffer(&window, 3600, 10.0);
+        let adjusted = apply_arrival_buffer(&window, 3600, 10.0, 5.0);
         // Must remain unchanged despite non-zero buffer
         assert_eq!(adjusted.start, NaiveTime::from_hms_opt(10, 0, 0).unwrap());
         assert_eq!(adjusted.end, NaiveTime::from_hms_opt(10, 0, 0).unwrap());
