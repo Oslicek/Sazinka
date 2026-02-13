@@ -100,11 +100,11 @@ export function CapacityMetrics({ metrics, showTooltips = true }: CapacityMetric
 
       <div 
         className={`${styles.metric} ${styles[slackStatus]}`}
-        title={showTooltips ? 'Nejmenší rezerva mezi návštěvami vzhledem k časovým oknům' : undefined}
+        title={showTooltips ? 'Volný čas = pracovní doba - (jízda + servis)' : undefined}
       >
-        <span className={styles.label}>rezerva</span>
+        <span className={styles.label}>volný čas</span>
         <span className={styles.value}>
-          {Math.round(metrics.slackMin)} min
+          {formatDuration(metrics.slackMin)}
           <span className={styles.statusIcon}>{getStatusIcon(slackStatus)}</span>
         </span>
       </div>
