@@ -173,7 +173,7 @@ export function CandidateRow({
           <span className={styles.warning} title="Chybí telefon">📵</span>
         )}
         {!candidate.hasValidAddress && (
-          <span className={styles.warning} title="Nelze geolokalizovat">📍</span>
+          <span className={`${styles.warning} ${styles.noGeo}`} title="Adresu nelze najít na mapě">📍</span>
         )}
       </div>
     </button>

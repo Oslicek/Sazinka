@@ -225,6 +225,17 @@
   cursor: help;
 }
 
+.warning.noGeo {
+  opacity: 1;
+  color: var(--color-error, #ef4444);
+  font-weight: 700;
+  font-size: 1rem;
+  position: relative;
+  text-decoration: line-through;
+  text-decoration-color: var(--color-error, #ef4444);
+  text-decoration-thickness: 2px;
+}
+
 /* Keyboard focus */
 .row:focus {
   outline: 2px solid var(--color-primary);

@@ -25,6 +25,8 @@ export interface CandidateDetailData {
   scheduledDate?: string;
   scheduledTimeStart?: string;
   scheduledTimeEnd?: string;
+  /** Whether the candidate has valid geocoded coordinates */
+  hasCoordinates?: boolean;
 }
 
 export type SnoozeDuration = 1 | 7 | 14 | 30;
@@ -350,6 +352,12 @@ export function CandidateDetail({
       {/* Adresa */}
       <section className={styles.section}>
         <h4 className={styles.sectionTitle}>Adresa</h4>
+        {candidate.hasCoordinates === false && (
+          <div className={styles.geocodeError}>
+            <span className={styles.geocodeErrorIcon}>📍</span>
+            Adresu nelze najít na mapě
+          </div>
+        )}
         <p className={styles.address}>{candidate.street}</p>
         <p className={styles.address}>
           {candidate.postalCode && `${candidate.postalCode} `}{candidate.city}

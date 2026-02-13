@@ -131,7 +131,7 @@ export function PlanningInbox() {
   
   // Route context state
   const [context, setContext] = useState<RouteContext | null>(null);
-  const [isRouteAware, setIsRouteAware] = useState(true);
+  const isRouteAware = true;
   const [crews, setCrews] = useState<crewService.Crew[]>([]);
   const [depots, setDepots] = useState<Depot[]>([]);
   const [defaultServiceDurationMinutes, setDefaultServiceDurationMinutes] = useState(30);
@@ -743,6 +743,7 @@ export function PlanningInbox() {
         scheduledDate: selectedCandidate._scheduledDate,
         scheduledTimeStart: selectedCandidate._scheduledTimeStart,
         scheduledTimeEnd: selectedCandidate._scheduledTimeEnd,
+        hasCoordinates: !!(selectedCandidate.customerLat && selectedCandidate.customerLng),
       };
     }
 
@@ -2293,6 +2294,7 @@ export function PlanningInbox() {
         )}
         {mapMode !== 'fullscreen' && (
         <div className={styles.routeStopSection}>
+          {contextSelectorsJsx}
           <div className={styles.timelineHeader}>
             <TimelineViewToggle value={timelineView} onChange={setTimelineView} />
           </div>
@@ -2418,75 +2420,64 @@ export function PlanningInbox() {
     </div>
   );
 
+  // Context selectors JSX for the right column
+  const contextSelectorsJsx = (
+    <div className={styles.contextSelectorsRow}>
+      <div className={styles.selector}>
+        <label htmlFor="route-date">Den</label>
+        <input
+          id="route-date"
+          type="date"
+          value={context?.date ?? ''}
+          onChange={(e) => handleDateChange(e.target.value)}
+          className={styles.dateInput}
+        />
+      </div>
+
+      <div className={styles.selector}>
+        <label htmlFor="route-crew">Posádka</label>
+        <select
+          id="route-crew"
+          value={context?.crewId ?? ''}
+          onChange={(e) => handleCrewChange(e.target.value)}
+          className={styles.select}
+        >
+          <option value="">Vyberte posádku</option>
+          {crews.map((crew) => (
+            <option key={crew.id} value={crew.id}>{crew.name}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className={styles.selector}>
+        <label htmlFor="route-depot">Depo</label>
+        <select
+          id="route-depot"
+          value={context?.depotId ?? ''}
+          onChange={(e) => handleDepotChange(e.target.value)}
+          className={styles.select}
+        >
+          <option value="">Vyberte depo</option>
+          {depots.map((d) => (
+            <option key={d.id} value={d.id}>{d.name}</option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+
   return (
     <div className={styles.page}>
       <header className={styles.header}>
         <h1 className={styles.title}>Plánovací inbox</h1>
-        
-        <div className={styles.contextSelectors}>
-          <div className={styles.selector}>
-            <label htmlFor="route-date">Den</label>
-            <input
-              id="route-date"
-              type="date"
-              value={context?.date ?? ''}
-              onChange={(e) => handleDateChange(e.target.value)}
-              className={styles.dateInput}
-            />
-          </div>
-
-          <div className={styles.selector}>
-            <label htmlFor="route-crew">Posádka</label>
-            <select
-              id="route-crew"
-              value={context?.crewId ?? ''}
-              onChange={(e) => handleCrewChange(e.target.value)}
-              className={styles.select}
-            >
-              <option value="">Vyberte posádku</option>
-              {crews.map((crew) => (
-                <option key={crew.id} value={crew.id}>{crew.name}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className={styles.selector}>
-            <label htmlFor="route-depot">Depo</label>
-            <select
-              id="route-depot"
-              value={context?.depotId ?? ''}
-              onChange={(e) => handleDepotChange(e.target.value)}
-              className={styles.select}
-            >
-              <option value="">Vyberte depo</option>
-              {depots.map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className={styles.routeAwareToggle}>
-            <label className={styles.toggleLabel}>
-              <input
-                type="checkbox"
-                checked={isRouteAware}
-                onChange={(e) => setIsRouteAware(e.target.checked)}
-                className={styles.toggleInput}
-              />
-              <span className={styles.toggleSwitch} />
-              <span className={styles.toggleText}>Route-aware</span>
-            </label>
-          </div>
-        </div>
+        <DraftModeBar
+          hasChanges={hasChanges}
+          isSaving={isSaving}
+          lastSaved={lastSaved}
+          saveError={saveError}
+          onRetry={retrySave}
+        />
       </header>
-      
-      <DraftModeBar
-        hasChanges={hasChanges}
-        isSaving={isSaving}
-        lastSaved={lastSaved}
-        saveError={saveError}
-        onRetry={retrySave}
-      />
       {isBreakManuallyAdjusted && breakWarnings.length > 0 && (
         <div className={styles.breakWarnings}>
           {breakWarnings.map((warning, index) => (

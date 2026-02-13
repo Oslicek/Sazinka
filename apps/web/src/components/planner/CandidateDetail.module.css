@@ -560,6 +560,14 @@
   margin-right: 0.25rem;
 }
 
+/* Geocode error */
+.geocodeError {
+  color: var(--color-error, #ef4444);
+  font-weight: 700;
+  font-size: 0.9375rem;
+  margin: 0 0 0.5rem 0;
+}
+
 /* Mobile */
 @media (max-width: 600px) {
   .shortcuts {
