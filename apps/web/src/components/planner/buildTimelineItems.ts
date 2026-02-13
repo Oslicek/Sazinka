@@ -38,6 +38,12 @@ export interface TimelineItem {
   lateArrivalMinutes?: number;
   /** The actual arrival time (HH:MM) when different from scheduled start. */
   actualArrivalTime?: string;
+  /** Full agreed window start for flexible stops (HH:MM). */
+  agreedWindowStart?: string;
+  /** Full agreed window end for flexible stops (HH:MM). */
+  agreedWindowEnd?: string;
+  /** Full agreed window duration in minutes for flexible stops. */
+  agreedWindowDurationMinutes?: number;
 }
 
 export interface ReturnToDepotInfo {
@@ -172,6 +178,16 @@ export function buildTimelineItems(
     const stopEnd = departureMin
       ?? (isBreak && stop.breakDurationMinutes ? stopStart + stop.breakDurationMinutes : stopStart);
     const stopDuration = Math.max(0, stopEnd - stopStart);
+    const scheduledEndMin = stop.scheduledTimeEnd ? parseHm(stop.scheduledTimeEnd) : null;
+    const windowDuration = scheduledStartMin != null && scheduledEndMin != null
+      ? scheduledEndMin - scheduledStartMin
+      : null;
+    const isFlexibleWindow = stop.stopType === 'customer'
+      && stop.serviceDurationMinutes != null
+      && stop.serviceDurationMinutes > 0
+      && windowDuration != null
+      && windowDuration > 0
+      && stop.serviceDurationMinutes < windowDuration;
 
     items.push({
       type: isBreak ? 'break' : 'stop',
@@ -182,6 +198,9 @@ export function buildTimelineItems(
       stop,
       lateArrivalMinutes,
       actualArrivalTime,
+      agreedWindowStart: isFlexibleWindow ? normalise(stop.scheduledTimeStart) ?? undefined : undefined,
+      agreedWindowEnd: isFlexibleWindow ? normalise(stop.scheduledTimeEnd) ?? undefined : undefined,
+      agreedWindowDurationMinutes: isFlexibleWindow ? windowDuration ?? undefined : undefined,
     });
 
     cursor = stopEnd;

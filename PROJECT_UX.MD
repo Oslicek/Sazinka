@@ -1,8 +1,8 @@
 # Sazinka - Workflow & UI Koncept
 
-> **Status:** MVP kompletní + Phase 9 (Planner redesign) + sjednocení komponent + Smart Slot Heuristics (multi-crew, Valhalla) + Auto-recalculation + Chronological insertion & break constraints + Routing accuracy fixes + Timeline UX improvements  
-> **Verze:** 0.8.4  
-> **Datum:** 2026-02-12
+> **Status:** MVP kompletní + Phase 9 (Planner redesign) + sjednocení komponent + Smart Slot Heuristics (multi-crew, Valhalla) + Auto-recalculation + Chronological insertion & break constraints + Routing accuracy fixes + Timeline UX improvements + Flexible time windows + Client detail redesign  
+> **Verze:** 0.9.1  
+> **Datum:** 2026-02-13
 > 
 > **Implementováno:**
 > - ✅ Fronta k obvolání (`/queue`) - filtry, statistiky, akce
@@ -32,6 +32,8 @@
 > - ✅ **Timeline height halved + hourly labels** — výška plánovací timeline snížena na polovinu (`PIXELS_PER_MINUTE: 1.25`), vlevo přidány hodinové značky
 > - ✅ **Collapsible/expandable map** — mapa v Inboxu lze sbalit (zobrazit jen timeline) nebo rozbalit na celou stránku
 > - ✅ **Insertion preview deduplication** — opravena duplicitní vizualizace návrhu vložení kandidáta, kdy break rozdělující mezeru vytvářel dva náhledy místo jednoho; `insertAfterIndex` se přiřazuje jen mezerám před customer stopy
+> - ✅ **Flexible time windows** — rozlišení mezi domluveným časovým oknem (např. 08:00-12:00) a potřebným časem návštěvy (např. 1 hodina). Dispečer nastaví "Potřebný čas" v detailu zákazníka pod "Domluvený termín", solver umístí zastávku optimálně v rámci okna. Timeline zobrazuje okno jako světle modré pozadí za zastávkou s popiskem "Okno HH:MM - HH:MM". Backend scheduler i VRP solver respektují flexibilní okna. Backward-compatible: zastávky bez explicitního `serviceDurationMinutes` nebo kde `serviceDuration >= windowLength` zůstávají "pinned" (původní chování).
+> - ✅ **Client detail layout redesign** — přechod z dvousloupcového na jednosloupcový layout pro lepší čitelnost a využití prostoru. Sekce nyní v pořadí: Domluvený termín (s inline service duration inputem pro flexibilní okna), Revize nejpozději, Kontakt, Adresa, Poznámky. Akční tlačítka (Domluvit termín, Přidat do trasy, Odložit) přesunuty na konec. Odstraněn `window.prompt()` pro zadání potřebného času - nyní inline UI komponenta.
 > 
 > **Změny v navigaci:**
 > - `/planner` → "Plán dne" (sloučeno Plánování + Můj den)
@@ -1594,4 +1596,4 @@ Inbox je prázdný – na tento den nejsou žádné položky k domluvení.
 ---
 
 *Dokument vytvořen: 2026-01-31*  
-*Poslední aktualizace: 2026-02-12 (Routing accuracy, break chronological placement, timeline UX improvements, insertion preview dedup)*
+*Poslední aktualizace: 2026-02-13 (Flexible time windows, client detail redesign)*

@@ -1272,6 +1272,9 @@ export function PlanningInbox() {
     });
   }, []);
 
+  // For batch insertion, use default service duration (no per-candidate override)
+  // For single-candidate insertion from detail panel, the override comes via handleAddToRoute arg.
+
   // Route building: add selected candidates to route
   const handleAddSelectedToRoute = useCallback(() => {
     if (selectedIds.size === 0) return;
@@ -1306,6 +1309,7 @@ export function PlanningInbox() {
         scheduledDate: candidate._scheduledDate ?? candidate.scheduledDate ?? null,
         scheduledTimeStart: candidate._scheduledTimeStart ?? candidate.scheduledTimeStart ?? null,
         scheduledTimeEnd: candidate._scheduledTimeEnd ?? candidate.scheduledTimeEnd ?? null,
+        serviceDurationMinutes: defaultServiceDurationMinutes,
         revisionStatus: candidate.status ?? null,
       });
     });
@@ -1379,13 +1383,14 @@ export function PlanningInbox() {
         return current; // no mutation, just read
       });
     }
-  }, [selectedIds, inRouteIds, candidates, routeStops.length, breakSettings, context, enforceDrivingBreakRule, incrementRouteVersion, triggerRecalculate, currentDepot]);
+  }, [selectedIds, inRouteIds, candidates, routeStops.length, breakSettings, context, enforceDrivingBreakRule, incrementRouteVersion, triggerRecalculate, currentDepot, defaultServiceDurationMinutes]);
 
   // Route building: add single candidate from detail panel
-  const handleAddToRoute = useCallback((candidateId: string, insertAfterIndex?: number) => {
+  const handleAddToRoute = useCallback((candidateId: string, serviceDurationOverride?: number, insertAfterIndex?: number) => {
     const candidate = candidates.find((c) => c.id === candidateId || c.customerId === candidateId);
     if (!candidate || !candidate.customerLat || !candidate.customerLng) return;
     if (inRouteIds.has(candidate.customerId)) return;
+    const resolvedServiceDurationMinutes = serviceDurationOverride ?? defaultServiceDurationMinutes;
 
     const newStop: SavedRouteStop = {
       id: crypto.randomUUID(), // Generate new UUID for route_stop
@@ -1409,6 +1414,7 @@ export function PlanningInbox() {
       scheduledDate: candidate._scheduledDate ?? candidate.scheduledDate ?? null,
       scheduledTimeStart: candidate._scheduledTimeStart ?? candidate.scheduledTimeStart ?? null,
       scheduledTimeEnd: candidate._scheduledTimeEnd ?? candidate.scheduledTimeEnd ?? null,
+      serviceDurationMinutes: resolvedServiceDurationMinutes,
       revisionStatus: candidate.status ?? null,
     };
 
@@ -1483,7 +1489,7 @@ export function PlanningInbox() {
         pendingRecalcStopsRef.current = finalStops;
       }
     }
-  }, [candidates, inRouteIds, routeStops.length, breakSettings, enforceDrivingBreakRule, incrementRouteVersion, triggerRecalculate, routeStartTime, currentDepot]);
+  }, [candidates, inRouteIds, routeStops.length, breakSettings, enforceDrivingBreakRule, incrementRouteVersion, triggerRecalculate, routeStartTime, currentDepot, defaultServiceDurationMinutes]);
 
   // Route building: reorder stops via drag-and-drop
   const handleReorder = useCallback((newStops: SavedRouteStop[]) => {
@@ -2386,7 +2392,9 @@ export function PlanningInbox() {
           onSnooze={handleSnooze}
           onFixAddress={handleFixAddress}
           isLoading={isCalculatingSlots}
-          onAddToRoute={handleAddToRoute}
+          onAddToRoute={(candidateId, serviceDurationMinutes) =>
+            handleAddToRoute(candidateId, serviceDurationMinutes)
+          }
           onRemoveFromRoute={handleRemoveFromRoute}
           isInRoute={selectedCandidateId ? inRouteIds.has(selectedCandidateId) : false}
           routeDate={context?.date}

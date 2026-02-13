@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-02-10 (v0.19.0 - Smart Slot Heuristics: multi-crew Valhalla-backed suggestion + validation)
+> **Last Updated:** 2026-02-13 (v0.19.1 - Flexible time windows + client detail redesign)
 
 ## Overview
 

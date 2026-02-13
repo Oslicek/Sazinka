@@ -94,9 +94,12 @@ fn time_to_minutes(t: NaiveTime) -> i32 {
 /// Compute a sequential schedule for the given route.
 ///
 /// **Scheduling rules:**
-/// 1. Scheduled (agreed) stops are **pinned**: arrival = `scheduled_time_start`,
-///    departure = `scheduled_time_end`. The crew must arrive exactly at the
-///    agreed start and leaves immediately at the agreed end.
+/// 1. Scheduled stops support two modes:
+///    - **Pinned mode** (default/backward-compatible): arrival is
+///      `scheduled_time_start`, departure is `scheduled_time_end`.
+///    - **Flexible mode**: when `service_duration_minutes` is explicitly set and
+///      shorter than `(scheduled_time_end - scheduled_time_start)`, arrival is
+///      placed as early as possible within the agreed window after travel.
 /// 2. Depot departure is calculated **backward** from the first stop:
 ///    `depot_departure = first_arrival - travel_time_to_first_stop`.
 ///    If the first stop is not scheduled, depot departure = `workday_start`.
@@ -159,17 +162,6 @@ pub fn compute_sequential_schedule(
             (d, t, (t as f64 / 60.0).ceil() as i32)
         };
 
-        let earliest_arrival = add_minutes(cursor, travel_min);
-
-        // For scheduled (agreed) stops, ALWAYS pin arrival to the agreed
-        // start time. This is a commitment to the customer — even if the
-        // crew physically arrives later, the schedule shows the agreed time.
-        // For unscheduled stops, arrive as soon as travel allows.
-        let arrival = match stop.scheduled_time_start {
-            Some(sched) => sched,
-            None => earliest_arrival,
-        };
-
         // Service duration for this stop.
         let service_min = match stop.stop_type {
             StopType::Break => stop.break_duration_minutes.unwrap_or(30),
@@ -188,13 +180,54 @@ pub fn compute_sequential_schedule(
             }
         };
 
-        // For stops with an agreed/scheduled end, ALWAYS pin departure to
-        // that time. For customer stops this is the committed time with the
-        // customer; for break stops it's the calculated break-window end.
-        // For unscheduled stops, departure = arrival + service.
-        let departure = match stop.scheduled_time_end {
-            Some(sched_end) => sched_end,
-            None => add_minutes(arrival, service_min),
+        let earliest_arrival = add_minutes(cursor, travel_min);
+
+        // Flexible customer windows:
+        // - explicit service duration is set
+        // - both agreed start/end exist
+        // - service is shorter than the full window
+        let window_info = match (stop.scheduled_time_start, stop.scheduled_time_end) {
+            (Some(start), Some(end)) => {
+                let window_len = time_to_minutes(end) - time_to_minutes(start);
+                Some((start, end, window_len))
+            }
+            _ => None,
+        };
+
+        let is_flexible_customer_window = stop.stop_type == StopType::Customer
+            && stop.service_duration_minutes.is_some()
+            && window_info
+                .map(|(_, _, len)| len > 0 && service_min > 0 && service_min < len)
+                .unwrap_or(false);
+
+        // Arrival/departure computation:
+        // - Flexible scheduled customer: place as early as possible after travel
+        //   but not before window start; keep departure within window when possible.
+        // - Otherwise keep legacy pinned behavior for scheduled end/start.
+        let (arrival, departure) = if is_flexible_customer_window {
+            let (window_start, window_end, _) = window_info.expect("validated above");
+            let latest_start = add_minutes(window_end, -service_min);
+            let arrival = if earliest_arrival <= window_start {
+                window_start
+            } else if earliest_arrival <= latest_start {
+                earliest_arrival
+            } else {
+                // Infeasible due to late travel; keep physical arrival so caller can
+                // detect/visualize this conflict.
+                earliest_arrival
+            };
+            let departure = add_minutes(arrival, service_min);
+            (arrival, departure)
+        } else {
+            let arrival = match stop.scheduled_time_start {
+                Some(sched) => sched,
+                None => earliest_arrival,
+            };
+            let departure = match stop.scheduled_time_end {
+                Some(sched_end) => sched_end,
+                None => add_minutes(arrival, service_min),
+            };
+            (arrival, departure)
         };
 
         result_stops.push(ComputedStopSchedule {
@@ -533,13 +566,13 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // 8. Explicit service_duration_minutes — departure still pinned to
-    //    agreed end (which is always used for scheduled stops)
+    // 8. Explicit shorter service inside agreed window => flexible placement
     // -----------------------------------------------------------------------
     #[test]
-    fn explicit_service_duration_with_scheduled_end() {
-        // Scheduled 09:00–10:00, explicit service = 45 min.
-        // Departure is ALWAYS pinned to agreed end = 10:00.
+    fn explicit_shorter_service_uses_flexible_window() {
+        // Workday starts at 09:05, travel is 10 min, so physical earliest arrival
+        // is 09:15. Agreed window is 09:00-10:00, service is 45.
+        // Flexible mode => arrival 09:15, departure 10:00.
         let (dm, tm) = uniform_matrix(2, 5_000, 600);
 
         let input = ScheduleInput {
@@ -552,6 +585,34 @@ mod tests {
                 break_duration_minutes: None,
             }],
             stop_matrix_indices: vec![1],
+            workday_start: hm(9, 5),
+            default_service_minutes: 60,
+        };
+
+        let result = compute_sequential_schedule(&input, &dm, &tm);
+        let s = &result.stops[0];
+        assert_eq!(s.estimated_arrival, hm(9, 15));
+        assert_eq!(s.service_duration_minutes, 45);
+        assert_eq!(s.estimated_departure, hm(10, 0));
+    }
+
+    // -----------------------------------------------------------------------
+    // 8b. Explicit full-window service keeps pinned behavior
+    // -----------------------------------------------------------------------
+    #[test]
+    fn explicit_full_window_service_stays_pinned() {
+        let (dm, tm) = uniform_matrix(2, 5_000, 600);
+
+        let input = ScheduleInput {
+            depot_matrix_idx: 0,
+            stops: vec![ScheduleStop {
+                stop_type: StopType::Customer,
+                scheduled_time_start: Some(hm(9, 0)),
+                scheduled_time_end: Some(hm(10, 0)),
+                service_duration_minutes: Some(60),
+                break_duration_minutes: None,
+            }],
+            stop_matrix_indices: vec![1],
             workday_start: hm(7, 0),
             default_service_minutes: 60,
         };
@@ -559,9 +620,37 @@ mod tests {
         let result = compute_sequential_schedule(&input, &dm, &tm);
         let s = &result.stops[0];
         assert_eq!(s.estimated_arrival, hm(9, 0));
-        assert_eq!(s.service_duration_minutes, 45);
-        // Departure is always pinned to agreed end
         assert_eq!(s.estimated_departure, hm(10, 0));
+    }
+
+    // -----------------------------------------------------------------------
+    // 8c. Flexible window becomes infeasible when travel is too late
+    // -----------------------------------------------------------------------
+    #[test]
+    fn flexible_window_infeasible_when_arrival_after_latest_start() {
+        // Travel 50 minutes from depot, window 09:00-10:00, service 30.
+        // Latest feasible start is 09:30, physical earliest arrival is 09:50.
+        // We keep actual arrival/departure to expose conflict.
+        let (dm, tm) = uniform_matrix(2, 5_000, 3000);
+
+        let input = ScheduleInput {
+            depot_matrix_idx: 0,
+            stops: vec![ScheduleStop {
+                stop_type: StopType::Customer,
+                scheduled_time_start: Some(hm(9, 0)),
+                scheduled_time_end: Some(hm(10, 0)),
+                service_duration_minutes: Some(30),
+                break_duration_minutes: None,
+            }],
+            stop_matrix_indices: vec![1],
+            workday_start: hm(9, 0),
+            default_service_minutes: 60,
+        };
+
+        let result = compute_sequential_schedule(&input, &dm, &tm);
+        let s = &result.stops[0];
+        assert_eq!(s.estimated_arrival, hm(9, 50));
+        assert_eq!(s.estimated_departure, hm(10, 20));
     }
 
     // -----------------------------------------------------------------------

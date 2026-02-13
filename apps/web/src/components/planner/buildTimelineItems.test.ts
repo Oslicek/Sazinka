@@ -475,6 +475,60 @@ describe('buildTimelineItems', () => {
     expect(s2Item.lateArrivalMinutes).toBe(17);
   });
 
+  it('populates agreed window fields for flexible stops', () => {
+    const stops: SavedRouteStop[] = [
+      makeStop({
+        id: 'flex-1',
+        stopOrder: 1,
+        estimatedArrival: '09:30',
+        estimatedDeparture: '10:30',
+        scheduledTimeStart: '08:00',
+        scheduledTimeEnd: '12:00',
+        serviceDurationMinutes: 60,
+        durationFromPreviousMinutes: 30,
+      }),
+    ];
+    const items = buildTimelineItems(stops, '09:00', '16:00');
+    const stop = items.find((i) => i.type === 'stop')!;
+    expect(stop.agreedWindowStart).toBe('08:00');
+    expect(stop.agreedWindowEnd).toBe('12:00');
+    expect(stop.agreedWindowDurationMinutes).toBe(240);
+  });
+
+  it('keeps agreed window fields empty for pinned scheduled stops', () => {
+    const stops: SavedRouteStop[] = [
+      makeStop({
+        id: 'pinned-1',
+        stopOrder: 1,
+        estimatedArrival: '09:00',
+        estimatedDeparture: '10:00',
+        scheduledTimeStart: '09:00',
+        scheduledTimeEnd: '10:00',
+        // Explicit duration equals full window => pinned behavior
+        serviceDurationMinutes: 60,
+        durationFromPreviousMinutes: 10,
+      }),
+      makeStop({
+        id: 'legacy-1',
+        stopOrder: 2,
+        estimatedArrival: '10:30',
+        estimatedDeparture: '11:30',
+        scheduledTimeStart: '10:30',
+        scheduledTimeEnd: '11:30',
+        // No explicit service duration => backward-compatible pinned behavior
+        serviceDurationMinutes: null,
+        durationFromPreviousMinutes: 30,
+      }),
+    ];
+    const items = buildTimelineItems(stops, '08:50', '16:00');
+    const pinned = items.find((i) => i.stop?.id === 'pinned-1')!;
+    const legacy = items.find((i) => i.stop?.id === 'legacy-1')!;
+    expect(pinned.agreedWindowStart).toBeUndefined();
+    expect(pinned.agreedWindowEnd).toBeUndefined();
+    expect(legacy.agreedWindowStart).toBeUndefined();
+    expect(legacy.agreedWindowEnd).toBeUndefined();
+  });
+
   // ── Unique IDs ──
 
   it('assigns unique IDs to every item', () => {

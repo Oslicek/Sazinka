@@ -156,15 +156,23 @@ function SortableStopCard({
 
   const stop = item.stop!;
   const isBreak = item.type === 'break';
+  const hasAgreedWindowOverlay = !isBreak && item.agreedWindowStart && item.agreedWindowEnd;
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`${isBreak ? styles.breakCard : styles.stopCard} ${isSelected ? styles.selected : ''} ${isDragging ? styles.dragging : ''}`}
+      className={`${isBreak ? styles.breakCard : styles.stopCard} ${isSelected ? styles.selected : ''} ${isDragging ? styles.dragging : ''} ${hasAgreedWindowOverlay ? styles.hasAgreedWindow : ''}`}
       onClick={() => !isBreak && stop.customerId && onStopClick(stop.customerId, stopIndex)}
       {...attributes}
     >
+      {hasAgreedWindowOverlay && (
+        <div className={styles.agreedWindowOverlay} aria-hidden="true">
+          <span className={styles.agreedWindowText}>
+            Okno {item.agreedWindowStart} - {item.agreedWindowEnd}
+          </span>
+        </div>
+      )}
       <div className={styles.dragHandle} {...listeners}>
         <span className={styles.dragIcon}>&#x2801;&#x2801;</span>
       </div>

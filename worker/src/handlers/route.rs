@@ -491,28 +491,45 @@ fn build_vrp_problem(
         .iter()
         .filter_map(|c| {
             let coordinates = customer_coordinates(c)?;
-            // For scheduled customers: point time window [start, start]
-            // forces the solver to arrive at exactly the agreed time.
-            // Service duration = full slot length (end - start).
-            // If the solver can't meet the constraint, it marks the stop
-            // as unassigned — the frontend will keep it with a warning.
+            // Scheduled customers support two modes:
+            // - Flexible: service < full window, window [start, end-service].
+            // - Pinned: service >= full window, point arrival [start, start].
             let (time_window, stop_service_duration) = match (c.scheduled_time_start, c.scheduled_time_end) {
                 (Some(start), Some(end)) => {
-                    let slot_minutes = (end - start).num_minutes().max(1) as u32;
-                    info!(
-                        "VRP stop {} ({}) scheduled {:?}-{:?} → point window={:?}, service={}min",
-                        c.id,
-                        c.name.as_deref().unwrap_or("?"),
-                        start, end, start, slot_minutes,
-                    );
-                    (
-                        Some(StopTimeWindow {
-                            start,
-                            end: start, // Point arrival at slot start
-                            is_hard: true,
-                        }),
-                        slot_minutes,
-                    )
+                    let slot_minutes = (end - start).num_minutes();
+                    if slot_minutes > 0 && service_duration_minutes < slot_minutes as u32 {
+                        let latest_start = end - chrono::Duration::minutes(service_duration_minutes as i64);
+                        info!(
+                            "VRP stop {} ({}) scheduled {:?}-{:?} → flexible window={:?}-{:?}, service={}min",
+                            c.id,
+                            c.name.as_deref().unwrap_or("?"),
+                            start, end, start, latest_start, service_duration_minutes,
+                        );
+                        (
+                            Some(StopTimeWindow {
+                                start,
+                                end: latest_start,
+                                is_hard: true,
+                            }),
+                            service_duration_minutes,
+                        )
+                    } else {
+                        let pinned_service = slot_minutes.max(1) as u32;
+                        info!(
+                            "VRP stop {} ({}) scheduled {:?}-{:?} → pinned window={:?}, service={}min",
+                            c.id,
+                            c.name.as_deref().unwrap_or("?"),
+                            start, end, start, pinned_service,
+                        );
+                        (
+                            Some(StopTimeWindow {
+                                start,
+                                end: start, // Point arrival at slot start
+                                is_hard: true,
+                            }),
+                            pinned_service,
+                        )
+                    }
                 }
                 _ => (None, service_duration_minutes),
             };
@@ -2015,6 +2032,68 @@ mod tests {
 
         assert_eq!(problem.stops.len(), 1);
         assert_eq!(problem.stops[0].service_duration_minutes, 45);
+    }
+
+    #[test]
+    fn test_build_vrp_problem_uses_flexible_window_for_scheduled_stop() {
+        let customers = vec![CustomerForRoute {
+            id: Uuid::new_v4(),
+            name: Some("Customer A".to_string()),
+            street: Some("Street 1".to_string()),
+            city: Some("Prague".to_string()),
+            postal_code: Some("11000".to_string()),
+            lat: Some(50.1),
+            lng: Some(14.5),
+            scheduled_time_start: Some(chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap()),
+            scheduled_time_end: Some(chrono::NaiveTime::from_hms_opt(12, 0, 0).unwrap()),
+        }];
+
+        // Service 60 min is shorter than 4h window => flexible.
+        let problem = build_vrp_problem(
+            &prague(),
+            &customers,
+            default_work_start(),
+            default_work_end(),
+            60,
+            None,
+        );
+
+        let stop = &problem.stops[0];
+        let tw = stop.time_window.as_ref().expect("scheduled window expected");
+        assert_eq!(stop.service_duration_minutes, 60);
+        assert_eq!(tw.start, chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap());
+        assert_eq!(tw.end, chrono::NaiveTime::from_hms_opt(11, 0, 0).unwrap());
+    }
+
+    #[test]
+    fn test_build_vrp_problem_keeps_point_window_when_service_fills_slot() {
+        let customers = vec![CustomerForRoute {
+            id: Uuid::new_v4(),
+            name: Some("Customer A".to_string()),
+            street: Some("Street 1".to_string()),
+            city: Some("Prague".to_string()),
+            postal_code: Some("11000".to_string()),
+            lat: Some(50.1),
+            lng: Some(14.5),
+            scheduled_time_start: Some(chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap()),
+            scheduled_time_end: Some(chrono::NaiveTime::from_hms_opt(9, 0, 0).unwrap()),
+        }];
+
+        // Service 90 min is >= window length 60 => pinned behavior.
+        let problem = build_vrp_problem(
+            &prague(),
+            &customers,
+            default_work_start(),
+            default_work_end(),
+            90,
+            None,
+        );
+
+        let stop = &problem.stops[0];
+        let tw = stop.time_window.as_ref().expect("scheduled window expected");
+        assert_eq!(stop.service_duration_minutes, 60);
+        assert_eq!(tw.start, chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap());
+        assert_eq!(tw.end, chrono::NaiveTime::from_hms_opt(8, 0, 0).unwrap());
     }
 
     #[test]

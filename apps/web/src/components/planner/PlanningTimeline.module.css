@@ -224,6 +224,7 @@
   flex-shrink: 0;
   transition: all 0.15s;
   cursor: pointer;
+  position: relative;
 }
 
 .stopCard:hover {
@@ -290,6 +291,8 @@
 
 /* Card content */
 .cardContent {
+  position: relative;
+  z-index: 1;
   flex: 1;
   min-width: 0;
   padding: 0.375rem 0.5rem;
@@ -500,4 +503,32 @@
 .lateWarningIcon {
   font-size: 0.75rem;
   flex-shrink: 0;
+}
+
+/* Flexible agreed window indicator */
+.hasAgreedWindow .dragHandle,
+.hasAgreedWindow .cardContent,
+.hasAgreedWindow .removeButton {
+  position: relative;
+  z-index: 1;
+}
+
+.agreedWindowOverlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px dashed rgba(59, 130, 246, 0.4);
+  pointer-events: none;
+}
+
+.agreedWindowText {
+  position: absolute;
+  top: 2px;
+  right: 6px;
+  font-size: 0.5625rem;
+  color: rgba(30, 64, 175, 0.9);
+  background: rgba(255, 255, 255, 0.75);
+  border-radius: 3px;
+  padding: 0 4px;
+  line-height: 1.2;
 }

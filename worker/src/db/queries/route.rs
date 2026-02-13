@@ -122,7 +122,7 @@ pub async fn list_routes_for_date(
             r.optimization_score,
             r.return_to_depot_distance_km,
             r.return_to_depot_duration_minutes,
-            COUNT(rs.id) as stops_count,
+            COUNT(rs.id) FILTER (WHERE rs.stop_type = 'customer') as stops_count,
             r.created_at,
             r.updated_at
         FROM routes r
@@ -395,7 +395,7 @@ pub async fn list_routes(
             r.optimization_score,
             r.return_to_depot_distance_km,
             r.return_to_depot_duration_minutes,
-            COUNT(rs.id) as stops_count,
+            COUNT(rs.id) FILTER (WHERE rs.stop_type = 'customer') as stops_count,
             r.created_at,
             r.updated_at
         FROM routes r

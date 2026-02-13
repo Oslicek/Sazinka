@@ -1,6 +1,6 @@
 # Solver Architecture
 
-> **Last Updated:** 2026-02-12 (v0.18.7 — auto-recalculation after insert/reorder)
+> **Last Updated:** 2026-02-13 (v0.19.0 — flexible time windows with service duration)
 
 ## Overview
 
@@ -80,17 +80,29 @@ The frontend time windows are parsed from both `"HH:MM"` and `"HH:MM:SS"` format
 
 Converts `CustomerForRoute` records into `VrpProblem` with these key mappings:
 
-#### Point Time Window Mapping
+#### Time Window Mapping (Flexible vs Pinned)
 
-Scheduled customer visits use **point time windows** `[start, start]`:
+Scheduled customer visits support two modes:
 
+**Flexible mode** (when `service_duration_minutes` < window length):
+```
+Customer slot: 08:00 – 12:00 (agreed window)
+Service needed: 60 minutes
+  → VRP time window: [08:00, 11:00]  (latest start = 12:00 - 60min)
+  → Service duration: 60 minutes      (explicit, set by dispatcher)
+```
+The solver can place the visit anywhere within the window for optimal routing efficiency.
+
+**Pinned mode** (backward-compatible, when service fills the window):
 ```
 Customer slot: 08:00 – 09:00 (agreed visit time)
+Service needed: 60 minutes (or not explicitly set)
   → VRP time window: [08:00, 08:00]  (arrive exactly at slot start)
-  → Service duration: 60 minutes      (full slot length, not default)
+  → Service duration: 60 minutes      (full slot length)
 ```
+The crew must arrive at the start of the slot. Setting `start == end` forces `vrp-pragmatic` to schedule arrival exactly at that time.
 
-**Rationale:** The `scheduled_time_start`/`end` represent a _work slot_, not an arrival range. The crew must arrive at the start of the slot. Setting `start == end` forces `vrp-pragmatic` to schedule arrival exactly at that time.
+**Rationale:** When the agreed window is wider than needed, the solver optimizes placement. When the service fills the entire window, the visit is pinned to the agreed time (commitment to customer).
 
 #### Unscheduled Customers
 
@@ -207,7 +219,8 @@ The production route planning job uses `SolverConfig::with_buffer(5, 500, arriva
      d. Else → no time window
    ↓
 6. build_vrp_problem():
-   - Scheduled customers → point time window [start, start], service = slot length
+   - Scheduled customers with flexible window → time window [start, end - service], service = explicit duration
+   - Scheduled customers with pinned window → point time window [start, start], service = slot length
    - Unscheduled customers → no window, service = default from settings
    - Shift: crew working hours (or user settings fallback)
    - Break: from user settings (if enabled)
@@ -246,10 +259,12 @@ The production route planning job uses `SolverConfig::with_buffer(5, 500, arriva
    ↓
 4. compute_sequential_schedule():
    - Walk stops in order
-   - Calculate arrival = previous_departure + travel_time
-   - Wait if arrival < scheduled_time_start (for scheduled stops)
+   - Calculate earliest_arrival = previous_departure + travel_time
+   - For flexible windows: arrival = max(earliest_arrival, window_start), clamped to latest_start
+   - For pinned windows: arrival = scheduled_time_start (always)
+   - For unscheduled: arrival = earliest_arrival
    - Determine service duration (explicit → scheduled window → default)
-   - Calculate departure = arrival + service_duration
+   - Calculate departure = arrival + service_duration (flexible) or scheduled_time_end (pinned)
    ↓
 5. Return RecalculateRouteResponse with updated ETAs/ETDs
    ↓
@@ -258,9 +273,10 @@ The production route planning job uses `SolverConfig::with_buffer(5, 500, arriva
 
 ### Key Features
 
-- **Pure function:** `compute_sequential_schedule()` has no side effects, fully unit-tested (9 tests)
+- **Pure function:** `compute_sequential_schedule()` has no side effects, fully unit-tested (14 tests)
 - **No reordering:** Preserves user's chosen order (dispatcher already placed stop correctly via slot suggestions)
-- **Respects scheduled times:** Waits if arriving early to a scheduled stop
+- **Flexible windows:** When service duration < window length, places stop optimally after travel within agreed window
+- **Backward compatible:** Stops without explicit service duration behave exactly as before (pinned to agreed times)
 - **Fast:** <100ms for typical routes (no metaheuristic search)
 - **Automatic:** Fires after every insert/reorder in `PlanningInbox` and `Planner`
 
