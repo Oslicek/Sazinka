@@ -196,52 +196,62 @@ export function CandidateDetail({
 
       {/* Domluvený termín — always visible when scheduled, with service duration input */}
       {candidate.isScheduled && candidate.scheduledDate && (
-        <section className={styles.section}>
+        <section className={styles.sectionNoBottomBorder}>
           <h4 className={styles.sectionTitle}>Domluvený termín</h4>
-          <button
-            type="button"
-            className={styles.scheduledAppointmentButton}
-            onClick={() => setIsScheduling(true)}
-            title="Klikněte pro změnu termínu"
-          >
-            📅 {new Date(candidate.scheduledDate).toLocaleDateString('cs-CZ', {
-              day: 'numeric',
-              month: 'numeric',
-              year: 'numeric',
-            })}
-            {candidate.scheduledTimeStart && candidate.scheduledTimeEnd && (
-              <span className={styles.scheduledTime}>
-                {' '}🕐 {candidate.scheduledTimeStart.substring(0, 5)} – {candidate.scheduledTimeEnd.substring(0, 5)}
-              </span>
-            )}
-          </button>
-          {/* Service duration (time needed) — only when window is wider than default */}
-          {windowInfo?.isFlexible && (
-            <div className={styles.serviceDurationRow}>
-              <label className={styles.serviceDurationLabel}>
-                Potřebný čas
-              </label>
-              <div className={styles.serviceDurationInput}>
-                <input
-                  type="number"
-                  min={1}
-                  max={windowInfo.windowLength}
-                  value={serviceDurationMinutes}
-                  onChange={(e) => {
-                    const v = Number.parseInt(e.target.value, 10);
-                    if (Number.isFinite(v) && v > 0) {
-                      setServiceDurationMinutes(Math.min(v, windowInfo.windowLength));
-                    }
-                  }}
-                  className={styles.scheduleInput}
-                />
-                <span className={styles.serviceDurationUnit}>min</span>
+          <div className={styles.appointmentRow}>
+            <button
+              type="button"
+              className={styles.scheduledAppointmentButton}
+              onClick={() => setIsScheduling(true)}
+              title="Klikněte pro změnu termínu"
+            >
+              📅 {new Date(candidate.scheduledDate).toLocaleDateString('cs-CZ', {
+                day: 'numeric',
+                month: 'numeric',
+                year: 'numeric',
+              })}
+              {candidate.scheduledTimeStart && candidate.scheduledTimeEnd && (
+                <span className={styles.scheduledTime}>
+                  {' '}🕐 {candidate.scheduledTimeStart.substring(0, 5)} – {candidate.scheduledTimeEnd.substring(0, 5)}
+                </span>
+              )}
+            </button>
+            {/* Service duration (time needed) — always visible, inline */}
+            {windowInfo && (
+              <div className={styles.serviceDurationInline}>
+                {windowInfo.isFlexible ? (
+                  <>
+                    <div className={styles.serviceDurationInput}>
+                      <input
+                        type="number"
+                        min={1}
+                        max={windowInfo.windowLength}
+                        value={serviceDurationMinutes}
+                        onChange={(e) => {
+                          const v = Number.parseInt(e.target.value, 10);
+                          if (Number.isFinite(v) && v > 0) {
+                            setServiceDurationMinutes(Math.min(v, windowInfo.windowLength));
+                          }
+                        }}
+                        className={styles.scheduleInput}
+                      />
+                      <span className={styles.serviceDurationUnit}>min</span>
+                    </div>
+                    <span className={styles.serviceDurationHint}>
+                      Okno {windowInfo.windowLength} min, potřeba {serviceDurationMinutes} min
+                    </span>
+                  </>
+                ) : (
+                  <div className={styles.serviceDurationDisplay}>
+                    <span className={styles.serviceDurationLabel}>Plánované trvání</span>
+                    <span className={styles.serviceDurationValue}>
+                      {windowInfo.windowLength} min
+                    </span>
+                  </div>
+                )}
               </div>
-              <span className={styles.serviceDurationHint}>
-                Okno {windowInfo.windowLength} min, potřeba {serviceDurationMinutes} min
-              </span>
-            </div>
-          )}
+            )}
+          </div>
         </section>
       )}
 
