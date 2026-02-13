@@ -394,7 +394,9 @@ export function PlanningInbox() {
     }
     
     loadRoute();
-  }, [isConnected, context?.date]);
+    // Also reload candidates to ensure route stop data is in sync with latest candidate info
+    loadCandidates();
+  }, [isConnected, context?.date, loadCandidates]);
 
   // Fetch Valhalla route geometry when route stops change
   const fetchRouteGeometry = useCallback(async (stops: SavedRouteStop[], depot: { lat: number; lng: number } | null) => {
@@ -1066,19 +1068,31 @@ export function PlanningInbox() {
       );
       
       // Update route stop if this candidate is already in the route
-      setRouteStops((prev) =>
-        prev.map((stop) =>
-          stop.customerId === candidate.customerId
-            ? {
-                ...stop,
-                scheduledDate: slot.date,
-                scheduledTimeStart: slot.timeStart,
-                scheduledTimeEnd: slot.timeEnd,
-                revisionStatus: 'scheduled',
-              }
-            : stop
-        )
-      );
+      const updatedStops = await new Promise<SavedRouteStop[]>((resolve) => {
+        setRouteStops((prev) => {
+          const updated = prev.map((stop) =>
+            stop.customerId === candidate.customerId
+              ? {
+                  ...stop,
+                  scheduledDate: slot.date,
+                  scheduledTimeStart: slot.timeStart,
+                  scheduledTimeEnd: slot.timeEnd,
+                  revisionStatus: 'scheduled',
+                }
+              : stop
+          );
+          resolve(updated);
+          return updated;
+        });
+      });
+      
+      // Recalculate ETAs if this candidate was in the route
+      if (updatedStops.some((s) => s.customerId === candidate.customerId)) {
+        triggerRecalculate(updatedStops);
+      }
+      
+      // Reload candidates to ensure list is in sync with backend
+      loadCandidates();
       
       // Stay on the current candidate (don't auto-advance)
       // The candidate remains visible even if it no longer matches filters,
@@ -1091,7 +1105,7 @@ export function PlanningInbox() {
     } catch (err) {
       logger.error('Failed to schedule:', err);
     }
-  }, [candidates, incrementRouteVersion, loadDayOverview]);
+  }, [candidates, incrementRouteVersion, loadDayOverview, triggerRecalculate, loadCandidates]);
   
   // Dismiss confirmation and move on to next candidate
   const handleDismissConfirmation = useCallback(() => {
