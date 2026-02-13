@@ -1225,6 +1225,30 @@ export function PlanningInbox() {
     }
   }, [currentDepot, routeStartTime, routeEndTime, defaultServiceDurationMinutes]);
 
+  // Auto-recalculate when working hours or depot changes (but not on initial load)
+  const prevWorkingHoursRef = useRef<{ start: string | null; end: string | null; depotId: string | null }>({
+    start: null,
+    end: null,
+    depotId: null,
+  });
+
+  useEffect(() => {
+    const prev = prevWorkingHoursRef.current;
+    const curr = { start: routeStartTime, end: routeEndTime, depotId: currentDepot?.id ?? null };
+
+    // Only recalculate if parameters changed AND we have stops AND we're not on initial load
+    const paramsChanged = prev.start !== curr.start || prev.end !== curr.end || prev.depotId !== curr.depotId;
+    const notInitialLoad = prev.start !== null || prev.end !== null || prev.depotId !== null;
+
+    if (routeStops.length > 0 && currentDepot && paramsChanged && notInitialLoad) {
+      // Use the current routeStops snapshot
+      const stopsSnapshot = [...routeStops];
+      triggerRecalculate(stopsSnapshot);
+    }
+
+    prevWorkingHoursRef.current = curr;
+  }, [routeStartTime, routeEndTime, currentDepot?.id, routeStops.length, triggerRecalculate]);
+
   // Auto-recalculate ETAs when a route was just loaded from the database
   useEffect(() => {
     const pending = pendingRecalcStopsRef.current;
