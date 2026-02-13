@@ -33,7 +33,6 @@ export type SnoozeDuration = 1 | 7 | 14 | 30;
 
 interface CandidateDetailProps {
   candidate: CandidateDetailData | null;
-  isRouteAware?: boolean;
   onSchedule?: (candidateId: string, slot: SlotSuggestion) => void;
   onSnooze?: (candidateId: string, days: SnoozeDuration) => void;
   onFixAddress?: (candidateId: string) => void;
@@ -52,7 +51,6 @@ interface CandidateDetailProps {
 
 export function CandidateDetail({
   candidate,
-  isRouteAware = true,
   onSchedule,
   onSnooze,
   onFixAddress,
@@ -278,8 +276,10 @@ export function CandidateDetail({
           ) : (
             <button
               type="button"
-              className={styles.actionButtonCompact}
+              className={`${styles.actionButtonCompact} ${candidate.hasCoordinates === false ? styles.disabledAction : ''}`}
               onClick={() => onAddToRoute?.(candidate.id, windowInfo?.isFlexible ? serviceDurationMinutes : undefined)}
+              disabled={candidate.hasCoordinates === false}
+              title={candidate.hasCoordinates === false ? 'Nejprve opravte adresu' : undefined}
             >
               ➕ Přidat do trasy
             </button>
@@ -365,7 +365,7 @@ export function CandidateDetail({
         {onFixAddress && (
           <button
             type="button"
-            className={styles.fixAddressButton}
+            className={`${styles.fixAddressButton} ${candidate.hasCoordinates === false ? styles.fixAddressButtonWarning : ''}`}
             onClick={() => onFixAddress(candidate.id)}
           >
             Opravit adresu
@@ -392,8 +392,8 @@ export function CandidateDetail({
         </Link>
       </div>
 
-      {/* Slot suggestions (route-aware) — only for unscheduled candidates */}
-      {isRouteAware && !candidate.isScheduled && candidate.suggestedSlots && candidate.suggestedSlots.length > 0 && (
+      {/* Slot suggestions — only for unscheduled candidates */}
+      {!candidate.isScheduled && candidate.suggestedSlots && candidate.suggestedSlots.length > 0 && (
         <section className={styles.section}>
           <h4 className={styles.sectionTitle}>Doporučené sloty</h4>
           <SlotSuggestions

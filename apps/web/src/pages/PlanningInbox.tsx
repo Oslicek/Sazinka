@@ -100,11 +100,6 @@ const DEFAULT_BREAK_SETTINGS: BreakSettings = {
   breakMaxKm: 120,
 };
 
-// Helper to check if customer is overdue
-function getDaysOverdue(item: CallQueueItem): number {
-  return item.daysUntilDue < 0 ? Math.abs(item.daysUntilDue) : 0;
-}
-
 // Convert priority to CandidateRowData priority type
 function toPriority(item: CallQueueItem): CandidateRowData['priority'] {
   if (item.daysUntilDue < 0) return 'overdue';
@@ -131,7 +126,6 @@ export function PlanningInbox() {
   
   // Route context state
   const [context, setContext] = useState<RouteContext | null>(null);
-  const isRouteAware = true;
   const [crews, setCrews] = useState<crewService.Crew[]>([]);
   const [depots, setDepots] = useState<Depot[]>([]);
   const [defaultServiceDurationMinutes, setDefaultServiceDurationMinutes] = useState(30);
@@ -436,9 +430,9 @@ export function PlanningInbox() {
     }
   }, [context?.date, context?.crewId, setRouteContext]);
 
-  // Calculate insertion when candidate is selected (route-aware mode)
+  // Calculate insertion when candidate is selected
   useEffect(() => {
-    if (!isConnected || !isRouteAware || !selectedCandidateId || !context) return;
+    if (!isConnected || !selectedCandidateId || !context) return;
     
     const candidate = candidates.find((c) => c.customerId === selectedCandidateId);
     if (!candidate || !candidate.customerLat || !candidate.customerLng) {
@@ -527,7 +521,7 @@ export function PlanningInbox() {
     }
     
     calculateInsertion();
-  }, [isConnected, isRouteAware, selectedCandidateId, routeStops, context, depots, getCachedInsertion, defaultServiceDurationMinutes, defaultWorkingHoursStart, defaultWorkingHoursEnd]);
+  }, [isConnected, selectedCandidateId, routeStops, context, depots, getCachedInsertion, defaultServiceDurationMinutes, defaultWorkingHoursStart, defaultWorkingHoursEnd]);
 
   // Load candidates (filtering is applied client-side via advanced filters)
   const loadCandidates = useCallback(async () => {
@@ -535,7 +529,7 @@ export function PlanningInbox() {
     
     setIsLoadingCandidates(true);
     try {
-      const backendFilters = mapExpressionToCallQueueRequestV1(filters, isRouteAware);
+      const backendFilters = mapExpressionToCallQueueRequestV1(filters, false);
       const response = await getCallQueue({
         ...backendFilters,
         limit: 100,
@@ -561,7 +555,7 @@ export function PlanningInbox() {
     } finally {
       setIsLoadingCandidates(false);
     }
-  }, [isConnected, isRouteAware, filters]);
+  }, [isConnected, filters]);
 
   useEffect(() => {
     loadCandidates();
@@ -627,7 +621,7 @@ export function PlanningInbox() {
 
   // Batch calculate insertion metrics for visible candidates
   useEffect(() => {
-    if (!isConnected || !isRouteAware || !context || candidates.length === 0) return;
+    if (!isConnected || !context || candidates.length === 0) return;
     
     const depot = depots.find((d) => d.id === context.depotId);
     if (!depot) return;
@@ -696,7 +690,7 @@ export function PlanningInbox() {
     }
     
     calculateBatch();
-  }, [isConnected, isRouteAware, context, candidates, routeStops, depots, setCachedInsertions]);
+  }, [isConnected, context, candidates, routeStops, depots, setCachedInsertions]);
 
   // Get current depot for map
   const currentDepot: MapDepot | null = useMemo(() => {
@@ -841,18 +835,6 @@ export function PlanningInbox() {
       }
     }
     
-    if (!isRouteAware) {
-      return filtered.sort((a, b) => {
-        // Pin selected candidate at top
-        if (a.customerId === selectedCandidateId) return -1;
-        if (b.customerId === selectedCandidateId) return 1;
-        const aOverdue = getDaysOverdue(a);
-        const bOverdue = getDaysOverdue(b);
-        if (aOverdue !== bOverdue) return bOverdue - aOverdue;
-        return a.daysUntilDue - b.daysUntilDue;
-      });
-    }
-    
     return filtered.sort((a, b) => {
       // Pin selected candidate at top
       if (a.customerId === selectedCandidateId) return -1;
@@ -881,7 +863,7 @@ export function PlanningInbox() {
       if (aOverdue !== bOverdue) return bOverdue - aOverdue;
       return a.daysUntilDue - b.daysUntilDue;
     });
-  }, [candidates, filters, inRouteIds, isRouteAware, selectedCandidateId]);
+  }, [candidates, filters, inRouteIds, selectedCandidateId]);
 
   // Keep ref in sync for use in callbacks
   sortedCandidatesRef.current = sortedCandidates;
@@ -902,6 +884,7 @@ export function PlanningInbox() {
       slotStatus: c.slotStatus,
       isScheduled: isScheduledCandidate(c),
       isInRoute: inRouteIds.has(c.customerId),
+      disableCheckbox: !hasValidAddress(c),
     }));
   }, [sortedCandidates, inRouteIds]);
 
@@ -1278,6 +1261,13 @@ export function PlanningInbox() {
 
   // Route building: toggle checkbox selection
   const handleSelectionChange = useCallback((id: string, selected: boolean) => {
+    if (selected) {
+      const candidate = sortedCandidatesRef.current.find((c) => c.customerId === id);
+      if (!candidate || !hasValidAddress(candidate)) {
+        return;
+      }
+    }
+
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (selected) {
@@ -2105,7 +2095,7 @@ export function PlanningInbox() {
       </div>
 
       {/* Multi-crew tip */}
-      {isRouteAware && crewComparisons.length > 0 && (
+      {crewComparisons.length > 0 && (
         <MultiCrewTip
           currentCrew={context?.crewName ?? ''}
           comparisons={crewComparisons}
@@ -2139,7 +2129,6 @@ export function PlanningInbox() {
         ref={listRef}
         candidates={candidateRowData}
         selectedCandidateId={selectedCandidateId}
-        isRouteAware={isRouteAware}
         onCandidateSelect={handleCandidateSelect}
         isLoading={isLoadingCandidates}
         emptyMessage={'Žádní kandidáti pro vybrané filtry'}
@@ -2403,7 +2392,6 @@ export function PlanningInbox() {
       ) : (
         <CandidateDetail
           candidate={selectedCandidateDetail}
-          isRouteAware={isRouteAware}
           onSchedule={handleSchedule}
           onSnooze={handleSnooze}
           onFixAddress={handleFixAddress}

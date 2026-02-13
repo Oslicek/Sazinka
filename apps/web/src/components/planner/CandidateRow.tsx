@@ -22,12 +22,12 @@ export interface CandidateRowData {
   // State flags
   isScheduled?: boolean;
   isInRoute?: boolean;
+  disableCheckbox?: boolean;
 }
 
 interface CandidateRowProps {
   candidate: CandidateRowData;
   isSelected?: boolean;
-  isRouteAware?: boolean;
   onClick?: () => void;
   onKeyDown?: (e: React.KeyboardEvent) => void;
   /** Show a checkbox for batch selection */
@@ -67,7 +67,6 @@ function getPriorityLabel(priority: CandidateRowData['priority']): string {
 export function CandidateRow({
   candidate,
   isSelected,
-  isRouteAware = true,
   onClick,
   onKeyDown,
   selectable = false,
@@ -91,6 +90,8 @@ export function CandidateRow({
           type="checkbox"
           className={styles.checkbox}
           checked={checked}
+          disabled={candidate.disableCheckbox}
+          title={candidate.disableCheckbox ? 'Adresu nelze najít na mapě' : undefined}
           onChange={(e) => {
             e.stopPropagation();
             onCheckChange?.(e.target.checked);
@@ -126,7 +127,7 @@ export function CandidateRow({
         </div>
       </div>
 
-      {isRouteAware && (candidate.deltaKm !== undefined || candidate.deltaMin !== undefined) && (
+      {(candidate.deltaKm !== undefined || candidate.deltaMin !== undefined) && (
         <div className={styles.metrics}>
           {formatDelta(candidate.deltaKm, 'km') && (
             <span className={styles.deltaKm} title="Přidaná vzdálenost do trasy">
@@ -155,7 +156,7 @@ export function CandidateRow({
         </div>
       )}
 
-      {isRouteAware && candidate.suggestedSlots && candidate.suggestedSlots.length > 0 && (
+      {candidate.suggestedSlots && candidate.suggestedSlots.length > 0 && (
         <div className={styles.slots}>
           {candidate.suggestedSlots.slice(0, 3).map((slot, idx) => (
             <span 

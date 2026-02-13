@@ -12,8 +12,6 @@ export interface RouteContext {
 interface RouteContextHeaderProps {
   context: RouteContext | null;
   metrics: RouteMetrics | null;
-  isRouteAware: boolean;
-  onRouteAwareToggle: (enabled: boolean) => void;
   onDateChange: (date: string) => void;
   onCrewChange: (crewId: string) => void;
   onDepotChange: (depotId: string) => void;
@@ -25,8 +23,6 @@ interface RouteContextHeaderProps {
 export function RouteContextHeader({
   context,
   metrics,
-  isRouteAware,
-  onRouteAwareToggle,
   onDateChange,
   onCrewChange,
   onDepotChange,
@@ -91,18 +87,6 @@ export function RouteContextHeader({
             </select>
           </div>
 
-          <div className={styles.routeAwareToggle}>
-            <label className={styles.toggleLabel}>
-              <input
-                type="checkbox"
-                checked={isRouteAware}
-                onChange={(e) => onRouteAwareToggle(e.target.checked)}
-                className={styles.toggleInput}
-              />
-              <span className={styles.toggleSwitch} />
-              <span className={styles.toggleText}>Route-aware</span>
-            </label>
-          </div>
         </div>
       </div>
 

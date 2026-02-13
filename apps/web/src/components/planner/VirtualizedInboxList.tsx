@@ -6,7 +6,6 @@ import styles from './VirtualizedInboxList.module.css';
 interface VirtualizedInboxListProps {
   candidates: CandidateRowData[];
   selectedCandidateId: string | null;
-  isRouteAware: boolean;
   onCandidateSelect: (id: string) => void;
   onLoadMore?: () => void;
   hasMore?: boolean;
@@ -33,7 +32,6 @@ export const VirtualizedInboxList = forwardRef<VirtualizedInboxListRef, Virtuali
     {
       candidates,
       selectedCandidateId,
-      isRouteAware,
       onCandidateSelect,
       onLoadMore,
       hasMore,
@@ -104,7 +102,6 @@ export const VirtualizedInboxList = forwardRef<VirtualizedInboxListRef, Virtuali
           <CandidateRow
             candidate={candidate}
             isSelected={selectedCandidateId === candidate.id}
-            isRouteAware={isRouteAware}
             onClick={() => onCandidateSelect(candidate.id)}
             onKeyDown={(e) => handleKeyDown(e, index)}
             selectable={selectable}
@@ -114,7 +111,7 @@ export const VirtualizedInboxList = forwardRef<VirtualizedInboxListRef, Virtuali
           />
         </div>
       ),
-      [selectedCandidateId, isRouteAware, onCandidateSelect, handleKeyDown, selectable, selectedIds, onSelectionChange, inRouteIds]
+      [selectedCandidateId, onCandidateSelect, handleKeyDown, selectable, selectedIds, onSelectionChange, inRouteIds]
     );
 
     // Footer component (loading / load more)
