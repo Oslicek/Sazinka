@@ -340,64 +340,6 @@ export function PlanningInbox() {
     loadSettings();
   }, [isConnected, setRouteContext]);
 
-  // Load saved route for selected day
-  useEffect(() => {
-    if (!isConnected || !context?.date) return;
-    
-    const dateToLoad = context.date;
-    
-    async function loadRoute() {
-      setIsLoadingRoute(true);
-      try {
-        const response = await routeService.getRoute({ date: dateToLoad });
-        setLoadedRouteId(response.route?.id ?? null);
-        
-        if (response.route && response.stops.length > 0) {
-          setRouteStops(response.stops);
-          setReturnToDepotLeg(
-            response.route.returnToDepotDistanceKm != null || response.route.returnToDepotDurationMinutes != null
-              ? { distanceKm: response.route.returnToDepotDistanceKm ?? null, durationMinutes: response.route.returnToDepotDurationMinutes ?? null }
-              : null
-          );
-          
-          const totalMin = response.route.totalDurationMinutes ?? 0;
-          const serviceMin = response.stops.length * 30;
-          const travelMin = totalMin - serviceMin;
-          const workingDayMin = 9 * 60;
-          
-          setMetrics({
-            distanceKm: response.route.totalDistanceKm ?? 0,
-            travelTimeMin: Math.max(0, travelMin),
-            serviceTimeMin: serviceMin,
-            loadPercent: Math.round((totalMin / workingDayMin) * 100),
-            slackMin: Math.max(0, workingDayMin - totalMin),
-            stopCount: response.stops.length,
-          });
-
-          // Mark that we need to recalculate ETAs for the loaded route
-          pendingRecalcStopsRef.current = response.stops;
-        } else {
-          setRouteStops([]);
-          setLoadedRouteId(null);
-          setReturnToDepotLeg(null);
-          setMetrics(null);
-        }
-      } catch (err) {
-        logger.error('Failed to load route:', err);
-        setRouteStops([]);
-        setLoadedRouteId(null);
-        setReturnToDepotLeg(null);
-        setMetrics(null);
-      } finally {
-        setIsLoadingRoute(false);
-      }
-    }
-    
-    loadRoute();
-    // Also reload candidates to ensure route stop data is in sync with latest candidate info
-    loadCandidates();
-  }, [isConnected, context?.date, loadCandidates]);
-
   // Fetch Valhalla route geometry when route stops change
   const fetchRouteGeometry = useCallback(async (stops: SavedRouteStop[], depot: { lat: number; lng: number } | null) => {
     // Only use customer stops with valid coordinates for geometry routing.
@@ -625,6 +567,64 @@ export function PlanningInbox() {
   useEffect(() => {
     loadCandidates();
   }, [loadCandidates]);
+
+  // Load saved route for selected day
+  useEffect(() => {
+    if (!isConnected || !context?.date) return;
+    
+    const dateToLoad = context.date;
+    
+    async function loadRoute() {
+      setIsLoadingRoute(true);
+      try {
+        const response = await routeService.getRoute({ date: dateToLoad });
+        setLoadedRouteId(response.route?.id ?? null);
+        
+        if (response.route && response.stops.length > 0) {
+          setRouteStops(response.stops);
+          setReturnToDepotLeg(
+            response.route.returnToDepotDistanceKm != null || response.route.returnToDepotDurationMinutes != null
+              ? { distanceKm: response.route.returnToDepotDistanceKm ?? null, durationMinutes: response.route.returnToDepotDurationMinutes ?? null }
+              : null
+          );
+          
+          const totalMin = response.route.totalDurationMinutes ?? 0;
+          const serviceMin = response.stops.length * 30;
+          const travelMin = totalMin - serviceMin;
+          const workingDayMin = 9 * 60;
+          
+          setMetrics({
+            distanceKm: response.route.totalDistanceKm ?? 0,
+            travelTimeMin: Math.max(0, travelMin),
+            serviceTimeMin: serviceMin,
+            loadPercent: Math.round((totalMin / workingDayMin) * 100),
+            slackMin: Math.max(0, workingDayMin - totalMin),
+            stopCount: response.stops.length,
+          });
+
+          // Mark that we need to recalculate ETAs for the loaded route
+          pendingRecalcStopsRef.current = response.stops;
+        } else {
+          setRouteStops([]);
+          setLoadedRouteId(null);
+          setReturnToDepotLeg(null);
+          setMetrics(null);
+        }
+      } catch (err) {
+        logger.error('Failed to load route:', err);
+        setRouteStops([]);
+        setLoadedRouteId(null);
+        setReturnToDepotLeg(null);
+        setMetrics(null);
+      } finally {
+        setIsLoadingRoute(false);
+      }
+    }
+    
+    loadRoute();
+    // Also reload candidates to ensure route stop data is in sync with latest candidate info
+    loadCandidates();
+  }, [isConnected, context?.date, loadCandidates]);
 
   // Batch calculate insertion metrics for visible candidates
   useEffect(() => {
@@ -1036,6 +1036,102 @@ export function PlanningInbox() {
     }
   }, [candidates]);
 
+  // Quick-recalculate ETAs for the current route after insert/reorder.
+  // Fires in the background – updates stops in-place when the response arrives.
+  const triggerRecalculate = useCallback(async (stopsSnapshot: SavedRouteStop[]) => {
+    const depot = currentDepot;
+    if (!depot || stopsSnapshot.length === 0) return;
+
+    // Build recalc input from the stops snapshot
+    const recalcStops: RecalcStopInput[] = stopsSnapshot.map((s) => ({
+      coordinates: { lat: s.customerLat ?? 0, lng: s.customerLng ?? 0 },
+      stopType: s.stopType,
+      scheduledTimeStart: s.scheduledTimeStart ?? undefined,
+      scheduledTimeEnd: s.scheduledTimeEnd ?? undefined,
+      serviceDurationMinutes: s.serviceDurationMinutes ?? undefined,
+      breakDurationMinutes: s.breakDurationMinutes ?? undefined,
+      id: s.id,
+      customerId: s.customerId ?? undefined,
+      customerName: s.customerName ?? undefined,
+    }));
+
+    try {
+      const result = await recalculateRoute({
+        depot: { lat: depot.lat, lng: depot.lng },
+        stops: recalcStops,
+        workdayStart: routeStartTime || undefined,
+        workdayEnd: routeEndTime || undefined,
+        defaultServiceDurationMinutes,
+      });
+
+      // Merge recalculated times back into stops
+      setRouteStops((prev) => {
+        // Build a lookup by id for quick matching
+        const resultMap = new Map(result.stops.map((r) => [r.id, r]));
+        const updated = prev.map((stop) => {
+          const recalced = resultMap.get(stop.id);
+          if (!recalced) return stop;
+          return {
+            ...stop,
+            estimatedArrival: recalced.estimatedArrival,
+            estimatedDeparture: recalced.estimatedDeparture,
+            distanceFromPreviousKm: recalced.distanceFromPreviousKm,
+            durationFromPreviousMinutes: recalced.durationFromPreviousMinutes,
+            serviceDurationMinutes: recalced.serviceDurationMinutes,
+          };
+        });
+        return updated;
+      });
+
+      // Update return-to-depot leg
+      setReturnToDepotLeg({
+        distanceKm: result.returnToDepotDistanceKm,
+        durationMinutes: result.returnToDepotDurationMinutes,
+      });
+
+      // Update depot departure (backward-calculated from first scheduled stop)
+      setDepotDeparture(result.depotDeparture ?? null);
+
+      setHasChanges(true);
+    } catch (err) {
+      logger.error('Route recalculation failed:', err);
+      // Non-fatal: the route still exists, just with stale ETAs
+    }
+  }, [currentDepot, routeStartTime, routeEndTime, defaultServiceDurationMinutes]);
+
+  // Auto-recalculate when working hours or depot changes (but not on initial load)
+  const prevWorkingHoursRef = useRef<{ start: string | null; end: string | null; depotId: string | null }>({
+    start: null,
+    end: null,
+    depotId: null,
+  });
+
+  useEffect(() => {
+    const prev = prevWorkingHoursRef.current;
+    const curr = { start: routeStartTime, end: routeEndTime, depotId: currentDepot?.id ?? null };
+
+    // Only recalculate if parameters changed AND we have stops AND we're not on initial load
+    const paramsChanged = prev.start !== curr.start || prev.end !== curr.end || prev.depotId !== curr.depotId;
+    const notInitialLoad = prev.start !== null || prev.end !== null || prev.depotId !== null;
+
+    if (routeStops.length > 0 && currentDepot && paramsChanged && notInitialLoad) {
+      // Use the current routeStops snapshot
+      const stopsSnapshot = [...routeStops];
+      triggerRecalculate(stopsSnapshot);
+    }
+
+    prevWorkingHoursRef.current = curr;
+  }, [routeStartTime, routeEndTime, currentDepot?.id, routeStops.length, triggerRecalculate]);
+
+  // Auto-recalculate ETAs when a route was just loaded from the database
+  useEffect(() => {
+    const pending = pendingRecalcStopsRef.current;
+    if (pending && pending.length > 0 && currentDepot) {
+      pendingRecalcStopsRef.current = null;
+      triggerRecalculate(pending);
+    }
+  }, [triggerRecalculate, currentDepot]);
+
   // Action handlers
   const handleSchedule = useCallback(async (candidateId: string, slot: SlotSuggestion) => {
     const candidate = candidates.find((c) => c.id === candidateId || c.customerId === candidateId);
@@ -1175,102 +1271,6 @@ export function PlanningInbox() {
       return next;
     });
   }, []);
-
-  // Quick-recalculate ETAs for the current route after insert/reorder.
-  // Fires in the background – updates stops in-place when the response arrives.
-  const triggerRecalculate = useCallback(async (stopsSnapshot: SavedRouteStop[]) => {
-    const depot = currentDepot;
-    if (!depot || stopsSnapshot.length === 0) return;
-
-    // Build recalc input from the stops snapshot
-    const recalcStops: RecalcStopInput[] = stopsSnapshot.map((s) => ({
-      coordinates: { lat: s.customerLat ?? 0, lng: s.customerLng ?? 0 },
-      stopType: s.stopType,
-      scheduledTimeStart: s.scheduledTimeStart ?? undefined,
-      scheduledTimeEnd: s.scheduledTimeEnd ?? undefined,
-      serviceDurationMinutes: s.serviceDurationMinutes ?? undefined,
-      breakDurationMinutes: s.breakDurationMinutes ?? undefined,
-      id: s.id,
-      customerId: s.customerId ?? undefined,
-      customerName: s.customerName ?? undefined,
-    }));
-
-    try {
-      const result = await recalculateRoute({
-        depot: { lat: depot.lat, lng: depot.lng },
-        stops: recalcStops,
-        workdayStart: routeStartTime || undefined,
-        workdayEnd: routeEndTime || undefined,
-        defaultServiceDurationMinutes,
-      });
-
-      // Merge recalculated times back into stops
-      setRouteStops((prev) => {
-        // Build a lookup by id for quick matching
-        const resultMap = new Map(result.stops.map((r) => [r.id, r]));
-        const updated = prev.map((stop) => {
-          const recalced = resultMap.get(stop.id);
-          if (!recalced) return stop;
-          return {
-            ...stop,
-            estimatedArrival: recalced.estimatedArrival,
-            estimatedDeparture: recalced.estimatedDeparture,
-            distanceFromPreviousKm: recalced.distanceFromPreviousKm,
-            durationFromPreviousMinutes: recalced.durationFromPreviousMinutes,
-            serviceDurationMinutes: recalced.serviceDurationMinutes,
-          };
-        });
-        return updated;
-      });
-
-      // Update return-to-depot leg
-      setReturnToDepotLeg({
-        distanceKm: result.returnToDepotDistanceKm,
-        durationMinutes: result.returnToDepotDurationMinutes,
-      });
-
-      // Update depot departure (backward-calculated from first scheduled stop)
-      setDepotDeparture(result.depotDeparture ?? null);
-
-      setHasChanges(true);
-    } catch (err) {
-      logger.error('Route recalculation failed:', err);
-      // Non-fatal: the route still exists, just with stale ETAs
-    }
-  }, [currentDepot, routeStartTime, routeEndTime, defaultServiceDurationMinutes]);
-
-  // Auto-recalculate when working hours or depot changes (but not on initial load)
-  const prevWorkingHoursRef = useRef<{ start: string | null; end: string | null; depotId: string | null }>({
-    start: null,
-    end: null,
-    depotId: null,
-  });
-
-  useEffect(() => {
-    const prev = prevWorkingHoursRef.current;
-    const curr = { start: routeStartTime, end: routeEndTime, depotId: currentDepot?.id ?? null };
-
-    // Only recalculate if parameters changed AND we have stops AND we're not on initial load
-    const paramsChanged = prev.start !== curr.start || prev.end !== curr.end || prev.depotId !== curr.depotId;
-    const notInitialLoad = prev.start !== null || prev.end !== null || prev.depotId !== null;
-
-    if (routeStops.length > 0 && currentDepot && paramsChanged && notInitialLoad) {
-      // Use the current routeStops snapshot
-      const stopsSnapshot = [...routeStops];
-      triggerRecalculate(stopsSnapshot);
-    }
-
-    prevWorkingHoursRef.current = curr;
-  }, [routeStartTime, routeEndTime, currentDepot?.id, routeStops.length, triggerRecalculate]);
-
-  // Auto-recalculate ETAs when a route was just loaded from the database
-  useEffect(() => {
-    const pending = pendingRecalcStopsRef.current;
-    if (pending && pending.length > 0 && currentDepot) {
-      pendingRecalcStopsRef.current = null;
-      triggerRecalculate(pending);
-    }
-  }, [triggerRecalculate, currentDepot]);
 
   // Route building: add selected candidates to route
   const handleAddSelectedToRoute = useCallback(() => {
