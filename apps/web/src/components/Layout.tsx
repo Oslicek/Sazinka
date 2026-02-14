@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import { useNatsStore } from '@/stores/natsStore';
 import { useActiveJobsStore } from '@/stores/activeJobsStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -10,6 +11,7 @@ interface LayoutProps {
 }
 
 export function Layout({ children }: LayoutProps) {
+  const { t } = useTranslation('nav');
   const [menuOpen, setMenuOpen] = useState(false);
   const isConnected = useNatsStore((s) => s.isConnected);
   const activeJobsCount = useActiveJobsStore((s) => s.activeCount);
@@ -40,7 +42,7 @@ export function Layout({ children }: LayoutProps) {
           <button 
             className={styles.hamburger}
             onClick={() => setMenuOpen(!menuOpen)}
-            aria-label="Menu"
+            aria-label={t('menu')}
           >
             <span className={styles.hamburgerLine}></span>
             <span className={styles.hamburgerLine}></span>
@@ -53,22 +55,22 @@ export function Layout({ children }: LayoutProps) {
         </div>
         
         <nav className={styles.nav}>
-          {hasPermission('page:calendar') && <NavLink to="/calendar">Kalendář</NavLink>}
-          {hasPermission('page:inbox') && <NavLink to="/inbox">Inbox</NavLink>}
-          {hasPermission('page:planner') && <NavLink to="/planner">Plán</NavLink>}
-          {hasPermission('page:worklog') && <NavLink to="/worklog">Záznam</NavLink>}
-          {hasPermission('page:customers') && <NavLink to="/customers">Zákazníci</NavLink>}
-          {hasPermission('page:routes') && <NavLink to="/routes">Trasy</NavLink>}
-          {hasPermission('page:jobs') && <NavLink to="/jobs">Úlohy</NavLink>}
-          {showSettings && <NavLink to="/settings">Nastavení</NavLink>}
-          {showAdmin && <NavLink to="/admin">Admin</NavLink>}
+          {hasPermission('page:calendar') && <NavLink to="/calendar">{t('calendar')}</NavLink>}
+          {hasPermission('page:inbox') && <NavLink to="/inbox">{t('inbox')}</NavLink>}
+          {hasPermission('page:planner') && <NavLink to="/planner">{t('planner')}</NavLink>}
+          {hasPermission('page:worklog') && <NavLink to="/worklog">{t('worklog')}</NavLink>}
+          {hasPermission('page:customers') && <NavLink to="/customers">{t('customers')}</NavLink>}
+          {hasPermission('page:routes') && <NavLink to="/routes">{t('routes')}</NavLink>}
+          {hasPermission('page:jobs') && <NavLink to="/jobs">{t('jobs')}</NavLink>}
+          {showSettings && <NavLink to="/settings">{t('settings')}</NavLink>}
+          {showAdmin && <NavLink to="/admin">{t('admin')}</NavLink>}
         </nav>
 
         <div className={styles.headerRight}>
           {activeJobsCount > 0 && (
             <Link to="/jobs" className={styles.activeJobs}>
               <span className={styles.activeJobsIndicator} />
-              Aktivní úlohy: {activeJobsCount}
+              {t('active_jobs', { count: activeJobsCount })}
             </Link>
           )}
           
@@ -77,14 +79,14 @@ export function Layout({ children }: LayoutProps) {
               className={styles.statusDot}
               style={{ backgroundColor: isConnected ? 'var(--color-success)' : 'var(--color-error)' }}
             />
-            {isConnected ? 'Online' : 'Offline'}
+            {isConnected ? t('online') : t('offline')}
           </div>
 
           {user && (
             <div className={styles.userMenu}>
               <span className={styles.userName}>{user.name}</span>
               <button className={styles.logoutButton} onClick={handleLogout}>
-                Odhlásit
+                {t('logout')}
               </button>
             </div>
           )}
@@ -97,30 +99,30 @@ export function Layout({ children }: LayoutProps) {
           <div className={styles.menuOverlay} onClick={() => setMenuOpen(false)} />
           <nav className={styles.menuDrawer}>
             <div className={styles.menuHeader}>
-              <span className={styles.menuTitle}>Menu</span>
+              <span className={styles.menuTitle}>{t('menu')}</span>
               <button 
                 className={styles.menuClose}
                 onClick={() => setMenuOpen(false)}
-                aria-label="Zavřít menu"
+                aria-label={t('close_menu')}
               >
                 ×
               </button>
             </div>
             
             <div className={styles.menuItems}>
-              {hasPermission('page:calendar') && <MenuLink to="/calendar" onClick={handleMenuItemClick}>Kalendář</MenuLink>}
-              {hasPermission('page:inbox') && <MenuLink to="/inbox" onClick={handleMenuItemClick}>Inbox</MenuLink>}
-              {hasPermission('page:planner') && <MenuLink to="/planner" onClick={handleMenuItemClick}>Plán</MenuLink>}
-              {hasPermission('page:worklog') && <MenuLink to="/worklog" onClick={handleMenuItemClick}>Záznam</MenuLink>}
-              {hasPermission('page:customers') && <MenuLink to="/customers" onClick={handleMenuItemClick}>Zákazníci</MenuLink>}
-              {hasPermission('page:routes') && <MenuLink to="/routes" onClick={handleMenuItemClick}>Trasy</MenuLink>}
-              {hasPermission('page:jobs') && <MenuLink to="/jobs" onClick={handleMenuItemClick}>Úlohy</MenuLink>}
-              {showSettings && <MenuLink to="/settings" onClick={handleMenuItemClick}>Nastavení</MenuLink>}
-              {showAdmin && <MenuLink to="/admin" onClick={handleMenuItemClick}>Admin</MenuLink>}
+              {hasPermission('page:calendar') && <MenuLink to="/calendar" onClick={handleMenuItemClick}>{t('calendar')}</MenuLink>}
+              {hasPermission('page:inbox') && <MenuLink to="/inbox" onClick={handleMenuItemClick}>{t('inbox')}</MenuLink>}
+              {hasPermission('page:planner') && <MenuLink to="/planner" onClick={handleMenuItemClick}>{t('planner')}</MenuLink>}
+              {hasPermission('page:worklog') && <MenuLink to="/worklog" onClick={handleMenuItemClick}>{t('worklog')}</MenuLink>}
+              {hasPermission('page:customers') && <MenuLink to="/customers" onClick={handleMenuItemClick}>{t('customers')}</MenuLink>}
+              {hasPermission('page:routes') && <MenuLink to="/routes" onClick={handleMenuItemClick}>{t('routes')}</MenuLink>}
+              {hasPermission('page:jobs') && <MenuLink to="/jobs" onClick={handleMenuItemClick}>{t('jobs')}</MenuLink>}
+              {showSettings && <MenuLink to="/settings" onClick={handleMenuItemClick}>{t('settings')}</MenuLink>}
+              {showAdmin && <MenuLink to="/admin" onClick={handleMenuItemClick}>{t('admin')}</MenuLink>}
               
               <div className={styles.menuDivider} />
               
-              {hasPermission('page:about') && <MenuLink to="/about" onClick={handleMenuItemClick}>O službě</MenuLink>}
+              {hasPermission('page:about') && <MenuLink to="/about" onClick={handleMenuItemClick}>{t('about')}</MenuLink>}
             </div>
           </nav>
         </>

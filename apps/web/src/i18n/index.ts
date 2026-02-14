@@ -58,9 +58,17 @@ if (languageDetector) {
   languageDetector.addDetector(zustandDetector);
 }
 
-// Update document.documentElement.lang when language changes
+// Update document.documentElement.lang and <title> when language changes
 i18n.on('languageChanged', (lng) => {
   document.documentElement.lang = lng;
+  // Update title once nav namespace is loaded
+  if (i18n.hasLoadedNamespace('nav')) {
+    document.title = i18n.t('nav:page_title');
+  } else {
+    i18n.loadNamespaces('nav').then(() => {
+      document.title = i18n.t('nav:page_title');
+    });
+  }
 });
 
 export default i18n;

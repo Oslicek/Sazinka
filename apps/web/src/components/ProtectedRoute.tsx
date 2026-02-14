@@ -1,4 +1,5 @@
 import { Navigate } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/stores/authStore';
 
 interface ProtectedRouteProps {
@@ -15,6 +16,7 @@ interface ProtectedRouteProps {
  * Shows forbidden message if authenticated but lacks access.
  */
 export function ProtectedRoute({ children, roles, requiredPermission }: ProtectedRouteProps) {
+  const { t } = useTranslation('nav');
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isLoading = useAuthStore((s) => s.isLoading);
   const user = useAuthStore((s) => s.user);
@@ -34,8 +36,8 @@ export function ProtectedRoute({ children, roles, requiredPermission }: Protecte
   if (roles && user && !roles.includes(user.role)) {
     return (
       <div style={{ padding: '2rem', textAlign: 'center' }}>
-        <h2>Pristup odepren</h2>
-        <p>Nemate opravneni pro pristup k teto strance.</p>
+        <h2>{t('access_denied')}</h2>
+        <p>{t('access_denied_message')}</p>
       </div>
     );
   }
@@ -44,8 +46,8 @@ export function ProtectedRoute({ children, roles, requiredPermission }: Protecte
   if (requiredPermission && !hasPermission(requiredPermission)) {
     return (
       <div style={{ padding: '2rem', textAlign: 'center' }}>
-        <h2>Pristup odepren</h2>
-        <p>Nemate opravneni pro pristup k teto strance.</p>
+        <h2>{t('access_denied')}</h2>
+        <p>{t('access_denied_message')}</p>
       </div>
     );
   }

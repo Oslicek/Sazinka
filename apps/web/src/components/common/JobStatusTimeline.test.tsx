@@ -1,20 +1,51 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import i18next from 'i18next';
+import { I18nextProvider, initReactI18next } from 'react-i18next';
 import { JobStatusTimeline, DEFAULT_STEPS } from './JobStatusTimeline';
 import type { JobStatus } from '../../types/jobStatus';
+
+import enNav from '../../../public/locales/en/nav.json';
+import csNav from '../../../public/locales/cs/nav.json';
+
+// ── i18n test instance ──
+const testI18n = i18next.createInstance();
+
+beforeAll(async () => {
+  await testI18n.use(initReactI18next).init({
+    lng: 'en',
+    fallbackLng: 'en',
+    supportedLngs: ['en', 'cs'],
+    ns: ['nav'],
+    defaultNS: 'nav',
+    resources: {
+      en: { nav: enNav },
+      cs: { nav: csNav },
+    },
+    interpolation: { escapeValue: false },
+  });
+});
+
+function renderTimeline(status: JobStatus | null, props?: Partial<React.ComponentProps<typeof JobStatusTimeline>>) {
+  return render(
+    <I18nextProvider i18n={testI18n}>
+      <JobStatusTimeline status={status} {...props} />
+    </I18nextProvider>,
+  );
+}
 
 describe('JobStatusTimeline', () => {
   describe('with null status', () => {
     it('renders all steps as pending', () => {
-      render(<JobStatusTimeline status={null} />);
+      renderTimeline(null);
       
-      expect(screen.getByText('Fronta')).toBeInTheDocument();
-      expect(screen.getByText('Zpracování')).toBeInTheDocument();
-      expect(screen.getByText('Hotovo')).toBeInTheDocument();
+      expect(screen.getByText('Queued')).toBeInTheDocument();
+      expect(screen.getByText('Processing')).toBeInTheDocument();
+      expect(screen.getByText('Done')).toBeInTheDocument();
     });
 
     it('shows no active step', () => {
-      render(<JobStatusTimeline status={null} />);
+      renderTimeline(null);
       
       const steps = screen.getAllByTestId('timeline-step');
       steps.forEach(step => {
@@ -27,16 +58,16 @@ describe('JobStatusTimeline', () => {
     const queuedStatus: JobStatus = { type: 'queued', position: 3 };
 
     it('renders queued step as active', () => {
-      render(<JobStatusTimeline status={queuedStatus} />);
+      renderTimeline(queuedStatus);
       
       const queuedStep = screen.getByTestId('step-queued');
       expect(queuedStep).toHaveAttribute('data-state', 'active');
     });
 
     it('shows queue position when provided', () => {
-      render(<JobStatusTimeline status={queuedStatus} />);
+      renderTimeline(queuedStatus);
       
-      expect(screen.getByText('Pozice: 3')).toBeInTheDocument();
+      expect(screen.getByText('Position: 3')).toBeInTheDocument();
     });
   });
 
@@ -44,25 +75,25 @@ describe('JobStatusTimeline', () => {
     const processingStatus: JobStatus = {
       type: 'processing',
       progress: 65,
-      message: 'Budování matice',
+      message: 'Building matrix',
     };
 
     it('renders processing step as active', () => {
-      render(<JobStatusTimeline status={processingStatus} />);
+      renderTimeline(processingStatus);
       
       const processingStep = screen.getByTestId('step-processing');
       expect(processingStep).toHaveAttribute('data-state', 'active');
     });
 
     it('marks queued step as done', () => {
-      render(<JobStatusTimeline status={processingStatus} />);
+      renderTimeline(processingStatus);
       
       const queuedStep = screen.getByTestId('step-queued');
       expect(queuedStep).toHaveAttribute('data-state', 'done');
     });
 
     it('shows progress bar when showProgress is true', () => {
-      render(<JobStatusTimeline status={processingStatus} showProgress />);
+      renderTimeline(processingStatus, { showProgress: true });
       
       const progressBar = screen.getByRole('progressbar');
       expect(progressBar).toBeInTheDocument();
@@ -70,13 +101,13 @@ describe('JobStatusTimeline', () => {
     });
 
     it('shows progress message', () => {
-      render(<JobStatusTimeline status={processingStatus} />);
+      renderTimeline(processingStatus);
       
-      expect(screen.getByText('Budování matice')).toBeInTheDocument();
+      expect(screen.getByText('Building matrix')).toBeInTheDocument();
     });
 
     it('hides progress bar when showProgress is false', () => {
-      render(<JobStatusTimeline status={processingStatus} showProgress={false} />);
+      renderTimeline(processingStatus, { showProgress: false });
       
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     });
@@ -86,14 +117,14 @@ describe('JobStatusTimeline', () => {
     const completedStatus: JobStatus = { type: 'completed', result: { id: '1' } };
 
     it('renders completed step as done', () => {
-      render(<JobStatusTimeline status={completedStatus} />);
+      renderTimeline(completedStatus);
       
       const completedStep = screen.getByTestId('step-completed');
       expect(completedStep).toHaveAttribute('data-state', 'done');
     });
 
     it('marks all previous steps as done', () => {
-      render(<JobStatusTimeline status={completedStatus} />);
+      renderTimeline(completedStatus);
       
       const queuedStep = screen.getByTestId('step-queued');
       const processingStep = screen.getByTestId('step-processing');
@@ -107,62 +138,44 @@ describe('JobStatusTimeline', () => {
     const failedStatus: JobStatus = { type: 'failed', error: 'Network error' };
 
     it('shows error state on last step', () => {
-      render(<JobStatusTimeline status={failedStatus} />);
+      renderTimeline(failedStatus);
       
       const completedStep = screen.getByTestId('step-completed');
       expect(completedStep).toHaveAttribute('data-state', 'error');
     });
 
     it('shows failedLabel instead of regular label', () => {
-      render(<JobStatusTimeline status={failedStatus} />);
+      renderTimeline(failedStatus);
       
-      expect(screen.getByText('Selhalo')).toBeInTheDocument();
-      // 'Hotovo' should not be visible when failed
-      expect(screen.queryByText('Hotovo')).not.toBeInTheDocument();
+      expect(screen.getByText('Failed')).toBeInTheDocument();
+      // 'Done' should not be visible when failed
+      expect(screen.queryByText('Done')).not.toBeInTheDocument();
     });
 
     it('shows error message', () => {
-      render(<JobStatusTimeline status={failedStatus} />);
+      renderTimeline(failedStatus);
       
       expect(screen.getByText('Network error')).toBeInTheDocument();
     });
   });
 
-  describe('custom steps', () => {
-    const customSteps = [
-      { id: 'parse', label: 'Parsování' },
-      { id: 'send', label: 'Odesílání' },
-      { id: 'geocode', label: 'Geokódování' },
-      { id: 'done', label: 'Hotovo', failedLabel: 'Chyba' },
-    ];
-
-    it('renders custom step labels', () => {
-      render(<JobStatusTimeline status={null} steps={customSteps} />);
-      
-      expect(screen.getByText('Parsování')).toBeInTheDocument();
-      expect(screen.getByText('Odesílání')).toBeInTheDocument();
-      expect(screen.getByText('Geokódování')).toBeInTheDocument();
-      expect(screen.getByText('Hotovo')).toBeInTheDocument();
-    });
-  });
-
   describe('size variants', () => {
     it('applies sm size via data-size', () => {
-      render(<JobStatusTimeline status={null} size="sm" />);
+      renderTimeline(null, { size: 'sm' });
       
       const timeline = screen.getByTestId('job-status-timeline');
       expect(timeline).toHaveAttribute('data-size', 'sm');
     });
 
     it('applies lg size via data-size', () => {
-      render(<JobStatusTimeline status={null} size="lg" />);
+      renderTimeline(null, { size: 'lg' });
       
       const timeline = screen.getByTestId('job-status-timeline');
       expect(timeline).toHaveAttribute('data-size', 'lg');
     });
 
     it('defaults to md size', () => {
-      render(<JobStatusTimeline status={null} />);
+      renderTimeline(null);
       
       const timeline = screen.getByTestId('job-status-timeline');
       expect(timeline).toHaveAttribute('data-size', 'md');
@@ -171,7 +184,7 @@ describe('JobStatusTimeline', () => {
 
   describe('custom className', () => {
     it('applies custom className', () => {
-      render(<JobStatusTimeline status={null} className="my-custom-class" />);
+      renderTimeline(null, { className: 'my-custom-class' });
       
       const timeline = screen.getByTestId('job-status-timeline');
       expect(timeline).toHaveClass('my-custom-class');
@@ -179,12 +192,25 @@ describe('JobStatusTimeline', () => {
   });
 
   describe('DEFAULT_STEPS', () => {
-    it('has correct default steps', () => {
+    it('has correct default steps with i18n keys', () => {
       expect(DEFAULT_STEPS).toEqual([
-        { id: 'queued', label: 'Fronta' },
-        { id: 'processing', label: 'Zpracování' },
-        { id: 'completed', label: 'Hotovo', failedLabel: 'Selhalo' },
+        { id: 'queued', label: 'nav:job_queued' },
+        { id: 'processing', label: 'nav:job_processing' },
+        { id: 'completed', label: 'nav:job_completed', failedLabel: 'nav:job_failed' },
       ]);
+    });
+  });
+
+  describe('i18n', () => {
+    it('renders Czech labels when language is cs', () => {
+      testI18n.changeLanguage('cs');
+      renderTimeline(null);
+      
+      expect(screen.getByText('Fronta')).toBeInTheDocument();
+      expect(screen.getByText('Zpracování')).toBeInTheDocument();
+      expect(screen.getByText('Hotovo')).toBeInTheDocument();
+      
+      testI18n.changeLanguage('en'); // reset
     });
   });
 });

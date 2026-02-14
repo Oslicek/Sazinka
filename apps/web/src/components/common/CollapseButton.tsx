@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import styles from './CollapseButton.module.css';
 
 interface CollapseButtonProps {
@@ -22,13 +23,15 @@ export function CollapseButton({
   variant = 'default',
   className,
 }: CollapseButtonProps) {
+  const { t } = useTranslation('nav');
+
   return (
     <button
       type="button"
       className={`${styles.collapseButton} ${variant === 'overlay' ? styles.overlay : ''} ${className ?? ''}`}
       data-collapsed={collapsed}
       onClick={onClick}
-      title={title ?? (collapsed ? 'Rozbalit' : 'Sbalit')}
+      title={title ?? (collapsed ? t('expand') : t('collapse'))}
       aria-expanded={!collapsed}
     >
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

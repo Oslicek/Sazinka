@@ -1,4 +1,5 @@
 import React from 'react';
+import i18n from '@/i18n';
 
 type ErrorBoundaryProps = {
   children: React.ReactNode;
@@ -42,10 +43,10 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
             textAlign: 'center',
           }}
         >
-          <h1>Nastala neocekavana chyba</h1>
-          <p>Stranku je potreba znovu nacist.</p>
+          <h1>{i18n.t('nav:error_title')}</h1>
+          <p>{i18n.t('nav:error_message')}</p>
           <button type="button" onClick={this.handleReload}>
-            Znovu nacist
+            {i18n.t('nav:error_reload')}
           </button>
         </div>
       );

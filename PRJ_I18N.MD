@@ -788,7 +788,7 @@ The `locale` field is included in the JWT payload and `UserPublic` type so it's 
 
 **Dependencies installed:** ✅ `i18next@^25.8.7`, `i18next-browser-languagedetector@^8.2.1`, `i18next-http-backend@^3.0.2`, `react-i18next@^16.5.4`.
 
-**Test summary:** 72 frontend tests across 6 files + 19 Rust auth tests, all passing.
+**Test summary:** 100 frontend tests across 8 files + 19 Rust auth tests, all passing.
 
 ### Pre-crash UI refactoring (fixed)
 
@@ -808,7 +808,18 @@ The previous session extracted route summary stats/actions into shared component
 | 1.4 Locale on register | ✅ Done | `Register.tsx` detects locale from `navigator.language`, user can change via `<select>`. Locale sent to backend in register payload. Rust `RegisterRequest` + `create_user()` updated to accept and persist `locale`. Auth store `register()` signature extended with optional `locale` param. |
 | 1.5 Tests | ✅ 13/13 pass | `Login.test.tsx` (6 tests): EN/CS rendering, no hardcoded Czech, language switching, placeholders. `Register.test.tsx` (7 tests): EN/CS rendering, locale selector with 2 options, language switch via selector, hint text, key parity. |
 
-### Phases 2–9: ❌ Not started
+### Phase 2: Shell (Layout, Navigation, ErrorBoundary) — ✅ COMPLETE
+
+| Step | Status | Notes |
+|------|--------|-------|
+| 2.1 Nav namespace | ✅ Done | `en/nav.json` (28 keys) + `cs/nav.json` (28 keys). Key parity passes. |
+| 2.2 Layout.tsx | ✅ Done | All 20+ hardcoded strings replaced: nav links (×9 desktop + ×10 mobile), active jobs, online/offline, logout, menu/close aria-labels. |
+| 2.3 ErrorBoundary + ProtectedRoute | ✅ Done | `ErrorBoundary.tsx`: 3 strings via `i18n.t()` (class component). `ProtectedRoute.tsx`: 2 strings via `useTranslation('nav')`. |
+| 2.4 Common components | ✅ Done | `CollapseButton.tsx`: expand/collapse titles via `t()`. `JobStatusTimeline.tsx`: `DEFAULT_STEPS` labels use i18n keys, position text interpolated. Tests updated (20/20 pass). |
+| 2.5 index.html lang + title | ✅ Done | `index.html`: `lang="en"` (default), generic title. `i18n/index.ts`: `languageChanged` listener now also updates `document.title` from `nav:page_title`. |
+| 2.6 Tests | ✅ 28/28 pass | `Layout.test.tsx` (8 tests): EN/CS nav labels, online/offline, logout, no hardcoded Czech, language switching, key parity. `JobStatusTimeline.test.tsx` (20 tests): all states, progress, custom steps, i18n Czech labels. |
+
+### Phases 3–9: ❌ Not started
 
 ---
 

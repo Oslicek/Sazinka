@@ -1,4 +1,5 @@
 import { type JobStatus, isQueued, isProcessing, isFailed } from '../../types/jobStatus';
+import { useTranslation } from 'react-i18next';
 import styles from './JobStatusTimeline.module.css';
 
 /** Timeline step definition */
@@ -11,11 +12,11 @@ export interface TimelineStep {
   failedLabel?: string;
 }
 
-/** Default steps for most job types */
+/** Default steps for most job types — now uses i18n keys */
 export const DEFAULT_STEPS: TimelineStep[] = [
-  { id: 'queued', label: 'Fronta' },
-  { id: 'processing', label: 'Zpracování' },
-  { id: 'completed', label: 'Hotovo', failedLabel: 'Selhalo' },
+  { id: 'queued', label: 'nav:job_queued' },
+  { id: 'processing', label: 'nav:job_processing' },
+  { id: 'completed', label: 'nav:job_completed', failedLabel: 'nav:job_failed' },
 ];
 
 /** Props for JobStatusTimeline component */
@@ -53,6 +54,7 @@ export function JobStatusTimeline({
   size = 'md',
   className = '',
 }: JobStatusTimelineProps) {
+  const { t } = useTranslation('nav');
   // Determine current step index based on status
   const getCurrentStepIndex = (): number => {
     if (!status) return -1;
@@ -102,7 +104,7 @@ export function JobStatusTimeline({
     if (!status) return { type: 'info' };
     
     if (isQueued(status) && status.position) {
-      return { text: `Pozice: ${status.position}`, type: 'info' };
+      return { text: t('job_position', { position: status.position }), type: 'info' };
     }
     
     if (isProcessing(status) && status.message) {
@@ -169,7 +171,7 @@ export function JobStatusTimeline({
               
               {/* Step label */}
               <div className={styles.label}>
-                {showFailedLabel ? step.failedLabel : step.label}
+                {showFailedLabel ? t(step.failedLabel!) : t(step.label)}
               </div>
             </div>
           );
