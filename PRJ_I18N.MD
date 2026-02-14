@@ -7,7 +7,7 @@
 
 This document captures all findings related to making Sazinka a multi-language, multi-culture application. The app is currently 100% Czech — all UI text, backend messages, date/number formatting, validation messages, email templates, and even CSV import aliases are hardcoded in Czech.
 
-**Estimated scope:** ~90 frontend files, ~15 backend files, ~500+ string keys to externalize.
+**Estimated scope:** ~90 frontend files in `apps/web`, ~15 backend files, ~500+ string keys to externalize. **Out of scope:** `apps/site` (marketing/landing) — separate i18n.
 
 ---
 
@@ -284,18 +284,18 @@ An i18n library with ICU MessageFormat or similar pluralization support is requi
 
 ### What needs to happen
 
-1. **Choose i18n library** — e.g. `react-i18next` + `i18next` for frontend
-2. **Add locale setting** to user profile / settings (stored in DB)
-3. **Create translation file structure** — namespaced JSON (`common`, `planner`, `customers`, `settings`, `validation`, `errors`)
-4. **Extract all ~655 frontend strings** into translation keys
-5. **Create backend i18n layer** or pass locale to worker so responses use correct language
-6. **Replace `'cs-CZ'` hardcoded locale** with dynamic locale from user settings
-7. **Replace hardcoded date/weekday/month names** with `Intl.DateTimeFormat` or i18n library
-8. **Handle pluralization** — Czech needs 3 plural forms
-9. **Make email templates locale-aware** — store per-locale templates or use placeholders
-10. **Support locale-specific import aliases** — extend alias maps for new languages
-11. **Update `index.html`** — dynamic `lang` attribute
-12. **Consider RTL** if Arabic/Hebrew support is ever needed (low priority)
+1. ~~**Choose i18n library**~~ — **Decided:** `i18next` + `react-i18next` (see Part 2)
+2. ~~**Add locale setting**~~ — **Decided:** stored in DB, `VARCHAR(10)`, default `'en'` (see Part 2)
+3. ~~**Create translation file structure**~~ — **Decided:** namespaced JSON in `public/locales/{lng}/{ns}.json` (see Part 2)
+4. **Extract all ~655 frontend strings** into translation keys — Phase 1-7
+5. ~~**Create backend i18n layer**~~ — **Decided:** backend sends `{ key, params }` (colon convention); frontend resolves via `resolveBackendMessage()` (see Part 2)
+6. **Replace `'cs-CZ'` hardcoded locale** with `i18n.language` via centralized `formatters.ts` — Phase 1-7
+7. **Replace hardcoded date/weekday/month names** with native `Intl` via `formatters.ts` — Phase 1-7
+8. ~~**Handle pluralization**~~ — **Decided:** CLDR rules via i18next (`one`, `few`, `other`) (see Part 2)
+9. **Make email templates locale-aware** — per-locale defaults for new accounts; never modify existing — Phase 6
+10. **Support locale-specific import aliases** — tolerant mode, all locales accepted — Phase 5
+11. **Update `index.html`** — dynamic `lang` attribute via `document.documentElement.lang` — Phase 0
+12. ~~**Consider RTL**~~ — **Excluded** (no Arabic/Hebrew market planned)
 
 ### Rollout priority
 
@@ -315,12 +315,12 @@ An i18n library with ICU MessageFormat or similar pluralization support is requi
 
 ## Design Principles
 
-1. **Zero-overhead default.** Czech remains the default. No performance penalty for Czech-only users.
+1. **Zero-overhead default.** English (`en`) is the default. Performance favors English (preload `en`; see Architecture Clarifications).
 2. **Progressive extraction.** Files can be migrated one at a time. Hardcoded Czech and `t()` calls coexist during migration.
 3. **Type-safe keys.** Every translation key is checked at build time. A typo or missing key is a TypeScript error.
 4. **One source of truth per string.** Each string lives in exactly one namespace file. Components import keys, never raw text.
 5. **Backend stays English-keyed.** The Rust backend sends machine-readable codes/keys. The frontend resolves them to the user's locale. This avoids i18n complexity in Rust entirely.
-6. **Locale follows the user.** Stored in user profile (DB), falls back to browser `navigator.language`, then to `cs`.
+6. **Locale follows the user.** Stored in user profile (DB), falls back to browser `navigator.language`, then to `en`.
 
 ---
 
@@ -344,44 +344,54 @@ An i18n library with ICU MessageFormat or similar pluralization support is requi
 
 ## Locale Resolution Chain
 
+**Logged-in user:**
 ```
 User DB setting (locale field on users table)
   → Zustand authStore.user.locale
-    → navigator.language
-      → 'cs'  (hardcoded fallback)
+    → navigator.language (mapped to supported locale)
+      → 'en'  (hardcoded fallback)
 ```
+
+**Pre-login / post-logout:** Use `navigator.language`, map to supported locale, fall back to `en` if unsupported.
 
 When a user logs in, `locale` from the JWT/user object is written to the i18n instance. Changing locale in Settings triggers both a DB update and an `i18n.changeLanguage()`.
 
-**Supported locales (initial):** `cs`, `en`
+**Supported locales (initial):** `en`, `en-GB`, `en-US`, `cs` — regional variants (`en-GB`, `en-US`) share `en/*.json` files initially; i18next falls back to `en` when locale-specific files are absent.
 **Later:** `sk`, `de`, `pl` (based on market expansion)
 
 ---
 
 ## File Structure
 
+Translation JSON files live in `public/locales/` so they are served at `/locales/{lng}/{ns}.json` (required by `i18next-http-backend`).
+
 ```
-apps/web/src/
-├── i18n/
-│   ├── index.ts              ← i18n instance setup
-│   ├── types.ts              ← generated type from keys (strict mode)
+apps/web/
+├── public/
 │   └── locales/
 │       ├── cs/
 │       │   ├── common.json   ← shared: buttons, states, units, errors
-│       │   ├── auth.json     ← login, register
-│       │   ├── nav.json      ← layout, navigation
-│       │   ├── planner.json  ← PlanningInbox, CandidateDetail, Route*
+│       │   ├── auth.json
+│       │   ├── nav.json
+│       │   ├── planner.json
 │       │   ├── customers.json
 │       │   ├── calendar.json
 │       │   ├── settings.json
 │       │   ├── import.json
 │       │   ├── jobs.json
-│       │   └── validation.json  ← form validation messages
-│       └── en/
+│       │   └── validation.json
+│       └── en/               ← en-GB, en-US fall back to en/*.json initially
 │           ├── common.json
 │           ├── auth.json
 │           └── ...  (same structure)
+└── src/
+    └── i18n/
+        ├── index.ts          ← i18n instance setup
+        ├── formatters.ts     ← date/time/number formatting
+        └── types.ts          ← generated type from keys (strict mode, optional)
 ```
+
+**Scope:** This structure applies to `apps/web` only. `apps/site` (marketing/landing) has its own i18n and is out of scope.
 
 ### Namespace design rationale
 
@@ -416,21 +426,23 @@ i18n
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
-    // Default and fallback
-    fallbackLng: 'cs',
-    supportedLngs: ['cs', 'en'],
+    // Default and fallback (English per Architecture Clarifications)
+    // Do NOT set `lng` — let the detector chain resolve it
+    fallbackLng: 'en',
+    supportedLngs: ['en', 'en-GB', 'en-US', 'cs'],
+    nonExplicitSupportedLngs: true,  // en-GB falls back to en when en-GB/*.json absent
 
     // Namespace config
     defaultNS: 'common',
     ns: ['common'],           // preload only common; rest loaded on demand
     fallbackNS: 'common',
 
-    // Backend: load JSON from /locales/{lng}/{ns}.json
+    // Backend: HTTP loading; en is preloaded (smallest penalty for default locale)
     backend: {
       loadPath: '/locales/{{lng}}/{{ns}}.json',
     },
 
-    // Language detector: check zustand store first, then browser
+    // Language detector: check zustand store first, then browser, then fallback
     detection: {
       order: ['custom', 'navigator'],
       caches: [],  // we persist in DB, not localStorage
@@ -524,9 +536,9 @@ Examples:
 
 ```json
 {
-  "customer_count": "{{count}} zákazník",
+  "customer_count_one": "{{count}} zákazník",
   "customer_count_few": "{{count}} zákazníci",
-  "customer_count_many": "{{count}} zákazníků",
+  "customer_count_other": "{{count}} zákazníků",
   
   "duration_years_one": "{{count}} rok",
   "duration_years_few": "{{count}} roky",
@@ -534,7 +546,7 @@ Examples:
 }
 ```
 
-i18next uses CLDR plural rules. Czech has: `one`, `few` (2-4), `other` (5+).
+i18next uses CLDR plural rules. Czech has: `one`, `few` (2-4), `other` (5+). Do not use `many`; use `other` for 5+.
 
 ---
 
@@ -571,17 +583,19 @@ This preserves type safety (key is always a valid DeviceType) while making label
 
 The Rust backend currently sends Czech strings in NATS responses. The new approach:
 
+### Backend key convention: colon namespace
+
+Backend keys use the **i18next colon convention** — `"namespace:key.path"`. This way `resolveBackendMessage()` can call `t(key, params)` directly and i18next resolves the namespace automatically. No separate `ns` parameter needed.
+
 ### Job status messages
 
 ```rust
 // Before:
 status_message: "Načítání zákazníků...".to_string()
 
-// After:
-status_message: "job.loading_customers".to_string()
+// After (unified message shape, colon namespace):
+status_message: json!({ "key": "jobs:loading_customers", "params": {} })
 ```
-
-The frontend resolves: `t(statusMessage, { ns: 'jobs' })`.
 
 ### Validation / error messages
 
@@ -589,11 +603,9 @@ The frontend resolves: `t(statusMessage, { ns: 'jobs' })`.
 // Before:
 anyhow!("Zákazník '{}' nenalezen", name)
 
-// After:  
-json!({ "code": "customer_not_found", "params": { "name": name } })
+// After:
+json!({ "key": "import:errors.customer_not_found", "params": { "name": name } })
 ```
-
-The frontend resolves: `t('errors.customer_not_found', { name, ns: 'import' })`.
 
 ### Route warnings
 
@@ -602,8 +614,10 @@ The frontend resolves: `t('errors.customer_not_found', { name, ns: 'import' })`.
 format!("{}: příjezd v {} je po konci okna {}", name, arrival, window_end)
 
 // After:
-json!({ "key": "warning.arrival_after_window", "params": { "name": name, "arrival": arrival, "windowEnd": window_end } })
+json!({ "key": "planner:warning.arrival_after_window", "params": { "name": name, "arrival": arrival, "windowEnd": window_end } })
 ```
+
+All three resolve via `resolveBackendMessage(payload)` on the frontend — see signature below.
 
 ### Email templates
 
@@ -620,6 +634,34 @@ fn default_email_templates(locale: &str) -> EmailTemplateSettings {
 ```
 
 Users who have customized templates keep their version. Locale only affects the initial defaults for new accounts.
+
+### `resolveBackendMessage()` — frontend helper
+
+```typescript
+// apps/web/src/i18n/resolveBackendMessage.ts
+import i18n from './index';
+
+/** Backend sends either a legacy plain string or the unified { key, params } shape. */
+type BackendMessage = string | { key: string; params?: Record<string, unknown> };
+
+/**
+ * Resolve a backend message to a user-visible string.
+ * - Legacy plain string → returned as-is.
+ * - { key, params } → translated via i18next (key uses colon convention, e.g. "jobs:loading").
+ * - Translation miss → returns the key in dev, a generic fallback in prod.
+ */
+export function resolveBackendMessage(message: BackendMessage): string {
+  if (typeof message === 'string') return message;
+  const { key, params } = message;
+  const result = i18n.t(key, params ?? {});
+  // i18next returns the key itself when translation is missing
+  if (result === key) {
+    if (import.meta.env.DEV) console.warn(`[i18n] missing key: ${key}`);
+    return i18n.t('common:errors.unknown');
+  }
+  return result;
+}
+```
 
 ---
 
@@ -702,11 +744,11 @@ This replaces all 30+ `toLocaleDateString('cs-CZ')` calls and the hardcoded `MON
 ## DB Schema Change
 
 ```sql
--- Add locale column to users table
-ALTER TABLE users ADD COLUMN locale VARCHAR(5) NOT NULL DEFAULT 'cs';
+-- Add locale column to users table (default en per Architecture Clarifications)
+ALTER TABLE users ADD COLUMN locale VARCHAR(10) NOT NULL DEFAULT 'en';
 ```
 
-The `locale` field is included in the JWT payload and `UserPublic` type so it's available immediately on login without an extra query.
+The `locale` field is included in the JWT payload and `UserPublic` type so it's available immediately on login without an extra query. `VARCHAR(10)` accommodates regional codes like `en-GB`.
 
 ---
 
@@ -724,11 +766,12 @@ The `locale` field is included in the JWT payload and `UserPublic` type so it's 
 ### Phase 0: Infrastructure (this task)
 - Install `i18next`, `react-i18next`, `i18next-http-backend`, `i18next-browser-languagedetector`
 - Create `apps/web/src/i18n/` with instance setup
-- Create `apps/web/public/locales/cs/common.json` with an initial small set (buttons, units, statuses)
-- Create `apps/web/public/locales/en/common.json` (same keys, English values)
+- Create `apps/web/public/locales/en/common.json` (primary; English default)
+- Create `apps/web/public/locales/cs/common.json` (same keys, Czech values)
 - Wrap `<App>` in i18n provider
-- Add `locale` to `UserPublic` and DB
+- Add `locale` to `UserPublic` and DB (DEFAULT `'en'`)
 - Create `formatters.ts` utility
+- Add `resolveBackendMessage()` helper for unified backend message handling (legacy string vs `{ key, params }`)
 
 ### Phase 1-7: Incremental extraction
 - One page/component at a time
@@ -738,9 +781,8 @@ The `locale` field is included in the JWT payload and `UserPublic` type so it's 
 - Each phase is independently deployable
 
 ### Phase 8: Backend key migration
-- Replace Czech NATS status strings with keys
-- Frontend resolves keys through i18n
-- Backward compatible: if a value is not a known key, display it as-is (graceful fallback for old backend versions)
+- Replace Czech NATS status strings with unified `{ key, params }` shape
+- Frontend uses `resolveBackendMessage()`: if payload has `key`, translate; if legacy plain string, display as-is
 
 ---
 
@@ -777,8 +819,9 @@ This section supersedes earlier assumptions where they conflict.
 1. **Supported locales from day one include regional variants** (e.g. `en`, `en-GB`, `en-US`).
 2. **Default locale is English** (`en`).
 3. **Fallback locale is English** (`en`) for unsupported/missing locales.
-4. **Performance bias should favor English** (smallest startup penalty for `en`).
+4. **Performance bias for English:** Use HTTP loading only; `en` is preloaded early. No bundling of translations into the main chunk.
 5. **Routing remains state-based** (no locale in URL).
+6. **Regional locale files:** Start with shared `en/*.json` only; `en-GB` and `en-US` fall back to `en` via i18next. Add locale-specific overrides later if needed.
 
 ### Backend-to-frontend i18n message contract
 
@@ -786,14 +829,14 @@ Use a **unified message shape** across all backend user-facing responses (jobs, 
 
 ```json
 {
-  "key": "jobs.loading_customers",
+  "key": "jobs:loading_customers",
   "params": {
     "count": 42
   }
 }
 ```
 
-- `key`: translation key
+- `key`: translation key using **i18next colon convention** (`namespace:key.path`)
 - `params`: optional interpolation parameters
 
 Decision: **frontend-only fallback logic** during migration (backend does not provide localized fallback text payloads).
@@ -834,13 +877,131 @@ Use the **simpler approach**:
 1. Keep migration checks lightweight in early phases.
 2. Add strict parity checks (`cs` vs `en` key sets) once namespace extraction is active for a module.
 
+### Registration locale flow
+
+On registration:
+1. Set initial `user.locale` from `navigator.language` (mapped to a supported locale).
+2. **Ask the user during registration to confirm or change** the locale before completing signup.
+
+### apps/site scope
+
+`apps/site` (marketing/landing page) is **separate** — we are not changing its architecture. See the dedicated section below for relationship analysis and integration options.
+
+### Backend message envelope (frontend handling)
+
+During migration the backend may send either:
+- **Legacy:** plain string (e.g. Czech "Načítám zákazníky...").
+- **New:** `{ key: string, params?: Record<string, unknown> }`.
+
+Frontend `resolveBackendMessage()` logic:
+- If payload is an object with `key`, translate via `t(key, params)`.
+- If payload is a plain string, display as-is (legacy).
+- If translation fails, render a safe fallback; log in dev only.
+
+---
+
+## Relationship: `apps/site` vs `apps/web` i18n
+
+### `apps/site` architecture (not changing)
+
+| Aspect | Detail |
+|--------|--------|
+| **Framework** | Astro 5 (static output, `output: 'static'`) |
+| **Hosting** | Cloudflare Pages + Page Functions (D1 database) |
+| **Rendering** | Pre-generated static HTML at build time |
+| **Routing** | URL-based locale prefixes: `/en/`, `/cs/`, `/sk/` (SEO-required) |
+| **Locale detection** | Root `/` redirects via JS (`navigator.language`) + `<meta http-equiv="refresh">` fallback to `/en/` |
+| **i18n library** | None. Custom `getTranslation(locale, key)` function with dot-path traversal |
+| **Translation files** | 3 flat JSON files: `src/i18n/en.json`, `cs.json`, `sk.json` (~107 keys each) |
+| **Translation delivery** | Compiled into HTML at build time (zero runtime cost) |
+| **Supported locales** | `en`, `cs`, `sk` (configured in `astro.config.mjs`) |
+| **Default locale** | `en` (matches `apps/web`) |
+| **React components** | `ContactForm.tsx`, `NewsletterForm.tsx` — receive labels as props from Astro parent |
+| **Backend** | Cloudflare Page Functions (`functions/api/contact.ts`, `newsletter.ts`) — no i18n strings, just API |
+| **Testing** | Key parity test ensures `cs` and `sk` keys match `en` |
+| **Link to app** | Hardcoded `https://app.ariadline.com` in CTA buttons |
+
+### Key architectural differences
+
+| Dimension | `apps/site` | `apps/web` |
+|-----------|-------------|------------|
+| **i18n approach** | Build-time (Astro SSG) | Runtime (i18next in SPA) |
+| **Locale in URL** | Yes (`/cs/pricing`) — required for SEO | No — state-based (user DB setting) |
+| **Translation loading** | Compiled into HTML | HTTP-fetched JSON at runtime |
+| **Locale storage** | URL path segment | User DB profile |
+| **Locale count** | 3 (`en`, `cs`, `sk`) | 4+ (`en`, `en-GB`, `en-US`, `cs`) |
+| **Pluralization** | Not needed (marketing copy) | Required (Czech plural rules) |
+| **Translation format** | Flat nested JSON, ~107 keys | Namespaced JSON, ~775 keys |
+| **Library** | Custom 35-line `utils.ts` | `i18next` + `react-i18next` |
+
+### What they share today
+
+1. **Default locale:** Both default to `en`.
+2. **JSON structure:** Both use nested JSON with dot-path keys (e.g. `nav.home`, `hero.title`).
+3. **No key overlap:** `apps/site` keys are marketing-specific (`hero`, `pricing`, `cta`, `newsletter`); `apps/web` keys are app-specific (`planner`, `customers`, `settings`). Zero collision.
+4. **Domain terms:** A few terms appear in both contexts with the same meaning: "Features" / "Funkce", "Pricing" / "Ceník", "Contact" / "Kontakt". These are independently maintained (different copy/tone).
+
+### Integration options
+
+#### Option A: Fully separate (current state, recommended)
+
+Keep both i18n systems completely independent. Each app owns its translation files, tooling, and locale list.
+
+| Pro | Con |
+|-----|-----|
+| Zero coupling — deploy independently | Duplicate translations for ~5 shared terms |
+| No risk of site breakage from app i18n changes | Adding a new locale requires changes in both apps |
+| `apps/site` build-time approach is optimal for SEO/performance | — |
+| Different locale sets are natural (site has `sk`, app doesn't yet) | — |
+
+#### Option B: Shared glossary package
+
+Create `packages/i18n-glossary/` with a small set of shared terms (brand name, product terms, common labels). Both apps import from it.
+
+| Pro | Con |
+|-----|-----|
+| Single source of truth for brand terms | New package to maintain |
+| Ensures consistent terminology | Coupling: glossary change triggers rebuild of both apps |
+| — | Marginal benefit (~5 shared terms) |
+
+#### Option C: Shared locale config only
+
+Create a tiny `packages/i18n-config/` exporting only `SUPPORTED_LOCALES`, `DEFAULT_LOCALE`, and locale metadata (display names, BCP-47 codes). Translation files stay separate.
+
+| Pro | Con |
+|-----|-----|
+| Adding a new locale is coordinated | Minimal benefit over just documenting the convention |
+| Type-safe locale type shared across monorepo | Another package dependency |
+
+### Decision: Option A — Fully separate (confirmed by user)
+
+**Option A (fully separate)** is the right choice. Reasons:
+
+1. The two apps have fundamentally different i18n architectures (build-time vs runtime) for good reasons.
+2. There are fewer than 5 shared terms — not enough to justify coupling.
+3. `apps/site` already supports `sk`, which `apps/web` doesn't. Independent locale lists are a feature, not a bug.
+4. The only coordination needed is a convention: "default locale is `en` in both apps." This is documented, not coded.
+
+### Cross-app user flow: site → app
+
+When a user clicks "Try for free" on the marketing site (`https://ariadline.com/cs/`), they land on `https://app.ariadline.com`. Currently the link is locale-unaware — it always goes to the app root.
+
+**Future improvement (not Phase 0):** Pass the site locale to the app via query parameter:
+- Site CTA links to `https://app.ariadline.com?lang=cs`
+- App reads `lang` param on first load, uses it as initial locale hint (before login/registration)
+- This ensures a Czech visitor from the marketing site sees the app in Czech before registering
+
+This is a small enhancement that can be added later without architectural changes to either app.
+
 ---
 
 ## Notes on Changes vs Earlier Sections
 
-These decisions update prior text in this document where needed:
+These decisions update prior text in this document:
 - Locale default/fallback changed from Czech to **English**.
-- Regional locale support is explicitly in scope from phase start.
-- Backend contract is standardized to one message shape.
+- Regional locale support is explicitly in scope from phase start; start with shared `en` files.
+- Backend contract is standardized to one message shape (`key`, `params`).
 - Import behavior is explicitly tolerant and compatible with Czech legacy CSV inputs.
+- Performance: HTTP loading with preload for `en` (no bundling).
+- Registration: locale from browser, user confirms/changes during signup.
 
