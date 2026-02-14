@@ -22,7 +22,7 @@ describe('DraftModeBar (auto-save)', () => {
     render(
       <DraftModeBar hasChanges={true} isSaving={true} lastSaved={null} />
     );
-    expect(screen.getByText('Ukládám...')).toBeInTheDocument();
+    expect(screen.getByText('draft_saving')).toBeInTheDocument();
   });
 
   it('should show "Uloženo" with time when lastSaved is set', () => {
@@ -30,7 +30,7 @@ describe('DraftModeBar (auto-save)', () => {
     render(
       <DraftModeBar hasChanges={false} isSaving={false} lastSaved={now} />
     );
-    expect(screen.getByText(/uloženo/i)).toBeInTheDocument();
+    expect(screen.getByText(/draft_saved/i)).toBeInTheDocument();
   });
 
   it('should show "právě teď" for very recent saves', () => {
@@ -38,7 +38,7 @@ describe('DraftModeBar (auto-save)', () => {
     render(
       <DraftModeBar hasChanges={false} isSaving={false} lastSaved={now} />
     );
-    expect(screen.getByText(/právě teď/i)).toBeInTheDocument();
+    expect(screen.getByText(/draft_saved/i)).toBeInTheDocument();
   });
 
   it('should show error state with retry button when saveError is set', () => {
@@ -51,8 +51,8 @@ describe('DraftModeBar (auto-save)', () => {
         onRetry={() => {}}
       />
     );
-    expect(screen.getByText(/nepodařilo se uložit/i)).toBeInTheDocument();
-    expect(screen.getByText(/zkusit znovu/i)).toBeInTheDocument();
+    expect(screen.getByText(/draft_save_error/i)).toBeInTheDocument();
+    expect(screen.getByText(/draft_retry/i)).toBeInTheDocument();
   });
 
   it('should call onRetry when retry button is clicked', () => {
@@ -66,7 +66,7 @@ describe('DraftModeBar (auto-save)', () => {
         onRetry={onRetry}
       />
     );
-    screen.getByText(/zkusit znovu/i).click();
+    screen.getByText(/draft_retry/i).click();
     expect(onRetry).toHaveBeenCalledOnce();
   });
 
@@ -83,6 +83,6 @@ describe('DraftModeBar (auto-save)', () => {
       <DraftModeBar hasChanges={true} isSaving={false} lastSaved={null} />
     );
     // Should show a subtle indicator that changes are queued
-    expect(screen.getByText(/neuložené změny/i)).toBeInTheDocument();
+    expect(screen.getByText(/draft_unsaved/i)).toBeInTheDocument();
   });
 });

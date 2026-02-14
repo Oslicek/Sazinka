@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from '@tanstack/react-router';
 import { useNatsStore } from '../stores/natsStore';
 import { useRouteCacheStore } from '../stores/routeCacheStore';
@@ -66,6 +67,7 @@ import {
   type TimeToken,
   type TriState,
 } from './planningInboxFilters';
+import { getMonthNames, getWeekdayNames } from '@/i18n/formatters';
 import styles from './PlanningInbox.module.css';
 
 /** Parse "HH:MM" or "HH:MM:SS" to total minutes from midnight. */
@@ -120,6 +122,7 @@ function toPriority(item: CallQueueItem): CandidateRowData['priority'] {
 }
 
 export function PlanningInbox() {
+  const { t } = useTranslation('planner');
   const { isConnected } = useNatsStore();
   const navigate = useNavigate();
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -776,7 +779,7 @@ export function PlanningInbox() {
         id: selectedCandidate.id,
         customerId: selectedCandidate.customerId,
         customerName: selectedCandidate.customerName,
-        deviceType: selectedCandidate.deviceType ?? 'Zařízení',
+        deviceType: selectedCandidate.deviceType ?? t('device_fallback'),
         deviceName: selectedCandidate.deviceName ?? undefined,
         phone: selectedCandidate.customerPhone ?? undefined,
         email: selectedCandidate.customerEmail ?? undefined,
@@ -804,7 +807,7 @@ export function PlanningInbox() {
           id: routeStop.revisionId ?? routeStop.id,
           customerId: routeStop.customerId,
           customerName: routeStop.customerName,
-          deviceType: 'Zařízení',
+          deviceType: t('device_fallback'),
           phone: routeStop.customerPhone ?? undefined,
           email: routeStop.customerEmail ?? undefined,
           street: addressParts[0] ?? '',
@@ -1615,7 +1618,7 @@ export function PlanningInbox() {
       }));
 
     setIsOptimizing(true);
-    setRouteJobProgress('Odesílám do optimalizátoru...');
+    setRouteJobProgress(t('optimizer_sending'));
 
     try {
       const jobResponse = await routeService.submitRoutePlanJob({
@@ -1626,7 +1629,7 @@ export function PlanningInbox() {
         timeWindows: timeWindows.length > 0 ? timeWindows : undefined,
       });
 
-      setRouteJobProgress('Ve frontě...');
+      setRouteJobProgress(t('optimizer_queued'));
 
       // Subscribe to status updates
       const unsubscribe = await routeService.subscribeToRouteJobStatus(
@@ -1634,10 +1637,10 @@ export function PlanningInbox() {
         (update) => {
           switch (update.status.type) {
             case 'queued':
-              setRouteJobProgress(`Ve frontě (pozice ${update.status.position})`);
+              setRouteJobProgress(t('optimizer_queued_position', { position: update.status.position }));
               break;
             case 'processing':
-              setRouteJobProgress(`Optimalizuji... ${update.status.progress}%`);
+              setRouteJobProgress(t('optimizer_progress', { progress: update.status.progress }));
               break;
             case 'completed': {
               const result = update.status.result;
@@ -1660,7 +1663,7 @@ export function PlanningInbox() {
                     status: original?.status ?? 'draft',
                     stopType: isBreak ? 'break' : 'customer',
                     customerId: isBreak ? null : s.customerId,
-                    customerName: isBreak ? 'Pauza' : s.customerName,
+                    customerName: isBreak ? t('timeline_break') : s.customerName,
                     address: isBreak ? '' : s.address,
                     customerLat: isBreak ? null : s.coordinates.lat,
                     customerLng: isBreak ? null : s.coordinates.lng,
@@ -1710,7 +1713,7 @@ export function PlanningInbox() {
                     .join(', ');
                   allWarnings.push({
                     warningType: 'UNASSIGNED_STOPS',
-                    message: `Optimalizátor nemohl zařadit: ${names}. Zastávky zůstávají v trase, ale nemají vypočítaný čas.`,
+                    message: t('optimizer_unassigned', { names }),
                     stopIndex: null,
                   });
                 }
@@ -2016,14 +2019,14 @@ export function PlanningInbox() {
                 className={`${styles.filterChip} ${activePresetId === preset.id ? styles.active : ''}`}
                 onClick={() => applyPreset(preset.id)}
               >
-                {preset.label}
+                {t(preset.label)}
               </button>
             ))}
           </div>
           <span className={styles.filterResults}>
             {sortedCandidates.length}
             {activeFilterCount > 0 && !isAdvancedFiltersOpen && hasAdvancedActive && (
-              <span className={styles.advancedHint} title="Pokročilé podmínky aktivní">*</span>
+              <span className={styles.advancedHint} title={t('filter_advanced_hint')}>*</span>
             )}
           </span>
           <button
@@ -2031,14 +2034,14 @@ export function PlanningInbox() {
             className={styles.filterResetButton}
             onClick={clearFilters}
             disabled={activeFilterCount === 0}
-            title="Resetovat filtry"
+            title={t('filter_reset')}
           >
             Reset
           </button>
           <CollapseButton
             collapsed={!isAdvancedFiltersOpen}
             onClick={() => setIsAdvancedFiltersOpen((prev) => !prev)}
-            title={isAdvancedFiltersOpen ? 'Sbalit filtry' : 'Rozbalit filtry'}
+            title={isAdvancedFiltersOpen ? t('filter_collapse') : t('filter_expand')}
           />
         </div>
 
@@ -2046,38 +2049,38 @@ export function PlanningInbox() {
         {isAdvancedFiltersOpen && (
           <div className={styles.filterExpandedSection}>
             <div className={styles.filterGroup}>
-              <span className={styles.filterGroupLabel}>Nová revize</span>
+              <span className={styles.filterGroupLabel}>{t('filter_new_revision')}</span>
               <div className={styles.filterChips}>
-                <button type="button" className={`${styles.filterChip} ${filters.groups.time.selected.includes('OVERDUE') ? styles.active : ''}`} onClick={() => toggleTimeFilter('OVERDUE')}>Po termínu</button>
-                <button type="button" className={`${styles.filterChip} ${filters.groups.time.selected.includes('DUE_IN_7_DAYS') ? styles.active : ''}`} onClick={() => toggleTimeFilter('DUE_IN_7_DAYS')}>Do 7 dnů</button>
-                <button type="button" className={`${styles.filterChip} ${filters.groups.time.selected.includes('DUE_IN_30_DAYS') ? styles.active : ''}`} onClick={() => toggleTimeFilter('DUE_IN_30_DAYS')}>Do 30 dnů</button>
-                <button type="button" className={`${styles.filterChip} ${filters.groups.time.selected.length === 0 ? styles.active : ''}`} onClick={() => clearTimeFilters()}>Kdykoliv</button>
+                <button type="button" className={`${styles.filterChip} ${filters.groups.time.selected.includes('OVERDUE') ? styles.active : ''}`} onClick={() => toggleTimeFilter('OVERDUE')}>{t('filter_overdue')}</button>
+                <button type="button" className={`${styles.filterChip} ${filters.groups.time.selected.includes('DUE_IN_7_DAYS') ? styles.active : ''}`} onClick={() => toggleTimeFilter('DUE_IN_7_DAYS')}>{t('filter_due_7_days')}</button>
+                <button type="button" className={`${styles.filterChip} ${filters.groups.time.selected.includes('DUE_IN_30_DAYS') ? styles.active : ''}`} onClick={() => toggleTimeFilter('DUE_IN_30_DAYS')}>{t('filter_due_30_days')}</button>
+                <button type="button" className={`${styles.filterChip} ${filters.groups.time.selected.length === 0 ? styles.active : ''}`} onClick={() => clearTimeFilters()}>{t('filter_anytime')}</button>
               </div>
             </div>
 
             <div className={styles.filterGroup}>
-              <span className={styles.filterGroupLabel}>Termín</span>
+              <span className={styles.filterGroupLabel}>{t('filter_appointment')}</span>
               <div className={styles.filterTriState}>
-                <button type="button" className={`${styles.filterChip} ${filters.groups.hasTerm === 'ANY' ? styles.active : ''}`} onClick={() => setTriState('hasTerm', 'ANY')}>Neřešit</button>
-                <button type="button" className={`${styles.filterChip} ${filters.groups.hasTerm === 'YES' ? styles.active : ''}`} onClick={() => setTriState('hasTerm', 'YES')}>Má termín</button>
-                <button type="button" className={`${styles.filterChip} ${filters.groups.hasTerm === 'NO' ? styles.active : ''}`} onClick={() => setTriState('hasTerm', 'NO')}>Nemá termín</button>
+                <button type="button" className={`${styles.filterChip} ${filters.groups.hasTerm === 'ANY' ? styles.active : ''}`} onClick={() => setTriState('hasTerm', 'ANY')}>{t('filter_any')}</button>
+                <button type="button" className={`${styles.filterChip} ${filters.groups.hasTerm === 'YES' ? styles.active : ''}`} onClick={() => setTriState('hasTerm', 'YES')}>{t('filter_has_term')}</button>
+                <button type="button" className={`${styles.filterChip} ${filters.groups.hasTerm === 'NO' ? styles.active : ''}`} onClick={() => setTriState('hasTerm', 'NO')}>{t('filter_no_appointment')}</button>
               </div>
             </div>
 
             <div className={styles.filterGroup}>
-              <span className={styles.filterGroupLabel}>Trasa</span>
+              <span className={styles.filterGroupLabel}>{t('filter_route')}</span>
               <div className={styles.filterTriState}>
-                <button type="button" className={`${styles.filterChip} ${filters.groups.inRoute === 'ANY' ? styles.active : ''}`} onClick={() => setTriState('inRoute', 'ANY')}>Neřešit</button>
-                <button type="button" className={`${styles.filterChip} ${filters.groups.inRoute === 'YES' ? styles.active : ''}`} onClick={() => setTriState('inRoute', 'YES')}>V trase</button>
-                <button type="button" className={`${styles.filterChip} ${filters.groups.inRoute === 'NO' ? styles.active : ''}`} onClick={() => setTriState('inRoute', 'NO')}>Není v trase</button>
+                <button type="button" className={`${styles.filterChip} ${filters.groups.inRoute === 'ANY' ? styles.active : ''}`} onClick={() => setTriState('inRoute', 'ANY')}>{t('filter_any')}</button>
+                <button type="button" className={`${styles.filterChip} ${filters.groups.inRoute === 'YES' ? styles.active : ''}`} onClick={() => setTriState('inRoute', 'YES')}>{t('filter_in_route')}</button>
+                <button type="button" className={`${styles.filterChip} ${filters.groups.inRoute === 'NO' ? styles.active : ''}`} onClick={() => setTriState('inRoute', 'NO')}>{t('filter_not_in_route')}</button>
               </div>
             </div>
 
             <div className={styles.advancedPanel}>
-              <div className={styles.advancedPanelHeader}>Pokročilé</div>
+              <div className={styles.advancedPanelHeader}>{t('filter_advanced')}</div>
 
               <div className={styles.advancedRow}>
-                <span className={styles.filterGroupLabel}>Logika mezi skupinami</span>
+                <span className={styles.filterGroupLabel}>{t('filter_group_logic')}</span>
                 <div className={styles.rootOperatorSwitch}>
                   <button
                     type="button"
@@ -2097,7 +2100,7 @@ export function PlanningInbox() {
               </div>
 
               <div className={styles.advancedRow}>
-                <span className={styles.filterGroupLabel}>Logika revizních podmínek</span>
+                <span className={styles.filterGroupLabel}>{t('filter_revision_logic')}</span>
                 <div className={styles.groupOperatorSwitch}>
                   <button
                     type="button"
@@ -2117,7 +2120,7 @@ export function PlanningInbox() {
               </div>
 
               <div className={styles.filterGroup}>
-                <span className={styles.filterGroupLabel}>Problémy</span>
+                <span className={styles.filterGroupLabel}>{t('filter_problems_label')}</span>
                 <div className={styles.groupOperatorSwitch}>
                   <button
                     type="button"
@@ -2135,9 +2138,9 @@ export function PlanningInbox() {
                   </button>
                 </div>
                 <div className={styles.filterChips}>
-                  <button type="button" className={`${styles.filterChip} ${filters.groups.problems.selected.includes('MISSING_PHONE') ? styles.active : ''}`} onClick={() => toggleProblemFilter('MISSING_PHONE')}>Chybí telefon</button>
-                  <button type="button" className={`${styles.filterChip} ${filters.groups.problems.selected.includes('ADDRESS_ISSUE') ? styles.active : ''}`} onClick={() => toggleProblemFilter('ADDRESS_ISSUE')}>Problém s adresou</button>
-                  <button type="button" className={`${styles.filterChip} ${filters.groups.problems.selected.includes('GEOCODE_FAILED') ? styles.active : ''}`} onClick={() => toggleProblemFilter('GEOCODE_FAILED')}>Geokód selhal</button>
+                  <button type="button" className={`${styles.filterChip} ${filters.groups.problems.selected.includes('MISSING_PHONE') ? styles.active : ''}`} onClick={() => toggleProblemFilter('MISSING_PHONE')}>{t('filter_missing_phone')}</button>
+                  <button type="button" className={`${styles.filterChip} ${filters.groups.problems.selected.includes('ADDRESS_ISSUE') ? styles.active : ''}`} onClick={() => toggleProblemFilter('ADDRESS_ISSUE')}>{t('filter_address_issue')}</button>
+                  <button type="button" className={`${styles.filterChip} ${filters.groups.problems.selected.includes('GEOCODE_FAILED') ? styles.active : ''}`} onClick={() => toggleProblemFilter('GEOCODE_FAILED')}>{t('filter_geocode_failed')}</button>
                 </div>
               </div>
 
@@ -2159,20 +2162,20 @@ export function PlanningInbox() {
       {/* Add to route toolbar */}
       {selectedIds.size > 0 && (
         <div className={styles.selectionToolbar}>
-          <span className={styles.selectionCount}>{selectedIds.size} vybráno</span>
+          <span className={styles.selectionCount}>{t('selected_count', { count: selectedIds.size })}</span>
           <button
             type="button"
             className={styles.addSelectedButton}
             onClick={handleAddSelectedToRoute}
           >
-            ➕ Přidat do trasy
+            ➕ {t('add_to_route')}
           </button>
           <button
             type="button"
             className={styles.clearSelectionButton}
             onClick={() => setSelectedIds(new Set())}
           >
-            Zrušit výběr
+            {t('cancel_selection')}
           </button>
         </div>
       )}
@@ -2184,7 +2187,7 @@ export function PlanningInbox() {
         selectedCandidateId={selectedCandidateId}
         onCandidateSelect={handleCandidateSelect}
         isLoading={isLoadingCandidates}
-        emptyMessage={'Žádní kandidáti pro vybrané filtry'}
+        emptyMessage={t('empty_filtered')}
         className={styles.candidateList}
         selectable={true}
         selectedIds={selectedIds}
@@ -2212,13 +2215,13 @@ export function PlanningInbox() {
           <div className={styles.dayOverviewBanner}>
             <div className={styles.dayOverviewCalendarCard}>
               <span className={styles.dayOverviewCalMonth}>
-                {overviewDate.toLocaleDateString('cs-CZ', { month: 'long' })}
+                {getMonthNames('long')[overviewDate.getMonth()]}
               </span>
               <span className={styles.dayOverviewCalDay}>
                 {overviewDate.getDate()}
               </span>
               <span className={styles.dayOverviewCalWeekday}>
-                {overviewDate.toLocaleDateString('cs-CZ', { weekday: 'long' })}
+                {getWeekdayNames('long')[(overviewDate.getDay() + 6) % 7]}
               </span>
             </div>
             <div className={styles.dayOverviewBannerInfo}>
@@ -2226,18 +2229,18 @@ export function PlanningInbox() {
                 {overviewDate.getFullYear()}
               </span>
               <span className={styles.dayOverviewBannerCount}>
-                {dayOverview.items.length} {dayOverview.items.length === 1 ? 'návštěva' : dayOverview.items.length >= 2 && dayOverview.items.length <= 4 ? 'návštěvy' : 'návštěv'}
+                {t('day_overview_visits', { count: dayOverview.items.length })}
               </span>
             </div>
           </div>
           
           {/* Visit list */}
           <div className={styles.dayOverviewList}>
-            <div className={styles.dayOverviewListHeader}>Naplánované návštěvy</div>
+            <div className={styles.dayOverviewListHeader}>{t('day_overview_planned')}</div>
             {dayOverview.isLoading ? (
-              <div className={styles.dayOverviewLoading}>Načítám přehled dne...</div>
+              <div className={styles.dayOverviewLoading}>{t('day_overview_loading')}</div>
             ) : sortedItems.length === 0 ? (
-              <div className={styles.dayOverviewEmpty}>Na tento den nejsou naplánované žádné návštěvy.</div>
+              <div className={styles.dayOverviewEmpty}>{t('day_overview_empty')}</div>
             ) : (
               sortedItems.map((item) => {
                 const isJustScheduled = item.customerId === scheduledConfirmation.candidateId;
@@ -2259,12 +2262,12 @@ export function PlanningInbox() {
                     <div className={styles.dayOverviewItemContent}>
                       <span className={styles.dayOverviewItemName}>{item.customerName || item.title}</span>
                       <span className={styles.dayOverviewItemType}>
-                        {item.type === 'revision' ? 'Revize' : 'Návštěva'}
+                        {item.type === 'revision' ? t('day_overview_type_revision') : t('day_overview_type_visit')}
                         {item.subtitle ? ` · ${item.subtitle}` : ''}
                       </span>
                     </div>
                     {isJustScheduled && (
-                      <span className={styles.dayOverviewItemBadge}>nově</span>
+                      <span className={styles.dayOverviewItemBadge}>{t('day_overview_badge_new')}</span>
                     )}
                   </div>
                 );
@@ -2311,7 +2314,7 @@ export function PlanningInbox() {
                 type="button"
                 className={styles.mapControlButton}
                 onClick={() => setMapMode(mapMode === 'fullscreen' ? 'normal' : 'fullscreen')}
-                title={mapMode === 'fullscreen' ? 'Zmenšit mapu' : 'Zvětšit mapu na celou stránku'}
+                title={mapMode === 'fullscreen' ? t('map_shrink') : t('map_fullscreen')}
               >
                 {mapMode === 'fullscreen' ? (
                   <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -2329,7 +2332,7 @@ export function PlanningInbox() {
                 type="button"
                 className={styles.mapControlButton}
                 onClick={() => setMapMode('collapsed')}
-                title="Skrýt mapu"
+                title={t('map_hide')}
               >
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="2,5 7,1 12,5" />
@@ -2340,16 +2343,16 @@ export function PlanningInbox() {
         )}
         {mapMode === 'collapsed' && (
           <div className={styles.mapCollapsedBar}>
-            <span className={styles.mapCollapsedLabel}>Mapa</span>
+            <span className={styles.mapCollapsedLabel}>{t('map_label')}</span>
             <CollapseButton
               collapsed={true}
               onClick={() => setMapMode('normal')}
-              title="Zobrazit mapu"
+              title={t('map_show')}
             />
           </div>
         )}
         {mapMode === 'normal' && (
-          <div className={styles.mapResizeHandle} onMouseDown={handleMapResizeStart} title="Přetáhněte pro změnu velikosti mapy" />
+          <div className={styles.mapResizeHandle} onMouseDown={handleMapResizeStart} title={t('map_resize')} />
         )}
         {mapMode !== 'fullscreen' && (
         <div className={styles.routeStopSection}>
@@ -2431,19 +2434,19 @@ export function PlanningInbox() {
       {scheduledConfirmation && scheduledConfirmation.candidateId === selectedCandidateId ? (
         <div className={styles.confirmation}>
           <div className={styles.confirmationIcon}>✓</div>
-          <h3 className={styles.confirmationTitle}>Naplánováno</h3>
+          <h3 className={styles.confirmationTitle}>{t('confirmation_title')}</h3>
           <p className={styles.confirmationName}>{scheduledConfirmation.candidateName}</p>
           
           <div className={styles.confirmationDate}>
             <div className={styles.calendarCard}>
               <span className={styles.calendarMonth}>
-                {new Date(scheduledConfirmation.date + 'T00:00:00').toLocaleDateString('cs-CZ', { month: 'long' })}
+                {getMonthNames('long')[new Date(scheduledConfirmation.date + 'T00:00:00').getMonth()]}
               </span>
               <span className={styles.calendarDay}>
                 {new Date(scheduledConfirmation.date + 'T00:00:00').getDate()}
               </span>
               <span className={styles.calendarWeekday}>
-                {new Date(scheduledConfirmation.date + 'T00:00:00').toLocaleDateString('cs-CZ', { weekday: 'long' })}
+                {getWeekdayNames('long')[(new Date(scheduledConfirmation.date + 'T00:00:00').getDay() + 6) % 7]}
               </span>
             </div>
             {(scheduledConfirmation.timeStart || scheduledConfirmation.timeEnd) && (
@@ -2460,7 +2463,7 @@ export function PlanningInbox() {
             className={styles.confirmationButton}
             onClick={handleDismissConfirmation}
           >
-            Další zákazník →
+            {t('confirmation_next')}
           </button>
         </div>
       ) : (
@@ -2486,7 +2489,7 @@ export function PlanningInbox() {
   const contextSelectorsJsx = (
     <div className={styles.contextSelectorsRow}>
       <div className={styles.selector}>
-        <label htmlFor="route-date">Den</label>
+        <label htmlFor="route-date">{t('context_day')}</label>
         <input
           id="route-date"
           type="date"
@@ -2497,14 +2500,14 @@ export function PlanningInbox() {
       </div>
 
       <div className={styles.selector}>
-        <label htmlFor="route-crew">Posádka</label>
+        <label htmlFor="route-crew">{t('context_crew')}</label>
         <select
           id="route-crew"
           value={context?.crewId ?? ''}
           onChange={(e) => handleCrewChange(e.target.value)}
           className={styles.select}
         >
-          <option value="">Vyberte posádku</option>
+          <option value="">{t('context_crew_select')}</option>
           {crews.map((crew) => (
             <option key={crew.id} value={crew.id}>{crew.name}</option>
           ))}
@@ -2512,14 +2515,14 @@ export function PlanningInbox() {
       </div>
 
       <div className={styles.selector}>
-        <label htmlFor="route-depot">Depo</label>
+        <label htmlFor="route-depot">{t('context_depot')}</label>
         <select
           id="route-depot"
           value={context?.depotId ?? ''}
           onChange={(e) => handleDepotChange(e.target.value)}
           className={styles.select}
         >
-          <option value="">Vyberte depo</option>
+          <option value="">{t('context_depot_select')}</option>
           {depots.map((d) => (
             <option key={d.id} value={d.id}>{d.name}</option>
           ))}
@@ -2535,7 +2538,7 @@ export function PlanningInbox() {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <h1 className={styles.title}>Plánovací inbox</h1>
+        <h1 className={styles.title}>{t('page_title')}</h1>
         <DraftModeBar
           hasChanges={hasChanges}
           isSaving={isSaving}

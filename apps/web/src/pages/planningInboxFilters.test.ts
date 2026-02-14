@@ -257,6 +257,7 @@ describe('planningInboxFilters', () => {
       'ALL',
       'URGENT',
       'THIS_WEEK',
+      'THIS_MONTH',
       'HAS_TERM',
       'PROBLEMS',
     ]);

@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+import { getWeekdayNames } from '../../i18n/formatters';
 import { CapacityMetrics, type RouteMetrics } from './CapacityMetrics';
 import styles from './RouteContextHeader.module.css';
 
@@ -30,21 +32,23 @@ export function RouteContextHeader({
   depots,
   isLoading,
 }: RouteContextHeaderProps) {
+  const { t } = useTranslation('planner');
+  const weekdayNames = getWeekdayNames('short');
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
-    const days = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
-    const day = days[date.getDay()];
+    const dayIndex = (date.getDay() + 6) % 7; // Map Sun=0 to index 6 (last in Mon-first array)
+    const day = weekdayNames[dayIndex];
     return `${day} ${date.getDate()}.${date.getMonth() + 1}`;
   };
 
   return (
     <header className={styles.header}>
       <div className={styles.topRow}>
-        <h1 className={styles.title}>Plánovací inbox</h1>
+        <h1 className={styles.title}>{t('page_title')}</h1>
         
         <div className={styles.contextSelectors}>
           <div className={styles.selector}>
-            <label htmlFor="route-date">Den</label>
+            <label htmlFor="route-date">{t('context_day')}</label>
             <input
               id="route-date"
               type="date"
@@ -58,14 +62,14 @@ export function RouteContextHeader({
           </div>
 
           <div className={styles.selector}>
-            <label htmlFor="route-crew">Posádka</label>
+            <label htmlFor="route-crew">{t('context_crew')}</label>
             <select
               id="route-crew"
               value={context?.crewId ?? ''}
               onChange={(e) => onCrewChange(e.target.value)}
               className={styles.select}
             >
-              <option value="">Vyberte posádku</option>
+              <option value="">{t('context_crew_select')}</option>
               {crews.map((crew) => (
                 <option key={crew.id} value={crew.id}>{crew.name}</option>
               ))}
@@ -73,14 +77,14 @@ export function RouteContextHeader({
           </div>
 
           <div className={styles.selector}>
-            <label htmlFor="route-depot">Depo</label>
+            <label htmlFor="route-depot">{t('context_depot')}</label>
             <select
               id="route-depot"
               value={context?.depotId ?? ''}
               onChange={(e) => onDepotChange(e.target.value)}
               className={styles.select}
             >
-              <option value="">Vyberte depo</option>
+              <option value="">{t('context_depot_select')}</option>
               {depots.map((d) => (
                 <option key={d.id} value={d.id}>{d.name}</option>
               ))}
@@ -101,9 +105,7 @@ export function RouteContextHeader({
         ) : metrics ? (
           <CapacityMetrics metrics={metrics} />
         ) : (
-          <span className={styles.noContext}>
-            Vyberte den, posádku a depo pro zobrazení kapacity
-          </span>
+          <span className={styles.noContext}>{t('context_no_metrics')}</span>
         )}
       </div>
     </header>

@@ -968,24 +968,38 @@ The previous session extracted route summary stats/actions into shared component
 
 ---
 
-### Phase 4: Planning (PlanningInbox, Planner, CandidateDetail, RouteDetailTimeline)
+### Phase 4: Planning (PlanningInbox, Planner, CandidateDetail, RouteDetailTimeline) ✅ COMPLETE
 
 **Goal:** The most string-heavy area of the app is translated.
 
-| Step | TDD: Red | Green |
-|------|---------|-------|
-| 4.1 | Test: `en/planner.json` and `cs/planner.json` exist with identical keys. | Create namespace files (~150 keys). |
-| 4.2 | Test: `PlanningInbox.tsx` filter presets, labels, tooltips use `t()`. | Replace ~50 strings. |
-| 4.3 | Test: `planningInboxFilters.ts` preset labels use `t()`. | Replace filter labels. |
-| 4.4 | Test: `CandidateDetail.tsx` state flags, buttons, snooze labels use `t()`. | Replace strings. |
-| 4.5 | Test: `CandidateRow.tsx` metric labels, tooltips use `t()`. | Replace strings. |
-| 4.6 | Test: `RouteDetailTimeline.tsx` stop labels, confirmations use `t()`. | Replace strings. |
-| 4.7 | Test: `RouteListPanel.tsx` uses `formatDate()` and `t()` for units. | Replace hardcoded weekday array + "zast.", "min", "km". |
-| 4.8 | Test: `CapacityMetrics.tsx`, `DraftModeBar.tsx`, `SortableStopItem.tsx`, `SlotSuggestions.tsx` use `t()`. | Replace strings in remaining planner components. |
-| 4.9 | Test: `PlanningTimeline.tsx` late-arrival warning uses `t()` with interpolation. | Replace formatted warning string. |
-| 4.10 | Test: `ProblemsSegment.tsx`, `VirtualizedInboxList.tsx` use `t()`. | Replace remaining strings. |
+| Step | TDD: Red | Green | Status |
+|------|---------|-------|--------|
+| 4.1 | Test: `en/planner.json` and `cs/planner.json` exist with identical keys. | Create namespace files (~150 keys). | ✅ 257 keys (256 base), key parity PASSED |
+| 4.2 | Test: `PlanningInbox.tsx` filter presets, labels, tooltips use `t()`. | Replace ~50 strings. | ✅ ~60 strings replaced, `formatDate`/`getMonthNames`/`getWeekdayNames` used for dates |
+| 4.3 | Test: `planningInboxFilters.ts` preset labels use `t()`. | Replace filter labels. | ✅ FILTER_PRESETS use i18n keys, `buildFilterSummary` uses `i18n.t()` |
+| 4.4 | Test: `CandidateDetail.tsx` state flags, buttons, snooze labels use `t()`. | Replace strings. | ✅ ~40 strings replaced, `formatDate` for dates |
+| 4.5 | Test: `CandidateRow.tsx` metric labels, tooltips use `t()`. | Replace strings. | ✅ ~12 strings replaced |
+| 4.6 | Test: `RouteDetailTimeline.tsx` stop labels, confirmations use `t()`. | Replace strings. | ✅ ~20 strings replaced, `getStatusBadge`/`getWarningLabel` accept `t` |
+| 4.7 | Test: `RouteListPanel.tsx` uses `formatDate()` and `t()` for units. | Replace hardcoded weekday array + "zast.", "min", "km". | ✅ `getWeekdayNames('short')` replaces hardcoded array, 3 strings replaced |
+| 4.8 | Test: `CapacityMetrics.tsx`, `DraftModeBar.tsx`, `SortableStopItem.tsx`, `SlotSuggestions.tsx` use `t()`. | Replace strings in remaining planner components. | ✅ ~25 strings across 4 files |
+| 4.9 | Test: `PlanningTimeline.tsx` late-arrival warning uses `t()` with interpolation. | Replace formatted warning string. | ✅ Late arrival uses `t()` with `{ time, minutes }` interpolation |
+| 4.10 | Test: `ProblemsSegment.tsx`, `VirtualizedInboxList.tsx` use `t()`. | Replace remaining strings. | ✅ Plus 9 additional components: RouteMapPanel, AddFromInboxDrawer, ScheduledTimeWarning, InsertionPreview, RouteSummaryStats, RouteSummaryActions, TimelineViewToggle, MultiCrewTip, RouteContextHeader |
 
-**Phase 4 done criteria:** Entire Planning module renders in active locale. ~150 keys in `planner` namespace.
+**Additional components internationalized (beyond original plan):**
+- `Planner.tsx` — error messages, section headers (~9 strings)
+- `ScheduledTimeWarning.tsx` — dialog title, message (with `dangerouslySetInnerHTML`), buttons (~5 strings)
+- `RouteMapPanel.tsx` — depot popup, preview popup, empty hint, segment info (~6 strings)
+- `InsertionPreview.tsx` — title, new stop label, impact label (~3 strings)
+- `RouteSummaryStats.tsx` — stat labels (~7 strings)
+- `RouteSummaryActions.tsx` — optimize, break, delete buttons (~4 strings)
+- `TimelineViewToggle.tsx` — view toggle titles (~2 strings)
+- `MultiCrewTip.tsx` — tip label, crew comparison (with `dangerouslySetInnerHTML`), switch button (~3 strings)
+- `AddFromInboxDrawer.tsx` — drawer title, candidate list, slot selection, error messages (~12 strings)
+- `RouteContextHeader.tsx` — context selectors, weekday names (~8 strings)
+
+**Phase 4 done criteria:** Entire Planning module renders in active locale. 257 keys in `planner` namespace (exceeded ~150 target). Czech pluralization for visit counts (`_one`, `_few`, `_other`).
+
+**Test results:** 544/548 passing. 4 pre-existing failures (2 × `customerService.test.ts` payload mismatch, 2 × `CandidateDetail.test.tsx` DOM order). All i18n-related tests updated and passing.
 
 ---
 

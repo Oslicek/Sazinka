@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+import { getWeekdayNames } from '@/i18n/formatters';
 import styles from './SlotSuggestions.module.css';
 
 export type SlotStatus = 'ok' | 'tight' | 'conflict';
@@ -22,10 +24,10 @@ interface SlotSuggestionsProps {
   maxVisible?: number;
 }
 
-function formatDate(dateStr: string): string {
+function formatDate(dateStr: string, weekdayNames: string[]): string {
   const date = new Date(dateStr);
-  const days = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
-  const day = days[date.getDay()];
+  // getWeekdayNames returns [Mon..Sun]; getDay() uses 0=Sun, 1=Mon, ...
+  const day = weekdayNames[(date.getDay() + 6) % 7];
   return `${day} ${date.getDate()}.${date.getMonth() + 1}`;
 }
 
@@ -48,13 +50,15 @@ export function SlotSuggestions({
   onSelect,
   maxVisible = 5,
 }: SlotSuggestionsProps) {
+  const { t } = useTranslation('planner');
+  const weekdayNames = getWeekdayNames('short');
   const visibleSlots = slots.slice(0, maxVisible);
   const hasMore = slots.length > maxVisible;
 
   if (visibleSlots.length === 0) {
     return (
       <div className={styles.empty}>
-        Žádné dostupné sloty pro tento den/posádku.
+        {t('slot_empty')}
       </div>
     );
   }
@@ -70,14 +74,14 @@ export function SlotSuggestions({
             onClick={() => onSelect?.(slot)}
             disabled={slot.status === 'conflict'}
             title={
-              slot.status === 'conflict' 
-                ? 'Nelze vložit - časový konflikt' 
-                : `Vloží se za ${slot.insertAfterName || 'depo'}`
+              slot.status === 'conflict'
+                ? t('slot_conflict')
+                : t('slot_insert_after', { name: slot.insertAfterName || t('timeline_depot') })
             }
           >
             <div className={styles.slotMain}>
               <span className={styles.keyHint}>{index + 1}</span>
-              <span className={styles.date}>{formatDate(slot.date)}</span>
+              <span className={styles.date}>{formatDate(slot.date, weekdayNames)}</span>
               <span className={styles.time}>{slot.timeStart}–{slot.timeEnd}</span>
               <span className={styles.statusIcon}>{getStatusIcon(slot.status)}</span>
             </div>
@@ -92,7 +96,7 @@ export function SlotSuggestions({
 
       {hasMore && (
         <button type="button" className={styles.showMore}>
-          Zobrazit dalších {slots.length - maxVisible} slotů
+          {t('slot_show_more', { count: slots.length - maxVisible })}
         </button>
       )}
     </div>

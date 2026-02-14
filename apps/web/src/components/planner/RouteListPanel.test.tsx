@@ -24,14 +24,14 @@ describe('RouteListPanel', () => {
     render(
       <RouteListPanel routes={[]} isLoading={true} selectedRouteId={null} onSelectRoute={() => {}} />
     );
-    expect(screen.getByText(/načítám/i)).toBeInTheDocument();
+    expect(screen.getByText(/route_list_loading/i)).toBeInTheDocument();
   });
 
   it('should render empty state when no routes', () => {
     render(
       <RouteListPanel routes={[]} isLoading={false} selectedRouteId={null} onSelectRoute={() => {}} />
     );
-    expect(screen.getByText(/žádné naplánované cesty/i)).toBeInTheDocument();
+    expect(screen.getByText(/route_list_empty/i)).toBeInTheDocument();
   });
 
   it('should render route cards with crew name and date', () => {

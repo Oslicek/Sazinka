@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import maplibregl from 'maplibre-gl';
 import {
   splitGeometryIntoSegments,
@@ -65,6 +66,7 @@ export function RouteMapPanel({
   debugSource: _debugSource,
   debugRouteId: _debugRouteId,
 }: RouteMapPanelProps) {
+  const { t } = useTranslation('planner');
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
@@ -164,10 +166,10 @@ export function RouteMapPanel({
     } else {
       depotMarkerRef.current = new maplibregl.Marker({ color: '#22c55e' })
         .setLngLat([depot.lng, depot.lat])
-        .setPopup(new maplibregl.Popup().setHTML(`<strong>Depo</strong><br/>${depot.name || 'Výchozí místo'}`))
+        .setPopup(new maplibregl.Popup().setHTML(`<strong>${t('map_depot_popup')}</strong><br/>${depot.name || t('map_depot_default')}`))
         .addTo(mapRef.current);
     }
-  }, [depot]);
+  }, [depot, t]);
 
   // Clear all stop markers and route layers
   const clearMarkers = useCallback(() => {
@@ -527,13 +529,17 @@ export function RouteMapPanel({
     el.className = styles.previewMarker;
 
     // Preview marker is 24×24px circle; center at (12, 12).
+    const previewLabel = t('map_preview_label', { name: insertionPreview.candidateName });
+    const previewInsert = t('map_preview_insert', {
+      from: insertionPreview.insertAfterIndex + 1,
+      to: insertionPreview.insertBeforeIndex + 1,
+    });
     previewMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'top-left', offset: [-12, -12] })
       .setLngLat([insertionPreview.coordinates.lng, insertionPreview.coordinates.lat])
       .setPopup(
-        new maplibregl.Popup().setHTML(`
-          <strong>Návrh: ${insertionPreview.candidateName}</strong><br/>
-          <small>Vloží se mezi ${insertionPreview.insertAfterIndex + 1} → ${insertionPreview.insertBeforeIndex + 1}</small>
-        `)
+        new maplibregl.Popup().setHTML(
+          `<strong>${previewLabel}</strong><br/><small>${previewInsert}</small>`
+        )
       )
       .addTo(mapRef.current);
 
@@ -602,14 +608,14 @@ export function RouteMapPanel({
         },
       });
     }
-  }, [insertionPreview, stops, depot, mapLoaded]);
+  }, [insertionPreview, stops, depot, mapLoaded, t]);
 
   // Build segment info overlay
   const segmentInfo = highlightedSegment !== null && stops.length > 0
     ? getSegmentLabel(
         highlightedSegment,
         stops.map((s) => ({ name: s.customerName ?? undefined })),
-        depot?.name || 'Depo',
+        depot?.name || t('map_depot_popup'),
       )
     : null;
 
@@ -623,9 +629,7 @@ export function RouteMapPanel({
       <div ref={containerRef} className={styles.map} />
       <div className={styles.zoomLevel}>Z {zoomLevel.toFixed(1)}</div>
       {stops.length === 0 && !isLoading && !selectedCandidate && (
-        <div className={styles.emptyHint}>
-          Zatím žádné zastávky v trase
-        </div>
+        <div className={styles.emptyHint}>{t('map_empty_hint')}</div>
       )}
       {segmentInfo && (
         <div className={styles.segmentInfo}>
@@ -635,7 +639,7 @@ export function RouteMapPanel({
           <button
             className={styles.segmentInfoClose}
             onClick={() => setHighlightedSegment(null)}
-            title="Zrušit zvýraznění"
+            title={t('map_clear_highlight')}
           >
             ✕
           </button>

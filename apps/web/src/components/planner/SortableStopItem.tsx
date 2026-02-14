@@ -1,6 +1,7 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Link } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import type { PlannedRouteStop } from '@shared/route';
 import styles from './SortableStopItem.module.css';
 
@@ -25,6 +26,7 @@ export function SortableStopItem({
   onMarkDone,
   isCompleted,
 }: SortableStopItemProps) {
+  const { t } = useTranslation('planner');
   const {
     attributes,
     listeners,
@@ -72,7 +74,7 @@ export function SortableStopItem({
             type="button"
             className={styles.actionButton}
             onClick={onNavigate}
-            title="Navigovat"
+            title={t('sortable_navigate')}
           >
             🧭
           </button>
@@ -83,7 +85,7 @@ export function SortableStopItem({
             type="button"
             className={styles.actionButton}
             onClick={onCall}
-            title="Zavolat"
+            title={t('sortable_call')}
           >
             📞
           </button>
@@ -94,7 +96,7 @@ export function SortableStopItem({
             type="button"
             className={`${styles.actionButton} ${styles.doneButton}`}
             onClick={onMarkDone}
-            title="Hotovo"
+            title={t('sortable_done')}
           >
             ✅
           </button>
@@ -105,7 +107,7 @@ export function SortableStopItem({
             type="button"
             className={styles.lockButton}
             onClick={() => onLockToggle(stop.customerId)}
-            title={isLocked ? 'Odemknout' : 'Zamknout'}
+            title={isLocked ? t('sortable_unlock') : t('sortable_lock')}
           >
             {isLocked ? '🔒' : '🔓'}
           </button>

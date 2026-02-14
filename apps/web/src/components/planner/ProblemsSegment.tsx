@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { CollapseButton } from '../common';
 import styles from './ProblemsSegment.module.css';
 
@@ -19,11 +20,11 @@ interface ProblemsSegmentProps {
   onToggleCollapse?: () => void;
 }
 
-const problemLabels: Record<ProblemType, { icon: string; label: string }> = {
-  no_phone: { icon: '📵', label: 'Chybí telefon' },
-  no_address: { icon: '🏠', label: 'Chybí adresa' },
-  geocode_failed: { icon: '📍', label: 'Nelze geolokalizovat' },
-  no_coordinates: { icon: '🗺️', label: 'Bez souřadnic' },
+const problemLabelKeys: Record<ProblemType, { icon: string; key: string }> = {
+  no_phone: { icon: '📵', key: 'problems_no_phone' },
+  no_address: { icon: '🏠', key: 'problems_no_address' },
+  geocode_failed: { icon: '📍', key: 'problems_geocode_failed' },
+  no_coordinates: { icon: '🗺️', key: 'problems_no_coordinates' },
 };
 
 export function ProblemsSegment({
@@ -34,6 +35,7 @@ export function ProblemsSegment({
   isCollapsed = false,
   onToggleCollapse,
 }: ProblemsSegmentProps) {
+  const { t } = useTranslation('planner');
   if (candidates.length === 0) {
     return null;
   }
@@ -48,10 +50,10 @@ export function ProblemsSegment({
       >
         <span className={styles.headerIcon}>⚠️</span>
         <span className={styles.headerTitle}>
-          Problémy ({candidates.length})
+          {t('problems_title', { count: candidates.length })}
         </span>
         <span className={styles.headerDescription}>
-          Kandidáti, které nelze optimalizovat
+          {t('problems_description')}
         </span>
         <CollapseButton
           collapsed={isCollapsed}
@@ -73,9 +75,9 @@ export function ProblemsSegment({
                   <span
                     key={problem}
                     className={styles.problemBadge}
-                    title={problemLabels[problem].label}
+                    title={t(problemLabelKeys[problem].key)}
                   >
-                    {problemLabels[problem].icon}
+                    {problemLabelKeys[problem].icon}
                   </span>
                 ))}
               </div>
@@ -86,7 +88,7 @@ export function ProblemsSegment({
                     type="button"
                     className={styles.actionButton}
                     onClick={() => onAddPhone(candidate.id)}
-                    title="Doplnit telefon"
+                    title={t('problems_add_phone')}
                   >
                     📞+
                   </button>
@@ -99,7 +101,7 @@ export function ProblemsSegment({
                       type="button"
                       className={styles.actionButton}
                       onClick={() => onFixAddress(candidate.id)}
-                      title="Opravit adresu"
+                      title={t('problems_fix_address')}
                     >
                       📍✎
                     </button>
@@ -109,7 +111,7 @@ export function ProblemsSegment({
                     type="button"
                     className={styles.actionButton}
                     onClick={() => onViewCustomer(candidate.id)}
-                    title="Detail zákazníka"
+                    title={t('problems_view_customer')}
                   >
                     →
                   </button>

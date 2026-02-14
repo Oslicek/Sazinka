@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import styles from './RouteSummaryActions.module.css';
 
 export interface RouteSummaryActionsProps {
@@ -11,7 +12,7 @@ export interface RouteSummaryActionsProps {
   isOptimizing?: boolean;
   /** Whether the route can be optimized (needs at least 2 stops) */
   canOptimize?: boolean;
-  /** Label for delete button (default: "Smazat trasu") */
+  /** Label for delete button */
   deleteLabel?: string;
 }
 
@@ -21,8 +22,9 @@ export function RouteSummaryActions({
   onDeleteRoute,
   isOptimizing = false,
   canOptimize = true,
-  deleteLabel = 'Smazat trasu',
+  deleteLabel,
 }: RouteSummaryActionsProps) {
+  const { t } = useTranslation('planner');
   return (
     <div className={styles.summaryActions}>
       {onOptimize && (
@@ -32,17 +34,17 @@ export function RouteSummaryActions({
           onClick={onOptimize}
           disabled={isOptimizing || !canOptimize}
         >
-          {isOptimizing ? 'Optimalizuji...' : 'Optimalizovat'}
+          {isOptimizing ? t('optimizer_running') : t('actions_optimize')}
         </button>
       )}
       {onAddBreak && (
         <button type="button" className={styles.summaryActionBtn} onClick={onAddBreak}>
-          Pauza
+          {t('actions_break')}
         </button>
       )}
       {onDeleteRoute && (
         <button type="button" className={styles.summaryDeleteBtn} onClick={onDeleteRoute}>
-          {deleteLabel}
+          {deleteLabel ?? t('actions_delete_route')}
         </button>
       )}
     </div>

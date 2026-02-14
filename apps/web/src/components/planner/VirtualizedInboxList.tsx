@@ -1,4 +1,5 @@
 import { useCallback, useRef, forwardRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import { CandidateRow, type CandidateRowData } from './CandidateRow';
 import styles from './VirtualizedInboxList.module.css';
@@ -36,7 +37,7 @@ export const VirtualizedInboxList = forwardRef<VirtualizedInboxListRef, Virtuali
       onLoadMore,
       hasMore,
       isLoading,
-      emptyMessage = 'Žádní kandidáti',
+      emptyMessage,
       className,
       selectable = false,
       selectedIds,
@@ -45,6 +46,7 @@ export const VirtualizedInboxList = forwardRef<VirtualizedInboxListRef, Virtuali
     },
     ref
   ) {
+    const { t } = useTranslation('planner');
     const virtuosoRef = useRef<VirtuosoHandle>(null);
 
     // Expose scroll methods via ref
@@ -120,7 +122,7 @@ export const VirtualizedInboxList = forwardRef<VirtualizedInboxListRef, Virtuali
         return (
           <div className={styles.footer}>
             <div className={styles.spinner} />
-            <span>Načítám...</span>
+            <span>{t('inbox_loading')}</span>
           </div>
         );
       }
@@ -132,13 +134,13 @@ export const VirtualizedInboxList = forwardRef<VirtualizedInboxListRef, Virtuali
               className={styles.loadMoreButton}
               onClick={onLoadMore}
             >
-              Načíst další
+              {t('inbox_load_more')}
             </button>
           </div>
         );
       }
       return null;
-    }, [isLoading, hasMore, onLoadMore]);
+    }, [isLoading, hasMore, onLoadMore, t]);
 
     // Empty state
     if (candidates.length === 0 && !isLoading) {
@@ -146,7 +148,7 @@ export const VirtualizedInboxList = forwardRef<VirtualizedInboxListRef, Virtuali
         <div className={`${styles.container} ${className ?? ''}`}>
           <div className={styles.empty}>
             <span className={styles.emptyIcon}>📭</span>
-            <p>{emptyMessage}</p>
+            <p>{emptyMessage ?? t('inbox_empty')}</p>
           </div>
         </div>
       );

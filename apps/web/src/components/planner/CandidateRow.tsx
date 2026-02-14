@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import styles from './CandidateRow.module.css';
 
 export type SlotStatus = 'ok' | 'tight' | 'conflict';
@@ -57,10 +58,10 @@ function formatDelta(value: number | undefined, unit: string): string | null {
 
 function getPriorityLabel(priority: CandidateRowData['priority']): string {
   switch (priority) {
-    case 'overdue': return 'Po termínu';
-    case 'due_this_week': return 'Tento týden';
-    case 'due_soon': return 'Brzy';
-    case 'upcoming': return 'Plánovaná';
+    case 'overdue': return 'candidate_row_overdue';
+    case 'due_this_week': return 'candidate_row_this_week';
+    case 'due_soon': return 'candidate_row_soon';
+    case 'upcoming': return 'candidate_row_planned';
   }
 }
 
@@ -74,6 +75,7 @@ export function CandidateRow({
   onCheckChange,
   isInRoute = false,
 }: CandidateRowProps) {
+  const { t } = useTranslation('planner');
   const daysOverdue = candidate.daysUntilDue < 0 ? Math.abs(candidate.daysUntilDue) : 0;
   const hasProblems = !candidate.hasPhone || !candidate.hasValidAddress;
 
@@ -91,7 +93,7 @@ export function CandidateRow({
           className={styles.checkbox}
           checked={checked}
           disabled={candidate.disableCheckbox}
-          title={candidate.disableCheckbox ? 'Adresu nelze najít na mapě' : undefined}
+          title={candidate.disableCheckbox ? t('candidate_row_checkbox_disabled') : undefined}
           onChange={(e) => {
             e.stopPropagation();
             onCheckChange?.(e.target.checked);
@@ -101,10 +103,10 @@ export function CandidateRow({
       )}
       <div className={styles.stateIcons}>
         {candidate.isScheduled && (
-          <span className={styles.stateIcon} title="Má termín">📅</span>
+          <span className={styles.stateIcon} title={t('candidate_row_has_appointment')}>📅</span>
         )}
         {(isInRoute || candidate.isInRoute) && (
-          <span className={styles.stateIcon} title="V trase">🚗</span>
+          <span className={styles.stateIcon} title={t('candidate_row_in_route')}>🚗</span>
         )}
       </div>
       <div className={styles.main}>
@@ -130,12 +132,12 @@ export function CandidateRow({
       {(candidate.deltaKm !== undefined || candidate.deltaMin !== undefined) && (
         <div className={styles.metrics}>
           {formatDelta(candidate.deltaKm, 'km') && (
-            <span className={styles.deltaKm} title="Přidaná vzdálenost do trasy">
+            <span className={styles.deltaKm} title={t('candidate_row_delta_km')}>
               {formatDelta(candidate.deltaKm, 'km')}
             </span>
           )}
           {formatDelta(candidate.deltaMin, 'min') && (
-            <span className={styles.deltaMin} title="Přidaný čas do trasy">
+            <span className={styles.deltaMin} title={t('candidate_row_delta_min')}>
               {formatDelta(candidate.deltaMin, 'min')}
             </span>
           )}
@@ -144,10 +146,10 @@ export function CandidateRow({
               className={`${styles.statusIcon} ${styles[candidate.slotStatus]}`}
               title={
                 candidate.slotStatus === 'ok'
-                  ? 'Kompatibilní s trasou'
+                  ? t('candidate_row_slot_ok')
                   : candidate.slotStatus === 'tight'
-                    ? 'Těsný časový slot'
-                    : 'Časový konflikt'
+                    ? t('candidate_row_slot_tight')
+                    : t('candidate_row_slot_conflict')
               }
             >
               {getStatusIcon(candidate.slotStatus)}
@@ -171,10 +173,10 @@ export function CandidateRow({
 
       <div className={styles.warnings}>
         {!candidate.hasPhone && (
-          <span className={styles.warning} title="Chybí telefon">📵</span>
+          <span className={styles.warning} title={t('candidate_row_no_phone')}>📵</span>
         )}
         {!candidate.hasValidAddress && (
-          <span className={`${styles.warning} ${styles.noGeo}`} title="Adresu nelze najít na mapě">📍</span>
+          <span className={`${styles.warning} ${styles.noGeo}`} title={t('candidate_row_no_address')}>📍</span>
         )}
       </div>
     </button>

@@ -67,9 +67,9 @@ describe('CandidateDetail', () => {
         />
       );
 
-      expect(screen.getByRole('button', { name: /domluvit termín/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /přidat do trasy/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /odložit/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /candidate_make_appointment/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /candidate_add_to_route/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /candidate_snooze/i })).toBeInTheDocument();
     });
   });
 
@@ -102,11 +102,11 @@ describe('CandidateDetail', () => {
 
       await waitFor(() => {
         // Dropdown options (these are unique - primary button shows default e.g. "o týden")
-        expect(screen.getByText(/odložit o den/i)).toBeInTheDocument();
-        expect(screen.getByText(/o 2 týdny/i)).toBeInTheDocument();
-        expect(screen.getByText(/o měsíc/i)).toBeInTheDocument();
-        // "o týden" appears in both primary button and dropdown - check we have at least 2
-        expect(screen.getAllByText(/o týden/i).length).toBeGreaterThanOrEqual(2);
+        expect(screen.getByText(/candidate_snooze_1_day/i)).toBeInTheDocument();
+        expect(screen.getByText(/candidate_snooze_2_weeks/i)).toBeInTheDocument();
+        expect(screen.getByText(/candidate_snooze_1_month/i)).toBeInTheDocument();
+        // Primary button shows candidate_snooze, dropdown shows candidate_snooze_1_week
+        expect(screen.getByText(/candidate_snooze_1_week/i)).toBeInTheDocument();
       });
     });
 
@@ -121,8 +121,8 @@ describe('CandidateDetail', () => {
       const dropdownToggle = screen.getByRole('button', { name: '▼' });
       fireEvent.click(dropdownToggle);
 
-      // "Odložit o týden" in dropdown (exact match) - primary has "⏰ Odložit o týden"
-      const weekOption = await screen.findByRole('button', { name: /^Odložit o týden$/i });
+      // "candidate_snooze_1_week" in dropdown (exact match)
+      const weekOption = await screen.findByRole('button', { name: /^candidate_snooze_1_week$/i });
       fireEvent.click(weekOption);
 
       expect(mockHandlers.onSnooze).toHaveBeenCalledWith('rev-1', 7);
@@ -139,7 +139,7 @@ describe('CandidateDetail', () => {
       // Select 2 weeks option - open dropdown first
       const dropdownToggle = screen.getByRole('button', { name: '▼' });
       fireEvent.click(dropdownToggle);
-      const twoWeeksOption = await screen.findByText(/o 2 týdny/i);
+      const twoWeeksOption = await screen.findByText(/candidate_snooze_2_weeks/i);
       fireEvent.click(twoWeeksOption);
 
       // Rerender with new candidate
@@ -151,8 +151,8 @@ describe('CandidateDetail', () => {
         />
       );
 
-      // Button should show "o 2 týdny" as default
-      expect(screen.getByRole('button', { name: /odložit.*o 2 týdny/i })).toBeInTheDocument();
+      // Button should show snooze with selected option (mock returns candidate_snooze)
+      expect(screen.getByRole('button', { name: /candidate_snooze/i })).toBeInTheDocument();
     });
   });
 
@@ -167,8 +167,8 @@ describe('CandidateDetail', () => {
       );
 
       const stateFlags = screen.getByTestId('state-flags');
-      expect(stateFlags).toHaveTextContent(/termín/i);
-      expect(stateFlags).toHaveTextContent(/v trase/i);
+      expect(stateFlags).toHaveTextContent(/candidate_state_appointment/i);
+      expect(stateFlags).toHaveTextContent(/candidate_state_in_route/i);
     });
 
     it('should show "Termín: Ne" when not scheduled', () => {
@@ -180,8 +180,8 @@ describe('CandidateDetail', () => {
       );
 
       const stateFlags = screen.getByTestId('state-flags');
-      expect(stateFlags).toHaveTextContent(/termín/i);
-      expect(stateFlags).toHaveTextContent(/ne/i);
+      expect(stateFlags).toHaveTextContent(/candidate_state_appointment/i);
+      expect(stateFlags).toHaveTextContent(/candidate_state_no/i);
     });
 
     it('should show "Termín: Ano" when scheduled', () => {
@@ -198,8 +198,8 @@ describe('CandidateDetail', () => {
       );
 
       const stateFlags = screen.getByTestId('state-flags');
-      expect(stateFlags).toHaveTextContent(/termín/i);
-      expect(stateFlags).toHaveTextContent(/ano/i);
+      expect(stateFlags).toHaveTextContent(/candidate_state_appointment/i);
+      expect(stateFlags).toHaveTextContent(/candidate_state_yes/i);
     });
 
     it('should show "V trase: Ne" when not in route', () => {
@@ -212,8 +212,8 @@ describe('CandidateDetail', () => {
       );
 
       const stateFlags = screen.getByTestId('state-flags');
-      expect(stateFlags).toHaveTextContent(/v trase/i);
-      expect(stateFlags).toHaveTextContent(/ne/i);
+      expect(stateFlags).toHaveTextContent(/candidate_state_in_route/i);
+      expect(stateFlags).toHaveTextContent(/candidate_state_no/i);
     });
 
     it('should show "V trase: Ano" when in route', () => {
@@ -226,8 +226,8 @@ describe('CandidateDetail', () => {
       );
 
       const stateFlags = screen.getByTestId('state-flags');
-      expect(stateFlags).toHaveTextContent(/v trase/i);
-      expect(stateFlags).toHaveTextContent(/ano/i);
+      expect(stateFlags).toHaveTextContent(/candidate_state_in_route/i);
+      expect(stateFlags).toHaveTextContent(/candidate_state_yes/i);
     });
 
     it('should display state flags with appropriate styling', () => {

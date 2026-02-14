@@ -8,7 +8,9 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { InboxCandidate } from '../../types';
+import { formatDate } from '../../i18n/formatters';
 import { SlotSuggestions, type SlotSuggestion } from './SlotSuggestions';
 import styles from './AddFromInboxDrawer.module.css';
 
@@ -33,6 +35,7 @@ export function AddFromInboxDrawer({
   onFetchSlots,
   isLoading = false,
 }: AddFromInboxDrawerProps) {
+  const { t } = useTranslation('planner');
   const [selectedCandidate, setSelectedCandidate] = useState<InboxCandidate | null>(null);
   const [slots, setSlots] = useState<SlotSuggestion[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<SlotSuggestion | null>(null);
@@ -62,7 +65,7 @@ export function AddFromInboxDrawer({
         setSlots(fetchedSlots);
       } catch (err) {
         console.error('Failed to fetch slots:', err);
-        setError('Nepodařilo se načíst dostupné termíny');
+        setError(t('add_drawer_fetch_error'));
         setSlots([]);
       } finally {
         setLoadingSlots(false);
@@ -70,7 +73,7 @@ export function AddFromInboxDrawer({
     };
 
     fetchSlots();
-  }, [selectedCandidate, onFetchSlots]);
+  }, [selectedCandidate, onFetchSlots, t]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -98,11 +101,11 @@ export function AddFromInboxDrawer({
       setSlots([]);
       setSelectedSlot(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nepodařilo se přidat do trasy');
+      setError(err instanceof Error ? err.message : t('add_drawer_add_error'));
     } finally {
       setIsAdding(false);
     }
-  }, [selectedCandidate, selectedSlot, onAddToRoute]);
+  }, [selectedCandidate, selectedSlot, onAddToRoute, t]);
 
   if (!isOpen) return null;
 
@@ -115,7 +118,7 @@ export function AddFromInboxDrawer({
       <aside className={styles.drawer} role="dialog" aria-modal="true">
         {/* Header */}
         <header className={styles.header}>
-          <h2 className={styles.title}>Přidat z fronty</h2>
+          <h2 className={styles.title}>{t('add_drawer_title')}</h2>
           <button
             type="button"
             className={styles.closeButton}
@@ -129,28 +132,20 @@ export function AddFromInboxDrawer({
         <div className={styles.content}>
           {/* Date info */}
           <div className={styles.dateInfo}>
-            <span className={styles.dateLabel}>Plán pro:</span>
-            <span className={styles.dateValue}>
-              {new Date(selectedDate).toLocaleDateString('cs-CZ', { 
-                weekday: 'short', 
-                day: 'numeric', 
-                month: 'numeric' 
-              })}
-            </span>
+            <span className={styles.dateLabel}>{t('add_drawer_plan_for')}</span>
+            <span className={styles.dateValue}>{formatDate(selectedDate, 'short')}</span>
           </div>
 
           {/* Candidate list */}
           <div className={styles.section}>
             <h3 className={styles.sectionTitle}>
-              Kandidáti ({candidates.length})
+              {t('add_drawer_candidates', { count: candidates.length })}
             </h3>
             
             {isLoading ? (
-              <div className={styles.loading}>Načítám...</div>
+              <div className={styles.loading}>{t('add_drawer_loading')}</div>
             ) : candidates.length === 0 ? (
-              <div className={styles.empty}>
-                Žádní kandidáti pro přidání
-              </div>
+              <div className={styles.empty}>{t('add_drawer_empty')}</div>
             ) : (
               <ul className={styles.candidateList}>
                 {candidates.map((candidate) => (
@@ -173,7 +168,7 @@ export function AddFromInboxDrawer({
                       </div>
                       <div className={styles.candidateMeta}>
                         <span className={styles.dueDate}>
-                          Termín: {new Date(candidate.dueDate).toLocaleDateString('cs-CZ')}
+                          {t('add_drawer_due')} {formatDate(candidate.dueDate, 'short')}
                         </span>
                       </div>
                     </button>
@@ -186,12 +181,12 @@ export function AddFromInboxDrawer({
           {/* Slot selection (when candidate is selected) */}
           {selectedCandidate && (
             <div className={styles.section}>
-              <h3 className={styles.sectionTitle}>Vyberte termín</h3>
+              <h3 className={styles.sectionTitle}>{t('add_drawer_select_slot')}</h3>
               
               {loadingSlots ? (
                 <div className={styles.loading}>
                   <div className={styles.spinner} />
-                  <span>Počítám optimální pozice...</span>
+                  <span>{t('add_drawer_calculating')}</span>
                 </div>
               ) : error ? (
                 <div className={styles.error}>{error}</div>
@@ -215,7 +210,7 @@ export function AddFromInboxDrawer({
             onClick={handleAddToRoute}
             disabled={!selectedCandidate || !selectedSlot || isAdding}
           >
-            {isAdding ? 'Přidávám...' : 'Přidat do trasy'}
+            {isAdding ? t('add_drawer_adding') : t('add_drawer_add_button')}
           </button>
         </footer>
       </aside>

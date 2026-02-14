@@ -2,6 +2,7 @@
  * TimelineViewToggle — switch between compact and planning timeline views.
  */
 
+import { useTranslation } from 'react-i18next';
 import styles from './TimelineViewToggle.module.css';
 
 export type TimelineView = 'compact' | 'planning';
@@ -12,13 +13,14 @@ interface TimelineViewToggleProps {
 }
 
 export function TimelineViewToggle({ value, onChange }: TimelineViewToggleProps) {
+  const { t } = useTranslation('planner');
   return (
     <div className={styles.container}>
       <button
         type="button"
         className={`${styles.button} ${value === 'compact' ? styles.active : ''}`}
         onClick={() => onChange('compact')}
-        title="Kompaktní pohled"
+        title={t('view_compact')}
       >
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
           <rect x="1" y="1" width="12" height="2" rx="0.5" fill="currentColor" />
@@ -30,7 +32,7 @@ export function TimelineViewToggle({ value, onChange }: TimelineViewToggleProps)
         type="button"
         className={`${styles.button} ${value === 'planning' ? styles.active : ''}`}
         onClick={() => onChange('planning')}
-        title="Plánovací pohled"
+        title={t('view_planning')}
       >
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
           <rect x="1" y="1" width="12" height="4" rx="0.5" fill="currentColor" />

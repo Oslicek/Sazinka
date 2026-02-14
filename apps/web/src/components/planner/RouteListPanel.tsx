@@ -6,6 +6,8 @@
  */
 
 import type { SavedRoute } from '../../services/routeService';
+import { getWeekdayNames } from '@/i18n/formatters';
+import { useTranslation } from 'react-i18next';
 import styles from './RouteListPanel.module.css';
 
 interface RouteListPanelProps {
@@ -17,8 +19,10 @@ interface RouteListPanelProps {
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00');
-  const days = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
-  return `${days[d.getDay()]} ${d.getDate()}.${d.getMonth() + 1}.`;
+  const days = getWeekdayNames('short');
+  // getWeekdayNames is Mon-first; getDay() is Sun-first (0=Sun)
+  const dayIndex = (d.getDay() + 6) % 7;
+  return `${days[dayIndex]} ${d.getDate()}.${d.getMonth() + 1}.`;
 }
 
 function formatDuration(minutes: number | null): string {
@@ -36,10 +40,12 @@ export function RouteListPanel({
   onSelectRoute,
   isLoading,
 }: RouteListPanelProps) {
+  const { t } = useTranslation('planner');
+
   if (isLoading) {
     return (
       <div className={styles.container}>
-        <div className={styles.loading}>Načítám cesty...</div>
+        <div className={styles.loading}>{t('route_list_loading')}</div>
       </div>
     );
   }
@@ -47,7 +53,7 @@ export function RouteListPanel({
   if (routes.length === 0) {
     return (
       <div className={styles.container}>
-        <div className={styles.empty}>Žádné naplánované cesty pro vybraný filtr.</div>
+        <div className={styles.empty}>{t('route_list_empty')}</div>
       </div>
     );
   }
@@ -80,7 +86,7 @@ export function RouteListPanel({
             <div className={styles.cardMetrics}>
               <span className={styles.metric}>
                 <span className={styles.metricValue}>{route.stopsCount ?? 0}</span>
-                <span className={styles.metricLabel}>zast.</span>
+                <span className={styles.metricLabel}>{t('route_list_stops')}</span>
               </span>
               {route.totalDistanceKm != null && route.totalDistanceKm > 0 && (
                 <span className={styles.metric}>

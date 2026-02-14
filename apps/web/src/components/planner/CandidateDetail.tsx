@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
+import { formatDate } from '@/i18n/formatters';
 import { SlotSuggestions, type SlotSuggestion } from './SlotSuggestions';
 import styles from './CandidateDetail.module.css';
 
@@ -61,6 +63,7 @@ export function CandidateDetail({
   routeDate,
   defaultServiceDurationMinutes = 30,
 }: CandidateDetailProps) {
+  const { t } = useTranslation('planner');
   // Inline scheduling form state
   const [isScheduling, setIsScheduling] = useState(false);
   const [schedDate, setSchedDate] = useState('');
@@ -126,7 +129,7 @@ export function CandidateDetail({
       <div className={styles.container}>
         <div className={styles.loading}>
           <div className={styles.spinner} />
-          <span>Načítám...</span>
+          <span>{t('candidate_loading')}</span>
         </div>
       </div>
     );
@@ -137,9 +140,9 @@ export function CandidateDetail({
       <div className={styles.container}>
         <div className={styles.empty}>
           <span className={styles.emptyIcon}>👆</span>
-          <p>Vyberte kandidáta ze seznamu</p>
+          <p>{t('candidate_empty')}</p>
           <p className={styles.emptyHint}>
-            Použijte klávesy ↑↓ pro navigaci
+            {t('candidate_empty_hint')}
           </p>
         </div>
       </div>
@@ -147,11 +150,7 @@ export function CandidateDetail({
   }
 
   const daysOverdue = candidate.daysUntilDue < 0 ? Math.abs(candidate.daysUntilDue) : 0;
-  const dueDateFormatted = new Date(candidate.dueDate).toLocaleDateString('cs-CZ', {
-    day: 'numeric',
-    month: 'numeric',
-    year: 'numeric',
-  });
+  const dueDateFormatted = formatDate(candidate.dueDate);
 
   const handleSnoozeSelect = (days: SnoozeDuration) => {
     setDefaultSnoozeDays(days);
@@ -162,10 +161,10 @@ export function CandidateDetail({
 
   const getSnoozeDurationLabel = (days: SnoozeDuration): string => {
     switch (days) {
-      case 1: return 'o den';
-      case 7: return 'o týden';
-      case 14: return 'o 2 týdny';
-      case 30: return 'o měsíc';
+      case 1: return t('candidate_snooze_duration_1');
+      case 7: return t('candidate_snooze_duration_7');
+      case 14: return t('candidate_snooze_duration_14');
+      case 30: return t('candidate_snooze_duration_30');
     }
   };
 
@@ -177,7 +176,7 @@ export function CandidateDetail({
         <div className={styles.badges}>
           <span className={styles.deviceBadge}>{candidate.deviceType}</span>
           {candidate.priority === 'overdue' && (
-            <span className={styles.overdueBadge}>+{daysOverdue}d po termínu</span>
+            <span className={styles.overdueBadge}>{t('candidate_overdue_badge', { days: daysOverdue })}</span>
           )}
         </div>
       </div>
@@ -185,32 +184,28 @@ export function CandidateDetail({
       {/* State Flags */}
       <div className={styles.stateFlags} data-testid="state-flags">
         <div className={`${styles.stateFlag} ${candidate.isScheduled ? styles.stateFlagYes : styles.stateFlagNo}`}>
-          <span className={styles.stateFlagLabel}>Termín:</span>
-          <span className={styles.stateFlagValue}>{candidate.isScheduled ? 'Ano' : 'Ne'}</span>
+          <span className={styles.stateFlagLabel}>{t('candidate_state_appointment')}</span>
+          <span className={styles.stateFlagValue}>{candidate.isScheduled ? t('candidate_state_yes') : t('candidate_state_no')}</span>
         </div>
         <div className={`${styles.stateFlag} ${isInRoute ? styles.stateFlagYes : styles.stateFlagNo}`}>
-          <span className={styles.stateFlagLabel}>V trase:</span>
-          <span className={styles.stateFlagValue}>{isInRoute ? 'Ano' : 'Ne'}</span>
+          <span className={styles.stateFlagLabel}>{t('candidate_state_in_route')}</span>
+          <span className={styles.stateFlagValue}>{isInRoute ? t('candidate_state_yes') : t('candidate_state_no')}</span>
         </div>
       </div>
 
       {/* Domluvený termín — always visible when scheduled, with service duration input */}
       {candidate.isScheduled && candidate.scheduledDate && (
         <section className={styles.sectionNoBottomBorder}>
-          <h4 className={styles.sectionTitle}>Domluvený termín</h4>
+          <h4 className={styles.sectionTitle}>{t('candidate_agreed_appointment')}</h4>
           <div className={styles.appointmentRow}>
             <div className={styles.appointmentLine}>
               <button
                 type="button"
                 className={styles.scheduledAppointmentButton}
                 onClick={() => setIsScheduling(true)}
-                title="Klikněte pro změnu termínu"
+                title={t('candidate_click_to_change')}
               >
-                📅 {new Date(candidate.scheduledDate).toLocaleDateString('cs-CZ', {
-                  day: 'numeric',
-                  month: 'numeric',
-                  year: 'numeric',
-                })}
+                📅 {formatDate(candidate.scheduledDate)}
                 {candidate.scheduledTimeStart && candidate.scheduledTimeEnd && (
                   <span className={styles.scheduledTime}>
                     {' '}🕐 {candidate.scheduledTimeStart.substring(0, 5)} – {candidate.scheduledTimeEnd.substring(0, 5)}
@@ -220,7 +215,7 @@ export function CandidateDetail({
               {/* Service duration — inline on same line when non-flexible */}
               {windowInfo && !windowInfo.isFlexible && (
                 <span className={styles.durationBadge}>
-                  Plánované trvání: {windowInfo.windowLength} min
+                  {t('candidate_planned_duration', { minutes: windowInfo.windowLength })}
                 </span>
               )}
             </div>
@@ -244,7 +239,7 @@ export function CandidateDetail({
                   <span className={styles.serviceDurationUnit}>min</span>
                 </div>
                 <span className={styles.serviceDurationHint}>
-                  Okno {windowInfo.windowLength} min, potřeba {serviceDurationMinutes} min
+                  {t('candidate_window_info', { window: windowInfo.windowLength, service: serviceDurationMinutes })}
                 </span>
               </div>
             )}
@@ -260,7 +255,7 @@ export function CandidateDetail({
             className={styles.actionButtonCompact}
             onClick={() => setIsScheduling(true)}
           >
-            📅 {candidate.isScheduled ? 'Změnit termín' : 'Domluvit termín'}
+            📅 {candidate.isScheduled ? t('candidate_change_appointment') : t('candidate_make_appointment')}
           </button>
           {isInRoute ? (
             <button
@@ -268,7 +263,7 @@ export function CandidateDetail({
               className={styles.actionButtonCompact}
               onClick={() => onRemoveFromRoute?.(candidate.customerId)}
             >
-              ✕ Odebrat z trasy
+              ✕ {t('candidate_remove_from_route')}
             </button>
           ) : (
             <button
@@ -276,9 +271,9 @@ export function CandidateDetail({
               className={`${styles.actionButtonCompact} ${candidate.hasCoordinates === false ? styles.disabledAction : ''}`}
               onClick={() => onAddToRoute?.(candidate.id, windowInfo?.isFlexible ? serviceDurationMinutes : undefined)}
               disabled={candidate.hasCoordinates === false}
-              title={candidate.hasCoordinates === false ? 'Nejprve opravte adresu' : undefined}
+              title={candidate.hasCoordinates === false ? t('candidate_fix_address_first') : undefined}
             >
-              ➕ Přidat do trasy
+              ➕ {t('candidate_add_to_route')}
             </button>
           )}
           <div className={styles.snoozeButtonWrapper}>
@@ -286,9 +281,9 @@ export function CandidateDetail({
               type="button"
               className={styles.snoozePrimaryButtonCompact}
               onClick={() => handleSnoozeSelect(defaultSnoozeDays)}
-              title={`Odložit ${getSnoozeDurationLabel(defaultSnoozeDays)}`}
+              title={t('candidate_snooze', { duration: getSnoozeDurationLabel(defaultSnoozeDays) })}
             >
-              ⏰ Odložit {getSnoozeDurationLabel(defaultSnoozeDays)}
+              ⏰ {t('candidate_snooze', { duration: getSnoozeDurationLabel(defaultSnoozeDays) })}
             </button>
             <button
               type="button"
@@ -296,16 +291,16 @@ export function CandidateDetail({
               onClick={() => setShowSnoozeDropdown(!showSnoozeDropdown)}
               aria-haspopup="true"
               aria-expanded={showSnoozeDropdown}
-              title="Zobrazit další možnosti"
+              title={t('candidate_snooze_show_more')}
             >
               ▼
             </button>
             {showSnoozeDropdown && (
               <div className={styles.snoozeDropdown}>
-                <button type="button" className={styles.snoozeOption} onClick={() => handleSnoozeSelect(1)}>Odložit o den</button>
-                <button type="button" className={styles.snoozeOption} onClick={() => handleSnoozeSelect(7)}>Odložit o týden</button>
-                <button type="button" className={styles.snoozeOption} onClick={() => handleSnoozeSelect(14)}>Odložit o 2 týdny</button>
-                <button type="button" className={styles.snoozeOption} onClick={() => handleSnoozeSelect(30)}>Odložit o měsíc</button>
+                <button type="button" className={styles.snoozeOption} onClick={() => handleSnoozeSelect(1)}>{t('candidate_snooze_1_day')}</button>
+                <button type="button" className={styles.snoozeOption} onClick={() => handleSnoozeSelect(7)}>{t('candidate_snooze_1_week')}</button>
+                <button type="button" className={styles.snoozeOption} onClick={() => handleSnoozeSelect(14)}>{t('candidate_snooze_2_weeks')}</button>
+                <button type="button" className={styles.snoozeOption} onClick={() => handleSnoozeSelect(30)}>{t('candidate_snooze_1_month')}</button>
               </div>
             )}
           </div>
@@ -314,14 +309,14 @@ export function CandidateDetail({
 
       {/* Revize nejpozději */}
       <section className={styles.section}>
-        <h4 className={styles.sectionTitle}>Revize nejpozději</h4>
+        <h4 className={styles.sectionTitle}>{t('candidate_due_date')}</h4>
         <p className={styles.dueDate}>
           <span className={candidate.priority === 'overdue' ? styles.overdueText : ''}>
             {dueDateFormatted}
           </span>
           {candidate.daysUntilDue > 0 && (
             <span className={styles.daysRemaining}>
-              (za {candidate.daysUntilDue} dní)
+              {t('candidate_days_remaining', { days: candidate.daysUntilDue })}
             </span>
           )}
         </p>
@@ -329,30 +324,30 @@ export function CandidateDetail({
 
       {/* Kontakt */}
       <section className={styles.section}>
-        <h4 className={styles.sectionTitle}>Kontakt</h4>
+        <h4 className={styles.sectionTitle}>{t('candidate_contact')}</h4>
         {candidate.phone ? (
           <a href={`tel:${candidate.phone}`} className={styles.phoneLink}>
             📞 {candidate.phone}
           </a>
         ) : (
-          <span className={styles.missingInfo}>📵 Chybí telefon</span>
+          <span className={styles.missingInfo}>📵 {t('candidate_missing_phone')}</span>
         )}
         {candidate.email ? (
           <a href={`mailto:${candidate.email}`} className={styles.emailLink}>
             ✉️ {candidate.email}
           </a>
         ) : (
-          <span className={styles.missingInfo}>✉️ Chybí email</span>
+          <span className={styles.missingInfo}>✉️ {t('candidate_missing_email')}</span>
         )}
       </section>
 
       {/* Adresa */}
       <section className={styles.section}>
-        <h4 className={styles.sectionTitle}>Adresa</h4>
+        <h4 className={styles.sectionTitle}>{t('candidate_address')}</h4>
         {candidate.hasCoordinates === false && (
           <div className={styles.geocodeError}>
             <span className={styles.geocodeErrorIcon}>📍</span>
-            Adresu nelze najít na mapě
+            {t('candidate_geocode_error')}
           </div>
         )}
         <p className={styles.address}>{candidate.street}</p>
@@ -365,7 +360,7 @@ export function CandidateDetail({
             className={`${styles.fixAddressButton} ${candidate.hasCoordinates === false ? styles.fixAddressButtonWarning : ''}`}
             onClick={() => onFixAddress(candidate.id)}
           >
-            Opravit adresu
+            {t('candidate_fix_address')}
           </button>
         )}
       </section>
@@ -373,7 +368,7 @@ export function CandidateDetail({
       {/* Notes */}
       {candidate.notes && (
         <section className={styles.section}>
-          <h4 className={styles.sectionTitle}>Poznámky</h4>
+          <h4 className={styles.sectionTitle}>{t('candidate_notes')}</h4>
           <p className={styles.notes}>{candidate.notes}</p>
         </section>
       )}
@@ -385,14 +380,14 @@ export function CandidateDetail({
           params={{ customerId: candidate.customerId }}
           className={styles.link}
         >
-          Zobrazit detail zákazníka →
+          {t('candidate_view_detail')}
         </Link>
       </div>
 
       {/* Slot suggestions — only for unscheduled candidates */}
       {!candidate.isScheduled && candidate.suggestedSlots && candidate.suggestedSlots.length > 0 && (
         <section className={styles.section}>
-          <h4 className={styles.sectionTitle}>Doporučené sloty</h4>
+          <h4 className={styles.sectionTitle}>{t('candidate_suggested_slots')}</h4>
           <SlotSuggestions
             slots={candidate.suggestedSlots}
             onSelect={(slot) => onSchedule?.(candidate.id, slot)}
@@ -403,10 +398,10 @@ export function CandidateDetail({
       {/* Inline scheduling form */}
       {isScheduling && (
         <section className={styles.section}>
-          <h4 className={styles.sectionTitle}>Naplánovat termín</h4>
+          <h4 className={styles.sectionTitle}>{t('candidate_schedule_title')}</h4>
           <div className={styles.scheduleForm}>
             <label className={styles.scheduleLabel}>
-              Datum
+              {t('candidate_schedule_date')}
               <input
                 type="date"
                 className={styles.scheduleInput}
@@ -416,7 +411,7 @@ export function CandidateDetail({
             </label>
             <div className={styles.scheduleRow}>
               <label className={styles.scheduleLabel}>
-                Od
+                {t('candidate_schedule_from')}
                 <input
                   type="time"
                   className={styles.scheduleInput}
@@ -431,7 +426,7 @@ export function CandidateDetail({
                 />
               </label>
               <label className={styles.scheduleLabel}>
-                Do
+                {t('candidate_schedule_to')}
                 <input
                   type="time"
                   className={styles.scheduleInput}
@@ -441,11 +436,11 @@ export function CandidateDetail({
               </label>
             </div>
             <label className={styles.scheduleLabel}>
-              Poznámka
+              {t('candidate_schedule_note')}
               <input
                 type="text"
                 className={styles.scheduleInput}
-                placeholder="Volitelná poznámka"
+                placeholder={t('candidate_schedule_note_placeholder')}
                 value={schedNotes}
                 onChange={(e) => setSchedNotes(e.target.value)}
               />
@@ -470,14 +465,14 @@ export function CandidateDetail({
                   setIsScheduling(false);
                 }}
               >
-                Potvrdit
+                {t('candidate_schedule_confirm')}
               </button>
               <button
                 type="button"
                 className="btn-secondary"
                 onClick={() => setIsScheduling(false)}
               >
-                Zrušit
+                {t('candidate_schedule_cancel')}
               </button>
             </div>
           </div>
@@ -486,9 +481,9 @@ export function CandidateDetail({
 
       {/* Keyboard shortcuts hint */}
       <div className={styles.shortcuts}>
-        <span><kbd>D</kbd> Domluvit</span>
-        <span><kbd>O</kbd> Odložit</span>
-        <span><kbd>1-5</kbd> Vybrat slot</span>
+        <span><kbd>D</kbd> {t('candidate_shortcut_schedule')}</span>
+        <span><kbd>O</kbd> {t('candidate_shortcut_snooze')}</span>
+        <span><kbd>1-5</kbd> {t('candidate_shortcut_slot')}</span>
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import styles from './CapacityMetrics.module.css';
 
 export interface RouteMetrics {
@@ -51,6 +52,7 @@ function getStatusIcon(status: CapacityStatus): string {
 }
 
 export function CapacityMetrics({ metrics, showTooltips = true }: CapacityMetricsProps) {
+  const { t } = useTranslation('planner');
   const loadStatus = getLoadStatus(metrics.loadPercent);
   const slackStatus = getSlackStatus(metrics.slackMin);
 
@@ -58,7 +60,7 @@ export function CapacityMetrics({ metrics, showTooltips = true }: CapacityMetric
     <div className={styles.metrics}>
       <div 
         className={styles.metric}
-        title={showTooltips ? 'Celková vzdálenost trasy' : undefined}
+        title={showTooltips ? t('capacity_distance') : undefined}
       >
         <span className={styles.value}>{Math.round(metrics.distanceKm)} km</span>
       </div>
@@ -67,9 +69,9 @@ export function CapacityMetrics({ metrics, showTooltips = true }: CapacityMetric
 
       <div 
         className={styles.metric}
-        title={showTooltips ? 'Čas jízdy (bez servisního času)' : undefined}
+        title={showTooltips ? t('capacity_travel_tooltip') : undefined}
       >
-        <span className={styles.label}>jízda</span>
+        <span className={styles.label}>{t('capacity_travel')}</span>
         <span className={styles.value}>{formatDuration(metrics.travelTimeMin)}</span>
       </div>
 
@@ -77,9 +79,9 @@ export function CapacityMetrics({ metrics, showTooltips = true }: CapacityMetric
 
       <div 
         className={styles.metric}
-        title={showTooltips ? 'Celkový servisní čas' : undefined}
+        title={showTooltips ? t('capacity_service_tooltip') : undefined}
       >
-        <span className={styles.label}>servis</span>
+        <span className={styles.label}>{t('capacity_service')}</span>
         <span className={styles.value}>{formatDuration(metrics.serviceTimeMin)}</span>
       </div>
 
@@ -87,9 +89,9 @@ export function CapacityMetrics({ metrics, showTooltips = true }: CapacityMetric
 
       <div 
         className={`${styles.metric} ${styles[loadStatus]}`}
-        title={showTooltips ? 'Vytížení = (jízda + servis + pauzy) / pracovní doba dne' : undefined}
+        title={showTooltips ? t('capacity_utilization_tooltip') : undefined}
       >
-        <span className={styles.label}>vytížení</span>
+        <span className={styles.label}>{t('capacity_utilization')}</span>
         <span className={styles.value}>
           {Math.round(metrics.loadPercent)}%
           <span className={styles.statusIcon}>{getStatusIcon(loadStatus)}</span>
@@ -100,9 +102,9 @@ export function CapacityMetrics({ metrics, showTooltips = true }: CapacityMetric
 
       <div 
         className={`${styles.metric} ${styles[slackStatus]}`}
-        title={showTooltips ? 'Volný čas = pracovní doba - (jízda + servis)' : undefined}
+        title={showTooltips ? t('capacity_slack_tooltip') : undefined}
       >
-        <span className={styles.label}>volný čas</span>
+        <span className={styles.label}>{t('capacity_slack')}</span>
         <span className={styles.value}>
           {formatDuration(metrics.slackMin)}
           <span className={styles.statusIcon}>{getStatusIcon(slackStatus)}</span>
@@ -113,9 +115,9 @@ export function CapacityMetrics({ metrics, showTooltips = true }: CapacityMetric
 
       <div 
         className={styles.metric}
-        title={showTooltips ? 'Počet zastávek v trase' : undefined}
+        title={showTooltips ? t('capacity_stops_tooltip') : undefined}
       >
-        <span className={styles.value}>{metrics.stopCount} zastávek</span>
+        <span className={styles.value}>{t('capacity_stops', { count: metrics.stopCount })}</span>
       </div>
     </div>
   );

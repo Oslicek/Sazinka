@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import styles from './InsertionPreview.module.css';
 
 export interface InsertionInfo {
@@ -22,10 +23,11 @@ function formatDelta(value: number, unit: string): string {
 }
 
 export function InsertionPreview({ info, className }: InsertionPreviewProps) {
+  const { t } = useTranslation('planner');
   return (
     <div className={`${styles.container} ${className ?? ''}`}>
       <div className={styles.header}>
-        <span className={styles.label}>Vložení do trasy</span>
+        <span className={styles.label}>{t('insertion_title')}</span>
       </div>
 
       <div className={styles.flow}>
@@ -46,7 +48,7 @@ export function InsertionPreview({ info, className }: InsertionPreviewProps) {
 
         <div className={`${styles.stop} ${styles.newStop}`}>
           <span className={styles.stopNumber}>✦</span>
-          <span className={styles.stopName}>Nová zastávka</span>
+          <span className={styles.stopName}>{t('insertion_new_stop')}</span>
           {info.estimatedArrival && (
             <span className={styles.stopTime}>
               ETA {info.estimatedArrival}
@@ -72,7 +74,7 @@ export function InsertionPreview({ info, className }: InsertionPreviewProps) {
       </div>
 
       <div className={styles.impact}>
-        <span className={styles.impactLabel}>Dopad:</span>
+        <span className={styles.impactLabel}>{t('insertion_impact')}</span>
         <span className={styles.impactValue}>
           {formatDelta(info.deltaMin, ' min')}
         </span>

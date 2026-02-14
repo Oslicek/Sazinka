@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import styles from './MultiCrewTip.module.css';
 
 export interface CrewComparison {
@@ -61,15 +62,21 @@ export function MultiCrewTip({
     return parts.join(' / ');
   };
 
+  const { t } = useTranslation('planner');
   return (
     <div className={styles.container}>
       <span className={styles.icon}>💡</span>
       <div className={styles.content}>
-        <span className={styles.label}>Tip:</span>
-        <span className={styles.message}>
-          <strong>{bestAlternative.crewName}</strong> je lepší o{' '}
-          <strong>{formatSavings()}</strong>
-        </span>
+        <span className={styles.label}>{t('multi_crew_tip')}</span>
+        <span
+          className={styles.message}
+          dangerouslySetInnerHTML={{
+            __html: t('multi_crew_better', {
+              name: bestAlternative.crewName,
+              savings: formatSavings(),
+            }),
+          }}
+        />
       </div>
       {onSwitchCrew && (
         <button
@@ -77,7 +84,7 @@ export function MultiCrewTip({
           className={styles.switchButton}
           onClick={() => onSwitchCrew(bestAlternative.crewId)}
         >
-          Přepnout
+          {t('multi_crew_switch')}
         </button>
       )}
     </div>

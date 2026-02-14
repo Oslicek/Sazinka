@@ -3,6 +3,7 @@
  * is being moved to a different position via drag-and-drop.
  */
 
+import { useTranslation } from 'react-i18next';
 import styles from './ScheduledTimeWarning.module.css';
 
 interface ScheduledTimeWarningProps {
@@ -24,24 +25,26 @@ export function ScheduledTimeWarning({
   onConfirm,
   onCancel,
 }: ScheduledTimeWarningProps) {
+  const { t } = useTranslation('planner');
+  const timeStr = `${formatTime(scheduledTimeStart)} – ${formatTime(scheduledTimeEnd)}`;
   return (
     <div className={styles.overlay} onClick={onCancel}>
       <div className={styles.dialog} onClick={(e) => e.stopPropagation()}>
         <div className={styles.icon}>!</div>
-        <h3 className={styles.title}>Dohodnutý termín</h3>
-        <p className={styles.message}>
-          Návštěva u <strong>{customerName}</strong> má dohodnutý termín{' '}
-          <strong>{formatTime(scheduledTimeStart)} – {formatTime(scheduledTimeEnd)}</strong>.
-        </p>
-        <p className={styles.warning}>
-          Přesunutí vyžaduje novou komunikaci se zákazníkem a potvrzení nového času.
-        </p>
+        <h3 className={styles.title}>{t('scheduled_warning_title')}</h3>
+        <p
+          className={styles.message}
+          dangerouslySetInnerHTML={{
+            __html: t('scheduled_warning_message', { name: customerName, time: timeStr }),
+          }}
+        />
+        <p className={styles.warning}>{t('scheduled_warning_note')}</p>
         <div className={styles.actions}>
           <button type="button" className={styles.cancelButton} onClick={onCancel}>
-            Zrušit
+            {t('scheduled_warning_cancel')}
           </button>
           <button type="button" className={styles.confirmButton} onClick={onConfirm}>
-            Přesto přesunout
+            {t('scheduled_warning_confirm')}
           </button>
         </div>
       </div>

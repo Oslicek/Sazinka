@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import styles from './DraftModeBar.module.css';
 
 interface DraftModeBarProps {
@@ -8,15 +9,18 @@ interface DraftModeBarProps {
   onRetry?: () => void;
 }
 
-function formatLastSaved(date: Date): string {
+function formatLastSaved(
+  date: Date,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string {
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMin = Math.floor(diffMs / 60000);
 
-  if (diffMin < 1) return 'právě teď';
-  if (diffMin < 60) return `před ${diffMin} min`;
+  if (diffMin < 1) return t('draft_just_now');
+  if (diffMin < 60) return t('draft_minutes_ago', { minutes: diffMin });
 
-  return date.toLocaleTimeString('cs-CZ', {
+  return date.toLocaleTimeString(undefined, {
     hour: '2-digit',
     minute: '2-digit',
   });
@@ -29,19 +33,21 @@ export function DraftModeBar({
   saveError,
   onRetry,
 }: DraftModeBarProps) {
+  const { t } = useTranslation('planner');
+
   // Error state — takes priority
   if (saveError) {
     return (
       <div className={`${styles.container} ${styles.hasError}`}>
         <span className={styles.icon}>⚠️</span>
-        <span className={styles.errorMessage}>Nepodařilo se uložit</span>
+        <span className={styles.errorMessage}>{t('draft_save_error')}</span>
         {onRetry && (
           <button
             type="button"
             className={styles.retryButton}
             onClick={onRetry}
           >
-            Zkusit znovu
+            {t('draft_retry')}
           </button>
         )}
       </div>
@@ -53,7 +59,7 @@ export function DraftModeBar({
     return (
       <div className={styles.container}>
         <span className={styles.icon}>⟳</span>
-        <span className={styles.savingMessage}>Ukládám...</span>
+        <span className={styles.savingMessage}>{t('draft_saving')}</span>
       </div>
     );
   }
@@ -63,7 +69,7 @@ export function DraftModeBar({
     return (
       <div className={styles.container}>
         <span className={styles.icon}>●</span>
-        <span className={styles.pendingMessage}>Neuložené změny</span>
+        <span className={styles.pendingMessage}>{t('draft_unsaved')}</span>
       </div>
     );
   }
@@ -74,7 +80,7 @@ export function DraftModeBar({
       <div className={styles.container}>
         <span className={styles.icon}>✓</span>
         <span className={styles.savedMessage}>
-          Uloženo {formatLastSaved(lastSaved)}
+          {t('draft_saved', { time: formatLastSaved(lastSaved, t) })}
         </span>
       </div>
     );

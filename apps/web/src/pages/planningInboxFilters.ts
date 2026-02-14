@@ -1,4 +1,5 @@
 import type { CallQueueItem, CallQueueRequest } from '../services/revisionService';
+import i18n from '@/i18n';
 
 export type GroupOperator = 'AND' | 'OR';
 export type RootOperator = 'AND' | 'OR';
@@ -63,12 +64,12 @@ export const DEFAULT_FILTER_EXPRESSION: InboxFilterExpression = {
 };
 
 export const FILTER_PRESETS: FilterPreset[] = [
-  { id: 'ALL', label: 'Vše' },
-  { id: 'URGENT', label: 'Akutní' },
-  { id: 'THIS_WEEK', label: 'Do 7 dnů' },
-  { id: 'THIS_MONTH', label: 'Do 30 dnů' },
-  { id: 'HAS_TERM', label: 'Má termín' },
-  { id: 'PROBLEMS', label: 'Problémové' },
+  { id: 'ALL', label: 'filter_all' },
+  { id: 'URGENT', label: 'filter_urgent' },
+  { id: 'THIS_WEEK', label: 'filter_this_week' },
+  { id: 'THIS_MONTH', label: 'filter_this_month' },
+  { id: 'HAS_TERM', label: 'filter_has_term' },
+  { id: 'PROBLEMS', label: 'filter_problems' },
 ];
 
 export function isScheduledCandidate(item: CallQueueItem): boolean {

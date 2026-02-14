@@ -5,6 +5,7 @@
  */
 
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   DndContext,
   closestCenter,
@@ -127,6 +128,7 @@ function SortableStopCard({
   onStopClick: (customerId: string, index: number) => void;
   onRemoveStop?: (stopId: string) => void;
 }) {
+  const { t } = useTranslation('planner');
   const {
     attributes,
     listeners,
@@ -377,7 +379,7 @@ export function PlanningTimeline({
   if (stops.length === 0) {
     return (
       <div className={styles.container}>
-        <div className={styles.empty}>Žádné zastávky v této trase.</div>
+        <div className={styles.empty}>{t('timeline_empty')}</div>
       </div>
     );
   }
@@ -499,12 +501,12 @@ export function PlanningTimeline({
         </SortableContext>
       </DndContext>
 
-      {isSaving && <div className={styles.savingIndicator}>Ukládám...</div>}
+      {isSaving && <div className={styles.savingIndicator}>{t('timeline_saving')}</div>}
 
       {/* Scheduled-time warning dialog */}
       {pendingReorder && (
         <ScheduledTimeWarning
-          customerName={pendingReorder.stop.customerName ?? 'Neznámý'}
+          customerName={pendingReorder.stop.customerName ?? t('timeline_unknown')}
           scheduledTimeStart={pendingReorder.stop.scheduledTimeStart!}
           scheduledTimeEnd={pendingReorder.stop.scheduledTimeEnd ?? pendingReorder.stop.scheduledTimeStart!}
           onConfirm={confirmReorder}

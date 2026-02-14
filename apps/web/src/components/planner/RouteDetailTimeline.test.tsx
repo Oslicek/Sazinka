@@ -107,8 +107,8 @@ describe('RouteDetailTimeline', () => {
       />
     );
     // First stop: revisionStatus 'confirmed' -> "Potvrzeno"; Second: 'upcoming' -> "Nepotvrzeno"
-    expect(screen.getByText('Potvrzeno')).toBeInTheDocument();
-    expect(screen.getByText('Nepotvrzeno')).toBeInTheDocument();
+    expect(screen.getByText('timeline_status_confirmed')).toBeInTheDocument();
+    expect(screen.getByText('timeline_status_pending')).toBeInTheDocument();
   });
 
   it('should render segments with distance and duration', () => {
@@ -187,6 +187,6 @@ describe('RouteDetailTimeline', () => {
         onSegmentClick={() => {}}
       />
     );
-    expect(screen.getByText(/žádné zastávky/i)).toBeInTheDocument();
+    expect(screen.getByText(/timeline_empty/i)).toBeInTheDocument();
   });
 });

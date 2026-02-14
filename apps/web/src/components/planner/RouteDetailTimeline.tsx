@@ -6,6 +6,7 @@
  */
 
 import { useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   DndContext,
   closestCenter,
@@ -74,26 +75,27 @@ function formatDurationHm(durationMinutes: number | null): string {
 
 
 function getStatusBadge(
-  revisionStatus: string | null, 
-  hasScheduledTime: boolean
+  revisionStatus: string | null,
+  hasScheduledTime: boolean,
+  t: (key: string) => string
 ): { label: string; className: string } {
   // If has scheduled time but status is not confirmed, treat as scheduled
   if (hasScheduledTime && revisionStatus !== 'confirmed' && revisionStatus !== 'completed' && revisionStatus !== 'cancelled') {
-    return { label: 'Naplánováno', className: styles.badgeScheduled };
+    return { label: t('timeline_status_scheduled'), className: styles.badgeScheduled };
   }
   
   switch (revisionStatus) {
     case 'confirmed':
-      return { label: 'Potvrzeno', className: styles.badgeConfirmed };
+      return { label: t('timeline_status_confirmed'), className: styles.badgeConfirmed };
     case 'scheduled':
-      return { label: 'Naplánováno', className: styles.badgeScheduled };
+      return { label: t('timeline_status_scheduled'), className: styles.badgeScheduled };
     case 'completed':
-      return { label: 'Hotovo', className: styles.badgeCompleted };
+      return { label: t('timeline_status_completed'), className: styles.badgeCompleted };
     case 'cancelled':
-      return { label: 'Zrušeno', className: styles.badgeCancelled };
+      return { label: t('timeline_status_cancelled'), className: styles.badgeCancelled };
     case 'upcoming':
     default:
-      return { label: 'Nepotvrzeno', className: styles.badgePending };
+      return { label: t('timeline_status_pending'), className: styles.badgePending };
   }
 }
 
@@ -104,14 +106,14 @@ function calculateTimeDifference(time1: string | null, time2: string | null): nu
   return Math.abs((h1 * 60 + m1) - (h2 * 60 + m2));
 }
 
-function getWarningLabel(warningType: string): string {
+function getWarningLabel(warningType: string, t: (key: string) => string): string {
   switch (warningType) {
     case 'LATE_ARRIVAL':
-      return 'Pozdní příjezd';
+      return t('timeline_warning_late');
     case 'INSUFFICIENT_BUFFER':
-      return 'Nedostatečná rezerva';
+      return t('timeline_warning_buffer');
     case 'TIME_WINDOW':
-      return 'Mimo časové okno';
+      return t('timeline_warning_window');
     default:
       return warningType;
   }
@@ -143,7 +145,8 @@ export function RouteDetailTimeline({
   returnToDepotDistanceKm = null,
   returnToDepotDurationMinutes = null,
 }: RouteDetailTimelineProps) {
-  const depotName = depot?.name ?? 'Depo';
+  const { t } = useTranslation('planner');
+  const depotName = depot?.name ?? t('timeline_depot');
 
   // DnD state
   const [pendingReorder, setPendingReorder] = useState<{
@@ -192,7 +195,7 @@ export function RouteDetailTimeline({
   if (stops.length === 0) {
     return (
       <div className={styles.container}>
-        <div className={styles.empty}>Žádné zastávky v této trase.</div>
+        <div className={styles.empty}>{t('timeline_empty')}</div>
       </div>
     );
   }
@@ -221,10 +224,10 @@ export function RouteDetailTimeline({
         const isBreak = stop.stopType === 'break';
         const hasScheduledTime = !!(stop.scheduledTimeStart && stop.scheduledTimeEnd);
         const badge = isBreak 
-          ? { label: 'Pauza', className: styles.badgeBreak }
+          ? { label: t('timeline_break'), className: styles.badgeBreak }
           : stop.status === 'unassigned'
-            ? { label: 'Nezařazeno', className: styles.badgeUnassigned }
-            : getStatusBadge(stop.revisionStatus, hasScheduledTime);
+            ? { label: t('timeline_unassigned'), className: styles.badgeUnassigned }
+            : getStatusBadge(stop.revisionStatus, hasScheduledTime, t);
         const isSelected = stop.customerId === selectedStopId;
         
         // Calculate time difference between scheduled and estimated
@@ -293,12 +296,12 @@ export function RouteDetailTimeline({
                 <div className={styles.breakIcon}>☕</div>
                 <div className={styles.stopContent}>
                   <div className={styles.stopHeader}>
-                    <span className={styles.stopName}>Pauza</span>
+                    <span className={styles.stopName}>{t('timeline_break')}</span>
                     <span className={`${styles.badge} ${badge.className}`}>{badge.label}</span>
                   </div>
                   <div className={styles.breakMetaRow}>
                     <div className={styles.breakField}>
-                      <span className={styles.breakFieldLabel}>Začátek:</span>
+                      <span className={styles.breakFieldLabel}>{t('timeline_break_start')}</span>
                       <div className={styles.stopTime}>
                         {onUpdateBreak ? (
                           <input
@@ -313,7 +316,7 @@ export function RouteDetailTimeline({
                       </div>
                     </div>
                     <div className={styles.breakField}>
-                      <span className={styles.breakFieldLabel}>Délka:</span>
+                      <span className={styles.breakFieldLabel}>{t('timeline_break_duration')}</span>
                       <div className={styles.stopTime}>
                         {onUpdateBreak ? (
                           <input
@@ -344,7 +347,7 @@ export function RouteDetailTimeline({
                       e.stopPropagation();
                       onRemoveStop(stop.id);
                     }}
-                    title="Odstranit pauzu"
+                    title={t('timeline_remove_break')}
                   >
                     ✕
                   </button>
@@ -375,17 +378,17 @@ export function RouteDetailTimeline({
                 {hasScheduledTime ? (
                   <>
                     <div className={styles.timeRow}>
-                      <span className={styles.timeLabel}>Dohodnuto:</span>
+                      <span className={styles.timeLabel}>{t('timeline_time_agreed')}</span>
                       <div className={styles.stopTime}>
                         <span>{formatTime(stop.scheduledTimeStart)}</span>
                         <span className={styles.timeSeparator}>–</span>
                         <span>{formatTime(stop.scheduledTimeEnd)}</span>
                       </div>
-                      {hasSignificantDiff && <span className={styles.warningIcon} title="Výrazný rozdíl oproti vypočítanému času">⚠️</span>}
+                      {hasSignificantDiff && <span className={styles.warningIcon} title={t('timeline_time_diff_warning')}>⚠️</span>}
                     </div>
                     {(stop.estimatedArrival || stop.estimatedDeparture) && (
                       <div className={styles.timeRow}>
-                        <span className={styles.timeLabel}>Vypočítáno:</span>
+                        <span className={styles.timeLabel}>{t('timeline_time_calculated')}</span>
                         <div className={styles.etaTime}>
                           <span>{formatTime(stop.estimatedArrival)}</span>
                           <span className={styles.timeSeparator}>–</span>
@@ -397,7 +400,7 @@ export function RouteDetailTimeline({
                 ) : (
                   /* No scheduled time - show only estimated */
                   <div className={styles.timeRow}>
-                    <span className={styles.timeLabel}>Vypočítáno:</span>
+                    <span className={styles.timeLabel}>{t('timeline_time_calculated')}</span>
                     <div className={styles.stopTime}>
                       <span>{formatTime(stop.estimatedArrival)}</span>
                       <span className={styles.timeSeparator}>–</span>
@@ -418,7 +421,7 @@ export function RouteDetailTimeline({
                           title={w.message}
                         >
                           <span className={styles.stopWarningIcon}>{getWarningIcon(w.warningType)}</span>
-                          <span>{getWarningLabel(w.warningType)}</span>
+                          <span>{getWarningLabel(w.warningType, t)}</span>
                         </div>
                       ))}
                     </div>
@@ -432,7 +435,7 @@ export function RouteDetailTimeline({
                       e.stopPropagation(); // Prevent triggering onStopClick
                       onRemoveStop(stop.id);
                     }}
-                    title="Odebrat zastávku"
+                    title={t('timeline_remove_stop')}
                   >
                     ✕
                   </button>
@@ -506,12 +509,12 @@ export function RouteDetailTimeline({
       </div>
 
       {isSaving && (
-        <div className={styles.savingIndicator}>⟳ Ukládám...</div>
+        <div className={styles.savingIndicator}>⟳ {t('timeline_saving')}</div>
       )}
 
       {pendingReorder && (
         <ScheduledTimeWarning
-          customerName={pendingReorder.stop.customerName ?? 'Neznámý'}
+          customerName={pendingReorder.stop.customerName ?? t('timeline_unknown')}
           scheduledTimeStart={pendingReorder.stop.scheduledTimeStart!}
           scheduledTimeEnd={pendingReorder.stop.scheduledTimeEnd ?? pendingReorder.stop.scheduledTimeStart!}
           onConfirm={confirmReorder}

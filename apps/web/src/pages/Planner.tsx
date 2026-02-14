@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSearch, useNavigate } from '@tanstack/react-router';
 import { useNatsStore } from '../stores/natsStore';
 import * as geometryService from '../services/geometryService';
@@ -89,6 +90,7 @@ function calculateMetrics(
 }
 
 export function Planner() {
+  const { t } = useTranslation('planner');
   const navigate = useNavigate();
   const searchParams = useSearch({ strict: false }) as PlannerSearchParams;
   const { isConnected } = useNatsStore();
@@ -217,7 +219,7 @@ export function Planner() {
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       logger.error('Failed to load routes:', detail);
-      setError(`Nepodařilo se načíst cesty: ${detail}`);
+      setError(t('load_routes_error', { detail }));
       setRoutes([]);
     } finally {
       setIsLoadingRoutes(false);
@@ -287,7 +289,7 @@ export function Planner() {
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
         logger.error('Failed to load route stops:', detail);
-        setError(`Nepodařilo se načíst zastávky trasy: ${detail}`);
+        setError(t('load_stops_error', { detail }));
         setSelectedRouteStops([]);
         setReturnToDepotLeg(null);
         setMetrics(null);
@@ -552,7 +554,7 @@ export function Planner() {
       loadRoutes();
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      setError(`Nepodařilo se smazat trasu: ${detail}`);
+      setError(t('delete_route_error', { detail }));
     }
   }, [selectedRouteId, loadRoutes]);
 
@@ -705,7 +707,7 @@ export function Planner() {
                   });
                 }
                 const names = unassignedOriginals.map((rs) => rs.customerName).join(', ');
-                setError(`Optimalizátor nemohl zařadit: ${names}. Dohodnuté časy nelze dodržet.`);
+                setError(t('optimizer_unassigned_planner', { names }));
               }
 
               setSelectedRouteStops(optimizedStops);
@@ -722,7 +724,7 @@ export function Planner() {
             break;
           }
           case 'failed':
-            setError(`Optimalizace selhala: ${update.status.error}`);
+            setError(t('optimize_failed_planner', { detail: update.status.error }));
             setIsOptimizing(false);
             unsubscribe();
             break;
@@ -732,7 +734,7 @@ export function Planner() {
       });
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      setError(`Nepodařilo se optimalizovat trasu: ${detail}`);
+      setError(t('optimize_error', { detail }));
       setIsOptimizing(false);
     }
   }, [selectedRoute, selectedRouteStops, selectedRouteDepot]);
@@ -776,13 +778,13 @@ export function Planner() {
         {/* Route list */}
         <div className={styles.routeListSection}>
           <div className={styles.sectionHeader}>
-            <h3>Naplánované cesty ({routes.length})</h3>
+            <h3>{t('planned_routes', { count: routes.length })}</h3>
             <button
               type="button"
               className={styles.refreshButton}
               onClick={loadRoutes}
               disabled={isLoadingRoutes}
-              title="Obnovit"
+              title={t('refresh')}
             >
               {isLoadingRoutes ? '...' : '\u21BB'}
             </button>
@@ -822,7 +824,7 @@ export function Planner() {
             </div>
 
             {isLoadingStops ? (
-              <div className={styles.loading}>Nacitam zastávky...</div>
+              <div className={styles.loading}>{t('loading_stops')}</div>
             ) : timelineView === 'compact' ? (
               <RouteDetailTimeline
                 stops={selectedRouteStops}
