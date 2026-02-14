@@ -6,9 +6,10 @@ use uuid::Uuid;
 
 use crate::types::work_item::{VisitWorkItem, CreateWorkItemRequest, WorkResult};
 
-/// Create a new work item
+/// Create a new work item (user_id reserved for future ownership verification of the visit)
 pub async fn create_work_item(
     pool: &PgPool,
+    _user_id: Uuid,
     req: &CreateWorkItemRequest,
 ) -> Result<VisitWorkItem> {
     let item = sqlx::query_as::<_, VisitWorkItem>(
@@ -48,47 +49,55 @@ pub async fn create_work_item(
     Ok(item)
 }
 
-/// List work items for a visit
+/// List work items for a visit (with user ownership verification via visit→revision→user)
 pub async fn list_work_items_for_visit(
     pool: &PgPool,
+    user_id: Uuid,
     visit_id: Uuid,
 ) -> Result<Vec<VisitWorkItem>> {
     let items = sqlx::query_as::<_, VisitWorkItem>(
         r#"
-        SELECT * FROM visit_work_items
-        WHERE visit_id = $1
-        ORDER BY created_at ASC
+        SELECT wi.* FROM visit_work_items wi
+        JOIN visits v ON wi.visit_id = v.id
+        JOIN revisions r ON v.revision_id = r.id
+        WHERE wi.visit_id = $1 AND r.user_id = $2
+        ORDER BY wi.created_at ASC
         "#
     )
     .bind(visit_id)
+    .bind(user_id)
     .fetch_all(pool)
     .await?;
 
     Ok(items)
 }
 
-/// List work items for a revision
+/// List work items for a revision (with user ownership verification)
 pub async fn list_work_items_for_revision(
     pool: &PgPool,
+    user_id: Uuid,
     revision_id: Uuid,
 ) -> Result<Vec<VisitWorkItem>> {
     let items = sqlx::query_as::<_, VisitWorkItem>(
         r#"
-        SELECT * FROM visit_work_items
-        WHERE revision_id = $1
-        ORDER BY created_at ASC
+        SELECT wi.* FROM visit_work_items wi
+        JOIN revisions r ON wi.revision_id = r.id
+        WHERE wi.revision_id = $1 AND r.user_id = $2
+        ORDER BY wi.created_at ASC
         "#
     )
     .bind(revision_id)
+    .bind(user_id)
     .fetch_all(pool)
     .await?;
 
     Ok(items)
 }
 
-/// Complete a work item with result
+/// Complete a work item with result (with user ownership verification)
 pub async fn complete_work_item(
     pool: &PgPool,
+    user_id: Uuid,
     work_item_id: Uuid,
     result: WorkResult,
     duration_minutes: Option<i32>,
@@ -107,6 +116,12 @@ pub async fn complete_work_item(
             requires_follow_up = $6,
             follow_up_reason = COALESCE($7, follow_up_reason)
         WHERE id = $1
+          AND id IN (
+            SELECT wi.id FROM visit_work_items wi
+            LEFT JOIN visits v ON wi.visit_id = v.id
+            LEFT JOIN revisions r ON COALESCE(v.revision_id, wi.revision_id) = r.id
+            WHERE wi.id = $1 AND r.user_id = $8
+          )
         RETURNING *
         "#
     )
@@ -117,18 +132,25 @@ pub async fn complete_work_item(
     .bind(findings)
     .bind(requires_follow_up)
     .bind(follow_up_reason)
+    .bind(user_id)
     .fetch_optional(pool)
     .await?;
 
     Ok(item)
 }
 
-/// Get a work item by ID
-pub async fn get_work_item(pool: &PgPool, id: Uuid) -> Result<Option<VisitWorkItem>> {
+/// Get a work item by ID (with user ownership verification)
+pub async fn get_work_item(pool: &PgPool, user_id: Uuid, id: Uuid) -> Result<Option<VisitWorkItem>> {
     let item = sqlx::query_as::<_, VisitWorkItem>(
-        "SELECT * FROM visit_work_items WHERE id = $1"
+        r#"
+        SELECT wi.* FROM visit_work_items wi
+        LEFT JOIN visits v ON wi.visit_id = v.id
+        LEFT JOIN revisions r ON COALESCE(v.revision_id, wi.revision_id) = r.id
+        WHERE wi.id = $1 AND r.user_id = $2
+        "#
     )
     .bind(id)
+    .bind(user_id)
     .fetch_optional(pool)
     .await?;
 

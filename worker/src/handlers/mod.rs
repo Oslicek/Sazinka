@@ -46,6 +46,7 @@ async fn handle_valhalla_matrix_submit(
     client: Client,
     mut subscriber: async_nats::Subscriber,
     processor: Arc<ValhallaProcessor>,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
         let reply = match msg.reply {
@@ -58,6 +59,16 @@ async fn handle_valhalla_matrix_submit(
             Err(e) => {
                 error!("Failed to parse valhalla matrix submit request: {}", e);
                 let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Require authentication
+        let _user_id = match crate::auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
@@ -84,6 +95,7 @@ async fn handle_valhalla_geometry_submit(
     client: Client,
     mut subscriber: async_nats::Subscriber,
     processor: Arc<ValhallaProcessor>,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
         let reply = match msg.reply {
@@ -96,6 +108,16 @@ async fn handle_valhalla_geometry_submit(
             Err(e) => {
                 error!("Failed to parse valhalla geometry submit request: {}", e);
                 let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Require authentication
+        let _user_id = match crate::auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
@@ -1213,6 +1235,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let client_geocode = client.clone();
     let pool_geocode = pool.clone();
     let geocoder_batch = Arc::clone(&geocoder);
+    let jwt_secret_geocode = Arc::clone(&jwt_secret);
     tokio::spawn(async move {
         match geocode::GeocodeProcessor::new(client_geocode.clone(), pool_geocode.clone(), geocoder_batch).await {
             Ok(processor) => {
@@ -1251,32 +1274,36 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
                 // Start submit handler
                 let client_submit = client_geocode.clone();
                 let processor_submit = Arc::clone(&processor);
+                let jwt_secret_geocode_submit = Arc::clone(&jwt_secret_geocode);
                 tokio::spawn(async move {
-                    if let Err(e) = geocode::handle_geocode_submit(client_submit, geocode_submit_sub, processor_submit).await {
+                    if let Err(e) = geocode::handle_geocode_submit(client_submit, geocode_submit_sub, processor_submit, jwt_secret_geocode_submit).await {
                         error!("Geocode submit handler error: {}", e);
                     }
                 });
                 
                 // Start pending handler
                 let client_pending = client_geocode.clone();
+                let jwt_secret_geocode_pending = Arc::clone(&jwt_secret_geocode);
                 tokio::spawn(async move {
-                    if let Err(e) = geocode::handle_geocode_pending(client_pending, geocode_pending_sub, pool_geocode).await {
+                    if let Err(e) = geocode::handle_geocode_pending(client_pending, geocode_pending_sub, pool_geocode, jwt_secret_geocode_pending).await {
                         error!("Geocode pending handler error: {}", e);
                     }
                 });
 
                 let client_address = client_geocode.clone();
                 let processor_address = Arc::clone(&processor);
+                let jwt_secret_geocode_address = Arc::clone(&jwt_secret_geocode);
                 tokio::spawn(async move {
-                    if let Err(e) = geocode::handle_geocode_address_submit(client_address, geocode_address_sub, processor_address).await {
+                    if let Err(e) = geocode::handle_geocode_address_submit(client_address, geocode_address_sub, processor_address, jwt_secret_geocode_address).await {
                         error!("Geocode address submit handler error: {}", e);
                     }
                 });
 
                 let client_reverse = client_geocode.clone();
                 let processor_reverse = Arc::clone(&processor);
+                let jwt_secret_geocode_reverse = Arc::clone(&jwt_secret_geocode);
                 tokio::spawn(async move {
-                    if let Err(e) = geocode::handle_reverse_geocode_submit(client_reverse, reverse_geocode_sub, processor_reverse).await {
+                    if let Err(e) = geocode::handle_reverse_geocode_submit(client_reverse, reverse_geocode_sub, processor_reverse, jwt_secret_geocode_reverse).await {
                         error!("Reverse geocode submit handler error: {}", e);
                     }
                 });
@@ -1311,6 +1338,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     if let Some(ref valhalla_url) = config.valhalla_url {
         let client_valhalla = client.clone();
         let valhalla_url_clone = valhalla_url.clone();
+        let jwt_secret_valhalla = Arc::clone(&jwt_secret);
         tokio::spawn(async move {
             match crate::services::valhalla_processor::ValhallaProcessor::new(
                 client_valhalla.clone(),
@@ -1338,16 +1366,18 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
                     // Start submit handlers
                     let client_matrix = client_valhalla.clone();
                     let processor_matrix = Arc::clone(&processor);
+                    let jwt_secret_matrix = Arc::clone(&jwt_secret_valhalla);
                     tokio::spawn(async move {
-                        if let Err(e) = handle_valhalla_matrix_submit(client_matrix, matrix_submit_sub, processor_matrix).await {
+                        if let Err(e) = handle_valhalla_matrix_submit(client_matrix, matrix_submit_sub, processor_matrix, jwt_secret_matrix).await {
                             error!("Valhalla matrix submit handler error: {}", e);
                         }
                     });
                     
                     let client_geometry = client_valhalla.clone();
                     let processor_geometry = Arc::clone(&processor);
+                    let jwt_secret_geometry = Arc::clone(&jwt_secret_valhalla);
                     tokio::spawn(async move {
-                        if let Err(e) = handle_valhalla_geometry_submit(client_geometry, geometry_submit_sub, processor_geometry).await {
+                        if let Err(e) = handle_valhalla_geometry_submit(client_geometry, geometry_submit_sub, processor_geometry, jwt_secret_geometry).await {
                             error!("Valhalla geometry submit handler error: {}", e);
                         }
                     });
@@ -1425,21 +1455,24 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
 
     // Start job management handlers (history, cancel, retry)
     let client_job_history = client.clone();
+    let jwt_secret_job_history = Arc::clone(&jwt_secret);
     let job_history_sub = client.subscribe("sazinka.jobs.history").await?;
     let job_history_handle = tokio::spawn(async move {
-        jobs::handle_job_history(client_job_history, job_history_sub).await
+        jobs::handle_job_history(client_job_history, job_history_sub, jwt_secret_job_history).await
     });
     
     let client_job_cancel = client.clone();
+    let jwt_secret_job_cancel = Arc::clone(&jwt_secret);
     let job_cancel_sub = client.subscribe("sazinka.jobs.cancel").await?;
     let job_cancel_handle = tokio::spawn(async move {
-        jobs::handle_job_cancel(client_job_cancel, job_cancel_sub).await
+        jobs::handle_job_cancel(client_job_cancel, job_cancel_sub, jwt_secret_job_cancel).await
     });
     
     let client_job_retry = client.clone();
+    let jwt_secret_job_retry = Arc::clone(&jwt_secret);
     let job_retry_sub = client.subscribe("sazinka.jobs.retry").await?;
     let job_retry_handle = tokio::spawn(async move {
-        jobs::handle_job_retry(client_job_retry, job_retry_sub).await
+        jobs::handle_job_retry(client_job_retry, job_retry_sub, jwt_secret_job_retry).await
     });
 
     info!("All handlers started, waiting for messages...");

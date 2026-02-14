@@ -522,6 +522,7 @@ pub async fn handle_geocode_submit(
     client: Client,
     mut subscriber: async_nats::Subscriber,
     processor: Arc<GeocodeProcessor>,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
         let reply = match msg.reply {
@@ -534,6 +535,16 @@ pub async fn handle_geocode_submit(
             Err(e) => {
                 error!("Failed to parse geocode submit request: {}", e);
                 let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Require authentication
+        let _user_id = match crate::auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
@@ -570,6 +581,7 @@ pub async fn handle_geocode_address_submit(
     client: Client,
     mut subscriber: async_nats::Subscriber,
     processor: Arc<GeocodeProcessor>,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
         let reply = match msg.reply {
@@ -581,6 +593,16 @@ pub async fn handle_geocode_address_submit(
             Ok(req) => req,
             Err(e) => {
                 let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Require authentication
+        let _user_id = match crate::auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
@@ -627,6 +649,7 @@ pub async fn handle_reverse_geocode_submit(
     client: Client,
     mut subscriber: async_nats::Subscriber,
     processor: Arc<GeocodeProcessor>,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
         let reply = match msg.reply {
@@ -638,6 +661,16 @@ pub async fn handle_reverse_geocode_submit(
             Ok(req) => req,
             Err(e) => {
                 let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Require authentication
+        let _user_id = match crate::auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
@@ -685,6 +718,7 @@ pub async fn handle_geocode_pending(
     client: Client,
     mut subscriber: async_nats::Subscriber,
     pool: PgPool,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
         let reply = match msg.reply {
@@ -692,20 +726,38 @@ pub async fn handle_geocode_pending(
             None => continue,
         };
         
-        // Get request ID
-        let request_id = extract_request_id(&msg.payload);
+        // Parse request for auth
+        let request: Request<serde_json::Value> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("Failed to parse geocode pending request: {}", e);
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Require authentication
+        let user_id = match crate::auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
         
-        // Query customers pending geocoding (not yet attempted)
-        // Note: name, street, city are nullable in the schema
+        // Query customers pending geocoding for this user
         let customers: Vec<(Uuid, Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
             r#"
             SELECT id, name, street, city
             FROM customers
-            WHERE geocode_status = 'pending'
+            WHERE geocode_status = 'pending' AND user_id = $1
             ORDER BY created_at DESC
             LIMIT 1000
             "#
         )
+        .bind(user_id)
         .fetch_all(&pool)
         .await
         .unwrap_or_default();
@@ -738,7 +790,7 @@ pub async fn handle_geocode_pending(
             }).collect(),
         };
         
-        let success = SuccessResponse::new(request_id, response);
+        let success = SuccessResponse::new(request.id, response);
         let _ = client.publish(reply, serde_json::to_vec(&success)?.into()).await;
     }
     

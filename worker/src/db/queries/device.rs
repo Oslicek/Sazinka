@@ -47,30 +47,32 @@ pub async fn create_device(
     Ok(device)
 }
 
-/// List devices for a customer
-pub async fn list_devices(pool: &PgPool, customer_id: Uuid) -> Result<Vec<Device>> {
+/// List devices for a customer (with user ownership verification)
+pub async fn list_devices(pool: &PgPool, user_id: Uuid, customer_id: Uuid) -> Result<Vec<Device>> {
     let devices = sqlx::query_as::<_, Device>(
         r#"
         SELECT
-            id, customer_id, user_id,
-            device_type::text, device_name,
-            manufacturer, model, serial_number,
-            installation_date, revision_interval_months,
-            next_due_date, notes, created_at, updated_at
-        FROM devices
-        WHERE customer_id = $1
-        ORDER BY created_at DESC
+            d.id, d.customer_id, d.user_id,
+            d.device_type::text, d.device_name,
+            d.manufacturer, d.model, d.serial_number,
+            d.installation_date, d.revision_interval_months,
+            d.next_due_date, d.notes, d.created_at, d.updated_at
+        FROM devices d
+        WHERE d.customer_id = $1
+          AND d.user_id = $2
+        ORDER BY d.created_at DESC
         "#
     )
     .bind(customer_id)
+    .bind(user_id)
     .fetch_all(pool)
     .await?;
 
     Ok(devices)
 }
 
-/// Get a single device by ID (with customer ownership verification)
-pub async fn get_device(pool: &PgPool, device_id: Uuid, customer_id: Uuid) -> Result<Option<Device>> {
+/// Get a single device by ID (with customer and user ownership verification)
+pub async fn get_device(pool: &PgPool, user_id: Uuid, device_id: Uuid, customer_id: Uuid) -> Result<Option<Device>> {
     let device = sqlx::query_as::<_, Device>(
         r#"
         SELECT
@@ -80,20 +82,22 @@ pub async fn get_device(pool: &PgPool, device_id: Uuid, customer_id: Uuid) -> Re
             installation_date, revision_interval_months,
             next_due_date, notes, created_at, updated_at
         FROM devices
-        WHERE id = $1 AND customer_id = $2
+        WHERE id = $1 AND customer_id = $2 AND user_id = $3
         "#
     )
     .bind(device_id)
     .bind(customer_id)
+    .bind(user_id)
     .fetch_optional(pool)
     .await?;
 
     Ok(device)
 }
 
-/// Update a device
+/// Update a device (with user ownership verification)
 pub async fn update_device(
     pool: &PgPool,
+    user_id: Uuid,
     device_id: Uuid,
     customer_id: Uuid,
     req: &UpdateDeviceRequest,
@@ -101,15 +105,15 @@ pub async fn update_device(
     let device = sqlx::query_as::<_, Device>(
         r#"
         UPDATE devices SET
-            device_type = COALESCE($3::device_type_enum, device_type),
-            device_name = COALESCE($4, device_name),
-            manufacturer = COALESCE($5, manufacturer),
-            model = COALESCE($6, model),
-            serial_number = COALESCE($7, serial_number),
-            installation_date = COALESCE($8, installation_date),
-            revision_interval_months = COALESCE($9, revision_interval_months),
-            notes = COALESCE($10, notes)
-        WHERE id = $1 AND customer_id = $2
+            device_type = COALESCE($4::device_type_enum, device_type),
+            device_name = COALESCE($5, device_name),
+            manufacturer = COALESCE($6, manufacturer),
+            model = COALESCE($7, model),
+            serial_number = COALESCE($8, serial_number),
+            installation_date = COALESCE($9, installation_date),
+            revision_interval_months = COALESCE($10, revision_interval_months),
+            notes = COALESCE($11, notes)
+        WHERE id = $1 AND customer_id = $2 AND user_id = $3
         RETURNING
             id, customer_id, user_id,
             device_type::text, device_name,
@@ -120,6 +124,7 @@ pub async fn update_device(
     )
     .bind(device_id)
     .bind(customer_id)
+    .bind(user_id)
     .bind(&req.device_type)
     .bind(&req.device_name)
     .bind(&req.manufacturer)
@@ -151,16 +156,17 @@ pub async fn update_next_due_date(
     Ok(())
 }
 
-/// Delete a device
-pub async fn delete_device(pool: &PgPool, device_id: Uuid, customer_id: Uuid) -> Result<bool> {
+/// Delete a device (with user ownership verification)
+pub async fn delete_device(pool: &PgPool, user_id: Uuid, device_id: Uuid, customer_id: Uuid) -> Result<bool> {
     let result = sqlx::query(
         r#"
         DELETE FROM devices
-        WHERE id = $1 AND customer_id = $2
+        WHERE id = $1 AND customer_id = $2 AND user_id = $3
         "#
     )
     .bind(device_id)
     .bind(customer_id)
+    .bind(user_id)
     .execute(pool)
     .await?;
 

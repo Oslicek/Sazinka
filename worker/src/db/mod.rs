@@ -29,10 +29,15 @@ pub async fn run_migrations(pool: &PgPool) -> Result<()> {
 }
 
 /// Ensure the dev admin user has a valid Argon2 password hash.
+/// Only runs when DEV_MODE environment variable is set.
 /// If the hash is invalid (e.g. "not_a_real_hash" or "not-set" from seed),
-/// set it to a hash of "password123".
-/// This only runs in dev - production users register with real passwords.
+/// resets it to the dev default password.
 pub async fn ensure_dev_admin_password(pool: &PgPool) {
+    if std::env::var("DEV_MODE").is_err() {
+        return; // Only run in development
+    }
+
+    warn!("DEV_MODE is active — checking dev admin password");
     use uuid::Uuid;
 
     let dev_id = Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap();
@@ -47,7 +52,7 @@ pub async fn ensure_dev_admin_password(pool: &PgPool) {
 
     if let Some((hash,)) = row {
         if !hash.starts_with("$argon2") {
-            warn!("Dev admin user has invalid password hash, setting to 'password123'");
+            warn!("Dev admin user has invalid password hash — resetting to dev default");
             match crate::auth::hash_password("password123") {
                 Ok(new_hash) => {
                     let result = sqlx::query(
@@ -59,7 +64,7 @@ pub async fn ensure_dev_admin_password(pool: &PgPool) {
                     .await;
 
                     match result {
-                        Ok(_) => info!("Dev admin password set to 'password123'"),
+                        Ok(_) => info!("Dev admin password has been reset"),
                         Err(e) => warn!("Failed to update dev admin password: {}", e),
                     }
                 }

@@ -3,8 +3,11 @@ services:
     image: nats:2.10-alpine
     container_name: sazinka-nats
     ports:
-      - "4222:4222"   # Client connections
-      - "8222:8222"   # WebSocket (for browser)
+      - "127.0.0.1:4222:4222"   # Client connections (local only)
+      - "8222:8222"              # WebSocket (browser-facing — proxy with TLS in prod)
+    environment:
+      NATS_WORKER_PASSWORD: ${NATS_WORKER_PASSWORD:-workerpass}
+      NATS_BROWSER_PASSWORD: ${NATS_BROWSER_PASSWORD:-browserpass}
     command: ["--config", "/etc/nats/nats-server.conf", "--jetstream", "--log", "/logs/nats.log"]
     volumes:
       - ./nats-server.conf:/etc/nats/nats-server.conf:ro
@@ -21,12 +24,12 @@ services:
     image: postgres:16-alpine
     container_name: sazinka-postgres
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"   # Local only
     environment:
-      POSTGRES_USER: sazinka
-      POSTGRES_PASSWORD: sazinka_dev
-      POSTGRES_DB: sazinka
-      JWT_SECRET: dev-secret-change-in-production-min-32-bytes!!
+      POSTGRES_USER: ${POSTGRES_USER:-sazinka}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sazinka_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-sazinka}
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production-min-32-bytes!!}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
@@ -66,7 +69,7 @@ services:
     image: mediagis/nominatim:4.4
     container_name: sazinka-nominatim
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"   # Local only
     environment:
       # Download Czech Republic OSM data on first run ONLY
       PBF_URL: https://download.geofabrik.de/europe/czech-republic-latest.osm.pbf
@@ -96,7 +99,7 @@ services:
     image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
     container_name: sazinka-valhalla
     ports:
-      - "8002:8002"
+      - "127.0.0.1:8002:8002"   # Local only
     volumes:
       - valhalla_tiles:/custom_files
     environment:

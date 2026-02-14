@@ -1,6 +1,6 @@
 //! Configuration management
 
-use anyhow::{Context, Result};
+use anyhow::{self, Context, Result};
 
 /// Application configuration
 #[derive(Debug, Clone)]
@@ -39,7 +39,21 @@ impl Config {
         let valhalla_url = std::env::var("VALHALLA_URL").ok();
 
         let jwt_secret = std::env::var("JWT_SECRET")
-            .unwrap_or_else(|_| "dev-secret-change-in-production-min-32-bytes!!".to_string());
+            .context("JWT_SECRET must be set — generate one with: openssl rand -base64 48")?;
+
+        if jwt_secret.len() < 32 {
+            anyhow::bail!(
+                "JWT_SECRET must be at least 32 bytes (current: {} bytes). Generate one with: openssl rand -base64 48",
+                jwt_secret.len()
+            );
+        }
+
+        const KNOWN_DEV_SECRETS: &[&str] = &[
+            "dev-secret-change-in-production-min-32-bytes!!",
+        ];
+        if KNOWN_DEV_SECRETS.contains(&jwt_secret.as_str()) {
+            tracing::warn!("⚠ JWT_SECRET matches a known default — change it for production!");
+        }
 
         Ok(Self {
             nats_url,

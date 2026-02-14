@@ -11,28 +11,15 @@ pub struct Request<T> {
     pub id: Uuid,
     pub timestamp: DateTime<Utc>,
     #[serde(default)]
-    pub user_id: Option<Uuid>,  // Legacy dev mode fallback
-    #[serde(default)]
-    pub token: Option<String>,  // JWT access token (preferred)
+    pub token: Option<String>,  // JWT access token
     pub payload: T,
 }
 
 impl<T> Request<T> {
-    pub fn new(user_id: Option<Uuid>, payload: T) -> Self {
-        Self {
-            id: Uuid::new_v4(),
-            timestamp: Utc::now(),
-            user_id,
-            token: None,
-            payload,
-        }
-    }
-
     pub fn with_token(token: String, payload: T) -> Self {
         Self {
             id: Uuid::new_v4(),
             timestamp: Utc::now(),
-            user_id: None,
             token: Some(token),
             payload,
         }

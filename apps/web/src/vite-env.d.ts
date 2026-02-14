@@ -7,6 +7,8 @@ declare module '*.module.css' {
 
 interface ImportMetaEnv {
   readonly VITE_NATS_WS_URL: string;
+  readonly VITE_NATS_USER: string;
+  readonly VITE_NATS_PASS: string;
 }
 
 interface ImportMeta {

@@ -32,6 +32,8 @@ export const useNatsStore = create<NatsState>((set, get) => ({
     try {
       const nc = await connect({
         servers: url,
+        user: import.meta.env.VITE_NATS_USER || 'browser',
+        pass: import.meta.env.VITE_NATS_PASS || 'browserpass',
         reconnect: true,
         maxReconnectAttempts: -1, // Unlimited
         reconnectTimeWait: 2000,

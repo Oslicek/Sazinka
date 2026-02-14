@@ -120,7 +120,7 @@ pub async fn handle_list(
         };
 
         // Check auth
-        let _user_id = match auth::extract_auth(&request, &jwt_secret) {
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
             Ok(info) => info.data_user_id(),
             Err(_) => {
                 let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
@@ -130,7 +130,7 @@ pub async fn handle_list(
         };
 
         // List devices
-        match queries::device::list_devices(&pool, request.payload.customer_id).await {
+        match queries::device::list_devices(&pool, user_id, request.payload.customer_id).await {
             Ok(devices) => {
                 let response = SuccessResponse::new(
                     request.id,
@@ -190,7 +190,7 @@ pub async fn handle_get(
         };
 
         // Check auth
-        let _user_id = match auth::extract_auth(&request, &jwt_secret) {
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
             Ok(info) => info.data_user_id(),
             Err(_) => {
                 let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
@@ -200,7 +200,7 @@ pub async fn handle_get(
         };
 
         // Get device
-        match queries::device::get_device(&pool, request.payload.id, request.payload.customer_id).await {
+        match queries::device::get_device(&pool, user_id, request.payload.id, request.payload.customer_id).await {
             Ok(Some(device)) => {
                 let response = SuccessResponse::new(request.id, device);
                 let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
@@ -259,7 +259,7 @@ pub async fn handle_update(
         };
 
         // Check auth
-        let _user_id = match auth::extract_auth(&request, &jwt_secret) {
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
             Ok(info) => info.data_user_id(),
             Err(_) => {
                 let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
@@ -271,6 +271,7 @@ pub async fn handle_update(
         // Update device
         match queries::device::update_device(
             &pool,
+            user_id,
             request.payload.update.id,
             request.payload.customer_id,
             &request.payload.update,
@@ -332,7 +333,7 @@ pub async fn handle_delete(
         };
 
         // Check auth
-        let _user_id = match auth::extract_auth(&request, &jwt_secret) {
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
             Ok(info) => info.data_user_id(),
             Err(_) => {
                 let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
@@ -342,7 +343,7 @@ pub async fn handle_delete(
         };
 
         // Delete device
-        match queries::device::delete_device(&pool, request.payload.id, request.payload.customer_id).await {
+        match queries::device::delete_device(&pool, user_id, request.payload.id, request.payload.customer_id).await {
             Ok(deleted) => {
                 if deleted {
                     let response = SuccessResponse::new(request.id, DeleteResponse { deleted: true });

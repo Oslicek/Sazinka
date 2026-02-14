@@ -423,7 +423,7 @@ impl ExportProcessor {
 
         let mut devices = Vec::new();
         for c in &customers {
-            devices.extend(queries::device::list_devices(&self.pool, c.id).await.unwrap_or_default());
+            devices.extend(queries::device::list_devices(&self.pool, user_id, c.id).await.unwrap_or_default());
         }
 
         let mut revisions = queries::revision::list_revisions(

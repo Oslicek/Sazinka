@@ -139,16 +139,7 @@ pub fn extract_auth<T>(request: &Request<T>, jwt_secret: &str) -> Result<AuthInf
         });
     }
 
-    // Fall back to legacy user_id (dev mode)
-    if let Some(user_id) = request.user_id {
-        return Ok(AuthInfo {
-            user_id,
-            role: "customer".to_string(),
-            owner_id: None,
-        });
-    }
-
-    Err(anyhow!("No authentication provided"))
+    Err(anyhow!("No authentication provided — JWT token is required"))
 }
 
 // =============================================================================
@@ -251,11 +242,10 @@ mod tests {
 
     // ---- extract_auth tests ----
 
-    fn make_request_with_token<T: Default>(token: Option<String>, user_id: Option<Uuid>) -> Request<T> {
+    fn make_request_with_token<T: Default>(token: Option<String>) -> Request<T> {
         Request {
             id: Uuid::new_v4(),
             timestamp: Utc::now(),
-            user_id,
             token,
             payload: T::default(),
         }
@@ -266,7 +256,7 @@ mod tests {
         let user_id = Uuid::new_v4();
         let token = generate_token(user_id, "test@example.com", "admin", None, &["*".to_string()], TEST_SECRET).unwrap();
         
-        let request = make_request_with_token::<serde_json::Value>(Some(token), None);
+        let request = make_request_with_token::<serde_json::Value>(Some(token));
         let auth = extract_auth(&request, TEST_SECRET).unwrap();
         
         assert_eq!(auth.user_id, user_id);
@@ -280,7 +270,7 @@ mod tests {
         let owner_id = Uuid::new_v4();
         let token = generate_token(user_id, "worker@example.com", "worker", Some(owner_id), &["page:planner".to_string()], TEST_SECRET).unwrap();
         
-        let request = make_request_with_token::<serde_json::Value>(Some(token), None);
+        let request = make_request_with_token::<serde_json::Value>(Some(token));
         let auth = extract_auth(&request, TEST_SECRET).unwrap();
         
         assert_eq!(auth.user_id, user_id);
@@ -295,7 +285,7 @@ mod tests {
         let user_id = Uuid::new_v4();
         let token = generate_token(user_id, "customer@example.com", "customer", None, &["*".to_string()], TEST_SECRET).unwrap();
         
-        let request = make_request_with_token::<serde_json::Value>(Some(token), None);
+        let request = make_request_with_token::<serde_json::Value>(Some(token));
         let auth = extract_auth(&request, TEST_SECRET).unwrap();
         
         // data_user_id should return own user_id for non-workers
@@ -303,40 +293,16 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_auth_token_takes_priority_over_user_id() {
-        let token_user_id = Uuid::new_v4();
-        let legacy_user_id = Uuid::new_v4();
-        let token = generate_token(token_user_id, "test@example.com", "admin", None, &["*".to_string()], TEST_SECRET).unwrap();
-        
-        // Both token and user_id present — token should win
-        let request = make_request_with_token::<serde_json::Value>(Some(token), Some(legacy_user_id));
-        let auth = extract_auth(&request, TEST_SECRET).unwrap();
-        
-        assert_eq!(auth.user_id, token_user_id);
-        assert_eq!(auth.role, "admin");
-    }
-
-    #[test]
-    fn test_extract_auth_legacy_user_id_fallback() {
-        let user_id = Uuid::new_v4();
-        
-        let request = make_request_with_token::<serde_json::Value>(None, Some(user_id));
-        let auth = extract_auth(&request, TEST_SECRET).unwrap();
-        
-        assert_eq!(auth.user_id, user_id);
-        assert_eq!(auth.role, "customer"); // legacy default
-    }
-
-    #[test]
-    fn test_extract_auth_no_auth_fails() {
-        let request = make_request_with_token::<serde_json::Value>(None, None);
+    fn test_extract_auth_no_token_fails() {
+        // Without legacy user_id fallback, no token means UNAUTHORIZED
+        let request = make_request_with_token::<serde_json::Value>(None);
         let result = extract_auth(&request, TEST_SECRET);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_extract_auth_invalid_token_fails() {
-        let request = make_request_with_token::<serde_json::Value>(Some("bad-token".to_string()), None);
+        let request = make_request_with_token::<serde_json::Value>(Some("bad-token".to_string()));
         let result = extract_auth(&request, TEST_SECRET);
         assert!(result.is_err());
     }

@@ -470,7 +470,7 @@ pub async fn handle_get(
                 };
 
                 // Get work items for this visit
-                let work_items = match queries::work_item::list_work_items_for_visit(&pool, visit_id).await {
+                let work_items = match queries::work_item::list_work_items_for_visit(&pool, user_id, visit_id).await {
                     Ok(items) => items,
                     Err(e) => {
                         warn!("Failed to get work items for visit {}: {}", visit_id, e);

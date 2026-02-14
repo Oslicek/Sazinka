@@ -48,7 +48,7 @@ pub async fn handle_create(
         };
 
         // Check auth
-        let _user_id = match auth::extract_auth(&request, &jwt_secret) {
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
             Ok(info) => info.data_user_id(),
             Err(_) => {
                 let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
@@ -57,7 +57,7 @@ pub async fn handle_create(
             }
         };
 
-        match queries::work_item::create_work_item(&pool, &request.payload).await {
+        match queries::work_item::create_work_item(&pool, user_id, &request.payload).await {
             Ok(item) => {
                 let response = SuccessResponse::new(request.id, item);
                 let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
@@ -102,7 +102,7 @@ pub async fn handle_list(
             }
         };
 
-        let _user_id = match auth::extract_auth(&request, &jwt_secret) {
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
             Ok(info) => info.data_user_id(),
             Err(_) => {
                 let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
@@ -113,9 +113,9 @@ pub async fn handle_list(
 
         let payload = &request.payload;
         let items = if let Some(visit_id) = payload.visit_id {
-            queries::work_item::list_work_items_for_visit(&pool, visit_id).await
+            queries::work_item::list_work_items_for_visit(&pool, user_id, visit_id).await
         } else if let Some(revision_id) = payload.revision_id {
-            queries::work_item::list_work_items_for_revision(&pool, revision_id).await
+            queries::work_item::list_work_items_for_revision(&pool, user_id, revision_id).await
         } else {
             // No filter specified - return empty
             Ok(vec![])
@@ -166,7 +166,7 @@ pub async fn handle_get(
             }
         };
 
-        let _user_id = match auth::extract_auth(&request, &jwt_secret) {
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
             Ok(info) => info.data_user_id(),
             Err(_) => {
                 let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
@@ -175,7 +175,7 @@ pub async fn handle_get(
             }
         };
 
-        match queries::work_item::get_work_item(&pool, request.payload.id).await {
+        match queries::work_item::get_work_item(&pool, user_id, request.payload.id).await {
             Ok(Some(item)) => {
                 let response = SuccessResponse::new(request.id, item);
                 let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
@@ -223,7 +223,7 @@ pub async fn handle_complete(
             }
         };
 
-        let _user_id = match auth::extract_auth(&request, &jwt_secret) {
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
             Ok(info) => info.data_user_id(),
             Err(_) => {
                 let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
@@ -235,6 +235,7 @@ pub async fn handle_complete(
         let payload = &request.payload;
         match queries::work_item::complete_work_item(
             &pool,
+            user_id,
             payload.id,
             payload.result,
             payload.duration_minutes,

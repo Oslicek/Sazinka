@@ -761,22 +761,19 @@ pub async fn handle_job_submit(
             }
         };
         
-        // Extract user_id from JWT token or Request wrapper
+        // Extract user_id from JWT token — authentication is required
         let request_id = request.id;
-        let request_user_id = request.user_id.clone();
-        // Try to extract auth before moving payload
-        let auth_user_id = crate::auth::extract_auth(&request, &jwt_secret)
-            .ok()
-            .map(|auth| auth.user_id);
+        let auth = match crate::auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info,
+            Err(_) => {
+                let error = ErrorResponse::new(request_id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
         
         let mut job_request = request.payload;
-        if job_request.user_id.is_none() {
-            if let Some(uid) = auth_user_id {
-                job_request.user_id = Some(uid);
-            } else {
-                job_request.user_id = request_user_id;
-            }
-        }
+        job_request.user_id = Some(auth.data_user_id());
         
         match processor.submit_job(job_request).await {
             Ok(response) => {
@@ -857,6 +854,7 @@ pub struct ListJobHistoryRequest {
 pub async fn handle_job_history(
     client: Client,
     mut subscriber: async_nats::Subscriber,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     use crate::services::job_history::{JOB_HISTORY, JobHistoryResponse};
     
@@ -871,6 +869,16 @@ pub async fn handle_job_history(
             Err(e) => {
                 error!("Failed to parse job history request: {}", e);
                 let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Require authentication
+        let _user_id = match crate::auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
@@ -924,6 +932,7 @@ pub struct JobActionResponse {
 pub async fn handle_job_cancel(
     client: Client,
     mut subscriber: async_nats::Subscriber,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
         let reply = match msg.reply {
@@ -936,6 +945,16 @@ pub async fn handle_job_cancel(
             Err(e) => {
                 error!("Failed to parse cancel job request: {}", e);
                 let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Require authentication
+        let _user_id = match crate::auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
@@ -986,6 +1005,7 @@ pub async fn handle_job_cancel(
 pub async fn handle_job_retry(
     client: Client,
     mut subscriber: async_nats::Subscriber,
+    jwt_secret: Arc<String>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
         let reply = match msg.reply {
@@ -998,6 +1018,16 @@ pub async fn handle_job_retry(
             Err(e) => {
                 error!("Failed to parse retry job request: {}", e);
                 let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Require authentication
+        let _user_id = match crate::auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
                 continue;
             }
