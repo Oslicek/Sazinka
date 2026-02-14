@@ -9,6 +9,7 @@
  */
 
 import { Link } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import type { Customer } from '@shared/customer';
 import styles from './CustomerHeader.module.css';
 
@@ -25,6 +26,7 @@ export function CustomerHeader({
   onAddToPlan,
   onDelete,
 }: CustomerHeaderProps) {
+  const { t } = useTranslation('customers');
   const isCompany = customer.type === 'company';
   const hasCoordinates = customer.lat !== undefined && customer.lng !== undefined;
   
@@ -39,7 +41,7 @@ export function CustomerHeader({
     <header className={styles.header}>
       <div className={styles.breadcrumb}>
         <Link to="/customers" className={styles.backLink}>
-          ← Zákazníci
+          {t('header_back')}
         </Link>
       </div>
       
@@ -47,7 +49,7 @@ export function CustomerHeader({
         <div className={styles.titleSection}>
           <h1 className={styles.title}>{customer.name}</h1>
           <span className={`${styles.typeBadge} ${isCompany ? styles.company : styles.person}`}>
-            {isCompany ? 'Firma' : 'Fyzická osoba'}
+            {isCompany ? t('type_company') : t('type_person_full')}
           </span>
         </div>
         
@@ -55,7 +57,7 @@ export function CustomerHeader({
           {/* Call button */}
           {customer.phone && (
             <a href={`tel:${customer.phone}`} className={`${styles.actionButton} ${styles.primary}`}>
-              📞 Volat
+              📞 {t('header_call')}
             </a>
           )}
           
@@ -66,7 +68,7 @@ export function CustomerHeader({
             rel="noopener noreferrer"
             className={styles.actionButton}
           >
-            🗺️ Navigovat
+            🗺️ {t('header_navigate')}
           </a>
           
           {/* Add to plan button */}
@@ -76,7 +78,7 @@ export function CustomerHeader({
               className={styles.actionButton}
               onClick={onAddToPlan}
             >
-              ➕ Do plánu
+              ➕ {t('header_add_to_plan')}
             </button>
           )}
           
@@ -86,7 +88,7 @@ export function CustomerHeader({
             className={styles.actionButton}
             onClick={onEdit}
           >
-            ✎ Upravit
+            ✎ {t('header_edit')}
           </button>
           
           {/* Delete button */}
@@ -95,8 +97,8 @@ export function CustomerHeader({
               type="button"
               className={`${styles.actionButton} ${styles.danger}`}
               onClick={onDelete}
-              title="Smazat zákazníka (anonymizace)"
-              aria-label="Smazat zákazníka (anonymizace)"
+              title={t('header_delete_title')}
+              aria-label={t('header_delete_title')}
             >
               🗑️
             </button>

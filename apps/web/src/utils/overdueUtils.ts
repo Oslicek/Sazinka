@@ -8,6 +8,8 @@
  * - Installation date can be used as fallback for calculating when first service was due
  */
 
+import i18n from '@/i18n';
+
 export interface DeviceOverdueInfo {
   deviceId: string;
   isOverdue: boolean;
@@ -26,10 +28,10 @@ export interface CalculateOverdueParams {
 }
 
 /**
- * Format overdue duration in Czech (years, months, days)
+ * Format overdue duration using i18next pluralization (years, months, days)
  * 
  * @param days - Number of days overdue
- * @returns Formatted string like "2 roky, 3 měsíce, 15 dní" or null if not overdue
+ * @returns Formatted string like "2 years, 3 months, 15 days" or null if not overdue
  */
 export function formatOverdueDuration(days: number): string | null {
   if (days < 0) {
@@ -37,7 +39,7 @@ export function formatOverdueDuration(days: number): string | null {
   }
 
   if (days === 0) {
-    return '0 dní';
+    return i18n.t('common:duration.zero_days');
   }
 
   const years = Math.floor(days / 365);
@@ -48,48 +50,21 @@ export function formatOverdueDuration(days: number): string | null {
   const parts: string[] = [];
 
   if (years > 0) {
-    parts.push(formatYears(years));
+    parts.push(i18n.t('common:duration.years', { count: years }));
   }
 
   if (months > 0) {
-    parts.push(formatMonths(months));
+    parts.push(i18n.t('common:duration.months', { count: months }));
   }
 
   if (remainingDays > 0 || parts.length === 0) {
     // Only add days if there are remaining days, or if it's the only unit
     if (remainingDays > 0 || (years === 0 && months === 0)) {
-      parts.push(formatDays(remainingDays || days));
+      parts.push(i18n.t('common:duration.days', { count: remainingDays || days }));
     }
   }
 
   return parts.join(', ');
-}
-
-/**
- * Format years in Czech with proper declension
- */
-function formatYears(years: number): string {
-  if (years === 1) return '1 rok';
-  if (years >= 2 && years <= 4) return `${years} roky`;
-  return `${years} let`;
-}
-
-/**
- * Format months in Czech with proper declension
- */
-function formatMonths(months: number): string {
-  if (months === 1) return '1 měsíc';
-  if (months >= 2 && months <= 4) return `${months} měsíce`;
-  return `${months} měsíců`;
-}
-
-/**
- * Format days in Czech with proper declension
- */
-function formatDays(days: number): string {
-  if (days === 1) return '1 den';
-  if (days >= 2 && days <= 4) return `${days} dny`;
-  return `${days} dní`;
 }
 
 /**

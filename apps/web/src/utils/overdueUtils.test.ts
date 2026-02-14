@@ -1,4 +1,18 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+vi.mock('@/i18n', () => ({
+  default: {
+    t: (key: string, opts?: { count?: number }) => {
+      const count = opts?.count ?? 0;
+      if (key === 'common:duration.zero_days') return '0 days';
+      if (key === 'common:duration.years') return `${count} years`;
+      if (key === 'common:duration.months') return `${count} months`;
+      if (key === 'common:duration.days') return `${count} days`;
+      return key;
+    },
+  },
+}));
+
 import { 
   formatOverdueDuration, 
   calculateOverdueInfo,
@@ -7,30 +21,30 @@ import {
 
 describe('formatOverdueDuration', () => {
   it('should format days only when less than a month', () => {
-    expect(formatOverdueDuration(15)).toBe('15 dní');
-    expect(formatOverdueDuration(1)).toBe('1 den');
-    expect(formatOverdueDuration(2)).toBe('2 dny');
-    expect(formatOverdueDuration(5)).toBe('5 dní');
+    expect(formatOverdueDuration(15)).toBe('15 days');
+    expect(formatOverdueDuration(1)).toBe('1 days');
+    expect(formatOverdueDuration(2)).toBe('2 days');
+    expect(formatOverdueDuration(5)).toBe('5 days');
   });
 
   it('should format months and days when less than a year', () => {
-    expect(formatOverdueDuration(45)).toBe('1 měsíc, 15 dní');
-    expect(formatOverdueDuration(60)).toBe('2 měsíce');
-    expect(formatOverdueDuration(65)).toBe('2 měsíce, 5 dní');
-    expect(formatOverdueDuration(120)).toBe('4 měsíce');
-    expect(formatOverdueDuration(150)).toBe('5 měsíců');
+    expect(formatOverdueDuration(45)).toBe('1 months, 15 days');
+    expect(formatOverdueDuration(60)).toBe('2 months');
+    expect(formatOverdueDuration(65)).toBe('2 months, 5 days');
+    expect(formatOverdueDuration(120)).toBe('4 months');
+    expect(formatOverdueDuration(150)).toBe('5 months');
   });
 
   it('should format years, months and days for longer periods', () => {
-    expect(formatOverdueDuration(365)).toBe('1 rok');
-    expect(formatOverdueDuration(400)).toBe('1 rok, 1 měsíc, 5 dní');
-    expect(formatOverdueDuration(730)).toBe('2 roky');
-    expect(formatOverdueDuration(1081)).toBe('2 roky, 11 měsíců, 21 dní');
-    expect(formatOverdueDuration(1825)).toBe('5 let');
+    expect(formatOverdueDuration(365)).toBe('1 years');
+    expect(formatOverdueDuration(400)).toBe('1 years, 1 months, 5 days');
+    expect(formatOverdueDuration(730)).toBe('2 years');
+    expect(formatOverdueDuration(1081)).toBe('2 years, 11 months, 21 days');
+    expect(formatOverdueDuration(1825)).toBe('5 years');
   });
 
   it('should handle zero days', () => {
-    expect(formatOverdueDuration(0)).toBe('0 dní');
+    expect(formatOverdueDuration(0)).toBe('0 days');
   });
 
   it('should handle negative days (not overdue)', () => {

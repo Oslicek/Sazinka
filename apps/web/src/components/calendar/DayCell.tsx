@@ -1,6 +1,7 @@
 import type { CalendarItem } from '@shared/calendar';
 import type { CalendarDay } from '../../utils/calendarUtils';
 import { getItemCountClass } from '../../utils/calendarUtils';
+import { useTranslation } from 'react-i18next';
 import styles from './DayCell.module.css';
 
 interface DayCellProps {
@@ -17,6 +18,7 @@ interface DayCellProps {
  * Renders a single day cell in the calendar grid
  */
 export function DayCell({ day, items, onClick, workloadMinutes, capacityMinutes, variant = 'month', isSelected = false }: DayCellProps) {
+  const { t } = useTranslation('calendar');
   const countClass = getItemCountClass(items.length);
   const isWeekend = day.date.getDay() === 0 || day.date.getDay() === 6;
   
@@ -56,7 +58,7 @@ export function DayCell({ day, items, onClick, workloadMinutes, capacityMinutes,
       onClick={handleClick}
       role="button"
       tabIndex={0}
-      aria-label={`${day.dateKey}, ${items.length} položek`}
+      aria-label={`${day.dateKey}, ${t('items_count', { count: items.length })}`}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           handleClick();
@@ -79,9 +81,9 @@ export function DayCell({ day, items, onClick, workloadMinutes, capacityMinutes,
             )}
           </div>
           <div className={styles.indicators}>
-            {hasScheduled && <span className={styles.scheduledDot} title="Naplánováno" />}
-            {hasOverdue && <span className={styles.overdueDot} title="Po termínu" />}
-            {hasInProgress && <span className={styles.inProgressDot} title="Probíhá" />}
+            {hasScheduled && <span className={styles.scheduledDot} title={t('status_scheduled')} />}
+            {hasOverdue && <span className={styles.overdueDot} title={t('status_overdue')} />}
+            {hasInProgress && <span className={styles.inProgressDot} title={t('status_in_progress')} />}
             <span className={styles.count}>
               {revisionCount}/{visitCount}/{taskCount}
             </span>
@@ -96,12 +98,12 @@ export function DayCell({ day, items, onClick, workloadMinutes, capacityMinutes,
               <span className={styles.weekItemTime}>{item.timeStart?.substring(0, 5) || '--:--'}</span>
               <span className={styles.weekItemTitle}>{item.customerName || item.title}</span>
               <span className={styles.weekItemType}>
-                {item.type === 'revision' ? 'Revize' : item.type === 'visit' ? 'Návštěva' : 'Follow-up'}
+                {item.type === 'revision' ? t('type_revision_singular') : item.type === 'visit' ? t('type_visit_singular') : t('type_task')}
               </span>
             </div>
           ))}
           {items.length > 10 && (
-            <div className={styles.weekItemMore}>+{items.length - 10} dalších</div>
+            <div className={styles.weekItemMore}>{t('more_items', { count: items.length - 10 })}</div>
           )}
         </div>
       )}

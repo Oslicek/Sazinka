@@ -63,7 +63,7 @@ describe('AuthStore', () => {
 
       expect(useAuthStore.getState().isAuthenticated).toBe(false);
       // i18n.t() returns the key in test env (no auth namespace loaded)
-      expect(useAuthStore.getState().error).toBe('error_invalid_credentials');
+      expect(useAuthStore.getState().error).toBe('auth:error_invalid_credentials');
     });
 
     it('sets error on rate limited login', async () => {
@@ -74,7 +74,7 @@ describe('AuthStore', () => {
 
       await expect(useAuthStore.getState().login('test@example.com', 'any')).rejects.toThrow();
 
-      expect(useAuthStore.getState().error).toBe('error_rate_limited');
+      expect(useAuthStore.getState().error).toBe('auth:error_rate_limited');
     });
   });
 
@@ -101,7 +101,7 @@ describe('AuthStore', () => {
 
       await expect(useAuthStore.getState().register('test@example.com', 'password', 'Test')).rejects.toThrow();
 
-      expect(useAuthStore.getState().error).toBe('error_duplicate_email');
+      expect(useAuthStore.getState().error).toBe('auth:error_duplicate_email');
     });
   });
 

@@ -3,6 +3,7 @@
  */
 
 import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import styles from './DeleteConfirmDialog.module.css';
 
 interface DeleteConfirmDialogProps {
@@ -20,6 +21,8 @@ export function DeleteConfirmDialog({
   onCancel,
   isDeleting = false,
 }: DeleteConfirmDialogProps) {
+  const { t } = useTranslation('customers');
+
   const handleOverlayClick = useCallback((e: React.MouseEvent) => {
     if (e.target === e.currentTarget && !isDeleting) {
       onCancel();
@@ -33,15 +36,15 @@ export function DeleteConfirmDialog({
       <div className={styles.dialog}>
         <div className={styles.icon}>⚠️</div>
         
-        <h2 className={styles.title}>Smazat zákazníka?</h2>
+        <h2 className={styles.title}>{t('delete_title')}</h2>
         
-        <p className={styles.message}>
-          Opravdu chcete smazat zákazníka <strong>{customerName}</strong>?
-        </p>
+        <p
+          className={styles.message}
+          dangerouslySetInnerHTML={{ __html: t('delete_confirm', { name: customerName }) }}
+        />
         
         <p className={styles.warning}>
-          Tato akce je nevratná. Po potvrzení budou osobní údaje zákazníka bez možnosti Undo trvale smazány
-          a související data (například ve worklogu) budou anonymizována.
+          {t('delete_warning')}
         </p>
 
         <div className={styles.actions}>
@@ -51,7 +54,7 @@ export function DeleteConfirmDialog({
             className={styles.cancelButton}
             disabled={isDeleting}
           >
-            Zrušit
+            {t('delete_cancel')}
           </button>
           <button
             type="button"
@@ -59,7 +62,7 @@ export function DeleteConfirmDialog({
             className={styles.deleteButton}
             disabled={isDeleting}
           >
-            {isDeleting ? 'Mazání...' : 'Smazat'}
+            {isDeleting ? t('delete_deleting') : t('delete_confirm_button')}
           </button>
         </div>
       </div>

@@ -1,4 +1,9 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
+
+// Restore real modules (global setup mocks them)
+vi.unmock('react-i18next');
+vi.unmock('@/i18n');
+
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 

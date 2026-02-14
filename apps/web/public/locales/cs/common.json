@@ -44,6 +44,13 @@
     "hours_other": "{{count}} hodin",
     "days_one": "{{count}} den",
     "days_few": "{{count}} dny",
-    "days_other": "{{count}} dní"
+    "days_other": "{{count}} dní",
+    "years_one": "{{count}} rok",
+    "years_few": "{{count}} roky",
+    "years_other": "{{count}} let",
+    "months_one": "{{count}} měsíc",
+    "months_few": "{{count}} měsíce",
+    "months_other": "{{count}} měsíců",
+    "zero_days": "0 dní"
   }
 }

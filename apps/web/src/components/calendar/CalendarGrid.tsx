@@ -1,6 +1,7 @@
 import type { CalendarItem } from '@shared/calendar';
 import type { CalendarDay } from '../../utils/calendarUtils';
 import { getMonthDays, groupItemsByDay } from '../../utils/calendarUtils';
+import { getWeekdayNames } from '../../i18n/formatters';
 import { DayCell } from './DayCell';
 import styles from './CalendarGrid.module.css';
 
@@ -13,8 +14,6 @@ interface CalendarGridProps {
   capacityByDay?: Record<string, number>;
   selectedDateKey?: string;
 }
-
-const WEEKDAY_NAMES = ['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'];
 
 /**
  * Calendar grid component displaying a month with revisions
@@ -35,7 +34,7 @@ export function CalendarGrid({
     <div className={styles.grid}>
       {/* Weekday headers */}
       <div className={styles.weekdays}>
-        {WEEKDAY_NAMES.map((name) => (
+        {getWeekdayNames('short').map((name) => (
           <div key={name} className={styles.weekday}>
             {name}
           </div>

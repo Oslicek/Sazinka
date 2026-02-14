@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { Customer, CreateCustomerRequest, UpdateCustomerRequest, CustomerType, Coordinates } from '@shared/customer';
 import {
   validateCustomerForm,
@@ -59,6 +60,7 @@ const normalizeAddressKey = (street: string, city: string, postalCode: string) =
 
 export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = false, onGeocodeCompleted }: CustomerFormProps) {
   const isEditMode = !!customer;
+  const { t } = useTranslation('customers');
   const [formData, setFormData] = useState<ExtendedFormData>(() => createInitialFormData(customer));
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -157,7 +159,7 @@ export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = fals
       setGeocodeJob({
         jobId: 'unknown',
         timestamp: new Date().toISOString(),
-        status: { type: 'failed', error: err instanceof Error ? err.message : 'Neznámá chyba' },
+        status: { type: 'failed', error: err instanceof Error ? err.message : t('form_unknown_error') },
       });
     }
   }, [
@@ -167,6 +169,7 @@ export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = fals
     formData.postalCode,
     lastGeocodedAddress,
     mapMoved,
+    t,
   ]);
 
   const handleAutoCenterComplete = useCallback(() => {
@@ -233,10 +236,10 @@ export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = fals
       setGeocodeJob({
         jobId: 'unknown',
         timestamp: new Date().toISOString(),
-        status: { type: 'failed', error: err instanceof Error ? err.message : 'Neznámá chyba' },
+        status: { type: 'failed', error: err instanceof Error ? err.message : t('form_unknown_error') },
       });
     }
-  }, [customer, onGeocodeCompleted]);
+  }, [customer, onGeocodeCompleted, t]);
 
   useEffect(() => {
     return () => {
@@ -379,7 +382,7 @@ export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = fals
       case 'queued':
         return { type: 'queued', position: status.position };
       case 'processing':
-        return { type: 'processing', message: 'Hledám adresu...' };
+        return { type: 'processing', message: t('form_searching_address') };
       case 'completed':
         return { type: 'completed' };
       case 'failed':
@@ -387,14 +390,14 @@ export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = fals
       default:
         return null;
     }
-  }, [geocodeJob]);
+  }, [geocodeJob, t]);
 
   return (
     <form className={styles.form} onSubmit={handleSubmit}>
-      <h2 className={styles.title}>{isEditMode ? 'Upravit zákazníka' : 'Nový zákazník'}</h2>
+      <h2 className={styles.title}>{isEditMode ? t('form_edit_title') : t('form_new_title')}</h2>
       
       <div className={styles.section}>
-        <h3 className={styles.sectionTitle}>Typ zákazníka</h3>
+        <h3 className={styles.sectionTitle}>{t('form_customer_type')}</h3>
         
         <div className={styles.typeSelector}>
           <label className={`${styles.typeOption} ${formData.type === 'person' ? styles.typeSelected : ''}`}>
@@ -406,7 +409,7 @@ export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = fals
               onChange={() => handleChange('type', 'person')}
               disabled={isSubmitting}
             />
-            <span className={styles.typeLabel}>Fyzická osoba</span>
+            <span className={styles.typeLabel}>{t('type_person_full')}</span>
           </label>
           <label className={`${styles.typeOption} ${formData.type === 'company' ? styles.typeSelected : ''}`}>
             <input
@@ -417,17 +420,17 @@ export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = fals
               onChange={() => handleChange('type', 'company')}
               disabled={isSubmitting}
             />
-            <span className={styles.typeLabel}>Firma</span>
+            <span className={styles.typeLabel}>{t('type_company')}</span>
           </label>
         </div>
       </div>
       
       <div className={styles.section}>
-        <h3 className={styles.sectionTitle}>Základní údaje</h3>
+        <h3 className={styles.sectionTitle}>{t('form_basic_info')}</h3>
         
         <div className={styles.field}>
           <label htmlFor="name" className={styles.label}>
-            {isCompany ? 'Název firmy' : 'Jméno'} <span className={styles.required}>*</span>
+            {isCompany ? t('form_company_name') : t('form_name')} <span className={styles.required}>*</span>
           </label>
           <input
             type="text"
@@ -446,7 +449,7 @@ export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = fals
         {isCompany && (
           <>
             <div className={styles.field}>
-              <label htmlFor="contactPerson" className={styles.label}>Kontaktní osoba</label>
+              <label htmlFor="contactPerson" className={styles.label}>{t('form_contact_person')}</label>
               <input
                 type="text"
                 id="contactPerson"
@@ -460,7 +463,7 @@ export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = fals
             
             <div className={styles.row}>
               <div className={styles.field}>
-                <label htmlFor="ico" className={styles.label}>IČO</label>
+                <label htmlFor="ico" className={styles.label}>{t('form_ico')}</label>
                 <input
                   type="text"
                   id="ico"
@@ -474,7 +477,7 @@ export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = fals
               </div>
               
               <div className={styles.field}>
-                <label htmlFor="dic" className={styles.label}>DIČ</label>
+                <label htmlFor="dic" className={styles.label}>{t('form_dic')}</label>
                 <input
                   type="text"
                   id="dic"
@@ -491,7 +494,7 @@ export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = fals
         
         <div className={styles.row}>
           <div className={styles.field}>
-            <label htmlFor="email" className={styles.label}>Email</label>
+            <label htmlFor="email" className={styles.label}>{t('form_email')}</label>
             <input
               type="email"
               id="email"
@@ -506,7 +509,7 @@ export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = fals
           </div>
           
           <div className={styles.field}>
-            <label htmlFor="phone" className={styles.label}>Telefon</label>
+            <label htmlFor="phone" className={styles.label}>{t('form_phone')}</label>
             <input
               type="tel"
               id="phone"
@@ -523,11 +526,11 @@ export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = fals
       </div>
       
       <div className={styles.section}>
-        <h3 className={styles.sectionTitle}>Adresa</h3>
+        <h3 className={styles.sectionTitle}>{t('form_address')}</h3>
         
         <div className={styles.field}>
           <label htmlFor="street" className={styles.label}>
-            Ulice a číslo <span className={styles.required}>*</span>
+            {t('form_street')} <span className={styles.required}>*</span>
           </label>
           <input
             type="text"
@@ -545,7 +548,7 @@ export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = fals
         <div className={styles.row}>
           <div className={styles.field} style={{ flex: 2 }}>
             <label htmlFor="city" className={styles.label}>
-              Město <span className={styles.required}>*</span>
+              {t('form_city')} <span className={styles.required}>*</span>
             </label>
             <input
               type="text"
@@ -562,7 +565,7 @@ export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = fals
           
           <div className={styles.field} style={{ flex: 1 }}>
             <label htmlFor="postalCode" className={styles.label}>
-              PSČ <span className={styles.required}>*</span>
+              {t('form_postal_code')} <span className={styles.required}>*</span>
             </label>
             <input
               type="text"
@@ -588,7 +591,7 @@ export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = fals
                 onClick={handleGeocode}
                 disabled={isSubmitting || isGeocodeSubmitting || !needsRecenter}
               >
-                {isGeocodeSubmitting ? 'Hledám...' : 'Zobraz adresu na mapě'}
+                {isGeocodeSubmitting ? t('form_searching') : t('form_show_on_map')}
               </button>
               <button
                 type="button"
@@ -596,7 +599,7 @@ export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = fals
                 onClick={handlePickAddress}
                 disabled={isSubmitting || isGeocodeSubmitting}
               >
-                Zadej adresu špendlíkem na mapě
+                {t('form_pick_on_map')}
               </button>
             </div>
           )}
@@ -628,16 +631,16 @@ export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = fals
       </div>
       
       <div className={styles.section}>
-        <h3 className={styles.sectionTitle}>Poznámky</h3>
+        <h3 className={styles.sectionTitle}>{t('form_notes')}</h3>
         
         <div className={styles.field}>
-          <label htmlFor="notes" className={styles.label}>Poznámky</label>
+          <label htmlFor="notes" className={styles.label}>{t('form_notes')}</label>
           <textarea
             id="notes"
             value={formData.notes}
             onChange={(e) => handleChange('notes', e.target.value)}
             className={styles.textarea}
-            placeholder="Další informace o zákazníkovi..."
+            placeholder={t('form_notes_placeholder')}
             rows={3}
             disabled={isSubmitting}
           />
@@ -651,14 +654,14 @@ export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = fals
           className={styles.cancelButton}
           disabled={isSubmitting}
         >
-          Zrušit
+          {t('form_cancel')}
         </button>
         <button
           type="submit"
           className={styles.submitButton}
           disabled={isSubmitting}
         >
-          {isSubmitting ? 'Ukládám...' : (isEditMode ? 'Uložit změny' : 'Uložit zákazníka')}
+          {isSubmitting ? t('form_saving') : (isEditMode ? t('form_save_changes') : t('form_save_customer'))}
         </button>
       </div>
     </form>

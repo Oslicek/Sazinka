@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { CreateCustomerRequest } from '@shared/customer';
 import {
   validateCustomerForm,
@@ -29,6 +30,7 @@ export function AddCustomerForm({ onSubmit, onCancel, isSubmitting = false }: Ad
   const [formData, setFormData] = useState<CustomerFormData>(initialFormData);
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const { t } = useTranslation('customers');
   
   const handleChange = useCallback((field: keyof CustomerFormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -91,14 +93,14 @@ export function AddCustomerForm({ onSubmit, onCancel, isSubmitting = false }: Ad
 
   return (
     <form className={styles.form} onSubmit={handleSubmit}>
-      <h2 className={styles.title}>Nový zákazník</h2>
+      <h2 className={styles.title}>{t('form_new_title')}</h2>
       
       <div className={styles.section}>
-        <h3 className={styles.sectionTitle}>Základní údaje</h3>
+        <h3 className={styles.sectionTitle}>{t('form_basic_info')}</h3>
         
         <div className={styles.field}>
           <label htmlFor="name" className={styles.label}>
-            Jméno <span className={styles.required}>*</span>
+            {t('form_name')} <span className={styles.required}>*</span>
           </label>
           <input
             type="text"
@@ -115,7 +117,7 @@ export function AddCustomerForm({ onSubmit, onCancel, isSubmitting = false }: Ad
         
         <div className={styles.row}>
           <div className={styles.field}>
-            <label htmlFor="email" className={styles.label}>Email</label>
+            <label htmlFor="email" className={styles.label}>{t('form_email')}</label>
             <input
               type="email"
               id="email"
@@ -130,7 +132,7 @@ export function AddCustomerForm({ onSubmit, onCancel, isSubmitting = false }: Ad
           </div>
           
           <div className={styles.field}>
-            <label htmlFor="phone" className={styles.label}>Telefon</label>
+            <label htmlFor="phone" className={styles.label}>{t('form_phone')}</label>
             <input
               type="tel"
               id="phone"
@@ -147,11 +149,11 @@ export function AddCustomerForm({ onSubmit, onCancel, isSubmitting = false }: Ad
       </div>
       
       <div className={styles.section}>
-        <h3 className={styles.sectionTitle}>Adresa</h3>
+        <h3 className={styles.sectionTitle}>{t('form_address')}</h3>
         
         <div className={styles.field}>
           <label htmlFor="street" className={styles.label}>
-            Ulice a číslo <span className={styles.required}>*</span>
+            {t('form_street')} <span className={styles.required}>*</span>
           </label>
           <input
             type="text"
@@ -169,7 +171,7 @@ export function AddCustomerForm({ onSubmit, onCancel, isSubmitting = false }: Ad
         <div className={styles.row}>
           <div className={styles.field} style={{ flex: 2 }}>
             <label htmlFor="city" className={styles.label}>
-              Město <span className={styles.required}>*</span>
+              {t('form_city')} <span className={styles.required}>*</span>
             </label>
             <input
               type="text"
@@ -186,7 +188,7 @@ export function AddCustomerForm({ onSubmit, onCancel, isSubmitting = false }: Ad
           
           <div className={styles.field} style={{ flex: 1 }}>
             <label htmlFor="postalCode" className={styles.label}>
-              PSČ <span className={styles.required}>*</span>
+              {t('form_postal_code')} <span className={styles.required}>*</span>
             </label>
             <input
               type="text"
@@ -206,22 +208,22 @@ export function AddCustomerForm({ onSubmit, onCancel, isSubmitting = false }: Ad
         <div className={styles.mapContainer}>
           <AddressMap
             draggable={false}
-            emptyMessage="Geokódování proběhne po uložení zákazníka."
+            emptyMessage={t('form_geocode_after_save')}
           />
         </div>
       </div>
       
       <div className={styles.section}>
-        <h3 className={styles.sectionTitle}>Poznámky</h3>
+        <h3 className={styles.sectionTitle}>{t('form_notes')}</h3>
         
         <div className={styles.field}>
-          <label htmlFor="notes" className={styles.label}>Poznámky</label>
+          <label htmlFor="notes" className={styles.label}>{t('form_notes')}</label>
           <textarea
             id="notes"
             value={formData.notes}
             onChange={(e) => handleChange('notes', e.target.value)}
             className={styles.textarea}
-            placeholder="Další informace o zákazníkovi..."
+            placeholder={t('form_notes_placeholder')}
             rows={3}
             disabled={isSubmitting}
           />
@@ -235,14 +237,14 @@ export function AddCustomerForm({ onSubmit, onCancel, isSubmitting = false }: Ad
           className={styles.cancelButton}
           disabled={isSubmitting}
         >
-          Zrušit
+          {t('form_cancel')}
         </button>
         <button
           type="submit"
           className={styles.submitButton}
           disabled={isSubmitting}
         >
-          {isSubmitting ? 'Ukládám...' : 'Uložit zákazníka'}
+          {isSubmitting ? t('form_saving') : t('form_save_customer')}
         </button>
       </div>
     </form>

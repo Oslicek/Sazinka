@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, Link, useSearch } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import type { CalendarItem, CalendarItemStatus, CalendarItemType } from '@shared/calendar';
 import type { CalendarDay } from '../utils/calendarUtils';
 import { formatDateKey, getMonthRange, getWeekDays, groupItemsByDay, getEstimatedMinutes } from '../utils/calendarUtils';
@@ -9,12 +10,8 @@ import { listRoutesForDate, type SavedRoute } from '../services/routeService';
 import { useNatsStore } from '../stores/natsStore';
 import { CalendarGrid } from '../components/calendar';
 import { DayCell } from '../components/calendar/DayCell';
+import { getMonthNames, getWeekdayNames, formatDate } from '@/i18n/formatters';
 import styles from './Calendar.module.css';
-
-const MONTH_NAMES = [
-  'Leden', 'Únor', 'Březen', 'Duben', 'Květen', 'Červen',
-  'Červenec', 'Srpen', 'Září', 'Říjen', 'Listopad', 'Prosinec'
-];
 
 const ITEM_TYPES: CalendarItemType[] = ['revision', 'visit', 'task'];
 const STATUS_FILTERS: CalendarItemStatus[] = [
@@ -50,30 +47,22 @@ function formatListParam(values: string[], fallback: string[]): string | undefin
   return values.join(',');
 }
 
-function formatShortDate(date: Date): string {
-  return date.toLocaleDateString('cs-CZ', { day: '2-digit', month: '2-digit' });
-}
-
-function formatLongDate(date: Date): string {
-  return date.toLocaleDateString('cs-CZ', { weekday: 'short', day: '2-digit', month: 'long', year: 'numeric' });
-}
-
 function isWeekend(date: Date): boolean {
   const day = date.getDay();
   return day === 0 || day === 6;
 }
 
-function getCalendarStatusLabel(status: CalendarItemStatus): string {
-  const labels: Record<CalendarItemStatus, string> = {
-    scheduled: 'Naplánováno',
-    overdue: 'Po termínu',
-    in_progress: 'Probíhá',
-    completed: 'Dokončeno',
-    cancelled: 'Zrušeno',
-    due: 'Termín',
-    pending: 'Čeká',
+function getCalendarStatusLabel(status: CalendarItemStatus, t: (key: string) => string): string {
+  const keyMap: Record<CalendarItemStatus, string> = {
+    scheduled: 'status_scheduled',
+    overdue: 'status_overdue',
+    in_progress: 'status_in_progress',
+    completed: 'status_completed',
+    cancelled: 'status_cancelled',
+    due: 'status_due',
+    pending: 'status_pending',
   };
-  return labels[status] || status;
+  return t(keyMap[status] || status);
 }
 
 function getItemLink(item: CalendarItem) {
@@ -89,11 +78,11 @@ function getItemLink(item: CalendarItem) {
   return null;
 }
 
-function getItemTitle(item: CalendarItem): string {
+function getItemTitle(item: CalendarItem, fallback: string): string {
   if (item.type === 'task') {
     return item.customerName || item.title || 'Follow-up';
   }
-  return item.customerName || item.title || 'Zákazník';
+  return item.customerName || item.title || fallback;
 }
 
 function getCrewCapacityMinutes(crew?: Crew | null): number | null {
@@ -109,6 +98,7 @@ export function Calendar() {
   const navigate = useNavigate();
   const searchParams = useSearch({ strict: false }) as CalendarSearchParams;
   const isConnected = useNatsStore((s) => s.isConnected);
+  const { t } = useTranslation('calendar');
 
   const initialViewMode = searchParams.view === 'scheduled' ? 'scheduled' : 'due';
   const initialLayout =
@@ -178,7 +168,7 @@ export function Calendar() {
   // Load calendar items for the current month
   const loadItems = useCallback(async () => {
     if (!isConnected) {
-      setError('Není připojení k serveru');
+      setError(t('error_not_connected'));
       setIsLoading(false);
       return;
     }
@@ -213,7 +203,7 @@ export function Calendar() {
       setItems(response.items);
     } catch (err) {
       console.error('Failed to load calendar:', err);
-      setError(err instanceof Error ? err.message : 'Nepodařilo se načíst kalendář');
+      setError(err instanceof Error ? err.message : t('error_load_failed'));
     } finally {
       setIsLoading(false);
     }
@@ -228,6 +218,7 @@ export function Calendar() {
     selectedStatus,
     selectedCrew,
     customerQuery,
+    t,
   ]);
 
   // Load items when filters change
@@ -383,7 +374,7 @@ export function Calendar() {
   return (
     <div className={`${styles.calendar} ${selectedDay && layoutMode !== 'agenda' && layoutMode !== 'day' ? styles.withSidePanel : ''}`}>
       <div className={styles.header}>
-        <h1>Kalendář</h1>
+        <h1>{t('title')}</h1>
         <div className={styles.viewToggle}>
           <button
             className={`${styles.viewButton} ${viewMode === 'due' ? styles.active : ''}`}
@@ -392,7 +383,7 @@ export function Calendar() {
               updateSearchParams({ view: 'due' });
             }}
           >
-            Termíny
+            {t('view_due')}
           </button>
           <button
             className={`${styles.viewButton} ${viewMode === 'scheduled' ? styles.active : ''}`}
@@ -401,7 +392,7 @@ export function Calendar() {
               updateSearchParams({ view: 'scheduled' });
             }}
           >
-            Naplánované
+            {t('view_scheduled')}
           </button>
         </div>
         <div className={styles.viewToggle}>
@@ -412,7 +403,7 @@ export function Calendar() {
               updateSearchParams({ layout: 'month' });
             }}
           >
-            Měsíc
+            {t('layout_month')}
           </button>
           <button
             className={`${styles.viewButton} ${layoutMode === 'week' ? styles.active : ''}`}
@@ -421,7 +412,7 @@ export function Calendar() {
               updateSearchParams({ layout: 'week' });
             }}
           >
-            Týden
+            {t('layout_week')}
           </button>
           <button
             className={`${styles.viewButton} ${layoutMode === 'day' ? styles.active : ''}`}
@@ -430,7 +421,7 @@ export function Calendar() {
               updateSearchParams({ layout: 'day' });
             }}
           >
-            Den
+            {t('layout_day')}
           </button>
           <button
             className={`${styles.viewButton} ${layoutMode === 'agenda' ? styles.active : ''}`}
@@ -439,14 +430,14 @@ export function Calendar() {
               updateSearchParams({ layout: 'agenda' });
             }}
           >
-            Agenda
+            {t('layout_agenda')}
           </button>
         </div>
         <div className={styles.monthNav}>
           <button
             className="btn-secondary"
             onClick={goToPrevious}
-            aria-label="Předchozí období"
+            aria-label={t('prev_period')}
           >
             ←
           </button>
@@ -454,19 +445,19 @@ export function Calendar() {
             className={styles.todayButton}
             onClick={goToToday}
           >
-            Dnes
+            {t('today')}
           </button>
           <span className={styles.currentMonth}>
             {layoutMode === 'week'
-              ? `${formatShortDate(weekDays[0].date)} – ${formatShortDate(weekDays[6].date)} ${weekDays[6].date.getFullYear()}`
+              ? `${formatDate(weekDays[0].date, 'short')} – ${formatDate(weekDays[6].date, 'short')} ${weekDays[6].date.getFullYear()}`
               : layoutMode === 'day'
-                ? formatLongDate(currentDate)
-                : `${MONTH_NAMES[month]} ${year}`}
+                ? formatDate(currentDate, 'long')
+                : `${getMonthNames()[month]} ${year}`}
           </span>
           <button
             className="btn-secondary"
             onClick={goToNext}
-            aria-label="Další období"
+            aria-label={t('next_period')}
           >
             →
           </button>
@@ -475,31 +466,31 @@ export function Calendar() {
 
       <div className={styles.filters}>
         <div className={styles.filterGroup}>
-          <span className={styles.filterLabel}>Typy</span>
+          <span className={styles.filterLabel}>{t('filter_types')}</span>
           {ITEM_TYPES.map((type) => (
             <button
               key={type}
               className={`${styles.filterButton} ${selectedTypes.includes(type) ? styles.activeFilter : ''}`}
               onClick={() => toggleType(type)}
             >
-              {type === 'revision' ? 'Revize' : type === 'visit' ? 'Návštěvy' : 'Follow-up'}
+              {type === 'revision' ? t('type_revision') : type === 'visit' ? t('type_visit') : t('type_task')}
             </button>
           ))}
         </div>
         <div className={styles.filterGroup}>
-          <span className={styles.filterLabel}>Stavy</span>
+          <span className={styles.filterLabel}>{t('filter_status')}</span>
           {STATUS_FILTERS.map((status) => (
             <button
               key={status}
               className={`${styles.filterButton} ${selectedStatus.includes(status) ? styles.activeFilter : ''}`}
               onClick={() => toggleStatus(status)}
             >
-              {getCalendarStatusLabel(status)}
+              {getCalendarStatusLabel(status, t)}
             </button>
           ))}
         </div>
         <div className={styles.filterGroup}>
-          <span className={styles.filterLabel}>Posádka</span>
+          <span className={styles.filterLabel}>{t('filter_crew')}</span>
           <select
             className={styles.select}
             value={selectedCrew}
@@ -508,7 +499,7 @@ export function Calendar() {
               updateSearchParams({ crew: event.target.value || undefined });
             }}
           >
-            <option value="">Všechny</option>
+            <option value="">{t('filter_crew_all')}</option>
             {crews.map((crew) => (
               <option key={crew.id} value={crew.id}>
                 {crew.name}
@@ -517,11 +508,11 @@ export function Calendar() {
           </select>
         </div>
         <div className={styles.filterGroup}>
-          <span className={styles.filterLabel}>Zákazník</span>
+          <span className={styles.filterLabel}>{t('filter_customer')}</span>
           <input
             className={styles.input}
             value={customerQuery}
-            placeholder="Hledat zákazníka"
+            placeholder={t('filter_customer_placeholder')}
             onChange={(event) => {
               setCustomerQuery(event.target.value);
               updateSearchParams({ customer: event.target.value || undefined });
@@ -534,15 +525,15 @@ export function Calendar() {
       <div className={styles.stats}>
         <div className={styles.stat}>
           <span className={styles.statValue}>{monthStats.scheduled}</span>
-          <span className={styles.statLabel}>Naplánováno</span>
+          <span className={styles.statLabel}>{t('status_scheduled')}</span>
         </div>
         <div className={`${styles.stat} ${styles.statOverdue}`}>
           <span className={styles.statValue}>{monthStats.overdue}</span>
-          <span className={styles.statLabel}>Po termínu</span>
+          <span className={styles.statLabel}>{t('status_overdue')}</span>
         </div>
         <div className={styles.stat}>
           <span className={styles.statValue}>{monthStats.completed}</span>
-          <span className={styles.statLabel}>Dokončeno</span>
+          <span className={styles.statLabel}>{t('status_completed')}</span>
         </div>
         <div className={styles.stat}>
           <span className={styles.statValue}>{monthStats.pending}</span>
@@ -554,14 +545,14 @@ export function Calendar() {
       {error && (
         <div className={styles.error}>
           {error}
-          <button onClick={loadItems}>Zkusit znovu</button>
+          <button onClick={loadItems}>{t('retry')}</button>
         </div>
       )}
 
       {/* Calendar grid */}
       <div className="card">
         {isLoading ? (
-          <div className={styles.loading}>Načítání kalendáře...</div>
+          <div className={styles.loading}>{t('loading')}</div>
         ) : layoutMode === 'month' ? (
           <CalendarGrid
             year={year}
@@ -578,7 +569,7 @@ export function Calendar() {
               {weekDays.map((day) => (
                 <div key={day.dateKey} className={styles.weekHeaderDay}>
                   <span className={styles.weekHeaderDayName}>
-                    {['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'][day.date.getDay() === 0 ? 6 : day.date.getDay() - 1]}
+                    {getWeekdayNames('short')[day.date.getDay() === 0 ? 6 : day.date.getDay() - 1]}
                   </span>
                   <span className={styles.weekHeaderDate}>
                     {day.dayNumber}.
@@ -604,14 +595,14 @@ export function Calendar() {
         ) : layoutMode === 'day' ? (
           <div className={styles.dayView}>
             <div className={`${styles.dayHeader} ${isWeekend(currentDate) ? styles.weekendDay : ''}`}>
-              <strong>{formatLongDate(currentDate)}</strong>
-              <span>{dayItems.length} položek</span>
+              <strong>{formatDate(currentDate, 'long')}</strong>
+              <span>{t('items_count', { count: dayItems.length })}</span>
             </div>
             {dayItems.length === 0 ? (
               <div className={styles.emptyDay}>
-                <p>Žádné položky pro tento den</p>
+                <p>{t('no_items_day')}</p>
                 <button className="btn-primary" onClick={handlePlanDay}>
-                  Naplánovat den
+                  {t('plan_day')}
                 </button>
               </div>
             ) : (
@@ -620,9 +611,9 @@ export function Calendar() {
                   const link = getItemLink(item);
                   const content = (
                     <div className={styles.itemRow}>
-                      <span className={styles.itemStatus}>{getCalendarStatusLabel(item.status)}</span>
+                      <span className={styles.itemStatus}>{getCalendarStatusLabel(item.status, t)}</span>
                       <span className={styles.itemTime}>{item.timeStart || '--:--'}</span>
-                      <span className={styles.itemTitle}>{getItemTitle(item)}</span>
+                      <span className={styles.itemTitle}>{getItemTitle(item, t('customer_label'))}</span>
                       <span className={styles.itemSubtitle}>{item.subtitle || item.sourceType}</span>
                     </div>
                   );
@@ -648,7 +639,7 @@ export function Calendar() {
           <div className={styles.agenda}>
             {agendaItems.length === 0 ? (
               <div className={styles.emptyDay}>
-                <p>Žádné položky pro vybraný měsíc</p>
+                <p>{t('no_items_month')}</p>
               </div>
             ) : (
               agendaItems.map(({ dateKey, items: dayItems }) => (
@@ -658,16 +649,16 @@ export function Calendar() {
                 >
                   <div className={styles.agendaHeader}>
                     <strong>{dateKey}</strong>
-                    <span>{dayItems.length} položek</span>
+                    <span>{t('items_count', { count: dayItems.length })}</span>
                   </div>
                   <div className={styles.agendaList}>
                     {dayItems.map((item) => {
                       const link = getItemLink(item);
                       const content = (
                         <div className={styles.itemRow}>
-                          <span className={styles.itemStatus}>{getCalendarStatusLabel(item.status)}</span>
+                          <span className={styles.itemStatus}>{getCalendarStatusLabel(item.status, t)}</span>
                           <span className={styles.itemTime}>{item.timeStart || '--:--'}</span>
-                          <span className={styles.itemTitle}>{getItemTitle(item)}</span>
+                          <span className={styles.itemTitle}>{getItemTitle(item, t('customer_label'))}</span>
                           <span className={styles.itemSubtitle}>{item.subtitle || item.sourceType}</span>
                         </div>
                       );
@@ -699,11 +690,11 @@ export function Calendar() {
         <div className={styles.detailsOverlay} onClick={handleCloseDetails}>
           <div className={styles.detailsPanel} onClick={(event) => event.stopPropagation()}>
             <div className={styles.detailsHeader}>
-              <h2>{selectedDay.dayNumber}. {MONTH_NAMES[selectedDay.date.getMonth()]}</h2>
+              <h2>{selectedDay.dayNumber}. {getMonthNames()[selectedDay.date.getMonth()]}</h2>
               <button
                 className={styles.closeButton}
                 onClick={handleCloseDetails}
-                aria-label="Zavřít"
+                aria-label={t('close')}
               >
                 ×
               </button>
@@ -713,7 +704,7 @@ export function Calendar() {
             {selectedDayRoutes.length > 0 && (
               <div className={styles.section}>
                 <div className={styles.sectionHeader}>
-                  Naplánované cesty ({selectedDayRoutes.length})
+                  {t('planned_routes', { count: selectedDayRoutes.length })}
                 </div>
                 <div className={styles.routeList}>
                   {selectedDayRoutes.map((route) => (
@@ -725,7 +716,7 @@ export function Calendar() {
                     >
                       <div className={styles.routeInfo}>
                         <span className={styles.routeCrew}>
-                          {route.crewName || 'Posádka'}
+                          {route.crewName || t('crew_label')}
                         </span>
                         <span className={styles.routeStats}>
                           {route.stopsCount || 0} zastávek · {route.totalDistanceKm?.toFixed(1) || '?'} km · {route.totalDurationMinutes || '?'} min
@@ -740,9 +731,9 @@ export function Calendar() {
 
             {selectedItems.length === 0 && selectedDayRoutes.length === 0 ? (
               <div className={styles.emptyDay}>
-                <p>Žádné položky pro tento den</p>
+                <p>{t('no_items_day')}</p>
                 <button className="btn-primary" onClick={handlePlanDay}>
-                  Naplánovat den
+                  {t('plan_day')}
                 </button>
               </div>
             ) : (
@@ -753,7 +744,7 @@ export function Calendar() {
                   return (
                     <div key={type} className={styles.section}>
                       <div className={styles.sectionHeader}>
-                        {type === 'revision' ? 'Revize' : type === 'visit' ? 'Návštěvy' : 'Follow-up'}
+                        {type === 'revision' ? t('type_revision') : type === 'visit' ? t('type_visit') : t('type_task')}
                       </div>
                       <div className={styles.revisionList}>
                         {grouped.map((item) => {
@@ -761,7 +752,7 @@ export function Calendar() {
                           const content = (
                             <>
                               <div className={styles.revisionStatus}>
-                                {getCalendarStatusLabel(item.status)}
+                                {getCalendarStatusLabel(item.status, t)}
                               </div>
                               <div className={styles.revisionTime}>
                                 {item.timeStart ? (
@@ -772,10 +763,10 @@ export function Calendar() {
                               </div>
                               <div className={styles.revisionInfo}>
                                 <span className={styles.revisionCustomer}>
-                                  {getItemTitle(item)}
+                                  {getItemTitle(item, t('customer_label'))}
                                 </span>
                                 <span className={styles.revisionDevice}>
-                                  {item.subtitle || item.sourceType || 'Položka'}
+                                  {item.subtitle || item.sourceType || t('item_label')}
                                 </span>
                               </div>
                               <span className={styles.revisionArrow}>→</span>
@@ -806,7 +797,7 @@ export function Calendar() {
                 })}
                 <div className={styles.detailsActions}>
                   <button className="btn-primary" onClick={handlePlanDay}>
-                    Otevřít v Plánovači
+                    {t('open_in_planner')}
                   </button>
                 </div>
               </>
@@ -819,14 +810,14 @@ export function Calendar() {
       <div className={styles.legend}>
         <div className={styles.legendItem}>
           <span className={`${styles.legendDot} ${styles.scheduledDot}`} />
-          <span>Naplánováno</span>
+          <span>{t('legend_scheduled')}</span>
         </div>
         <div className={styles.legendItem}>
           <span className={`${styles.legendDot} ${styles.overdueDot}`} />
-          <span>Po termínu</span>
+          <span>{t('legend_overdue')}</span>
         </div>
         <div className={styles.legendItem}>
-          <span className={styles.legendInline}>Revize / Návštěvy / Follow-up</span>
+          <span className={styles.legendInline}>{t('legend_types')}</span>
         </div>
       </div>
     </div>

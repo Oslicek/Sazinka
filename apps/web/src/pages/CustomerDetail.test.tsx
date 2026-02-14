@@ -223,8 +223,8 @@ describe('CustomerDetail', () => {
       render(<CustomerDetail />);
 
       await waitFor(() => {
-        // Back link shows "← Zákazníci"
-        expect(screen.getByRole('link', { name: /zákazníci/i })).toBeInTheDocument();
+        // Back link shows the i18n key "header_back"
+        expect(screen.getByRole('link', { name: /header_back/i })).toBeInTheDocument();
       });
     });
 
@@ -234,7 +234,7 @@ describe('CustomerDetail', () => {
       render(<CustomerDetail />);
 
       await waitFor(() => {
-        const backLink = screen.getByRole('link', { name: /zákazníci/i });
+        const backLink = screen.getByRole('link', { name: /header_back/i });
         expect(backLink).toHaveAttribute('href', '/customers');
       });
     });

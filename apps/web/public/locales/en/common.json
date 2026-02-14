@@ -41,6 +41,11 @@
     "hours_one": "{{count}} hour",
     "hours_other": "{{count}} hours",
     "days_one": "{{count}} day",
-    "days_other": "{{count}} days"
+    "days_other": "{{count}} days",
+    "years_one": "{{count}} year",
+    "years_other": "{{count}} years",
+    "months_one": "{{count}} month",
+    "months_other": "{{count}} months",
+    "zero_days": "0 days"
   }
 }

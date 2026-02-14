@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { DeleteConfirmDialog } from './DeleteConfirmDialog';
 
 describe('DeleteConfirmDialog', () => {
-  it('renders anonymization warning text', () => {
+  it('renders warning text', () => {
     render(
       <DeleteConfirmDialog
         isOpen={true}
@@ -13,8 +13,8 @@ describe('DeleteConfirmDialog', () => {
       />
     );
 
-    expect(screen.getByText(/bez možnosti Undo/i)).toBeInTheDocument();
-    expect(screen.getByText(/anonymizována/i)).toBeInTheDocument();
+    expect(screen.getByText('delete_title')).toBeInTheDocument();
+    expect(screen.getByText('delete_warning')).toBeInTheDocument();
   });
 
   it('calls onConfirm when delete is clicked', () => {
@@ -28,7 +28,7 @@ describe('DeleteConfirmDialog', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Smazat' }));
+    fireEvent.click(screen.getByRole('button', { name: 'delete_confirm_button' }));
     expect(onConfirm).toHaveBeenCalledOnce();
   });
 });

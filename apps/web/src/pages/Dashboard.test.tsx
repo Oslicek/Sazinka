@@ -51,7 +51,7 @@ describe('Dashboard', () => {
 
     render(<Dashboard />);
 
-    expect(screen.getByText('Dashboard')).toBeInTheDocument();
+    expect(screen.getByText('title')).toBeInTheDocument();
   });
 
   it('should load and display revision stats', async () => {
@@ -87,7 +87,7 @@ describe('Dashboard', () => {
     render(<Dashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText('10 zákazníků k obvolání')).toBeInTheDocument();
+      expect(screen.getByText('call_queue_count')).toBeInTheDocument();
     });
   });
 
@@ -103,7 +103,7 @@ describe('Dashboard', () => {
     render(<Dashboard />);
 
     await waitFor(() => {
-      expect(screen.queryByText(/zákazníků k obvolání/)).not.toBeInTheDocument();
+      expect(screen.queryByText('call_queue_count')).not.toBeInTheDocument();
     });
   });
 
@@ -140,7 +140,7 @@ describe('Dashboard', () => {
     render(<Dashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText('Dnešní plán')).toBeInTheDocument();
+      expect(screen.getByText('today_plan')).toBeInTheDocument();
       expect(screen.getByText('Customer A')).toBeInTheDocument();
       expect(screen.getByText('Customer B')).toBeInTheDocument();
     });
@@ -191,12 +191,10 @@ describe('Dashboard', () => {
     render(<Dashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText('Rizika v příštích 7 dnech')).toBeInTheDocument();
-      // "1 položek" appears for overdue and follow-ups; "2 položek" for unassigned
-      const onePolozek = screen.getAllByText('1 položek');
-      const twoPolozek = screen.getAllByText('2 položek');
-      expect(onePolozek.length).toBeGreaterThanOrEqual(2); // overdue + follow-ups
-      expect(twoPolozek.length).toBeGreaterThanOrEqual(1); // unassigned
+      expect(screen.getByText('risks_7_days')).toBeInTheDocument();
+      // items_count is returned as the i18n key for each risk row
+      const itemsCounts = screen.getAllByText('items_count');
+      expect(itemsCounts.length).toBeGreaterThanOrEqual(3); // overdue + unassigned + follow-ups
     });
   });
 
@@ -212,10 +210,10 @@ describe('Dashboard', () => {
     render(<Dashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Začít obvolávat/)).toBeInTheDocument();
-      expect(screen.getByText(/Můj den/)).toBeInTheDocument();
-      expect(screen.getByText(/Naplánovat/)).toBeInTheDocument();
-      expect(screen.getByText(/Nový zákazník/)).toBeInTheDocument();
+      expect(screen.getByText('start_calling')).toBeInTheDocument();
+      expect(screen.getByText('my_day')).toBeInTheDocument();
+      expect(screen.getByText('plan')).toBeInTheDocument();
+      expect(screen.getByText('new_customer')).toBeInTheDocument();
     });
   });
 });

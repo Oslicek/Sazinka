@@ -819,7 +819,34 @@ The previous session extracted route summary stats/actions into shared component
 | 2.5 index.html lang + title | ✅ Done | `index.html`: `lang="en"` (default), generic title. `i18n/index.ts`: `languageChanged` listener now also updates `document.title` from `nav:page_title`. |
 | 2.6 Tests | ✅ 28/28 pass | `Layout.test.tsx` (8 tests): EN/CS nav labels, online/offline, logout, no hardcoded Czech, language switching, key parity. `JobStatusTimeline.test.tsx` (20 tests): all states, progress, custom steps, i18n Czech labels. |
 
-### Phases 3–9: ❌ Not started
+### Phase 3: Core pages (Dashboard, Calendar, Customers, CustomerDetail) — ✅ COMPLETE
+
+| Step | Status | Notes |
+|------|--------|-------|
+| 3.1 Calendar namespace | ✅ Done | `en/calendar.json` (47 keys) + `cs/calendar.json` (47 keys). |
+| 3.4 Customers namespace | ✅ Done | `en/customers.json` (115 keys) + `cs/customers.json` (115 keys). |
+| 3.8 Dashboard namespace | ✅ Done | `en/dashboard.json` (44 keys) + `cs/dashboard.json` (44 keys). |
+| 3.11 Common duration keys | ✅ Done | Added years/months/zero_days to `common.json` (en + cs). Key parity passes. |
+| 3.2 Calendar.tsx | ✅ Done | Removed MONTH_NAMES, formatShortDate, formatLongDate. Uses getMonthNames(), getWeekdayNames(), formatDate() from formatters. All ~50 strings via t(). |
+| 3.3 CalendarGrid + DayCell | ✅ Done | CalendarGrid uses getWeekdayNames('short'). DayCell uses t() for status titles, type labels, item counts. |
+| 3.5 Customers.tsx | ✅ Done | All ~40 strings via t(). formatRevisionStatus uses t() with interpolation. toLocaleDateString replaced with formatDate(). |
+| 3.6 CustomerForm + AddCustomerForm | ✅ Done | CustomerForm: ~30 strings. AddCustomerForm: ~15 strings. All form labels, placeholders, buttons via t(). |
+| 3.7 CustomerSummary.tsx | ✅ Done | ~31 strings via t(). toLocaleString('cs-CZ') replaced with formatNumber(). |
+| 3.8b Dashboard.tsx | ✅ Done | All ~40 strings via t(). Status labels use calendar namespace. |
+| 3.9 DeleteConfirmDialog + CustomerHeader | ✅ Done | DeleteConfirmDialog uses dangerouslySetInnerHTML for HTML interpolation. CustomerHeader: 8 strings via t(). |
+| 3.10 toLocaleDateString replacements | ✅ Done | Replaced in Customers.tsx and CustomerSummary.tsx (Phase 3 scope). |
+| 3.11b overdueUtils.ts | ✅ Done | Replaced manual Czech plural functions (formatYears/Months/Days) with i18n.t('common:duration.*', { count }). |
+| 3.12 Tests | ✅ Done | 543/548 pass. 5 pre-existing failures (not i18n-related). Global react-i18next mock in test/setup.ts. Tests with own i18n instance use vi.unmock(). |
+
+**Test infrastructure changes:**
+- `test/setup.ts`: Added global partial mock for `react-i18next` (useTranslation returns key) and `@/i18n` (mock i18n instance).
+- Tests with their own i18n instance (`Layout.test.tsx`, `JobStatusTimeline.test.tsx`, `Login.test.tsx`, `Register.test.tsx`, `index.test.ts`) use `vi.unmock()` to restore real modules.
+- `overdueUtils.test.ts`: Local mock for `@/i18n` with English-like output for testing.
+- Updated assertions in `Calendar.test.tsx`, `Customers.test.tsx`, `Dashboard.test.tsx`, `CustomerDetail.test.tsx`, `DayCell.test.tsx`, `DeleteConfirmDialog.test.tsx`, `authStore.test.ts`.
+
+**Phase 3 totals:** 6 namespaces, ~304 keys (47 calendar + 115 customers + 44 dashboard + 41 common + 29 nav + 28 auth). 543 tests passing across 35 test files.
+
+### Phases 4–9: ❌ Not started
 
 ---
 

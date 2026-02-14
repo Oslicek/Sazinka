@@ -54,7 +54,7 @@ describe('Calendar', () => {
     
     render(<Calendar />);
     
-    expect(screen.getByText('Kalendář')).toBeInTheDocument();
+    expect(screen.getByText('title')).toBeInTheDocument();
   });
 
   it('should load calendar items on mount', async () => {
@@ -102,8 +102,8 @@ describe('Calendar', () => {
     render(<Calendar />);
     
     await waitFor(() => {
-      // Calendar sets error from err.message when fetch fails, or fallback "Nepodařilo se načíst kalendář"
-      expect(screen.getByText(/Connection failed|Nepodařilo se načíst kalendář/)).toBeInTheDocument();
+      // Calendar sets error from err.message when fetch fails, or fallback i18n key
+      expect(screen.getByText(/Connection failed|error_load_failed/)).toBeInTheDocument();
     });
   });
 
@@ -113,8 +113,8 @@ describe('Calendar', () => {
     render(<Calendar />);
     
     await waitFor(() => {
-      expect(screen.getByText('Termíny')).toBeInTheDocument();
-      expect(screen.getByText('Naplánované')).toBeInTheDocument();
+      expect(screen.getByText('view_due')).toBeInTheDocument();
+      expect(screen.getByText('view_scheduled')).toBeInTheDocument();
     });
   });
 
@@ -124,10 +124,10 @@ describe('Calendar', () => {
     render(<Calendar />);
     
     await waitFor(() => {
-      expect(screen.getByText('Měsíc')).toBeInTheDocument();
-      expect(screen.getByText('Týden')).toBeInTheDocument();
-      expect(screen.getByText('Den')).toBeInTheDocument();
-      expect(screen.getByText('Agenda')).toBeInTheDocument();
+      expect(screen.getByText('layout_month')).toBeInTheDocument();
+      expect(screen.getByText('layout_week')).toBeInTheDocument();
+      expect(screen.getByText('layout_day')).toBeInTheDocument();
+      expect(screen.getByText('layout_agenda')).toBeInTheDocument();
     });
   });
 
@@ -137,10 +137,10 @@ describe('Calendar', () => {
     render(<Calendar />);
     
     await waitFor(() => {
-      expect(screen.getByText('Typy')).toBeInTheDocument();
-      expect(screen.getByText('Stavy')).toBeInTheDocument();
-      expect(screen.getByText('Posádka')).toBeInTheDocument();
-      expect(screen.getByPlaceholderText('Hledat zákazníka')).toBeInTheDocument();
+      expect(screen.getByText('filter_types')).toBeInTheDocument();
+      expect(screen.getByText('filter_status')).toBeInTheDocument();
+      expect(screen.getByText('filter_crew')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('filter_customer_placeholder')).toBeInTheDocument();
     });
   });
 });

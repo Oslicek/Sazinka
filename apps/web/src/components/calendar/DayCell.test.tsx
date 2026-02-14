@@ -79,7 +79,7 @@ describe('DayCell', () => {
 
     expect(screen.getByText('09:00')).toBeInTheDocument();
     expect(screen.getByText('Customer A')).toBeInTheDocument();
-    expect(screen.getByText('Revize')).toBeInTheDocument();
+    expect(screen.getByText('type_revision_singular')).toBeInTheDocument();
   });
 
   it('should show status indicators in month view', () => {

@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import type { CustomerSummary as CustomerSummaryType } from '@shared/customer';
 import { getCustomerSummary } from '../services/customerService';
 import { useNatsStore } from '../stores/natsStore';
 import { getToken } from '@/utils/auth';
+import { formatNumber } from '@/i18n/formatters';
 import styles from './CustomerSummary.module.css';
 
 interface StatCardProps {
@@ -16,7 +18,7 @@ interface StatCardProps {
 function StatCard({ label, value, variant = 'default', subtitle }: StatCardProps) {
   return (
     <div className={`${styles.statCard} ${styles[variant]}`}>
-      <div className={styles.statValue}>{value.toLocaleString('cs-CZ')}</div>
+      <div className={styles.statValue}>{formatNumber(value, 0)}</div>
       <div className={styles.statLabel}>{label}</div>
       {subtitle && <div className={styles.statSubtitle}>{subtitle}</div>}
     </div>
@@ -29,10 +31,11 @@ export function CustomerSummary() {
   const [error, setError] = useState<string | null>(null);
 
   const isConnected = useNatsStore((s) => s.isConnected);
+  const { t } = useTranslation('customers');
 
   const loadSummary = useCallback(async () => {
     if (!isConnected) {
-      setError('Není připojení k serveru');
+      setError(t('error_not_connected'));
       setIsLoading(false);
       return;
     }
@@ -44,7 +47,7 @@ export function CustomerSummary() {
       setSummary(data);
     } catch (err) {
       console.error('Failed to load customer summary:', err);
-      setError(err instanceof Error ? err.message : 'Nepodařilo se načíst souhrn');
+      setError(err instanceof Error ? err.message : t('error_summary_failed'));
     } finally {
       setIsLoading(false);
     }
@@ -59,11 +62,11 @@ export function CustomerSummary() {
       <div className={styles.container}>
         <div className={styles.header}>
           <Link to="/customers" className={styles.backLink}>
-            ← Zpět na zákazníky
+            {t('back_to_customers')}
           </Link>
-          <h1>Souhrnné informace</h1>
+          <h1>{t('summary_title')}</h1>
         </div>
-        <div className={styles.error}>Není připojení k serveru</div>
+        <div className={styles.error}>{t('error_not_connected')}</div>
       </div>
     );
   }
@@ -73,11 +76,11 @@ export function CustomerSummary() {
       <div className={styles.container}>
         <div className={styles.header}>
           <Link to="/customers" className={styles.backLink}>
-            ← Zpět na zákazníky
+            {t('back_to_customers')}
           </Link>
-          <h1>Souhrnné informace</h1>
+          <h1>{t('summary_title')}</h1>
         </div>
-        <div className={styles.loading}>Načítám souhrn...</div>
+        <div className={styles.loading}>{t('loading_summary')}</div>
       </div>
     );
   }
@@ -87,9 +90,9 @@ export function CustomerSummary() {
       <div className={styles.container}>
         <div className={styles.header}>
           <Link to="/customers" className={styles.backLink}>
-            ← Zpět na zákazníky
+            {t('back_to_customers')}
           </Link>
-          <h1>Souhrnné informace</h1>
+          <h1>{t('summary_title')}</h1>
         </div>
         <div className={styles.error}>{error}</div>
       </div>
@@ -104,26 +107,26 @@ export function CustomerSummary() {
     <div className={styles.container}>
       <div className={styles.header}>
         <Link to="/customers" className={styles.backLink}>
-          ← Zpět na zákazníky
+          {t('back_to_customers')}
         </Link>
-        <h1>Souhrnné informace</h1>
-        <p className={styles.subtitle}>Přehled zákazníků, zařízení a revizí</p>
+        <h1>{t('summary_title')}</h1>
+        <p className={styles.subtitle}>{t('summary_subtitle')}</p>
       </div>
 
       {/* Main KPIs */}
       <section className={styles.section}>
-        <h2>Základní přehled</h2>
+        <h2>{t('summary_basic')}</h2>
         <div className={styles.statsGrid}>
           <StatCard
-            label="Zákazníků celkem"
+            label={t('summary_total_customers')}
             value={summary.totalCustomers}
           />
           <StatCard
-            label="Zařízení celkem"
+            label={t('summary_total_devices')}
             value={summary.totalDevices}
           />
           <StatCard
-            label="Revizí naplánováno"
+            label={t('summary_revisions_scheduled')}
             value={summary.revisionsScheduled}
             variant="success"
           />
@@ -132,87 +135,87 @@ export function CustomerSummary() {
 
       {/* Revision Status */}
       <section className={styles.section}>
-        <h2>Stav revizí</h2>
+        <h2>{t('summary_revision_status')}</h2>
         <div className={styles.statsGrid}>
           <StatCard
-            label="Po termínu"
+            label={t('summary_overdue')}
             value={summary.revisionsOverdue}
             variant={summary.revisionsOverdue > 0 ? 'danger' : 'default'}
-            subtitle="Vyžaduje okamžitou pozornost"
+            subtitle={t('summary_overdue_subtitle')}
           />
           <StatCard
-            label="Tento týden"
+            label={t('summary_this_week')}
             value={summary.revisionsDueThisWeek}
             variant={summary.revisionsDueThisWeek > 0 ? 'warning' : 'default'}
-            subtitle="V následujících 7 dnech"
+            subtitle={t('summary_this_week_subtitle')}
           />
           <StatCard
-            label="Naplánováno"
+            label={t('summary_scheduled')}
             value={summary.revisionsScheduled}
             variant="success"
-            subtitle="Připraveno k provedení"
+            subtitle={t('summary_scheduled_subtitle')}
           />
         </div>
       </section>
 
       {/* Geocoding Status */}
       <section className={styles.section}>
-        <h2>Stav geokódování</h2>
+        <h2>{t('summary_geocoding_status')}</h2>
         <div className={styles.statsGrid}>
           <StatCard
-            label="Úspěšně geokódováno"
+            label={t('summary_geocode_success')}
             value={summary.geocodeSuccess}
             variant="success"
           />
           <StatCard
-            label="Čeká na geokódování"
+            label={t('summary_geocode_pending')}
             value={summary.geocodePending}
             variant={summary.geocodePending > 0 ? 'warning' : 'default'}
           />
           <StatCard
-            label="Selhalo"
+            label={t('summary_geocode_failed')}
             value={summary.geocodeFailed}
             variant={summary.geocodeFailed > 0 ? 'danger' : 'default'}
-            subtitle="Nelze lokalizovat"
+            subtitle={t('summary_geocode_failed_subtitle')}
           />
         </div>
       </section>
 
       {/* Contact Information */}
       <section className={styles.section}>
-        <h2>Kontaktní údaje</h2>
+        <h2>{t('summary_contact_info')}</h2>
         <div className={styles.statsGrid}>
           <StatCard
-            label="Bez telefonu"
+            label={t('summary_no_phone')}
             value={summary.customersWithoutPhone}
             variant={summary.customersWithoutPhone > 0 ? 'warning' : 'default'}
-            subtitle="Chybí telefonní číslo"
+            subtitle={t('summary_no_phone_subtitle')}
           />
           <StatCard
-            label="Bez e-mailu"
+            label={t('summary_no_email')}
             value={summary.customersWithoutEmail}
             variant={summary.customersWithoutEmail > 0 ? 'warning' : 'default'}
-            subtitle="Chybí e-mailová adresa"
+            subtitle={t('summary_no_email_subtitle')}
           />
         </div>
       </section>
 
       {/* Quick Actions */}
       <section className={styles.section}>
-        <h2>Rychlé akce</h2>
+        <h2>{t('summary_quick_actions')}</h2>
         <div className={styles.actions}>
           {summary.revisionsOverdue > 0 && (
             <Link to="/customers" search={{ hasOverdue: true }} className={styles.actionButton}>
-              Zobrazit zákazníky s revizemi po termínu ({summary.revisionsOverdue})
+              {t('summary_show_overdue', { count: summary.revisionsOverdue })}
             </Link>
           )}
           {summary.geocodeFailed > 0 && (
             <Link to="/customers" search={{ geocodeStatus: 'failed' }} className={styles.actionButton}>
-              Zobrazit zákazníky s chybnou adresou ({summary.geocodeFailed})
+              {t('summary_show_geocode_failed', { count: summary.geocodeFailed })}
             </Link>
           )}
           <Link to="/queue" className={styles.actionButton}>
-            Přejít do fronty k obvolání
+            {t('summary_go_to_queue')}
           </Link>
         </div>
       </section>

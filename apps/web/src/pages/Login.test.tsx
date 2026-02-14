@@ -1,4 +1,8 @@
 import { describe, it, expect, beforeAll, vi } from 'vitest';
+
+// Restore real react-i18next (global setup mocks it)
+vi.unmock('react-i18next');
+
 import { render, screen, act } from '@testing-library/react';
 import i18next from 'i18next';
 import { I18nextProvider, initReactI18next } from 'react-i18next';

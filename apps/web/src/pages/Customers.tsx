@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useSearch, Link, useNavigate } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
+import { formatDate } from '@/i18n/formatters';
 import type { 
   CreateCustomerRequest,
   Customer,
@@ -77,6 +79,7 @@ export function Customers() {
   const [sortOrder, setSortOrder] = useState<ListCustomersRequest['sortOrder']>(searchParams?.sortOrder || 'asc');
   
   const isConnected = useNatsStore((s) => s.isConnected);
+  const { t } = useTranslation('customers');
 
   // Build request options (without offset — managed separately)
   const requestOptions = useMemo<ListCustomersRequest>(() => {
@@ -108,7 +111,7 @@ export function Customers() {
   // Load first page + summary when connected or filters change
   const loadCustomers = useCallback(async () => {
     if (!isConnected) {
-      setError('Není připojení k serveru');
+      setError(t('error_not_connected'));
       return;
     }
     
@@ -132,7 +135,7 @@ export function Customers() {
       }
     } catch (err) {
       console.error('Failed to load customers:', err);
-      setError(err instanceof Error ? err.message : 'Nepodařilo se načíst zákazníky');
+      setError(err instanceof Error ? err.message : t('error_load_failed'));
     } finally {
       setIsLoading(false);
     }
@@ -165,7 +168,7 @@ export function Customers() {
 
   const handleAddCustomer = useCallback(async (data: CreateCustomerRequest) => {
     if (!isConnected) {
-      setError('Není připojení k serveru');
+      setError(t('error_not_connected'));
       throw new Error('Not connected');
     }
     
@@ -204,7 +207,7 @@ export function Customers() {
       }
     } catch (err) {
       console.error('Failed to create customer:', err);
-      setError(err instanceof Error ? err.message : 'Nepodařilo se vytvořit zákazníka');
+      setError(err instanceof Error ? err.message : t('error_create_failed'));
       throw err;
     } finally {
       setIsSubmitting(false);
@@ -318,7 +321,7 @@ export function Customers() {
       }
     } catch (err) {
       console.error('Failed to update customer:', err);
-      setError(err instanceof Error ? err.message : 'Nepodařilo se aktualizovat zákazníka');
+      setError(err instanceof Error ? err.message : t('error_update_failed'));
     } finally {
       setIsEditSubmitting(false);
     }
@@ -369,20 +372,20 @@ export function Customers() {
   const formatRevisionStatus = (date: string | null, overdueCount: number, neverServicedCount: number): { text: string; className: string } => {
     // Never serviced takes priority
     if (neverServicedCount > 0) {
-      return { text: `Bez revize (${neverServicedCount} zař.)`, className: styles.revisionWarning };
+      return { text: t('revision_no_revision', { count: neverServicedCount }), className: styles.revisionWarning };
     }
     
     // Has overdue devices
     if (overdueCount > 0) {
-      return { text: `Po termínu (${overdueCount} zař.)`, className: styles.revisionOverdue };
+      return { text: t('revision_overdue_count', { count: overdueCount }), className: styles.revisionOverdue };
     }
     
     if (!date) {
       // No upcoming revision date. If no warnings either, all devices are properly serviced.
       if (neverServicedCount === 0 && overdueCount === 0) {
-        return { text: 'V pořádku', className: styles.revisionNone };
+        return { text: t('revision_ok'), className: styles.revisionNone };
       }
-      return { text: 'Bez revize', className: styles.revisionNone };
+      return { text: t('revision_no_revision_plain'), className: styles.revisionNone };
     }
     
     const dueDate = new Date(date);
@@ -393,23 +396,23 @@ export function Customers() {
     
     if (diffDays < 0) {
       return { 
-        text: `Po termínu (${Math.abs(diffDays)} dní)`, 
+        text: t('revision_overdue_days', { days: Math.abs(diffDays) }), 
         className: styles.revisionOverdue 
       };
     } else if (diffDays <= 7) {
       return { 
-        text: `Za ${diffDays} dní`, 
+        text: t('revision_in_days', { days: diffDays }), 
         className: styles.revisionSoon 
       };
     } else if (diffDays <= 30) {
       return { 
-        text: dueDate.toLocaleDateString('cs-CZ'), 
+        text: formatDate(dueDate, 'short'), 
         className: styles.revisionUpcoming 
       };
     }
     
     return { 
-      text: dueDate.toLocaleDateString('cs-CZ'), 
+      text: formatDate(dueDate, 'short'), 
       className: '' 
     };
   };
@@ -419,9 +422,9 @@ export function Customers() {
     return (
       <div className={styles.customers}>
         <div className={styles.header}>
-          <h1>Zákazníci</h1>
+          <h1>{t('title')}</h1>
         </div>
-        <div className={styles.error}>Není připojení k serveru</div>
+        <div className={styles.error}>{t('error_not_connected')}</div>
       </div>
     );
   }
@@ -446,7 +449,7 @@ export function Customers() {
       <div className={styles.toolbar}>
         <input
           type="text"
-          placeholder="Hledat zákazníky..."
+          placeholder={t('search_placeholder')}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className={styles.search}
@@ -467,10 +470,10 @@ export function Customers() {
             onChange={(e) => setGeocodeFilter(e.target.value as GeocodeStatus | '')}
             className={styles.filterSelect}
           >
-            <option value="">Adresa: vše</option>
-            <option value="success">Úspěšně ověřená</option>
-            <option value="failed">Nelze ověřit</option>
-            <option value="pending">Čeká na ověření</option>
+            <option value="">{t('filter_address_all')}</option>
+            <option value="success">{t('filter_address_success')}</option>
+            <option value="failed">{t('filter_address_failed')}</option>
+            <option value="pending">{t('filter_address_pending')}</option>
           </select>
           
           <select 
@@ -478,10 +481,10 @@ export function Customers() {
             onChange={(e) => setRevisionFilter(e.target.value)}
             className={styles.filterSelect}
           >
-            <option value="">Revize: vše</option>
-            <option value="overdue">Po termínu</option>
-            <option value="week">Do 7 dní</option>
-            <option value="month">Do 30 dní</option>
+            <option value="">{t('filter_revision_all')}</option>
+            <option value="overdue">{t('filter_revision_overdue')}</option>
+            <option value="week">{t('filter_revision_week')}</option>
+            <option value="month">{t('filter_revision_month')}</option>
           </select>
         </div>
         
@@ -490,7 +493,7 @@ export function Customers() {
             type="button"
             className={`${styles.viewButton} ${viewMode === 'table' ? styles.active : ''}`}
             onClick={() => setViewMode('table')}
-            title="Tabulka"
+            title={t('view_table')}
           >
             ☰
           </button>
@@ -498,7 +501,7 @@ export function Customers() {
             type="button"
             className={`${styles.viewButton} ${viewMode === 'cards' ? styles.active : ''}`}
             onClick={() => setViewMode('cards')}
-            title="Karty"
+            title={t('view_cards')}
           >
             ▦
           </button>
@@ -508,7 +511,7 @@ export function Customers() {
       {/* Loaded / total count */}
       {!isLoading && customers.length > 0 && customers.length < total && (
         <div className={styles.loadedCount}>
-          Zobrazeno {customers.length} z {total} zákazníků
+          {t('loaded_count', { loaded: customers.length, total })}
         </div>
       )}
 
@@ -516,13 +519,13 @@ export function Customers() {
 
       {geocodeJob && (
         <div className={styles.geocodeStatus}>
-          <strong>Geokódování:</strong>{' '}
-          {geocodeJob.status.type === 'queued' && 'čeká ve frontě'}
+          <strong>{t('geocoding_label')}</strong>{' '}
+          {geocodeJob.status.type === 'queued' && t('geocoding_queued')}
           {geocodeJob.status.type === 'processing' &&
-            `zpracování ${geocodeJob.status.processed}/${geocodeJob.status.total}`}
+            t('geocoding_processing', { processed: geocodeJob.status.processed, total: geocodeJob.status.total })}
           {geocodeJob.status.type === 'completed' &&
-            `hotovo (${geocodeJob.status.succeeded}/${geocodeJob.status.total} úspěšně)`}
-          {geocodeJob.status.type === 'failed' && `selhalo: ${geocodeJob.status.error}`}
+            t('geocoding_completed', { succeeded: geocodeJob.status.succeeded, total: geocodeJob.status.total })}
+          {geocodeJob.status.type === 'failed' && t('geocoding_failed', { error: geocodeJob.status.error })}
         </div>
       )}
 
@@ -543,25 +546,25 @@ export function Customers() {
         <div className={styles.list}>
           {isLoading ? (
             <div className="card">
-              <p className={styles.loading}>Načítám zákazníky...</p>
+              <p className={styles.loading}>{t('loading_customers')}</p>
             </div>
           ) : customers.length === 0 ? (
             <div className="card">
               <p className={styles.empty}>
                 {total === 0 && !search && !geocodeFilter && !revisionFilter ? (
                   <>
-                    Zatím nemáte žádné zákazníky.
+                    {t('no_customers_yet')}
                     <br />
                     <button
                       className="btn-primary"
                       style={{ marginTop: '1rem' }}
                       onClick={handleShowForm}
                     >
-                      + Přidat prvního zákazníka
+                      {t('add_first_customer')}
                     </button>
                   </>
                 ) : (
-                  'Žádní zákazníci neodpovídají zadaným filtrům.'
+                  t('no_customers_match')
                 )}
               </p>
             </div>
@@ -582,11 +585,11 @@ export function Customers() {
                         <h3 className={styles.customerName}>
                           {customer.name}
                           <span className={styles.customerType}>
-                            {customer.type === 'company' ? 'Firma' : 'Osoba'}
+                            {customer.type === 'company' ? t('type_company') : t('type_person')}
                           </span>
                         </h3>
                         {customer.geocodeStatus === 'failed' && (
-                          <span className={styles.geocodeWarning} title="Adresu nelze lokalizovat">
+                          <span className={styles.geocodeWarning} title={t('filter_address_failed')}>
                             ⚠️
                           </span>
                         )}
@@ -605,11 +608,11 @@ export function Customers() {
                     
                     <div className={styles.customerMeta}>
                       <div className={styles.metaItem}>
-                        <span className={styles.metaLabel}>Zařízení</span>
+                        <span className={styles.metaLabel}>{t('meta_devices')}</span>
                         <span className={styles.metaValue}>{customer.deviceCount}</span>
                       </div>
                       <div className={styles.metaItem}>
-                        <span className={styles.metaLabel}>Příští revize</span>
+                        <span className={styles.metaLabel}>{t('meta_next_revision')}</span>
                         <span className={`${styles.metaValue} ${revision.className}`}>
                           {revision.text}
                         </span>
@@ -625,7 +628,7 @@ export function Customers() {
                   onClick={loadMore}
                   disabled={isLoadingMore}
                 >
-                  {isLoadingMore ? 'Načítám...' : `Načíst další (${total - customers.length} zbývá)`}
+                  {isLoadingMore ? t('loading_more') : t('load_more', { remaining: total - customers.length })}
                 </button>
               )}
             </>
@@ -649,13 +652,13 @@ export function Customers() {
   return (
     <div className={styles.customers}>
       <div className={styles.header}>
-        <h1>Zákazníci</h1>
+        <h1>{t('title')}</h1>
         <div className={styles.headerActions}>
           <Link to="/customers/summary" className={styles.summaryButton}>
-            Souhrnné informace
+            {t('summary_link')}
           </Link>
           <button className="btn-primary" onClick={handleShowForm}>
-            + Nový zákazník
+            {t('new_customer')}
           </button>
         </div>
       </div>
@@ -664,30 +667,30 @@ export function Customers() {
       <div className={styles.statsBar}>
         <div className={styles.statItem}>
           <span className={styles.statValue}>{stats.total}</span>
-          <span className={styles.statLabel}>celkem</span>
+          <span className={styles.statLabel}>{t('stat_total')}</span>
         </div>
         {stats.neverServicedCount > 0 && (
           <div className={`${styles.statItem} ${styles.statWarning}`}>
             <span className={styles.statValue}>{stats.neverServicedCount}</span>
-            <span className={styles.statLabel}>bez revize</span>
+            <span className={styles.statLabel}>{t('stat_no_revision')}</span>
           </div>
         )}
         {stats.overdueCount > 0 && (
           <div className={`${styles.statItem} ${styles.statDanger}`}>
             <span className={styles.statValue}>{stats.overdueCount}</span>
-            <span className={styles.statLabel}>po termínu</span>
+            <span className={styles.statLabel}>{t('stat_overdue')}</span>
           </div>
         )}
         {stats.geocodeFailed > 0 && (
           <div className={`${styles.statItem} ${styles.statWarning}`}>
             <span className={styles.statValue}>{stats.geocodeFailed}</span>
-            <span className={styles.statLabel}>adresa bez polohy na mapě</span>
+            <span className={styles.statLabel}>{t('stat_geocode_failed')}</span>
           </div>
         )}
         {stats.geocodePending > 0 && (
           <div className={`${styles.statItem} ${styles.statInfo}`}>
             <span className={styles.statValue}>{stats.geocodePending}</span>
-            <span className={styles.statLabel}>adresa neověřená</span>
+            <span className={styles.statLabel}>{t('stat_geocode_pending')}</span>
           </div>
         )}
       </div>

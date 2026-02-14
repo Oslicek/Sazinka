@@ -1,22 +1,23 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, Link } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import type { CalendarItem } from '@shared/calendar';
 import { useNatsStore } from '@/stores/natsStore';
 import { getRevisionStats, type RevisionStats } from '../services/revisionService';
 import { listCalendarItems } from '../services/calendarService';
 import styles from './Dashboard.module.css';
 
-function getStatusLabel(status: CalendarItem['status']): string {
-  const labels: Record<CalendarItem['status'], string> = {
-    scheduled: 'Naplánováno',
-    overdue: 'Po termínu',
-    in_progress: 'Probíhá',
-    completed: 'Dokončeno',
-    cancelled: 'Zrušeno',
-    due: 'Termín',
-    pending: 'Čeká',
+function getStatusLabel(status: CalendarItem['status'], t: (key: string) => string): string {
+  const keyMap: Record<CalendarItem['status'], string> = {
+    scheduled: 'calendar:status_scheduled',
+    overdue: 'calendar:status_overdue',
+    in_progress: 'calendar:status_in_progress',
+    completed: 'calendar:status_completed',
+    cancelled: 'calendar:status_cancelled',
+    due: 'calendar:status_due',
+    pending: 'calendar:status_pending',
   };
-  return labels[status] || status;
+  return t(keyMap[status] || status);
 }
 
 function getItemLink(item: CalendarItem) {
@@ -33,6 +34,7 @@ export function Dashboard() {
   const navigate = useNavigate();
   const isConnected = useNatsStore((s) => s.isConnected);
   const connectionError = useNatsStore((s) => s.error);
+  const { t } = useTranslation('dashboard');
   
   const [stats, setStats] = useState<RevisionStats | null>(null);
   const [todayItems, setTodayItems] = useState<CalendarItem[]>([]);
@@ -74,7 +76,7 @@ export function Dashboard() {
       setWeekItems(weekResponse.items);
     } catch (err) {
       console.error('Failed to load stats:', err);
-      setStatsError(err instanceof Error ? err.message : 'Nepodařilo se načíst statistiky');
+      setStatsError(err instanceof Error ? err.message : t('error_load_stats'));
     } finally {
       setIsLoading(false);
     }
@@ -131,7 +133,7 @@ export function Dashboard() {
 
   return (
     <div className={styles.dashboard}>
-      <h1>Dashboard</h1>
+      <h1>{t('title')}</h1>
 
       {/* Call Queue CTA - prominent banner */}
       {totalToCall > 0 && (
@@ -139,8 +141,8 @@ export function Dashboard() {
           <div className={styles.bannerContent}>
             <span className={styles.bannerIcon}>📞</span>
             <div className={styles.bannerText}>
-              <strong>{totalToCall} zákazníků k obvolání</strong>
-              <span>Začít obvolávat</span>
+              <strong>{t('call_queue_count', { count: totalToCall })}</strong>
+              <span>{t('call_queue_start')}</span>
             </div>
           </div>
           <span className={styles.bannerArrow}>→</span>
@@ -149,9 +151,9 @@ export function Dashboard() {
       
       <div className={styles.grid}>
         <div className="card">
-          <h3>Připojení</h3>
+          <h3>{t('connection_title')}</h3>
           <p>
-            Status: {isConnected ? '✅ Připojeno' : '❌ Odpojeno'}
+            Status: {isConnected ? t('status_connected') : t('status_disconnected')}
           </p>
           {connectionError && <p className={styles.error}>{connectionError}</p>}
         </div>
@@ -161,11 +163,11 @@ export function Dashboard() {
           to="/planner" 
           className={`card ${styles.statCard} ${styles.clickableStat} ${(stats?.scheduledToday ?? 0) > 0 ? styles.statActive : ''}`}
         >
-          <h3>Dnešní revize</h3>
+          <h3>{t('today_revisions')}</h3>
           <p className={styles.bigNumber}>
             {isLoading ? '-' : (stats?.scheduledToday ?? 0)}
           </p>
-          <p className={styles.subtitle}>naplánováno →</p>
+          <p className={styles.subtitle}>{t('scheduled')}</p>
         </Link>
 
         {/* Clickable stat - This week -> Queue */}
@@ -174,11 +176,11 @@ export function Dashboard() {
           search={{ filter: 'thisWeek' }}
           className={`card ${styles.statCard} ${styles.clickableStat} ${(stats?.dueThisWeek ?? 0) > 0 ? styles.statWarning : ''}`}
         >
-          <h3>Tento týden</h3>
+          <h3>{t('this_week')}</h3>
           <p className={styles.bigNumber}>
             {isLoading ? '-' : (stats?.dueThisWeek ?? 0)}
           </p>
-          <p className={styles.subtitle}>k obvolání →</p>
+          <p className={styles.subtitle}>{t('to_call')}</p>
         </Link>
 
         {/* Clickable stat - Overdue -> Queue with filter */}
@@ -187,63 +189,63 @@ export function Dashboard() {
           search={{ filter: 'overdue' }}
           className={`card ${styles.statCard} ${styles.clickableStat} ${(stats?.overdue ?? 0) > 0 ? styles.statDanger : ''}`}
         >
-          <h3>Po termínu</h3>
+          <h3>{t('overdue')}</h3>
           <p className={`${styles.bigNumber} ${(stats?.overdue ?? 0) > 0 ? styles.dangerNumber : ''}`}>
             {isLoading ? '-' : (stats?.overdue ?? 0)}
           </p>
-          <p className={styles.subtitle}>revizí →</p>
+          <p className={styles.subtitle}>{t('revisions')}</p>
         </Link>
       </div>
 
       <div className={styles.grid} style={{ marginTop: '1rem' }}>
         <div className={`card ${styles.statCard}`}>
-          <h3>Dokončeno tento měsíc</h3>
+          <h3>{t('completed_month')}</h3>
           <p className={`${styles.bigNumber} ${styles.successNumber}`}>
             {isLoading ? '-' : (stats?.completedThisMonth ?? 0)}
           </p>
-          <p className={styles.subtitle}>revizí</p>
+          <p className={styles.subtitle}>{t('revisions_unit')}</p>
         </div>
         <div className={`card ${styles.statCard}`}>
-          <h3>Plán tento týden</h3>
+          <h3>{t('plan_this_week')}</h3>
           <p className={styles.bigNumber}>
             {isLoading ? '-' : plannedThisWeek}
           </p>
-          <p className={styles.subtitle}>naplánováno</p>
+          <p className={styles.subtitle}>{t('planned')}</p>
         </div>
         <div className={`card ${styles.statCard}`}>
-          <h3>Dokončeno tento týden</h3>
+          <h3>{t('completed_week')}</h3>
           <p className={`${styles.bigNumber} ${styles.successNumber}`}>
             {isLoading ? '-' : completedThisWeek}
           </p>
-          <p className={styles.subtitle}>položek</p>
+          <p className={styles.subtitle}>{t('items')}</p>
         </div>
         <div className={`card ${styles.statCard}`}>
-          <h3>Úspěšnost týdne</h3>
+          <h3>{t('success_rate')}</h3>
           <p className={styles.bigNumber}>
             {isLoading ? '-' : `${completionRate}%`}
           </p>
-          <p className={styles.subtitle}>dokončeno z plánovaných</p>
+          <p className={styles.subtitle}>{t('completion_desc')}</p>
         </div>
         <div className={`card ${styles.statCard}`}>
-          <h3>Zákazníků v týdnu</h3>
+          <h3>{t('customers_week')}</h3>
           <p className={styles.bigNumber}>
             {isLoading ? '-' : uniqueCustomers}
           </p>
-          <p className={styles.subtitle}>unikátních</p>
+          <p className={styles.subtitle}>{t('unique')}</p>
         </div>
         <div className={`card ${styles.statCard}`}>
-          <h3>Bez posádky</h3>
+          <h3>{t('no_crew')}</h3>
           <p className={styles.bigNumber}>
             {isLoading ? '-' : unassignedItems.length}
           </p>
-          <p className={styles.subtitle}>v příštích 7 dnech</p>
+          <p className={styles.subtitle}>{t('next_7_days')}</p>
         </div>
         <div className={`card ${styles.statCard}`}>
-          <h3>Follow-up</h3>
+          <h3>{t('follow_up')}</h3>
           <p className={styles.bigNumber}>
             {isLoading ? '-' : pendingFollowUps.length}
           </p>
-          <p className={styles.subtitle}>čeká na kontakt</p>
+          <p className={styles.subtitle}>{t('waiting_contact')}</p>
         </div>
       </div>
 
@@ -256,24 +258,24 @@ export function Dashboard() {
       <div className={styles.sectionGrid}>
         <div className={`card ${styles.sectionCard}`}>
           <div className={styles.sectionHeader}>
-            <h3>Dnešní plán</h3>
+            <h3>{t('today_plan')}</h3>
             <Link
               to="/calendar"
               search={{ view: 'scheduled', layout: 'agenda', types: 'revision,visit,task' }}
               className={styles.sectionLink}
             >
-              Otevřít v kalendáři
+              {t('open_in_calendar')}
             </Link>
           </div>
           {sortedTodayItems.length === 0 ? (
-            <p className={styles.emptyState}>Žádné položky na dnes.</p>
+            <p className={styles.emptyState}>{t('no_items_today')}</p>
           ) : (
             <div className={styles.worklist}>
               {sortedTodayItems.slice(0, 6).map((item) => {
                 const link = getItemLink(item);
                 const content = (
                   <>
-                    <span className={styles.workStatus}>{getStatusLabel(item.status)}</span>
+                    <span className={styles.workStatus}>{getStatusLabel(item.status, t)}</span>
                     <span className={styles.workTime}>{item.timeStart || '--:--'}</span>
                     <span className={styles.workTitle}>{item.customerName || item.title}</span>
                     <span className={styles.workSubtitle}>{item.subtitle || item.sourceType}</span>
@@ -300,61 +302,61 @@ export function Dashboard() {
 
         <div className={`card ${styles.sectionCard}`}>
           <div className={styles.sectionHeader}>
-            <h3>Rizika v příštích 7 dnech</h3>
+            <h3>{t('risks_7_days')}</h3>
             <Link
               to="/calendar"
               search={{ view: 'due', layout: 'agenda', status: 'overdue', types: 'revision,visit,task' }}
               className={styles.sectionLink}
             >
-              Zobrazit po termínu
+              {t('show_overdue')}
             </Link>
           </div>
           <div className={styles.worklist}>
             <div className={styles.workItem}>
-              <span className={styles.workStatus}>Po termínu</span>
-              <span className={styles.workTitle}>{overdueItems.length} položek</span>
-              <span className={styles.workSubtitle}>Potřebuje řešit</span>
+              <span className={styles.workStatus}>{t('overdue_label')}</span>
+              <span className={styles.workTitle}>{t('items_count', { count: overdueItems.length })}</span>
+              <span className={styles.workSubtitle}>{t('needs_attention')}</span>
             </div>
             <div className={styles.workItem}>
-              <span className={styles.workStatus}>Bez posádky</span>
-              <span className={styles.workTitle}>{unassignedItems.length} položek</span>
-              <span className={styles.workSubtitle}>Doplnit posádku</span>
+              <span className={styles.workStatus}>{t('no_crew_label')}</span>
+              <span className={styles.workTitle}>{t('items_count', { count: unassignedItems.length })}</span>
+              <span className={styles.workSubtitle}>{t('assign_crew')}</span>
             </div>
             <div className={styles.workItem}>
-              <span className={styles.workStatus}>Follow-up</span>
-              <span className={styles.workTitle}>{pendingFollowUps.length} položek</span>
-              <span className={styles.workSubtitle}>Čeká na kontakt</span>
+              <span className={styles.workStatus}>{t('follow_up_label')}</span>
+              <span className={styles.workTitle}>{t('items_count', { count: pendingFollowUps.length })}</span>
+              <span className={styles.workSubtitle}>{t('waiting_for_contact')}</span>
             </div>
           </div>
         </div>
       </div>
 
       <div className="card" style={{ marginTop: '1.5rem' }}>
-        <h3>Rychlé akce</h3>
+        <h3>{t('quick_actions')}</h3>
         <div className={styles.actions}>
           <button 
             className="btn-primary"
             onClick={() => navigate({ to: '/queue' })}
           >
-            📞 Začít obvolávat
+            {t('start_calling')}
           </button>
           <button 
             className="btn-secondary"
             onClick={() => navigate({ to: '/today' })}
           >
-            📋 Můj den
+            {t('my_day')}
           </button>
           <button 
             className="btn-secondary"
             onClick={() => navigate({ to: '/planner' })}
           >
-            🗓️ Naplánovat
+            {t('plan')}
           </button>
           <button 
             className="btn-secondary"
             onClick={() => navigate({ to: '/customers', search: { action: 'new' } })}
           >
-            + Nový zákazník
+            {t('new_customer')}
           </button>
         </div>
       </div>
