@@ -14,6 +14,11 @@
   "not_found": "Nenalezeno",
   "no_results": "Žádné výsledky",
   "retry": "Zkusit znovu",
+  "not_authenticated": "Nepřihlášen",
+  "customer": "Zákazník",
+  "device": "Zařízení",
+  "follow_up": "Follow-up",
+  "break_label": "Pauza",
   "status": {
     "overdue": "Po termínu",
     "due_soon": "Blíží se termín",
@@ -21,19 +26,25 @@
     "scheduled": "Naplánováno",
     "in_progress": "Probíhá",
     "completed": "Dokončeno",
-    "cancelled": "Zrušeno"
+    "cancelled": "Zrušeno",
+    "rescheduled": "Přeplánováno"
   },
   "units": {
     "km": "km",
     "min": "min",
     "hours": "h",
     "stops": "zast.",
-    "days": "dní"
+    "days": "dní",
+    "minutes_word": "minut"
   },
   "errors": {
     "unknown": "Došlo k neočekávané chybě",
     "network": "Chyba sítě. Zkontrolujte připojení.",
-    "not_connected": "Nepřipojeno k serveru"
+    "not_connected": "Nepřipojeno k serveru",
+    "connection_error": "Chyba připojení",
+    "failed_to_connect": "Nepodařilo se připojit",
+    "server_unavailable": "Server není dostupný. Zkuste to prosím za chvíli.",
+    "request_timeout": "Požadavek vypršel. Server neodpovídá."
   },
   "duration": {
     "minutes_one": "{{count}} minuta",
@@ -52,5 +63,53 @@
     "months_few": "{{count}} měsíce",
     "months_other": "{{count}} měsíců",
     "zero_days": "0 dní"
+  },
+  "visit_status": {
+    "planned": "Naplánováno",
+    "in_progress": "Probíhá",
+    "completed": "Dokončeno",
+    "cancelled": "Zrušeno",
+    "rescheduled": "Přeplánováno"
+  },
+  "visit_type": {
+    "revision": "Revize",
+    "installation": "Instalace",
+    "repair": "Oprava",
+    "consultation": "Konzultace",
+    "follow_up": "Následná návštěva"
+  },
+  "visit_result": {
+    "successful": "Úspěšná",
+    "partial": "Částečná",
+    "failed": "Neúspěšná",
+    "customer_absent": "Zákazník nepřítomen",
+    "rescheduled": "Přeplánováno"
+  },
+  "communication_type": {
+    "email_sent": "Odeslaný e-mail",
+    "email_received": "Přijatý e-mail",
+    "call": "Telefonát",
+    "note": "Poznámka",
+    "sms": "SMS"
+  },
+  "work_type": {
+    "revision": "Revize",
+    "repair": "Oprava",
+    "installation": "Instalace",
+    "consultation": "Konzultace",
+    "follow_up": "Následná návštěva"
+  },
+  "work_result": {
+    "successful": "Úspěšně",
+    "partial": "Částečně",
+    "failed": "Neúspěšně",
+    "customer_absent": "Zákazník nepřítomen",
+    "rescheduled": "Přeplánováno"
+  },
+  "break_warnings": {
+    "km_out_of_range": "Pauza je mimo rozmezí km (nastaveno {{min}}-{{max}} km)",
+    "time_out_of_range": "Pauza je mimo časové rozmezí (nastaveno {{earliest}}-{{latest}})",
+    "driving_rule_late": "Pauza je pozdě vzhledem k pravidlu 4,5 h řízení (odhad {{minutes}} min řízení)",
+    "legal_minimum": "Legislativní minimum pauzy je {{minutes}} minut"
   }
 }

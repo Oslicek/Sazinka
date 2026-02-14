@@ -174,7 +174,7 @@ describe('AuthStore', () => {
 
     it('getUserId throws when not authenticated', () => {
       useAuthStore.setState({ user: null });
-      expect(() => useAuthStore.getState().getUserId()).toThrow('Not authenticated');
+      expect(() => useAuthStore.getState().getUserId()).toThrow('common:not_authenticated');
     });
 
     it('getRole returns user role', () => {

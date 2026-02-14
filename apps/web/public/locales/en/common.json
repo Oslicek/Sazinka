@@ -14,6 +14,11 @@
   "not_found": "Not found",
   "no_results": "No results",
   "retry": "Retry",
+  "not_authenticated": "Not authenticated",
+  "customer": "Customer",
+  "device": "Device",
+  "follow_up": "Follow-up",
+  "break_label": "Break",
   "status": {
     "overdue": "Overdue",
     "due_soon": "Due soon",
@@ -21,19 +26,25 @@
     "scheduled": "Scheduled",
     "in_progress": "In progress",
     "completed": "Completed",
-    "cancelled": "Cancelled"
+    "cancelled": "Cancelled",
+    "rescheduled": "Rescheduled"
   },
   "units": {
     "km": "km",
     "min": "min",
     "hours": "h",
     "stops": "stops",
-    "days": "days"
+    "days": "days",
+    "minutes_word": "minutes"
   },
   "errors": {
     "unknown": "An unexpected error occurred",
     "network": "Network error. Please check your connection.",
-    "not_connected": "Not connected to server"
+    "not_connected": "Not connected to server",
+    "connection_error": "Connection error",
+    "failed_to_connect": "Failed to connect",
+    "server_unavailable": "Server is unavailable. Please try again later.",
+    "request_timeout": "Request timed out. Server is not responding."
   },
   "duration": {
     "minutes_one": "{{count}} minute",
@@ -47,5 +58,53 @@
     "months_one": "{{count}} month",
     "months_other": "{{count}} months",
     "zero_days": "0 days"
+  },
+  "visit_status": {
+    "planned": "Planned",
+    "in_progress": "In progress",
+    "completed": "Completed",
+    "cancelled": "Cancelled",
+    "rescheduled": "Rescheduled"
+  },
+  "visit_type": {
+    "revision": "Revision",
+    "installation": "Installation",
+    "repair": "Repair",
+    "consultation": "Consultation",
+    "follow_up": "Follow-up visit"
+  },
+  "visit_result": {
+    "successful": "Successful",
+    "partial": "Partial",
+    "failed": "Failed",
+    "customer_absent": "Customer absent",
+    "rescheduled": "Rescheduled"
+  },
+  "communication_type": {
+    "email_sent": "Sent email",
+    "email_received": "Received email",
+    "call": "Phone call",
+    "note": "Note",
+    "sms": "SMS"
+  },
+  "work_type": {
+    "revision": "Revision",
+    "repair": "Repair",
+    "installation": "Installation",
+    "consultation": "Consultation",
+    "follow_up": "Follow-up visit"
+  },
+  "work_result": {
+    "successful": "Successful",
+    "partial": "Partial",
+    "failed": "Failed",
+    "customer_absent": "Customer absent",
+    "rescheduled": "Rescheduled"
+  },
+  "break_warnings": {
+    "km_out_of_range": "Break is outside km range (configured {{min}}-{{max}} km)",
+    "time_out_of_range": "Break is outside time range (configured {{earliest}}-{{latest}})",
+    "driving_rule_late": "Break is late relative to 4.5h driving rule (estimated {{minutes}} min driving)",
+    "legal_minimum": "Legal minimum break is {{minutes}} minutes"
   }
 }

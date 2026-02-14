@@ -14,6 +14,7 @@ import type {
 } from '@shared/import';
 import { useNatsStore } from './natsStore';
 import { logger } from '../utils/logger';
+import i18n from '@/i18n';
 
 // Job types - all import types plus other background jobs
 export type JobType = 
@@ -27,18 +28,23 @@ export type JobType =
   | 'route'
   | 'export';
 
-// Human-readable names for job types
-const JOB_TYPE_NAMES: Record<JobType, string> = {
-  'import.customer': 'Import zákazníků',
-  'import.device': 'Import zařízení',
-  'import.revision': 'Import revizí',
-  'import.communication': 'Import komunikace',
-  'import.work_log': 'Import pracovního deníku',
-  'import.zip': 'Import ZIP',
-  'geocode': 'Geokódování',
-  'route': 'Plánování trasy',
-  'export': 'Export dat',
+// i18n keys for job type names
+const JOB_TYPE_KEYS: Record<JobType, string> = {
+  'import.customer': 'jobs:type_import_customer',
+  'import.device': 'jobs:type_import_device',
+  'import.revision': 'jobs:type_import_revision',
+  'import.communication': 'jobs:type_import_communication',
+  'import.work_log': 'jobs:type_import_work_log',
+  'import.zip': 'jobs:type_import_zip',
+  'geocode': 'jobs:type_geocode',
+  'route': 'jobs:type_route',
+  'export': 'jobs:type_export',
 };
+
+/** Get translated job type name */
+export function getJobTypeName(type: JobType): string {
+  return i18n.t(JOB_TYPE_KEYS[type]);
+}
 
 interface ExportJobStatusUpdate {
   jobId: string;
@@ -293,28 +299,28 @@ function handleImportJobStatusUpdate(update: GenericImportJobStatusUpdate, jobTy
   
   if (status.type === 'queued') {
     jobStatus = 'queued';
-    progressText = `Pozice ve frontě: ${status.position}`;
+    progressText = i18n.t('jobs:queue_position', { position: status.position });
   } else if (status.type === 'parsing') {
     jobStatus = 'processing';
     progress = status.progress;
-    progressText = 'Parsování CSV...';
+    progressText = i18n.t('jobs:parsing_csv');
   } else if (status.type === 'importing') {
     jobStatus = 'processing';
     progress = Math.round((status.processed / status.total) * 100);
-    progressText = `${status.processed}/${status.total} (${status.succeeded} úspěšně, ${status.failed} chyb)`;
+    progressText = i18n.t('jobs:progress_importing', { processed: status.processed, total: status.total, succeeded: status.succeeded, failed: status.failed });
   } else if (status.type === 'completed') {
     jobStatus = 'completed';
     progress = 100;
-    progressText = `Dokončeno: ${status.succeeded}/${status.total} úspěšně`;
+    progressText = i18n.t('jobs:progress_completed', { succeeded: status.succeeded, total: status.total });
     if (status.failed > 0) {
-      progressText += ` (${status.failed} chyb)`;
+      progressText += ` ${i18n.t('jobs:progress_errors', { failed: status.failed })}`;
     }
     completedAt = new Date();
     report = status.report;
   } else if (status.type === 'failed') {
     jobStatus = 'failed';
     error = status.error;
-    progressText = 'Import selhal';
+    progressText = i18n.t('jobs:import_failed');
     completedAt = new Date();
   } else {
     return;
@@ -336,7 +342,7 @@ function handleImportJobStatusUpdate(update: GenericImportJobStatusUpdate, jobTy
     store.addJob({
       id: jobId,
       type: jobType,
-      name: JOB_TYPE_NAMES[jobType],
+      name: getJobTypeName(jobType),
       status: jobStatus,
       progress,
       progressText,
@@ -365,15 +371,15 @@ function handleZipImportJobStatusUpdate(update: ZipImportJobStatusUpdate) {
   
   if (status.type === 'queued') {
     jobStatus = 'queued';
-    progressText = `Pozice ve frontě: ${status.position}`;
+    progressText = i18n.t('jobs:queue_position', { position: status.position });
   } else if (status.type === 'extracting') {
     jobStatus = 'processing';
     progress = status.progress;
-    progressText = 'Rozbalování ZIP...';
+    progressText = i18n.t('jobs:extracting_zip');
   } else if (status.type === 'analyzing') {
     jobStatus = 'processing';
     progress = 10;
-    progressText = `Nalezeno ${status.files.length} souborů k importu`;
+    progressText = i18n.t('jobs:found_files', { count: status.files.length });
   } else if (status.type === 'importing') {
     jobStatus = 'processing';
     const baseProgress = (status.completedFiles / status.totalFiles) * 100;
@@ -385,7 +391,7 @@ function handleZipImportJobStatusUpdate(update: ZipImportJobStatusUpdate) {
     progress = 100;
     const totalSucceeded = status.results.reduce((sum, r) => sum + r.succeeded, 0);
     const totalFailed = status.results.reduce((sum, r) => sum + r.failed, 0);
-    progressText = `${status.totalFiles} souborů: ${totalSucceeded} úspěšně, ${totalFailed} chyb`;
+    progressText = i18n.t('jobs:zip_completed', { totalFiles: status.totalFiles, succeeded: totalSucceeded, failed: totalFailed });
     completedAt = new Date();
     // Merge all file reports into a combined report
     const allIssues = status.results.flatMap(r => r.report?.issues ?? []);
@@ -404,7 +410,7 @@ function handleZipImportJobStatusUpdate(update: ZipImportJobStatusUpdate) {
   } else if (status.type === 'failed') {
     jobStatus = 'failed';
     error = status.error;
-    progressText = 'Import ZIP selhal';
+    progressText = i18n.t('jobs:zip_import_failed');
     completedAt = new Date();
   } else {
     return;
@@ -425,7 +431,7 @@ function handleZipImportJobStatusUpdate(update: ZipImportJobStatusUpdate) {
     store.addJob({
       id: jobId,
       type: 'import.zip',
-      name: JOB_TYPE_NAMES['import.zip'],
+      name: getJobTypeName('import.zip'),
       status: jobStatus,
       progress,
       progressText,
@@ -453,20 +459,20 @@ function handleGeocodeJobStatusUpdate(update: GeocodeJobStatusUpdate) {
   
   if (status.type === 'queued') {
     jobStatus = 'queued';
-    progressText = `Pozice ve frontě: ${status.position}`;
+    progressText = i18n.t('jobs:queue_position', { position: status.position });
   } else if (status.type === 'processing') {
     jobStatus = 'processing';
     progress = status.total > 0 ? Math.round((status.processed / status.total) * 100) : 0;
-    progressText = `${status.processed}/${status.total} (${status.succeeded} OK, ${status.failed} chyb)`;
+    progressText = i18n.t('jobs:geocode_progress', { processed: status.processed, total: status.total, succeeded: status.succeeded, failed: status.failed });
   } else if (status.type === 'completed') {
     jobStatus = 'completed';
     progress = 100;
-    progressText = `Dokončeno: ${status.succeeded}/${status.total} úspěšně`;
+    progressText = i18n.t('jobs:geocode_completed', { succeeded: status.succeeded, total: status.total });
     completedAt = new Date();
   } else if (status.type === 'failed') {
     jobStatus = 'failed';
     error = status.error;
-    progressText = 'Geokódování selhalo';
+    progressText = i18n.t('jobs:geocode_failed');
     completedAt = new Date();
   } else {
     return;
@@ -486,7 +492,7 @@ function handleGeocodeJobStatusUpdate(update: GeocodeJobStatusUpdate) {
     store.addJob({
       id: jobId,
       type: 'geocode',
-      name: 'Geokódování',
+      name: getJobTypeName('geocode'),
       status: jobStatus,
       progress,
       progressText,
@@ -513,21 +519,21 @@ function handleExportJobStatusUpdate(update: ExportJobStatusUpdate) {
 
   if (status.type === 'queued') {
     jobStatus = 'queued';
-    progressText = status.position ? `Pozice ve frontě: ${status.position}` : 'Ve frontě';
+    progressText = status.position ? i18n.t('jobs:queue_position', { position: status.position }) : i18n.t('jobs:queue_waiting');
   } else if (status.type === 'processing') {
     jobStatus = 'processing';
     progress = status.progress;
-    progressText = status.message || 'Export běží...';
+    progressText = status.message || i18n.t('jobs:export_running');
   } else if (status.type === 'completed') {
     jobStatus = 'completed';
     progress = 100;
     const fileName = status.result?.fileName;
-    progressText = fileName ? `Dokončeno: ${fileName}` : 'Export dokončen';
+    progressText = fileName ? i18n.t('jobs:export_completed_file', { fileName }) : i18n.t('jobs:export_completed');
     completedAt = new Date();
   } else if (status.type === 'failed') {
     jobStatus = 'failed';
     error = status.error;
-    progressText = 'Export selhal';
+    progressText = i18n.t('jobs:export_failed');
     completedAt = new Date();
   } else {
     return;
@@ -547,7 +553,7 @@ function handleExportJobStatusUpdate(update: ExportJobStatusUpdate) {
     store.addJob({
       id: jobId,
       type: 'export',
-      name: JOB_TYPE_NAMES.export,
+      name: getJobTypeName('export'),
       status: jobStatus,
       progress,
       progressText,

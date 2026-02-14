@@ -13,6 +13,7 @@ import type {
 import { createRequest } from '@shared/messages';
 import { useNatsStore } from '../stores/natsStore';
 import { getToken } from '@/utils/auth';
+import i18n from '@/i18n';
 
 export interface VisitServiceDeps {
   request: <TRes>(subject: string, payload: unknown) => Promise<TRes>;
@@ -154,42 +155,27 @@ export async function deleteVisit(
  * Get visit status label
  */
 export function getVisitStatusLabel(status: string): string {
-  const labels: Record<string, string> = {
-    planned: 'Naplánováno',
-    in_progress: 'Probíhá',
-    completed: 'Dokončeno',
-    cancelled: 'Zrušeno',
-    rescheduled: 'Přeplánováno',
-  };
-  return labels[status] || status;
+  const key = `common:visit_status.${status}`;
+  const translated = i18n.t(key);
+  return translated !== key ? translated : status;
 }
 
 /**
  * Get visit type label
  */
 export function getVisitTypeLabel(type: string): string {
-  const labels: Record<string, string> = {
-    revision: 'Revize',
-    installation: 'Instalace',
-    repair: 'Oprava',
-    consultation: 'Konzultace',
-    follow_up: 'Následná návštěva',
-  };
-  return labels[type] || type;
+  const key = `common:visit_type.${type}`;
+  const translated = i18n.t(key);
+  return translated !== key ? translated : type;
 }
 
 /**
  * Get visit result label
  */
 export function getVisitResultLabel(result: string): string {
-  const labels: Record<string, string> = {
-    successful: 'Úspěšná',
-    partial: 'Částečná',
-    failed: 'Neúspěšná',
-    customer_absent: 'Zákazník nepřítomen',
-    rescheduled: 'Přeplánováno',
-  };
-  return labels[result] || result;
+  const key = `common:visit_result.${result}`;
+  const translated = i18n.t(key);
+  return translated !== key ? translated : result;
 }
 
 /**

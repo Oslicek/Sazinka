@@ -5,6 +5,7 @@ import type { Communication } from '@shared/communication';
 import { listRevisions } from './revisionService';
 import { listVisits, getVisitTypeLabel } from './visitService';
 import { listCommunications, getCommunicationTypeLabel } from './communicationService';
+import i18n from '@/i18n';
 
 export type CalendarViewMode = 'due' | 'scheduled';
 
@@ -46,8 +47,8 @@ function mapRevisionToCalendarItem(revision: Revision, viewMode: CalendarViewMod
     type: 'revision',
     date,
     status: getRevisionStatus(revision),
-    title: revision.customerName || 'Zákazník',
-    subtitle: revision.deviceType || revision.deviceName || 'Zařízení',
+    title: revision.customerName || i18n.t('common:customer'),
+    subtitle: revision.deviceType || revision.deviceName || i18n.t('common:device'),
     timeStart: revision.scheduledTimeStart ?? null,
     timeEnd: revision.scheduledTimeEnd ?? null,
     customerId: revision.customerId,
@@ -76,7 +77,7 @@ function mapVisitToCalendarItem(visit: Visit): CalendarItem | null {
     type: 'visit',
     date,
     status: getVisitStatus(visit),
-    title: visit.customerName || 'Zákazník',
+    title: visit.customerName || i18n.t('common:customer'),
     subtitle: getVisitTypeLabel(visit.visitType),
     timeStart: visit.scheduledTimeStart ?? null,
     timeEnd: visit.scheduledTimeEnd ?? null,
@@ -106,7 +107,7 @@ function mapCommunicationToCalendarItem(comm: Communication): CalendarItem | nul
     type: 'task',
     date,
     status: getCommunicationStatus(comm),
-    title: comm.contactName || 'Follow-up',
+    title: comm.contactName || i18n.t('common:follow_up'),
     subtitle: getCommunicationTypeLabel(comm.commType),
     customerId: comm.customerId,
     sourceStatus: comm.commType,

@@ -12,6 +12,7 @@ import type {
 import { createRequest } from '@shared/messages';
 import { useNatsStore } from '../stores/natsStore';
 import { getToken } from '@/utils/auth';
+import i18n from '@/i18n';
 
 export interface CommunicationServiceDeps {
   request: <TRes>(subject: string, payload: unknown) => Promise<TRes>;
@@ -99,14 +100,9 @@ export async function deleteCommunication(
  * Get communication type label
  */
 export function getCommunicationTypeLabel(type: string): string {
-  const labels: Record<string, string> = {
-    email_sent: 'Odeslaný e-mail',
-    email_received: 'Přijatý e-mail',
-    call: 'Telefonát',
-    note: 'Poznámka',
-    sms: 'SMS',
-  };
-  return labels[type] || type;
+  const key = `common:communication_type.${type}`;
+  const translated = i18n.t(key);
+  return translated !== key ? translated : type;
 }
 
 /**

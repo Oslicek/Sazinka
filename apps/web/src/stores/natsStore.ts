@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { connect, NatsConnection, JSONCodec } from 'nats.ws';
 import { logger } from '../utils/logger';
+import i18n from '@/i18n';
 
 interface NatsState {
   connection: NatsConnection | null;
@@ -52,7 +53,7 @@ export const useNatsStore = create<NatsState>((set, get) => ({
               set({ isConnected: true, error: null });
               break;
             case 'error':
-              set({ error: status.data?.toString() || 'Connection error' });
+              set({ error: status.data?.toString() || i18n.t('common:errors.connection_error') });
               break;
           }
         }
@@ -61,7 +62,7 @@ export const useNatsStore = create<NatsState>((set, get) => ({
     } catch (error) {
       set({
         isConnecting: false,
-        error: error instanceof Error ? error.message : 'Failed to connect',
+        error: error instanceof Error ? error.message : i18n.t('common:errors.failed_to_connect'),
       });
     }
   },
@@ -82,7 +83,7 @@ export const useNatsStore = create<NatsState>((set, get) => ({
     const { connection, isConnected } = get();
 
     if (!connection || !isConnected) {
-      throw new Error('Není připojení k serveru');
+      throw new Error(i18n.t('common:errors.not_connected'));
     }
 
     try {
@@ -99,10 +100,10 @@ export const useNatsStore = create<NatsState>((set, get) => ({
       if (error instanceof Error) {
         const message = error.message.toLowerCase();
         if (message.includes('503') || message.includes('no responders')) {
-          throw new Error('Server není dostupný. Zkuste to prosím za chvíli.');
+          throw new Error(i18n.t('common:errors.server_unavailable'));
         }
         if (message.includes('timeout') || message.includes('timed out')) {
-          throw new Error('Požadavek vypršel. Server neodpovídá.');
+          throw new Error(i18n.t('common:errors.request_timeout'));
         }
       }
       throw error;
@@ -116,7 +117,7 @@ export const useNatsStore = create<NatsState>((set, get) => ({
     const { connection, isConnected } = get();
 
     if (!connection || !isConnected) {
-      throw new Error('Not connected to NATS');
+      throw new Error(i18n.t('common:errors.not_connected'));
     }
 
     const sub = connection.subscribe(subject);

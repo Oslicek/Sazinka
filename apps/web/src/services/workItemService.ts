@@ -14,6 +14,7 @@ import type {
 import { createRequest } from '@shared/messages';
 import { useNatsStore } from '../stores/natsStore';
 import { getToken } from '@/utils/auth';
+import i18n from '@/i18n';
 
 export interface WorkItemServiceDeps {
   request: <TRes>(subject: string, payload: unknown) => Promise<TRes>;
@@ -97,31 +98,21 @@ export async function completeWorkItem(
 }
 
 /**
- * Get work type label in Czech
+ * Get work type label
  */
 export function getWorkTypeLabel(type: WorkType): string {
-  const labels: Record<WorkType, string> = {
-    revision: 'Revize',
-    repair: 'Oprava',
-    installation: 'Instalace',
-    consultation: 'Konzultace',
-    follow_up: 'Následná návštěva',
-  };
-  return labels[type] || type;
+  const key = `common:work_type.${type}`;
+  const translated = i18n.t(key);
+  return translated !== key ? translated : type;
 }
 
 /**
- * Get work result label in Czech
+ * Get work result label
  */
 export function getWorkResultLabel(result: WorkResult): string {
-  const labels: Record<WorkResult, string> = {
-    successful: 'Úspěšně',
-    partial: 'Částečně',
-    failed: 'Neúspěšně',
-    customer_absent: 'Zákazník nepřítomen',
-    rescheduled: 'Přeplánováno',
-  };
-  return labels[result] || result;
+  const key = `common:work_result.${result}`;
+  const translated = i18n.t(key);
+  return translated !== key ? translated : result;
 }
 
 /**

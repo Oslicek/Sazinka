@@ -1,5 +1,6 @@
 import type { BreakSettings } from '@shared/settings';
 import type { SavedRouteStop } from '../services/routeService';
+import i18n from '@/i18n';
 
 /**
  * Result of break position calculation
@@ -177,7 +178,7 @@ export function calculateBreakPosition(
         );
         return currentKmDiff < bestKmDiff ? current : best;
       });
-      warnings.push(`Pauza je mimo rozmezí km (nastaveno ${breakSettings.breakMinKm}-${breakSettings.breakMaxKm} km)`);
+      warnings.push(i18n.t('common:break_warnings.km_out_of_range', { min: breakSettings.breakMinKm, max: breakSettings.breakMaxKm }));
     } else {
       // No time-valid position — pick closest to break window,
       // preferring positions where the break chronologically fits in the gap.
@@ -199,10 +200,10 @@ export function calculateBreakPosition(
         );
         return curDiff < bestDiff ? current : best;
       });
-      warnings.push(`Pauza je mimo časové rozmezí (nastaveno ${breakSettings.breakEarliestTime}-${breakSettings.breakLatestTime})`);
+      warnings.push(i18n.t('common:break_warnings.time_out_of_range', { earliest: breakSettings.breakEarliestTime, latest: breakSettings.breakLatestTime }));
 
       if (!bestCandidate.kmValid) {
-        warnings.push(`Pauza je mimo rozmezí km (nastaveno ${breakSettings.breakMinKm}-${breakSettings.breakMaxKm} km)`);
+        warnings.push(i18n.t('common:break_warnings.km_out_of_range', { min: breakSettings.breakMinKm, max: breakSettings.breakMaxKm }));
       }
     }
   }
@@ -210,11 +211,11 @@ export function calculateBreakPosition(
   if (enforceDrivingBreakRule) {
     if (bestCandidate.cumulativeDrivingMinutes > maxDrivingMinutes) {
       warnings.push(
-        `Pauza je pozdě vzhledem k pravidlu 4,5 h řízení (odhad ${Math.round(bestCandidate.cumulativeDrivingMinutes)} min řízení)`
+        i18n.t('common:break_warnings.driving_rule_late', { minutes: Math.round(bestCandidate.cumulativeDrivingMinutes) })
       );
     }
     if (breakSettings.breakDurationMinutes < requiredBreakMinutes) {
-      warnings.push(`Legislativní minimum pauzy je ${requiredBreakMinutes} minut`);
+      warnings.push(i18n.t('common:break_warnings.legal_minimum', { minutes: requiredBreakMinutes }));
     }
   }
 
@@ -261,7 +262,7 @@ export function createBreakStop(
     status: 'pending',
     stopType: 'break',
     customerId: null,
-    customerName: 'Pauza',
+    customerName: i18n.t('common:break_label'),
     address: '',
     customerLat: null,
     customerLng: null,
@@ -312,12 +313,12 @@ export function validateBreak(
   const latestMinutes = latestHour * 60 + latestMin;
 
   if (breakMinutes < earliestMinutes || breakMinutes > latestMinutes) {
-    warnings.push(`Pauza je mimo časové rozmezí (nastaveno ${breakSettings.breakEarliestTime}-${breakSettings.breakLatestTime})`);
+    warnings.push(i18n.t('common:break_warnings.time_out_of_range', { earliest: breakSettings.breakEarliestTime, latest: breakSettings.breakLatestTime }));
   }
 
   // Check km constraint
   if (cumulativeKm < breakSettings.breakMinKm || cumulativeKm > breakSettings.breakMaxKm) {
-    warnings.push(`Pauza je mimo rozmezí km (nastaveno ${breakSettings.breakMinKm}-${breakSettings.breakMaxKm} km)`);
+    warnings.push(i18n.t('common:break_warnings.km_out_of_range', { min: breakSettings.breakMinKm, max: breakSettings.breakMaxKm }));
   }
 
   return warnings;

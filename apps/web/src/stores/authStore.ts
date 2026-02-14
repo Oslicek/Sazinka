@@ -172,13 +172,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   getUserId: () => {
     const user = get().user;
-    if (!user) throw new Error('Not authenticated');
+    if (!user) throw new Error(i18n.t('common:not_authenticated'));
     return user.id;
   },
 
   getRole: () => {
     const user = get().user;
-    if (!user) throw new Error('Not authenticated');
+    if (!user) throw new Error(i18n.t('common:not_authenticated'));
     return user.role;
   },
 

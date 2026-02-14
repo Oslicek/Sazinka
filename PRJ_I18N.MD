@@ -767,7 +767,7 @@ The `locale` field is included in the JWT payload and `UserPublic` type so it's 
 
 ## Implementation Status
 
-> Last updated: 2026-02-14
+> Last updated: 2026-02-15
 
 ### Phase 0: Infrastructure — ✅ COMPLETE
 
@@ -848,7 +848,9 @@ The previous session extracted route summary stats/actions into shared component
 
 ### Phase 4: Planning — ✅ COMPLETE (see above)
 
-### Phase 5: Secondary pages (Settings, Jobs, Routes, WorkLog, Import/Export) — ✅ COMPLETE
+### Phase 5: Secondary pages — ✅ COMPLETE (see above)
+
+### Phase 6: Stores, services, utilities — ✅ COMPLETE
 
 | Step | Status | Notes |
 |------|--------|-------|
@@ -884,7 +886,22 @@ The previous session extracted route summary stats/actions into shared component
 
 **Phase 5 done criteria:** All secondary frontend pages and components render in active locale. Tests: 544/548 passing (4 pre-existing failures unrelated to i18n).
 
-### Phases 6–9: ❌ Not started
+### Phase 6: Stores, services, utilities — ✅ COMPLETE
+
+| Step | Status | Notes |
+|------|--------|-------|
+| 6.1 authStore.ts | ✅ Done | `'Not authenticated'` → `i18n.t('common:not_authenticated')`. Test assertion updated in `authStore.test.ts`. |
+| 6.2 activeJobsStore.ts | ✅ Done | `JOB_TYPE_NAMES` → `JOB_TYPE_KEYS` (9 i18n keys). All progress text (~20 strings) across 4 status handlers replaced. Added `getJobTypeName()` helper. 26 new keys in `jobs.json`. |
+| 6.3 natsStore.ts | ✅ Done | 5 strings replaced: 3 Czech error messages + 2 English fallbacks. All use `common:errors.*` keys. |
+| 6.4 Services | ✅ Done | `calendarService.ts`: 3 fallback labels. `visitService.ts`: 3 label functions (15 strings → dynamic key lookup). `communicationService.ts`: 1 label function (5 strings). `workItemService.ts`: 2 label functions (10 strings). All use `common:visit_status.*`, `common:visit_type.*`, etc. |
+| 6.5 insertionService.ts | ⏭️ Skipped | No Czech strings; format is locale-neutral. |
+| 6.6 breakUtils.ts | ✅ Done | 8 Czech warning strings → `i18n.t('common:break_warnings.*')`. `'Pauza'` → `i18n.t('common:break_label')`. |
+
+**New keys:** 35 in `common.json` (labels, errors, visit/work/communication types, break warnings) + 26 in `jobs.json` (type names, progress text). Total: 61 new keys.
+
+**Test results:** 544/548 passing. 4 pre-existing failures (2 × `customerService.test.ts`, 2 × `CandidateDetail.test.tsx`). Key parity check passes.
+
+### Phases 7–9: ❌ Not started
 
 ---
 
@@ -1065,20 +1082,24 @@ The previous session extracted route summary stats/actions into shared component
 
 ---
 
-### Phase 6: Stores, services, utilities
+### Phase 6: Stores, services, utilities ✅ COMPLETE
 
 **Goal:** Non-React code (Zustand stores, service functions, utils) uses i18n.
 
-| Step | TDD: Red | Green |
-|------|---------|-------|
-| 6.1 | Test: `authStore.ts` error messages use `i18n.t()`. | Replace 3 hardcoded error strings. |
-| 6.2 | Test: `activeJobsStore.ts` job type names use `i18n.t()`. | Replace job type labels. |
-| 6.3 | Test: `natsStore.ts` connection error messages use `i18n.t()`. | Replace 2 error strings. |
-| 6.4 | Test: `calendarService.ts`, `visitService.ts`, `communicationService.ts` labels use `i18n.t()`. | Replace service-level labels. |
-| 6.5 | Test: `insertionService.ts` format strings use `i18n.t()`. | Replace "+Xmin / +Ykm" patterns. |
-| 6.6 | Test: `breakUtils.ts` unit labels use `i18n.t()`. | Replace "km", "min" strings. |
+| Step | TDD: Red | Green | Status |
+|------|---------|-------|--------|
+| 6.1 | Test: `authStore.ts` error messages use `i18n.t()`. | Replace 3 hardcoded error strings. | ✅ `'Not authenticated'` → `i18n.t('common:not_authenticated')` (already had i18n for login/register errors from Phase 1). Test assertion updated. |
+| 6.2 | Test: `activeJobsStore.ts` job type names use `i18n.t()`. | Replace job type labels. | ✅ `JOB_TYPE_NAMES` → `JOB_TYPE_KEYS` (9 keys). All progress text (~20 strings) replaced with `i18n.t()` calls across 4 handlers. Added `getJobTypeName()` helper. |
+| 6.3 | Test: `natsStore.ts` connection error messages use `i18n.t()`. | Replace 2 error strings. | ✅ 5 strings replaced: `'Není připojení k serveru'`, `'Server není dostupný...'`, `'Požadavek vypršel...'`, `'Connection error'`, `'Failed to connect'`, `'Not connected to NATS'`. |
+| 6.4 | Test: `calendarService.ts`, `visitService.ts`, `communicationService.ts` labels use `i18n.t()`. | Replace service-level labels. | ✅ `calendarService.ts`: 3 fallback strings (`'Zákazník'`, `'Zařízení'`, `'Follow-up'`). `visitService.ts`: 3 label functions (15 strings). `communicationService.ts`: 1 label function (5 strings). `workItemService.ts`: 2 label functions (10 strings). All use dynamic key lookup pattern. |
+| 6.5 | Test: `insertionService.ts` format strings use `i18n.t()`. | Replace "+Xmin / +Ykm" patterns. | ⏭️ Skipped — no Czech strings found; format is locale-neutral (`+Xmin / +Ykm`). |
+| 6.6 | Test: `breakUtils.ts` unit labels use `i18n.t()`. | Replace "km", "min" strings. | ✅ 8 Czech warning strings replaced with `i18n.t('common:break_warnings.*')` calls. `'Pauza'` label → `i18n.t('common:break_label')`. |
 
-**Phase 6 done criteria:** No hardcoded Czech in stores, services, or utils. ~25 keys moved to existing namespaces.
+**New keys added:**
+- `common.json`: +35 keys — `not_authenticated`, `customer`, `device`, `follow_up`, `break_label`, `status.rescheduled`, `units.minutes_word`, 5 error keys, 5 visit_status, 5 visit_type, 5 visit_result, 5 communication_type, 5 work_type, 5 work_result, 4 break_warnings.
+- `jobs.json`: +26 keys — 9 type names, 17 progress/status text keys.
+
+**Phase 6 done criteria:** ✅ No hardcoded Czech in stores, services, or utils. 61 new keys added to existing namespaces (`common` + `jobs`). 544/548 tests passing (4 pre-existing failures unrelated to i18n).
 
 ---
 
