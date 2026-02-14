@@ -740,6 +740,23 @@ export function PlanningInbox() {
   const routeStartTime = (currentCrew?.workingHoursStart ?? defaultWorkingHoursStart)?.slice(0, 5) ?? null;
   const routeEndTime = (currentCrew?.workingHoursEnd ?? defaultWorkingHoursEnd)?.slice(0, 5) ?? null;
 
+  // Actual route start/end derived from timeline data
+  const actualRouteStart = depotDeparture?.slice(0, 5) ?? routeStartTime;
+  const actualRouteEnd = useMemo(() => {
+    if (routeStops.length === 0) return routeEndTime;
+    const lastStop = routeStops[routeStops.length - 1];
+    const lastDeparture = lastStop.estimatedDeparture ?? lastStop.estimatedArrival;
+    if (!lastDeparture) return routeEndTime;
+    const returnMin = returnToDepotLeg?.durationMinutes ?? 0;
+    if (returnMin <= 0) return lastDeparture.slice(0, 5);
+    // Parse HH:MM and add return travel time
+    const [hh, mm] = lastDeparture.slice(0, 5).split(':').map(Number);
+    const totalMin = hh * 60 + mm + Math.round(returnMin);
+    const endH = Math.floor(totalMin / 60) % 24;
+    const endM = totalMin % 60;
+    return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+  }, [routeStops, returnToDepotLeg, routeEndTime]);
+
   // Selected candidate (from candidates list or fallback from route stops)
   const selectedCandidate = useMemo(() => 
     candidates.find((c) => c.customerId === selectedCandidateId),
@@ -2341,17 +2358,25 @@ export function PlanningInbox() {
             <div className={styles.summaryStats}>
               <div className={styles.statItem}>
                 <span className={styles.statLabel}>Začátek</span>
-                <span className={styles.statValue}>{routeStartTime ?? '—'}</span>
+                <span className={styles.statValue}>{actualRouteStart ?? '—'}</span>
               </div>
               <div className={styles.statItem}>
                 <span className={styles.statLabel}>Konec</span>
-                <span className={styles.statValue}>{routeEndTime ?? '—'}</span>
+                <span className={styles.statValue}>{actualRouteEnd ?? '—'}</span>
               </div>
               <span className={styles.statSep}>|</span>
               <div className={styles.statItem}>
                 <span className={styles.statLabel}>Celkový čas</span>
                 <span className={styles.statValue}>
-                  {metrics ? formatMinutesHm((metrics.travelTimeMin ?? 0) + (metrics.serviceTimeMin ?? 0)) : '—'}
+                  {(() => {
+                    if (actualRouteStart && actualRouteEnd && routeStops.length > 0) {
+                      const [sh, sm] = actualRouteStart.split(':').map(Number);
+                      const [eh, em] = actualRouteEnd.split(':').map(Number);
+                      const totalMin = (eh * 60 + em) - (sh * 60 + sm);
+                      return totalMin > 0 ? formatMinutesHm(totalMin) : '—';
+                    }
+                    return metrics ? formatMinutesHm((metrics.travelTimeMin ?? 0) + (metrics.serviceTimeMin ?? 0)) : '—';
+                  })()}
                 </span>
               </div>
               <div className={styles.statItem}>
