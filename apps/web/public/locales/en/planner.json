@@ -294,5 +294,29 @@
   "shortcut_schedule": "Schedule appointment",
   "shortcut_snooze": "Snooze",
   "shortcut_fix_address": "Fix address",
-  "shortcut_save": "Save plan"
+  "shortcut_save": "Save plan",
+
+  "all_positions_conflict": "All positions have a conflict",
+
+  "warning": {
+    "arrival_after_window": "{{name}}: arrival at {{arrival}} is after window end {{windowEnd}}",
+    "arrival_late_after_start": "{{name}}: arrival at {{arrival}} is {{lateMinutes}} min after window start {{windowStart}}",
+    "solver_fallback": "Optimizer failed or timed out, using simple heuristic",
+    "arrival_delayed": "Arrival at {{name}} delayed by {{lateMinutes}} min (agreed until {{windowEnd}})"
+  },
+
+  "slot": {
+    "no_active_crew": "No active crew found.",
+    "crew_route_failed": "Crew {{name}}: failed to calculate route.",
+    "suitable": "Suitable slot",
+    "suggestion_detail": "{{crewName}} (Δ{{deltaMinutes}} min, slack {{slackMinutes}} min)",
+    "outside_working_hours": "Slot is outside crew working hours.",
+    "overlaps_visit": "Slot overlaps with visit {{name}}.",
+    "earliest_arrival": "Earliest arrival from previous stop is at {{time}}.",
+    "minimal_slack_before": "Minimal time slack before the slot.",
+    "cannot_reach_next": "Cannot reach next stop {{name}} at {{time}} after the slot.",
+    "minimal_slack_after": "Minimal time slack after the slot.",
+    "crew_heavily_loaded": "Crew day is heavily loaded ({{load}}%).",
+    "conflicts_with_break": "Slot conflicts with preferred break window."
+  }
 }

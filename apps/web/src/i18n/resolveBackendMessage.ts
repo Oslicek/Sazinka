@@ -22,8 +22,29 @@ export function resolveBackendMessage(
 ): string {
   const i18n = instance ?? defaultI18n;
 
-  // Legacy plain string — pass through as-is
-  if (typeof message === 'string') return message;
+  // If it's a string, try to parse as JSON { key, params } first
+  if (typeof message === 'string') {
+    // Quick check: if it looks like JSON, try to parse
+    if (message.startsWith('{') && message.includes('"key"')) {
+      try {
+        const parsed = JSON.parse(message);
+        if (parsed && typeof parsed.key === 'string') {
+          return resolveBackendMessage(parsed, instance);
+        }
+      } catch {
+        // Not valid JSON — fall through to plain string handling
+      }
+    }
+    // Plain string — could be a simple i18n key (e.g. "jobs:loading_customers")
+    // or a legacy Czech/English string
+    if (message.includes(':') && !message.includes(' ')) {
+      const result = i18n.t(message);
+      if (result !== message && result !== message.split(':').slice(1).join(':')) {
+        return result;
+      }
+    }
+    return message;
+  }
 
   const { key, params } = message;
 

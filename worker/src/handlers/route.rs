@@ -6,6 +6,7 @@ use anyhow::Result;
 use async_nats::{Client, Subscriber};
 use futures::StreamExt;
 use sqlx::PgPool;
+use serde_json::json;
 use tracing::{debug, error, warn, info};
 use uuid::Uuid;
 
@@ -109,7 +110,7 @@ pub async fn handle_plan(
             warnings.push(RouteWarning {
                 stop_index: None,
                 warning_type: "MISSING_COORDINATES".to_string(),
-                message: format!("Customer {} has no coordinates and was excluded", customer.name.as_deref().unwrap_or("(unnamed)")),
+                message: json!({"key": "jobs:customer_no_coordinates_excluded", "params": {"name": customer.name.as_deref().unwrap_or("(unnamed)")}}).to_string(),
             });
         }
 
@@ -336,7 +337,7 @@ pub async fn handle_plan(
             warnings.push(RouteWarning {
                 stop_index: None,
                 warning_type: "ROUTING_FALLBACK".to_string(),
-                message: "Valhalla unavailable - using estimated distances (40 km/h average)".to_string(),
+                message: json!({"key": "jobs:routing_fallback"}).to_string(),
             });
         }
 
@@ -1455,7 +1456,7 @@ pub async fn handle_insertion_calculate(
             best_position,
             all_positions: positions,
             is_feasible,
-            infeasible_reason: if !is_feasible { Some("Všechny pozice mají konflikt".to_string()) } else { None },
+            infeasible_reason: if !is_feasible { Some("planner:all_positions_conflict".to_string()) } else { None },
         });
 
         let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;

@@ -10,6 +10,8 @@ use sqlx::PgPool;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
+use serde_json::json;
+
 use crate::auth;
 use crate::db::queries;
 use crate::defaults::DEFAULT_SERVICE_DURATION_MINUTES;
@@ -387,7 +389,7 @@ async fn build_crew_day_stops(
                     _ => DEFAULT_SERVICE_DURATION_MINUTES as i32,
                 };
                 out.push(CrewDayStop {
-                    customer_name: s.customer_name.unwrap_or_else(|| "Zákazník".to_string()),
+                    customer_name: s.customer_name.unwrap_or_else(|| "common:customer".to_string()),
                     coordinates: Coordinates { lat, lng },
                     arrival_time: s.estimated_arrival,
                     departure_time: s.estimated_departure,
@@ -431,7 +433,7 @@ async fn build_crew_day_stops(
             .unwrap_or(DEFAULT_SERVICE_DURATION_MINUTES as i32);
         let departure = start.map(|s| add_minutes(s, duration));
         out.push(CrewDayStop {
-            customer_name: c.name.unwrap_or_else(|| "Zákazník".to_string()),
+            customer_name: c.name.unwrap_or_else(|| "common:customer".to_string()),
             coordinates: Coordinates { lat, lng },
             arrival_time: start,
             departure_time: departure,
@@ -516,7 +518,7 @@ pub async fn handle_suggest_v2(
             warnings.push(SlotWarning {
                 severity: "error".to_string(),
                 warning_type: "no_crews".to_string(),
-                message: "Nebyla nalezena žádná aktivní posádka.".to_string(),
+                message: json!({"key": "planner:slot.no_active_crew"}).to_string(),
                 conflicting_customer: None,
             });
             let response = SuccessResponse::new(
@@ -560,7 +562,7 @@ pub async fn handle_suggest_v2(
                             warnings.push(SlotWarning {
                                 severity: "warning".to_string(),
                                 warning_type: "routing_fallback".to_string(),
-                                message: format!("Posádka {}: nepodařilo se spočítat trasu.", crew.name),
+                                message: json!({"key": "planner:slot.crew_route_failed", "params": {"name": crew.name}}).to_string(),
                                 conflicting_customer: None,
                             });
                             continue;
@@ -625,7 +627,7 @@ pub async fn handle_suggest_v2(
                     reason: p
                         .conflict_reason
                         .clone()
-                        .unwrap_or_else(|| "Vhodný slot".to_string()),
+                        .unwrap_or_else(|| "planner:slot.suitable".to_string()),
                 })
                 .collect();
             suggestions.sort_by_key(|s| s.delta_travel_minutes);
@@ -658,10 +660,7 @@ pub async fn handle_suggest_v2(
                     crew.load,
                     avg_load,
                 );
-                suggestion.reason = format!(
-                    "{} (Δ{} min, rezerva {} min)",
-                    crew.crew_name, suggestion.delta_travel_minutes, suggestion.slack_after_minutes
-                );
+                suggestion.reason = json!({"key": "planner:slot.suggestion_detail", "params": {"crewName": crew.crew_name, "deltaMinutes": suggestion.delta_travel_minutes, "slackMinutes": suggestion.slack_after_minutes}}).to_string();
             }
             crew.suggestions.sort_by(|a, b| b.score.cmp(&a.score));
             final_suggestions.extend(crew.suggestions.clone());
@@ -870,7 +869,7 @@ pub async fn handle_validate(
             warnings.push(SlotWarning {
                 severity: "error".to_string(),
                 warning_type: "outside_working_hours".to_string(),
-                message: "Slot je mimo pracovní dobu posádky.".to_string(),
+                message: json!({"key": "planner:slot.outside_working_hours"}).to_string(),
                 conflicting_customer: None,
             });
             hard_error = true;
@@ -883,7 +882,7 @@ pub async fn handle_validate(
                     warnings.push(SlotWarning {
                         severity: "error".to_string(),
                         warning_type: "overlap".to_string(),
-                        message: format!("Slot se překrývá s návštěvou {}.", stop.customer_name),
+                        message: json!({"key": "planner:slot.overlaps_visit", "params": {"name": stop.customer_name}}).to_string(),
                         conflicting_customer: Some(stop.customer_name.clone()),
                     });
                     hard_error = true;
@@ -939,10 +938,7 @@ pub async fn handle_validate(
                         warnings.push(SlotWarning {
                             severity: "error".to_string(),
                             warning_type: "unreachable".to_string(),
-                            message: format!(
-                                "Příjezd od předchozí zastávky je možný nejdříve v {}.",
-                                earliest_arrival.format("%H:%M")
-                            ),
+                            message: json!({"key": "planner:slot.earliest_arrival", "params": {"time": earliest_arrival.format("%H:%M").to_string()}}).to_string(),
                             conflicting_customer: Some(prev.customer_name.clone()),
                         });
                         hard_error = true;
@@ -950,7 +946,7 @@ pub async fn handle_validate(
                         warnings.push(SlotWarning {
                             severity: "warning".to_string(),
                             warning_type: "no_slack".to_string(),
-                            message: "Před slotem je minimální časová rezerva.".to_string(),
+                            message: json!({"key": "planner:slot.minimal_slack_before"}).to_string(),
                             conflicting_customer: Some(prev.customer_name.clone()),
                         });
                     }
@@ -965,11 +961,7 @@ pub async fn handle_validate(
                         warnings.push(SlotWarning {
                             severity: "error".to_string(),
                             warning_type: "unreachable".to_string(),
-                            message: format!(
-                                "Po slotu nelze stihnout další zastávku {} v {}.",
-                                next.customer_name,
-                                next_start.format("%H:%M")
-                            ),
+                            message: json!({"key": "planner:slot.cannot_reach_next", "params": {"name": next.customer_name, "time": next_start.format("%H:%M").to_string()}}).to_string(),
                             conflicting_customer: Some(next.customer_name.clone()),
                         });
                         hard_error = true;
@@ -977,7 +969,7 @@ pub async fn handle_validate(
                         warnings.push(SlotWarning {
                             severity: "warning".to_string(),
                             warning_type: "no_slack".to_string(),
-                            message: "Po slotu je minimální časová rezerva.".to_string(),
+                            message: json!({"key": "planner:slot.minimal_slack_after"}).to_string(),
                             conflicting_customer: Some(next.customer_name.clone()),
                         });
                     }
@@ -997,7 +989,7 @@ pub async fn handle_validate(
             warnings.push(SlotWarning {
                 severity: "warning".to_string(),
                 warning_type: "overloaded".to_string(),
-                message: format!("Den posádky je silně vytížen ({}%).", load),
+                message: json!({"key": "planner:slot.crew_heavily_loaded", "params": {"load": load}}).to_string(),
                 conflicting_customer: None,
             });
         }
@@ -1013,7 +1005,7 @@ pub async fn handle_validate(
             warnings.push(SlotWarning {
                 severity: "warning".to_string(),
                 warning_type: "break_conflict".to_string(),
-                message: "Slot zasahuje do preferovaného okna pauzy.".to_string(),
+                message: json!({"key": "planner:slot.conflicts_with_break"}).to_string(),
                 conflicting_customer: None,
             });
         }

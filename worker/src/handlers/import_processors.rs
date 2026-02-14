@@ -13,6 +13,8 @@ use sqlx::PgPool;
 use tracing::{error, warn, info};
 use uuid::Uuid;
 
+use serde_json::json;
+
 use crate::auth;
 use crate::db::queries;
 use crate::types::{
@@ -47,21 +49,29 @@ use super::import::{resolve_customer_ref, resolve_device_ref};
 /// Classify an error message into a machine-readable error code
 pub fn classify_error(error_msg: &str) -> (ImportIssueCode, &'static str) {
     let lower = error_msg.to_lowercase();
-    if lower.contains("nenalezen") && lower.contains("zákazník") {
+    // Match i18n keys first
+    if lower.contains("import:customer_not_found") {
         (ImportIssueCode::CustomerNotFound, "customer_ref")
-    } else if lower.contains("nenalezen") && lower.contains("zařízení") {
+    } else if lower.contains("import:device_not_found") {
         (ImportIssueCode::DeviceNotFound, "device_ref")
+    } else if lower.contains("import:missing_") {
+        (ImportIssueCode::MissingField, "")
+    } else if lower.contains("import:invalid_date_format") {
+        (ImportIssueCode::InvalidDate, "")
+    } else if lower.contains("import:revision_already_exists") {
+        (ImportIssueCode::DuplicateRecord, "device_ref+due_date")
+    // Fallback to English patterns
     } else if lower.contains("not found") && lower.contains("customer") {
         (ImportIssueCode::CustomerNotFound, "customer_ref")
     } else if lower.contains("not found") && lower.contains("device") {
         (ImportIssueCode::DeviceNotFound, "device_ref")
     } else if lower.contains("duplicate") || lower.contains("unique") || lower.contains("already exists") || lower.contains("unique_violation") {
         (ImportIssueCode::DuplicateRecord, "")
-    } else if lower.contains("chybí") || lower.contains("missing") {
+    } else if lower.contains("missing") {
         (ImportIssueCode::MissingField, "")
-    } else if lower.contains("datum") || lower.contains("date") || lower.contains("neplatný formát data") {
+    } else if lower.contains("date") || lower.contains("invalid_date") {
         (ImportIssueCode::InvalidDate, "")
-    } else if lower.contains("formát") || lower.contains("format") || lower.contains("invalid") {
+    } else if lower.contains("format") || lower.contains("invalid") {
         (ImportIssueCode::InvalidValue, "")
     } else if lower.contains("db") || lower.contains("database") || lower.contains("sqlx") || lower.contains("constraint") {
         (ImportIssueCode::DbError, "")
@@ -270,7 +280,7 @@ impl DeviceImportProcessor {
         
         Ok(DeviceImportJobSubmitResponse {
             job_id,
-            message: "Import úloha byla zařazena do fronty".to_string(),
+            message: "import:job_queued".to_string(),
         })
     }
     
@@ -335,7 +345,7 @@ impl DeviceImportProcessor {
         let rows = match self.parse_csv(&job.request.csv_content).await {
             Ok(rows) => rows,
             Err(e) => {
-                let error_msg = format!("Chyba při parsování CSV: {}", e);
+                let error_msg = json!({"key": "import:csv_parse_error", "params": {"error": e.to_string()}}).to_string();
                 self.publish_status(job_id, DeviceImportJobStatus::Failed { error: error_msg.clone() }).await?;
                 JOB_HISTORY.record_failed(job_id, "import.device", started_at, error_msg);
                 return Ok(());
@@ -344,7 +354,7 @@ impl DeviceImportProcessor {
         
         let total = rows.len() as u32;
         if total == 0 {
-            let error_msg = "CSV soubor neobsahuje žádné záznamy".to_string();
+            let error_msg = "import:csv_empty".to_string();
             self.publish_status(job_id, DeviceImportJobStatus::Failed { error: error_msg.clone() }).await?;
             JOB_HISTORY.record_failed(job_id, "import.device", started_at, error_msg);
             return Ok(());
@@ -404,7 +414,7 @@ impl DeviceImportProcessor {
             job_id,
             "import.device",
             started_at,
-            Some(format!("{}/{} úspěšně importováno", succeeded, total)),
+            Some(json!({"key": "import:completed_summary", "params": {"succeeded": succeeded, "total": total}}).to_string()),
         );
         
         info!("Device import job {} completed: {}/{} succeeded", job_id, succeeded, total);
@@ -429,10 +439,10 @@ impl DeviceImportProcessor {
     
     async fn create_device(&self, user_id: Uuid, row: &CsvDeviceRow) -> Result<Uuid> {
         let customer_ref = row.customer_ref.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Chybí reference zákazníka"))?;
+            .ok_or_else(|| anyhow::anyhow!("import:missing_customer_ref"))?;
         
         let customer_id = resolve_customer_ref(&self.pool, user_id, customer_ref).await?
-            .ok_or_else(|| anyhow::anyhow!("Zákazník '{}' nenalezen", customer_ref))?;
+            .ok_or_else(|| anyhow::anyhow!("{}", json!({"key": "import:customer_not_found", "params": {"name": customer_ref}})))?;
         
         let device_type_str = row.device_type.as_deref().unwrap_or("other");
         let device_type = parse_device_type(device_type_str);
@@ -568,7 +578,7 @@ impl RevisionImportProcessor {
         
         Ok(RevisionImportJobSubmitResponse {
             job_id,
-            message: "Import úloha byla zařazena do fronty".to_string(),
+            message: "import:job_queued".to_string(),
         })
     }
     
@@ -633,7 +643,7 @@ impl RevisionImportProcessor {
         let rows = match self.parse_csv(&job.request.csv_content).await {
             Ok(rows) => rows,
             Err(e) => {
-                let error_msg = format!("Chyba při parsování CSV: {}", e);
+                let error_msg = json!({"key": "import:csv_parse_error", "params": {"error": e.to_string()}}).to_string();
                 self.publish_status(job_id, RevisionImportJobStatus::Failed { error: error_msg.clone() }).await?;
                 JOB_HISTORY.record_failed(job_id, "import.revision", started_at, error_msg);
                 return Ok(());
@@ -642,7 +652,7 @@ impl RevisionImportProcessor {
         
         let total = rows.len() as u32;
         if total == 0 {
-            let error_msg = "CSV soubor neobsahuje žádné záznamy".to_string();
+            let error_msg = "import:csv_empty".to_string();
             self.publish_status(job_id, RevisionImportJobStatus::Failed { error: error_msg.clone() }).await?;
             JOB_HISTORY.record_failed(job_id, "import.revision", started_at, error_msg);
             return Ok(());
@@ -702,7 +712,7 @@ impl RevisionImportProcessor {
             job_id,
             "import.revision",
             started_at,
-            Some(format!("{}/{} úspěšně importováno", succeeded, total)),
+            Some(json!({"key": "import:completed_summary", "params": {"succeeded": succeeded, "total": total}}).to_string()),
         );
         
         info!("Revision import job {} completed: {}/{} succeeded", job_id, succeeded, total);
@@ -728,21 +738,21 @@ impl RevisionImportProcessor {
     /// Create a revision from a CSV row. Uses upsert logic to handle duplicates gracefully.
     async fn create_revision(&self, user_id: Uuid, row: &CsvRevisionRow, row_num: i32, issues: &mut Vec<ImportIssue>) -> Result<Uuid> {
         let customer_ref = row.customer_ref.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Chybí reference zákazníka"))?;
+            .ok_or_else(|| anyhow::anyhow!("import:missing_customer_ref"))?;
         let device_ref = row.device_ref.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Chybí reference zařízení"))?;
+            .ok_or_else(|| anyhow::anyhow!("import:missing_device_ref"))?;
         
         let customer_id = resolve_customer_ref(&self.pool, user_id, customer_ref).await?
-            .ok_or_else(|| anyhow::anyhow!("Zákazník '{}' nenalezen", customer_ref))?;
+            .ok_or_else(|| anyhow::anyhow!("{}", json!({"key": "import:customer_not_found", "params": {"name": customer_ref}})))?;
         
         let device_id = resolve_device_ref(&self.pool, user_id, customer_id, device_ref).await?
-            .ok_or_else(|| anyhow::anyhow!("Zařízení '{}' nenalezeno", device_ref))?;
+            .ok_or_else(|| anyhow::anyhow!("{}", json!({"key": "import:device_not_found", "params": {"name": device_ref}})))?;
         
         let due_date_str = row.due_date.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Chybí termín revize"))?;
+            .ok_or_else(|| anyhow::anyhow!("import:missing_due_date"))?;
         let due_date = NaiveDate::parse_from_str(due_date_str, "%Y-%m-%d")
             .or_else(|_| NaiveDate::parse_from_str(due_date_str, "%d.%m.%Y"))
-            .map_err(|_| anyhow::anyhow!("Neplatný formát data: {}", due_date_str))?;
+            .map_err(|_| anyhow::anyhow!("{}", json!({"key": "import:invalid_date_format", "params": {"value": due_date_str}})))?;
         
         let scheduled_date = row.scheduled_date.as_ref()
             .and_then(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok()
@@ -778,8 +788,7 @@ impl RevisionImportProcessor {
                 level: ImportIssueLevel::Warning,
                 code: ImportIssueCode::DuplicateRecord,
                 field: "device_ref+due_date".to_string(),
-                message: format!("Revize pro zařízení '{}' s termínem {} již existuje, přeskakuji", 
-                    device_ref, due_date),
+                message: json!({"key": "import:revision_already_exists", "params": {"device": device_ref, "dueDate": due_date.to_string()}}).to_string(),
                 original_value: Some(format!("{} / {}", device_ref, due_date_str)),
             });
             return Ok(existing.unwrap());
@@ -911,7 +920,7 @@ impl CommunicationImportProcessor {
         
         Ok(CommunicationImportJobSubmitResponse {
             job_id,
-            message: "Import úloha byla zařazena do fronty".to_string(),
+            message: "import:job_queued".to_string(),
         })
     }
     
@@ -976,7 +985,7 @@ impl CommunicationImportProcessor {
         let rows = match self.parse_csv(&job.request.csv_content).await {
             Ok(rows) => rows,
             Err(e) => {
-                let error_msg = format!("Chyba při parsování CSV: {}", e);
+                let error_msg = json!({"key": "import:csv_parse_error", "params": {"error": e.to_string()}}).to_string();
                 self.publish_status(job_id, CommunicationImportJobStatus::Failed { error: error_msg.clone() }).await?;
                 JOB_HISTORY.record_failed(job_id, "import.communication", started_at, error_msg);
                 return Ok(());
@@ -985,7 +994,7 @@ impl CommunicationImportProcessor {
         
         let total = rows.len() as u32;
         if total == 0 {
-            let error_msg = "CSV soubor neobsahuje žádné záznamy".to_string();
+            let error_msg = "import:csv_empty".to_string();
             self.publish_status(job_id, CommunicationImportJobStatus::Failed { error: error_msg.clone() }).await?;
             JOB_HISTORY.record_failed(job_id, "import.communication", started_at, error_msg);
             return Ok(());
@@ -1045,7 +1054,7 @@ impl CommunicationImportProcessor {
             job_id,
             "import.communication",
             started_at,
-            Some(format!("{}/{} úspěšně importováno", succeeded, total)),
+            Some(json!({"key": "import:completed_summary", "params": {"succeeded": succeeded, "total": total}}).to_string()),
         );
         
         info!("Communication import job {} completed: {}/{} succeeded", job_id, succeeded, total);
@@ -1070,16 +1079,16 @@ impl CommunicationImportProcessor {
     
     async fn create_communication(&self, user_id: Uuid, row: &CsvCommunicationRow) -> Result<Uuid> {
         let customer_ref = row.customer_ref.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Chybí reference zákazníka"))?;
+            .ok_or_else(|| anyhow::anyhow!("import:missing_customer_ref"))?;
         
         let customer_id = resolve_customer_ref(&self.pool, user_id, customer_ref).await?
-            .ok_or_else(|| anyhow::anyhow!("Zákazník '{}' nenalezen", customer_ref))?;
+            .ok_or_else(|| anyhow::anyhow!("{}", json!({"key": "import:customer_not_found", "params": {"name": customer_ref}})))?;
         
         let comm_type = parse_communication_type(row.comm_type.as_deref().unwrap_or("note"));
         let direction = parse_communication_direction(row.direction.as_deref().unwrap_or("outbound"));
         
         let content = row.content.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Chybí obsah komunikace"))?;
+            .ok_or_else(|| anyhow::anyhow!("import:missing_content"))?;
         
         let communication = queries::communication::create_communication(
             &self.pool,
@@ -1202,7 +1211,7 @@ impl WorkLogImportProcessor {
         
         Ok(WorkLogImportJobSubmitResponse {
             job_id,
-            message: "Import úloha byla zařazena do fronty".to_string(),
+            message: "import:job_queued".to_string(),
         })
     }
     
@@ -1267,7 +1276,7 @@ impl WorkLogImportProcessor {
         let rows = match self.parse_csv(&job.request.csv_content).await {
             Ok(rows) => rows,
             Err(e) => {
-                let error_msg = format!("Chyba při parsování CSV: {}", e);
+                let error_msg = json!({"key": "import:csv_parse_error", "params": {"error": e.to_string()}}).to_string();
                 self.publish_status(job_id, WorkLogImportJobStatus::Failed { error: error_msg.clone() }).await?;
                 JOB_HISTORY.record_failed(job_id, "import.visit", started_at, error_msg);
                 return Ok(());
@@ -1276,7 +1285,7 @@ impl WorkLogImportProcessor {
         
         let total = rows.len() as u32;
         if total == 0 {
-            let error_msg = "CSV soubor neobsahuje žádné záznamy".to_string();
+            let error_msg = "import:csv_empty".to_string();
             self.publish_status(job_id, WorkLogImportJobStatus::Failed { error: error_msg.clone() }).await?;
             JOB_HISTORY.record_failed(job_id, "import.visit", started_at, error_msg);
             return Ok(());
@@ -1336,7 +1345,7 @@ impl WorkLogImportProcessor {
             job_id,
             "import.visit",
             started_at,
-            Some(format!("{}/{} úspěšně importováno", succeeded, total)),
+            Some(json!({"key": "import:completed_summary", "params": {"succeeded": succeeded, "total": total}}).to_string()),
         );
         
         info!("Visit import job {} completed: {}/{} succeeded", job_id, succeeded, total);
@@ -1361,16 +1370,16 @@ impl WorkLogImportProcessor {
     
     async fn create_visit(&self, user_id: Uuid, row: &CsvVisitRow) -> Result<Uuid> {
         let customer_ref = row.customer_ref.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Chybí reference zákazníka"))?;
+            .ok_or_else(|| anyhow::anyhow!("import:missing_customer_ref"))?;
         
         let customer_id = resolve_customer_ref(&self.pool, user_id, customer_ref).await?
-            .ok_or_else(|| anyhow::anyhow!("Zákazník '{}' nenalezen", customer_ref))?;
+            .ok_or_else(|| anyhow::anyhow!("{}", json!({"key": "import:customer_not_found", "params": {"name": customer_ref}})))?;
         
         let scheduled_date_str = row.scheduled_date.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Chybí datum návštěvy"))?;
+            .ok_or_else(|| anyhow::anyhow!("import:missing_visit_date"))?;
         let scheduled_date = NaiveDate::parse_from_str(scheduled_date_str, "%Y-%m-%d")
             .or_else(|_| NaiveDate::parse_from_str(scheduled_date_str, "%d.%m.%Y"))
-            .map_err(|_| anyhow::anyhow!("Neplatný formát data: {}", scheduled_date_str))?;
+            .map_err(|_| anyhow::anyhow!("{}", json!({"key": "import:invalid_date_format", "params": {"value": scheduled_date_str}})))?;
         
         let scheduled_time_start = row.scheduled_time_start.as_ref()
             .and_then(|t| NaiveTime::parse_from_str(t, "%H:%M").ok()
@@ -1499,7 +1508,7 @@ impl ZipImportProcessor {
         let detected_files = self.analyze_zip(&zip_data)?;
         
         if detected_files.is_empty() {
-            return Err(anyhow::anyhow!("ZIP neobsahuje žádné rozpoznané CSV soubory"));
+            return Err(anyhow::anyhow!("import:zip_no_csv_files"));
         }
         
         let job = QueuedZipImportJob::new(user_id, request, detected_files.clone());
@@ -1517,7 +1526,7 @@ impl ZipImportProcessor {
         
         Ok(ZipImportJobSubmitResponse {
             job_id,
-            message: format!("ZIP import úloha byla zařazena do fronty ({} souborů)", detected_files.len()),
+            message: json!({"key": "import:zip_job_queued", "params": {"fileCount": detected_files.len()}}).to_string(),
             detected_files,
         })
     }
@@ -1623,7 +1632,7 @@ impl ZipImportProcessor {
         ) {
             Ok(data) => data,
             Err(e) => {
-                let error_msg = format!("Chyba při dekódování ZIP: {}", e);
+                let error_msg = json!({"key": "import:zip_decode_error", "params": {"error": e.to_string()}}).to_string();
                 self.publish_status(job_id, ZipImportJobStatus::Failed { error: error_msg.clone() }).await?;
                 JOB_HISTORY.record_failed(job_id, "import.zip", started_at, error_msg);
                 return Ok(());
@@ -1634,7 +1643,7 @@ impl ZipImportProcessor {
         let mut archive = match zip::ZipArchive::new(cursor) {
             Ok(a) => a,
             Err(e) => {
-                let error_msg = format!("Chyba při otevření ZIP: {}", e);
+                let error_msg = json!({"key": "import:zip_open_error", "params": {"error": e.to_string()}}).to_string();
                 self.publish_status(job_id, ZipImportJobStatus::Failed { error: error_msg.clone() }).await?;
                 JOB_HISTORY.record_failed(job_id, "import.zip", started_at, error_msg);
                 return Ok(());
@@ -1670,7 +1679,7 @@ impl ZipImportProcessor {
                             level: ImportIssueLevel::Error,
                             code: ImportIssueCode::ParseError,
                             field: String::new(),
-                            message: format!("Nepodařilo se přečíst soubor z ZIP: {}", e),
+                            message: json!({"key": "import:zip_read_file_error", "params": {"error": e.to_string()}}).to_string(),
                             original_value: None,
                         }],
                     );
@@ -1756,8 +1765,7 @@ impl ZipImportProcessor {
             job_id,
             "import.zip",
             started_at,
-            Some(format!("{} souborů, {} záznamů úspěšně, {} chyb", 
-                         total_files, total_succeeded, total_failed)),
+            Some(json!({"key": "import:zip_completed_summary", "params": {"files": total_files, "succeeded": total_succeeded, "failed": total_failed}}).to_string()),
         );
         
         info!("ZIP import job {} completed: {} files, {} succeeded, {} failed", 
@@ -1931,10 +1939,10 @@ impl ZipImportProcessor {
     
     async fn create_device_from_row(&self, user_id: Uuid, row: &CsvDeviceRow) -> Result<Uuid> {
         let customer_ref = row.customer_ref.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Chybí reference zákazníka"))?;
+            .ok_or_else(|| anyhow::anyhow!("import:missing_customer_ref"))?;
         
         let customer_id = resolve_customer_ref(&self.pool, user_id, customer_ref).await?
-            .ok_or_else(|| anyhow::anyhow!("Zákazník nenalezen"))?;
+            .ok_or_else(|| anyhow::anyhow!("import:customer_not_found_simple"))?;
         
         let device_type = parse_device_type(row.device_type.as_deref().unwrap_or("other"));
         let revision_interval = row.revision_interval_months.unwrap_or(12);
@@ -2010,17 +2018,17 @@ impl ZipImportProcessor {
     
     async fn create_revision_from_row(&self, user_id: Uuid, row: &CsvRevisionRow) -> Result<Uuid> {
         let customer_ref = row.customer_ref.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Chybí reference zákazníka"))?;
+            .ok_or_else(|| anyhow::anyhow!("import:missing_customer_ref"))?;
         let device_ref = row.device_ref.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Chybí reference zařízení"))?;
+            .ok_or_else(|| anyhow::anyhow!("import:missing_device_ref"))?;
         
         let customer_id = resolve_customer_ref(&self.pool, user_id, customer_ref).await?
-            .ok_or_else(|| anyhow::anyhow!("Zákazník nenalezen"))?;
+            .ok_or_else(|| anyhow::anyhow!("import:customer_not_found_simple"))?;
         let device_id = resolve_device_ref(&self.pool, user_id, customer_id, device_ref).await?
-            .ok_or_else(|| anyhow::anyhow!("Zařízení nenalezeno"))?;
+            .ok_or_else(|| anyhow::anyhow!("import:device_not_found_simple"))?;
         
         let due_date_str = row.due_date.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Chybí termín"))?;
+            .ok_or_else(|| anyhow::anyhow!("import:missing_due_date"))?;
         let due_date = NaiveDate::parse_from_str(due_date_str, "%Y-%m-%d")
             .or_else(|_| NaiveDate::parse_from_str(due_date_str, "%d.%m.%Y"))?;
         
@@ -2112,16 +2120,16 @@ impl ZipImportProcessor {
     
     async fn create_communication_from_row(&self, user_id: Uuid, row: &CsvCommunicationRow) -> Result<Uuid> {
         let customer_ref = row.customer_ref.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Chybí reference zákazníka"))?;
+            .ok_or_else(|| anyhow::anyhow!("import:missing_customer_ref"))?;
         
         let customer_id = resolve_customer_ref(&self.pool, user_id, customer_ref).await?
-            .ok_or_else(|| anyhow::anyhow!("Zákazník nenalezen"))?;
+            .ok_or_else(|| anyhow::anyhow!("import:customer_not_found_simple"))?;
         
         let comm_type = parse_communication_type(row.comm_type.as_deref().unwrap_or("note"));
         let direction = parse_communication_direction(row.direction.as_deref().unwrap_or("outbound"));
         
         let content = row.content.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Chybí obsah"))?;
+            .ok_or_else(|| anyhow::anyhow!("import:missing_content"))?;
         
         let communication = queries::communication::create_communication(
             &self.pool,
@@ -2186,13 +2194,13 @@ impl ZipImportProcessor {
     
     async fn create_visit_from_row(&self, user_id: Uuid, row: &CsvVisitRow) -> Result<Uuid> {
         let customer_ref = row.customer_ref.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Chybí reference zákazníka"))?;
+            .ok_or_else(|| anyhow::anyhow!("import:missing_customer_ref"))?;
         
         let customer_id = resolve_customer_ref(&self.pool, user_id, customer_ref).await?
-            .ok_or_else(|| anyhow::anyhow!("Zákazník nenalezen"))?;
+            .ok_or_else(|| anyhow::anyhow!("import:customer_not_found_simple"))?;
         
         let scheduled_date_str = row.scheduled_date.as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Chybí datum"))?;
+            .ok_or_else(|| anyhow::anyhow!("import:missing_date"))?;
         let scheduled_date = NaiveDate::parse_from_str(scheduled_date_str, "%Y-%m-%d")
             .or_else(|_| NaiveDate::parse_from_str(scheduled_date_str, "%d.%m.%Y"))?;
         

@@ -60,5 +60,32 @@
   "export_running": "Export running...",
   "export_completed_file": "Completed: {{fileName}}",
   "export_completed": "Export completed",
-  "export_failed": "Export failed"
+  "export_failed": "Export failed",
+
+  "loading_customers": "Loading customers...",
+  "loading_customers_db": "Loading customers from database...",
+  "loading_settings": "Loading settings...",
+  "calculating_distances": "Calculating distances...",
+  "optimizing_route": "Optimizing route...",
+  "building_result": "Building result...",
+  "generating_geometry": "Generating route geometry...",
+  "break_label": "Break",
+  "routing_fallback": "Valhalla unavailable - using estimated distances",
+  "customer_no_coordinates": "Customer {{name}} has no coordinates",
+  "customer_no_coordinates_excluded": "Customer {{name}} has no coordinates and was excluded",
+  "route_completed_summary": "{{stops}} stops, {{km}} km",
+  "cancel_requested": "Job cancellation requested",
+  "retry_not_implemented": "Job retry not yet implemented - please re-submit the job manually",
+
+  "export_submitted": "Export job submitted",
+  "loading_data": "Loading data...",
+  "generating_csv": "Generating CSV...",
+  "packing_zip": "Packing ZIP...",
+  "export_completed_summary": "{{rows}} rows, {{bytes}} B",
+
+  "geocode_submitted": "Geocoding job submitted",
+  "geocode_address_submitted": "Geocode address job submitted",
+  "reverse_geocode_submitted": "Reverse geocode job submitted",
+  "address_not_found": "Address not found",
+  "reverse_geocode_failed": "Reverse geocode failed"
 }

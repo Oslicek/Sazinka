@@ -5,6 +5,7 @@
 import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ImportReport, ImportIssue, ImportIssueCode, ImportIssueSummary } from '@shared/import';
+import { resolveBackendMessage } from '@/i18n/resolveBackendMessage';
 import styles from './ImportReportDialog.module.css';
 
 interface ImportReportDialogProps {

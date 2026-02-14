@@ -24,6 +24,7 @@ import {
 import { listCrews, type Crew } from '../services/crewService';
 import { getToken } from '@/utils/auth';
 import { DEVICE_TYPE_KEYS } from '@shared/device';
+import { resolveBackendMessage } from '@/i18n/resolveBackendMessage';
 import styles from './CallQueue.module.css';
 
 // Priority colors (labels resolved via i18n)
@@ -589,7 +590,7 @@ export function CallQueue() {
                   <div className={styles.slotWarnings}>
                     {v2Response.warnings.map((w, i) => (
                       <div key={i} className={`${styles.warningItem} ${w.severity === 'error' ? styles.warningError : styles.warningWarn}`}>
-                        {w.severity === 'error' ? '❌' : '⚠️'} {w.message}
+                        {w.severity === 'error' ? '❌' : '⚠️'} {resolveBackendMessage(w.message)}
                       </div>
                     ))}
                   </div>
@@ -632,7 +633,7 @@ export function CallQueue() {
               <div className={styles.validationWarnings}>
                 {validation.warnings.map((w, i) => (
                   <div key={i} className={`${styles.warningItem} ${w.severity === 'error' ? styles.warningError : styles.warningWarn}`}>
-                    {w.severity === 'error' ? '❌' : '⚠️'} {w.message}
+                    {w.severity === 'error' ? '❌' : '⚠️'} {resolveBackendMessage(w.message)}
                     {w.conflictingCustomer && <span className={styles.conflictName}> ({w.conflictingCustomer})</span>}
                   </div>
                 ))}

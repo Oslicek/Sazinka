@@ -23,6 +23,7 @@ import type { SavedRouteStop } from '../../services/routeService';
 import type { RouteWarning } from '@shared/route';
 import { reorderStops, needsScheduledTimeWarning } from './reorderStops';
 import { ScheduledTimeWarning } from './ScheduledTimeWarning';
+import { resolveBackendMessage } from '@/i18n/resolveBackendMessage';
 import styles from './RouteDetailTimeline.module.css';
 
 interface RouteDetailTimelineProps {
@@ -418,7 +419,7 @@ export function RouteDetailTimeline({
                         <div
                           key={wi}
                           className={`${styles.stopWarning} ${w.warningType === 'LATE_ARRIVAL' ? styles.stopWarningDanger : styles.stopWarningCaution}`}
-                          title={w.message}
+                          title={resolveBackendMessage(w.message)}
                         >
                           <span className={styles.stopWarningIcon}>{getWarningIcon(w.warningType)}</span>
                           <span>{getWarningLabel(w.warningType, t)}</span>

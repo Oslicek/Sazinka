@@ -133,7 +133,7 @@ fn map_solution(problem: &VrpProblem, solution: &PragmaticSolution) -> RouteSolu
                     planned_stops.push(PlannedStop {
                         stop_id: format!("break-{}", planned_stops.len() + 1),
                         customer_id: uuid::Uuid::nil(),
-                        customer_name: "Pauza".to_string(),
+                        customer_name: "jobs:break_label".to_string(),
                         order: (planned_stops.len() + 1) as u32,
                         arrival_time: break_arrival,
                         departure_time: break_departure,
@@ -265,25 +265,14 @@ fn validate_arrival_vs_window(
         warnings.push(RouteWarning {
             stop_id: Some(stop_id.to_string()),
             warning_type: "LATE_ARRIVAL".to_string(),
-            message: format!(
-                "{}: příjezd v {} je po konci okna {}",
-                customer_name,
-                arrival_time.format("%H:%M"),
-                window.end.format("%H:%M"),
-            ),
+            message: serde_json::json!({"key": "planner:warning.arrival_after_window", "params": {"name": customer_name, "arrival": arrival_time.format("%H:%M").to_string(), "windowEnd": window.end.format("%H:%M").to_string()}}).to_string(),
         });
     } else if arrival_time > window.start {
         let late_by_seconds = (arrival_time - window.start).num_seconds();
         warnings.push(RouteWarning {
             stop_id: Some(stop_id.to_string()),
             warning_type: "INSUFFICIENT_BUFFER".to_string(),
-            message: format!(
-                "{}: příjezd v {} je {} min po začátku okna {}",
-                customer_name,
-                arrival_time.format("%H:%M"),
-                late_by_seconds / 60,
-                window.start.format("%H:%M"),
-            ),
+            message: serde_json::json!({"key": "planner:warning.arrival_late_after_start", "params": {"name": customer_name, "arrival": arrival_time.format("%H:%M").to_string(), "lateMinutes": late_by_seconds / 60, "windowStart": window.start.format("%H:%M").to_string()}}).to_string(),
         });
     }
 }

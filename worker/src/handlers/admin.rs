@@ -380,7 +380,7 @@ async fn handle_db_reset(client: Client, pool: PgPool, jwt_secret: Arc<String>) 
                 info!("Database reset completed successfully");
                 SuccessResponse::new(request.id, DbResetResponse {
                     success: true,
-                    message: "Database reset successfully".to_string(),
+                    message: "pages:admin_db_reset_success".to_string(),
                 })
             }
             Err(e) => {

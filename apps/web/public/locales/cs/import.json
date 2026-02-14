@@ -99,5 +99,41 @@
   "report_job_revision": "Import revizí",
   "report_job_communication": "Import komunikace",
   "report_job_visit": "Import návštěv",
-  "report_job_zip": "Import ZIP"
+  "report_job_zip": "Import ZIP",
+
+  "job_queued": "Import úloha byla zařazena do fronty",
+  "zip_job_queued": "ZIP import úloha byla zařazena do fronty ({{fileCount}} souborů)",
+  "csv_parse_error": "Chyba při parsování CSV: {{error}}",
+  "csv_empty": "CSV soubor neobsahuje žádné záznamy",
+  "completed_summary": "{{succeeded}}/{{total}} úspěšně importováno",
+  "zip_completed_summary": "{{files}} souborů, {{succeeded}} záznamů úspěšně, {{failed}} chyb",
+
+  "missing_customer_ref": "Chybí reference zákazníka",
+  "missing_device_ref": "Chybí reference zařízení",
+  "missing_due_date": "Chybí termín revize",
+  "missing_visit_date": "Chybí datum návštěvy",
+  "missing_content": "Chybí obsah",
+  "missing_date": "Chybí datum",
+  "customer_not_found": "Zákazník '{{name}}' nenalezen",
+  "customer_not_found_simple": "Zákazník nenalezen",
+  "device_not_found": "Zařízení '{{name}}' nenalezeno",
+  "device_not_found_simple": "Zařízení nenalezeno",
+  "invalid_date_format": "Neplatný formát data: {{value}}",
+  "invalid_date": "Neplatné datum: {{value}}",
+  "revision_already_exists": "Revize pro zařízení '{{device}}' s termínem {{dueDate}} již existuje, přeskakuji",
+
+  "customer_search_error": "Chyba při hledání zákazníka: {{error}}",
+  "unknown_device_type": "Neznámý typ zařízení: {{type}}",
+  "update_error": "Chyba při aktualizaci: {{error}}",
+  "create_error": "Chyba při vytváření: {{error}}",
+  "unknown_type": "Neznámý typ: {{type}}",
+  "unknown_direction": "Neznámý směr: {{direction}}",
+  "visit_create_error": "Chyba při vytváření návštěvy: {{error}}",
+  "unknown_work_type": "Neznámý typ práce: {{type}}",
+  "work_item_create_error": "Chyba při vytváření úkonu: {{error}}",
+
+  "zip_no_csv_files": "ZIP neobsahuje žádné rozpoznané CSV soubory",
+  "zip_decode_error": "Chyba při dekódování ZIP: {{error}}",
+  "zip_open_error": "Chyba při otevření ZIP: {{error}}",
+  "zip_read_file_error": "Nepodařilo se přečíst soubor z ZIP: {{error}}"
 }

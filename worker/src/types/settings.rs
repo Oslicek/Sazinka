@@ -274,20 +274,21 @@ impl UserWithSettings {
         }
     }
 
-    /// Convert to email template settings
+    /// Convert to email template settings (locale-aware defaults)
     pub fn to_email_templates(&self) -> EmailTemplateSettings {
+        let locale = &self.locale;
         let reminder_subject = self.email_reminder_subject_template.clone()
             .or_else(|| self.email_subject_template.clone())
-            .unwrap_or_else(|| "Připomínka termínu - {{customerName}}".to_string());
+            .unwrap_or_else(|| default_reminder_subject(locale));
         let reminder_body = self.email_reminder_body_template.clone()
             .or_else(|| self.email_body_template.clone())
-            .unwrap_or_else(|| DEFAULT_REMINDER_EMAIL_TEMPLATE.to_string());
+            .unwrap_or_else(|| default_reminder_template(locale).to_string());
 
         EmailTemplateSettings {
             confirmation_subject_template: self.email_confirmation_subject_template.clone()
-                .unwrap_or_else(|| "Potvrzení termínu - {{customerName}}".to_string()),
+                .unwrap_or_else(|| default_confirmation_subject(locale)),
             confirmation_body_template: self.email_confirmation_body_template.clone()
-                .unwrap_or_else(|| DEFAULT_CONFIRMATION_EMAIL_TEMPLATE.to_string()),
+                .unwrap_or_else(|| default_confirmation_template(locale).to_string()),
             reminder_subject_template: reminder_subject,
             reminder_body_template: reminder_body,
             reminder_send_time: self.email_reminder_send_time
@@ -322,8 +323,8 @@ impl UserWithSettings {
     }
 }
 
-/// Default reminder email template (day before appointment)
-pub const DEFAULT_REMINDER_EMAIL_TEMPLATE: &str = r#"Dobrý den,
+/// Default reminder email template - Czech
+pub const DEFAULT_REMINDER_EMAIL_TEMPLATE_CS: &str = r#"Dobrý den,
 
 dovolujeme si Vás upozornit, že se blíží termín pravidelné revize Vašeho zařízení {{device_type}}.
 
@@ -336,8 +337,18 @@ S pozdravem,
 {{phone}}
 {{email}}"#;
 
-/// Default confirmation email template (sent immediately after agreement)
-pub const DEFAULT_CONFIRMATION_EMAIL_TEMPLATE: &str = r#"Dobrý den,
+/// Default reminder email template - English
+pub const DEFAULT_REMINDER_EMAIL_TEMPLATE_EN: &str = r#"Dear {{customerName}},
+
+we would like to remind you of your upcoming appointment on {{date}} at {{time}}.
+
+If you need to reschedule, please contact us.
+
+Thank you,
+{{companyName}}"#;
+
+/// Default confirmation email template - Czech
+pub const DEFAULT_CONFIRMATION_EMAIL_TEMPLATE_CS: &str = r#"Dobrý den,
 
 potvrzujeme dohodnutý termín návštěvy.
 
@@ -349,3 +360,51 @@ S pozdravem,
 {{business_name}}
 {{phone}}
 {{email}}"#;
+
+/// Default confirmation email template - English
+pub const DEFAULT_CONFIRMATION_EMAIL_TEMPLATE_EN: &str = r#"Dear {{customerName}},
+
+we confirm your appointment on {{date}} at {{time}}.
+
+Address: {{address}}.
+
+If you need to change the appointment, please contact us.
+
+Thank you,
+{{companyName}}"#;
+
+/// Return the default reminder email template for the given locale.
+pub fn default_reminder_template(locale: &str) -> &'static str {
+    let lang = locale.split('-').next().unwrap_or(locale);
+    match lang {
+        "cs" => DEFAULT_REMINDER_EMAIL_TEMPLATE_CS,
+        _ => DEFAULT_REMINDER_EMAIL_TEMPLATE_EN,
+    }
+}
+
+/// Return the default confirmation email template for the given locale.
+pub fn default_confirmation_template(locale: &str) -> &'static str {
+    let lang = locale.split('-').next().unwrap_or(locale);
+    match lang {
+        "cs" => DEFAULT_CONFIRMATION_EMAIL_TEMPLATE_CS,
+        _ => DEFAULT_CONFIRMATION_EMAIL_TEMPLATE_EN,
+    }
+}
+
+/// Return the default reminder subject line for the given locale.
+pub fn default_reminder_subject(locale: &str) -> String {
+    let lang = locale.split('-').next().unwrap_or(locale);
+    match lang {
+        "cs" => "Připomínka termínu - {{customerName}}".to_string(),
+        _ => "Appointment reminder - {{customerName}}".to_string(),
+    }
+}
+
+/// Return the default confirmation subject line for the given locale.
+pub fn default_confirmation_subject(locale: &str) -> String {
+    let lang = locale.split('-').next().unwrap_or(locale);
+    match lang {
+        "cs" => "Potvrzení termínu - {{customerName}}".to_string(),
+        _ => "Appointment confirmation - {{customerName}}".to_string(),
+    }
+}

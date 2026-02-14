@@ -17,6 +17,8 @@ use sqlx::PgPool;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
+use serde_json::json;
+
 use crate::db::queries;
 use crate::defaults::{default_work_end, default_work_start, DEFAULT_SERVICE_DURATION_MINUTES};
 use crate::services::routing::{RoutingService, MockRoutingService};
@@ -187,7 +189,7 @@ impl JobProcessor {
         // Publish processing status
         self.publish_status(job_id, JobStatus::Processing {
             progress: 0,
-            message: "Načítání zákazníků...".to_string(),
+            message: "jobs:loading_customers".to_string(),
         }).await?;
         
         // Execute route planning
@@ -203,7 +205,7 @@ impl JobProcessor {
                     job_id,
                     "route",
                     started_at,
-                    Some(format!("{} zastávek, {:.1} km", result.stops.len(), result.total_distance_km)),
+                    Some(json!({"key": "jobs:route_completed_summary", "params": {"stops": result.stops.len(), "km": format!("{:.1}", result.total_distance_km)}}).to_string()),
                 );
                 
                 info!("Route job {} completed: {} stops, {:.1} km", 
@@ -276,7 +278,7 @@ impl JobProcessor {
         // Load customers from database
         self.publish_status(job_id, JobStatus::Processing {
             progress: 10,
-            message: "Načítání zákazníků z databáze...".to_string(),
+            message: "jobs:loading_customers_db".to_string(),
         }).await?;
         
         let customers = self.load_customers_for_route(user_id, &request.customer_ids, request.date, &request.time_windows).await?;
@@ -291,7 +293,7 @@ impl JobProcessor {
             warnings.push(RouteWarning {
                 stop_index: None,
                 warning_type: "MISSING_COORDINATES".to_string(),
-                message: format!("Zákazník {} nemá souřadnice", customer.name.as_deref().unwrap_or("(unnamed)")),
+                message: json!({"key": "jobs:customer_no_coordinates", "params": {"name": customer.name.as_deref().unwrap_or("(unnamed)")}}).to_string(),
             });
         }
         
@@ -315,7 +317,7 @@ impl JobProcessor {
         // Load user settings
         self.publish_status(job_id, JobStatus::Processing {
             progress: 20,
-            message: "Načítání nastavení...".to_string(),
+            message: "jobs:loading_settings".to_string(),
         }).await?;
         
         let (user_shift_start, user_shift_end, service_duration, break_config) = match queries::settings::get_user_settings(&self.pool, user_id).await {
@@ -367,7 +369,7 @@ impl JobProcessor {
         // Get distance/time matrices
         self.publish_status(job_id, JobStatus::Processing {
             progress: 40,
-            message: "Výpočet vzdáleností...".to_string(),
+            message: "jobs:calculating_distances".to_string(),
         }).await?;
         
         let (matrices, routing_fallback_used) = match self.routing_service.get_matrices(&locations).await {
@@ -387,7 +389,7 @@ impl JobProcessor {
         // Solve VRP
         self.publish_status(job_id, JobStatus::Processing {
             progress: 60,
-            message: "Optimalizace trasy...".to_string(),
+            message: "jobs:optimizing_route".to_string(),
         }).await?;
         
         let solution = solver.solve(&vrp_problem, &matrices, request.date).await?;
@@ -395,7 +397,7 @@ impl JobProcessor {
         // Build response
         self.publish_status(job_id, JobStatus::Processing {
             progress: 80,
-            message: "Sestavování výsledku...".to_string(),
+            message: "jobs:building_result".to_string(),
         }).await?;
         
         let customer_matrix_index: HashMap<Uuid, usize> = valid_customers
@@ -449,8 +451,8 @@ impl JobProcessor {
                 // location, so the travel leg is 0 km / 0 min.
                 planned_stops.push(PlannedRouteStop {
                     customer_id: Uuid::nil(),
-                    customer_name: "Pauza".to_string(),
-                    address: "Pauza".to_string(),
+                    customer_name: "jobs:break_label".to_string(),
+                    address: "jobs:break_label".to_string(),
                     coordinates: request.start_location,
                     order: stop.order as i32,
                     eta: stop.arrival_time,
@@ -479,7 +481,7 @@ impl JobProcessor {
             warnings.push(RouteWarning {
                 stop_index: None,
                 warning_type: "ROUTING_FALLBACK".to_string(),
-                message: "Valhalla nedostupná - použity odhadované vzdálenosti".to_string(),
+                message: json!({"key": "jobs:routing_fallback"}).to_string(),
             });
         }
         
@@ -494,7 +496,7 @@ impl JobProcessor {
         // Build geometry
         self.publish_status(job_id, JobStatus::Processing {
             progress: 90,
-            message: "Generování geometrie trasy...".to_string(),
+            message: "jobs:generating_geometry".to_string(),
         }).await?;
         
         let geometry = if !planned_stops.is_empty() {
@@ -991,7 +993,7 @@ pub async fn handle_job_cancel(
         
         let response = JobActionResponse {
             success: true,
-            message: "Job cancellation requested".to_string(),
+            message: "jobs:cancel_requested".to_string(),
             job_id,
         };
         let success = SuccessResponse::new(request.id, response);
@@ -1045,7 +1047,7 @@ pub async fn handle_job_retry(
         
         let response = JobActionResponse {
             success: false,
-            message: "Job retry not yet implemented - please re-submit the job manually".to_string(),
+            message: "jobs:retry_not_implemented".to_string(),
             job_id,
         };
         let success = SuccessResponse::new(request.id, response);

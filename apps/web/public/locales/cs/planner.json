@@ -295,5 +295,29 @@
   "shortcut_schedule": "Domluvit termín",
   "shortcut_snooze": "Odložit",
   "shortcut_fix_address": "Opravit adresu",
-  "shortcut_save": "Uložit plán"
+  "shortcut_save": "Uložit plán",
+
+  "all_positions_conflict": "Všechny pozice mají konflikt",
+
+  "warning": {
+    "arrival_after_window": "{{name}}: příjezd v {{arrival}} je po konci okna {{windowEnd}}",
+    "arrival_late_after_start": "{{name}}: příjezd v {{arrival}} je {{lateMinutes}} min po začátku okna {{windowStart}}",
+    "solver_fallback": "Optimalizátor selhal nebo vypršel čas, použita jednoduchá heuristika",
+    "arrival_delayed": "Příjezd k {{name}} opožděn o {{lateMinutes}} min (dohodnuto do {{windowEnd}})"
+  },
+
+  "slot": {
+    "no_active_crew": "Nebyla nalezena žádná aktivní posádka.",
+    "crew_route_failed": "Posádka {{name}}: nepodařilo se spočítat trasu.",
+    "suitable": "Vhodný slot",
+    "suggestion_detail": "{{crewName}} (Δ{{deltaMinutes}} min, rezerva {{slackMinutes}} min)",
+    "outside_working_hours": "Slot je mimo pracovní dobu posádky.",
+    "overlaps_visit": "Slot se překrývá s návštěvou {{name}}.",
+    "earliest_arrival": "Příjezd od předchozí zastávky je možný nejdříve v {{time}}.",
+    "minimal_slack_before": "Před slotem je minimální časová rezerva.",
+    "cannot_reach_next": "Po slotu nelze stihnout další zastávku {{name}} v {{time}}.",
+    "minimal_slack_after": "Po slotu je minimální časová rezerva.",
+    "crew_heavily_loaded": "Den posádky je silně vytížen ({{load}}%).",
+    "conflicts_with_break": "Slot zasahuje do preferovaného okna pauzy."
+  }
 }

@@ -60,5 +60,32 @@
   "export_running": "Export běží...",
   "export_completed_file": "Dokončeno: {{fileName}}",
   "export_completed": "Export dokončen",
-  "export_failed": "Export selhal"
+  "export_failed": "Export selhal",
+
+  "loading_customers": "Načítání zákazníků...",
+  "loading_customers_db": "Načítání zákazníků z databáze...",
+  "loading_settings": "Načítání nastavení...",
+  "calculating_distances": "Výpočet vzdáleností...",
+  "optimizing_route": "Optimalizace trasy...",
+  "building_result": "Sestavování výsledku...",
+  "generating_geometry": "Generování geometrie trasy...",
+  "break_label": "Pauza",
+  "routing_fallback": "Valhalla nedostupná - použity odhadované vzdálenosti",
+  "customer_no_coordinates": "Zákazník {{name}} nemá souřadnice",
+  "customer_no_coordinates_excluded": "Zákazník {{name}} nemá souřadnice a byl vyloučen",
+  "route_completed_summary": "{{stops}} zastávek, {{km}} km",
+  "cancel_requested": "Zrušení úlohy vyžádáno",
+  "retry_not_implemented": "Opakování úlohy zatím není implementováno - odešlete úlohu znovu",
+
+  "export_submitted": "Exportní úloha odeslána",
+  "loading_data": "Načítání dat...",
+  "generating_csv": "Generování CSV...",
+  "packing_zip": "Balení ZIP...",
+  "export_completed_summary": "{{rows}} řádků, {{bytes}} B",
+
+  "geocode_submitted": "Geokódovací úloha odeslána",
+  "geocode_address_submitted": "Geokódování adresy odesláno",
+  "reverse_geocode_submitted": "Reverzní geokódování odesláno",
+  "address_not_found": "Adresa nenalezena",
+  "reverse_geocode_failed": "Reverzní geokódování selhalo"
 }

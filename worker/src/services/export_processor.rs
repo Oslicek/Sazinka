@@ -180,7 +180,7 @@ impl ExportProcessor {
             job_id,
             position: 1,
             estimated_wait_seconds: 3,
-            message: "Export job submitted".to_string(),
+            message: "jobs:export_submitted".to_string(),
         })
     }
 
@@ -254,7 +254,7 @@ impl ExportProcessor {
 
         self.publish_status(
             job_id,
-            json!({ "type": "processing", "progress": 5, "message": "Načítání dat..." }),
+            json!({ "type": "processing", "progress": 5, "message": "jobs:loading_data" }),
         )
         .await?;
 
@@ -281,7 +281,7 @@ impl ExportProcessor {
                     job_id,
                     "export",
                     started_wall,
-                    Some(format!("{} řádků, {} B", row_count, file_size)),
+                    Some(json!({"key": "jobs:export_completed_summary", "params": {"rows": row_count, "bytes": file_size}}).to_string()),
                 );
             }
             Err(e) => {
@@ -322,7 +322,7 @@ impl ExportProcessor {
 
         self.publish_status(
             job_id,
-            json!({ "type": "processing", "progress": 45, "message": "Generování CSV..." }),
+            json!({ "type": "processing", "progress": 45, "message": "jobs:generating_csv" }),
         )
         .await?;
 
@@ -386,7 +386,7 @@ impl ExportProcessor {
 
         self.publish_status(
             job_id,
-            json!({ "type": "processing", "progress": 80, "message": "Balení ZIP..." }),
+            json!({ "type": "processing", "progress": 80, "message": "jobs:packing_zip" }),
         )
         .await?;
 

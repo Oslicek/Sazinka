@@ -9,6 +9,7 @@ use chrono::{NaiveDate, NaiveTime};
 use futures::StreamExt;
 use sqlx::PgPool;
 use tracing::{debug, error, warn, info};
+use serde_json::json;
 use uuid::Uuid;
 
 use crate::auth;
@@ -271,7 +272,7 @@ pub async fn handle_device_import(
                         level: ImportIssueLevel::Error,
                         code: ImportIssueCode::CustomerNotFound,
                         field: "customer_ref".to_string(),
-                        message: format!("Zákazník nenalezen: {}", device_req.customer_ref),
+                        message: json!({"key": "import:customer_not_found", "params": {"name": device_req.customer_ref}}).to_string(),
                         original_value: Some(device_req.customer_ref.clone()),
                     });
                     continue;
@@ -282,7 +283,7 @@ pub async fn handle_device_import(
                         level: ImportIssueLevel::Error,
                         code: ImportIssueCode::Unknown,
                         field: "customer_ref".to_string(),
-                        message: format!("Chyba při hledání zákazníka: {}", e),
+                        message: json!({"key": "import:customer_search_error", "params": {"error": e.to_string()}}).to_string(),
                         original_value: Some(device_req.customer_ref.clone()),
                     });
                     continue;
@@ -298,7 +299,7 @@ pub async fn handle_device_import(
                         level: ImportIssueLevel::Error,
                         code: ImportIssueCode::InvalidValue,
                         field: "device_type".to_string(),
-                        message: format!("Neznámý typ zařízení: {}", device_req.device_type),
+                        message: json!({"key": "import:unknown_device_type", "params": {"type": device_req.device_type}}).to_string(),
                         original_value: Some(device_req.device_type.clone()),
                     });
                     continue;
@@ -336,7 +337,7 @@ pub async fn handle_device_import(
                             level: ImportIssueLevel::Error,
                             code: ImportIssueCode::DbError,
                             field: "database".to_string(),
-                            message: format!("Chyba při aktualizaci: {}", e),
+                            message: json!({"key": "import:update_error", "params": {"error": e.to_string()}}).to_string(),
                             original_value: None,
                         });
                     }
@@ -363,7 +364,7 @@ pub async fn handle_device_import(
                             level: ImportIssueLevel::Error,
                             code: ImportIssueCode::DbError,
                             field: "database".to_string(),
-                            message: format!("Chyba při vytváření: {}", e),
+                            message: json!({"key": "import:create_error", "params": {"error": e.to_string()}}).to_string(),
                             original_value: None,
                         });
                     }
@@ -440,7 +441,7 @@ pub async fn handle_revision_import(
                         level: ImportIssueLevel::Error,
                         code: ImportIssueCode::CustomerNotFound,
                         field: "customer_ref".to_string(),
-                        message: format!("Zákazník nenalezen: {}", rev_req.customer_ref),
+                        message: json!({"key": "import:customer_not_found", "params": {"name": rev_req.customer_ref}}).to_string(),
                         original_value: Some(rev_req.customer_ref.clone()),
                     });
                     continue;
@@ -451,7 +452,7 @@ pub async fn handle_revision_import(
                         level: ImportIssueLevel::Error,
                         code: ImportIssueCode::Unknown,
                         field: "customer_ref".to_string(),
-                        message: format!("Chyba: {}", e),
+                        message: json!({"key": "import:customer_search_error", "params": {"error": e.to_string()}}).to_string(),
                         original_value: Some(rev_req.customer_ref.clone()),
                     });
                     continue;
@@ -467,7 +468,7 @@ pub async fn handle_revision_import(
                         level: ImportIssueLevel::Error,
                         code: ImportIssueCode::DeviceNotFound,
                         field: "device_ref".to_string(),
-                        message: format!("Zařízení nenalezeno: {}", rev_req.device_ref),
+                        message: json!({"key": "import:device_not_found", "params": {"name": rev_req.device_ref}}).to_string(),
                         original_value: Some(rev_req.device_ref.clone()),
                     });
                     continue;
@@ -478,7 +479,7 @@ pub async fn handle_revision_import(
                         level: ImportIssueLevel::Error,
                         code: ImportIssueCode::Unknown,
                         field: "device_ref".to_string(),
-                        message: format!("Chyba: {}", e),
+                        message: json!({"key": "import:customer_search_error", "params": {"error": e.to_string()}}).to_string(),
                         original_value: Some(rev_req.device_ref.clone()),
                     });
                     continue;
@@ -494,7 +495,7 @@ pub async fn handle_revision_import(
                         level: ImportIssueLevel::Error,
                         code: ImportIssueCode::InvalidDate,
                         field: "due_date".to_string(),
-                        message: format!("Neplatné datum: {}", rev_req.due_date),
+                        message: json!({"key": "import:invalid_date", "params": {"value": rev_req.due_date}}).to_string(),
                         original_value: Some(rev_req.due_date.clone()),
                     });
                     continue;
@@ -546,7 +547,7 @@ pub async fn handle_revision_import(
                             level: ImportIssueLevel::Error,
                             code: ImportIssueCode::DbError,
                             field: "database".to_string(),
-                            message: format!("Chyba při aktualizaci: {}", e),
+                            message: json!({"key": "import:update_error", "params": {"error": e.to_string()}}).to_string(),
                             original_value: None,
                         });
                     }
@@ -574,7 +575,7 @@ pub async fn handle_revision_import(
                             level: ImportIssueLevel::Error,
                             code: ImportIssueCode::DbError,
                             field: "database".to_string(),
-                            message: format!("Chyba při vytváření: {}", e),
+                            message: json!({"key": "import:create_error", "params": {"error": e.to_string()}}).to_string(),
                             original_value: None,
                         });
                     }
@@ -651,7 +652,7 @@ pub async fn handle_communication_import(
                         level: ImportIssueLevel::Error,
                         code: ImportIssueCode::CustomerNotFound,
                         field: "customer_ref".to_string(),
-                        message: format!("Zákazník nenalezen: {}", comm_req.customer_ref),
+                        message: json!({"key": "import:customer_not_found", "params": {"name": comm_req.customer_ref}}).to_string(),
                         original_value: Some(comm_req.customer_ref.clone()),
                     });
                     continue;
@@ -662,7 +663,7 @@ pub async fn handle_communication_import(
                         level: ImportIssueLevel::Error,
                         code: ImportIssueCode::Unknown,
                         field: "customer_ref".to_string(),
-                        message: format!("Chyba: {}", e),
+                        message: json!({"key": "import:customer_search_error", "params": {"error": e.to_string()}}).to_string(),
                         original_value: Some(comm_req.customer_ref.clone()),
                     });
                     continue;
@@ -678,7 +679,7 @@ pub async fn handle_communication_import(
                         level: ImportIssueLevel::Error,
                         code: ImportIssueCode::InvalidDate,
                         field: "date".to_string(),
-                        message: format!("Neplatné datum: {}", comm_req.date),
+                        message: json!({"key": "import:invalid_date", "params": {"value": comm_req.date}}).to_string(),
                         original_value: Some(comm_req.date.clone()),
                     });
                     continue;
@@ -694,7 +695,7 @@ pub async fn handle_communication_import(
                         level: ImportIssueLevel::Error,
                         code: ImportIssueCode::InvalidValue,
                         field: "comm_type".to_string(),
-                        message: format!("Neznámý typ: {}", comm_req.comm_type),
+                        message: json!({"key": "import:unknown_type", "params": {"type": comm_req.comm_type}}).to_string(),
                         original_value: Some(comm_req.comm_type.clone()),
                     });
                     continue;
@@ -710,7 +711,7 @@ pub async fn handle_communication_import(
                         level: ImportIssueLevel::Error,
                         code: ImportIssueCode::InvalidValue,
                         field: "direction".to_string(),
-                        message: format!("Neznámý směr: {}", comm_req.direction),
+                        message: json!({"key": "import:unknown_direction", "params": {"direction": comm_req.direction}}).to_string(),
                         original_value: Some(comm_req.direction.clone()),
                     });
                     continue;
@@ -737,7 +738,7 @@ pub async fn handle_communication_import(
                         level: ImportIssueLevel::Error,
                         code: ImportIssueCode::DbError,
                         field: "database".to_string(),
-                        message: format!("Chyba: {}", e),
+                        message: json!({"key": "import:create_error", "params": {"error": e.to_string()}}).to_string(),
                         original_value: None,
                     });
                 }
@@ -832,7 +833,7 @@ pub async fn handle_work_log_import(
                         level: ImportIssueLevel::Error,
                         code: ImportIssueCode::CustomerNotFound,
                         field: "customer_ref".to_string(),
-                        message: format!("Zákazník nenalezen: {}", key.customer_ref),
+                        message: json!({"key": "import:customer_not_found", "params": {"name": key.customer_ref}}).to_string(),
                         original_value: Some(key.customer_ref.clone()),
                     });
                     continue;
@@ -843,7 +844,7 @@ pub async fn handle_work_log_import(
                         level: ImportIssueLevel::Error,
                         code: ImportIssueCode::Unknown,
                         field: "customer_ref".to_string(),
-                        message: format!("Chyba: {}", e),
+                        message: json!({"key": "import:customer_search_error", "params": {"error": e.to_string()}}).to_string(),
                         original_value: Some(key.customer_ref.clone()),
                     });
                     continue;
@@ -859,7 +860,7 @@ pub async fn handle_work_log_import(
                         level: ImportIssueLevel::Error,
                         code: ImportIssueCode::InvalidDate,
                         field: "scheduled_date".to_string(),
-                        message: format!("Neplatné datum: {}", key.scheduled_date),
+                        message: json!({"key": "import:invalid_date", "params": {"value": key.scheduled_date}}).to_string(),
                         original_value: Some(key.scheduled_date.clone()),
                     });
                     continue;
@@ -898,7 +899,7 @@ pub async fn handle_work_log_import(
                         level: ImportIssueLevel::Error,
                         code: ImportIssueCode::DbError,
                         field: "database".to_string(),
-                        message: format!("Chyba při vytváření návštěvy: {}", e),
+                        message: json!({"key": "import:visit_create_error", "params": {"error": e.to_string()}}).to_string(),
                         original_value: None,
                     });
                     continue;
@@ -918,7 +919,7 @@ pub async fn handle_work_log_import(
                             level: ImportIssueLevel::Error,
                             code: ImportIssueCode::InvalidValue,
                             field: "work_type".to_string(),
-                            message: format!("Neznámý typ práce: {}", entry.work_type),
+                            message: json!({"key": "import:unknown_work_type", "params": {"type": entry.work_type}}).to_string(),
                             original_value: Some(entry.work_type.clone()),
                         });
                         continue;
@@ -959,7 +960,7 @@ pub async fn handle_work_log_import(
                             level: ImportIssueLevel::Error,
                             code: ImportIssueCode::DbError,
                             field: "database".to_string(),
-                            message: format!("Chyba při vytváření úkonu: {}", e),
+                            message: json!({"key": "import:work_item_create_error", "params": {"error": e.to_string()}}).to_string(),
                             original_value: None,
                         });
                     }
@@ -1046,7 +1047,7 @@ impl CustomerImportProcessor {
         
         Ok(CustomerImportJobSubmitResponse {
             job_id,
-            message: "Import úloha byla zařazena do fronty".to_string(),
+            message: "import:job_queued".to_string(),
         })
     }
     
@@ -1122,7 +1123,7 @@ impl CustomerImportProcessor {
         let rows = match self.parse_csv(csv_content).await {
             Ok(rows) => rows,
             Err(e) => {
-                let error_msg = format!("Chyba při parsování CSV: {}", e);
+                let error_msg = json!({"key": "import:csv_parse_error", "params": {"error": e.to_string()}}).to_string();
                 self.publish_status(job_id, CustomerImportJobStatus::Failed { error: error_msg.clone() }).await?;
                 JOB_HISTORY.record_failed(job_id, "import.customer", started_at, error_msg);
                 return Ok(());
@@ -1131,7 +1132,7 @@ impl CustomerImportProcessor {
         
         let total = rows.len() as u32;
         if total == 0 {
-            let error_msg = "CSV soubor neobsahuje žádné záznamy".to_string();
+            let error_msg = "import:csv_empty".to_string();
             self.publish_status(job_id, CustomerImportJobStatus::Failed { error: error_msg.clone() }).await?;
             JOB_HISTORY.record_failed(job_id, "import.customer", started_at, error_msg);
             return Ok(());
@@ -1197,7 +1198,7 @@ impl CustomerImportProcessor {
             job_id,
             "import.customer",
             started_at,
-            Some(format!("{}/{} úspěšně importováno", succeeded, total)),
+            Some(json!({"key": "import:completed_summary", "params": {"succeeded": succeeded, "total": total}}).to_string()),
         );
         
         info!("Customer import job {} completed: {}/{} succeeded", job_id, succeeded, total);

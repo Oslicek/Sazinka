@@ -99,5 +99,41 @@
   "report_job_revision": "Revision Import",
   "report_job_communication": "Communication Import",
   "report_job_visit": "Visit Import",
-  "report_job_zip": "ZIP Import"
+  "report_job_zip": "ZIP Import",
+
+  "job_queued": "Import job has been queued",
+  "zip_job_queued": "ZIP import job has been queued ({{fileCount}} files)",
+  "csv_parse_error": "Error parsing CSV: {{error}}",
+  "csv_empty": "CSV file contains no records",
+  "completed_summary": "{{succeeded}}/{{total}} successfully imported",
+  "zip_completed_summary": "{{files}} files, {{succeeded}} records successful, {{failed}} errors",
+
+  "missing_customer_ref": "Missing customer reference",
+  "missing_device_ref": "Missing device reference",
+  "missing_due_date": "Missing due date",
+  "missing_visit_date": "Missing visit date",
+  "missing_content": "Missing content",
+  "missing_date": "Missing date",
+  "customer_not_found": "Customer '{{name}}' not found",
+  "customer_not_found_simple": "Customer not found",
+  "device_not_found": "Device '{{name}}' not found",
+  "device_not_found_simple": "Device not found",
+  "invalid_date_format": "Invalid date format: {{value}}",
+  "invalid_date": "Invalid date: {{value}}",
+  "revision_already_exists": "Revision for device '{{device}}' with due date {{dueDate}} already exists, skipping",
+
+  "customer_search_error": "Error searching for customer: {{error}}",
+  "unknown_device_type": "Unknown device type: {{type}}",
+  "update_error": "Error updating: {{error}}",
+  "create_error": "Error creating: {{error}}",
+  "unknown_type": "Unknown type: {{type}}",
+  "unknown_direction": "Unknown direction: {{direction}}",
+  "visit_create_error": "Error creating visit: {{error}}",
+  "unknown_work_type": "Unknown work type: {{type}}",
+  "work_item_create_error": "Error creating work item: {{error}}",
+
+  "zip_no_csv_files": "ZIP contains no recognized CSV files",
+  "zip_decode_error": "Error decoding ZIP: {{error}}",
+  "zip_open_error": "Error opening ZIP: {{error}}",
+  "zip_read_file_error": "Failed to read file from ZIP: {{error}}"
 }

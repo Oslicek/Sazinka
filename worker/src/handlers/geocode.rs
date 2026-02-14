@@ -343,10 +343,10 @@ impl GeocodeProcessor {
             }
             None => {
                 self.publish_address_status(job_id, GeocodeAddressJobStatus::Failed {
-                    error: "Address not found".to_string(),
+                    error: "jobs:address_not_found".to_string(),
                 }).await?;
                 let _ = msg.ack().await;
-                JOB_HISTORY.record_failed(job_id, "geocode.address", started_at, "Address not found".to_string());
+                JOB_HISTORY.record_failed(job_id, "geocode.address", started_at, "jobs:address_not_found".to_string());
             }
         }
 
@@ -401,10 +401,10 @@ impl GeocodeProcessor {
             }
             None => {
                 self.publish_reverse_status(job_id, ReverseGeocodeJobStatus::Failed {
-                    error: "Reverse geocode failed".to_string(),
+                    error: "jobs:reverse_geocode_failed".to_string(),
                 }).await?;
                 let _ = msg.ack().await;
-                JOB_HISTORY.record_failed(job_id, "geocode.reverse", started_at, "Reverse geocode failed".to_string());
+                JOB_HISTORY.record_failed(job_id, "geocode.reverse", started_at, "jobs:reverse_geocode_failed".to_string());
             }
         }
 
@@ -561,7 +561,7 @@ pub async fn handle_geocode_submit(
                 
                 let response = SubmitResponse {
                     job_id,
-                    message: "Geocoding job submitted".to_string(),
+                    message: "jobs:geocode_submitted".to_string(),
                 };
                 let success = SuccessResponse::new(request.id, response);
                 let _ = client.publish(reply, serde_json::to_vec(&success)?.into()).await;
@@ -637,7 +637,7 @@ pub async fn handle_geocode_address_submit(
 
         let response = SubmitResponse {
             job_id,
-            message: "Geocode address job submitted".to_string(),
+                    message: "jobs:geocode_address_submitted".to_string(),
         };
         let success = SuccessResponse::new(request.id, response);
         let _ = client.publish(reply, serde_json::to_vec(&success)?.into()).await;
@@ -705,7 +705,7 @@ pub async fn handle_reverse_geocode_submit(
 
         let response = SubmitResponse {
             job_id,
-            message: "Reverse geocode job submitted".to_string(),
+                    message: "jobs:reverse_geocode_submitted".to_string(),
         };
         let success = SuccessResponse::new(request.id, response);
         let _ = client.publish(reply, serde_json::to_vec(&success)?.into()).await;

@@ -139,7 +139,7 @@ impl VrpSolver {
         solution.warnings.push(RouteWarning {
             stop_id: None,
             warning_type: "SOLVER_FALLBACK".to_string(),
-            message: "Optimalizátor selhal nebo vypršel čas, použita jednoduchá heuristika".to_string(),
+            message: serde_json::json!({"key": "planner:warning.solver_fallback"}).to_string(),
         });
 
         info!(
@@ -269,12 +269,7 @@ impl VrpSolver {
                         warnings.push(RouteWarning {
                             stop_id: Some(stop.id.clone()),
                             warning_type: "LATE_ARRIVAL".to_string(),
-                            message: format!(
-                                "Příjezd k {} opožděn o {} min (dohodnuto do {})",
-                                stop.customer_name,
-                                late_mins,
-                                tw.end.format("%H:%M"),
-                            ),
+                            message: serde_json::json!({"key": "planner:warning.arrival_delayed", "params": {"name": stop.customer_name, "lateMinutes": late_mins, "windowEnd": tw.end.format("%H:%M").to_string()}}).to_string(),
                         });
                     }
                 }
