@@ -754,3 +754,93 @@ The `locale` field is included in the JWT payload and `UserPublic` type so it's 
 | Translation management (Crowdin, Lokalise) | Deferred | With 2 languages and 1 developer, JSON files in git are sufficient. Add a TMS when >3 languages or external translators are involved. |
 | Server-side rendering i18n | N/A | App is SPA |
 | Per-tenant locale | Excluded | Locale is per-user, not per-organization |
+
+---
+
+## Key Design Decisions (Confirmed by User)
+
+1.  **Routing Strategy:** **State-based routing** (e.g., `/planning`) over URL-based routing (`/cs/planning`).
+    *   *Rationale:* Simpler implementation, better UX for logged-in CRM users, cleaner URLs. SEO is irrelevant for this private app.
+2.  **Date Libraries:** **None**. Use native `Intl` APIs.
+    *   *Rationale:* Modern browsers support `Intl.DateTimeFormat` and `Intl.RelativeTimeFormat` natively. No extra bundle size needed.
+3.  **Locale Storage:** **Database (User Profile)**.
+    *   *Rationale:* Critical for offline background workers (sending emails in the correct language) and cross-device synchronization.
+
+---
+
+## Architecture Clarifications (Final Decisions)
+
+This section supersedes earlier assumptions where they conflict.
+
+### Locale strategy
+
+1. **Supported locales from day one include regional variants** (e.g. `en`, `en-GB`, `en-US`).
+2. **Default locale is English** (`en`).
+3. **Fallback locale is English** (`en`) for unsupported/missing locales.
+4. **Performance bias should favor English** (smallest startup penalty for `en`).
+5. **Routing remains state-based** (no locale in URL).
+
+### Backend-to-frontend i18n message contract
+
+Use a **unified message shape** across all backend user-facing responses (jobs, warnings, errors, import/export progress):
+
+```json
+{
+  "key": "jobs.loading_customers",
+  "params": {
+    "count": 42
+  }
+}
+```
+
+- `key`: translation key
+- `params`: optional interpolation parameters
+
+Decision: **frontend-only fallback logic** during migration (backend does not provide localized fallback text payloads).
+
+### Frontend fallback behavior (migration period)
+
+If a backend message cannot be translated:
+1. Try to resolve by `key`.
+2. If key is missing/unknown, render a safe fallback in frontend (never break UI).
+3. Avoid leaking raw technical data to users; keep dev diagnostics in logs only.
+
+### Import strategy for existing Czech CSV files
+
+Context: DB will be re-created; import files stay unchanged and contain Czech names/strings with no locale metadata.
+
+Decisions:
+1. **Import parser accepts aliases from all supported locales** (tolerant mode).
+2. **When source locale is missing, assume Czech CSV semantics by default** for alias matching priority.
+3. Parse all localized aliases into **canonical internal enum/code values**.
+4. Do not translate free-text payload fields from CSV (names, addresses, notes remain source text).
+
+### Email template policy
+
+1. Existing user email templates are **never auto-modified** on locale changes.
+2. Locale affects only defaults for newly created accounts (or explicitly reset templates).
+
+### Shared-types localization strategy
+
+Use **Option A**:
+- keep translation key maps in `packages/shared-types` (e.g. `DEVICE_TYPE_KEYS`, `REVISION_STATUS_KEYS`, etc.)
+- frontend resolves those keys via i18n.
+
+Rationale: pragmatic and simple in monorepo context; minimizes adapter duplication.
+
+### CI/testing approach
+
+Use the **simpler approach**:
+1. Keep migration checks lightweight in early phases.
+2. Add strict parity checks (`cs` vs `en` key sets) once namespace extraction is active for a module.
+
+---
+
+## Notes on Changes vs Earlier Sections
+
+These decisions update prior text in this document where needed:
+- Locale default/fallback changed from Czech to **English**.
+- Regional locale support is explicitly in scope from phase start.
+- Backend contract is standardized to one message shape.
+- Import behavior is explicitly tolerant and compatible with Czech legacy CSV inputs.
+
