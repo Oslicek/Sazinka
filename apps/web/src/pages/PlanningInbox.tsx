@@ -100,6 +100,15 @@ const DEFAULT_BREAK_SETTINGS: BreakSettings = {
   breakMaxKm: 120,
 };
 
+// Format minutes as "Xh Ymm"
+function formatMinutesHm(minutes: number): string {
+  const m = Math.max(0, Math.round(minutes));
+  if (m < 60) return `${m}min`;
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  return mm === 0 ? `${h}h` : `${h}h ${mm.toString().padStart(2, '0')}min`;
+}
+
 // Convert priority to CandidateRowData priority type
 function toPriority(item: CallQueueItem): CandidateRowData['priority'] {
   if (item.daysUntilDue < 0) return 'overdue';
