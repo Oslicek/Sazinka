@@ -195,6 +195,16 @@
   padding-top: 0.75rem;
 }
 
+.routeSummaryBar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.625rem 0.75rem 0.75rem;
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
 /* ── Loading / empty ── */
 
 .loading {

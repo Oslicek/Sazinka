@@ -765,6 +765,48 @@ The `locale` field is included in the JWT payload and `UserPublic` type so it's 
 
 ---
 
+## Implementation Status
+
+> Last updated: 2026-02-14
+
+### Phase 0: Infrastructure — 🔄 IN PROGRESS
+
+| Step | Status | Notes |
+|------|--------|-------|
+| 0.1.1 i18n instance | ✅ Done | `apps/web/src/i18n/index.ts` created with full config (HttpBackend, LanguageDetector, initReactI18next, zustandDetector, `languageChanged` listener). |
+| 0.1.1 test | ⚠️ Failing | `apps/web/src/i18n/index.test.ts` exists (6 tests). 4/6 fail due to `beforeEach` timeout — HTTP backend tries to fetch `/locales/en/common.json` which doesn't exist yet. 2/6 pass (options checks). |
+| 0.1.2 Provider | ❌ Not started | `<App>` not yet wrapped in `<I18nextProvider>` / `<Suspense>`. |
+| 0.1.3 Locale JSONs | ❌ Not started | `apps/web/public/locales/` directory and JSON files do not exist yet. |
+| 0.2 Zustand detector | ✅ Done | Implemented inline in `i18n/index.ts` (reads `authStore.user.locale`). |
+| 0.2.2 lang attribute | ✅ Done | `i18n.on('languageChanged')` listener sets `document.documentElement.lang`. |
+| 0.3 Formatters | ❌ Not started | `i18n/formatters.ts` does not exist. |
+| 0.4 resolveBackendMessage | ❌ Not started | `i18n/resolveBackendMessage.ts` does not exist. |
+| 0.5 DB & shared types | ❌ Not started | No `locale` field in `UserPublic` or DB. |
+| 0.6 Key parity script | ❌ Not started | `scripts/check-i18n-keys.ts` does not exist. |
+
+**Dependencies installed:** ✅ `i18next@^25.8.7`, `i18next-browser-languagedetector@^8.2.1`, `i18next-http-backend@^3.0.2`, `react-i18next@^16.5.4` added to `apps/web/package.json` and `pnpm-lock.yaml` updated.
+
+### Unrelated refactoring found in working tree (pre-crash)
+
+The previous session also performed a **UI refactoring** (not i18n-related) that extracted route summary stats and actions from `RouteDetailTimeline` and `PlanningTimeline` into shared components:
+
+- **New:** `RouteSummaryStats.tsx` + `.module.css` — extracted stats bar (Začátek, Konec, Celkový čas, Práce, Jízda, Zastávky, Vzdálenost)
+- **New:** `RouteSummaryActions.tsx` + `.module.css` — extracted action buttons (Optimalizovat, Pauza, Smazat trasu)
+- **Modified:** `PlanningInbox.tsx`, `Planner.tsx` — use new shared components instead of inline JSX
+- **Modified:** `RouteDetailTimeline.tsx`, `PlanningTimeline.tsx` — removed metrics/actions props and JSX
+- **Modified:** `PlanningInbox.module.css` — removed ~100 lines of now-extracted CSS
+- **Modified:** `Planner.module.css` — added `.routeSummaryBar` style
+
+**TypeScript errors introduced by this refactoring (must fix before continuing):**
+1. `RouteSummaryStats.tsx` imports from `../../utils/timeFormatters` which does not exist (should use `formatMinutesHm` from PlanningInbox or create the utility)
+2. `PlanningTimeline.tsx` destructures removed props (`onAddBreak`, `onOptimize`, `onDeleteRoute`, `deleteRouteLabel`, `isOptimizing`, `metrics`) that no longer exist in its interface
+3. `Planner.tsx` passes removed props (`onAddBreak`, `onOptimize`, `onDeleteRoute`, `isOptimizing`, `metrics`) to `<PlanningTimeline>`
+4. `Planner.tsx` accesses `result.route?.depotDeparture` but `SavedRoute` type doesn't have `depotDeparture` field
+
+### Phases 1–9: ❌ Not started
+
+---
+
 ## Migration Path (file-by-file, no big bang)
 
 > **Approach:** TDD (Red → Green → Refactor) for every step. Tests are written first; implementation follows. Each phase is independently deployable.

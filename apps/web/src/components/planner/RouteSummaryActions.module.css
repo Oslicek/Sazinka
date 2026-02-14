@@ -1,0 +1,66 @@
+.summaryActions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding-top: 0.125rem;
+}
+
+.summaryOptimizeBtn {
+  padding: 0.375rem 1rem;
+  min-height: 2.25rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--color-primary);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.summaryOptimizeBtn:hover:not(:disabled) {
+  background: var(--color-primary-dark, #1d4ed8);
+}
+
+.summaryOptimizeBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.summaryActionBtn {
+  padding: 0.375rem 0.875rem;
+  min-height: 2.25rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.summaryActionBtn:hover {
+  background: var(--color-bg-secondary);
+  border-color: var(--color-primary);
+}
+
+.summaryDeleteBtn {
+  padding: 0.375rem 0.875rem;
+  min-height: 2.25rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-danger, #dc2626);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.summaryDeleteBtn:hover {
+  background: rgba(220, 38, 38, 0.05);
+  border-color: var(--color-danger, #dc2626);
+}

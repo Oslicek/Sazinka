@@ -20,7 +20,6 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { SavedRouteStop } from '../../services/routeService';
-import type { RouteMetrics } from './CapacityMetrics';
 import type { RouteWarning } from '@shared/route';
 import { buildTimelineItems, type TimelineItem } from './buildTimelineItems';
 import { reorderStops, needsScheduledTimeWarning } from './reorderStops';
@@ -59,15 +58,9 @@ interface PlanningTimelineProps {
   // Editing
   onReorder?: (newStops: SavedRouteStop[]) => void;
   onRemoveStop?: (stopId: string) => void;
-  onAddBreak?: () => void;
   onUpdateBreak?: (stopId: string, patch: { breakTimeStart?: string; breakDurationMinutes?: number }) => void;
-  onOptimize?: () => void;
-  onDeleteRoute?: () => void;
-  deleteRouteLabel?: string;
-  isOptimizing?: boolean;
   isSaving?: boolean;
-  // Metrics
-  metrics?: RouteMetrics | null;
+  // Warnings
   warnings?: RouteWarning[];
   routeStartTime?: string | null;
   routeEndTime?: string | null;
@@ -116,9 +109,6 @@ function formatDelta(value: number, unit: string): string {
   return `${sign}${value.toFixed(1)}${unit}`;
 }
 
-function getTotalDuration(metrics: RouteMetrics): number {
-  return Math.max(0, Math.round(metrics.travelTimeMin + metrics.serviceTimeMin));
-}
 
 // ---------------------------------------------------------------------------
 // Sortable stop item (used inside DndContext)
@@ -233,16 +223,10 @@ export function PlanningTimeline({
   selectedStopId,
   onReorder,
   onRemoveStop,
-  onAddBreak,
-  onOptimize,
-  onDeleteRoute,
-  deleteRouteLabel = 'Smazat trasu',
-  isOptimizing = false,
   isSaving = false,
-  metrics,
   routeStartTime,
   routeEndTime,
-  depotDeparture,
+  // depotDeparture — available in interface, consumed by parent for RouteSummaryStats
   returnToDepotDistanceKm,
   returnToDepotDurationMinutes,
   candidateForInsertion,
@@ -515,51 +499,7 @@ export function PlanningTimeline({
         </SortableContext>
       </DndContext>
 
-      {/* Metrics */}
-      {metrics && (
-        <div className={styles.metrics}>
-          <div className={styles.metric}>
-            <span className={styles.metricValue}>{metrics.distanceKm.toFixed(1)} km</span>
-            <span className={styles.metricLabel}>Vzdálenost</span>
-          </div>
-          <div className={styles.metric}>
-            <span className={styles.metricValue}>{formatDurationHm(getTotalDuration(metrics))}</span>
-            <span className={styles.metricLabel}>Celkový čas</span>
-            <span className={styles.metricBreakdown}>
-              jízda {formatDurationHm(metrics.travelTimeMin)} · práce {formatDurationHm(metrics.serviceTimeMin)}
-            </span>
-          </div>
-          <div className={styles.metric}>
-            <span className={styles.metricValue}>{metrics.loadPercent}%</span>
-            <span className={styles.metricLabel}>Zatížení</span>
-          </div>
-        </div>
-      )}
-
-      {/* Actions */}
-      <div className={styles.actions}>
-        {onOptimize && (
-          <button
-            type="button"
-            className={styles.optimizeButton}
-            onClick={onOptimize}
-            disabled={isOptimizing || stops.length < 2}
-          >
-            {isOptimizing ? 'Optimalizuji...' : 'Optimalizovat'}
-          </button>
-        )}
-        {onAddBreak && (
-          <button type="button" className={styles.addBreakButton} onClick={onAddBreak}>
-            Pauza
-          </button>
-        )}
-        {isSaving && <span className={styles.savingIndicator}>Ukládám...</span>}
-        {onDeleteRoute && (
-          <button type="button" className={styles.deleteButton} onClick={onDeleteRoute}>
-            {deleteRouteLabel}
-          </button>
-        )}
-      </div>
+      {isSaving && <div className={styles.savingIndicator}>Ukládám...</div>}
 
       {/* Scheduled-time warning dialog */}
       {pendingReorder && (

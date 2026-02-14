@@ -16,3 +16,5 @@ export { RouteDetailTimeline } from './RouteDetailTimeline';
 export { PlanningTimeline, type CandidateForInsertion, type GapInsertionInfo } from './PlanningTimeline';
 export { TimelineViewToggle, type TimelineView } from './TimelineViewToggle';
 export { ScheduledTimeWarning } from './ScheduledTimeWarning';
+export { RouteSummaryStats, type RouteSummaryStatsProps } from './RouteSummaryStats';
+export { RouteSummaryActions, type RouteSummaryActionsProps } from './RouteSummaryActions';

@@ -1,0 +1,46 @@
+{
+  "loading": "Loading…",
+  "save": "Save",
+  "cancel": "Cancel",
+  "delete": "Delete",
+  "confirm": "Confirm",
+  "close": "Close",
+  "back": "Back",
+  "next": "Next",
+  "yes": "Yes",
+  "no": "No",
+  "search": "Search",
+  "error": "An error occurred",
+  "not_found": "Not found",
+  "no_results": "No results",
+  "retry": "Retry",
+  "status": {
+    "overdue": "Overdue",
+    "due_soon": "Due soon",
+    "upcoming": "Upcoming",
+    "scheduled": "Scheduled",
+    "in_progress": "In progress",
+    "completed": "Completed",
+    "cancelled": "Cancelled"
+  },
+  "units": {
+    "km": "km",
+    "min": "min",
+    "hours": "h",
+    "stops": "stops",
+    "days": "days"
+  },
+  "errors": {
+    "unknown": "An unexpected error occurred",
+    "network": "Network error. Please check your connection.",
+    "not_connected": "Not connected to server"
+  },
+  "duration": {
+    "minutes_one": "{{count}} minute",
+    "minutes_other": "{{count}} minutes",
+    "hours_one": "{{count}} hour",
+    "hours_other": "{{count}} hours",
+    "days_one": "{{count}} day",
+    "days_other": "{{count}} days"
+  }
+}

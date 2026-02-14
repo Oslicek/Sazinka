@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { Suspense, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { RouterProvider, createRouter } from '@tanstack/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -8,6 +8,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { useAuthStore } from './stores/authStore';
 import { useNatsStore } from './stores/natsStore';
 import { useTokenRefresh } from './hooks/useTokenRefresh';
+import './i18n'; // Initialize i18n before rendering
 import './index.css';
 
 // Create router instance
@@ -55,6 +56,8 @@ function App() {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <Suspense fallback={<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>Loading…</div>}>
+      <App />
+    </Suspense>
   </React.StrictMode>,
 );

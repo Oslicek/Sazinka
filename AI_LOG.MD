@@ -713,6 +713,20 @@ The application is now fully deployed with RBAC enabled. Users can:
 | 2.4 | Date selector pronounced | ✅ Done |
 | 2.5 | Timeline toggle next to Depo | ✅ Done |
 
+### Additional Improvements (2026-02-14)
+
+**Fix: Correct route start/end times**
+- Changed stats bar to show actual timeline-derived times instead of crew working hours
+- Start time: depot departure (backward-calculated from first stop)
+- End time: last stop departure + return-to-depot travel time
+- Total time: computed from actual end - actual start
+
+**Refactor: Shared summary components**
+- Created `RouteSummaryStats.tsx` - Reusable stats display (start, end, total, work, travel, stops, distance)
+- Created `RouteSummaryActions.tsx` - Reusable action buttons (optimize, break, delete)
+- Both PlanningInbox and Planner now use these shared components
+- Removed duplicate CSS from page-level modules
+
 ### Additional Requirements (2026-02-14, batch 2)
 
 1. **Posádka & Depo same font as date** — Apply the same bigger, bold, accent-colored font to the Posádka and Depo `<select>` elements as the date input.

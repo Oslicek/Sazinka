@@ -17,7 +17,7 @@ import type { BreakSettings, Depot } from '@shared/settings';
 import type { RouteWarning } from '@shared/route';
 import { validateBreak } from '../utils/breakUtils';
 import { logger } from '../utils/logger';
-import { RouteListPanel, RouteDetailTimeline, RouteMapPanel, type RouteMetrics, PlanningTimeline, TimelineViewToggle, type TimelineView } from '../components/planner';
+import { RouteListPanel, RouteDetailTimeline, RouteMapPanel, type RouteMetrics, PlanningTimeline, TimelineViewToggle, type TimelineView, RouteSummaryStats, RouteSummaryActions } from '../components/planner';
 import { PlannerFilters } from '../components/shared/PlannerFilters';
 import styles from './Planner.module.css';
 
@@ -128,6 +128,7 @@ export function Planner() {
   const [highlightedStopId, setHighlightedStopId] = useState<string | null>(null);
   const [routeGeometry, setRouteGeometry] = useState<[number, number][]>([]);
   const [returnToDepotLeg, setReturnToDepotLeg] = useState<{ distanceKm: number | null; durationMinutes: number | null } | null>(null);
+  const [depotDeparture, setDepotDeparture] = useState<string | null>(null);
   const geometryUnsubRef = useRef<(() => void) | null>(null);
   const activeGeometryJobRef = useRef<string | null>(null);
 
@@ -252,6 +253,21 @@ export function Planner() {
             ? { distanceKm: result.route.returnToDepotDistanceKm ?? null, durationMinutes: result.route.returnToDepotDurationMinutes ?? null }
             : null
         );
+        // Compute depot departure from first stop's arrival minus travel time
+        if (result.stops.length > 0) {
+          const firstStop = result.stops[0];
+          if (firstStop.estimatedArrival && firstStop.durationFromPreviousMinutes) {
+            const [hh, mm] = firstStop.estimatedArrival.slice(0, 5).split(':').map(Number);
+            const depMin = hh * 60 + mm - Math.round(firstStop.durationFromPreviousMinutes);
+            const dH = Math.floor(Math.max(0, depMin) / 60) % 24;
+            const dM = Math.max(0, depMin) % 60;
+            setDepotDeparture(`${String(dH).padStart(2, '0')}:${String(dM).padStart(2, '0')}`);
+          } else {
+            setDepotDeparture(null);
+          }
+        } else {
+          setDepotDeparture(null);
+        }
         setMetrics(
           calculateMetrics(result.stops, {
             distanceKm: result.route?.totalDistanceKm,
@@ -583,6 +599,23 @@ export function Planner() {
   const routeStartTime = (selectedRouteCrew?.workingHoursStart ?? defaultWorkingHoursStart)?.slice(0, 5) ?? null;
   const routeEndTime = (selectedRouteCrew?.workingHoursEnd ?? defaultWorkingHoursEnd)?.slice(0, 5) ?? null;
 
+  // Actual route start/end derived from timeline data
+  const actualRouteStart = depotDeparture?.slice(0, 5) ?? routeStartTime;
+  const actualRouteEnd = useMemo(() => {
+    if (selectedRouteStops.length === 0) return routeEndTime;
+    const lastStop = selectedRouteStops[selectedRouteStops.length - 1];
+    const lastDeparture = lastStop.estimatedDeparture ?? lastStop.estimatedArrival;
+    if (!lastDeparture) return routeEndTime;
+    const returnMin = returnToDepotLeg?.durationMinutes ?? 0;
+    if (returnMin <= 0) return lastDeparture.slice(0, 5);
+    // Parse HH:MM and add return travel time
+    const [hh, mm] = lastDeparture.slice(0, 5).split(':').map(Number);
+    const totalMin = hh * 60 + mm + Math.round(returnMin);
+    const endH = Math.floor(totalMin / 60) % 24;
+    const endM = totalMin % 60;
+    return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+  }, [selectedRouteStops, returnToDepotLeg, routeEndTime]);
+
   const handleOptimizeRoute = useCallback(async () => {
     if (!selectedRoute || selectedRouteStops.length < 2) return;
 
@@ -767,16 +800,27 @@ export function Planner() {
           <div className={styles.routeDetailSection}>
             <div className={styles.sectionHeader}>
               <h3>Detail trasy</h3>
-              {selectedRoute.totalDistanceKm != null && selectedRoute.totalDistanceKm > 0 && (
-                <span className={styles.routeStats}>
-                  {Math.round(selectedRoute.totalDistanceKm)} km
-                  {selectedRoute.totalDurationMinutes != null && selectedRoute.totalDurationMinutes > 0 && (
-                    <> &middot; {Math.floor(selectedRoute.totalDurationMinutes / 60)}h{(selectedRoute.totalDurationMinutes % 60).toString().padStart(2, '0')}</>
-                  )}
-                </span>
-              )}
               <TimelineViewToggle value={timelineView} onChange={setTimelineView} />
             </div>
+
+            {/* Stats + action buttons bar */}
+            <div className={styles.routeSummaryBar}>
+              <RouteSummaryStats
+                routeStartTime={actualRouteStart}
+                routeEndTime={actualRouteEnd}
+                metrics={metrics}
+                stopCount={selectedRouteStops.filter(s => s.stopType !== 'break').length}
+              />
+              <RouteSummaryActions
+                onOptimize={handleOptimizeRoute}
+                onAddBreak={handleAddBreak}
+                onDeleteRoute={handleDeleteRoute}
+                isOptimizing={isOptimizing}
+                canOptimize={selectedRouteStops.length >= 2}
+                deleteLabel="Smazat trasu"
+              />
+            </div>
+
             {isLoadingStops ? (
               <div className={styles.loading}>Nacitam zastávky...</div>
             ) : timelineView === 'compact' ? (
@@ -788,12 +832,7 @@ export function Planner() {
                 onStopClick={handleStopClick}
                 onSegmentClick={handleSegmentClick}
                 onRemoveStop={handleRemoveStop}
-                onAddBreak={handleAddBreak}
-                onOptimize={handleOptimizeRoute}
                 onUpdateBreak={handleUpdateBreak}
-                onDeleteRoute={handleDeleteRoute}
-                isOptimizing={isOptimizing}
-                metrics={metrics}
                 warnings={routeWarnings}
                 routeStartTime={routeStartTime}
                 routeEndTime={routeEndTime}
@@ -810,11 +849,6 @@ export function Planner() {
                 routeEndTime={routeEndTime}
                 onReorder={handleReorder}
                 onRemoveStop={handleRemoveStop}
-                onAddBreak={handleAddBreak}
-                onOptimize={handleOptimizeRoute}
-                onDeleteRoute={handleDeleteRoute}
-                isOptimizing={isOptimizing}
-                metrics={metrics}
                 warnings={routeWarnings}
                 returnToDepotDistanceKm={returnToDepotLeg?.distanceKm ?? null}
                 returnToDepotDurationMinutes={returnToDepotLeg?.durationMinutes ?? null}

@@ -24,6 +24,8 @@ import {
   type TimelineView,
   type CandidateForInsertion,
   type GapInsertionInfo,
+  RouteSummaryStats,
+  RouteSummaryActions,
 } from '../components/planner';
 import { DraftModeBar } from '../components/planner/DraftModeBar';
 import { CollapseButton, ThreePanelLayout } from '../components/common';
@@ -2355,64 +2357,20 @@ export function PlanningInbox() {
 
           {/* Stats + action buttons bar — above timeline */}
           <div className={styles.routeSummaryBar}>
-            <div className={styles.summaryStats}>
-              <div className={styles.statItem}>
-                <span className={styles.statLabel}>Začátek</span>
-                <span className={styles.statValue}>{actualRouteStart ?? '—'}</span>
-              </div>
-              <div className={styles.statItem}>
-                <span className={styles.statLabel}>Konec</span>
-                <span className={styles.statValue}>{actualRouteEnd ?? '—'}</span>
-              </div>
-              <span className={styles.statSep}>|</span>
-              <div className={styles.statItem}>
-                <span className={styles.statLabel}>Celkový čas</span>
-                <span className={styles.statValue}>
-                  {(() => {
-                    if (actualRouteStart && actualRouteEnd && routeStops.length > 0) {
-                      const [sh, sm] = actualRouteStart.split(':').map(Number);
-                      const [eh, em] = actualRouteEnd.split(':').map(Number);
-                      const totalMin = (eh * 60 + em) - (sh * 60 + sm);
-                      return totalMin > 0 ? formatMinutesHm(totalMin) : '—';
-                    }
-                    return metrics ? formatMinutesHm((metrics.travelTimeMin ?? 0) + (metrics.serviceTimeMin ?? 0)) : '—';
-                  })()}
-                </span>
-              </div>
-              <div className={styles.statItem}>
-                <span className={styles.statLabel}>Práce</span>
-                <span className={styles.statValue}>{metrics ? formatMinutesHm(metrics.serviceTimeMin) : '—'}</span>
-              </div>
-              <div className={styles.statItem}>
-                <span className={styles.statLabel}>Jízda</span>
-                <span className={styles.statValue}>{metrics ? formatMinutesHm(metrics.travelTimeMin) : '—'}</span>
-              </div>
-              <span className={styles.statSep}>|</span>
-              <div className={styles.statItem}>
-                <span className={styles.statLabel}>Zastávky</span>
-                <span className={styles.statValue}>{routeStops.filter(s => s.stopType !== 'break').length}</span>
-              </div>
-              <div className={styles.statItem}>
-                <span className={styles.statLabel}>Vzdálenost</span>
-                <span className={styles.statValue}>{metrics ? `${metrics.distanceKm.toFixed(1)} km` : '—'}</span>
-              </div>
-            </div>
-            <div className={styles.summaryActions}>
-              <button
-                type="button"
-                className={styles.summaryOptimizeBtn}
-                onClick={handleOptimizeRoute}
-                disabled={isOptimizing || routeStops.length < 2}
-              >
-                {isOptimizing ? 'Optimalizuji...' : 'Optimalizovat'}
-              </button>
-              <button type="button" className={styles.summaryActionBtn} onClick={handleAddBreak}>
-                Pauza
-              </button>
-              <button type="button" className={styles.summaryDeleteBtn} onClick={handleClearRoute}>
-                Smazat trasu
-              </button>
-            </div>
+            <RouteSummaryStats
+              routeStartTime={actualRouteStart}
+              routeEndTime={actualRouteEnd}
+              metrics={metrics}
+              stopCount={routeStops.filter(s => s.stopType !== 'break').length}
+            />
+            <RouteSummaryActions
+              onOptimize={handleOptimizeRoute}
+              onAddBreak={handleAddBreak}
+              onDeleteRoute={handleClearRoute}
+              isOptimizing={isOptimizing}
+              canOptimize={routeStops.length >= 2}
+              deleteLabel="Smazat trasu"
+            />
           </div>
 
           {timelineView === 'compact' ? (
@@ -2428,7 +2386,6 @@ export function PlanningInbox() {
               onSegmentClick={setHighlightedSegment}
               onReorder={handleReorder}
               onRemoveStop={handleRemoveFromRoute}
-              isOptimizing={isOptimizing}
               isSaving={isSaving}
               warnings={routeWarnings}
               routeStartTime={routeStartTime}
@@ -2448,7 +2405,6 @@ export function PlanningInbox() {
               }}
               onReorder={handleReorder}
               onRemoveStop={handleRemoveFromRoute}
-              isOptimizing={isOptimizing}
               isSaving={isSaving}
               routeStartTime={routeStartTime}
               routeEndTime={routeEndTime}

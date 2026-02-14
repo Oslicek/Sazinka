@@ -19,7 +19,6 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import type { SavedRouteStop } from '../../services/routeService';
-import type { RouteMetrics } from './CapacityMetrics';
 import type { RouteWarning } from '@shared/route';
 import { reorderStops, needsScheduledTimeWarning } from './reorderStops';
 import { ScheduledTimeWarning } from './ScheduledTimeWarning';
@@ -36,15 +35,8 @@ interface RouteDetailTimelineProps {
   onReorder?: (newStops: SavedRouteStop[]) => void;
   // Editing actions (optional - Inbox and Planner can both provide these)
   onRemoveStop?: (stopId: string) => void;
-  onAddBreak?: () => void;
   onUpdateBreak?: (stopId: string, patch: { breakTimeStart?: string; breakDurationMinutes?: number }) => void;
-  onOptimize?: () => void;
-  onDeleteRoute?: () => void;
-  deleteRouteLabel?: string; // Custom label for delete button (default: "Smazat trasu")
-  isOptimizing?: boolean;
   isSaving?: boolean;
-  // Metrics
-  metrics?: RouteMetrics | null;
   // Warnings from solver (LATE_ARRIVAL, INSUFFICIENT_BUFFER, etc.)
   warnings?: RouteWarning[];
   routeStartTime?: string | null; // HH:MM, working day start
@@ -80,9 +72,6 @@ function formatDurationHm(durationMinutes: number | null): string {
   return `${h}h ${String(m).padStart(2, '0')}min`;
 }
 
-function getTotalDuration(metrics: RouteMetrics): number {
-  return Math.max(0, Math.round(metrics.travelTimeMin + metrics.serviceTimeMin));
-}
 
 function getStatusBadge(
   revisionStatus: string | null, 
@@ -148,14 +137,8 @@ export function RouteDetailTimeline({
   onSegmentClick,
   onReorder,
   onRemoveStop,
-  onAddBreak,
   onUpdateBreak,
-  onOptimize,
-  onDeleteRoute,
-  deleteRouteLabel = 'Smazat trasu',
-  isOptimizing = false,
   isSaving = false,
-  metrics,
   warnings = [],
   returnToDepotDistanceKm = null,
   returnToDepotDurationMinutes = null,
@@ -522,63 +505,9 @@ export function RouteDetailTimeline({
         <span className={styles.depotName}>{depotName}</span>
       </div>
 
-      {/* Metrics */}
-      {metrics && (
-        <div className={styles.metrics}>
-          <div className={styles.metric}>
-            <span className={styles.metricValue}>{metrics.distanceKm.toFixed(1)} km</span>
-            <span className={styles.metricLabel}>Vzdálenost</span>
-          </div>
-          <div className={styles.metric}>
-            <span className={styles.metricValue}>
-              {formatDurationHm(getTotalDuration(metrics))}
-            </span>
-            <span className={styles.metricLabel}>Celkový čas</span>
-            <span className={styles.metricHint}>
-              jízda {formatDurationHm(Math.max(0, Math.round(metrics.travelTimeMin)))} · práce {formatDurationHm(Math.max(0, Math.round(metrics.serviceTimeMin)))}
-            </span>
-          </div>
-          <div className={styles.metric}>
-            <span className={styles.metricValue}>{metrics.loadPercent}%</span>
-            <span className={styles.metricLabel}>Zatížení</span>
-          </div>
-        </div>
+      {isSaving && (
+        <div className={styles.savingIndicator}>⟳ Ukládám...</div>
       )}
-
-      {/* Action buttons */}
-      <div className={styles.actions}>
-        {onOptimize && (
-          <button
-            type="button"
-            className={styles.optimizeButton}
-            onClick={onOptimize}
-            disabled={isOptimizing || stops.length < 2}
-          >
-            {isOptimizing ? 'Optimalizuji...' : '🚀 Optimalizovat'}
-          </button>
-        )}
-        {onAddBreak && (
-          <button
-            type="button"
-            className={styles.addBreakButton}
-            onClick={onAddBreak}
-          >
-            ☕ Přidat pauzu
-          </button>
-        )}
-        {isSaving && (
-          <span className={styles.savingIndicator}>⟳ Ukládám...</span>
-        )}
-        {onDeleteRoute && (
-          <button
-            type="button"
-            className={styles.deleteButton}
-            onClick={onDeleteRoute}
-          >
-            🗑️ {deleteRouteLabel}
-          </button>
-        )}
-      </div>
 
       {pendingReorder && (
         <ScheduledTimeWarning

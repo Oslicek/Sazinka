@@ -1,0 +1,49 @@
+{
+  "loading": "Načítám…",
+  "save": "Uložit",
+  "cancel": "Zrušit",
+  "delete": "Smazat",
+  "confirm": "Potvrdit",
+  "close": "Zavřít",
+  "back": "Zpět",
+  "next": "Další",
+  "yes": "Ano",
+  "no": "Ne",
+  "search": "Hledat",
+  "error": "Došlo k chybě",
+  "not_found": "Nenalezeno",
+  "no_results": "Žádné výsledky",
+  "retry": "Zkusit znovu",
+  "status": {
+    "overdue": "Po termínu",
+    "due_soon": "Blíží se termín",
+    "upcoming": "Plánovaná",
+    "scheduled": "Naplánováno",
+    "in_progress": "Probíhá",
+    "completed": "Dokončeno",
+    "cancelled": "Zrušeno"
+  },
+  "units": {
+    "km": "km",
+    "min": "min",
+    "hours": "h",
+    "stops": "zast.",
+    "days": "dní"
+  },
+  "errors": {
+    "unknown": "Došlo k neočekávané chybě",
+    "network": "Chyba sítě. Zkontrolujte připojení.",
+    "not_connected": "Nepřipojeno k serveru"
+  },
+  "duration": {
+    "minutes_one": "{{count}} minuta",
+    "minutes_few": "{{count}} minuty",
+    "minutes_other": "{{count}} minut",
+    "hours_one": "{{count}} hodina",
+    "hours_few": "{{count}} hodiny",
+    "hours_other": "{{count}} hodin",
+    "days_one": "{{count}} den",
+    "days_few": "{{count}} dny",
+    "days_other": "{{count}} dní"
+  }
+}
