@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import i18n from '@/i18n';
 import { useNatsStore } from '../stores/natsStore';
 import { useAuthStore } from '../stores/authStore';
 import * as settingsService from '../services/settingsService';
@@ -776,10 +777,10 @@ interface EmailTemplatesFormProps {
 function EmailTemplatesForm({ data, saving, onSave }: EmailTemplatesFormProps) {
   const { t } = useTranslation('settings');
   const [formData, setFormData] = useState({
-    confirmationSubjectTemplate: data.confirmationSubjectTemplate || 'Potvrzení termínu - {{customerName}}',
-    confirmationBodyTemplate: data.confirmationBodyTemplate || 'Dobrý den,\n\npotvrzujeme dohodnutý termín návštěvy.\n\nS pozdravem',
-    reminderSubjectTemplate: data.reminderSubjectTemplate || 'Připomínka termínu - {{customerName}}',
-    reminderBodyTemplate: data.reminderBodyTemplate || 'Dobrý den,\n\npřipomínáme Vám zítřejší dohodnutý termín.\n\nS pozdravem',
+    confirmationSubjectTemplate: data.confirmationSubjectTemplate || i18n.t('settings:default_confirmation_subject'),
+    confirmationBodyTemplate: data.confirmationBodyTemplate || i18n.t('settings:default_confirmation_body'),
+    reminderSubjectTemplate: data.reminderSubjectTemplate || i18n.t('settings:default_reminder_subject'),
+    reminderBodyTemplate: data.reminderBodyTemplate || i18n.t('settings:default_reminder_body'),
     reminderSendTime: data.reminderSendTime || '09:00',
     thirdSubjectTemplate: data.thirdSubjectTemplate || '',
     thirdBodyTemplate: data.thirdBodyTemplate || '',

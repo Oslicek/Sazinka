@@ -4,6 +4,7 @@
  */
 
 import Papa from 'papaparse';
+import i18n from '../../i18n';
 import type { ImportIssue } from '@shared/customer';
 import type {
   CsvDeviceRow,
@@ -155,7 +156,7 @@ export function normalizeDeviceRow(row: CsvDeviceRow, rowNumber: number): {
       rowNumber,
       level: 'error',
       field: 'customer_ref',
-      message: 'Chybí reference na zákazníka',
+      message: i18n.t('import:parser_missing_customer_ref'),
     });
     return { device: null, issues };
   }
@@ -167,7 +168,7 @@ export function normalizeDeviceRow(row: CsvDeviceRow, rowNumber: number): {
       rowNumber,
       level: 'error',
       field: 'device_type',
-      message: row.device_type ? `Neznámý typ zařízení: "${row.device_type}"` : 'Chybí typ zařízení',
+      message: row.device_type ? i18n.t('import:parser_unknown_device_type', { type: row.device_type }) : i18n.t('import:parser_missing_device_type'),
       originalValue: row.device_type,
     });
     return { device: null, issues };
@@ -180,7 +181,7 @@ export function normalizeDeviceRow(row: CsvDeviceRow, rowNumber: number): {
       rowNumber,
       level: 'error',
       field: 'revision_interval_months',
-      message: 'Chybí nebo neplatný interval revizí',
+      message: i18n.t('import:parser_invalid_interval'),
       originalValue: row.revision_interval_months,
     });
     return { device: null, issues };
@@ -193,7 +194,7 @@ export function normalizeDeviceRow(row: CsvDeviceRow, rowNumber: number): {
       rowNumber,
       level: 'warning',
       field: 'installation_date',
-      message: 'Neplatný formát data instalace',
+      message: i18n.t('import:parser_invalid_install_date'),
       originalValue: row.installation_date,
     });
   }
@@ -273,7 +274,7 @@ export function normalizeRevisionRow(row: CsvRevisionRow, rowNumber: number): {
       rowNumber,
       level: 'error',
       field: 'device_ref',
-      message: 'Chybí reference na zařízení',
+      message: i18n.t('import:parser_missing_device_ref'),
     });
     return { revision: null, issues };
   }
@@ -285,7 +286,7 @@ export function normalizeRevisionRow(row: CsvRevisionRow, rowNumber: number): {
       rowNumber,
       level: 'error',
       field: 'customer_ref',
-      message: 'Chybí reference na zákazníka',
+      message: i18n.t('import:parser_missing_customer_ref'),
     });
     return { revision: null, issues };
   }
@@ -297,7 +298,7 @@ export function normalizeRevisionRow(row: CsvRevisionRow, rowNumber: number): {
       rowNumber,
       level: 'error',
       field: 'due_date',
-      message: row.due_date ? `Neplatný formát data: "${row.due_date}"` : 'Chybí termín revize',
+      message: row.due_date ? i18n.t('import:parser_invalid_date_format', { value: row.due_date }) : i18n.t('import:parser_missing_due_date'),
       originalValue: row.due_date,
     });
     return { revision: null, issues };
@@ -314,7 +315,7 @@ export function normalizeRevisionRow(row: CsvRevisionRow, rowNumber: number): {
       rowNumber,
       level: 'info',
       field: 'status',
-      message: 'Status nastaven na "completed" dle výsledku',
+      message: i18n.t('import:parser_status_set_completed'),
     });
   }
 
@@ -324,7 +325,7 @@ export function normalizeRevisionRow(row: CsvRevisionRow, rowNumber: number): {
       rowNumber,
       level: 'warning',
       field: 'result',
-      message: 'Dokončená revize bez výsledku',
+      message: i18n.t('import:parser_completed_no_result'),
     });
   }
 
@@ -402,7 +403,7 @@ export function normalizeCommunicationRow(row: CsvCommunicationRow, rowNumber: n
       rowNumber,
       level: 'error',
       field: 'customer_ref',
-      message: 'Chybí reference na zákazníka',
+      message: i18n.t('import:parser_missing_customer_ref'),
     });
     return { communication: null, issues };
   }
@@ -414,7 +415,7 @@ export function normalizeCommunicationRow(row: CsvCommunicationRow, rowNumber: n
       rowNumber,
       level: 'error',
       field: 'date',
-      message: row.date ? `Neplatný formát data: "${row.date}"` : 'Chybí datum komunikace',
+      message: row.date ? i18n.t('import:parser_invalid_date_format', { value: row.date }) : i18n.t('import:parser_missing_comm_date'),
       originalValue: row.date,
     });
     return { communication: null, issues };
@@ -427,7 +428,7 @@ export function normalizeCommunicationRow(row: CsvCommunicationRow, rowNumber: n
       rowNumber,
       level: 'error',
       field: 'comm_type',
-      message: row.comm_type ? `Neznámý typ komunikace: "${row.comm_type}"` : 'Chybí typ komunikace',
+      message: row.comm_type ? i18n.t('import:parser_unknown_comm_type', { type: row.comm_type }) : i18n.t('import:parser_missing_comm_type'),
       originalValue: row.comm_type,
     });
     return { communication: null, issues };
@@ -440,7 +441,7 @@ export function normalizeCommunicationRow(row: CsvCommunicationRow, rowNumber: n
       rowNumber,
       level: 'error',
       field: 'direction',
-      message: row.direction ? `Neznámý směr: "${row.direction}"` : 'Chybí směr komunikace',
+      message: row.direction ? i18n.t('import:parser_unknown_direction', { value: row.direction }) : i18n.t('import:parser_missing_direction'),
       originalValue: row.direction,
     });
     return { communication: null, issues };
@@ -453,7 +454,7 @@ export function normalizeCommunicationRow(row: CsvCommunicationRow, rowNumber: n
       rowNumber,
       level: 'error',
       field: 'content',
-      message: 'Chybí obsah komunikace',
+      message: i18n.t('import:parser_missing_content'),
     });
     return { communication: null, issues };
   }
@@ -553,7 +554,7 @@ export function normalizeWorkLogRow(row: CsvWorkLogRow, rowNumber: number): {
       rowNumber,
       level: 'error',
       field: 'customer_ref',
-      message: 'Chybí reference na zákazníka',
+      message: i18n.t('import:parser_missing_customer_ref'),
     });
     return { entry: null, issues };
   }
@@ -565,7 +566,7 @@ export function normalizeWorkLogRow(row: CsvWorkLogRow, rowNumber: number): {
       rowNumber,
       level: 'error',
       field: 'scheduled_date',
-      message: row.scheduled_date ? `Neplatný formát data: "${row.scheduled_date}"` : 'Chybí naplánované datum',
+      message: row.scheduled_date ? i18n.t('import:parser_invalid_date_format', { value: row.scheduled_date }) : i18n.t('import:parser_missing_scheduled_date'),
       originalValue: row.scheduled_date,
     });
     return { entry: null, issues };
@@ -578,7 +579,7 @@ export function normalizeWorkLogRow(row: CsvWorkLogRow, rowNumber: number): {
       rowNumber,
       level: 'error',
       field: 'work_type',
-      message: row.work_type ? `Neznámý typ práce: "${row.work_type}"` : 'Chybí typ práce',
+      message: row.work_type ? i18n.t('import:parser_unknown_work_type', { type: row.work_type }) : i18n.t('import:parser_missing_work_type'),
       originalValue: row.work_type,
     });
     return { entry: null, issues };
@@ -591,7 +592,7 @@ export function normalizeWorkLogRow(row: CsvWorkLogRow, rowNumber: number): {
       rowNumber,
       level: 'warning',
       field: 'device_ref',
-      message: 'Revize bez zařízení',
+      message: i18n.t('import:parser_revision_no_device'),
     });
   }
 
@@ -606,7 +607,7 @@ export function normalizeWorkLogRow(row: CsvWorkLogRow, rowNumber: number): {
       rowNumber,
       level: 'info',
       field: 'status',
-      message: 'Status nastaven na "completed" dle výsledku',
+      message: i18n.t('import:parser_status_set_completed'),
     });
   }
 
@@ -616,7 +617,7 @@ export function normalizeWorkLogRow(row: CsvWorkLogRow, rowNumber: number): {
       rowNumber,
       level: 'warning',
       field: 'result',
-      message: 'Dokončená práce bez výsledku',
+      message: i18n.t('import:parser_completed_work_no_result'),
     });
   }
 
@@ -628,7 +629,7 @@ export function normalizeWorkLogRow(row: CsvWorkLogRow, rowNumber: number): {
       rowNumber,
       level: 'warning',
       field: 'duration_minutes',
-      message: `Neplatná délka trvání: "${row.duration_minutes}"`,
+      message: i18n.t('import:parser_invalid_duration', { value: row.duration_minutes }),
       originalValue: row.duration_minutes,
     });
   }

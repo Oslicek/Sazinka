@@ -7,9 +7,11 @@
  */
 
 import { useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { Customer } from '@shared/customer';
 import { AddressMap } from './AddressMap';
 import { AddressStatusChip } from './AddressStatusChip';
+import { formatDate } from '../../i18n/formatters';
 import styles from './CustomerWorkspace.module.css';
 
 export type TabId = 'devices' | 'revisions' | 'communication';
@@ -35,6 +37,7 @@ export function CustomerWorkspace({
   onTabChange,
 }: CustomerWorkspaceProps) {
   const [internalActiveTab, setInternalActiveTab] = useState<TabId>('devices');
+  const { t } = useTranslation('customers');
   const activeTab = controlledActiveTab ?? internalActiveTab;
 
   const handleTabChange = (tab: TabId) => {
@@ -57,7 +60,7 @@ export function CustomerWorkspace({
       <aside className={styles.sidebar}>
         {/* Contact section */}
         <section className={styles.section}>
-          <h3 className={styles.sectionTitle}>Kontakt</h3>
+          <h3 className={styles.sectionTitle}>{t('preview_contact')}</h3>
           
           {isCompany && customer.contactPerson && (
             <div className={styles.contactItem}>
@@ -76,7 +79,7 @@ export function CustomerWorkspace({
                 type="button"
                 className={styles.copyButton}
                 onClick={() => navigator.clipboard.writeText(customer.phone!)}
-                title="Kopírovat"
+                title={t('preview_copy')}
               >
                 📋
               </button>
@@ -93,7 +96,7 @@ export function CustomerWorkspace({
                 type="button"
                 className={styles.copyButton}
                 onClick={() => navigator.clipboard.writeText(customer.email!)}
-                title="Kopírovat"
+                title={t('preview_copy')}
               >
                 📋
               </button>
@@ -101,15 +104,15 @@ export function CustomerWorkspace({
           )}
 
           {!customer.phone && !customer.email && (
-            <p className={styles.emptyText}>Kontakt nevyplněn</p>
+            <p className={styles.emptyText}>{t('preview_contact_empty')}</p>
           )}
         </section>
 
         {/* Address section */}
         <section className={styles.section}>
-          <h3 className={styles.sectionTitle}>Adresa</h3>
+          <h3 className={styles.sectionTitle}>{t('preview_address')}</h3>
           <AddressStatusChip status={customer.geocodeStatus} />
-          <p className={styles.address}>{fullAddress || 'Adresa nevyplněna'}</p>
+          <p className={styles.address}>{fullAddress || t('preview_address_empty')}</p>
           
           {hasCoordinates && (
             <div className={styles.mapContainer}>
@@ -125,9 +128,9 @@ export function CustomerWorkspace({
           {!hasCoordinates && (
             <div className={styles.noMap}>
               {customer.geocodeStatus === 'failed' ? (
-                <span>⚠️ Adresu nelze lokalizovat</span>
+                <span>⚠️ {t('preview_address_cannot_locate')}</span>
               ) : (
-                <span>🗺️ Mapa není k dispozici</span>
+                <span>🗺️ {t('preview_map_unavailable')}</span>
               )}
             </div>
           )}
@@ -136,16 +139,16 @@ export function CustomerWorkspace({
         {/* Company info */}
         {isCompany && (customer.ico || customer.dic) && (
           <section className={styles.section}>
-            <h3 className={styles.sectionTitle}>Firemní údaje</h3>
+            <h3 className={styles.sectionTitle}>{t('preview_company_info')}</h3>
             {customer.ico && (
               <div className={styles.infoRow}>
-                <span className={styles.infoLabel}>IČO:</span>
+                <span className={styles.infoLabel}>{t('form_ico')}:</span>
                 <span className={styles.infoValue}>{customer.ico}</span>
               </div>
             )}
             {customer.dic && (
               <div className={styles.infoRow}>
-                <span className={styles.infoLabel}>DIČ:</span>
+                <span className={styles.infoLabel}>{t('form_dic')}:</span>
                 <span className={styles.infoValue}>{customer.dic}</span>
               </div>
             )}
@@ -155,25 +158,25 @@ export function CustomerWorkspace({
         {/* Notes section */}
         {customer.notes && (
           <section className={styles.section}>
-            <h3 className={styles.sectionTitle}>Poznámky</h3>
+            <h3 className={styles.sectionTitle}>{t('preview_notes')}</h3>
             <p className={styles.notes}>{customer.notes}</p>
           </section>
         )}
 
         {/* Metadata */}
         <section className={styles.section}>
-          <h3 className={styles.sectionTitle}>Informace</h3>
+          <h3 className={styles.sectionTitle}>{t('preview_info')}</h3>
           <div className={styles.metadata}>
             <div className={styles.infoRow}>
-              <span className={styles.infoLabel}>Vytvořeno:</span>
+              <span className={styles.infoLabel}>{t('preview_created')}</span>
               <span className={styles.infoValue}>
-                {new Date(customer.createdAt).toLocaleDateString('cs-CZ')}
+                {formatDate(customer.createdAt)}
               </span>
             </div>
             <div className={styles.infoRow}>
-              <span className={styles.infoLabel}>Aktualizováno:</span>
+              <span className={styles.infoLabel}>{t('preview_updated')}</span>
               <span className={styles.infoValue}>
-                {new Date(customer.updatedAt).toLocaleDateString('cs-CZ')}
+                {formatDate(customer.updatedAt)}
               </span>
             </div>
           </div>
@@ -189,14 +192,14 @@ export function CustomerWorkspace({
             className={`${styles.tab} ${activeTab === 'devices' ? styles.tabActive : ''}`}
             onClick={() => handleTabChange('devices')}
           >
-            🔧 Zařízení
+            🔧 {t('preview_devices_tab')}
           </button>
           <button
             type="button"
             className={`${styles.tab} ${activeTab === 'revisions' ? styles.tabActive : ''}`}
             onClick={() => handleTabChange('revisions')}
           >
-            📋 Historie
+            📋 {t('preview_history_tab')}
           </button>
           {tabs.communication && (
             <button
@@ -204,7 +207,7 @@ export function CustomerWorkspace({
               className={`${styles.tab} ${activeTab === 'communication' ? styles.tabActive : ''}`}
               onClick={() => handleTabChange('communication')}
             >
-              💬 Komunikace
+              💬 {t('preview_communication_tab')}
             </button>
           )}
         </nav>

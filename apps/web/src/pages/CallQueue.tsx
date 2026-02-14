@@ -25,6 +25,7 @@ import { listCrews, type Crew } from '../services/crewService';
 import { getToken } from '@/utils/auth';
 import { DEVICE_TYPE_KEYS } from '@shared/device';
 import { resolveBackendMessage } from '@/i18n/resolveBackendMessage';
+import { formatDate } from '../i18n/formatters';
 import styles from './CallQueue.module.css';
 
 // Priority colors (labels resolved via i18n)
@@ -232,11 +233,6 @@ export function CallQueue() {
     setSelectedCrewId(slot.crewId);
     setValidation(null);
     setShowWarningConfirm(false);
-  };
-
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
   };
 
   const formatPhone = (phone: string | null) => {

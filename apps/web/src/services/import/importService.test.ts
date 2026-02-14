@@ -245,7 +245,7 @@ Petr;Brno`;
         expect(result.phone).toBe('+420602123456');
         expect(result.issues).toHaveLength(1);
         expect(result.issues[0].level).toBe('warning');
-        expect(result.issues[0].message).toContain('úvodní 0');
+        expect(result.issues[0].message).toContain('phone_leading_zero_removed');
       });
 
       it('should normalize number with parentheses and dashes', () => {
@@ -292,7 +292,7 @@ Petr;Brno`;
         expect(result.phone).toBe('+420602111222');
         expect(result.additionalPhones).toContain('+420603333444');
         expect(result.issues).toHaveLength(1);
-        expect(result.issues[0].message.toLowerCase()).toContain('více telefonů');
+        expect(result.issues[0].message).toContain('phone_multiple_used_first');
       });
 
       it('should take first phone when slash-separated', () => {
@@ -336,7 +336,7 @@ Petr;Brno`;
       expect(result.postalCode).toBe('1100');
       expect(result.issues).toHaveLength(1);
       expect(result.issues[0].level).toBe('warning');
-      expect(result.issues[0].message).toContain('PSČ');
+      expect(result.issues[0].message).toContain('postal_code_not_5_digits');
     });
 
     it('should allow foreign postal codes without validation', () => {
@@ -383,7 +383,7 @@ Petr;Brno`;
       expect(result.email).toBe('janexample.com');
       expect(result.issues).toHaveLength(1);
       expect(result.issues[0].level).toBe('warning');
-      expect(result.issues[0].message).toContain('@');
+      expect(result.issues[0].message).toContain('email_missing_at');
     });
 
     it('should return null for empty input', () => {
@@ -425,7 +425,7 @@ Petr;Brno`;
       expect(result.ico).toBe('12345678');
       expect(result.issues).toHaveLength(1);
       expect(result.issues[0].level).toBe('warning');
-      expect(result.issues[0].message).toContain('fyzické osoby');
+      expect(result.issues[0].message).toContain('ico_on_person');
     });
 
     it('should return null for empty input', () => {
@@ -483,7 +483,7 @@ Petr;Brno`;
       const result = normalizeDic('CZ12345678', 'CZ', 'person');
       expect(result.dic).toBe('CZ12345678');
       expect(result.issues).toHaveLength(1);
-      expect(result.issues[0].message).toContain('fyzické osoby');
+      expect(result.issues[0].message).toContain('dic_on_person');
     });
 
     it('should return null for empty input', () => {
@@ -571,7 +571,7 @@ Petr;Brno`;
       const result = normalizeCustomerRow(row, 1);
       
       expect(result.customer.type).toBe('company');
-      expect(result.issues.some(i => i.message.includes('odvozen'))).toBe(true);
+      expect(result.issues.some(i => i.message.includes('type_inferred'))).toBe(true);
     });
 
     it('should collect all issues from sub-normalizations', () => {
@@ -608,7 +608,7 @@ Petr;Brno`;
       const result = normalizeCustomerRow(row, 1);
       
       expect(result.customer.phone).toBe('+420602111222');
-      expect(result.customer.notes).toContain('+420603333444');
+      expect(result.customer.notes).toContain('import:additional_phones');
     });
   });
 
@@ -655,8 +655,9 @@ Petr;Brno`;
       
       const text = generateTextReport(report);
       
-      expect(text).toContain('VAROVÁNÍ');
-      expect(text).toContain('Řádek 10');
+      expect(text).toContain('report_warnings');
+      expect(text).toContain('report_row');
+      expect(text).toContain('10');
       expect(text).toContain('phone');
       expect(text).toContain('abc');
     });
@@ -679,8 +680,9 @@ Petr;Brno`;
       
       const text = generateTextReport(report);
       
-      expect(text).toContain('CHYBY');
-      expect(text).toContain('Řádek 5');
+      expect(text).toContain('report_errors');
+      expect(text).toContain('report_row');
+      expect(text).toContain('5');
     });
 
     it('should format duration correctly', () => {

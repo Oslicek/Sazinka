@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { Customer } from '@shared/customer';
 import { listCustomers } from '@/services/customerService';
 import { createVisit } from '@/services/visitService';
@@ -10,15 +11,10 @@ interface QuickVisitDialogProps {
   onCreated: () => void;
 }
 
-const VISIT_TYPE_OPTIONS = [
-  { value: 'revision', label: 'Revize' },
-  { value: 'consultation', label: 'Konzultace' },
-  { value: 'installation', label: 'Instalace' },
-  { value: 'repair', label: 'Oprava' },
-  { value: 'follow_up', label: 'Následná návštěva' },
-] as const;
+const VISIT_TYPE_KEYS = ['revision', 'consultation', 'installation', 'repair', 'follow_up'] as const;
 
 export function QuickVisitDialog({ open, onClose, onCreated }: QuickVisitDialogProps) {
+  const { t } = useTranslation('pages');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -27,7 +23,7 @@ export function QuickVisitDialog({ open, onClose, onCreated }: QuickVisitDialogP
   const [customerId, setCustomerId] = useState('');
   const [scheduledDate, setScheduledDate] = useState(new Date().toISOString().slice(0, 10));
   const [scheduledTimeStart, setScheduledTimeStart] = useState('');
-  const [visitType, setVisitType] = useState<(typeof VISIT_TYPE_OPTIONS)[number]['value']>('consultation');
+  const [visitType, setVisitType] = useState<(typeof VISIT_TYPE_KEYS)[number]>('consultation');
 
   useEffect(() => {
     if (!open) return;
@@ -43,7 +39,7 @@ export function QuickVisitDialog({ open, onClose, onCreated }: QuickVisitDialogP
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Nepodařilo se načíst zákazníky');
+          setError(err instanceof Error ? err.message : t('quick_visit_error_load_customers'));
         }
       } finally {
         if (!cancelled) {
@@ -95,7 +91,7 @@ export function QuickVisitDialog({ open, onClose, onCreated }: QuickVisitDialogP
       setVisitType('consultation');
       setScheduledDate(new Date().toISOString().slice(0, 10));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nepodařilo se vytvořit záznam');
+      setError(err instanceof Error ? err.message : t('quick_visit_error_create'));
     } finally {
       setIsSubmitting(false);
     }
@@ -106,32 +102,32 @@ export function QuickVisitDialog({ open, onClose, onCreated }: QuickVisitDialogP
   return (
     <div className={styles.overlay} onClick={handleClose}>
       <div className={styles.dialog} onClick={(e) => e.stopPropagation()}>
-        <h3 className={styles.title}>Rychlý záznam</h3>
-        <p className={styles.subtitle}>Vytvoří novou návštěvu v Záznamu práce.</p>
+        <h3 className={styles.title}>{t('quick_visit_title')}</h3>
+        <p className={styles.subtitle}>{t('quick_visit_subtitle')}</p>
 
         {error && <div className={styles.error}>{error}</div>}
 
         <form className={styles.form} onSubmit={handleSubmit}>
           <label className={styles.field}>
-            <span>Zákazník *</span>
+            <span>{t('quick_visit_customer')}</span>
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Hledat zákazníka..."
+              placeholder={t('quick_visit_search_placeholder')}
               disabled={isLoadingCustomers || isSubmitting}
             />
           </label>
 
           <label className={styles.field}>
-            <span>Vybraný zákazník *</span>
+            <span>{t('quick_visit_selected_customer')}</span>
             <select
               value={customerId}
               onChange={(e) => setCustomerId(e.target.value)}
               disabled={isLoadingCustomers || isSubmitting}
               required
             >
-              <option value="">{isLoadingCustomers ? 'Načítám zákazníky...' : 'Vyberte zákazníka'}</option>
+              <option value="">{isLoadingCustomers ? t('quick_visit_loading_customers') : t('quick_visit_select_customer')}</option>
               {filteredCustomers.map((customer) => (
                 <option key={customer.id} value={customer.id}>
                   {customer.name} {customer.city ? `(${customer.city})` : ''}
@@ -142,7 +138,7 @@ export function QuickVisitDialog({ open, onClose, onCreated }: QuickVisitDialogP
 
           <div className={styles.row}>
             <label className={styles.field}>
-              <span>Datum *</span>
+              <span>{t('quick_visit_date')}</span>
               <input
                 type="date"
                 value={scheduledDate}
@@ -152,7 +148,7 @@ export function QuickVisitDialog({ open, onClose, onCreated }: QuickVisitDialogP
               />
             </label>
             <label className={styles.field}>
-              <span>Čas (volitelně)</span>
+              <span>{t('quick_visit_time')}</span>
               <input
                 type="time"
                 value={scheduledTimeStart}
@@ -163,15 +159,15 @@ export function QuickVisitDialog({ open, onClose, onCreated }: QuickVisitDialogP
           </div>
 
           <label className={styles.field}>
-            <span>Typ návštěvy</span>
+            <span>{t('quick_visit_type')}</span>
             <select
               value={visitType}
-              onChange={(e) => setVisitType(e.target.value as (typeof VISIT_TYPE_OPTIONS)[number]['value'])}
+              onChange={(e) => setVisitType(e.target.value as (typeof VISIT_TYPE_KEYS)[number])}
               disabled={isSubmitting}
             >
-              {VISIT_TYPE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
+              {VISIT_TYPE_KEYS.map((key) => (
+                <option key={key} value={key}>
+                  {t(`common:visit_type.${key}`)}
                 </option>
               ))}
             </select>
@@ -179,10 +175,10 @@ export function QuickVisitDialog({ open, onClose, onCreated }: QuickVisitDialogP
 
           <div className={styles.actions}>
             <button type="button" className={styles.cancelBtn} onClick={handleClose} disabled={isSubmitting}>
-              Zrušit
+              {t('common:cancel')}
             </button>
             <button type="submit" className={styles.submitBtn} disabled={isSubmitting || isLoadingCustomers}>
-              {isSubmitting ? 'Ukládám...' : 'Uložit'}
+              {isSubmitting ? t('common:saving') : t('common:save')}
             </button>
           </div>
         </form>

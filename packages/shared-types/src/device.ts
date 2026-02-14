@@ -25,16 +25,6 @@ export type DeviceType =
   | 'gas_stove'
   | 'other';
 
-/** @deprecated Use DEVICE_TYPE_KEYS with i18n.t() instead */
-export const DEVICE_TYPE_LABELS: Record<DeviceType, string> = {
-  gas_boiler: 'Plynový kotel',
-  gas_water_heater: 'Plynový ohřívač vody',
-  chimney: 'Komín',
-  fireplace: 'Krb',
-  gas_stove: 'Plynový sporák',
-  other: 'Jiné',
-};
-
 /** i18n translation keys for device types — resolve via t(DEVICE_TYPE_KEYS[type]) */
 export const DEVICE_TYPE_KEYS: Record<DeviceType, string> = {
   gas_boiler: 'common:device_type.gas_boiler',

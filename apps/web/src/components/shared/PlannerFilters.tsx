@@ -4,6 +4,7 @@
  * Used by Planner, WorkLog, and potentially other pages.
  */
 
+import { useTranslation } from 'react-i18next';
 import type { Crew } from '../../services/crewService';
 import type { Depot } from '@shared/settings';
 import styles from './PlannerFilters.module.css';
@@ -37,6 +38,7 @@ export function PlannerFilters({
   onCrewChange,
   onDepotChange,
 }: PlannerFiltersProps) {
+  const { t } = useTranslation('common');
   return (
     <div className={styles.filtersSection}>
       <div className={styles.filterRow}>
@@ -62,7 +64,7 @@ export function PlannerFilters({
             type="button"
             className={`${styles.rangeToggle} ${isDateRange ? styles.rangeToggleActive : ''}`}
             onClick={onToggleRange}
-            title={isDateRange ? 'Jeden den' : 'Rozsah'}
+            title={isDateRange ? t('filter_single_day') : t('filter_date_range')}
           >
             {isDateRange ? '1' : '...'}
           </button>
@@ -75,7 +77,7 @@ export function PlannerFilters({
           onChange={(e) => onCrewChange(e.target.value)}
           className={styles.filterSelect}
         >
-          <option value="">Posádka: Vše</option>
+          <option value="">{t('filter_crew_all')}</option>
           {crews.map((crew) => (
             <option key={crew.id} value={crew.id}>{crew.name}</option>
           ))}
@@ -86,7 +88,7 @@ export function PlannerFilters({
           onChange={(e) => onDepotChange(e.target.value)}
           className={styles.filterSelect}
         >
-          <option value="">Depo: Vše</option>
+          <option value="">{t('filter_depot_all')}</option>
           {depots.map((d) => (
             <option key={d.id} value={d.id}>{d.name}</option>
           ))}

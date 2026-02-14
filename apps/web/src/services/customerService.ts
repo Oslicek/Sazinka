@@ -11,6 +11,7 @@ import type { ListRequest, ListResponse, SuccessResponse, ErrorResponse } from '
 import { createRequest } from '@shared/messages';
 import { useNatsStore } from '../stores/natsStore';
 import { getToken } from '@/utils/auth';
+import i18n from '@/i18n';
 
 /**
  * Dependencies for customer service (for testing)
@@ -214,7 +215,7 @@ export async function importCustomersBatch(
         rowNumber: i + 1,
         level: 'error',
         field: 'server',
-        message: error instanceof Error ? error.message : 'Nepodařilo se uložit zákazníka',
+        message: error instanceof Error ? error.message : i18n.t('import:parser_customer_save_failed'),
       });
     }
   }

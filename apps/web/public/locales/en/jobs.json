@@ -87,5 +87,14 @@
   "geocode_address_submitted": "Geocode address job submitted",
   "reverse_geocode_submitted": "Reverse geocode job submitted",
   "address_not_found": "Address not found",
-  "reverse_geocode_failed": "Reverse geocode failed"
+  "reverse_geocode_failed": "Reverse geocode failed",
+
+  "job_type_geocode": "Geocoding",
+  "job_type_route": "Route planning",
+  "job_type_import": "Data import",
+  "job_type_export": "Data export",
+  "job_type_valhalla_matrix": "Distance matrix calculation",
+  "job_type_valhalla_geometry": "Route geometry calculation",
+  "job_type_email": "Sending email",
+  "job_type_sms": "Sending SMS"
 }

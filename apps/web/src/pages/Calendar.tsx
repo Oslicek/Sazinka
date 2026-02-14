@@ -719,7 +719,7 @@ export function Calendar() {
                           {route.crewName || t('crew_label')}
                         </span>
                         <span className={styles.routeStats}>
-                          {route.stopsCount || 0} zastávek · {route.totalDistanceKm?.toFixed(1) || '?'} km · {route.totalDurationMinutes || '?'} min
+                          {t('stops_stats', { stops: route.stopsCount || 0, distance: route.totalDistanceKm?.toFixed(1) || '?', duration: route.totalDurationMinutes || '?' })}
                         </span>
                       </div>
                       <span className={styles.revisionArrow}>→</span>

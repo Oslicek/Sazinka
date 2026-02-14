@@ -11,6 +11,7 @@
  */
 
 import { useMemo, useCallback, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   createColumnHelper,
   flexRender,
@@ -21,6 +22,7 @@ import {
 } from '@tanstack/react-table';
 import { TableVirtuoso } from 'react-virtuoso';
 import type { CustomerListItem } from '@shared/customer';
+import { formatDate } from '../../i18n/formatters';
 import styles from './CustomerTable.module.css';
 
 const columnHelper = createColumnHelper<CustomerListItem>();
@@ -43,12 +45,13 @@ interface CustomerTableProps {
 function formatRevisionStatus(
   date: string | null, 
   overdueCount: number,
-  neverServicedCount: number
+  neverServicedCount: number,
+  t: (key: string, opts?: Record<string, unknown>) => string,
 ): { text: string; status: 'overdue' | 'never-serviced' | 'soon' | 'upcoming' | 'none' } {
   // Never serviced takes priority - show warning
   if (neverServicedCount > 0) {
     return { 
-      text: `Bez revize (${neverServicedCount} zař.)`, 
+      text: t('revision_no_revision', { count: neverServicedCount }), 
       status: 'never-serviced'
     };
   }
@@ -56,7 +59,7 @@ function formatRevisionStatus(
   // Has overdue devices
   if (overdueCount > 0) {
     return { 
-      text: `Po termínu (${overdueCount} zař.)`, 
+      text: t('revision_overdue_count', { count: overdueCount }), 
       status: 'overdue'
     };
   }
@@ -64,9 +67,9 @@ function formatRevisionStatus(
   if (!date) {
     // No upcoming revision date. If no warnings either, all devices are properly serviced.
     if (neverServicedCount === 0 && overdueCount === 0) {
-      return { text: 'V pořádku', status: 'none' };
+      return { text: t('revision_ok'), status: 'none' };
     }
-    return { text: 'Bez revize', status: 'none' };
+    return { text: t('revision_no_revision_plain'), status: 'none' };
   }
   
   const dueDate = new Date(date);
@@ -77,39 +80,39 @@ function formatRevisionStatus(
   
   if (diffDays < 0) {
     return { 
-      text: `Po termínu (${Math.abs(diffDays)} dní)`, 
+      text: t('revision_overdue_days', { days: Math.abs(diffDays) }), 
       status: 'overdue'
     };
   } else if (diffDays <= 7) {
     return { 
-      text: `Za ${diffDays} dní`, 
+      text: t('revision_in_days', { days: diffDays }), 
       status: 'soon'
     };
   } else if (diffDays <= 30) {
     return { 
-      text: dueDate.toLocaleDateString('cs-CZ'), 
+      text: formatDate(dueDate), 
       status: 'upcoming'
     };
   }
   
   return { 
-    text: dueDate.toLocaleDateString('cs-CZ'), 
+    text: formatDate(dueDate), 
     status: 'none'
   };
 }
 
 // Address status badge
-function AddressStatusBadge({ status }: { status: string }) {
-  const config: Record<string, { icon: string; label: string; className: string }> = {
-    success: { icon: '✅', label: 'Ověřeno', className: styles.statusSuccess },
-    pending: { icon: '⏳', label: 'Čeká', className: styles.statusPending },
-    failed: { icon: '⚠', label: 'Nelze', className: styles.statusFailed },
+function AddressStatusBadge({ status, t }: { status: string; t: (key: string) => string }) {
+  const config: Record<string, { icon: string; labelKey: string; className: string }> = {
+    success: { icon: '✅', labelKey: 'address_status_verified', className: styles.statusSuccess },
+    pending: { icon: '⏳', labelKey: 'address_status_pending_short', className: styles.statusPending },
+    failed: { icon: '⚠', labelKey: 'address_status_failed_short', className: styles.statusFailed },
   };
   
-  const { icon, label, className } = config[status] || { icon: '⛔', label: 'Chybí', className: styles.statusMissing };
+  const { icon, labelKey, className } = config[status] || { icon: '⛔', labelKey: 'address_status_missing_short', className: styles.statusMissing };
   
   return (
-    <span className={`${styles.statusBadge} ${className}`} title={label}>
+    <span className={`${styles.statusBadge} ${className}`} title={t(labelKey)}>
       {icon}
     </span>
   );
@@ -125,10 +128,12 @@ export function CustomerTable({
   isLoadingMore,
   totalCount,
 }: CustomerTableProps) {
+  const { t } = useTranslation('customers');
+
   const columns = useMemo(() => [
     columnHelper.accessor('name', {
       id: 'customer',
-      header: 'Zákazník',
+      header: t('table_customer'),
       cell: ({ row }) => {
         const customer = row.original;
         return (
@@ -137,7 +142,7 @@ export function CustomerTable({
               <span className={styles.customerName}>
                 {customer.name}
                 <span className={styles.customerType}>
-                  {customer.type === 'company' ? 'Firma' : 'Osoba'}
+                  {customer.type === 'company' ? t('type_company') : t('type_person')}
                 </span>
               </span>
               <span className={styles.customerAddress}>
@@ -154,24 +159,25 @@ export function CustomerTable({
       size: 350,
     }),
     columnHelper.accessor('city', {
-      header: 'Město',
+      header: t('table_city'),
       cell: ({ getValue }) => getValue() || '-',
       size: 120,
     }),
     columnHelper.accessor('deviceCount', {
-      header: 'Zařízení',
+      header: t('table_devices'),
       cell: ({ getValue }) => (
         <span className={styles.deviceCount}>{getValue()}</span>
       ),
       size: 80,
     }),
     columnHelper.accessor('nextRevisionDate', {
-      header: 'Stav revizí',
+      header: t('table_revision_status'),
       cell: ({ row }) => {
         const { text, status } = formatRevisionStatus(
           row.original.nextRevisionDate,
           row.original.overdueCount,
-          row.original.neverServicedCount
+          row.original.neverServicedCount,
+          t,
         );
         return (
           <span className={`${styles.revision} ${styles[`revision-${status}`]}`}>
@@ -182,11 +188,11 @@ export function CustomerTable({
       size: 170,
     }),
     columnHelper.accessor('geocodeStatus', {
-      header: 'Adresa',
-      cell: ({ getValue }) => <AddressStatusBadge status={getValue()} />,
+      header: t('table_address'),
+      cell: ({ getValue }) => <AddressStatusBadge status={getValue()} t={t} />,
       size: 70,
     }),
-  ], []);
+  ], [t]);
 
   const [sorting, setSorting] = useState<SortingState>([]);
 
@@ -251,7 +257,7 @@ export function CustomerTable({
     return (
       <div className={styles.loading}>
         <div className={styles.spinner} />
-        <span>Načítám zákazníky...</span>
+        <span>{t('loading_customers')}</span>
       </div>
     );
   }
@@ -260,7 +266,7 @@ export function CustomerTable({
     return (
       <div className={styles.empty}>
         <span className={styles.emptyIcon}>📋</span>
-        <p>Žádní zákazníci neodpovídají filtrům</p>
+        <p>{t('no_customers_match')}</p>
       </div>
     );
   }
@@ -323,7 +329,7 @@ export function CustomerTable({
               <tfoot>
                 <tr>
                   <td colSpan={columns.length} className={styles.loadingMore}>
-                    Načítám další zákazníky...
+                    {t('table_loading_more')}
                   </td>
                 </tr>
               </tfoot>

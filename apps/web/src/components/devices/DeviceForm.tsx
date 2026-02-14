@@ -59,13 +59,13 @@ export function DeviceForm({ customerId, device, onSuccess, onCancel }: DeviceFo
     e.preventDefault();
     
     if (!isConnected) {
-      setError('Není připojení k serveru');
+      setError(t('errors.not_connected'));
       return;
     }
 
     // Validate required fields
     if (!formData.deviceType) {
-      setError('Vyberte typ zařízení');
+      setError(t('device_form_select_type'));
       return;
     }
 
@@ -116,7 +116,7 @@ export function DeviceForm({ customerId, device, onSuccess, onCancel }: DeviceFo
       onSuccess();
     } catch (err) {
       console.error('Failed to save device:', err);
-      setError(err instanceof Error ? err.message : 'Nepodařilo se uložit zařízení');
+      setError(err instanceof Error ? err.message : t('device_error_save'));
     } finally {
       setIsSubmitting(false);
     }
@@ -125,14 +125,14 @@ export function DeviceForm({ customerId, device, onSuccess, onCancel }: DeviceFo
   return (
     <form className={styles.form} onSubmit={handleSubmit}>
       <h3 className={styles.title}>
-        {isEditMode ? 'Upravit zařízení' : 'Nové zařízení'}
+        {isEditMode ? t('device_edit') : t('device_new')}
       </h3>
 
       {error && <div className={styles.error}>{error}</div>}
 
       <div className={styles.field}>
         <label htmlFor="deviceType" className={styles.label}>
-          Typ zařízení <span className={styles.required}>*</span>
+          {t('device_form_type')} <span className={styles.required}>*</span>
         </label>
         <select
           id="deviceType"
@@ -151,7 +151,7 @@ export function DeviceForm({ customerId, device, onSuccess, onCancel }: DeviceFo
 
       <div className={styles.row}>
         <div className={styles.field}>
-          <label htmlFor="manufacturer" className={styles.label}>Výrobce</label>
+          <label htmlFor="manufacturer" className={styles.label}>{t('device_form_manufacturer')}</label>
           <input
             type="text"
             id="manufacturer"
@@ -164,7 +164,7 @@ export function DeviceForm({ customerId, device, onSuccess, onCancel }: DeviceFo
         </div>
 
         <div className={styles.field}>
-          <label htmlFor="model" className={styles.label}>Model</label>
+          <label htmlFor="model" className={styles.label}>{t('device_form_model')}</label>
           <input
             type="text"
             id="model"
@@ -178,7 +178,7 @@ export function DeviceForm({ customerId, device, onSuccess, onCancel }: DeviceFo
       </div>
 
       <div className={styles.field}>
-        <label htmlFor="serialNumber" className={styles.label}>Sériové číslo</label>
+        <label htmlFor="serialNumber" className={styles.label}>{t('device_form_serial_number')}</label>
         <input
           type="text"
           id="serialNumber"
@@ -192,7 +192,7 @@ export function DeviceForm({ customerId, device, onSuccess, onCancel }: DeviceFo
 
       <div className={styles.row}>
         <div className={styles.field}>
-          <label htmlFor="installationDate" className={styles.label}>Datum instalace</label>
+          <label htmlFor="installationDate" className={styles.label}>{t('device_form_installation_date')}</label>
           <input
             type="date"
             id="installationDate"
@@ -205,7 +205,7 @@ export function DeviceForm({ customerId, device, onSuccess, onCancel }: DeviceFo
 
         <div className={styles.field}>
           <label htmlFor="revisionIntervalMonths" className={styles.label}>
-            Interval revizí (měsíce)
+            {t('device_form_revision_interval')}
           </label>
           <input
             type="number"
@@ -221,13 +221,13 @@ export function DeviceForm({ customerId, device, onSuccess, onCancel }: DeviceFo
       </div>
 
       <div className={styles.field}>
-        <label htmlFor="notes" className={styles.label}>Poznámky</label>
+        <label htmlFor="notes" className={styles.label}>{t('device_form_notes')}</label>
         <textarea
           id="notes"
           value={formData.notes}
           onChange={(e) => handleChange('notes', e.target.value)}
           className={styles.textarea}
-          placeholder="Další informace o zařízení..."
+          placeholder={t('device_form_notes_placeholder')}
           rows={3}
           disabled={isSubmitting}
         />
@@ -240,14 +240,14 @@ export function DeviceForm({ customerId, device, onSuccess, onCancel }: DeviceFo
           className={styles.cancelButton}
           disabled={isSubmitting}
         >
-          Zrušit
+          {t('cancel')}
         </button>
         <button
           type="submit"
           className={styles.submitButton}
           disabled={isSubmitting || !isConnected}
         >
-          {isSubmitting ? 'Ukládám...' : (isEditMode ? 'Uložit změny' : 'Přidat zařízení')}
+          {isSubmitting ? t('saving') : (isEditMode ? t('device_form_save_changes') : t('device_add'))}
         </button>
       </div>
     </form>

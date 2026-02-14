@@ -23,12 +23,13 @@ import type { SlotSuggestion } from '../components/planner/SlotSuggestions';
 import { DeviceList } from '../components/devices';
 import { CustomerTimeline } from '../components/timeline';
 import { useNatsStore } from '../stores/natsStore';
+import { useTranslation } from 'react-i18next';
 import styles from './CustomerDetail.module.css';
 
 // Default mock crews (fallback when none in database)
 const DEFAULT_CREWS: Crew[] = [
-  { id: 'default-1', name: 'Posádka 1', licensePlate: '1A1 1234' },
-  { id: 'default-2', name: 'Posádka 2', licensePlate: '2B2 5678' },
+  { id: 'default-1', name: 'Crew 1', licensePlate: '1A1 1234' },
+  { id: 'default-2', name: 'Crew 2', licensePlate: '2B2 5678' },
 ];
 
 interface SearchParams {
@@ -39,6 +40,7 @@ interface SearchParams {
 export function CustomerDetail() {
   const { customerId } = useParams({ strict: false }) as { customerId: string };
   const navigate = useNavigate();
+  const { t } = useTranslation('pages');
   const searchParams = useSearch({ strict: false }) as SearchParams;
   
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -68,13 +70,13 @@ export function CustomerDetail() {
 
   const loadCustomer = useCallback(async () => {
     if (!isConnected) {
-      setError('Není připojení k serveru');
+      setError(t('customer_error_connection'));
       setIsLoading(false);
       return;
     }
 
     if (!customerId) {
-      setError('ID zákazníka není zadáno');
+      setError(t('customer_error_no_id'));
       setIsLoading(false);
       return;
     }
@@ -86,11 +88,11 @@ export function CustomerDetail() {
       setCustomer(data);
     } catch (err) {
       console.error('Failed to load customer:', err);
-      setError(err instanceof Error ? err.message : 'Nepodařilo se načíst zákazníka');
+      setError(err instanceof Error ? err.message : t('customer_error_load'));
     } finally {
       setIsLoading(false);
     }
-  }, [isConnected, customerId]);
+  }, [isConnected, customerId, t]);
 
   useEffect(() => {
     loadCustomer();
@@ -116,7 +118,7 @@ export function CustomerDetail() {
 
   const handleSubmitEdit = useCallback(async (data: UpdateCustomerRequest) => {
     if (!isConnected) {
-      setError('Není připojení k serveru');
+      setError(t('customer_error_connection'));
       return;
     }
 
@@ -153,7 +155,7 @@ export function CustomerDetail() {
       }
     } catch (err) {
       console.error('Failed to update customer:', err);
-      setError(err instanceof Error ? err.message : 'Nepodařilo se aktualizovat zákazníka');
+      setError(err instanceof Error ? err.message : t('customer_error_update'));
     } finally {
       setIsSubmitting(false);
     }
@@ -169,7 +171,7 @@ export function CustomerDetail() {
 
   const handleConfirmDelete = useCallback(async () => {
     if (!isConnected || !customerId) {
-      setError('Není připojení k serveru');
+      setError(t('customer_error_connection'));
       return;
     }
 
@@ -180,7 +182,7 @@ export function CustomerDetail() {
       navigate({ to: '/customers' });
     } catch (err) {
       console.error('Failed to delete customer:', err);
-      setError(err instanceof Error ? err.message : 'Nepodařilo se smazat zákazníka');
+      setError(err instanceof Error ? err.message : t('customer_error_delete'));
       setShowDeleteDialog(false);
     } finally {
       setIsDeleting(false);
@@ -279,9 +281,9 @@ export function CustomerDetail() {
       
       // Return default time slots when no route exists
       return [
-        { id: 'slot-morning', date, timeStart: '08:00', timeEnd: '08:30', status: 'ok' as const, deltaKm: 0, deltaMin: 0, insertAfterIndex: -1, insertAfterName: 'Start', insertBeforeName: 'Konec' },
-        { id: 'slot-midmorning', date, timeStart: '10:00', timeEnd: '10:30', status: 'ok' as const, deltaKm: 0, deltaMin: 0, insertAfterIndex: -1, insertAfterName: 'Start', insertBeforeName: 'Konec' },
-        { id: 'slot-afternoon', date, timeStart: '14:00', timeEnd: '14:30', status: 'ok' as const, deltaKm: 0, deltaMin: 0, insertAfterIndex: -1, insertAfterName: 'Start', insertBeforeName: 'Konec' },
+        { id: 'slot-morning', date, timeStart: '08:00', timeEnd: '08:30', status: 'ok' as const, deltaKm: 0, deltaMin: 0, insertAfterIndex: -1, insertAfterName: t('customer_slot_start'), insertBeforeName: t('customer_slot_end') },
+        { id: 'slot-midmorning', date, timeStart: '10:00', timeEnd: '10:30', status: 'ok' as const, deltaKm: 0, deltaMin: 0, insertAfterIndex: -1, insertAfterName: t('customer_slot_start'), insertBeforeName: t('customer_slot_end') },
+        { id: 'slot-afternoon', date, timeStart: '14:00', timeEnd: '14:30', status: 'ok' as const, deltaKm: 0, deltaMin: 0, insertAfterIndex: -1, insertAfterName: t('customer_slot_start'), insertBeforeName: t('customer_slot_end') },
       ];
     } catch (err) {
       console.error('Failed to fetch slots:', err);
@@ -295,8 +297,8 @@ export function CustomerDetail() {
         deltaKm: 0,
         deltaMin: 0,
         insertAfterIndex: -1,
-        insertAfterName: 'Start',
-        insertBeforeName: 'Konec',
+        insertAfterName: t('customer_slot_start'),
+        insertBeforeName: t('customer_slot_end'),
       }];
     }
   }, [customer?.id, customer?.lat, customer?.lng, depots]);
@@ -323,7 +325,7 @@ export function CustomerDetail() {
   // Schedule target for dialog
   const scheduleTarget: ScheduleTarget | null = customer ? {
     id: customer.id,
-    name: 'Nová návštěva',
+    name: t('customer_new_visit'),
     customerName: customer.name,
     lat: customer.lat || 0,
     lng: customer.lng || 0,
@@ -339,7 +341,7 @@ export function CustomerDetail() {
       <div className={styles.container}>
         <div className={styles.loading}>
           <div className={styles.spinner} />
-          <span>Načítám zákazníka...</span>
+          <span>{t('customer_loading')}</span>
         </div>
       </div>
     );
@@ -350,10 +352,10 @@ export function CustomerDetail() {
       <div className={styles.container}>
         <div className={styles.errorState}>
           <span className={styles.errorIcon}>⚠️</span>
-          <h2>Chyba</h2>
+          <h2>{t('customer_error_title')}</h2>
           <p>{error}</p>
           <button onClick={() => navigate({ to: '/customers' })} className={styles.backButton}>
-            ← Zpět na seznam
+            {t('customer_back_to_list')}
           </button>
         </div>
       </div>
@@ -365,10 +367,10 @@ export function CustomerDetail() {
       <div className={styles.container}>
         <div className={styles.errorState}>
           <span className={styles.errorIcon}>🔍</span>
-          <h2>Zákazník nenalezen</h2>
-          <p>Požadovaný zákazník neexistuje nebo byl smazán.</p>
+          <h2>{t('customer_not_found')}</h2>
+          <p>{t('customer_not_found_desc')}</p>
           <button onClick={() => navigate({ to: '/customers' })} className={styles.backButton}>
-            ← Zpět na seznam
+            {t('customer_back_to_list')}
           </button>
         </div>
       </div>
@@ -399,10 +401,10 @@ export function CustomerDetail() {
         <div className={styles.infoBanner}>
           <span>ℹ️</span>
           <span>
-            {geocodeJob.status.type === 'queued' && 'Geokódování: čeká ve frontě'}
+            {geocodeJob.status.type === 'queued' && t('customer_geocode_queued')}
             {geocodeJob.status.type === 'processing' &&
-              `Geokódování: ${geocodeJob.status.processed}/${geocodeJob.status.total}`}
-            {geocodeJob.status.type === 'failed' && `Geokódování selhalo: ${geocodeJob.status.error}`}
+              t('customer_geocode_progress', { processed: geocodeJob.status.processed, total: geocodeJob.status.total })}
+            {geocodeJob.status.type === 'failed' && t('customer_geocode_failed', { error: geocodeJob.status.error })}
           </span>
         </div>
       )}
@@ -411,8 +413,8 @@ export function CustomerDetail() {
       {customer.geocodeStatus === 'failed' && (
         <div className={styles.warningBanner}>
           <span>⚠️</span>
-          <span>Adresu nelze lokalizovat. Zákazník nebude zahrnut do optimalizace tras.</span>
-          <button onClick={handleOpenEditDrawer}>Opravit adresu</button>
+          <span>{t('customer_geocode_warning')}</span>
+          <button onClick={handleOpenEditDrawer}>{t('customer_fix_address')}</button>
         </div>
       )}
 

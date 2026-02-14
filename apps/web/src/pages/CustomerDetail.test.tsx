@@ -83,7 +83,7 @@ describe('CustomerDetail', () => {
 
       render(<CustomerDetail />);
 
-      expect(screen.getByText(/načítám/i)).toBeInTheDocument();
+      expect(screen.getByText('customer_loading')).toBeInTheDocument();
     });
   });
 
@@ -188,8 +188,8 @@ describe('CustomerDetail', () => {
       render(<CustomerDetail />);
 
       await waitFor(() => {
-        // CustomerWorkspace shows "Mapa není k dispozici" when no coordinates
-        expect(screen.getByText(/mapa.*není.*k dispozici|poloha.*není.*k dispozici/i)).toBeInTheDocument();
+        // CustomerWorkspace shows the i18n key when no coordinates
+        expect(screen.getByText(/preview_map_unavailable/)).toBeInTheDocument();
       });
     });
   });
@@ -211,7 +211,7 @@ describe('CustomerDetail', () => {
       render(<CustomerDetail />);
 
       await waitFor(() => {
-        expect(screen.getByText(/není připojení/i)).toBeInTheDocument();
+        expect(screen.getByText('customer_error_connection')).toBeInTheDocument();
       });
     });
   });

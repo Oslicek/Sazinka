@@ -43,17 +43,6 @@ export type RevisionStatus =
 /** Extended status including computed display states (not stored in DB) */
 export type RevisionDisplayStatus = RevisionStatus | 'due_soon' | 'overdue';
 
-/** @deprecated Use REVISION_STATUS_KEYS with i18n.t() instead */
-export const REVISION_STATUS_LABELS: Record<RevisionDisplayStatus, string> = {
-  upcoming: 'Plánovaná',
-  due_soon: 'Brzy',
-  overdue: 'Po termínu',
-  scheduled: 'Naplánováno',
-  confirmed: 'Potvrzeno',
-  completed: 'Dokončeno',
-  cancelled: 'Zrušeno',
-};
-
 /** i18n translation keys for revision display statuses */
 export const REVISION_STATUS_KEYS: Record<RevisionDisplayStatus, string> = {
   upcoming: 'common:revision_status.upcoming',
@@ -66,13 +55,6 @@ export const REVISION_STATUS_KEYS: Record<RevisionDisplayStatus, string> = {
 };
 
 export type RevisionResult = 'passed' | 'failed' | 'conditional';
-
-/** @deprecated Use REVISION_RESULT_KEYS with i18n.t() instead */
-export const REVISION_RESULT_LABELS: Record<RevisionResult, string> = {
-  passed: 'V pořádku',
-  failed: 'Nevyhovělo',
-  conditional: 'S výhradami',
-};
 
 /** i18n translation keys for revision results */
 export const REVISION_RESULT_KEYS: Record<RevisionResult, string> = {

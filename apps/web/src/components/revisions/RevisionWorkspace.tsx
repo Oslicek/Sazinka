@@ -12,6 +12,7 @@ import { Link } from '@tanstack/react-router';
 import type { Revision } from '@shared/revision';
 import { REVISION_STATUS_KEYS, REVISION_RESULT_KEYS } from '@shared/revision';
 
+import { formatDate, formatTime } from '../../i18n/formatters';
 import { RevisionStatusActions } from './RevisionStatusActions';
 import styles from './RevisionWorkspace.module.css';
 
@@ -71,8 +72,8 @@ export function RevisionWorkspace({
       <aside className={styles.leftColumn}>
         {/* Customer card */}
         <section className={styles.card}>
-          <h3 className={styles.cardTitle}>Zákazník</h3>
-          <p className={styles.customerName}>{revision.customerName || 'Neznámý zákazník'}</p>
+          <h3 className={styles.cardTitle}>{t('customer')}</h3>
+          <p className={styles.customerName}>{revision.customerName || t('revision_ws_unknown_customer')}</p>
           
           {revision.customerPhone && (
             <div className={styles.contactItem}>
@@ -90,16 +91,16 @@ export function RevisionWorkspace({
               params={{ customerId: revision.customerId }}
               className={styles.cardAction}
             >
-              👤 Detail zákazníka
+              👤 {t('revision_ws_customer_detail')}
             </Link>
           </div>
         </section>
 
         {/* Address card */}
         <section className={styles.card}>
-          <h3 className={styles.cardTitle}>Adresa</h3>
+          <h3 className={styles.cardTitle}>{t('revision_ws_address')}</h3>
           {/* Geocode status available on the Customer entity */}
-          <p className={styles.address}>{fullAddress || 'Adresa nevyplněna'}</p>
+          <p className={styles.address}>{fullAddress || t('revision_ws_no_address')}</p>
           
           {fullAddress && (
             <a 
@@ -108,15 +109,15 @@ export function RevisionWorkspace({
               rel="noopener noreferrer"
               className={styles.cardAction}
             >
-              🧭 Navigovat
+              🧭 {t('revision_ws_navigate')}
             </a>
           )}
         </section>
 
         {/* Device card */}
         <section className={styles.card}>
-          <h3 className={styles.cardTitle}>Zařízení</h3>
-          <p className={styles.deviceName}>{revision.deviceName || revision.deviceType || 'Neznámé zařízení'}</p>
+          <h3 className={styles.cardTitle}>{t('device')}</h3>
+          <p className={styles.deviceName}>{revision.deviceName || revision.deviceType || t('revision_ws_unknown_device')}</p>
           {revision.deviceType && revision.deviceName && (
             <p className={styles.deviceType}>{revision.deviceType}</p>
           )}
@@ -127,7 +128,7 @@ export function RevisionWorkspace({
               search={{ tab: 'devices' }}
               className={styles.cardAction}
             >
-              🔧 Detail zařízení
+              🔧 {t('revision_ws_device_detail')}
             </Link>
           </div>
         </section>
@@ -161,25 +162,25 @@ export function RevisionWorkspace({
 
         {/* Visit details card */}
         <section className={styles.card}>
-          <h3 className={styles.cardTitle}>Detail návštěvy</h3>
+          <h3 className={styles.cardTitle}>{t('revision_ws_visit_detail')}</h3>
           <div className={styles.detailGrid}>
             <div className={styles.detailItem}>
-              <span className={styles.detailLabel}>Termín revize:</span>
+              <span className={styles.detailLabel}>{t('revision_ws_due_date')}:</span>
               <span className={styles.detailValue}>
-                {new Date(revision.dueDate).toLocaleDateString('cs-CZ')}
+                {formatDate(revision.dueDate)}
               </span>
             </div>
             {revision.scheduledDate && (
               <div className={styles.detailItem}>
-                <span className={styles.detailLabel}>Naplánováno na:</span>
+                <span className={styles.detailLabel}>{t('revision_ws_scheduled_for')}:</span>
                 <span className={styles.detailValue}>
-                  {new Date(revision.scheduledDate).toLocaleDateString('cs-CZ')}
+                  {formatDate(revision.scheduledDate)}
                 </span>
               </div>
             )}
             {revision.scheduledTimeStart && revision.scheduledTimeEnd && (
               <div className={styles.detailItem}>
-                <span className={styles.detailLabel}>Časové okno:</span>
+                <span className={styles.detailLabel}>{t('revision_ws_time_window')}:</span>
                 <span className={styles.detailValue}>
                   {revision.scheduledTimeStart.substring(0, 5)} - {revision.scheduledTimeEnd.substring(0, 5)}
                 </span>
@@ -187,22 +188,22 @@ export function RevisionWorkspace({
             )}
             {revision.durationMinutes && (
               <div className={styles.detailItem}>
-                <span className={styles.detailLabel}>Délka:</span>
+                <span className={styles.detailLabel}>{t('revision_ws_duration')}:</span>
                 <span className={styles.detailValue}>{revision.durationMinutes} min</span>
               </div>
             )}
             {revision.completedAt && (
               <div className={styles.detailItem}>
-                <span className={styles.detailLabel}>Dokončeno:</span>
+                <span className={styles.detailLabel}>{t('revision_ws_completed')}:</span>
                 <span className={styles.detailValue}>
-                  {new Date(revision.completedAt).toLocaleString('cs-CZ')}
+                  {formatDate(revision.completedAt)} {formatTime(revision.completedAt)}
                 </span>
               </div>
             )}
           </div>
           {revision.findings && (
             <div className={styles.findings}>
-              <span className={styles.detailLabel}>Poznámky:</span>
+              <span className={styles.detailLabel}>{t('revision_ws_notes')}:</span>
               <p>{revision.findings}</p>
             </div>
           )}
@@ -218,7 +219,7 @@ export function RevisionWorkspace({
                   className={`${styles.tab} ${activeTab === 'progress' ? styles.tabActive : ''}`}
                   onClick={() => handleTabChange('progress')}
                 >
-                  📋 Průběh / Výsledek
+                  📋 {t('revision_ws_tab_progress')}
                 </button>
               )}
               {tabs.communication && (
@@ -227,7 +228,7 @@ export function RevisionWorkspace({
                   className={`${styles.tab} ${activeTab === 'communication' ? styles.tabActive : ''}`}
                   onClick={() => handleTabChange('communication')}
                 >
-                  💬 Komunikace
+                  💬 {t('revision_ws_tab_communication')}
                 </button>
               )}
               {tabs.history && (
@@ -236,7 +237,7 @@ export function RevisionWorkspace({
                   className={`${styles.tab} ${activeTab === 'history' ? styles.tabActive : ''}`}
                   onClick={() => handleTabChange('history')}
                 >
-                  📜 Historie
+                  📜 {t('revision_ws_tab_history')}
                 </button>
               )}
             </nav>

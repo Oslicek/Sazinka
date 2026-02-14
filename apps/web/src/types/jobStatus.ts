@@ -11,6 +11,8 @@
  * - NACKED (max retries) / TERM → failed
  */
 
+import i18n from '@/i18n';
+
 /** Job status type enum */
 export type JobStatusType = 'queued' | 'processing' | 'completed' | 'failed';
 
@@ -98,19 +100,21 @@ export function getJobSubmitSubject(jobType: JobType): string {
   return `sazinka.${jobType}.submit`;
 }
 
+/** i18n keys for job type names (jobs namespace) */
+const JOB_TYPE_NAME_KEYS: Record<JobType, string> = {
+  'geocode': 'jobs:job_type_geocode',
+  'route': 'jobs:job_type_route',
+  'import': 'jobs:job_type_import',
+  'export': 'jobs:job_type_export',
+  'valhalla.matrix': 'jobs:job_type_valhalla_matrix',
+  'valhalla.geometry': 'jobs:job_type_valhalla_geometry',
+  'email': 'jobs:job_type_email',
+  'sms': 'jobs:job_type_sms',
+};
+
 /** Get human-readable job type name */
 export function getJobTypeName(jobType: JobType): string {
-  const names: Record<JobType, string> = {
-    'geocode': 'Geokódování',
-    'route': 'Plánování trasy',
-    'import': 'Import dat',
-    'export': 'Export dat',
-    'valhalla.matrix': 'Výpočet matice vzdáleností',
-    'valhalla.geometry': 'Výpočet geometrie trasy',
-    'email': 'Odesílání emailu',
-    'sms': 'Odesílání SMS',
-  };
-  return names[jobType] || jobType;
+  return i18n.t(JOB_TYPE_NAME_KEYS[jobType]) || jobType;
 }
 
 /** Get icon for job type */

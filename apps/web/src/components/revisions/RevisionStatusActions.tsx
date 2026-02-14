@@ -8,6 +8,7 @@
  * - completed → Zobrazit výsledek
  */
 
+import { useTranslation } from 'react-i18next';
 import { Link } from '@tanstack/react-router';
 import type { Revision } from '@shared/revision';
 import styles from './RevisionStatusActions.module.css';
@@ -45,6 +46,7 @@ export function RevisionStatusActions({
   isSubmitting = false,
   variant = 'header',
 }: RevisionStatusActionsProps) {
+  const { t } = useTranslation('common');
   const state = getWorkflowState(revision);
   const isDisabled = isSubmitting || state === 'completed' || state === 'cancelled';
 
@@ -63,7 +65,7 @@ export function RevisionStatusActions({
           onClick={onSchedule}
           disabled={isDisabled}
         >
-          📅 Domluvit termín
+          📅 {t('revision_action_schedule')}
         </button>
         <button
           type="button"
@@ -71,7 +73,7 @@ export function RevisionStatusActions({
           onClick={onSnooze}
           disabled={isDisabled}
         >
-          ⏰ Odložit
+          ⏰ {t('revision_action_snooze')}
         </button>
       </>
     ),
@@ -82,7 +84,7 @@ export function RevisionStatusActions({
           search={{ date: revision.scheduledDate }}
           className={`${styles.action} ${styles.primary}`}
         >
-          🗓️ Otevřít v plánu
+          🗓️ {t('revision_action_open_plan')}
         </Link>
         <button
           type="button"
@@ -90,7 +92,7 @@ export function RevisionStatusActions({
           onClick={onReschedule}
           disabled={isDisabled}
         >
-          🔄 Změnit termín
+          🔄 {t('revision_action_reschedule')}
         </button>
         <button
           type="button"
@@ -98,7 +100,7 @@ export function RevisionStatusActions({
           onClick={onSnooze}
           disabled={isDisabled}
         >
-          ⏰ Odložit
+          ⏰ {t('revision_action_snooze')}
         </button>
         <button
           type="button"
@@ -106,7 +108,7 @@ export function RevisionStatusActions({
           onClick={onCancel}
           disabled={isDisabled}
         >
-          ❌ Zrušit
+          ❌ {t('revision_action_cancel')}
         </button>
       </>
     ),
@@ -119,7 +121,7 @@ export function RevisionStatusActions({
             onClick={onArrived}
             disabled={isDisabled}
           >
-            📍 Na místě
+            📍 {t('revision_action_arrived')}
           </button>
         )}
         <button
@@ -128,18 +130,17 @@ export function RevisionStatusActions({
           onClick={onComplete}
           disabled={isDisabled}
         >
-          ✅ Hotovo
+          ✅ {t('revision_action_done')}
         </button>
       </>
     ),
     completed: (
       <div className={styles.completedInfo}>
         <span className={styles.completedIcon}>✅</span>
-        <span>Revize dokončena</span>
+        <span>{t('revision_action_completed')}</span>
         {revision.result && (
           <span className={`${styles.resultBadge} ${styles[`result-${revision.result}`]}`}>
-            {revision.result === 'passed' ? 'V pořádku' : 
-             revision.result === 'conditional' ? 'S výhradami' : 'Nevyhovělo'}
+            {t(`revision_result.${revision.result}`)}
           </span>
         )}
       </div>
@@ -147,7 +148,7 @@ export function RevisionStatusActions({
     cancelled: (
       <div className={styles.cancelledInfo}>
         <span className={styles.cancelledIcon}>❌</span>
-        <span>Revize zrušena</span>
+        <span>{t('revision_action_cancelled')}</span>
       </div>
     ),
   };
@@ -158,7 +159,7 @@ export function RevisionStatusActions({
       href={`tel:${revision.customerPhone}`}
       className={styles.action}
     >
-      📞 Zavolat
+      📞 {t('revision_action_call')}
     </a>
   );
 

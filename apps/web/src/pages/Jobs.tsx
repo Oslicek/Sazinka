@@ -16,6 +16,7 @@ import {
 import { cancelJob, retryJob, listJobHistory, type JobHistoryEntry } from '../services/jobService';
 import { downloadExportJob } from '@/services/exportPlusService';
 import type { CustomerImportJobStatusUpdate, ImportReport } from '@shared/import';
+import { formatDate } from '../i18n/formatters';
 import styles from './Jobs.module.css';
 
 /** Active job entry in the dashboard */
@@ -323,7 +324,7 @@ export function Jobs() {
     if (diff < 60000) return t('time_just_now');
     if (diff < 3600000) return t('time_minutes_ago', { count: Math.floor(diff / 60000) });
     if (diff < 86400000) return t('time_hours_ago', { count: Math.floor(diff / 3600000) });
-    return date.toLocaleDateString(undefined);
+    return formatDate(date);
   };
   
   return (

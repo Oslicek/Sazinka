@@ -11,6 +11,8 @@ import {
   isValidPhoneNumber,
   CountryCode,
 } from 'libphonenumber-js';
+import i18n from '../../i18n';
+import { formatDate, formatTime, formatNumber } from '../../i18n/formatters';
 import type {
   CustomerType,
   CreateCustomerRequest,
@@ -264,7 +266,7 @@ export function normalizePhone(
         rowNumber: 0, // Will be set by caller
         level: 'warning',
         field: 'phone',
-        message: 'Více telefonů, použit první',
+        message: i18n.t('import:phone_multiple_used_first'),
         originalValue: cleaned,
       });
 
@@ -317,7 +319,7 @@ function normalizeSinglePhone(
       rowNumber: 0,
       level: 'warning',
       field: 'phone',
-      message: `Odstraněna úvodní 0: "${value}"`,
+      message: i18n.t('import:phone_leading_zero_removed', { value }),
       originalValue: value,
     });
     cleaned = cleaned.slice(1);
@@ -358,7 +360,7 @@ function normalizeSinglePhone(
     rowNumber: 0,
     level: 'warning',
     field: 'phone',
-    message: 'Číslo nelze normalizovat',
+    message: i18n.t('import:phone_cannot_normalize'),
     originalValue: value,
   });
 
@@ -393,7 +395,7 @@ export function normalizePostalCode(
         rowNumber: 0,
         level: 'warning',
         field: 'postalCode',
-        message: 'CZ PSČ není 5 číslic',
+        message: i18n.t('import:postal_code_not_5_digits'),
         originalValue: cleaned,
       });
     }
@@ -430,7 +432,7 @@ export function normalizeEmail(
       rowNumber: 0,
       level: 'warning',
       field: 'email',
-      message: 'Email neobsahuje @',
+      message: i18n.t('import:email_missing_at'),
       originalValue: value ?? undefined,
     });
   }
@@ -465,7 +467,7 @@ export function normalizeIco(
       rowNumber: 0,
       level: 'info',
       field: 'ico',
-      message: `IČO doplněno na 8 číslic: "${cleaned}" → "${normalized.padStart(8, '0')}"`,
+      message: i18n.t('import:ico_padded', { from: cleaned, to: normalized.padStart(8, '0') }),
       originalValue: cleaned,
     });
     normalized = normalized.padStart(8, '0');
@@ -477,7 +479,7 @@ export function normalizeIco(
       rowNumber: 0,
       level: 'warning',
       field: 'ico',
-      message: 'IČO u fyzické osoby',
+      message: i18n.t('import:ico_on_person'),
       originalValue: cleaned,
     });
   }
@@ -513,7 +515,7 @@ export function normalizeDic(
       rowNumber: 0,
       level: 'info',
       field: 'dic',
-      message: `Doplněn prefix CZ: "${cleaned}" → "CZ${normalized}"`,
+      message: i18n.t('import:dic_cz_prefix_added', { from: cleaned, to: `CZ${normalized}` }),
       originalValue: cleaned,
     });
     normalized = 'CZ' + normalized;
@@ -526,7 +528,7 @@ export function normalizeDic(
         rowNumber: 0,
         level: 'warning',
         field: 'dic',
-        message: 'Neplatný formát DIČ',
+        message: i18n.t('import:dic_invalid_format'),
         originalValue: cleaned,
       });
     }
@@ -538,7 +540,7 @@ export function normalizeDic(
       rowNumber: 0,
       level: 'warning',
       field: 'dic',
-      message: 'DIČ u fyzické osoby',
+      message: i18n.t('import:dic_on_person'),
       originalValue: cleaned,
     });
   }
@@ -600,7 +602,7 @@ export function normalizeCustomerRow(
         rowNumber,
         level: 'info',
         field: 'type',
-        message: `Typ odvozen: ${customerType}`,
+        message: i18n.t('import:type_inferred', { type: customerType }),
       });
     }
   }
@@ -633,7 +635,7 @@ export function normalizeCustomerRow(
   // Build notes (including additional phones)
   let notes = cleanValue(row.notes);
   if (phoneResult.additionalPhones.length > 0) {
-    const additionalNote = `[Import: další tel. ${phoneResult.additionalPhones.join(', ')}]`;
+    const additionalNote = `[${i18n.t('import:additional_phones', { phones: phoneResult.additionalPhones.join(', ') })}]`;
     notes = notes ? `${notes}\n${additionalNote}` : additionalNote;
   }
 
@@ -666,60 +668,59 @@ export function normalizeCustomerRow(
  */
 export function generateTextReport(report: ImportReport): string {
   const date = new Date(report.importedAt);
-  const formattedDate = date.toLocaleDateString('cs-CZ') + ' ' + date.toLocaleTimeString('cs-CZ');
+  const formattedDate = formatDate(date) + ' ' + formatTime(date.toISOString());
   const durationSec = Math.round(report.durationMs / 1000);
 
   const warnings = report.issues.filter(i => i.level === 'warning');
   const errors = report.issues.filter(i => i.level === 'error');
-  const infos = report.issues.filter(i => i.level === 'info');
 
   let text = `
 ═══════════════════════════════════════════════════════════════
-                    IMPORT ZÁKAZNÍKŮ - REPORT
+                    ${i18n.t('import:report_title')}
 ═══════════════════════════════════════════════════════════════
 
-Soubor:     ${report.filename}
-Datum:      ${formattedDate}
-Doba:       ${durationSec} sekund
+${i18n.t('import:report_file')}     ${report.filename}
+${i18n.t('import:report_date')}      ${formattedDate}
+${i18n.t('import:report_duration')}       ${durationSec} ${i18n.t('import:report_seconds')}
 
 ───────────────────────────────────────────────────────────────
-                         SOUHRN
+                         ${i18n.t('import:report_summary')}
 ───────────────────────────────────────────────────────────────
 
-Celkem řádků:        ${report.totalRows.toLocaleString('cs-CZ').padStart(10)}
-Importováno:         ${report.importedCount.toLocaleString('cs-CZ').padStart(10)}  ✓
-Aktualizováno:       ${report.updatedCount.toLocaleString('cs-CZ').padStart(10)}  ↻
-Přeskočeno:          ${report.skippedCount.toLocaleString('cs-CZ').padStart(10)}  ○
+${i18n.t('import:report_total_rows')}:        ${formatNumber(report.totalRows).padStart(10)}
+${i18n.t('import:report_imported')}:         ${formatNumber(report.importedCount).padStart(10)}  ✓
+${i18n.t('import:report_updated')}:       ${formatNumber(report.updatedCount).padStart(10)}  ↻
+${i18n.t('import:report_skipped')}:          ${formatNumber(report.skippedCount).padStart(10)}  ○
 `;
 
   if (warnings.length > 0) {
     text += `
 ───────────────────────────────────────────────────────────────
-                       VAROVÁNÍ (${warnings.length})
+                       ${i18n.t('import:report_warnings')} (${warnings.length})
 ───────────────────────────────────────────────────────────────
 
 `;
     for (const issue of warnings.slice(0, 100)) {
-      text += `Řádek ${issue.rowNumber}: [${issue.field}] ${issue.message}`;
+      text += `${i18n.t('import:report_row')} ${issue.rowNumber}: [${issue.field}] ${issue.message}`;
       if (issue.originalValue) {
         text += `: "${issue.originalValue}"`;
       }
       text += '\n';
     }
     if (warnings.length > 100) {
-      text += `\n... a dalších ${warnings.length - 100} varování\n`;
+      text += `\n${i18n.t('import:report_more_warnings', { count: warnings.length - 100 })}\n`;
     }
   }
 
   if (errors.length > 0) {
     text += `
 ───────────────────────────────────────────────────────────────
-                        CHYBY (${errors.length})
+                        ${i18n.t('import:report_errors')} (${errors.length})
 ───────────────────────────────────────────────────────────────
 
 `;
     for (const issue of errors) {
-      text += `Řádek ${issue.rowNumber}: [${issue.field}] ${issue.message}`;
+      text += `${i18n.t('import:report_row')} ${issue.rowNumber}: [${issue.field}] ${issue.message}`;
       if (issue.originalValue) {
         text += `: "${issue.originalValue}"`;
       }
@@ -728,10 +729,10 @@ Přeskočeno:          ${report.skippedCount.toLocaleString('cs-CZ').padStart(10
   } else {
     text += `
 ───────────────────────────────────────────────────────────────
-                        CHYBY (0)
+                        ${i18n.t('import:report_errors')} (0)
 ───────────────────────────────────────────────────────────────
 
-(žádné)
+${i18n.t('import:report_none')}
 `;
   }
 

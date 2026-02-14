@@ -9,6 +9,7 @@
  */
 
 import { useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { Customer, UpdateCustomerRequest, CreateCustomerRequest } from '@shared/customer';
 import { CustomerForm } from './CustomerForm';
 import styles from './CustomerEditDrawer.module.css';
@@ -30,6 +31,8 @@ export function CustomerEditDrawer({
   isSubmitting = false,
   onGeocodeCompleted,
 }: CustomerEditDrawerProps) {
+  const { t } = useTranslation('customers');
+
   // Handle Escape key
   useEffect(() => {
     if (!isOpen) return;
@@ -73,15 +76,15 @@ export function CustomerEditDrawer({
       />
       
       {/* Drawer */}
-      <aside className={styles.drawer} role="dialog" aria-modal="true" aria-label="Upravit zákazníka">
+      <aside className={styles.drawer} role="dialog" aria-modal="true" aria-label={t('drawer_edit_customer')}>
         <header className={styles.header}>
-          <h2 className={styles.title}>Upravit zákazníka</h2>
+          <h2 className={styles.title}>{t('drawer_edit_customer')}</h2>
           <button
             type="button"
             className={styles.closeButton}
             onClick={onClose}
             disabled={isSubmitting}
-            title="Zavřít (Esc)"
+            title={t('preview_close_esc')}
           >
             ✕
           </button>

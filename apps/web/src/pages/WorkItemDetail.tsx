@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link, useNavigate } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import type { VisitWorkItem } from '@shared/workItem';
 import {
   getWorkItem,
@@ -20,6 +21,7 @@ import styles from './WorkItemDetail.module.css';
 export function WorkItemDetail() {
   const { workItemId } = useParams({ strict: false }) as { workItemId: string };
   const navigate = useNavigate();
+  const { t } = useTranslation('pages');
   const isConnected = useNatsStore((s) => s.isConnected);
 
   const [workItem, setWorkItem] = useState<VisitWorkItem | null>(null);
@@ -38,13 +40,13 @@ export function WorkItemDetail() {
 
   const loadWorkItem = useCallback(async () => {
     if (!isConnected) {
-      setError('Není připojení k serveru');
+      setError(t('workitem_error_connection'));
       setIsLoading(false);
       return;
     }
 
     if (!workItemId) {
-      setError('ID úkonu není zadáno');
+      setError(t('workitem_error_no_id'));
       setIsLoading(false);
       return;
     }
@@ -56,7 +58,7 @@ export function WorkItemDetail() {
       setWorkItem(data);
     } catch (err) {
       console.error('Failed to load work item:', err);
-      setError(err instanceof Error ? err.message : 'Nepodařilo se načíst úkon');
+      setError(err instanceof Error ? err.message : t('workitem_error_load'));
     } finally {
       setIsLoading(false);
     }
@@ -83,7 +85,7 @@ export function WorkItemDetail() {
       setShowCompleteDialog(false);
       await loadWorkItem();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nepodařilo se dokončit úkon');
+      setError(err instanceof Error ? err.message : t('workitem_error_complete'));
     } finally {
       setIsSubmitting(false);
     }
@@ -94,7 +96,7 @@ export function WorkItemDetail() {
       <div className={styles.container}>
         <div className={styles.loading}>
           <div className={styles.spinner} />
-          <span>Načítám úkon...</span>
+          <span>{t('workitem_loading')}</span>
         </div>
       </div>
     );
@@ -105,9 +107,9 @@ export function WorkItemDetail() {
       <div className={styles.container}>
         <div className={styles.errorState}>
           <span className={styles.errorIcon}>⚠️</span>
-          <h2>Chyba</h2>
+          <h2>{t('workitem_error_title')}</h2>
           <p>{error}</p>
-          <Link to="/worklog" className={styles.backButton}>← Zpět na záznam práce</Link>
+          <Link to="/worklog" className={styles.backButton}>{t('workitem_back_worklog')}</Link>
         </div>
       </div>
     );
@@ -118,9 +120,9 @@ export function WorkItemDetail() {
       <div className={styles.container}>
         <div className={styles.errorState}>
           <span className={styles.errorIcon}>🔍</span>
-          <h2>Úkon nenalezen</h2>
-          <p>Požadovaný úkon neexistuje nebo byl smazán.</p>
-          <Link to="/worklog" className={styles.backButton}>← Zpět na záznam práce</Link>
+          <h2>{t('workitem_not_found')}</h2>
+          <p>{t('workitem_not_found_desc')}</p>
+          <Link to="/worklog" className={styles.backButton}>{t('workitem_back_worklog')}</Link>
         </div>
       </div>
     );
@@ -131,14 +133,14 @@ export function WorkItemDetail() {
       {/* Header */}
       <header className={styles.header}>
         <div className={styles.breadcrumb}>
-          <Link to="/worklog" className={styles.backLink}>← Záznam práce</Link>
+          <Link to="/worklog" className={styles.backLink}>{t('workitem_breadcrumb_worklog')}</Link>
           <span className={styles.breadcrumbSeparator}>/</span>
           <Link 
             to="/visits/$visitId" 
             params={{ visitId: workItem.visitId }}
             className={styles.backLink}
           >
-            Návštěva
+            {t('workitem_breadcrumb_visit')}
           </Link>
         </div>
 
@@ -180,10 +182,10 @@ export function WorkItemDetail() {
         <div className={styles.mainColumn}>
           {/* Basic info card */}
           <div className={styles.card}>
-            <h3 className={styles.cardTitle}>Základní informace</h3>
+            <h3 className={styles.cardTitle}>{t('workitem_basic_info')}</h3>
             <div className={styles.detailGrid}>
               <div className={styles.detailItem}>
-                <span className={styles.detailLabel}>Typ úkonu</span>
+                <span className={styles.detailLabel}>{t('workitem_type')}</span>
                 <span className={styles.detailValue}>
                   {getWorkTypeIcon(workItem.workType)} {getWorkTypeLabel(workItem.workType)}
                 </span>
@@ -191,21 +193,21 @@ export function WorkItemDetail() {
               
               {workItem.deviceId && (
                 <div className={styles.detailItem}>
-                  <span className={styles.detailLabel}>Zařízení</span>
+                  <span className={styles.detailLabel}>{t('workitem_device')}</span>
                   <span className={styles.detailValue}>{workItem.deviceId}</span>
                 </div>
               )}
 
               {workItem.durationMinutes && (
                 <div className={styles.detailItem}>
-                  <span className={styles.detailLabel}>Délka trvání</span>
-                  <span className={styles.detailValue}>{workItem.durationMinutes} minut</span>
+                <span className={styles.detailLabel}>{t('workitem_duration')}</span>
+                <span className={styles.detailValue}>{workItem.durationMinutes} {t('workitem_minutes')}</span>
                 </div>
               )}
 
               {workItem.result && (
                 <div className={styles.detailItem}>
-                  <span className={styles.detailLabel}>Výsledek</span>
+                  <span className={styles.detailLabel}>{t('workitem_result')}</span>
                   <span className={`${styles.resultBadge} ${styles[`result-${workItem.result}`]}`}>
                     {getWorkResultLabel(workItem.result)}
                   </span>
@@ -215,21 +217,21 @@ export function WorkItemDetail() {
 
             {workItem.resultNotes && (
               <div className={styles.notesSection}>
-                <span className={styles.detailLabel}>Poznámky</span>
+                <span className={styles.detailLabel}>{t('workitem_notes')}</span>
                 <p className={styles.notes}>{workItem.resultNotes}</p>
               </div>
             )}
 
             {workItem.findings && (
               <div className={styles.findingsSection}>
-                <span className={styles.detailLabel}>Nálezy</span>
+                <span className={styles.detailLabel}>{t('workitem_findings')}</span>
                 <p className={styles.findings}>{workItem.findings}</p>
               </div>
             )}
 
             {workItem.requiresFollowUp && (
               <div className={styles.followUpSection}>
-                <span className={styles.followUpBadge}>🔔 Vyžaduje následnou návštěvu</span>
+                <span className={styles.followUpBadge}>🔔 {t('workitem_requires_follow_up')}</span>
                 {workItem.followUpReason && (
                   <p className={styles.followUpReason}>{workItem.followUpReason}</p>
                 )}
@@ -240,14 +242,14 @@ export function WorkItemDetail() {
           {/* Revision link */}
           {workItem.revisionId && (
             <div className={styles.card}>
-              <h3 className={styles.cardTitle}>Související revize</h3>
+              <h3 className={styles.cardTitle}>{t('workitem_related_revision')}</h3>
               <Link 
                 to="/revisions/$revisionId" 
                 params={{ revisionId: workItem.revisionId }}
                 className={styles.revisionLink}
               >
                 <span>🔍</span>
-                <span>Zobrazit detail revize</span>
+                <span>{t('workitem_view_revision')}</span>
                 <span className={styles.arrow}>→</span>
               </Link>
             </div>
@@ -255,16 +257,16 @@ export function WorkItemDetail() {
 
           {/* Protocol placeholder */}
           <div className={styles.card}>
-            <h3 className={styles.cardTitle}>Revizní protokol</h3>
+            <h3 className={styles.cardTitle}>{t('workitem_protocol')}</h3>
             <p className={styles.placeholder}>
-              Formulář revizního protokolu bude implementován v budoucnu.
+              {t('workitem_protocol_placeholder')}
             </p>
           </div>
         </div>
 
         {/* Right column - Actions panel */}
         <div className={styles.actionsPanel}>
-          <h3 className={styles.panelTitle}>Akce</h3>
+          <h3 className={styles.panelTitle}>{t('workitem_actions')}</h3>
 
           <div className={styles.actions}>
             {!workItem.result && (
@@ -273,7 +275,7 @@ export function WorkItemDetail() {
                 onClick={() => setShowCompleteDialog(true)}
                 disabled={isSubmitting}
               >
-                ✅ Dokončit úkon
+                ✅ {t('workitem_complete')}
               </button>
             )}
             <Link 
@@ -281,7 +283,7 @@ export function WorkItemDetail() {
               params={{ visitId: workItem.visitId }}
               className={styles.actionButton}
             >
-              📋 Zobrazit návštěvu
+              📋 {t('workitem_view_visit')}
             </Link>
           </div>
         </div>
@@ -291,22 +293,22 @@ export function WorkItemDetail() {
       {showCompleteDialog && (
         <div className={styles.dialogOverlay} onClick={() => setShowCompleteDialog(false)}>
           <div className={styles.dialog} onClick={e => e.stopPropagation()}>
-            <h3>Dokončit úkon</h3>
+            <h3>{t('workitem_complete_dialog')}</h3>
             <div className={styles.dialogField}>
-              <label>Výsledek *</label>
+              <label>{t('workitem_complete_result')}</label>
               <select 
                 value={completeResult} 
                 onChange={e => setCompleteResult(e.target.value as any)}
               >
-                <option value="successful">Úspěšně</option>
-                <option value="partial">Částečně</option>
-                <option value="failed">Neúspěšně</option>
-                <option value="customer_absent">Zákazník nepřítomen</option>
-                <option value="rescheduled">Přeplánováno</option>
+                <option value="successful">{t('visit_result_successful')}</option>
+                <option value="partial">{t('visit_result_partial')}</option>
+                <option value="failed">{t('visit_result_failed')}</option>
+                <option value="customer_absent">{t('visit_result_customer_absent')}</option>
+                <option value="rescheduled">{t('visit_result_rescheduled')}</option>
               </select>
             </div>
             <div className={styles.dialogField}>
-              <label>Délka trvání (min) *</label>
+              <label>{t('workitem_complete_duration')}</label>
               <input 
                 type="number" 
                 value={completeDuration} 
@@ -316,20 +318,20 @@ export function WorkItemDetail() {
               />
             </div>
             <div className={styles.dialogField}>
-              <label>Poznámky</label>
+              <label>{t('workitem_complete_notes')}</label>
               <textarea 
                 value={completeNotes} 
                 onChange={e => setCompleteNotes(e.target.value)}
-                placeholder="Poznámky k úkonu..."
+                placeholder={t('workitem_complete_notes_placeholder')}
                 rows={3}
               />
             </div>
             <div className={styles.dialogField}>
-              <label>Nálezy</label>
+              <label>{t('workitem_complete_findings')}</label>
               <textarea 
                 value={completeFindings} 
                 onChange={e => setCompleteFindings(e.target.value)}
-                placeholder="Zjištěné závady nebo nálezy..."
+                placeholder={t('workitem_complete_findings_placeholder')}
                 rows={3}
               />
             </div>
@@ -339,14 +341,14 @@ export function WorkItemDetail() {
                 onClick={() => setShowCompleteDialog(false)}
                 disabled={isSubmitting}
               >
-                Zrušit
+                {t('workitem_cancel')}
               </button>
               <button 
                 className={styles.confirmButton}
                 onClick={handleComplete}
                 disabled={isSubmitting}
               >
-                {isSubmitting ? 'Ukládám...' : 'Dokončit'}
+                {isSubmitting ? t('workitem_saving') : t('workitem_confirm')}
               </button>
             </div>
           </div>

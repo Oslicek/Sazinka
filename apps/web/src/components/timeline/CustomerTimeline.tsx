@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNatsStore } from '../../stores/natsStore';
 import * as communicationService from '../../services/communicationService';
 import * as visitService from '../../services/visitService';
 import type { Communication } from '@shared/communication';
 import type { Visit } from '@shared/visit';
+import { formatDate } from '../../i18n/formatters';
 import { VisitDetailDialog } from './VisitDetailDialog';
 import styles from './CustomerTimeline.module.css';
 
@@ -19,6 +21,7 @@ interface CustomerTimelineProps {
 }
 
 export function CustomerTimeline({ customerId }: CustomerTimelineProps) {
+  const { t } = useTranslation('customers');
   // Get isConnected safely - handle both real store and mock scenarios
   let isConnected = false;
   try {
@@ -128,7 +131,7 @@ export function CustomerTimeline({ customerId }: CustomerTimelineProps) {
   };
 
   if (loading) {
-    return <div className={styles.loading}>Načítám historii...</div>;
+    return <div className={styles.loading}>{t('timeline_loading')}</div>;
   }
 
   // Don't show buttons if services aren't available
@@ -137,7 +140,7 @@ export function CustomerTimeline({ customerId }: CustomerTimelineProps) {
   return (
     <div className={styles.timeline}>
       <div className={styles.header}>
-        <h3>Historie</h3>
+        <h3>{t('timeline_title')}</h3>
         {canAddItems && (
           <div className={styles.actions}>
             <button
@@ -145,14 +148,14 @@ export function CustomerTimeline({ customerId }: CustomerTimelineProps) {
               className={styles.addButton}
               onClick={() => setShowAddForm('communication')}
             >
-              + Komunikace
+              + {t('timeline_add_communication')}
             </button>
             <button
               type="button"
               className={styles.addButton}
               onClick={() => setShowAddForm('visit')}
             >
-              + Návštěva
+              + {t('timeline_add_visit')}
             </button>
           </div>
         )}
@@ -179,10 +182,10 @@ export function CustomerTimeline({ customerId }: CustomerTimelineProps) {
       {items.length === 0 ? (
         <p className={styles.empty}>
           {!isConnected 
-            ? 'Čekám na připojení...' 
+            ? t('timeline_waiting_connection') 
             : !serviceAvailable 
-              ? 'Historie zatím není k dispozici.' 
-              : 'Zatím žádná historie.'}
+              ? t('timeline_not_available') 
+              : t('timeline_empty')}
         </p>
       ) : (
         <div className={styles.items}>
@@ -232,13 +235,13 @@ function TimelineItemCard({
               {communicationService.getCommunicationTypeLabel(comm.commType)}
             </span>
             <span className={styles.itemDate}>
-              {new Date(comm.createdAt).toLocaleDateString('cs-CZ')}
+              {formatDate(comm.createdAt)}
             </span>
           </div>
           {comm.subject && <strong>{comm.subject}</strong>}
           <p className={styles.itemText}>{comm.content}</p>
           {comm.durationMinutes && (
-            <small>Trvání: {comm.durationMinutes} min</small>
+            <small>{t('timeline_duration', { minutes: comm.durationMinutes })}</small>
           )}
         </div>
       </div>
@@ -271,7 +274,7 @@ function TimelineItemCard({
         </span>
         {visit.result && (
           <p className={styles.itemText}>
-            Výsledek: {visitService.getVisitResultLabel(visit.result)}
+            {t('timeline_result')}: {visitService.getVisitResultLabel(visit.result)}
           </p>
         )}
         {visit.resultNotes && <p className={styles.itemText}>{visit.resultNotes}</p>}
@@ -288,6 +291,7 @@ function AddCommunicationForm({
   onSubmit: (data: { commType: string; direction: string; content: string; subject?: string }) => void;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation('customers');
   const [formData, setFormData] = useState({
     commType: 'note',
     direction: 'outbound',
@@ -303,36 +307,36 @@ function AddCommunicationForm({
 
   return (
     <form className={styles.addForm} onSubmit={handleSubmit}>
-      <h4>Nová komunikace</h4>
+      <h4>{t('timeline_new_communication')}</h4>
       
       <div className={styles.formRow}>
         <div className={styles.formGroup}>
-          <label>Typ</label>
+          <label>{t('timeline_comm_type')}</label>
           <select
             value={formData.commType}
             onChange={(e) => setFormData({ ...formData, commType: e.target.value })}
           >
-            <option value="note">Poznámka</option>
-            <option value="call">Telefonát</option>
-            <option value="email_sent">Odeslaný e-mail</option>
-            <option value="email_received">Přijatý e-mail</option>
-            <option value="sms">SMS</option>
+            <option value="note">{t('timeline_comm_note')}</option>
+            <option value="call">{t('timeline_comm_call')}</option>
+            <option value="email_sent">{t('timeline_comm_email_sent')}</option>
+            <option value="email_received">{t('timeline_comm_email_received')}</option>
+            <option value="sms">{t('timeline_comm_sms')}</option>
           </select>
         </div>
         <div className={styles.formGroup}>
-          <label>Směr</label>
+          <label>{t('timeline_comm_direction')}</label>
           <select
             value={formData.direction}
             onChange={(e) => setFormData({ ...formData, direction: e.target.value })}
           >
-            <option value="outbound">Odchozí</option>
-            <option value="inbound">Příchozí</option>
+            <option value="outbound">{t('timeline_comm_outbound')}</option>
+            <option value="inbound">{t('timeline_comm_inbound')}</option>
           </select>
         </div>
       </div>
 
       <div className={styles.formGroup}>
-        <label>Předmět (volitelné)</label>
+        <label>{t('timeline_comm_subject')}</label>
         <input
           type="text"
           value={formData.subject}
@@ -341,7 +345,7 @@ function AddCommunicationForm({
       </div>
 
       <div className={styles.formGroup}>
-        <label>Obsah *</label>
+        <label>{t('timeline_comm_content')} *</label>
         <textarea
           rows={3}
           value={formData.content}
@@ -352,10 +356,10 @@ function AddCommunicationForm({
 
       <div className={styles.formActions}>
         <button type="button" className="btn-secondary" onClick={onCancel}>
-          Zrušit
+          {t('timeline_cancel')}
         </button>
         <button type="submit" className="btn-primary">
-          Přidat
+          {t('timeline_add')}
         </button>
       </div>
     </form>
@@ -371,6 +375,7 @@ function AddVisitForm({
   onSubmit: (data: { scheduledDate: string; visitType: string; scheduledTimeStart?: string }) => void;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation('customers');
   const [formData, setFormData] = useState({
     scheduledDate: new Date().toISOString().slice(0, 10),
     scheduledTimeStart: '',
@@ -388,11 +393,11 @@ function AddVisitForm({
 
   return (
     <form className={styles.addForm} onSubmit={handleSubmit}>
-      <h4>Nová návštěva</h4>
+      <h4>{t('timeline_new_visit')}</h4>
       
       <div className={styles.formRow}>
         <div className={styles.formGroup}>
-          <label>Datum *</label>
+          <label>{t('timeline_visit_date')} *</label>
           <input
             type="date"
             value={formData.scheduledDate}
@@ -401,7 +406,7 @@ function AddVisitForm({
           />
         </div>
         <div className={styles.formGroup}>
-          <label>Čas (volitelné)</label>
+          <label>{t('timeline_visit_time')}</label>
           <input
             type="time"
             value={formData.scheduledTimeStart}
@@ -411,28 +416,28 @@ function AddVisitForm({
       </div>
 
       <div className={styles.formGroup}>
-        <label>Typ návštěvy</label>
+        <label>{t('timeline_visit_type')}</label>
         <select
           value={formData.visitType}
           onChange={(e) => setFormData({ ...formData, visitType: e.target.value })}
         >
-          <option value="consultation">Konzultace</option>
-          <option value="installation">Instalace</option>
-          <option value="repair">Oprava</option>
-          <option value="follow_up">Následná návštěva</option>
+          <option value="consultation">{t('timeline_visit_consultation')}</option>
+          <option value="installation">{t('timeline_visit_installation')}</option>
+          <option value="repair">{t('timeline_visit_repair')}</option>
+          <option value="follow_up">{t('timeline_visit_follow_up')}</option>
         </select>
       </div>
 
       <p className={styles.hint}>
-        Pro přidání revize použijte kartu konkrétního zařízení.
+        {t('timeline_revision_hint')}
       </p>
 
       <div className={styles.formActions}>
         <button type="button" className="btn-secondary" onClick={onCancel}>
-          Zrušit
+          {t('timeline_cancel')}
         </button>
         <button type="submit" className="btn-primary">
-          Přidat
+          {t('timeline_add')}
         </button>
       </div>
     </form>

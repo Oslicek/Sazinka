@@ -8,6 +8,7 @@
  * - missing - gray
  */
 
+import { useTranslation } from 'react-i18next';
 import styles from './AddressStatusChip.module.css';
 
 type GeoStatus = 'success' | 'pending' | 'failed' | 'missing' | string;
@@ -17,20 +18,21 @@ interface AddressStatusChipProps {
   showLabel?: boolean;
 }
 
-const STATUS_CONFIG: Record<string, { icon: string; label: string; className: string }> = {
-  success: { icon: '✅', label: 'Ověřeno', className: styles.success },
-  pending: { icon: '⏳', label: 'Čeká na ověření', className: styles.pending },
-  failed: { icon: '⚠', label: 'Nelze lokalizovat', className: styles.failed },
-  missing: { icon: '⛔', label: 'Chybí adresa', className: styles.missing },
+const STATUS_CONFIG: Record<string, { icon: string; labelKey: string; className: string }> = {
+  success: { icon: '✅', labelKey: 'address_status_verified', className: styles.success },
+  pending: { icon: '⏳', labelKey: 'address_status_pending', className: styles.pending },
+  failed: { icon: '⚠', labelKey: 'address_status_failed', className: styles.failed },
+  missing: { icon: '⛔', labelKey: 'address_status_missing', className: styles.missing },
 };
 
 export function AddressStatusChip({ status, showLabel = true }: AddressStatusChipProps) {
+  const { t } = useTranslation('customers');
   const config = STATUS_CONFIG[status] || STATUS_CONFIG.missing;
   
   return (
-    <span className={`${styles.chip} ${config.className}`} title={config.label}>
+    <span className={`${styles.chip} ${config.className}`} title={t(config.labelKey)}>
       <span className={styles.icon}>{config.icon}</span>
-      {showLabel && <span className={styles.label}>{config.label}</span>}
+      {showLabel && <span className={styles.label}>{t(config.labelKey)}</span>}
     </span>
   );
 }

@@ -13,11 +13,13 @@
 
 import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import type { Customer, CustomerListItem } from '@shared/customer';
 import { AddressMap } from './AddressMap';
 import { AddressStatusChip } from './AddressStatusChip';
 import { DeviceList } from '../devices';
 import { CustomerTimeline } from '../timeline';
+import { formatDate } from '../../i18n/formatters';
 import styles from './CustomerPreviewPanel.module.css';
 
 type TabId = 'devices' | 'revisions';
@@ -39,22 +41,22 @@ function copyToClipboard(text: string) {
 }
 
 // Address status component (fallback when AddressStatusChip not suitable)
-function AddressStatus({ status }: { status: string }) {
-  const config: Record<string, { icon: string; label: string; className: string }> = {
-    success: { icon: '✅', label: 'Ověřeno', className: styles.statusSuccess },
-    pending: { icon: '⏳', label: 'Čeká na ověření', className: styles.statusPending },
-    failed: { icon: '⚠', label: 'Nelze lokalizovat', className: styles.statusFailed },
+function AddressStatus({ status, t }: { status: string; t: (key: string) => string }) {
+  const config: Record<string, { icon: string; labelKey: string; className: string }> = {
+    success: { icon: '✅', labelKey: 'address_status_verified', className: styles.statusSuccess },
+    pending: { icon: '⏳', labelKey: 'address_status_pending', className: styles.statusPending },
+    failed: { icon: '⚠', labelKey: 'address_status_failed', className: styles.statusFailed },
   };
 
-  const { icon, label, className } = config[status] || {
+  const { icon, labelKey, className } = config[status] || {
     icon: '⛔',
-    label: 'Bez adresy',
+    labelKey: 'address_status_missing',
     className: styles.statusMissing,
   };
 
   return (
     <span className={`${styles.addressStatus} ${className}`}>
-      {icon} {label}
+      {icon} {t(labelKey)}
     </span>
   );
 }
@@ -68,15 +70,16 @@ export function CustomerPreviewPanel({
   onAddToPlan,
 }: CustomerPreviewPanelProps) {
   const [activeTab, setActiveTab] = useState<TabId>('devices');
+  const { t } = useTranslation('customers');
 
   if (!customer) {
     return (
       <div className={styles.panel}>
         <div className={styles.emptyState}>
           <span className={styles.emptyIcon}>👆</span>
-          <p>Vyberte zákazníka ze seznamu</p>
+          <p>{t('preview_select_customer')}</p>
           <p className={styles.emptyHint}>
-            Použijte klávesy ↑↓ pro navigaci
+            {t('preview_keyboard_hint')}
           </p>
         </div>
       </div>
@@ -111,20 +114,20 @@ export function CustomerPreviewPanel({
               to="/customers/$customerId"
               params={{ customerId: c.id }}
               className={styles.openFullIcon}
-              title="Otevřít na celou stránku"
+              title={t('preview_open_full_page')}
             >
               ↗
             </Link>
           </div>
           <span className={styles.typeBadge}>
-            {isCompany ? 'Firma' : 'Osoba'}
+            {isCompany ? t('type_company') : t('type_person')}
           </span>
         </div>
         <button
           type="button"
           className={styles.closeButton}
           onClick={onClose}
-          title="Zavřít (Esc)"
+          title={t('preview_close_esc')}
         >
           ✕
         </button>
@@ -134,7 +137,7 @@ export function CustomerPreviewPanel({
       <div className={styles.scrollContent}>
         {/* Contact section */}
         <section className={styles.section}>
-          <h4 className={styles.sectionTitle}>Kontakt</h4>
+          <h4 className={styles.sectionTitle}>{t('preview_contact')}</h4>
 
           {isCompany && contactPerson && (
             <div className={styles.contactItem}>
@@ -152,13 +155,13 @@ export function CustomerPreviewPanel({
                 type="button"
                 className={styles.copyButton}
                 onClick={() => copyToClipboard(c.phone!)}
-                title="Kopírovat"
+                title={t('preview_copy')}
               >
                 📋
               </button>
             </div>
           ) : (
-            <p className={styles.missingInfo}>📵 Chybí telefon</p>
+            <p className={styles.missingInfo}>📵 {t('preview_missing_phone')}</p>
           )}
 
           {c.email && (
@@ -170,7 +173,7 @@ export function CustomerPreviewPanel({
                 type="button"
                 className={styles.copyButton}
                 onClick={() => copyToClipboard(c.email!)}
-                title="Kopírovat"
+                title={t('preview_copy')}
               >
                 📋
               </button>
@@ -180,9 +183,9 @@ export function CustomerPreviewPanel({
 
         {/* Address section */}
         <section className={styles.section}>
-          <h4 className={styles.sectionTitle}>Adresa</h4>
-          <AddressStatus status={c.geocodeStatus} />
-          <p className={styles.address}>{fullAddress || 'Adresa nevyplněna'}</p>
+          <h4 className={styles.sectionTitle}>{t('preview_address')}</h4>
+          <AddressStatus status={c.geocodeStatus} t={t} />
+          <p className={styles.address}>{fullAddress || t('preview_address_empty')}</p>
 
           {hasCoordinates && (
             <div className={styles.mapContainer}>
@@ -199,16 +202,16 @@ export function CustomerPreviewPanel({
         {/* Company info */}
         {isCompany && (ico || dic) && (
           <section className={styles.section}>
-            <h4 className={styles.sectionTitle}>Firemní údaje</h4>
+            <h4 className={styles.sectionTitle}>{t('preview_company_info')}</h4>
             {ico && (
               <div className={styles.infoRow}>
-                <span className={styles.infoLabel}>IČO:</span>
+                <span className={styles.infoLabel}>{t('form_ico')}:</span>
                 <span className={styles.infoValue}>{ico}</span>
               </div>
             )}
             {dic && (
               <div className={styles.infoRow}>
-                <span className={styles.infoLabel}>DIČ:</span>
+                <span className={styles.infoLabel}>{t('form_dic')}:</span>
                 <span className={styles.infoValue}>{dic}</span>
               </div>
             )}
@@ -217,28 +220,28 @@ export function CustomerPreviewPanel({
 
         {/* Stats section */}
         <section className={styles.section}>
-          <h4 className={styles.sectionTitle}>Přehled</h4>
+          <h4 className={styles.sectionTitle}>{t('preview_overview')}</h4>
           <div className={styles.stats}>
             <div className={styles.statItem}>
               <span className={styles.statValue}>{customer.deviceCount}</span>
-              <span className={styles.statLabel}>zařízení</span>
+              <span className={styles.statLabel}>{t('preview_devices_count')}</span>
             </div>
             {customer.neverServicedCount > 0 && (
               <div className={`${styles.statItem} ${styles.statWarning}`}>
                 <span className={styles.statValue}>{customer.neverServicedCount}</span>
-                <span className={styles.statLabel}>bez revize</span>
+                <span className={styles.statLabel}>{t('preview_never_serviced')}</span>
               </div>
             )}
             {customer.overdueCount > 0 && (
               <div className={`${styles.statItem} ${styles.statDanger}`}>
                 <span className={styles.statValue}>{customer.overdueCount}</span>
-                <span className={styles.statLabel}>po termínu</span>
+                <span className={styles.statLabel}>{t('preview_overdue')}</span>
               </div>
             )}
           </div>
           {customer.nextRevisionDate && (
             <p className={styles.nextRevision}>
-              Příští revize: {new Date(customer.nextRevisionDate).toLocaleDateString('cs-CZ')}
+              {t('preview_next_revision')} {formatDate(customer.nextRevisionDate)}
             </p>
           )}
         </section>
@@ -246,7 +249,7 @@ export function CustomerPreviewPanel({
         {/* Notes */}
         {notes && (
           <section className={styles.section}>
-            <h4 className={styles.sectionTitle}>Poznámky</h4>
+            <h4 className={styles.sectionTitle}>{t('preview_notes')}</h4>
             <p className={styles.notes}>{notes}</p>
           </section>
         )}
@@ -254,18 +257,18 @@ export function CustomerPreviewPanel({
         {/* Metadata */}
         {createdAt && (
           <section className={styles.section}>
-            <h4 className={styles.sectionTitle}>Informace</h4>
+            <h4 className={styles.sectionTitle}>{t('preview_info')}</h4>
             <div className={styles.infoRow}>
-              <span className={styles.infoLabel}>Vytvořeno:</span>
+              <span className={styles.infoLabel}>{t('preview_created')}</span>
               <span className={styles.infoValue}>
-                {new Date(createdAt).toLocaleDateString('cs-CZ')}
+                {formatDate(createdAt)}
               </span>
             </div>
             {updatedAt && (
               <div className={styles.infoRow}>
-                <span className={styles.infoLabel}>Aktualizováno:</span>
+                <span className={styles.infoLabel}>{t('preview_updated')}</span>
                 <span className={styles.infoValue}>
-                  {new Date(updatedAt).toLocaleDateString('cs-CZ')}
+                  {formatDate(updatedAt)}
                 </span>
               </div>
             )}
@@ -281,14 +284,14 @@ export function CustomerPreviewPanel({
                 className={`${styles.tab} ${activeTab === 'devices' ? styles.tabActive : ''}`}
                 onClick={() => setActiveTab('devices')}
               >
-                🔧 Zařízení
+                🔧 {t('preview_devices_tab')}
               </button>
               <button
                 type="button"
                 className={`${styles.tab} ${activeTab === 'revisions' ? styles.tabActive : ''}`}
                 onClick={() => setActiveTab('revisions')}
               >
-                📋 Historie
+                📋 {t('preview_history_tab')}
               </button>
             </nav>
             <div className={styles.tabContent}>
@@ -308,7 +311,7 @@ export function CustomerPreviewPanel({
         {isLoadingFull && !fullCustomer && (
           <div className={styles.loadingFull}>
             <div className={styles.spinnerSmall} />
-            <span>Načítám detail...</span>
+            <span>{t('preview_loading_detail')}</span>
           </div>
         )}
       </div>
@@ -320,7 +323,7 @@ export function CustomerPreviewPanel({
           className={styles.actionButton}
           onClick={() => onEdit(customer)}
         >
-          ✎ Upravit
+          ✎ {t('preview_edit')}
         </button>
         {onAddToPlan && hasCoordinates && (
           <button
@@ -328,14 +331,14 @@ export function CustomerPreviewPanel({
             className={styles.actionButton}
             onClick={() => onAddToPlan(customer)}
           >
-            ➕ Do plánu
+            ➕ {t('preview_add_to_plan')}
           </button>
         )}
       </div>
 
       {/* Keyboard hint */}
       <div className={styles.keyboardHint}>
-        <span><kbd>Esc</kbd> Zavřít</span>
+        <span><kbd>Esc</kbd> {t('preview_close')}</span>
       </div>
     </div>
   );

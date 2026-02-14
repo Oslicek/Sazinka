@@ -6,6 +6,7 @@ import type { Revision } from '@shared/revision';
 import { DEVICE_TYPE_KEYS } from '@shared/device';
 import { REVISION_STATUS_KEYS, REVISION_RESULT_KEYS } from '@shared/revision';
 import { listDevices, deleteDevice } from '../../services/deviceService';
+import { formatDate } from '../../i18n/formatters';
 import { listRevisions } from '../../services/revisionService';
 import { useNatsStore } from '../../stores/natsStore';
 import { DeviceForm } from './DeviceForm';
@@ -33,7 +34,7 @@ export function DeviceList({ customerId, onDeviceSelect }: DeviceListProps) {
 
   const loadDevices = useCallback(async () => {
     if (!isConnected) {
-      setError('Není připojení k serveru');
+      setError(t('errors.not_connected'));
       setIsLoading(false);
       return;
     }
@@ -59,7 +60,7 @@ export function DeviceList({ customerId, onDeviceSelect }: DeviceListProps) {
       setDeviceRevisions(revisionsMap);
     } catch (err) {
       console.error('Failed to load devices:', err);
-      setError(err instanceof Error ? err.message : 'Nepodařilo se načíst zařízení');
+      setError(err instanceof Error ? err.message : t('device_error_load'));
     } finally {
       setIsLoading(false);
     }
@@ -91,7 +92,7 @@ export function DeviceList({ customerId, onDeviceSelect }: DeviceListProps) {
   }, [loadDevices]);
 
   const handleDeleteClick = useCallback(async (device: Device) => {
-    if (!confirm(`Opravdu chcete smazat zařízení "${DEVICE_TYPE_KEYS[device.deviceType as keyof typeof DEVICE_TYPE_KEYS] ? t(DEVICE_TYPE_KEYS[device.deviceType as keyof typeof DEVICE_TYPE_KEYS]) : device.deviceType}"?`)) {
+    if (!confirm(t('device_confirm_delete', { name: DEVICE_TYPE_KEYS[device.deviceType as keyof typeof DEVICE_TYPE_KEYS] ? t(DEVICE_TYPE_KEYS[device.deviceType as keyof typeof DEVICE_TYPE_KEYS]) : device.deviceType }))) {
       return;
     }
 
@@ -102,16 +103,16 @@ export function DeviceList({ customerId, onDeviceSelect }: DeviceListProps) {
       loadDevices();
     } catch (err) {
       console.error('Failed to delete device:', err);
-      setError(err instanceof Error ? err.message : 'Nepodařilo se smazat zařízení');
+      setError(err instanceof Error ? err.message : t('device_error_delete'));
     } finally {
       setDeletingDeviceId(null);
     }
   }, [customerId, loadDevices]);
 
-  const formatDate = (dateStr: string | undefined) => {
+  const formatDateOrDash = (dateStr: string | undefined) => {
     if (!dateStr) return '-';
     try {
-      return new Date(dateStr).toLocaleDateString('cs-CZ');
+      return formatDate(dateStr);
     } catch {
       return dateStr;
     }
@@ -151,7 +152,7 @@ export function DeviceList({ customerId, onDeviceSelect }: DeviceListProps) {
       <div className={styles.container}>
         <div className={styles.header}>
           <h3 className={styles.title}>
-            Nová revize - {DEVICE_TYPE_KEYS[addingRevisionForDevice.deviceType as keyof typeof DEVICE_TYPE_KEYS] ? t(DEVICE_TYPE_KEYS[addingRevisionForDevice.deviceType as keyof typeof DEVICE_TYPE_KEYS]) : addingRevisionForDevice.deviceType}
+            {t('device_new_revision_title')} - {DEVICE_TYPE_KEYS[addingRevisionForDevice.deviceType as keyof typeof DEVICE_TYPE_KEYS] ? t(DEVICE_TYPE_KEYS[addingRevisionForDevice.deviceType as keyof typeof DEVICE_TYPE_KEYS]) : addingRevisionForDevice.deviceType}
           </h3>
         </div>
         <RevisionForm
@@ -178,24 +179,24 @@ export function DeviceList({ customerId, onDeviceSelect }: DeviceListProps) {
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <h3 className={styles.title}>Zařízení</h3>
+        <h3 className={styles.title}>{t('device_title')}</h3>
         <button 
           className={styles.addButton} 
           onClick={handleAddClick}
           disabled={!isConnected}
         >
-          + Přidat zařízení
+          {t('device_add')}
         </button>
       </div>
 
       {error && <div className={styles.error}>{error}</div>}
 
       {isLoading ? (
-        <div className={styles.loading}>Načítám zařízení...</div>
+        <div className={styles.loading}>{t('device_loading')}</div>
       ) : devices.length === 0 ? (
         <div className={styles.empty}>
-          <p>Žádná zařízení</p>
-          <p className={styles.emptyHint}>Přidejte první zařízení pro tohoto zákazníka.</p>
+          <p>{t('device_empty')}</p>
+          <p className={styles.emptyHint}>{t('device_empty_hint')}</p>
         </div>
       ) : (
         <div className={styles.list}>
@@ -216,7 +217,7 @@ export function DeviceList({ customerId, onDeviceSelect }: DeviceListProps) {
                     <div className={styles.deviceType}>
                       {DEVICE_TYPE_KEYS[device.deviceType as keyof typeof DEVICE_TYPE_KEYS] ? t(DEVICE_TYPE_KEYS[device.deviceType as keyof typeof DEVICE_TYPE_KEYS]) : device.deviceType}
                       <span className={styles.revisionCount}>
-                        ({revisions.length} {revisions.length === 1 ? 'revize' : revisions.length < 5 ? 'revize' : 'revizí'})
+                        ({t('device_revision_count', { count: revisions.length })})
                       </span>
                     </div>
                     <div className={styles.deviceDetails}>
@@ -235,11 +236,11 @@ export function DeviceList({ customerId, onDeviceSelect }: DeviceListProps) {
                     </div>
                     <div className={styles.deviceMeta}>
                       <span className={styles.interval}>
-                        Interval: {device.revisionIntervalMonths} měs.
+                        {t('device_interval')}: {device.revisionIntervalMonths} {t('device_months_abbr')}
                       </span>
                       {device.installationDate && (
                         <span className={styles.installDate}>
-                          Instalace: {formatDate(device.installationDate)}
+                          {t('device_installation')}: {formatDateOrDash(device.installationDate)}
                         </span>
                       )}
                     </div>
@@ -262,7 +263,7 @@ export function DeviceList({ customerId, onDeviceSelect }: DeviceListProps) {
                           handleAddRevision(device);
                         }}
                       >
-                        + Přidat revizi
+                        {t('device_add_revision')}
                       </button>
                       <button
                         className={styles.editButton}
@@ -272,7 +273,7 @@ export function DeviceList({ customerId, onDeviceSelect }: DeviceListProps) {
                         }}
                         disabled={deletingDeviceId === device.id}
                       >
-                        Upravit zařízení
+                        {t('device_edit')}
                       </button>
                       <button
                         className={styles.deleteButton}
@@ -282,14 +283,14 @@ export function DeviceList({ customerId, onDeviceSelect }: DeviceListProps) {
                         }}
                         disabled={deletingDeviceId === device.id}
                       >
-                        {deletingDeviceId === device.id ? 'Mažu...' : 'Smazat'}
+                        {deletingDeviceId === device.id ? t('device_deleting') : t('delete')}
                       </button>
                     </div>
                     
                     <div className={styles.revisionsList}>
-                      <h4 className={styles.revisionsTitle}>Historie revizí</h4>
+                      <h4 className={styles.revisionsTitle}>{t('device_revision_history')}</h4>
                       {revisions.length === 0 ? (
-                        <p className={styles.noRevisions}>Zatím žádné revize</p>
+                        <p className={styles.noRevisions}>{t('device_no_revisions')}</p>
                       ) : (
                         <div className={styles.revisionsTable}>
                           {revisions
@@ -303,7 +304,7 @@ export function DeviceList({ customerId, onDeviceSelect }: DeviceListProps) {
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <div className={styles.revisionDate}>
-                                  {formatDate(revision.dueDate)}
+                                  {formatDateOrDash(revision.dueDate)}
                                 </div>
                                 <div className={`${styles.revisionStatus} ${getStatusBadgeClass(revision.status)}`}>
                                   {REVISION_STATUS_KEYS[revision.status as keyof typeof REVISION_STATUS_KEYS] ? t(REVISION_STATUS_KEYS[revision.status as keyof typeof REVISION_STATUS_KEYS]) : revision.status}

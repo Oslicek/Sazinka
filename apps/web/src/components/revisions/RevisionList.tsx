@@ -5,6 +5,7 @@ import { REVISION_STATUS_KEYS, REVISION_RESULT_KEYS } from '@shared/revision';
 import type { DeviceType } from '@shared/device';
 import { DEVICE_TYPE_KEYS } from '@shared/device';
 import { listRevisions, deleteRevision, type ListRevisionsFilters } from '../../services/revisionService';
+import { formatDate as i18nFormatDate } from '../../i18n/formatters';
 import { useNatsStore } from '../../stores/natsStore';
 import { RevisionForm } from './RevisionForm';
 import { CompleteRevisionDialog } from './CompleteRevisionDialog';
@@ -35,7 +36,7 @@ export function RevisionList({
 
   const loadRevisions = useCallback(async () => {
     if (!isConnected) {
-      setError('Není připojení k serveru');
+      setError(t('errors.not_connected'));
       setIsLoading(false);
       return;
     }
@@ -55,7 +56,7 @@ export function RevisionList({
       setRevisions(response.items);
     } catch (err) {
       console.error('Failed to load revisions:', err);
-      setError(err instanceof Error ? err.message : 'Nepodařilo se načíst revize');
+      setError(err instanceof Error ? err.message : t('revision_list_error_load'));
     } finally {
       setIsLoading(false);
     }
@@ -100,7 +101,7 @@ export function RevisionList({
   }, [loadRevisions]);
 
   const handleDeleteClick = useCallback(async (revision: Revision) => {
-    if (!confirm('Opravdu chcete smazat tuto revizi?')) {
+    if (!confirm(t('revision_list_confirm_delete'))) {
       return;
     }
 
@@ -111,7 +112,7 @@ export function RevisionList({
       loadRevisions();
     } catch (err) {
       console.error('Failed to delete revision:', err);
-      setError(err instanceof Error ? err.message : 'Nepodařilo se smazat revizi');
+      setError(err instanceof Error ? err.message : t('revision_list_error_delete'));
     } finally {
       setDeletingRevisionId(null);
     }
@@ -120,7 +121,7 @@ export function RevisionList({
   const formatDate = (dateStr: string | undefined) => {
     if (!dateStr) return '-';
     try {
-      return new Date(dateStr).toLocaleDateString('cs-CZ');
+      return i18nFormatDate(dateStr);
     } catch {
       return dateStr;
     }
@@ -168,19 +169,19 @@ export function RevisionList({
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <h3 className={styles.title}>Revize</h3>
+        <h3 className={styles.title}>{t('revision_list_title')}</h3>
         <div className={styles.headerActions}>
           <select 
             className={styles.filterSelect}
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
           >
-            <option value="">Všechny stavy</option>
-            <option value="upcoming">Plánovaná</option>
-            <option value="due_soon">Brzy</option>
-            <option value="overdue">Po termínu</option>
-            <option value="scheduled">Naplánováno</option>
-            <option value="completed">Dokončeno</option>
+            <option value="">{t('revision_list_filter_all')}</option>
+            <option value="upcoming">{t('revision_status.upcoming')}</option>
+            <option value="due_soon">{t('revision_status.due_soon')}</option>
+            <option value="overdue">{t('revision_status.overdue')}</option>
+            <option value="scheduled">{t('revision_status.scheduled')}</option>
+            <option value="completed">{t('revision_status.completed')}</option>
           </select>
           {(customerId && deviceId) && (
             <button 
@@ -188,7 +189,7 @@ export function RevisionList({
               onClick={handleAddClick}
               disabled={!isConnected}
             >
-              + Nová revize
+              {t('revision_list_add')}
             </button>
           )}
         </div>
@@ -197,14 +198,14 @@ export function RevisionList({
       {error && <div className={styles.error}>{error}</div>}
 
       {isLoading ? (
-        <div className={styles.loading}>Načítám revize...</div>
+        <div className={styles.loading}>{t('revision_list_loading')}</div>
       ) : revisions.length === 0 ? (
         <div className={styles.empty}>
-          <p>Žádné revize</p>
+          <p>{t('revision_list_empty')}</p>
           <p className={styles.emptyHint}>
             {customerId && deviceId 
-              ? 'Vytvořte první revizi pro toto zařízení.'
-              : 'Žádné revize odpovídající filtrům.'}
+              ? t('revision_list_empty_hint_device')
+              : t('revision_list_empty_hint_filter')}
           </p>
         </div>
       ) : (
@@ -236,11 +237,11 @@ export function RevisionList({
                 )}
                 <div className={styles.revisionDates}>
                   <span className={styles.dueDate}>
-                    Termín: <strong>{formatDate(revision.dueDate)}</strong>
+                    {t('revision_list_due_date')}: <strong>{formatDate(revision.dueDate)}</strong>
                   </span>
                   {revision.scheduledDate && (
                     <span className={styles.scheduledDate}>
-                      Naplánováno: {formatDate(revision.scheduledDate)}
+                      {t('revision_list_scheduled')}: {formatDate(revision.scheduledDate)}
                       {revision.scheduledTimeStart && (
                         <> {formatTime(revision.scheduledTimeStart ?? undefined)}-{formatTime(revision.scheduledTimeEnd ?? undefined)}</>
                       )}
@@ -249,7 +250,7 @@ export function RevisionList({
                 </div>
                 {revision.completedAt && (
                   <div className={styles.completedInfo}>
-                    Dokončeno: {formatDate(revision.completedAt)}
+                    {t('revision_list_completed')}: {formatDate(revision.completedAt)}
                     {revision.durationMinutes && (
                       <> ({revision.durationMinutes} min)</>
                     )}
@@ -272,7 +273,7 @@ export function RevisionList({
                       }}
                       disabled={deletingRevisionId === revision.id}
                     >
-                      Dokončit
+                      {t('revision_list_complete')}
                     </button>
                     <button
                       className={styles.editButton}
@@ -282,7 +283,7 @@ export function RevisionList({
                       }}
                       disabled={deletingRevisionId === revision.id}
                     >
-                      Upravit
+                      {t('revision_list_edit')}
                     </button>
                   </>
                 )}
@@ -294,7 +295,7 @@ export function RevisionList({
                   }}
                   disabled={deletingRevisionId === revision.id}
                 >
-                  {deletingRevisionId === revision.id ? 'Mažu...' : 'Smazat'}
+                  {deletingRevisionId === revision.id ? t('revision_list_deleting') : t('delete')}
                 </button>
               </div>
             </div>

@@ -439,7 +439,7 @@ export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = fals
             onChange={(e) => handleChange('name', e.target.value)}
             onBlur={() => handleBlur('name')}
             className={`${styles.input} ${showError('name') ? styles.inputError : ''}`}
-            placeholder={isCompany ? 'ABC s.r.o.' : 'Jan Novák'}
+            placeholder={isCompany ? t('placeholder_company_name') : t('placeholder_person_name')}
             disabled={isSubmitting}
           />
           {showError('name') && <span className={styles.error}>{errors.name}</span>}
@@ -456,7 +456,7 @@ export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = fals
                 value={formData.contactPerson}
                 onChange={(e) => handleChange('contactPerson', e.target.value)}
                 className={styles.input}
-                placeholder="Jan Novák"
+                placeholder={t('placeholder_person_name')}
                 disabled={isSubmitting}
               />
             </div>
@@ -539,7 +539,7 @@ export function CustomerForm({ customer, onSubmit, onCancel, isSubmitting = fals
             onChange={(e) => handleChange('street', e.target.value)}
             onBlur={() => handleBlur('street')}
             className={`${styles.input} ${showError('street') ? styles.inputError : ''}`}
-            placeholder="Hlavní 123"
+            placeholder={t('placeholder_street')}
             disabled={isSubmitting}
           />
           {showError('street') && <span className={styles.error}>{errors.street}</span>}

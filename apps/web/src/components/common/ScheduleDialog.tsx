@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { SlotSuggestions, type SlotSuggestion } from '../planner/SlotSuggestions';
 import styles from './ScheduleDialog.module.css';
 
@@ -37,10 +38,14 @@ interface ScheduleDialogProps {
 }
 
 // Generate next 7 days
-function getNextDays(count: number = 7): { date: string; label: string }[] {
+function getNextDays(count: number = 7, t: (key: string) => string): { date: string; label: string }[] {
   const days = [];
   const today = new Date();
-  const dayNames = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
+  const dayNames = [
+    t('schedule_day_su'), t('schedule_day_mo'), t('schedule_day_tu'),
+    t('schedule_day_we'), t('schedule_day_th'), t('schedule_day_fr'),
+    t('schedule_day_sa'),
+  ];
   
   for (let i = 0; i < count; i++) {
     const date = new Date(today);
@@ -49,9 +54,9 @@ function getNextDays(count: number = 7): { date: string; label: string }[] {
     const dayName = dayNames[date.getDay()];
     const dateStr = date.toISOString().split('T')[0];
     const label = i === 0 
-      ? 'Dnes' 
+      ? t('schedule_today') 
       : i === 1 
-        ? 'Zítra' 
+        ? t('schedule_tomorrow') 
         : `${dayName} ${date.getDate()}.${date.getMonth() + 1}`;
     
     days.push({ date: dateStr, label });
@@ -69,6 +74,7 @@ export function ScheduleDialog({
   onFetchSlots,
   isSubmitting = false,
 }: ScheduleDialogProps) {
+  const { t } = useTranslation('pages');
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [selectedCrew, setSelectedCrew] = useState<string>('');
   const [selectedSlot, setSelectedSlot] = useState<SlotSuggestion | null>(null);
@@ -76,7 +82,7 @@ export function ScheduleDialog({
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const availableDays = useMemo(() => getNextDays(7), []);
+  const availableDays = useMemo(() => getNextDays(7, t), [t]);
 
   // Reset state when dialog opens
   useEffect(() => {
@@ -104,7 +110,7 @@ export function ScheduleDialog({
         setSlots(fetchedSlots);
       } catch (err) {
         console.error('Failed to fetch slots:', err);
-        setError('Nepodařilo se načíst dostupné termíny');
+        setError(t('schedule_error_load_slots'));
         setSlots([]);
       } finally {
         setIsLoadingSlots(false);
@@ -150,7 +156,7 @@ export function ScheduleDialog({
       onClose();
     } catch (err) {
       console.error('Failed to schedule:', err);
-      setError(err instanceof Error ? err.message : 'Nepodařilo se naplánovat');
+      setError(err instanceof Error ? err.message : t('schedule_error_schedule'));
     }
   }, [target, selectedDate, selectedCrew, selectedSlot, onSchedule, onClose]);
 
@@ -166,11 +172,11 @@ export function ScheduleDialog({
       />
       
       {/* Dialog */}
-      <div className={styles.dialog} role="dialog" aria-modal="true" aria-label="Naplánovat termín">
+      <div className={styles.dialog} role="dialog" aria-modal="true" aria-label={t('schedule_aria_label')}>
         {/* Header */}
         <header className={styles.header}>
           <div className={styles.headerContent}>
-            <h2 className={styles.title}>Přidat do plánu</h2>
+            <h2 className={styles.title}>{t('schedule_title')}</h2>
             <p className={styles.subtitle}>
               {target.name} • {target.customerName}
             </p>
@@ -189,7 +195,7 @@ export function ScheduleDialog({
         <div className={styles.content}>
           {/* Date selection */}
           <section className={styles.section}>
-            <label className={styles.label}>Den</label>
+            <label className={styles.label}>{t('schedule_day')}</label>
             <div className={styles.dateGrid}>
               {availableDays.map(({ date, label }) => (
                 <button
@@ -206,7 +212,7 @@ export function ScheduleDialog({
 
           {/* Crew selection */}
           <section className={styles.section}>
-            <label className={styles.label}>Posádka</label>
+            <label className={styles.label}>{t('schedule_crew')}</label>
             <div className={styles.crewGrid}>
               {crews.map((crew) => (
                 <button
@@ -222,18 +228,18 @@ export function ScheduleDialog({
                 </button>
               ))}
               {crews.length === 0 && (
-                <p className={styles.noVehicles}>Žádné dostupné posádky</p>
+                <p className={styles.noVehicles}>{t('schedule_no_crews')}</p>
               )}
             </div>
           </section>
 
           {/* Slot suggestions */}
           <section className={styles.section}>
-            <label className={styles.label}>Dostupné termíny</label>
+            <label className={styles.label}>{t('schedule_available_slots')}</label>
             {isLoadingSlots ? (
               <div className={styles.loading}>
                 <div className={styles.spinner} />
-                <span>Počítám optimální pozice...</span>
+                <span>{t('schedule_calculating')}</span>
               </div>
             ) : error ? (
               <div className={styles.error}>{error}</div>
@@ -245,7 +251,7 @@ export function ScheduleDialog({
                 maxVisible={5}
               />
             ) : (
-              <p className={styles.hint}>Výběr termínu není k dispozici</p>
+              <p className={styles.hint}>{t('schedule_slots_unavailable')}</p>
             )}
           </section>
         </div>
@@ -258,7 +264,7 @@ export function ScheduleDialog({
             onClick={onClose}
             disabled={isSubmitting}
           >
-            Zrušit
+            {t('common:cancel')}
           </button>
           <button
             type="button"
@@ -266,7 +272,7 @@ export function ScheduleDialog({
             onClick={handleConfirm}
             disabled={!selectedSlot || isSubmitting}
           >
-            {isSubmitting ? 'Ukládám...' : 'Naplánovat'}
+            {isSubmitting ? t('common:saving') : t('schedule_confirm')}
           </button>
         </footer>
       </div>

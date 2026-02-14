@@ -338,30 +338,34 @@ export function buildFilterSummary(expression: InboxFilterExpression): string {
 
   if (groups.time.enabled && groups.time.selected.length > 0) {
     const labels = groups.time.selected.map((t) => {
-      if (t === 'OVERDUE') return 'Po termínu';
-      if (t === 'DUE_IN_7_DAYS') return 'Do 7 dnů';
-      return 'Do 30 dnů';
+      if (t === 'OVERDUE') return i18n.t('planner:filter_summary_overdue');
+      if (t === 'DUE_IN_7_DAYS') return i18n.t('planner:filter_summary_due_7');
+      return i18n.t('planner:filter_summary_due_30');
     });
-    groupParts.push(`Nová revize: (${labels.join(` ${groups.time.operator} `)})`);
+    groupParts.push(i18n.t('planner:filter_summary_new_revision', { labels: labels.join(` ${groups.time.operator} `) }));
   }
 
   if (groups.problems.enabled && groups.problems.selected.length > 0) {
     const labels = groups.problems.selected.map((p) => {
-      if (p === 'MISSING_PHONE') return 'Chybí telefon';
-      if (p === 'ADDRESS_ISSUE') return 'Problém s adresou';
-      return 'Geokód selhal';
+      if (p === 'MISSING_PHONE') return i18n.t('planner:filter_summary_missing_phone');
+      if (p === 'ADDRESS_ISSUE') return i18n.t('planner:filter_summary_address_issue');
+      return i18n.t('planner:filter_summary_geocode_failed');
     });
-    groupParts.push(`Problémy: (${labels.join(` ${groups.problems.operator} `)})`);
+    groupParts.push(i18n.t('planner:filter_summary_problems_label', { labels: labels.join(` ${groups.problems.operator} `) }));
   }
 
   if (groups.hasTerm !== 'ANY') {
-    groupParts.push(`Termín = ${groups.hasTerm === 'YES' ? 'Má' : 'Nemá'}`);
+    groupParts.push(groups.hasTerm === 'YES'
+      ? i18n.t('planner:filter_summary_has_term_yes')
+      : i18n.t('planner:filter_summary_has_term_no'));
   }
   if (groups.inRoute !== 'ANY') {
-    groupParts.push(`Trasa = ${groups.inRoute === 'YES' ? 'V trase' : 'Není v trase'}`);
+    groupParts.push(groups.inRoute === 'YES'
+      ? i18n.t('planner:filter_summary_in_route_yes')
+      : i18n.t('planner:filter_summary_in_route_no'));
   }
 
-  if (groupParts.length === 0) return 'Bez filtrů';
+  if (groupParts.length === 0) return i18n.t('planner:filter_summary_none');
   return groupParts.join(` ${expression.rootOperator} `);
 }
 

@@ -8,6 +8,7 @@ import { ImportModal, type ImportEntityType } from '../components/import';
 import { ImportCustomersModal } from '../components/customers/ImportCustomersModal';
 import { ExportPlusPanel } from '../components/shared/ExportPlusPanel';
 import { logger } from '../utils/logger';
+import { formatTime, formatNumber } from '../i18n/formatters';
 import styles from './Admin.module.css';
 
 interface ServiceStatus {
@@ -472,7 +473,7 @@ export function Admin() {
                 )}
                 {service.lastCheck && (
                   <span className={styles.lastCheck}>
-                    {t('admin_last_check')} {new Date(service.lastCheck).toLocaleTimeString()}
+                    {t('admin_last_check')} {formatTime(service.lastCheck)}
                   </span>
                 )}
               </div>
@@ -537,7 +538,7 @@ export function Admin() {
                     {dbInfo.tables.map((table) => (
                       <tr key={table.name}>
                         <td>{table.name}</td>
-                        <td>{table.rows.toLocaleString()}</td>
+                        <td>{formatNumber(table.rows)}</td>
                         <td>{table.size}</td>
                       </tr>
                     ))}
@@ -567,7 +568,7 @@ export function Admin() {
       {/* Export Section */}
       <section className={styles.section}>
         <div className={styles.sectionHeader}>
-          <h2>{t('admin_export_title', { defaultValue: 'Export dat' })}</h2>
+          <h2>{t('admin_export_title')}</h2>
         </div>
         <ExportPlusPanel adminMode />
       </section>
@@ -575,15 +576,15 @@ export function Admin() {
       {/* Import Section */}
       <section className={styles.section}>
         <div className={styles.sectionHeader}>
-          <h2>{t('admin_import_title', { defaultValue: 'Import dat' })}</h2>
+          <h2>{t('admin_import_title')}</h2>
         </div>
 
         <div className={styles.exportContainer}>
           {/* Customers Import */}
           <div className={styles.exportCard}>
-            <h3>{t('admin_import_customers_title', { defaultValue: '1. Import zákazníků' })}</h3>
+            <h3>{t('admin_import_customers_title')}</h3>
             <p className={styles.exportDescription}>
-              {t('admin_import_customers_desc', { defaultValue: 'Importuje zákazníky z CSV. Automaticky spustí geokódování adres.' })}
+              {t('admin_import_customers_desc')}
             </p>
             <button
               type="button"
@@ -591,15 +592,15 @@ export function Admin() {
               onClick={handleOpenCustomerImport}
               disabled={!connected}
             >
-              {t('admin_import_customers_btn', { defaultValue: '📤 Importovat zákazníky' })}
+              {t('admin_import_customers_btn')}
             </button>
           </div>
 
           {/* Devices Import */}
           <div className={styles.exportCard}>
-            <h3>{t('admin_import_devices_title', { defaultValue: '2. Import zařízení' })}</h3>
+            <h3>{t('admin_import_devices_title')}</h3>
             <p className={styles.exportDescription}>
-              {t('admin_import_devices_desc', { defaultValue: 'Importuje zařízení z CSV. Vyžaduje existující zákazníky (propojení přes IČO/email/telefon).' })}
+              {t('admin_import_devices_desc')}
             </p>
             <button
               type="button"
@@ -607,15 +608,15 @@ export function Admin() {
               onClick={() => handleOpenImport('device')}
               disabled={!connected}
             >
-              {t('admin_import_devices_btn', { defaultValue: '📤 Importovat zařízení' })}
+              {t('admin_import_devices_btn')}
             </button>
           </div>
 
           {/* Revisions Import */}
           <div className={styles.exportCard}>
-            <h3>{t('admin_import_revisions_title', { defaultValue: '3. Import revizí' })}</h3>
+            <h3>{t('admin_import_revisions_title')}</h3>
             <p className={styles.exportDescription}>
-              {t('admin_import_revisions_desc', { defaultValue: 'Importuje revize z CSV. Vyžaduje existující zařízení (propojení přes sériové číslo).' })}
+              {t('admin_import_revisions_desc')}
             </p>
             <button
               type="button"
@@ -623,15 +624,15 @@ export function Admin() {
               onClick={() => handleOpenImport('revision')}
               disabled={!connected}
             >
-              {t('admin_import_revisions_btn', { defaultValue: '📤 Importovat revize' })}
+              {t('admin_import_revisions_btn')}
             </button>
           </div>
 
           {/* Communications Import */}
           <div className={styles.exportCard}>
-            <h3>{t('admin_import_comm_title', { defaultValue: '4. Import komunikace' })}</h3>
+            <h3>{t('admin_import_comm_title')}</h3>
             <p className={styles.exportDescription}>
-              {t('admin_import_comm_desc', { defaultValue: 'Importuje historii komunikace (hovory, emaily, poznámky) z CSV.' })}
+              {t('admin_import_comm_desc')}
             </p>
             <button
               type="button"
@@ -639,15 +640,15 @@ export function Admin() {
               onClick={() => handleOpenImport('communication')}
               disabled={!connected}
             >
-              {t('admin_import_comm_btn', { defaultValue: '📤 Importovat komunikaci' })}
+              {t('admin_import_comm_btn')}
             </button>
           </div>
 
           {/* Visits Import */}
           <div className={styles.exportCard}>
-            <h3>{t('admin_import_worklog_title', { defaultValue: '5. Import pracovního deníku' })}</h3>
+            <h3>{t('admin_import_worklog_title')}</h3>
             <p className={styles.exportDescription}>
-              {t('admin_import_worklog_desc', { defaultValue: 'Importuje pracovní deník (work_log) z CSV.' })}
+              {t('admin_import_worklog_desc')}
             </p>
             <button
               type="button"
@@ -655,15 +656,15 @@ export function Admin() {
               onClick={() => handleOpenImport('work_log')}
               disabled={!connected}
             >
-              {t('admin_import_worklog_btn', { defaultValue: '📤 Importovat pracovní deník' })}
+              {t('admin_import_worklog_btn')}
             </button>
           </div>
 
           {/* ZIP Import */}
           <div className={styles.exportCard}>
-            <h3>{t('admin_import_zip_title', { defaultValue: '📦 Import ZIP' })}</h3>
+            <h3>{t('admin_import_zip_title')}</h3>
             <p className={styles.exportDescription}>
-              {t('admin_import_zip_desc', { defaultValue: 'Importujte více souborů najednou z jednoho ZIP archivu. Automaticky rozpozná typy souborů a importuje je ve správném pořadí.' })}
+              {t('admin_import_zip_desc')}
             </p>
             <button
               type="button"
@@ -671,7 +672,7 @@ export function Admin() {
               onClick={() => handleOpenImport('zip')}
               disabled={!connected}
             >
-              {t('admin_import_zip_btn', { defaultValue: '📦 Importovat ZIP' })}
+              {t('admin_import_zip_btn')}
             </button>
           </div>
         </div>
@@ -679,11 +680,11 @@ export function Admin() {
         <div className={styles.importHint}>
           <p>
             📋 <a href="/PROJECT_IMPORT.MD" target="_blank" rel="noopener noreferrer">
-              {t('admin_import_docs', { defaultValue: 'Dokumentace formátů CSV pro import' })}
+              {t('admin_import_docs')}
             </a>
           </p>
           <p>
-            {t('admin_import_order_hint', { defaultValue: 'Importujte v uvedeném pořadí (1-5). Každý import vyžaduje data z předchozích kroků.' })}
+            {t('admin_import_order_hint')}
           </p>
         </div>
       </section>
@@ -738,7 +739,7 @@ export function Admin() {
                   className={`${styles.logEntry} ${styles[`log${log.level.charAt(0).toUpperCase() + log.level.slice(1)}`]}`}
                 >
                   <span className={styles.logTime}>
-                    {new Date(log.timestamp).toLocaleTimeString()}
+                    {formatTime(log.timestamp)}
                   </span>
                   <span className={styles.logLevel}>{log.level.toUpperCase()}</span>
                   {log.target && <span className={styles.logTarget}>{log.target}</span>}

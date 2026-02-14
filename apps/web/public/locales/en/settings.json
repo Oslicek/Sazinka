@@ -67,6 +67,10 @@
   "email_third_title": "3) Third Template (reserved)",
   "email_third_hint": "This template is prepared for another scenario.",
   "email_placeholder_later": "Fill in later",
+  "default_confirmation_subject": "Appointment confirmation - {{customerName}}",
+  "default_confirmation_body": "Hello,\n\nWe confirm the agreed appointment.\n\nBest regards",
+  "default_reminder_subject": "Appointment reminder - {{customerName}}",
+  "default_reminder_body": "Hello,\n\nWe remind you of tomorrow's agreed appointment.\n\nBest regards",
 
   "break_title": "Automatic Route Breaks",
   "break_description": "Configure whether a lunch break should be automatically inserted into newly created routes.",

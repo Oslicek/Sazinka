@@ -9,11 +9,12 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import styles from './SavedViewsSelector.module.css';
 
 export interface SavedView {
   id: string;
-  name: string;
+  nameKey: string;
   filters: {
     geocodeStatus?: 'success' | 'failed' | 'pending' | '';
     revisionFilter?: 'overdue' | 'week' | 'month' | '';
@@ -25,32 +26,32 @@ export interface SavedView {
 const PREDEFINED_VIEWS: SavedView[] = [
   {
     id: 'all',
-    name: 'Všichni zákazníci',
+    nameKey: 'saved_view_all',
     filters: {},
   },
   {
     id: 'no-address',
-    name: 'Bez adresy',
+    nameKey: 'saved_view_no_address',
     filters: { geocodeStatus: 'failed' },
   },
   {
     id: 'pending-geocode',
-    name: 'Čeká na ověření',
+    nameKey: 'saved_view_pending_geocode',
     filters: { geocodeStatus: 'pending' },
   },
   {
     id: 'overdue',
-    name: 'Po termínu',
+    nameKey: 'saved_view_overdue',
     filters: { revisionFilter: 'overdue' },
   },
   {
     id: 'due-week',
-    name: 'Revize do 7 dní',
+    nameKey: 'saved_view_due_week',
     filters: { revisionFilter: 'week' },
   },
   {
     id: 'companies',
-    name: 'Firmy',
+    nameKey: 'saved_view_companies',
     filters: { type: 'company' },
   },
 ];
@@ -64,6 +65,7 @@ export function SavedViewsSelector({
   currentFilters,
   onSelectView,
 }: SavedViewsSelectorProps) {
+  const { t } = useTranslation('customers');
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -111,13 +113,13 @@ export function SavedViewsSelector({
         aria-haspopup="listbox"
       >
         <span className={styles.icon}>📋</span>
-        <span className={styles.label}>{currentView.name}</span>
+        <span className={styles.label}>{t(currentView.nameKey)}</span>
         <span className={`${styles.arrow} ${isOpen ? styles.arrowOpen : ''}`}>▾</span>
       </button>
 
       {isOpen && (
         <div className={styles.dropdown} role="listbox">
-          <div className={styles.dropdownHeader}>Uložené pohledy</div>
+          <div className={styles.dropdownHeader}>{t('saved_views_header')}</div>
           {PREDEFINED_VIEWS.map(view => (
             <button
               key={view.id}
@@ -133,7 +135,7 @@ export function SavedViewsSelector({
               <span className={styles.optionIcon}>
                 {getViewIcon(view.id)}
               </span>
-              <span className={styles.optionName}>{view.name}</span>
+              <span className={styles.optionName}>{t(view.nameKey)}</span>
               {view.id === currentView.id && (
                 <span className={styles.checkmark}>✓</span>
               )}

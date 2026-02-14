@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { formatTime } from '../../i18n/formatters';
 import styles from './DraftModeBar.module.css';
 
 interface DraftModeBarProps {
@@ -20,10 +21,7 @@ function formatLastSaved(
   if (diffMin < 1) return t('draft_just_now');
   if (diffMin < 60) return t('draft_minutes_ago', { minutes: diffMin });
 
-  return date.toLocaleTimeString(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatTime(date.toISOString());
 }
 
 export function DraftModeBar({

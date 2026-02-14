@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { Revision } from '@shared/revision';
 import { 
   createRevision, 
@@ -26,11 +27,7 @@ interface FormData {
   findings: string;
 }
 
-const STATUSES = [
-  { value: 'upcoming', label: 'Plánovaná' },
-  { value: 'scheduled', label: 'Naplánováno' },
-  { value: 'confirmed', label: 'Potvrzeno' },
-];
+const STATUS_VALUES = ['upcoming', 'scheduled', 'confirmed'] as const;
 
 const createInitialFormData = (revision?: Revision): FormData => ({
   dueDate: revision?.dueDate ?? '',
@@ -42,6 +39,7 @@ const createInitialFormData = (revision?: Revision): FormData => ({
 });
 
 export function RevisionForm({ customerId, deviceId, revision, onSuccess, onCancel }: RevisionFormProps) {
+  const { t } = useTranslation('common');
   const isEditMode = !!revision;
   const [formData, setFormData] = useState<FormData>(() => createInitialFormData(revision));
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -57,18 +55,18 @@ export function RevisionForm({ customerId, deviceId, revision, onSuccess, onCanc
     e.preventDefault();
     
     if (!isConnected) {
-      setError('Není připojení k serveru');
+      setError(t('errors.not_connected'));
       return;
     }
 
     // Validate required fields
     if (!formData.dueDate) {
-      setError('Vyplňte termín revize');
+      setError(t('revision_form_error_due_date'));
       return;
     }
 
     if (!isEditMode && (!customerId || !deviceId)) {
-      setError('Chybí ID zákazníka nebo zařízení');
+      setError(t('revision_form_error_missing_ids'));
       return;
     }
 
@@ -110,7 +108,7 @@ export function RevisionForm({ customerId, deviceId, revision, onSuccess, onCanc
       onSuccess();
     } catch (err) {
       console.error('Failed to save revision:', err);
-      setError(err instanceof Error ? err.message : 'Nepodařilo se uložit revizi');
+      setError(err instanceof Error ? err.message : t('revision_form_error_save'));
     } finally {
       setIsSubmitting(false);
     }
@@ -119,14 +117,14 @@ export function RevisionForm({ customerId, deviceId, revision, onSuccess, onCanc
   return (
     <form className={styles.form} onSubmit={handleSubmit}>
       <h3 className={styles.title}>
-        {isEditMode ? 'Upravit revizi' : 'Nová revize'}
+        {isEditMode ? t('revision_form_edit') : t('revision_form_new')}
       </h3>
 
       {error && <div className={styles.error}>{error}</div>}
 
       <div className={styles.field}>
         <label htmlFor="dueDate" className={styles.label}>
-          Termín revize <span className={styles.required}>*</span>
+          {t('revision_form_due_date')} <span className={styles.required}>*</span>
         </label>
         <input
           type="date"
@@ -140,7 +138,7 @@ export function RevisionForm({ customerId, deviceId, revision, onSuccess, onCanc
 
       {isEditMode && (
         <div className={styles.field}>
-          <label htmlFor="status" className={styles.label}>Stav</label>
+          <label htmlFor="status" className={styles.label}>{t('revision_form_status')}</label>
           <select
             id="status"
             value={formData.status}
@@ -148,18 +146,18 @@ export function RevisionForm({ customerId, deviceId, revision, onSuccess, onCanc
             className={styles.select}
             disabled={isSubmitting}
           >
-            {STATUSES.map((s) => (
-              <option key={s.value} value={s.value}>{s.label}</option>
+            {STATUS_VALUES.map((value) => (
+              <option key={value} value={value}>{t(`revision_status.${value}`)}</option>
             ))}
           </select>
         </div>
       )}
 
       <div className={styles.section}>
-        <h4 className={styles.sectionTitle}>Plánování</h4>
+        <h4 className={styles.sectionTitle}>{t('revision_form_scheduling')}</h4>
         
         <div className={styles.field}>
-          <label htmlFor="scheduledDate" className={styles.label}>Naplánované datum</label>
+          <label htmlFor="scheduledDate" className={styles.label}>{t('revision_form_scheduled_date')}</label>
           <input
             type="date"
             id="scheduledDate"
@@ -172,7 +170,7 @@ export function RevisionForm({ customerId, deviceId, revision, onSuccess, onCanc
 
         <div className={styles.row}>
           <div className={styles.field}>
-            <label htmlFor="scheduledTimeStart" className={styles.label}>Čas od</label>
+            <label htmlFor="scheduledTimeStart" className={styles.label}>{t('revision_form_time_from')}</label>
             <input
               type="time"
               id="scheduledTimeStart"
@@ -184,7 +182,7 @@ export function RevisionForm({ customerId, deviceId, revision, onSuccess, onCanc
           </div>
 
           <div className={styles.field}>
-            <label htmlFor="scheduledTimeEnd" className={styles.label}>Čas do</label>
+            <label htmlFor="scheduledTimeEnd" className={styles.label}>{t('revision_form_time_to')}</label>
             <input
               type="time"
               id="scheduledTimeEnd"
@@ -198,7 +196,7 @@ export function RevisionForm({ customerId, deviceId, revision, onSuccess, onCanc
       </div>
 
       <div className={styles.field}>
-        <label htmlFor="findings" className={styles.label}>Poznámka</label>
+        <label htmlFor="findings" className={styles.label}>{t('revision_form_note')}</label>
         <textarea
           id="findings"
           value={formData.findings}
@@ -206,7 +204,7 @@ export function RevisionForm({ customerId, deviceId, revision, onSuccess, onCanc
           className={styles.textarea}
           disabled={isSubmitting}
           rows={3}
-          placeholder="Volitelná poznámka k revizi..."
+          placeholder={t('revision_form_note_placeholder')}
         />
       </div>
 
@@ -217,14 +215,14 @@ export function RevisionForm({ customerId, deviceId, revision, onSuccess, onCanc
           className={styles.cancelButton}
           disabled={isSubmitting}
         >
-          Zrušit
+          {t('cancel')}
         </button>
         <button
           type="submit"
           className={styles.submitButton}
           disabled={isSubmitting || !isConnected}
         >
-          {isSubmitting ? 'Ukládám...' : (isEditMode ? 'Uložit změny' : 'Vytvořit revizi')}
+          {isSubmitting ? t('saving') : (isEditMode ? t('revision_form_save_changes') : t('revision_form_create'))}
         </button>
       </div>
     </form>

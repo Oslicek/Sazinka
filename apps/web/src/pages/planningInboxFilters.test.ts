@@ -232,8 +232,8 @@ describe('planningInboxFilters', () => {
       },
     });
 
-    expect(summary).toContain('Nová revize:');
-    expect(summary).toContain('Termín = Má');
+    expect(summary).toContain('planner:filter_summary_new_revision');
+    expect(summary).toContain('planner:filter_summary_has_term_yes');
   });
 
   it('maps expression to backend v1 request', () => {

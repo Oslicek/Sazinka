@@ -20,6 +20,7 @@ import {
 } from '../services/visitService';
 import { getWorkTypeLabel, getWorkTypeIcon } from '../services/workItemService';
 import { useNatsStore } from '../stores/natsStore';
+import { formatDate } from '../i18n/formatters';
 import styles from './VisitDetail.module.css';
 
 interface VisitData {
@@ -223,10 +224,10 @@ export function VisitDetail() {
     return time.substring(0, 5);
   };
 
-  // Format date
-  const formatDate = (dateStr: string): string => {
+  // Format date (long style: e.g. "1 December 2024")
+  const formatDateLocal = (dateStr: string): string => {
     const d = new Date(dateStr + 'T00:00:00');
-    return d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    return formatDate(d, 'long');
   };
 
   // Calculate duration
@@ -313,7 +314,7 @@ export function VisitDetail() {
 
           <div className={styles.headerMeta}>
             <span className={styles.metaItem}>
-              📅 {formatDate(visit.scheduledDate)}
+              📅 {formatDateLocal(visit.scheduledDate)}
             </span>
             {visit.scheduledTimeStart && visit.scheduledTimeEnd && (
               <span className={styles.metaItem}>
@@ -363,7 +364,7 @@ export function VisitDetail() {
                 </div>
                 <div className={styles.detailItem}>
                   <span className={styles.detailLabel}>{t('visit_date')}</span>
-                  <span className={styles.detailValue}>{formatDate(visit.scheduledDate)}</span>
+                  <span className={styles.detailValue}>{formatDateLocal(visit.scheduledDate)}</span>
                 </div>
                 <div className={styles.detailItem}>
                   <span className={styles.detailLabel}>{t('visit_status')}</span>

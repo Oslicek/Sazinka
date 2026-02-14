@@ -67,6 +67,10 @@
   "email_third_title": "3) Třetí šablona (rezervováno)",
   "email_third_hint": "Tato šablona je připravená pro další scénář.",
   "email_placeholder_later": "Doplníte později",
+  "default_confirmation_subject": "Potvrzení termínu - {{customerName}}",
+  "default_confirmation_body": "Dobrý den,\n\npotvrzujeme dohodnutý termín návštěvy.\n\nS pozdravem",
+  "default_reminder_subject": "Připomínka termínu - {{customerName}}",
+  "default_reminder_body": "Dobrý den,\n\npřipomínáme Vám zítřejší dohodnutý termín.\n\nS pozdravem",
 
   "break_title": "Automatická pauza v trasách",
   "break_description": "Nastavte, zda se má do nově vytvořených tras automaticky vkládat obědová pauza.",

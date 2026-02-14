@@ -6,6 +6,7 @@ import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ImportReport, ImportIssue, ImportIssueCode, ImportIssueSummary } from '@shared/import';
 import { resolveBackendMessage } from '@/i18n/resolveBackendMessage';
+import { formatDate as formatDateI18n, formatTime } from '../../i18n/formatters';
 import styles from './ImportReportDialog.module.css';
 
 interface ImportReportDialogProps {
@@ -50,7 +51,7 @@ function formatDuration(ms: number): string {
 function formatDate(isoString: string): string {
   try {
     const d = new Date(isoString);
-    return d.toLocaleString(undefined);
+    return formatDateI18n(d) + ' ' + formatTime(d.toISOString());
   } catch {
     return isoString;
   }

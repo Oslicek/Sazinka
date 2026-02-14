@@ -12,7 +12,7 @@ import {
 import { RevisionWorkspace, type RevisionTabId } from '../components/revisions/RevisionWorkspace';
 import { CompleteRevisionDialog } from '../components/revisions/CompleteRevisionDialog';
 import { useNatsStore } from '../stores/natsStore';
-
+import { formatDate } from '../i18n/formatters';
 import styles from './RevisionDetail.module.css';
 
 interface SearchParams {
@@ -213,7 +213,7 @@ export function RevisionDetail() {
           <div className={styles.headerMeta}>
             {revision.scheduledDate && (
               <span className={styles.metaItem}>
-                📅 {new Date(revision.scheduledDate).toLocaleDateString(undefined)}
+                📅 {formatDate(revision.scheduledDate)}
               </span>
             )}
             {revision.scheduledTimeStart && revision.scheduledTimeEnd && (

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import styles from './AddressMap.module.css';
@@ -42,13 +43,15 @@ export function AddressMap({
   displayName,
   onPositionChange,
   draggable = true,
-  emptyMessage = 'Vyplňte adresu pro zobrazení polohy na mapě',
+  emptyMessage,
   enablePick = false,
   onPick,
   autoCenter = true,
   onMapInteraction,
   onAutoCenterComplete,
 }: AddressMapProps) {
+  const { t } = useTranslation('customers');
+  const resolvedEmptyMessage = emptyMessage ?? t('map_empty_message');
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const marker = useRef<maplibregl.Marker | null>(null);
@@ -195,15 +198,15 @@ export function AddressMap({
         <div className={styles.overlay}>
           <div className={styles.loading}>
             <span className={styles.spinner} />
-            Hledám adresu...
+            {t('map_searching_address')}
           </div>
         </div>
       )}
       
-      {!isGeocoding && lat === undefined && lng === undefined && emptyMessage && (
+      {!isGeocoding && lat === undefined && lng === undefined && resolvedEmptyMessage && (
         <div className={styles.placeholder}>
           <span className={styles.placeholderIcon}>📍</span>
-          <p>{emptyMessage}</p>
+          <p>{resolvedEmptyMessage}</p>
         </div>
       )}
       
@@ -212,7 +215,7 @@ export function AddressMap({
           <span className={styles.infoIcon}>✓</span>
           <span className={styles.infoText}>{displayName}</span>
           {draggable && (
-            <span className={styles.hint}>Přetáhněte značku pro úpravu polohy</span>
+            <span className={styles.hint}>{t('map_drag_hint')}</span>
           )}
         </div>
       )}

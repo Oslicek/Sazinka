@@ -161,7 +161,7 @@ function SortableStopCard({
       {hasAgreedWindowOverlay && (
         <div className={styles.agreedWindowOverlay} aria-hidden="true">
           <span className={styles.agreedWindowText}>
-            Okno {item.agreedWindowStart} - {item.agreedWindowEnd}
+            {t('planning_timeline_window', { start: item.agreedWindowStart, end: item.agreedWindowEnd })}
           </span>
         </div>
       )}
@@ -172,11 +172,11 @@ function SortableStopCard({
       <div className={styles.cardContent}>
         <div className={styles.cardHeader}>
           {isBreak ? (
-            <span className={styles.cardName}>Pauza</span>
+            <span className={styles.cardName}>{t('timeline_break')}</span>
           ) : (
             <>
               <span className={styles.cardOrder}>{stopIndex + 1}</span>
-              <span className={styles.cardName}>{stop.customerName ?? 'Neznámý'}</span>
+              <span className={styles.cardName}>{stop.customerName ?? t('timeline_unknown')}</span>
             </>
           )}
           <span className={`${styles.cardTime} ${item.lateArrivalMinutes ? styles.cardTimeLate : ''}`}>
@@ -192,7 +192,7 @@ function SortableStopCard({
         {item.lateArrivalMinutes != null && item.lateArrivalMinutes > 0 && (
           <div className={styles.lateWarning}>
             <span className={styles.lateWarningIcon}>&#x26A0;</span>
-            Příjezd {formatTime(item.actualArrivalTime ?? null)} ({item.lateArrivalMinutes} min pozdě) — nutné domluvit nový čas
+            {t('planning_timeline_late_arrival', { time: formatTime(item.actualArrivalTime ?? null), minutes: item.lateArrivalMinutes })}
           </div>
         )}
       </div>
@@ -205,7 +205,7 @@ function SortableStopCard({
             e.stopPropagation();
             onRemoveStop(stop.id);
           }}
-          title={isBreak ? 'Odstranit pauzu' : 'Odebrat zastávku'}
+          title={isBreak ? t('planning_timeline_remove_break') : t('planning_timeline_remove_stop')}
         >
           &#x2715;
         </button>

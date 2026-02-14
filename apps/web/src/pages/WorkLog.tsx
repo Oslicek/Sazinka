@@ -16,6 +16,7 @@ import type { Depot } from '@shared/settings';
 import type { Visit, VisitResult } from '@shared/visit';
 import { PlannerFilters } from '../components/shared/PlannerFilters';
 import { QuickVisitDialog } from '../components/worklog';
+import { formatDate } from '../i18n/formatters';
 import styles from './WorkLog.module.css';
 
 interface WorkLogSearchParams {
@@ -195,15 +196,6 @@ export function WorkLog() {
 
   // ─── Helpers ────────────────────────────────────────────────────
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr + 'T00:00:00').toLocaleDateString(undefined, {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'numeric',
-      year: 'numeric',
-    });
-  };
-
   const formatTime = (time?: string | null) => {
     if (!time) return '–';
     return time.substring(0, 5);
@@ -349,7 +341,7 @@ export function WorkLog() {
                   to="/calendar"
                   className={styles.dateGroupLabel}
                 >
-                  {formatDate(group.date)}
+                  {formatDate(group.date + 'T00:00:00', 'short')}
                 </Link>
                 <span className={styles.dateGroupCount}>{group.visits.length}</span>
               </div>
@@ -471,7 +463,7 @@ export function WorkLog() {
           <div className={styles.dialog} onClick={(e) => e.stopPropagation()}>
             <h3 className={styles.dialogTitle}>{t('worklog_complete_title')}</h3>
             <p className={styles.dialogSubtitle}>
-              {visitToComplete.customerName || t('worklog_complete_customer')} ({formatDate(visitToComplete.scheduledDate)})
+              {visitToComplete.customerName || t('worklog_complete_customer')} ({visitToComplete.scheduledDate ? formatDate(visitToComplete.scheduledDate + 'T00:00:00', 'short') : '–'})
             </p>
             <form className={styles.dialogForm} onSubmit={handleCompleteVisit}>
               <label className={styles.dialogField}>

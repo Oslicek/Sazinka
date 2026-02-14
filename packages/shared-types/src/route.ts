@@ -22,15 +22,6 @@ export type RouteStatus =
   | 'in_progress'
   | 'completed';
 
-/** @deprecated Use ROUTE_STATUS_KEYS with i18n.t() instead */
-export const ROUTE_STATUS_LABELS: Record<RouteStatus, string> = {
-  draft: 'Koncept',
-  optimized: 'Optimalizováno',
-  confirmed: 'Potvrzeno',
-  in_progress: 'Probíhá',
-  completed: 'Dokončeno',
-};
-
 /** i18n translation keys for route statuses */
 export const ROUTE_STATUS_KEYS: Record<RouteStatus, string> = {
   draft: 'common:route_status.draft',
