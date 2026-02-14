@@ -98,8 +98,13 @@ pub struct BusinessInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EmailTemplateSettings {
-    pub email_subject_template: String,
-    pub email_body_template: String,
+    pub confirmation_subject_template: String,
+    pub confirmation_body_template: String,
+    pub reminder_subject_template: String,
+    pub reminder_body_template: String,
+    pub reminder_send_time: String, // "HH:MM"
+    pub third_subject_template: String,
+    pub third_body_template: String,
 }
 
 /// User preferences
@@ -165,8 +170,13 @@ pub struct UpdateBusinessInfoRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateEmailTemplatesRequest {
-    pub email_subject_template: Option<String>,
-    pub email_body_template: Option<String>,
+    pub confirmation_subject_template: Option<String>,
+    pub confirmation_body_template: Option<String>,
+    pub reminder_subject_template: Option<String>,
+    pub reminder_body_template: Option<String>,
+    pub reminder_send_time: Option<String>,
+    pub third_subject_template: Option<String>,
+    pub third_body_template: Option<String>,
 }
 
 /// Update user preferences request
@@ -214,6 +224,13 @@ pub struct UserWithSettings {
     pub dic: Option<String>,
     pub email_subject_template: Option<String>,
     pub email_body_template: Option<String>,
+    pub email_confirmation_subject_template: Option<String>,
+    pub email_confirmation_body_template: Option<String>,
+    pub email_reminder_subject_template: Option<String>,
+    pub email_reminder_body_template: Option<String>,
+    pub email_reminder_send_time: Option<NaiveTime>,
+    pub email_third_subject_template: Option<String>,
+    pub email_third_body_template: Option<String>,
     pub default_crew_id: Option<Uuid>,
     pub default_depot_id: Option<Uuid>,
     pub break_enabled: bool,
@@ -257,11 +274,28 @@ impl UserWithSettings {
 
     /// Convert to email template settings
     pub fn to_email_templates(&self) -> EmailTemplateSettings {
+        let reminder_subject = self.email_reminder_subject_template.clone()
+            .or_else(|| self.email_subject_template.clone())
+            .unwrap_or_else(|| "Připomínka termínu - {{customerName}}".to_string());
+        let reminder_body = self.email_reminder_body_template.clone()
+            .or_else(|| self.email_body_template.clone())
+            .unwrap_or_else(|| DEFAULT_REMINDER_EMAIL_TEMPLATE.to_string());
+
         EmailTemplateSettings {
-            email_subject_template: self.email_subject_template.clone()
-                .unwrap_or_else(|| "Připomínka revize - {{device_type}}".to_string()),
-            email_body_template: self.email_body_template.clone()
-                .unwrap_or_else(|| DEFAULT_EMAIL_TEMPLATE.to_string()),
+            confirmation_subject_template: self.email_confirmation_subject_template.clone()
+                .unwrap_or_else(|| "Potvrzení termínu - {{customerName}}".to_string()),
+            confirmation_body_template: self.email_confirmation_body_template.clone()
+                .unwrap_or_else(|| DEFAULT_CONFIRMATION_EMAIL_TEMPLATE.to_string()),
+            reminder_subject_template: reminder_subject,
+            reminder_body_template: reminder_body,
+            reminder_send_time: self.email_reminder_send_time
+                .unwrap_or_else(|| NaiveTime::from_hms_opt(9, 0, 0).expect("valid default time"))
+                .format("%H:%M")
+                .to_string(),
+            third_subject_template: self.email_third_subject_template.clone()
+                .unwrap_or_else(|| "".to_string()),
+            third_body_template: self.email_third_body_template.clone()
+                .unwrap_or_else(|| "".to_string()),
         }
     }
 
@@ -286,14 +320,28 @@ impl UserWithSettings {
     }
 }
 
-/// Default email template
-pub const DEFAULT_EMAIL_TEMPLATE: &str = r#"Dobrý den,
+/// Default reminder email template (day before appointment)
+pub const DEFAULT_REMINDER_EMAIL_TEMPLATE: &str = r#"Dobrý den,
 
 dovolujeme si Vás upozornit, že se blíží termín pravidelné revize Vašeho zařízení {{device_type}}.
 
 Plánovaný termín: {{due_date}}
 
 V případě zájmu nás prosím kontaktujte pro domluvení termínu.
+
+S pozdravem,
+{{business_name}}
+{{phone}}
+{{email}}"#;
+
+/// Default confirmation email template (sent immediately after agreement)
+pub const DEFAULT_CONFIRMATION_EMAIL_TEMPLATE: &str = r#"Dobrý den,
+
+potvrzujeme dohodnutý termín návštěvy.
+
+Termín: {{due_date}}
+
+Těšíme se na spolupráci.
 
 S pozdravem,
 {{business_name}}

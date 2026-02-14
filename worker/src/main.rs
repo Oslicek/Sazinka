@@ -56,8 +56,16 @@ async fn main() -> Result<()> {
     // Ensure dev admin has a valid password hash
     db::ensure_dev_admin_password(&pool).await;
 
-    // Connect to NATS
-    let nats_client = async_nats::connect(&config.nats_url).await?;
+    // Connect to NATS (supports optional NATS_USER/NATS_PASSWORD auth).
+    let nats_client = match (std::env::var("NATS_USER"), std::env::var("NATS_PASSWORD")) {
+        (Ok(user), Ok(password)) if !user.is_empty() => {
+            async_nats::ConnectOptions::new()
+                .user_and_password(user, password)
+                .connect(&config.nats_url)
+                .await?
+        }
+        _ => async_nats::connect(&config.nats_url).await?,
+    };
     info!("Connected to NATS at {}", config.nats_url);
 
     // Start message handlers

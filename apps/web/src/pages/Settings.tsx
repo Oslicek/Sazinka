@@ -111,14 +111,14 @@ export function Settings() {
   const allTabs: { id: SettingsTab; label: string; permission: string }[] = [
     { id: 'preferences', label: 'Moje nastavení', permission: 'settings:preferences' },
     { id: 'work', label: 'Pracovní doba', permission: 'settings:work' },
-    { id: 'business', label: 'Firemní údaje', permission: 'settings:business' },
-    { id: 'email', label: 'E-mailové šablony', permission: 'settings:email' },
     { id: 'breaks', label: 'Pauzy', permission: 'settings:breaks' },
-    { id: 'depots', label: 'Depa', permission: 'settings:depots' },
-    { id: 'crews', label: 'Posádky', permission: 'settings:crews' },
     { id: 'workers', label: 'Pracovníci', permission: 'settings:workers' },
-    { id: 'import-export', label: 'Import & Export', permission: 'settings:import-export' },
     { id: 'roles', label: 'Role', permission: 'settings:roles' },
+    { id: 'crews', label: 'Posádky', permission: 'settings:crews' },
+    { id: 'depots', label: 'Depa', permission: 'settings:depots' },
+    { id: 'email', label: 'E-mailové šablony', permission: 'settings:email' },
+    { id: 'business', label: 'Firemní údaje', permission: 'settings:business' },
+    { id: 'import-export', label: 'Import/export', permission: 'settings:import-export' },
   ];
 
   // Filter tabs based on user permissions
@@ -771,8 +771,13 @@ interface EmailTemplatesFormProps {
 
 function EmailTemplatesForm({ data, saving, onSave }: EmailTemplatesFormProps) {
   const [formData, setFormData] = useState({
-    emailSubjectTemplate: data.emailSubjectTemplate || 'Revize hasicího přístroje - {{customerName}}',
-    emailBodyTemplate: data.emailBodyTemplate || 'Dobrý den,\n\nblíží se termín revize vašeho hasicího přístroje.\n\nS pozdravem',
+    confirmationSubjectTemplate: data.confirmationSubjectTemplate || 'Potvrzení termínu - {{customerName}}',
+    confirmationBodyTemplate: data.confirmationBodyTemplate || 'Dobrý den,\n\npotvrzujeme dohodnutý termín návštěvy.\n\nS pozdravem',
+    reminderSubjectTemplate: data.reminderSubjectTemplate || 'Připomínka termínu - {{customerName}}',
+    reminderBodyTemplate: data.reminderBodyTemplate || 'Dobrý den,\n\npřipomínáme Vám zítřejší dohodnutý termín.\n\nS pozdravem',
+    reminderSendTime: data.reminderSendTime || '09:00',
+    thirdSubjectTemplate: data.thirdSubjectTemplate || '',
+    thirdBodyTemplate: data.thirdBodyTemplate || '',
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -783,28 +788,94 @@ function EmailTemplatesForm({ data, saving, onSave }: EmailTemplatesFormProps) {
   return (
     <form className={styles.form} onSubmit={handleSubmit}>
       <div className={styles.formSection}>
-        <h3>Šablona e-mailu pro upomínky</h3>
+        <h3>1) Potvrzení dohodnutého termínu (ihned)</h3>
         <p className={styles.hint}>
-          Použijte proměnné: {'{{customerName}}'}, {'{{deviceName}}'}, {'{{dueDate}}'}
+          Odesílá se ihned po dohodnutí termínu.
         </p>
-        
+
         <div className={styles.formGroup}>
           <label htmlFor="subject">Předmět e-mailu</label>
           <input
             type="text"
             id="subject"
-            value={formData.emailSubjectTemplate}
-            onChange={(e) => setFormData({ ...formData, emailSubjectTemplate: e.target.value })}
+            value={formData.confirmationSubjectTemplate}
+            onChange={(e) => setFormData({ ...formData, confirmationSubjectTemplate: e.target.value })}
           />
         </div>
-        
+
         <div className={styles.formGroup}>
           <label htmlFor="body">Text e-mailu</label>
           <textarea
             id="body"
             rows={10}
-            value={formData.emailBodyTemplate}
-            onChange={(e) => setFormData({ ...formData, emailBodyTemplate: e.target.value })}
+            value={formData.confirmationBodyTemplate}
+            onChange={(e) => setFormData({ ...formData, confirmationBodyTemplate: e.target.value })}
+          />
+        </div>
+      </div>
+
+      <div className={styles.formSection}>
+        <h3>2) Připomínka termínu (den předem)</h3>
+        <p className={styles.hint}>
+          Použijte proměnné: {'{{customerName}}'}, {'{{deviceName}}'}, {'{{dueDate}}'}
+        </p>
+
+        <div className={styles.formRow}>
+          <div className={styles.formGroup}>
+            <label htmlFor="reminderSendTime">Čas automatického odeslání</label>
+            <input
+              type="time"
+              id="reminderSendTime"
+              value={formData.reminderSendTime}
+              onChange={(e) => setFormData({ ...formData, reminderSendTime: e.target.value })}
+            />
+          </div>
+        </div>
+
+        <div className={styles.formGroup}>
+          <label htmlFor="reminderSubject">Předmět e-mailu</label>
+          <input
+            type="text"
+            id="reminderSubject"
+            value={formData.reminderSubjectTemplate}
+            onChange={(e) => setFormData({ ...formData, reminderSubjectTemplate: e.target.value })}
+          />
+        </div>
+
+        <div className={styles.formGroup}>
+          <label htmlFor="reminderBody">Text e-mailu</label>
+          <textarea
+            id="reminderBody"
+            rows={10}
+            value={formData.reminderBodyTemplate}
+            onChange={(e) => setFormData({ ...formData, reminderBodyTemplate: e.target.value })}
+          />
+        </div>
+      </div>
+
+      <div className={styles.formSection}>
+        <h3>3) Třetí šablona (rezervováno)</h3>
+        <p className={styles.hint}>
+          Tato šablona je připravená pro další scénář.
+        </p>
+        <div className={styles.formGroup}>
+          <label htmlFor="thirdSubjectTemplate">Předmět e-mailu</label>
+          <input
+            type="text"
+            id="thirdSubjectTemplate"
+            value={formData.thirdSubjectTemplate}
+            onChange={(e) => setFormData({ ...formData, thirdSubjectTemplate: e.target.value })}
+            placeholder="Doplníte později"
+          />
+        </div>
+        <div className={styles.formGroup}>
+          <label htmlFor="thirdBodyTemplate">Text e-mailu</label>
+          <textarea
+            id="thirdBodyTemplate"
+            rows={8}
+            value={formData.thirdBodyTemplate}
+            onChange={(e) => setFormData({ ...formData, thirdBodyTemplate: e.target.value })}
+            placeholder="Doplníte později"
           />
         </div>
       </div>

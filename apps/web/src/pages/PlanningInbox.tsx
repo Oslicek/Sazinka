@@ -142,6 +142,8 @@ export function PlanningInbox() {
   
   // Map collapse/expand state
   const [mapMode, setMapMode] = useState<'normal' | 'collapsed' | 'fullscreen'>('normal');
+  const [mapHeight, setMapHeight] = useState(280);
+  const mapResizeRef = useRef<{ startY: number; startH: number } | null>(null);
 
   // Route state
   const [routeStops, setRouteStops] = useState<SavedRouteStop[]>([]);
@@ -214,6 +216,29 @@ export function PlanningInbox() {
   const [routeJobProgress, setRouteJobProgress] = useState<string | null>(null);
   const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState(false);
   const [activePresetId, setActivePresetId] = useState<FilterPresetId | null>(null);
+
+  // Map resize drag handlers
+  const handleMapResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    mapResizeRef.current = { startY: e.clientY, startH: mapHeight };
+    const onMove = (ev: MouseEvent) => {
+      if (!mapResizeRef.current) return;
+      const delta = ev.clientY - mapResizeRef.current.startY;
+      const newH = Math.max(120, Math.min(600, mapResizeRef.current.startH + delta));
+      setMapHeight(newH);
+    };
+    const onUp = () => {
+      mapResizeRef.current = null;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+  }, [mapHeight]);
 
   useEffect(() => {
     localStorage.setItem('planningInbox.enforceDrivingBreakRule', String(enforceDrivingBreakRule));
@@ -2239,7 +2264,7 @@ export function PlanningInbox() {
     return (
       <div className={`${styles.mapPanel} ${mapMode === 'fullscreen' ? styles.mapPanelFullscreen : ''}`}>
         {mapMode !== 'collapsed' && (
-          <div className={`${styles.mapSection} ${mapMode === 'fullscreen' ? styles.mapSectionFullscreen : ''}`}>
+          <div className={`${styles.mapSection} ${mapMode === 'fullscreen' ? styles.mapSectionFullscreen : ''}`} style={mapMode === 'normal' ? { height: mapHeight } : undefined}>
             <RouteMapPanel
               stops={routeStops}
               depot={currentDepot}
@@ -2260,14 +2285,28 @@ export function PlanningInbox() {
                 onClick={() => setMapMode(mapMode === 'fullscreen' ? 'normal' : 'fullscreen')}
                 title={mapMode === 'fullscreen' ? 'Zmenšit mapu' : 'Zvětšit mapu na celou stránku'}
               >
-                {mapMode === 'fullscreen' ? '⊟' : '⊞'}
+                {mapMode === 'fullscreen' ? (
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="9,1 13,1 13,5" /><polyline points="5,13 1,13 1,9" />
+                    <line x1="13" y1="1" x2="8.5" y2="5.5" /><line x1="1" y1="13" x2="5.5" y2="8.5" />
+                  </svg>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="10,4 14,0" /><polyline points="4,10 0,14" />
+                    <polyline points="10,1 13,1 13,4" /><polyline points="4,13 1,13 1,10" />
+                  </svg>
+                )}
               </button>
-              <CollapseButton
-                collapsed={false}
+              <button
+                type="button"
+                className={styles.mapControlButton}
                 onClick={() => setMapMode('collapsed')}
                 title="Skrýt mapu"
-                variant="overlay"
-              />
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="2,5 7,1 12,5" />
+                </svg>
+              </button>
             </div>
           </div>
         )}
@@ -2281,12 +2320,67 @@ export function PlanningInbox() {
             />
           </div>
         )}
+        {mapMode === 'normal' && (
+          <div className={styles.mapResizeHandle} onMouseDown={handleMapResizeStart} title="Přetáhněte pro změnu velikosti mapy" />
+        )}
         {mapMode !== 'fullscreen' && (
         <div className={styles.routeStopSection}>
           {contextSelectorsJsx}
-          <div className={styles.timelineHeader}>
-            <TimelineViewToggle value={timelineView} onChange={setTimelineView} />
+
+          {/* Stats + action buttons bar — above timeline */}
+          <div className={styles.routeSummaryBar}>
+            <div className={styles.summaryStats}>
+              <div className={styles.statItem}>
+                <span className={styles.statLabel}>Začátek</span>
+                <span className={styles.statValue}>{routeStartTime ?? '—'}</span>
+              </div>
+              <div className={styles.statItem}>
+                <span className={styles.statLabel}>Konec</span>
+                <span className={styles.statValue}>{routeEndTime ?? '—'}</span>
+              </div>
+              <span className={styles.statSep}>|</span>
+              <div className={styles.statItem}>
+                <span className={styles.statLabel}>Celkový čas</span>
+                <span className={styles.statValue}>
+                  {metrics ? formatMinutesHm((metrics.travelTimeMin ?? 0) + (metrics.serviceTimeMin ?? 0)) : '—'}
+                </span>
+              </div>
+              <div className={styles.statItem}>
+                <span className={styles.statLabel}>Práce</span>
+                <span className={styles.statValue}>{metrics ? formatMinutesHm(metrics.serviceTimeMin) : '—'}</span>
+              </div>
+              <div className={styles.statItem}>
+                <span className={styles.statLabel}>Jízda</span>
+                <span className={styles.statValue}>{metrics ? formatMinutesHm(metrics.travelTimeMin) : '—'}</span>
+              </div>
+              <span className={styles.statSep}>|</span>
+              <div className={styles.statItem}>
+                <span className={styles.statLabel}>Zastávky</span>
+                <span className={styles.statValue}>{routeStops.filter(s => s.stopType !== 'break').length}</span>
+              </div>
+              <div className={styles.statItem}>
+                <span className={styles.statLabel}>Vzdálenost</span>
+                <span className={styles.statValue}>{metrics ? `${metrics.distanceKm.toFixed(1)} km` : '—'}</span>
+              </div>
+            </div>
+            <div className={styles.summaryActions}>
+              <button
+                type="button"
+                className={styles.summaryOptimizeBtn}
+                onClick={handleOptimizeRoute}
+                disabled={isOptimizing || routeStops.length < 2}
+              >
+                {isOptimizing ? 'Optimalizuji...' : 'Optimalizovat'}
+              </button>
+              <button type="button" className={styles.summaryActionBtn} onClick={handleAddBreak}>
+                Pauza
+              </button>
+              <button type="button" className={styles.summaryDeleteBtn} onClick={handleClearRoute}>
+                Smazat trasu
+              </button>
+            </div>
           </div>
+
           {timelineView === 'compact' ? (
             <RouteDetailTimeline
               stops={routeStops}
@@ -2300,13 +2394,8 @@ export function PlanningInbox() {
               onSegmentClick={setHighlightedSegment}
               onReorder={handleReorder}
               onRemoveStop={handleRemoveFromRoute}
-              onAddBreak={handleAddBreak}
-              onOptimize={handleOptimizeRoute}
-              onDeleteRoute={handleClearRoute}
-              deleteRouteLabel="Smazat trasu"
               isOptimizing={isOptimizing}
               isSaving={isSaving}
-              metrics={metrics}
               warnings={routeWarnings}
               routeStartTime={routeStartTime}
               routeEndTime={routeEndTime}
@@ -2325,13 +2414,8 @@ export function PlanningInbox() {
               }}
               onReorder={handleReorder}
               onRemoveStop={handleRemoveFromRoute}
-              onAddBreak={handleAddBreak}
-              onOptimize={handleOptimizeRoute}
-              onDeleteRoute={handleClearRoute}
-              deleteRouteLabel="Smazat trasu"
               isOptimizing={isOptimizing}
               isSaving={isSaving}
-              metrics={metrics}
               routeStartTime={routeStartTime}
               routeEndTime={routeEndTime}
               depotDeparture={depotDeparture}
@@ -2450,6 +2534,10 @@ export function PlanningInbox() {
             <option key={d.id} value={d.id}>{d.name}</option>
           ))}
         </select>
+      </div>
+
+      <div className={styles.timelineToggleInline}>
+        <TimelineViewToggle value={timelineView} onChange={setTimelineView} />
       </div>
     </div>
   );

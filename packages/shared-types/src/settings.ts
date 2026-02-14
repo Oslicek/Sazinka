@@ -78,8 +78,13 @@ export interface BusinessInfo {
 
 // Email template settings
 export interface EmailTemplateSettings {
-  emailSubjectTemplate: string;
-  emailBodyTemplate: string;
+  confirmationSubjectTemplate: string;
+  confirmationBodyTemplate: string;
+  reminderSubjectTemplate: string;
+  reminderBodyTemplate: string;
+  reminderSendTime: string; // "HH:MM"
+  thirdSubjectTemplate: string;
+  thirdBodyTemplate: string;
 }
 
 // Combined user settings
@@ -126,8 +131,13 @@ export interface UpdateBusinessInfoRequest {
 }
 
 export interface UpdateEmailTemplatesRequest {
-  emailSubjectTemplate?: string;
-  emailBodyTemplate?: string;
+  confirmationSubjectTemplate?: string;
+  confirmationBodyTemplate?: string;
+  reminderSubjectTemplate?: string;
+  reminderBodyTemplate?: string;
+  reminderSendTime?: string;
+  thirdSubjectTemplate?: string;
+  thirdBodyTemplate?: string;
 }
 
 export interface UpdateBreakSettingsRequest {

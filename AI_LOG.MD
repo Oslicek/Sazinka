@@ -1,5 +1,31 @@
 # AI Implementation Log
 
+## 2026-02-14 - Settings UI reorder + email templates update request
+
+### User requirements (as requested)
+
+I. Order of the settings sections:
+1. Moje nastavení
+2. Pracovní doba
+3. Pauzy
+4. Pracovníci
+5. Role
+6. Posádky
+7. Depa
+8. E-mailové šablony
+9. Firemní údaje
+10. Import/export
+
+II. E-mailové šablony - there will be three templates:
+1. E-mail potvrzující dohodnutý termín ihned po jeho dohodnutí.
+2. E-mail připomínající dohodnutý termín den před termínem.
+   - Zde bude možnost nastavit čas, kdy bude automaticky odeslán.
+
+### Implementation note
+- Existing backend settings model currently persists one e-mail subject/body pair.
+- UI is updated to present 3 template sections and the reminder send-time control.
+- Existing persisted fields are used for the reminder template; additional UI-only template fields are stored locally in browser storage until backend schema is extended.
+
 ## 2026-02-02 - RBAC Implementation Investigation
 
 ### Context
@@ -660,3 +686,44 @@ The application is now fully deployed with RBAC enabled. Users can:
 1. **`use sqlx::Row;` missing** - Fixed in `worker/src/db/queries/role.rs`
 2. **Role handlers not starting** - Fixed by rebuilding worker with corrected imports
 3. **Migration 015 not applied** - Manually applied via `docker exec` + `psql`
+
+---
+
+## 2026-02-14: Inbox UI Improvements
+
+### Requirements
+
+1. **Move "Plánované trvání" inline** — Place planned duration next to the time window on the same line to save vertical space. Format: `Plánované trvání: 60 min`
+
+2. **Map & timeline column fixes:**
+   - **2.1 Map icons overlap** — The collapse chevron and full-page toggle icons overlap with the MapLibre NavigationControl in the top-right corner. Fix spacing, make both custom icons the same size, and use a more standard expand/collapse arrows symbol instead of `⊞`/`⊟`.
+   - **2.2 Map credits hidden** — The OpenStreetMap attribution in the bottom-right corner is partially obscured. Ensure it's fully visible.
+   - **2.3 Draggable map/timeline border** — Make the bottom border of the map section draggable so the user can resize the map vs. timeline split vertically.
+   - **2.4 Date selector more pronounced** — Use a slightly bigger font and an accent color for the date input to make it stand out.
+   - **2.5 Timeline mode switch placement** — Move the `TimelineViewToggle` next to the Depo selector on the same row to save one line.
+
+### Implementation Progress (crash recovery 2026-02-14)
+
+| # | Task | Status |
+|---|------|--------|
+| 1 | Plánované trvání inline | ✅ Done |
+| 2.1 | Map icons overlap fix | ✅ Done |
+| 2.2 | Map credits visible | ✅ Done |
+| 2.3 | Draggable map/timeline border | ✅ Done |
+| 2.4 | Date selector pronounced | ✅ Done |
+| 2.5 | Timeline toggle next to Depo | ✅ Done |
+
+### Additional Requirements (2026-02-14, batch 2)
+
+1. **Posádka & Depo same font as date** — Apply the same bigger, bold, accent-colored font to the Posádka and Depo `<select>` elements as the date input.
+
+2. **Stats box + action buttons above timeline** — Move the summary statistics box and action buttons (Optimalizovat, Pauza, Smazat trasu) from below the timeline to above it, positioned between the selectors row and the timeline itself.
+
+3. **Redesign stats box** — Remove "Zatížení" (load %). New fields:
+   - i. Začátek (start time)
+   - ii. Konec (end time)
+   - iii. Celkový čas (total time)
+   - iv. Čas práce (service time)
+   - v. Čas jízdy (travel time)
+   - vi. Počet zastávek (stop count, excluding breaks)
+   - vii. Vzdálenost (distance in km)

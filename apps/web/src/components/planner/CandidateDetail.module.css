@@ -262,6 +262,20 @@
   font-weight: 500;
 }
 
+.appointmentLine {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.durationBadge {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
 .scheduledAppointmentButton {
   font-size: 0.875rem;
   margin: 0;
@@ -274,7 +288,7 @@
   cursor: pointer;
   transition: all 0.15s;
   text-align: left;
-  width: 100%;
+  flex: 0 0 auto;
 }
 
 .scheduledAppointmentButton:hover {

@@ -31,6 +31,10 @@ pub async fn get_user_settings(pool: &PgPool, user_id: Uuid) -> Result<Option<Us
             reminder_days_before,
             ico, dic,
             email_subject_template, email_body_template,
+            email_confirmation_subject_template, email_confirmation_body_template,
+            email_reminder_subject_template, email_reminder_body_template,
+            email_reminder_send_time,
+            email_third_subject_template, email_third_body_template,
             default_crew_id, default_depot_id,
             break_enabled, break_duration_minutes,
             break_earliest_time, break_latest_time,
@@ -130,17 +134,34 @@ pub async fn update_email_templates(
     user_id: Uuid,
     req: &UpdateEmailTemplatesRequest,
 ) -> Result<()> {
+    let reminder_send_time = req.reminder_send_time.as_ref()
+        .map(|s| NaiveTime::parse_from_str(s, "%H:%M"))
+        .transpose()?;
+
     sqlx::query(
         r#"
         UPDATE users SET
-            email_subject_template = COALESCE($2, email_subject_template),
-            email_body_template = COALESCE($3, email_body_template)
+            email_confirmation_subject_template = COALESCE($2, email_confirmation_subject_template),
+            email_confirmation_body_template = COALESCE($3, email_confirmation_body_template),
+            email_reminder_subject_template = COALESCE($4, email_reminder_subject_template),
+            email_reminder_body_template = COALESCE($5, email_reminder_body_template),
+            email_reminder_send_time = COALESCE($6, email_reminder_send_time),
+            email_third_subject_template = COALESCE($7, email_third_subject_template),
+            email_third_body_template = COALESCE($8, email_third_body_template),
+            -- Backward compatibility: keep legacy columns in sync with reminder template.
+            email_subject_template = COALESCE($4, email_subject_template),
+            email_body_template = COALESCE($5, email_body_template)
         WHERE id = $1
         "#
     )
     .bind(user_id)
-    .bind(&req.email_subject_template)
-    .bind(&req.email_body_template)
+    .bind(&req.confirmation_subject_template)
+    .bind(&req.confirmation_body_template)
+    .bind(&req.reminder_subject_template)
+    .bind(&req.reminder_body_template)
+    .bind(reminder_send_time)
+    .bind(&req.third_subject_template)
+    .bind(&req.third_body_template)
     .execute(pool)
     .await?;
 
