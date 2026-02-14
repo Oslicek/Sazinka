@@ -37,7 +37,7 @@ describe('AuthStore', () => {
 
   describe('login', () => {
     it('sets user and token on successful login', async () => {
-      const mockUser = { id: '1', email: 'test@example.com', name: 'Test', role: 'customer' as const };
+      const mockUser = { id: '1', email: 'test@example.com', name: 'Test', role: 'customer' as const, locale: 'en' };
       const mockToken = 'header.payload.signature';
       const requestFn = vi.fn().mockResolvedValue({
         payload: { token: mockToken, user: mockUser },
@@ -62,7 +62,8 @@ describe('AuthStore', () => {
       await expect(useAuthStore.getState().login('test@example.com', 'wrong')).rejects.toThrow();
 
       expect(useAuthStore.getState().isAuthenticated).toBe(false);
-      expect(useAuthStore.getState().error).toBe('Nesprávný email nebo heslo.');
+      // i18n.t() returns the key in test env (no auth namespace loaded)
+      expect(useAuthStore.getState().error).toBe('error_invalid_credentials');
     });
 
     it('sets error on rate limited login', async () => {
@@ -73,13 +74,13 @@ describe('AuthStore', () => {
 
       await expect(useAuthStore.getState().login('test@example.com', 'any')).rejects.toThrow();
 
-      expect(useAuthStore.getState().error).toBe('Příliš mnoho pokusů. Zkuste to později.');
+      expect(useAuthStore.getState().error).toBe('error_rate_limited');
     });
   });
 
   describe('register', () => {
     it('sets user and token on successful registration', async () => {
-      const mockUser = { id: '2', email: 'new@example.com', name: 'New User', role: 'customer' as const };
+      const mockUser = { id: '2', email: 'new@example.com', name: 'New User', role: 'customer' as const, locale: 'en' };
       const mockToken = 'reg.token.here';
       const requestFn = vi.fn().mockResolvedValue({
         payload: { token: mockToken, user: mockUser },
@@ -100,7 +101,7 @@ describe('AuthStore', () => {
 
       await expect(useAuthStore.getState().register('test@example.com', 'password', 'Test')).rejects.toThrow();
 
-      expect(useAuthStore.getState().error).toBe('Email je již registrován.');
+      expect(useAuthStore.getState().error).toBe('error_duplicate_email');
     });
   });
 
@@ -123,7 +124,7 @@ describe('AuthStore', () => {
 
   describe('verify', () => {
     it('restores auth state from localStorage on valid token', async () => {
-      const mockUser = { id: '1', email: 'test@example.com', name: 'Test', role: 'admin' as const };
+      const mockUser = { id: '1', email: 'test@example.com', name: 'Test', role: 'admin' as const, locale: 'en' };
       localStorageMock.store['sazinka_token'] = 'stored.jwt.token';
 
       const requestFn = vi.fn().mockResolvedValue({ payload: mockUser });

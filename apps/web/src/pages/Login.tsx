@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate, Link } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '@/stores/authStore';
 import { useNatsStore } from '@/stores/natsStore';
 import styles from './Login.module.css';
 
 export function Login() {
+  const { t } = useTranslation('auth');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -34,7 +36,7 @@ export function Login() {
       <div className={styles.card}>
         <div className={styles.header}>
           <h1 className={styles.title}>Ariadline</h1>
-          <p className={styles.subtitle}>Přihlášení do systému</p>
+          <p className={styles.subtitle}>{t('login_title')}</p>
         </div>
 
         <form onSubmit={handleSubmit} className={styles.form}>
@@ -46,19 +48,19 @@ export function Login() {
 
           {!isConnected && (
             <div className={styles.warning}>
-              Server není dostupný. Zkontrolujte připojení.
+              {t('server_unavailable')}
             </div>
           )}
 
           <div className={styles.field}>
-            <label htmlFor="email" className={styles.label}>Email</label>
+            <label htmlFor="email" className={styles.label}>{t('email_label')}</label>
             <input
               id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className={styles.input}
-              placeholder="vas@email.cz"
+              placeholder={t('email_placeholder')}
               required
               autoComplete="email"
               autoFocus
@@ -66,14 +68,14 @@ export function Login() {
           </div>
 
           <div className={styles.field}>
-            <label htmlFor="password" className={styles.label}>Heslo</label>
+            <label htmlFor="password" className={styles.label}>{t('password_label')}</label>
             <input
               id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className={styles.input}
-              placeholder="Vaše heslo"
+              placeholder={t('password_placeholder')}
               autoComplete="current-password"
             />
           </div>
@@ -83,14 +85,14 @@ export function Login() {
             className={styles.button}
             disabled={isSubmitting || !isConnected || !email}
           >
-            {isSubmitting ? 'Přihlašování...' : 'Přihlásit se'}
+            {isSubmitting ? t('login_button_loading') : t('login_button')}
           </button>
         </form>
 
         <div className={styles.footer}>
           <p>
-            Nemáte účet?{' '}
-            <Link to="/register" className={styles.link}>Zaregistrujte se</Link>
+            {t('no_account')}{' '}
+            <Link to="/register" className={styles.link}>{t('register_link')}</Link>
           </p>
         </div>
       </div>

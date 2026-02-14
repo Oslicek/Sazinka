@@ -122,3 +122,31 @@
 .link:hover {
   text-decoration: underline;
 }
+
+.localeField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.localeSelect {
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--color-border, #d1d5db);
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  background: white;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  cursor: pointer;
+}
+
+.localeSelect:focus {
+  border-color: var(--color-primary, #3b82f6);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.localeHint {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary, #9ca3af);
+  margin: 0;
+}

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { UserPublic, AuthResponse } from '@shared/auth';
 import { createRequest } from '@shared/messages';
 import { useNatsStore } from './natsStore';
+import i18n from '@/i18n';
 
 const TOKEN_KEY = 'sazinka_token';
 
@@ -14,7 +15,7 @@ interface AuthState {
 
   // Actions
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name: string, businessName?: string) => Promise<void>;
+  register: (email: string, password: string, name: string, businessName?: string, locale?: string) => Promise<void>;
   logout: () => void;
   verify: () => Promise<void>;
   refreshToken: () => Promise<void>;
@@ -49,9 +50,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       if ('error' in response) {
         const msg = response.error.code === 'RATE_LIMITED'
-          ? 'Příliš mnoho pokusů. Zkuste to později.'
+          ? i18n.t('auth:error_rate_limited')
           : response.error.code === 'INVALID_CREDENTIALS'
-            ? 'Nesprávný email nebo heslo.'
+            ? i18n.t('auth:error_invalid_credentials')
             : response.error.message;
         set({ isLoading: false, error: msg });
         throw new Error(msg);
@@ -61,17 +62,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       localStorage.setItem(TOKEN_KEY, token);
       set({ user, token, isAuthenticated: true, isLoading: false, error: null });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Chyba při přihlášení';
+      const msg = e instanceof Error ? e.message : i18n.t('auth:error_login');
       set({ isLoading: false, error: msg });
       throw e;
     }
   },
 
-  register: async (email: string, password: string, name: string, businessName?: string) => {
+  register: async (email: string, password: string, name: string, businessName?: string, locale?: string) => {
     set({ isLoading: true, error: null });
     try {
       const { request } = useNatsStore.getState();
-      const req = createRequest(undefined, { email, password, name, businessName });
+      const req = createRequest(undefined, { email, password, name, businessName, locale: locale ?? 'en' });
       const response = await request<typeof req, NatsResponse<AuthResponse>>(
         'sazinka.auth.register',
         req,
@@ -80,7 +81,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       if ('error' in response) {
         const msg = response.error.code === 'DUPLICATE_EMAIL'
-          ? 'Email je již registrován.'
+          ? i18n.t('auth:error_duplicate_email')
           : response.error.code === 'VALIDATION_ERROR'
             ? response.error.message
             : response.error.message;
@@ -92,7 +93,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       localStorage.setItem(TOKEN_KEY, token);
       set({ user, token, isAuthenticated: true, isLoading: false, error: null });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Chyba při registraci';
+      const msg = e instanceof Error ? e.message : i18n.t('auth:error_register');
       set({ isLoading: false, error: msg });
       throw e;
     }

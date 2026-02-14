@@ -788,7 +788,7 @@ The `locale` field is included in the JWT payload and `UserPublic` type so it's 
 
 **Dependencies installed:** ✅ `i18next@^25.8.7`, `i18next-browser-languagedetector@^8.2.1`, `i18next-http-backend@^3.0.2`, `react-i18next@^16.5.4`.
 
-**Test summary:** 59 frontend tests across 4 files + 19 Rust auth tests, all passing.
+**Test summary:** 72 frontend tests across 6 files + 19 Rust auth tests, all passing.
 
 ### Pre-crash UI refactoring (fixed)
 
@@ -798,7 +798,17 @@ The previous session extracted route summary stats/actions into shared component
 3. Removed stale prop passes from `Planner.tsx` → `<PlanningTimeline>`.
 4. Replaced `result.route?.depotDeparture` (non-existent field) with computation from first stop's arrival time.
 
-### Phases 1–9: ❌ Not started
+### Phase 1: Auth pages (Login, Register) — ✅ COMPLETE
+
+| Step | Status | Notes |
+|------|--------|-------|
+| 1.1 Auth namespace | ✅ Done | `en/auth.json` (26 keys) + `cs/auth.json` (26 keys). Key parity check passes. |
+| 1.2 Login.tsx | ✅ Done | All 10 hardcoded Czech strings replaced with `t()` calls. Auth store error messages also i18n-ized via `i18n.t()`. |
+| 1.3 Register.tsx | ✅ Done | All 13 hardcoded Czech strings replaced with `t()` calls. Added locale `<select>` with `en`/`cs` options. Changing locale switches form language in real-time via `i18n.changeLanguage()`. |
+| 1.4 Locale on register | ✅ Done | `Register.tsx` detects locale from `navigator.language`, user can change via `<select>`. Locale sent to backend in register payload. Rust `RegisterRequest` + `create_user()` updated to accept and persist `locale`. Auth store `register()` signature extended with optional `locale` param. |
+| 1.5 Tests | ✅ 13/13 pass | `Login.test.tsx` (6 tests): EN/CS rendering, no hardcoded Czech, language switching, placeholders. `Register.test.tsx` (7 tests): EN/CS rendering, locale selector with 2 options, language switch via selector, hint text, key parity. |
+
+### Phases 2–9: ❌ Not started
 
 ---
 

@@ -39,6 +39,8 @@ pub struct RegisterRequest {
     pub password: String,
     pub name: String,
     pub business_name: Option<String>,
+    /// BCP-47 locale code from registration form. Defaults to "en".
+    pub locale: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -185,6 +187,7 @@ pub async fn handle_register(
             payload.business_name.as_deref(),
             "customer",
             None,
+            payload.locale.as_deref(),
         ).await {
             Ok(user) => {
                 let permissions = match queries::role::get_user_permissions(&pool, user.id).await {
@@ -606,6 +609,7 @@ pub async fn handle_create_worker(
             None,
             "worker",
             Some(auth_info.user_id),
+            None, // Workers inherit owner's locale by default
         ).await {
             Ok(user) => {
                 let response = SuccessResponse::new(request.id, UserPublic::from(user));

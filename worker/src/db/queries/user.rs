@@ -56,11 +56,13 @@ pub async fn create_user(
     business_name: Option<&str>,
     role: &str,
     owner_id: Option<Uuid>,
+    locale: Option<&str>,
 ) -> Result<User> {
+    let locale_val = locale.unwrap_or("en");
     let query = format!(
         r#"
-        INSERT INTO users (email, password_hash, name, business_name, role, owner_id)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO users (email, password_hash, name, business_name, role, owner_id, locale)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING {}
         "#,
         USER_COLUMNS
@@ -72,6 +74,7 @@ pub async fn create_user(
         .bind(business_name)
         .bind(role)
         .bind(owner_id)
+        .bind(locale_val)
         .fetch_one(pool)
         .await?;
 
