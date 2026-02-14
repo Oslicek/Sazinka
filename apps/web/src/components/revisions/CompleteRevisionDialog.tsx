@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { Revision, RevisionResult } from '@shared/revision';
-import { REVISION_RESULT_LABELS } from '@shared/revision';
+import { REVISION_RESULT_KEYS } from '@shared/revision';
 import { completeRevision, type CompleteRevisionRequest } from '../../services/revisionService';
 import { useNatsStore } from '../../stores/natsStore';
 import styles from './CompleteRevisionDialog.module.css';
@@ -14,6 +15,7 @@ interface CompleteRevisionDialogProps {
 const RESULTS: RevisionResult[] = ['passed', 'failed', 'conditional'];
 
 export function CompleteRevisionDialog({ revision, onSuccess, onCancel }: CompleteRevisionDialogProps) {
+  const { t } = useTranslation('common');
   const [result, setResult] = useState<RevisionResult>('passed');
   const [findings, setFindings] = useState('');
   const [durationMinutes, setDurationMinutes] = useState<number>(30);
@@ -26,7 +28,7 @@ export function CompleteRevisionDialog({ revision, onSuccess, onCancel }: Comple
     e.preventDefault();
     
     if (!isConnected) {
-      setError('Není připojení k serveru');
+      setError(t('errors.not_connected'));
       return;
     }
 
@@ -45,7 +47,7 @@ export function CompleteRevisionDialog({ revision, onSuccess, onCancel }: Comple
       onSuccess();
     } catch (err) {
       console.error('Failed to complete revision:', err);
-      setError(err instanceof Error ? err.message : 'Nepodařilo se dokončit revizi');
+      setError(err instanceof Error ? err.message : t('errors.revision_complete_failed'));
     } finally {
       setIsSubmitting(false);
     }
@@ -55,13 +57,13 @@ export function CompleteRevisionDialog({ revision, onSuccess, onCancel }: Comple
     <div className={styles.overlay} onClick={onCancel}>
       <div className={styles.dialog} onClick={(e) => e.stopPropagation()}>
         <form onSubmit={handleSubmit}>
-          <h3 className={styles.title}>Dokončit revizi</h3>
+          <h3 className={styles.title}>{t('revision_complete_title')}</h3>
 
           {error && <div className={styles.error}>{error}</div>}
 
           <div className={styles.field}>
             <label className={styles.label}>
-              Výsledek revize <span className={styles.required}>*</span>
+              {t('revision_result_label')} <span className={styles.required}>*</span>
             </label>
             <div className={styles.resultOptions}>
               {RESULTS.map((r) => (
@@ -77,7 +79,7 @@ export function CompleteRevisionDialog({ revision, onSuccess, onCancel }: Comple
                     onChange={() => setResult(r)}
                     disabled={isSubmitting}
                   />
-                  <span className={styles.resultLabel}>{REVISION_RESULT_LABELS[r]}</span>
+                  <span className={styles.resultLabel}>{t(REVISION_RESULT_KEYS[r])}</span>
                 </label>
               ))}
             </div>
@@ -85,7 +87,7 @@ export function CompleteRevisionDialog({ revision, onSuccess, onCancel }: Comple
 
           <div className={styles.field}>
             <label htmlFor="durationMinutes" className={styles.label}>
-              Doba trvání (minuty)
+              {t('revision_duration_label')}
             </label>
             <input
               type="number"
@@ -101,14 +103,14 @@ export function CompleteRevisionDialog({ revision, onSuccess, onCancel }: Comple
 
           <div className={styles.field}>
             <label htmlFor="findings" className={styles.label}>
-              Zjištění / Poznámky
+              {t('revision_findings_label')}
             </label>
             <textarea
               id="findings"
               value={findings}
               onChange={(e) => setFindings(e.target.value)}
               className={styles.textarea}
-              placeholder="Popište zjištění z revize..."
+              placeholder={t('revision_findings_placeholder')}
               rows={4}
               disabled={isSubmitting}
             />
@@ -121,14 +123,14 @@ export function CompleteRevisionDialog({ revision, onSuccess, onCancel }: Comple
               className={styles.cancelButton}
               disabled={isSubmitting}
             >
-              Zrušit
+              {t('cancel')}
             </button>
             <button
               type="submit"
               className={styles.submitButton}
               disabled={isSubmitting || !isConnected}
             >
-              {isSubmitting ? 'Ukládám...' : 'Dokončit revizi'}
+              {isSubmitting ? t('saving') : t('revision_complete_title')}
             </button>
           </div>
         </form>

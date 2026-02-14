@@ -186,5 +186,25 @@
   "import_order_hint": "Import in the listed order (1-5). Each import requires data from previous steps.",
 
   "edit": "Edit",
-  "delete_action": "Delete"
+  "delete_action": "Delete",
+
+  "perm_page_calendar": "Calendar",
+  "perm_page_inbox": "Inbox",
+  "perm_page_planner": "Planner",
+  "perm_page_worklog": "Work log",
+  "perm_page_customers": "Customers",
+  "perm_page_routes": "Routes",
+  "perm_page_jobs": "Jobs",
+  "perm_page_settings": "Settings",
+  "perm_page_about": "About",
+  "perm_settings_preferences": "My preferences",
+  "perm_settings_work": "Working hours",
+  "perm_settings_business": "Business info",
+  "perm_settings_email": "Email templates",
+  "perm_settings_breaks": "Breaks",
+  "perm_settings_depots": "Depots",
+  "perm_settings_crews": "Crews",
+  "perm_settings_workers": "Workers",
+  "perm_settings_import_export": "Import & Export",
+  "perm_settings_roles": "Role management"
 }

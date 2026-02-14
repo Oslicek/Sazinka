@@ -44,7 +44,8 @@
     "connection_error": "Chyba připojení",
     "failed_to_connect": "Nepodařilo se připojit",
     "server_unavailable": "Server není dostupný. Zkuste to prosím za chvíli.",
-    "request_timeout": "Požadavek vypršel. Server neodpovídá."
+    "request_timeout": "Požadavek vypršel. Server neodpovídá.",
+    "revision_complete_failed": "Nepodařilo se dokončit revizi"
   },
   "duration": {
     "minutes_one": "{{count}} minuta",
@@ -106,6 +107,58 @@
     "customer_absent": "Zákazník nepřítomen",
     "rescheduled": "Přeplánováno"
   },
+  "device_type": {
+    "gas_boiler": "Plynový kotel",
+    "gas_water_heater": "Plynový ohřívač vody",
+    "chimney": "Komín",
+    "fireplace": "Krb",
+    "gas_stove": "Plynový sporák",
+    "other": "Jiné"
+  },
+  "revision_status": {
+    "upcoming": "Plánovaná",
+    "due_soon": "Brzy",
+    "overdue": "Po termínu",
+    "scheduled": "Naplánováno",
+    "confirmed": "Potvrzeno",
+    "completed": "Dokončeno",
+    "cancelled": "Zrušeno"
+  },
+  "revision_result": {
+    "passed": "V pořádku",
+    "failed": "Nevyhovělo",
+    "conditional": "S výhradami"
+  },
+  "route_status": {
+    "draft": "Koncept",
+    "optimized": "Optimalizováno",
+    "confirmed": "Potvrzeno",
+    "in_progress": "Probíhá",
+    "completed": "Dokončeno"
+  },
+  "export_headers": {
+    "name": "Jméno",
+    "street": "Ulice",
+    "city": "Město",
+    "postal_code": "PSČ",
+    "email": "Email",
+    "phone": "Telefon",
+    "notes": "Poznámky",
+    "customer_name": "Zákazník",
+    "device_name": "Zařízení",
+    "due_date": "Termín",
+    "status": "Stav",
+    "scheduled_date": "Naplánováno",
+    "completed_at": "Dokončeno",
+    "result": "Výsledek",
+    "pending": "Čeká"
+  },
+  "revision_complete_title": "Dokončit revizi",
+  "revision_result_label": "Výsledek revize",
+  "revision_duration_label": "Doba trvání (minuty)",
+  "revision_findings_label": "Zjištění / Poznámky",
+  "revision_findings_placeholder": "Popište zjištění z revize...",
+  "saving": "Ukládám...",
   "break_warnings": {
     "km_out_of_range": "Pauza je mimo rozmezí km (nastaveno {{min}}-{{max}} km)",
     "time_out_of_range": "Pauza je mimo časové rozmezí (nastaveno {{earliest}}-{{latest}})",

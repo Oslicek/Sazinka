@@ -222,7 +222,7 @@ export function RolesManager({ onUpdate }: RolesManagerProps) {
                       checked={formPermissions.has(perm.key)}
                       onChange={() => togglePermission(perm.key)}
                     />
-                    <span>{perm.label}</span>
+                    <span>{t(perm.labelKey)}</span>
                   </label>
                 ))}
               </div>
@@ -239,7 +239,7 @@ export function RolesManager({ onUpdate }: RolesManagerProps) {
                       checked={formPermissions.has(perm.key)}
                       onChange={() => togglePermission(perm.key)}
                     />
-                    <span>{perm.label}</span>
+                    <span>{t(perm.labelKey)}</span>
                   </label>
                 ))}
               </div>

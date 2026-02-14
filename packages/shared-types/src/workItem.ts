@@ -3,6 +3,7 @@
 export type WorkType = 'revision' | 'repair' | 'installation' | 'consultation' | 'follow_up';
 export type WorkResult = 'successful' | 'partial' | 'failed' | 'customer_absent' | 'rescheduled';
 
+/** @deprecated Use WORK_TYPE_KEYS with i18n.t() instead */
 export const WORK_TYPE_LABELS: Record<WorkType, string> = {
   revision: 'Revize',
   repair: 'Oprava',
@@ -11,12 +12,31 @@ export const WORK_TYPE_LABELS: Record<WorkType, string> = {
   follow_up: 'Následná kontrola',
 };
 
+/** i18n translation keys for work types */
+export const WORK_TYPE_KEYS: Record<WorkType, string> = {
+  revision: 'common:work_type.revision',
+  repair: 'common:work_type.repair',
+  installation: 'common:work_type.installation',
+  consultation: 'common:work_type.consultation',
+  follow_up: 'common:work_type.follow_up',
+};
+
+/** @deprecated Use WORK_RESULT_KEYS with i18n.t() instead */
 export const WORK_RESULT_LABELS: Record<WorkResult, string> = {
   successful: 'Úspěšná',
   partial: 'Částečná',
   failed: 'Neúspěšná',
   customer_absent: 'Nepřítomen',
   rescheduled: 'Přeplánováno',
+};
+
+/** i18n translation keys for work results */
+export const WORK_RESULT_KEYS: Record<WorkResult, string> = {
+  successful: 'common:work_result.successful',
+  partial: 'common:work_result.partial',
+  failed: 'common:work_result.failed',
+  customer_absent: 'common:work_result.customer_absent',
+  rescheduled: 'common:work_result.rescheduled',
 };
 
 export interface VisitWorkItem {

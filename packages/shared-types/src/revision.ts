@@ -43,6 +43,7 @@ export type RevisionStatus =
 /** Extended status including computed display states (not stored in DB) */
 export type RevisionDisplayStatus = RevisionStatus | 'due_soon' | 'overdue';
 
+/** @deprecated Use REVISION_STATUS_KEYS with i18n.t() instead */
 export const REVISION_STATUS_LABELS: Record<RevisionDisplayStatus, string> = {
   upcoming: 'Plánovaná',
   due_soon: 'Brzy',
@@ -53,12 +54,31 @@ export const REVISION_STATUS_LABELS: Record<RevisionDisplayStatus, string> = {
   cancelled: 'Zrušeno',
 };
 
+/** i18n translation keys for revision display statuses */
+export const REVISION_STATUS_KEYS: Record<RevisionDisplayStatus, string> = {
+  upcoming: 'common:revision_status.upcoming',
+  due_soon: 'common:revision_status.due_soon',
+  overdue: 'common:revision_status.overdue',
+  scheduled: 'common:revision_status.scheduled',
+  confirmed: 'common:revision_status.confirmed',
+  completed: 'common:revision_status.completed',
+  cancelled: 'common:revision_status.cancelled',
+};
+
 export type RevisionResult = 'passed' | 'failed' | 'conditional';
 
+/** @deprecated Use REVISION_RESULT_KEYS with i18n.t() instead */
 export const REVISION_RESULT_LABELS: Record<RevisionResult, string> = {
   passed: 'V pořádku',
   failed: 'Nevyhovělo',
   conditional: 'S výhradami',
+};
+
+/** i18n translation keys for revision results */
+export const REVISION_RESULT_KEYS: Record<RevisionResult, string> = {
+  passed: 'common:revision_result.passed',
+  failed: 'common:revision_result.failed',
+  conditional: 'common:revision_result.conditional',
 };
 
 export interface TimeWindow {

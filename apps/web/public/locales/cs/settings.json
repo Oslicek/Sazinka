@@ -186,5 +186,25 @@
   "import_order_hint": "Importujte v uvedeném pořadí (1-5). Každý import vyžaduje data z předchozích kroků.",
 
   "edit": "Upravit",
-  "delete_action": "Smazat"
+  "delete_action": "Smazat",
+
+  "perm_page_calendar": "Kalendář",
+  "perm_page_inbox": "Inbox",
+  "perm_page_planner": "Plán",
+  "perm_page_worklog": "Záznam",
+  "perm_page_customers": "Zákazníci",
+  "perm_page_routes": "Trasy",
+  "perm_page_jobs": "Úlohy",
+  "perm_page_settings": "Nastavení",
+  "perm_page_about": "O službě",
+  "perm_settings_preferences": "Moje nastavení",
+  "perm_settings_work": "Pracovní doba",
+  "perm_settings_business": "Firemní údaje",
+  "perm_settings_email": "E-mailové šablony",
+  "perm_settings_breaks": "Pauzy",
+  "perm_settings_depots": "Depa",
+  "perm_settings_crews": "Posádky",
+  "perm_settings_workers": "Pracovníci",
+  "perm_settings_import_export": "Import & Export",
+  "perm_settings_roles": "Správa rolí"
 }

@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link } from '@tanstack/react-router';
 import type { Device } from '@shared/device';
 import type { Revision } from '@shared/revision';
-import { DEVICE_TYPE_LABELS } from '@shared/device';
-import { REVISION_STATUS_LABELS, REVISION_RESULT_LABELS } from '@shared/revision';
+import { DEVICE_TYPE_KEYS } from '@shared/device';
+import { REVISION_STATUS_KEYS, REVISION_RESULT_KEYS } from '@shared/revision';
 import { listDevices, deleteDevice } from '../../services/deviceService';
 import { listRevisions } from '../../services/revisionService';
 import { useNatsStore } from '../../stores/natsStore';
@@ -17,6 +18,7 @@ interface DeviceListProps {
 }
 
 export function DeviceList({ customerId, onDeviceSelect }: DeviceListProps) {
+  const { t } = useTranslation('common');
   const [devices, setDevices] = useState<Device[]>([]);
   const [deviceRevisions, setDeviceRevisions] = useState<Record<string, Revision[]>>({});
   const [isLoading, setIsLoading] = useState(true);
@@ -89,7 +91,7 @@ export function DeviceList({ customerId, onDeviceSelect }: DeviceListProps) {
   }, [loadDevices]);
 
   const handleDeleteClick = useCallback(async (device: Device) => {
-    if (!confirm(`Opravdu chcete smazat zařízení "${DEVICE_TYPE_LABELS[device.deviceType as keyof typeof DEVICE_TYPE_LABELS] || device.deviceType}"?`)) {
+    if (!confirm(`Opravdu chcete smazat zařízení "${DEVICE_TYPE_KEYS[device.deviceType as keyof typeof DEVICE_TYPE_KEYS] ? t(DEVICE_TYPE_KEYS[device.deviceType as keyof typeof DEVICE_TYPE_KEYS]) : device.deviceType}"?`)) {
       return;
     }
 
@@ -149,7 +151,7 @@ export function DeviceList({ customerId, onDeviceSelect }: DeviceListProps) {
       <div className={styles.container}>
         <div className={styles.header}>
           <h3 className={styles.title}>
-            Nová revize - {DEVICE_TYPE_LABELS[addingRevisionForDevice.deviceType as keyof typeof DEVICE_TYPE_LABELS] || addingRevisionForDevice.deviceType}
+            Nová revize - {DEVICE_TYPE_KEYS[addingRevisionForDevice.deviceType as keyof typeof DEVICE_TYPE_KEYS] ? t(DEVICE_TYPE_KEYS[addingRevisionForDevice.deviceType as keyof typeof DEVICE_TYPE_KEYS]) : addingRevisionForDevice.deviceType}
           </h3>
         </div>
         <RevisionForm
@@ -212,7 +214,7 @@ export function DeviceList({ customerId, onDeviceSelect }: DeviceListProps) {
                 >
                   <div className={styles.deviceInfo}>
                     <div className={styles.deviceType}>
-                      {DEVICE_TYPE_LABELS[device.deviceType as keyof typeof DEVICE_TYPE_LABELS] || device.deviceType}
+                      {DEVICE_TYPE_KEYS[device.deviceType as keyof typeof DEVICE_TYPE_KEYS] ? t(DEVICE_TYPE_KEYS[device.deviceType as keyof typeof DEVICE_TYPE_KEYS]) : device.deviceType}
                       <span className={styles.revisionCount}>
                         ({revisions.length} {revisions.length === 1 ? 'revize' : revisions.length < 5 ? 'revize' : 'revizí'})
                       </span>
@@ -304,11 +306,11 @@ export function DeviceList({ customerId, onDeviceSelect }: DeviceListProps) {
                                   {formatDate(revision.dueDate)}
                                 </div>
                                 <div className={`${styles.revisionStatus} ${getStatusBadgeClass(revision.status)}`}>
-                                  {REVISION_STATUS_LABELS[revision.status as keyof typeof REVISION_STATUS_LABELS] || revision.status}
+                                  {REVISION_STATUS_KEYS[revision.status as keyof typeof REVISION_STATUS_KEYS] ? t(REVISION_STATUS_KEYS[revision.status as keyof typeof REVISION_STATUS_KEYS]) : revision.status}
                                 </div>
                                 {revision.result && (
                                   <div className={styles.revisionResult}>
-                                    {REVISION_RESULT_LABELS[revision.result as keyof typeof REVISION_RESULT_LABELS] || revision.result}
+                                    {REVISION_RESULT_KEYS[revision.result as keyof typeof REVISION_RESULT_KEYS] ? t(REVISION_RESULT_KEYS[revision.result as keyof typeof REVISION_RESULT_KEYS]) : revision.result}
                                   </div>
                                 )}
                                 {revision.findings && (

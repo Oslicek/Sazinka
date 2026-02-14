@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import type { Revision } from '@shared/revision';
-import { REVISION_STATUS_LABELS } from '@shared/revision';
+import { REVISION_STATUS_KEYS } from '@shared/revision';
 import { 
   getRevision, 
   updateRevision,
@@ -206,7 +206,7 @@ export function RevisionDetail() {
               {revision.deviceName || revision.deviceType || t('revision_default_title')}
             </h1>
             <span className={`${styles.statusBadge} ${styles[`status-${revision.status}`]}`}>
-              {REVISION_STATUS_LABELS[revision.status as keyof typeof REVISION_STATUS_LABELS] || revision.status}
+              {REVISION_STATUS_KEYS[revision.status as keyof typeof REVISION_STATUS_KEYS] ? t(REVISION_STATUS_KEYS[revision.status as keyof typeof REVISION_STATUS_KEYS]) : revision.status}
             </span>
           </div>
           

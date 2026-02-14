@@ -8,6 +8,7 @@ import type { Customer } from '@shared/customer';
 import * as customerService from './customerService';
 import * as revisionService from './revisionService';
 import { useNatsStore } from '../stores/natsStore';
+import i18n from '../i18n';
 
 
 // ============================================================================
@@ -73,17 +74,20 @@ function downloadCSV(content: string, filename: string): void {
 // ============================================================================
 
 /**
- * Customer export headers (matching import format)
+ * Customer export headers (matching import format) — resolved at call time for i18n
  */
-const CUSTOMER_HEADERS = [
-  { key: 'name' as const, label: 'Jméno' },
-  { key: 'street' as const, label: 'Ulice' },
-  { key: 'city' as const, label: 'Město' },
-  { key: 'postalCode' as const, label: 'PSČ' },
-  { key: 'email' as const, label: 'Email' },
-  { key: 'phone' as const, label: 'Telefon' },
-  { key: 'notes' as const, label: 'Poznámky' },
-];
+function getCustomerHeaders() {
+  const t = (key: string) => i18n.t(key);
+  return [
+    { key: 'name' as const, label: t('common:export_headers.name') },
+    { key: 'street' as const, label: t('common:export_headers.street') },
+    { key: 'city' as const, label: t('common:export_headers.city') },
+    { key: 'postalCode' as const, label: t('common:export_headers.postal_code') },
+    { key: 'email' as const, label: t('common:export_headers.email') },
+    { key: 'phone' as const, label: t('common:export_headers.phone') },
+    { key: 'notes' as const, label: t('common:export_headers.notes') },
+  ];
+}
 
 interface CustomerExportRow {
   name: string;
@@ -120,7 +124,7 @@ export async function exportCustomers(
   }));
   
   // Generate CSV
-  const csv = toCSV(rows as unknown as Record<string, unknown>[], CUSTOMER_HEADERS);
+  const csv = toCSV(rows as unknown as Record<string, unknown>[], getCustomerHeaders());
   
   // Download
   const date = new Date().toISOString().slice(0, 10);
@@ -132,20 +136,23 @@ export async function exportCustomers(
 // ============================================================================
 
 /**
- * Revision export headers
+ * Revision export headers — resolved at call time for i18n
  */
-const REVISION_HEADERS = [
-  { key: 'customerName' as const, label: 'Zákazník' },
-  { key: 'deviceName' as const, label: 'Zařízení' },
-  { key: 'street' as const, label: 'Ulice' },
-  { key: 'city' as const, label: 'Město' },
-  { key: 'dueDate' as const, label: 'Termín' },
-  { key: 'status' as const, label: 'Stav' },
-  { key: 'scheduledDate' as const, label: 'Naplánováno' },
-  { key: 'completedAt' as const, label: 'Dokončeno' },
-  { key: 'result' as const, label: 'Výsledek' },
-  { key: 'notes' as const, label: 'Poznámky' },
-];
+function getRevisionHeaders() {
+  const t = (key: string) => i18n.t(key);
+  return [
+    { key: 'customerName' as const, label: t('common:export_headers.customer_name') },
+    { key: 'deviceName' as const, label: t('common:export_headers.device_name') },
+    { key: 'street' as const, label: t('common:export_headers.street') },
+    { key: 'city' as const, label: t('common:export_headers.city') },
+    { key: 'dueDate' as const, label: t('common:export_headers.due_date') },
+    { key: 'status' as const, label: t('common:export_headers.status') },
+    { key: 'scheduledDate' as const, label: t('common:export_headers.scheduled_date') },
+    { key: 'completedAt' as const, label: t('common:export_headers.completed_at') },
+    { key: 'result' as const, label: t('common:export_headers.result') },
+    { key: 'notes' as const, label: t('common:export_headers.notes') },
+  ];
+}
 
 interface RevisionExportRow {
   customerName: string;
@@ -198,12 +205,13 @@ export async function exportRevisions(
   });
   const revisions = result.items as RevisionWithDetails[];
   
-  // Translate status
+  // Translate status via i18n
+  const t = (key: string) => i18n.t(key);
   const statusLabels: Record<string, string> = {
-    pending: 'Čeká',
-    scheduled: 'Naplánováno',
-    completed: 'Dokončeno',
-    cancelled: 'Zrušeno',
+    pending: t('common:export_headers.pending'),
+    scheduled: t('common:export_headers.scheduled_date'),
+    completed: t('common:export_headers.completed_at'),
+    cancelled: t('common:status.cancelled'),
   };
 
   // Map to export format
@@ -221,7 +229,7 @@ export async function exportRevisions(
   }));
   
   // Generate CSV
-  const csv = toCSV(rows as unknown as Record<string, unknown>[], REVISION_HEADERS);
+  const csv = toCSV(rows as unknown as Record<string, unknown>[], getRevisionHeaders());
   
   // Download
   const date = new Date().toISOString().slice(0, 10);

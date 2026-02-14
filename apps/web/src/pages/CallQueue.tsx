@@ -23,17 +23,8 @@ import {
 } from '../services/slotService';
 import { listCrews, type Crew } from '../services/crewService';
 import { getToken } from '@/utils/auth';
+import { DEVICE_TYPE_KEYS } from '@shared/device';
 import styles from './CallQueue.module.css';
-
-// Device type labels - kept as-is for now (Phase 7 will handle shared-types labels)
-const DEVICE_TYPE_LABELS: Record<string, string> = {
-  gas_boiler: 'Plynový kotel',
-  chimney: 'Komín',
-  fireplace: 'Krb',
-  stove: 'Kamna',
-  heat_pump: 'Tepelné čerpadlo',
-  other: 'Jiné',
-};
 
 // Priority colors (labels resolved via i18n)
 const PRIORITY_COLORS: Record<string, string> = {
@@ -244,7 +235,7 @@ export function CallQueue() {
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
-    return date.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'short', year: 'numeric' });
+    return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
   };
 
   const formatPhone = (phone: string | null) => {
@@ -374,7 +365,7 @@ export function CallQueue() {
                 )}
                 <p className={styles.deviceInfo}>
                   <span className={styles.deviceType}>
-                    {DEVICE_TYPE_LABELS[item.deviceType] || item.deviceType}
+                    {DEVICE_TYPE_KEYS[item.deviceType as keyof typeof DEVICE_TYPE_KEYS] ? t(DEVICE_TYPE_KEYS[item.deviceType as keyof typeof DEVICE_TYPE_KEYS]) : item.deviceType}
                   </span>
                   {item.deviceName && <span className={styles.deviceName}>{item.deviceName}</span>}
                 </p>

@@ -436,6 +436,13 @@ export const DEVICE_TYPE_ALIASES: Record<string, string> = {
   'fireplace': 'fireplace',
   'gas_stove': 'gas_stove',
   'other': 'other',
+  // English human-readable aliases
+  'gas boiler': 'gas_boiler',
+  'boiler': 'gas_boiler',
+  'gas water heater': 'gas_water_heater',
+  'water heater': 'gas_water_heater',
+  'gas stove': 'gas_stove',
+  'stove': 'gas_stove',
 };
 
 export const REVISION_STATUS_ALIASES: Record<string, string> = {
@@ -462,6 +469,12 @@ export const REVISION_STATUS_ALIASES: Record<string, string> = {
   'confirmed': 'confirmed',
   'completed': 'completed',
   'cancelled': 'cancelled',
+  // English human-readable aliases
+  'pending': 'upcoming',
+  'planned': 'upcoming',
+  'done': 'completed',
+  'finished': 'completed',
+  'canceled': 'cancelled',
 };
 
 export const REVISION_RESULT_ALIASES: Record<string, string> = {
@@ -483,6 +496,15 @@ export const REVISION_RESULT_ALIASES: Record<string, string> = {
   'passed': 'passed',
   'conditional': 'conditional',
   'failed': 'failed',
+  // English human-readable aliases
+  'pass': 'passed',
+  'good': 'passed',
+  'no issues': 'passed',
+  'with reservations': 'conditional',
+  'partial': 'conditional',
+  'fail': 'failed',
+  'not passed': 'failed',
+  'defect': 'failed',
 };
 
 export const COMMUNICATION_TYPE_ALIASES: Record<string, string> = {
@@ -508,6 +530,16 @@ export const COMMUNICATION_TYPE_ALIASES: Record<string, string> = {
   'email_received': 'email_received',
   'note': 'note',
   'sms': 'sms',
+  // English human-readable aliases
+  'phone': 'call',
+  'phone call': 'call',
+  'telephone': 'call',
+  'sent email': 'email_sent',
+  'outgoing email': 'email_sent',
+  'received email': 'email_received',
+  'incoming email': 'email_received',
+  'text': 'sms',
+  'message': 'sms',
 };
 
 export const COMMUNICATION_DIRECTION_ALIASES: Record<string, string> = {
@@ -523,6 +555,9 @@ export const COMMUNICATION_DIRECTION_ALIASES: Record<string, string> = {
   // English passthrough
   'outbound': 'outbound',
   'inbound': 'inbound',
+  // English human-readable aliases
+  'outgoing': 'outbound',
+  'incoming': 'inbound',
 };
 
 export const VISIT_TYPE_ALIASES: Record<string, string> = {

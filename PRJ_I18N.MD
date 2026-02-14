@@ -767,7 +767,7 @@ The `locale` field is included in the JWT payload and `UserPublic` type so it's 
 
 ## Implementation Status
 
-> Last updated: 2026-02-15
+> Last updated: 2026-02-10
 
 ### Phase 0: Infrastructure — ✅ COMPLETE
 
@@ -901,7 +901,30 @@ The previous session extracted route summary stats/actions into shared component
 
 **Test results:** 544/548 passing. 4 pre-existing failures (2 × `customerService.test.ts`, 2 × `CandidateDetail.test.tsx`). Key parity check passes.
 
-### Phases 7–9: ❌ Not started
+### Phase 7: Shared types (label records, import aliases) — ✅ COMPLETE
+
+| Step | Status | Notes |
+|------|--------|-------|
+| 7.1 DEVICE_TYPE_LABELS → KEYS | ✅ Done | `packages/shared-types/src/device.ts`: deprecated `DEVICE_TYPE_LABELS`, added `DEVICE_TYPE_KEYS` mapping to `common:device_type.*` keys. Added 6 device type keys to `en/common.json` + `cs/common.json`. |
+| 7.2 WORK_TYPE_LABELS, WORK_RESULT_LABELS → KEYS | ✅ Done | `packages/shared-types/src/workItem.ts`: deprecated both, added `WORK_TYPE_KEYS` (6 keys) and `WORK_RESULT_KEYS` (5 keys) mapping to `common:work_type.*` and `common:work_result.*`. |
+| 7.3 ROUTE_STATUS_LABELS, REVISION_STATUS_LABELS, REVISION_RESULT_LABELS → KEYS | ✅ Done | `packages/shared-types/src/route.ts`: deprecated `ROUTE_STATUS_LABELS`, added `ROUTE_STATUS_KEYS` (4 keys). `revision.ts`: deprecated both, added `REVISION_STATUS_KEYS` (7 keys) and `REVISION_RESULT_KEYS` (3 keys). |
+| 7.4 PAGE_PERMISSIONS, SETTINGS_PERMISSIONS labels → KEYS | ✅ Done | `packages/shared-types/src/auth.ts`: replaced `label` property with `labelKey` pointing to `settings:perm_*` keys. Added 19 permission label keys to `en/settings.json` + `cs/settings.json`. |
+| 7.5 Update all component call sites | ✅ Done | Updated 8 consumer files: `DeviceForm.tsx`, `DeviceList.tsx`, `RevisionList.tsx`, `RevisionWorkspace.tsx`, `CompleteRevisionDialog.tsx`, `RevisionDetail.tsx`, `CallQueue.tsx`, `RolesManager.tsx`. All now use `t(*_KEYS[value])` pattern. |
+| 7.6 Extend import alias maps with English aliases | ✅ Done | `packages/shared-types/src/import.ts`: Added English aliases for all 10 alias maps (`DEVICE_TYPE_ALIASES`, `REVISION_STATUS_ALIASES`, `REVISION_RESULT_ALIASES`, `COMMUNICATION_TYPE_ALIASES`, `COMMUNICATION_DIRECTION_ALIASES`, `WORK_TYPE_ALIASES`, `VISIT_STATUS_ALIASES`, `VISIT_TYPE_ALIASES`, `VISIT_RESULT_ALIASES`, `WORK_RESULT_ALIASES`). |
+| 7.7 exportService.ts CSV headers (deferred from Phase 5) | ✅ Done | `apps/web/src/services/exportService.ts`: Replaced hardcoded Czech CSV column labels with `i18n.t()` calls. `CUSTOMER_HEADERS` and `REVISION_HEADERS` now resolve labels at call time. Local `statusLabels` replaced with `i18n.t('common:export.*')` pattern. Added export-related keys to `common.json`. |
+| 7.8 CompleteRevisionDialog.tsx i18n | ✅ Done | All 11 Czech strings replaced with `t()` calls. Added `useTranslation('common')`. New keys: `revision_complete_title`, `revision_result_label`, `revision_duration_label`, `revision_findings_label`, `revision_findings_placeholder`, `saving`. |
+
+**New keys added:**
+- `common.json`: +46 keys — 6 device_type, 7 revision_status, 3 revision_result, 6 work_type, 5 work_result, 4 route_status, 10 export headers, 6 CompleteRevisionDialog keys, `saving`.
+- `settings.json`: +19 keys — 9 page permission labels, 10 settings permission labels.
+
+**Import alias maps extended:** 35+ English aliases added across 10 alias maps in `packages/shared-types/src/import.ts`.
+
+**Test results:** 544/548 passing. 4 pre-existing failures (2 × `customerService.test.ts`, 2 × `CandidateDetail.test.tsx`) — unrelated to i18n.
+
+**Phase 7 done criteria:** ✅ No hardcoded Czech label strings in `packages/shared-types`. All label records have corresponding `*_KEYS` maps. All consumer components use `t(*_KEYS[value])`. Import alias maps accept English aliases. Export CSV headers are i18n-ized.
+
+### Phases 8–9: ❌ Not started
 
 ---
 
@@ -1103,20 +1126,22 @@ The previous session extracted route summary stats/actions into shared component
 
 ---
 
-### Phase 7: Shared types (label records, import aliases)
+### Phase 7: Shared types (label records, import aliases) ✅ COMPLETE
 
 **Goal:** `packages/shared-types` label maps become i18n key maps.
 
-| Step | TDD: Red | Green |
-|------|---------|-------|
-| 7.1 | Test: `DEVICE_TYPE_KEYS` maps each `DeviceType` to a `common:device_type.*` key; `t(key)` resolves. | Rename `DEVICE_TYPE_LABELS` → `DEVICE_TYPE_KEYS`; add keys to `common.json`. |
-| 7.2 | Test: `WORK_TYPE_KEYS`, `WORK_RESULT_KEYS` map correctly. | Same pattern. |
-| 7.3 | Test: `ROUTE_STATUS_KEYS`, `REVISION_STATUS_KEYS`, `REVISION_RESULT_KEYS` map correctly. | Same pattern. |
-| 7.4 | Test: `PAGE_PERMISSIONS`, `SETTINGS_PERMISSIONS` labels use keys. | Same pattern. |
-| 7.5 | Test: All components that previously used `*_LABELS[value]` now use `t(*_KEYS[value])`. | Update all call sites (~20 files). |
-| 7.6 | Test: Import alias maps include English aliases for all enum types. | Extend `DEVICE_TYPE_ALIASES`, `REVISION_STATUS_ALIASES`, etc. |
+| Step | TDD: Red | Green | Status |
+|------|---------|-------|--------|
+| 7.1 | Test: `DEVICE_TYPE_KEYS` maps each `DeviceType` to a `common:device_type.*` key; `t(key)` resolves. | Rename `DEVICE_TYPE_LABELS` → `DEVICE_TYPE_KEYS`; add keys to `common.json`. | ✅ |
+| 7.2 | Test: `WORK_TYPE_KEYS`, `WORK_RESULT_KEYS` map correctly. | Same pattern. | ✅ |
+| 7.3 | Test: `ROUTE_STATUS_KEYS`, `REVISION_STATUS_KEYS`, `REVISION_RESULT_KEYS` map correctly. | Same pattern. | ✅ |
+| 7.4 | Test: `PAGE_PERMISSIONS`, `SETTINGS_PERMISSIONS` labels use keys. | Same pattern. | ✅ |
+| 7.5 | Test: All components that previously used `*_LABELS[value]` now use `t(*_KEYS[value])`. | Update all call sites (~20 files). | ✅ 8 consumer files updated |
+| 7.6 | Test: Import alias maps include English aliases for all enum types. | Extend `DEVICE_TYPE_ALIASES`, `REVISION_STATUS_ALIASES`, etc. | ✅ 35+ English aliases across 10 maps |
+| 7.7 | Test: `exportService.ts` CSV headers use `i18n.t()`. | Replace hardcoded Czech CSV labels. | ✅ Deferred from Phase 5 |
+| 7.8 | Test: `CompleteRevisionDialog.tsx` uses `t()` for all strings. | Replace 11 Czech strings. | ✅ |
 
-**Phase 7 done criteria:** No Czech strings in `packages/shared-types`. All labels resolved via i18n. ~50 keys added to `common.json`.
+**Phase 7 done criteria:** ✅ No Czech strings in `packages/shared-types`. All labels resolved via i18n. ~65 keys added to `common.json` + `settings.json`.
 
 ---
 

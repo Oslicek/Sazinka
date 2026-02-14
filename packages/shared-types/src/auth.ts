@@ -63,28 +63,28 @@ export interface UserRoleAssignment {
 // ── Permission constants ──
 
 export const PAGE_PERMISSIONS = [
-  { key: 'page:calendar', label: 'Kalendar' },
-  { key: 'page:inbox', label: 'Inbox' },
-  { key: 'page:planner', label: 'Plan' },
-  { key: 'page:worklog', label: 'Zaznam' },
-  { key: 'page:customers', label: 'Zakaznici' },
-  { key: 'page:routes', label: 'Trasy' },
-  { key: 'page:jobs', label: 'Ulohy' },
-  { key: 'page:settings', label: 'Nastaveni' },
-  { key: 'page:about', label: 'O sluzbe' },
+  { key: 'page:calendar', labelKey: 'settings:perm_page_calendar' },
+  { key: 'page:inbox', labelKey: 'settings:perm_page_inbox' },
+  { key: 'page:planner', labelKey: 'settings:perm_page_planner' },
+  { key: 'page:worklog', labelKey: 'settings:perm_page_worklog' },
+  { key: 'page:customers', labelKey: 'settings:perm_page_customers' },
+  { key: 'page:routes', labelKey: 'settings:perm_page_routes' },
+  { key: 'page:jobs', labelKey: 'settings:perm_page_jobs' },
+  { key: 'page:settings', labelKey: 'settings:perm_page_settings' },
+  { key: 'page:about', labelKey: 'settings:perm_page_about' },
 ] as const;
 
 export const SETTINGS_PERMISSIONS = [
-  { key: 'settings:preferences', label: 'Moje nastaveni' },
-  { key: 'settings:work', label: 'Pracovni doba' },
-  { key: 'settings:business', label: 'Firemni udaje' },
-  { key: 'settings:email', label: 'E-mailove sablony' },
-  { key: 'settings:breaks', label: 'Pauzy' },
-  { key: 'settings:depots', label: 'Depa' },
-  { key: 'settings:crews', label: 'Posadky' },
-  { key: 'settings:workers', label: 'Pracovnici' },
-  { key: 'settings:import-export', label: 'Import & Export' },
-  { key: 'settings:roles', label: 'Sprava roli' },
+  { key: 'settings:preferences', labelKey: 'settings:perm_settings_preferences' },
+  { key: 'settings:work', labelKey: 'settings:perm_settings_work' },
+  { key: 'settings:business', labelKey: 'settings:perm_settings_business' },
+  { key: 'settings:email', labelKey: 'settings:perm_settings_email' },
+  { key: 'settings:breaks', labelKey: 'settings:perm_settings_breaks' },
+  { key: 'settings:depots', labelKey: 'settings:perm_settings_depots' },
+  { key: 'settings:crews', labelKey: 'settings:perm_settings_crews' },
+  { key: 'settings:workers', labelKey: 'settings:perm_settings_workers' },
+  { key: 'settings:import-export', labelKey: 'settings:perm_settings_import_export' },
+  { key: 'settings:roles', labelKey: 'settings:perm_settings_roles' },
 ] as const;
 
 export const ALL_PERMISSIONS = [

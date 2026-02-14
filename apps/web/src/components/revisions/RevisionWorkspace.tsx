@@ -7,9 +7,10 @@
  */
 
 import { useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link } from '@tanstack/react-router';
 import type { Revision } from '@shared/revision';
-import { REVISION_STATUS_LABELS, REVISION_RESULT_LABELS } from '@shared/revision';
+import { REVISION_STATUS_KEYS, REVISION_RESULT_KEYS } from '@shared/revision';
 
 import { RevisionStatusActions } from './RevisionStatusActions';
 import styles from './RevisionWorkspace.module.css';
@@ -45,6 +46,7 @@ export function RevisionWorkspace({
   activeTab: controlledActiveTab,
   onTabChange,
 }: RevisionWorkspaceProps) {
+  const { t } = useTranslation('common');
   const [internalActiveTab, setInternalActiveTab] = useState<RevisionTabId>('progress');
   const activeTab = controlledActiveTab ?? internalActiveTab;
 
@@ -137,11 +139,11 @@ export function RevisionWorkspace({
         <div className={styles.statusHeader}>
           <div className={styles.statusInfo}>
             <span className={`${styles.statusBadge} ${styles[`status-${revision.status}`]}`}>
-              {REVISION_STATUS_LABELS[revision.status as keyof typeof REVISION_STATUS_LABELS] || revision.status}
+              {REVISION_STATUS_KEYS[revision.status as keyof typeof REVISION_STATUS_KEYS] ? t(REVISION_STATUS_KEYS[revision.status as keyof typeof REVISION_STATUS_KEYS]) : revision.status}
             </span>
             {revision.result && (
               <span className={`${styles.resultBadge} ${styles[`result-${revision.result}`]}`}>
-                {REVISION_RESULT_LABELS[revision.result as keyof typeof REVISION_RESULT_LABELS]}
+                {REVISION_RESULT_KEYS[revision.result as keyof typeof REVISION_RESULT_KEYS] ? t(REVISION_RESULT_KEYS[revision.result as keyof typeof REVISION_RESULT_KEYS]) : revision.result}
               </span>
             )}
           </div>

@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { Revision, RevisionDisplayStatus, RevisionResult } from '@shared/revision';
-import { REVISION_STATUS_LABELS, REVISION_RESULT_LABELS } from '@shared/revision';
+import { REVISION_STATUS_KEYS, REVISION_RESULT_KEYS } from '@shared/revision';
 import type { DeviceType } from '@shared/device';
-import { DEVICE_TYPE_LABELS } from '@shared/device';
+import { DEVICE_TYPE_KEYS } from '@shared/device';
 import { listRevisions, deleteRevision, type ListRevisionsFilters } from '../../services/revisionService';
 import { useNatsStore } from '../../stores/natsStore';
 import { RevisionForm } from './RevisionForm';
@@ -20,6 +21,7 @@ export function RevisionList({
   deviceId, 
   onRevisionSelect,
 }: RevisionListProps) {
+  const { t } = useTranslation('common');
   const [revisions, setRevisions] = useState<Revision[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -216,18 +218,18 @@ export function RevisionList({
               <div className={styles.revisionInfo}>
                 <div className={styles.revisionHeader}>
                   <span className={`${styles.statusBadge} ${getStatusClass(revision.status as RevisionDisplayStatus)}`}>
-                    {REVISION_STATUS_LABELS[revision.status as RevisionDisplayStatus] || revision.status}
+                    {REVISION_STATUS_KEYS[revision.status as RevisionDisplayStatus] ? t(REVISION_STATUS_KEYS[revision.status as RevisionDisplayStatus]) : revision.status}
                   </span>
                   {revision.result && (
                     <span className={`${styles.resultBadge} ${getResultClass(revision.result as RevisionResult)}`}>
-                      {REVISION_RESULT_LABELS[revision.result as RevisionResult] || revision.result}
+                      {REVISION_RESULT_KEYS[revision.result as RevisionResult] ? t(REVISION_RESULT_KEYS[revision.result as RevisionResult]) : revision.result}
                     </span>
                   )}
                 </div>
                 {revision.deviceType && (
                   <div className={styles.deviceInfo}>
                     <span className={styles.deviceType}>
-                      {DEVICE_TYPE_LABELS[revision.deviceType as DeviceType] || revision.deviceType}
+                      {DEVICE_TYPE_KEYS[revision.deviceType as DeviceType] ? t(DEVICE_TYPE_KEYS[revision.deviceType as DeviceType]) : revision.deviceType}
                     </span>
                     {revision.deviceName && <span className={styles.deviceName}>{revision.deviceName}</span>}
                   </div>

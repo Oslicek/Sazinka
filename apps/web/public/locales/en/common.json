@@ -44,7 +44,8 @@
     "connection_error": "Connection error",
     "failed_to_connect": "Failed to connect",
     "server_unavailable": "Server is unavailable. Please try again later.",
-    "request_timeout": "Request timed out. Server is not responding."
+    "request_timeout": "Request timed out. Server is not responding.",
+    "revision_complete_failed": "Failed to complete revision"
   },
   "duration": {
     "minutes_one": "{{count}} minute",
@@ -101,6 +102,58 @@
     "customer_absent": "Customer absent",
     "rescheduled": "Rescheduled"
   },
+  "device_type": {
+    "gas_boiler": "Gas boiler",
+    "gas_water_heater": "Gas water heater",
+    "chimney": "Chimney",
+    "fireplace": "Fireplace",
+    "gas_stove": "Gas stove",
+    "other": "Other"
+  },
+  "revision_status": {
+    "upcoming": "Upcoming",
+    "due_soon": "Due soon",
+    "overdue": "Overdue",
+    "scheduled": "Scheduled",
+    "confirmed": "Confirmed",
+    "completed": "Completed",
+    "cancelled": "Cancelled"
+  },
+  "revision_result": {
+    "passed": "Passed",
+    "failed": "Failed",
+    "conditional": "Conditional"
+  },
+  "route_status": {
+    "draft": "Draft",
+    "optimized": "Optimized",
+    "confirmed": "Confirmed",
+    "in_progress": "In progress",
+    "completed": "Completed"
+  },
+  "export_headers": {
+    "name": "Name",
+    "street": "Street",
+    "city": "City",
+    "postal_code": "Postal code",
+    "email": "Email",
+    "phone": "Phone",
+    "notes": "Notes",
+    "customer_name": "Customer",
+    "device_name": "Device",
+    "due_date": "Due date",
+    "status": "Status",
+    "scheduled_date": "Scheduled",
+    "completed_at": "Completed",
+    "result": "Result",
+    "pending": "Pending"
+  },
+  "revision_complete_title": "Complete revision",
+  "revision_result_label": "Revision result",
+  "revision_duration_label": "Duration (minutes)",
+  "revision_findings_label": "Findings / Notes",
+  "revision_findings_placeholder": "Describe the revision findings...",
+  "saving": "Saving...",
   "break_warnings": {
     "km_out_of_range": "Break is outside km range (configured {{min}}-{{max}} km)",
     "time_out_of_range": "Break is outside time range (configured {{earliest}}-{{latest}})",

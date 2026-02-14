@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { Device, CreateDeviceRequest, DeviceType } from '@shared/device';
-import { DEVICE_TYPE_LABELS } from '@shared/device';
+import { DEVICE_TYPE_KEYS } from '@shared/device';
 import { createDevice, updateDevice, type UpdateDeviceRequest } from '../../services/deviceService';
 import { useNatsStore } from '../../stores/natsStore';
 import styles from './DeviceForm.module.css';
@@ -42,6 +43,7 @@ const createInitialFormData = (device?: Device): FormData => ({
 });
 
 export function DeviceForm({ customerId, device, onSuccess, onCancel }: DeviceFormProps) {
+  const { t } = useTranslation('common');
   const isEditMode = !!device;
   const [formData, setFormData] = useState<FormData>(() => createInitialFormData(device));
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -141,7 +143,7 @@ export function DeviceForm({ customerId, device, onSuccess, onCancel }: DeviceFo
         >
           {DEVICE_TYPES.map((type) => (
             <option key={type} value={type}>
-              {DEVICE_TYPE_LABELS[type]}
+              {t(DEVICE_TYPE_KEYS[type])}
             </option>
           ))}
         </select>
