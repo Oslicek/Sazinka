@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useNatsStore } from '../stores/natsStore';
 import {
@@ -24,7 +25,7 @@ import { listCrews, type Crew } from '../services/crewService';
 import { getToken } from '@/utils/auth';
 import styles from './CallQueue.module.css';
 
-// Device type labels
+// Device type labels - kept as-is for now (Phase 7 will handle shared-types labels)
 const DEVICE_TYPE_LABELS: Record<string, string> = {
   gas_boiler: 'Plynový kotel',
   chimney: 'Komín',
@@ -34,15 +35,23 @@ const DEVICE_TYPE_LABELS: Record<string, string> = {
   other: 'Jiné',
 };
 
-// Priority labels and colors
-const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
-  overdue: { label: 'Po termínu', color: '#ef4444' },
-  due_this_week: { label: 'Tento týden', color: '#f97316' },
-  due_soon: { label: 'Brzy', color: '#eab308' },
-  upcoming: { label: 'Plánovaná', color: '#22c55e' },
+// Priority colors (labels resolved via i18n)
+const PRIORITY_COLORS: Record<string, string> = {
+  overdue: '#ef4444',
+  due_this_week: '#f97316',
+  due_soon: '#eab308',
+  upcoming: '#22c55e',
+};
+
+const PRIORITY_LABEL_KEYS: Record<string, string> = {
+  overdue: 'callqueue_stat_overdue',
+  due_this_week: 'callqueue_stat_due_soon',
+  due_soon: 'callqueue_stat_due_soon',
+  upcoming: 'callqueue_filter_upcoming',
 };
 
 export function CallQueue() {
+  const { t } = useTranslation('pages');
   const navigate = useNavigate();
   const { isConnected } = useNatsStore();
   const [queue, setQueue] = useState<CallQueueItem[]>([]);
@@ -252,8 +261,8 @@ export function CallQueue() {
 
   const openEmailClient = (email: string | null, customerName: string) => {
     if (email) {
-      const subject = encodeURIComponent(`Domluvení termínu revize - ${customerName}`);
-      const body = encodeURIComponent(`Dobrý den,\n\nrádi bychom s Vámi domluvili termín revize.\n\nS pozdravem`);
+      const subject = encodeURIComponent(t('callqueue_email_subject', { name: customerName }));
+      const body = encodeURIComponent(t('callqueue_email_body'));
       window.open(`mailto:${email}?subject=${subject}&body=${body}`, '_self');
     }
   };
@@ -262,7 +271,7 @@ export function CallQueue() {
     return (
       <div className={styles.container}>
         <div className={styles.disconnected}>
-          <p>Připojování k serveru...</p>
+          <p>{t('callqueue_connecting')}</p>
         </div>
       </div>
     );
@@ -271,23 +280,23 @@ export function CallQueue() {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <h1>Fronta k obvolání</h1>
-        <p className={styles.subtitle}>Zákazníci k telefonickému kontaktu</p>
+        <h1>{t('callqueue_title')}</h1>
+        <p className={styles.subtitle}>{t('callqueue_subtitle')}</p>
       </header>
 
       {/* Stats */}
       <div className={styles.stats}>
         <div className={styles.statCard}>
           <span className={styles.statValue}>{stats.total}</span>
-          <span className={styles.statLabel}>Celkem</span>
+          <span className={styles.statLabel}>{t('callqueue_stat_total')}</span>
         </div>
         <div className={`${styles.statCard} ${styles.statOverdue}`}>
           <span className={styles.statValue}>{stats.overdueCount}</span>
-          <span className={styles.statLabel}>Po termínu</span>
+          <span className={styles.statLabel}>{t('callqueue_stat_overdue')}</span>
         </div>
         <div className={`${styles.statCard} ${styles.statDueSoon}`}>
           <span className={styles.statValue}>{stats.dueSoonCount}</span>
-          <span className={styles.statLabel}>Tento týden</span>
+          <span className={styles.statLabel}>{t('callqueue_stat_due_soon')}</span>
         </div>
       </div>
 
@@ -298,10 +307,10 @@ export function CallQueue() {
           onChange={(e) => setFilters({ ...filters, priorityFilter: e.target.value as CallQueueRequest['priorityFilter'] })}
           className={styles.filterSelect}
         >
-          <option value="all">Všechny</option>
-          <option value="overdue">Po termínu</option>
-          <option value="due_soon">Tento týden</option>
-          <option value="upcoming">Plánovaná</option>
+          <option value="all">{t('callqueue_filter_all')}</option>
+          <option value="overdue">{t('callqueue_filter_overdue')}</option>
+          <option value="due_soon">{t('callqueue_filter_due_soon')}</option>
+          <option value="upcoming">{t('callqueue_filter_upcoming')}</option>
         </select>
         <label className={styles.checkboxLabel}>
           <input
@@ -309,10 +318,10 @@ export function CallQueue() {
             checked={filters.geocodedOnly || false}
             onChange={(e) => setFilters({ ...filters, geocodedOnly: e.target.checked })}
           />
-          Jen s adresou
+          {t('callqueue_geocoded_only')}
         </label>
         <button onClick={loadQueue} className={styles.refreshButton} disabled={loading}>
-          {loading ? 'Načítání...' : 'Obnovit'}
+          {loading ? t('callqueue_loading') : t('callqueue_refresh')}
         </button>
       </div>
 
@@ -320,7 +329,7 @@ export function CallQueue() {
       {error && (
         <div className={styles.error}>
           <p>{error}</p>
-          <button onClick={() => setError(null)}>Zavřít</button>
+          <button onClick={() => setError(null)}>{t('common:close')}</button>
         </div>
       )}
 
@@ -328,7 +337,7 @@ export function CallQueue() {
       <div className={styles.queueList}>
         {queue.length === 0 && !loading && (
           <div className={styles.emptyState}>
-            <p>Žádné revize k obvolání</p>
+            <p>{t('callqueue_empty')}</p>
           </div>
         )}
 
@@ -337,16 +346,16 @@ export function CallQueue() {
             <div className={styles.itemHeader}>
               <span
                 className={styles.priorityBadge}
-                style={{ backgroundColor: PRIORITY_CONFIG[item.priority]?.color || '#888' }}
+                style={{ backgroundColor: PRIORITY_COLORS[item.priority] || '#888' }}
               >
-                {PRIORITY_CONFIG[item.priority]?.label || item.priority}
+                {t(PRIORITY_LABEL_KEYS[item.priority] || item.priority)}
               </span>
               <span className={styles.daysUntilDue}>
                 {item.daysUntilDue < 0
-                  ? `${Math.abs(item.daysUntilDue)} dní po termínu`
+                  ? t('callqueue_days_overdue', { count: Math.abs(item.daysUntilDue) })
                   : item.daysUntilDue === 0
-                  ? 'Dnes'
-                  : `za ${item.daysUntilDue} dní`}
+                  ? t('callqueue_days_today')
+                  : t('callqueue_days_until', { count: item.daysUntilDue })}
               </span>
             </div>
 
@@ -360,7 +369,7 @@ export function CallQueue() {
                 </p>
                 {item.customerGeocodeStatus === 'failed' && (
                   <p className={styles.geocodeWarning}>
-                    ⚠️ Adresu nelze geolokovat
+                    {t('callqueue_geocode_warning_short')}
                   </p>
                 )}
                 <p className={styles.deviceInfo}>
@@ -376,7 +385,7 @@ export function CallQueue() {
                   className={styles.phoneButton}
                   onClick={() => openPhoneCall(item.customerPhone)}
                   disabled={!item.customerPhone}
-                  title={item.customerPhone ? formatPhone(item.customerPhone) : 'Telefon není k dispozici'}
+                  title={item.customerPhone ? formatPhone(item.customerPhone) : t('callqueue_phone_unavailable')}
                 >
                   📞 {formatPhone(item.customerPhone)}
                 </button>
@@ -392,15 +401,15 @@ export function CallQueue() {
               </div>
 
               <div className={styles.itemMeta}>
-                <p className={styles.dueDate}>Termín: {formatDate(item.dueDate)}</p>
+                <p className={styles.dueDate}>{t('callqueue_due_date')} {formatDate(item.dueDate)}</p>
                 {item.lastContactAt && (
                   <p className={styles.lastContact}>
-                    Poslední kontakt: {formatDate(item.lastContactAt)}
+                    {t('callqueue_last_contact')} {formatDate(item.lastContactAt)}
                   </p>
                 )}
                 {item.contactAttempts > 0 && (
                   <p className={styles.contactAttempts}>
-                    Pokusů: {item.contactAttempts}
+                    {t('callqueue_attempts')} {item.contactAttempts}
                   </p>
                 )}
               </div>
@@ -414,7 +423,7 @@ export function CallQueue() {
                   setShowScheduleModal(true);
                 }}
               >
-                📅 Naplánovat
+                {t('callqueue_schedule')}
               </button>
               <button
                 className={`${styles.actionButton} ${styles.snoozeButton}`}
@@ -423,14 +432,14 @@ export function CallQueue() {
                   setShowSnoozeModal(true);
                 }}
               >
-                ⏰ Odložit
+                {t('callqueue_snooze')}
               </button>
               <Link
                 to="/revisions/$revisionId"
                 params={{ revisionId: item.id }}
                 className={`${styles.actionButton} ${styles.detailButton}`}
               >
-                📋 Detail
+                {t('callqueue_detail')}
               </Link>
             </div>
           </div>
@@ -441,11 +450,11 @@ export function CallQueue() {
       {showSnoozeModal && selectedItem && (
         <div className={styles.modalOverlay} onClick={() => setShowSnoozeModal(false)}>
           <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <h2>Odložit kontaktování</h2>
+            <h2>{t('callqueue_snooze_title')}</h2>
             <p className={styles.modalSubtitle}>{selectedItem.customerName}</p>
 
             <div className={styles.formGroup}>
-              <label>Odložit do:</label>
+              <label>{t('callqueue_snooze_until')}</label>
               <input
                 type="date"
                 value={snoozeDate}
@@ -455,27 +464,27 @@ export function CallQueue() {
             </div>
 
             <div className={styles.formGroup}>
-              <label>Důvod (volitelný):</label>
+              <label>{t('callqueue_snooze_reason')}</label>
               <select value={snoozeReason} onChange={(e) => setSnoozeReason(e.target.value)}>
-                <option value="">-- Vyberte --</option>
-                <option value="customer_unavailable">Zákazník nedostupný</option>
-                <option value="customer_on_vacation">Zákazník na dovolené</option>
-                <option value="callback_requested">Zákazník si přeje zavolat později</option>
-                <option value="no_answer">Nezvedá</option>
-                <option value="other">Jiný důvod</option>
+                <option value="">{t('callqueue_snooze_select')}</option>
+                <option value="customer_unavailable">{t('callqueue_snooze_unavailable')}</option>
+                <option value="customer_on_vacation">{t('callqueue_snooze_vacation')}</option>
+                <option value="callback_requested">{t('callqueue_snooze_callback')}</option>
+                <option value="no_answer">{t('callqueue_snooze_no_answer')}</option>
+                <option value="other">{t('callqueue_snooze_other')}</option>
               </select>
             </div>
 
             <div className={styles.modalActions}>
               <button className={styles.cancelButton} onClick={() => setShowSnoozeModal(false)}>
-                Zrušit
+                {t('common:cancel')}
               </button>
               <button
                 className={styles.confirmButton}
                 onClick={handleSnooze}
                 disabled={!snoozeDate}
               >
-                Odložit
+                {t('callqueue_snooze')}
               </button>
             </div>
           </div>
@@ -486,17 +495,17 @@ export function CallQueue() {
       {showScheduleModal && selectedItem && (
         <div className={styles.modalOverlay} onClick={() => setShowScheduleModal(false)}>
           <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <h2>Naplánovat návštěvu</h2>
+            <h2>{t('callqueue_schedule_title')}</h2>
             <p className={styles.modalSubtitle}>{selectedItem.customerName}</p>
             {selectedItem.customerGeocodeStatus === 'failed' && (
               <div className={styles.modalWarning}>
-                Adresu nelze geolokovat, je třeba ji upřesnit!
+                {t('callqueue_geocode_warning')}
               </div>
             )}
 
             <div className={styles.formRow}>
               <div className={styles.formGroup}>
-                <label>Datum:</label>
+                <label>{t('callqueue_date')}</label>
                 <input
                   type="date"
                   value={scheduleDate}
@@ -510,7 +519,7 @@ export function CallQueue() {
                 />
               </div>
               <div className={styles.formGroup}>
-                <label>Posádka:</label>
+                <label>{t('callqueue_crew')}</label>
                 <select
                   value={selectedCrewId}
                   onChange={(e) => {
@@ -520,7 +529,7 @@ export function CallQueue() {
                     if (scheduleDate) loadSlotSuggestions(scheduleDate);
                   }}
                 >
-                  <option value="">Všechny posádky</option>
+                  <option value="">{t('callqueue_all_crews')}</option>
                   {crews.map((c) => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
@@ -531,9 +540,9 @@ export function CallQueue() {
             {/* Smart Slot Suggestions — grouped by crew */}
             {scheduleDate && (
               <div className={styles.slotSuggestions}>
-                <label>Doporučené sloty:</label>
+                <label>{t('callqueue_suggested_slots')}</label>
                 {loadingSlots ? (
-                  <div className={styles.loadingSlots}>Načítám...</div>
+                  <div className={styles.loadingSlots}>{t('callqueue_loading_slots')}</div>
                 ) : v2Response && v2Response.suggestions.length > 0 ? (
                   <div className={styles.crewSlotGroups}>
                     {Array.from(groupSuggestionsByCrew(v2Response.suggestions)).map(([crewId, group]) => (
@@ -570,7 +579,7 @@ export function CallQueue() {
                                 className={styles.slotStatusBadge}
                                 style={{ backgroundColor: getStatusColor(slot.status) }}
                               >
-                                {slot.status === 'ok' ? 'OK' : slot.status === 'tight' ? 'Těsný' : 'Konflikt'}
+                                {slot.status === 'ok' ? 'OK' : slot.status === 'tight' ? t('callqueue_slot_tight') : t('callqueue_slot_conflict')}
                               </span>
                               {slot.deltaTravelMinutes > 0 && (
                                 <span className={styles.slotDelta}>+{slot.deltaTravelMinutes}min</span>
@@ -582,7 +591,7 @@ export function CallQueue() {
                     ))}
                   </div>
                 ) : (
-                  <div className={styles.noSlots}>Žádné návrhy pro tento den</div>
+                  <div className={styles.noSlots}>{t('callqueue_no_slots')}</div>
                 )}
                 {/* Global warnings from v2 */}
                 {v2Response && v2Response.warnings.length > 0 && (
@@ -599,7 +608,7 @@ export function CallQueue() {
 
             <div className={styles.formRow}>
               <div className={styles.formGroup}>
-                <label>Časové okno od:</label>
+                <label>{t('callqueue_time_from')}</label>
                 <input
                   type="time"
                   value={scheduleTimeStart}
@@ -612,7 +621,7 @@ export function CallQueue() {
                 />
               </div>
               <div className={styles.formGroup}>
-                <label>do:</label>
+                <label>{t('callqueue_time_to')}</label>
                 <input
                   type="time"
                   value={scheduleTimeEnd}
@@ -627,7 +636,7 @@ export function CallQueue() {
             </div>
 
             {/* Validation result */}
-            {validating && <div className={styles.loadingSlots}>Ověřuji...</div>}
+            {validating && <div className={styles.loadingSlots}>{t('callqueue_validating')}</div>}
             {validation && validation.warnings.length > 0 && (
               <div className={styles.validationWarnings}>
                 {validation.warnings.map((w, i) => (
@@ -638,16 +647,16 @@ export function CallQueue() {
                 ))}
                 {validation.estimatedArrival && (
                   <div className={styles.validationMeta}>
-                    Odhadovaný příjezd: {formatSlotTime(validation.estimatedArrival)}
-                    {validation.slackBeforeMinutes != null && ` | Rezerva před: ${validation.slackBeforeMinutes} min`}
-                    {validation.slackAfterMinutes != null && ` | Rezerva po: ${validation.slackAfterMinutes} min`}
+                    {t('callqueue_estimated_arrival')} {formatSlotTime(validation.estimatedArrival)}
+                    {validation.slackBeforeMinutes != null && ` | ${t('callqueue_slack_before')} ${validation.slackBeforeMinutes} min`}
+                    {validation.slackAfterMinutes != null && ` | ${t('callqueue_slack_after')} ${validation.slackAfterMinutes} min`}
                   </div>
                 )}
               </div>
             )}
 
             <div className={styles.formGroup}>
-              <label>Předpokládaná doba (min):</label>
+              <label>{t('callqueue_expected_duration')}</label>
               <select
                 value={scheduleDuration}
                 onChange={(e) => {
@@ -667,7 +676,7 @@ export function CallQueue() {
             {/* Warning confirmation */}
             {showWarningConfirm && validation && !validation.feasible && (
               <div className={styles.warningConfirmBox}>
-                <p>Slot má konflikty. Chcete přesto pokračovat?</p>
+                <p>{t('callqueue_warning_conflicts')}</p>
                 <div className={styles.warningConfirmActions}>
                   <button
                     className={styles.warningConfirmBtn}
@@ -701,13 +710,13 @@ export function CallQueue() {
                       })();
                     }}
                   >
-                    Přesto naplánovat
+                    {t('callqueue_force_schedule')}
                   </button>
                   <button
                     className={styles.cancelButton}
                     onClick={() => setShowWarningConfirm(false)}
                   >
-                    Vybrat jiný slot
+                    {t('callqueue_pick_other')}
                   </button>
                 </div>
               </div>
@@ -720,14 +729,14 @@ export function CallQueue() {
                 setValidation(null);
                 setV2Response(null);
               }}>
-                Zrušit
+                {t('common:cancel')}
               </button>
               <button
                 className={styles.confirmButton}
                 onClick={handleSchedule}
                 disabled={!scheduleDate}
               >
-                Naplánovat
+                {t('callqueue_schedule_btn')}
               </button>
             </div>
           </div>

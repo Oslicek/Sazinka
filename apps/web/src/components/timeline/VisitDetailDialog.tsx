@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { Visit, UpdateVisitRequest, CompleteVisitRequest } from '@shared/visit';
 import { 
   updateVisit, 
@@ -21,6 +22,7 @@ export function VisitDetailDialog({
   onClose, 
   onSaved 
 }: VisitDetailDialogProps) {
+  const { t } = useTranslation('pages');
   const isConnected = useNatsStore((s) => s.isConnected);
   
   const [formData, setFormData] = useState({
@@ -51,7 +53,7 @@ export function VisitDetailDialog({
 
   const handleSave = useCallback(async () => {
     if (!isConnected) {
-      setError('Není připojení k serveru');
+      setError(t('visit_error_connection'));
       return;
     }
 
@@ -87,7 +89,7 @@ export function VisitDetailDialog({
       onSaved();
     } catch (err) {
       console.error('Failed to update visit:', err);
-      setError(err instanceof Error ? err.message : 'Nepodařilo se uložit návštěvu');
+      setError(err instanceof Error ? err.message : t('visit_error_save'));
     } finally {
       setIsSubmitting(false);
     }
@@ -95,7 +97,7 @@ export function VisitDetailDialog({
 
   const handleComplete = useCallback(async () => {
     if (!isConnected) {
-      setError('Není připojení k serveru');
+      setError(t('visit_error_connection'));
       return;
     }
 
@@ -115,7 +117,7 @@ export function VisitDetailDialog({
       onSaved();
     } catch (err) {
       console.error('Failed to complete visit:', err);
-      setError(err instanceof Error ? err.message : 'Nepodařilo se dokončit návštěvu');
+      setError(err instanceof Error ? err.message : t('visit_error_complete'));
     } finally {
       setIsSubmitting(false);
     }
@@ -125,7 +127,7 @@ export function VisitDetailDialog({
     <div className={styles.overlay} onClick={onClose}>
       <div className={styles.dialog} onClick={(e) => e.stopPropagation()}>
         <div className={styles.header}>
-          <h3>Detail návštěvy</h3>
+          <h3>{t('visit_detail_dialog_title')}</h3>
           <button type="button" className={styles.closeButton} onClick={onClose}>
             ×
           </button>
@@ -171,7 +173,7 @@ export function VisitDetailDialog({
 
           <div className={styles.row}>
             <div className={styles.field}>
-              <label>Čas od</label>
+              <label>{t('visit_time_from')}</label>
               <input
                 type="time"
                 value={formData.scheduledTimeStart}
@@ -180,7 +182,7 @@ export function VisitDetailDialog({
               />
             </div>
             <div className={styles.field}>
-              <label>Čas do</label>
+              <label>{t('visit_time_to')}</label>
               <input
                 type="time"
                 value={formData.scheduledTimeEnd}
@@ -191,7 +193,7 @@ export function VisitDetailDialog({
           </div>
 
           <div className={styles.field}>
-            <label>Typ návštěvy</label>
+            <label>{t('visit_type')}</label>
             <select
               value={formData.visitType}
               onChange={(e) => handleChange('visitType', e.target.value)}
@@ -200,23 +202,23 @@ export function VisitDetailDialog({
               <option value="consultation">Konzultace</option>
               <option value="installation">Instalace</option>
               <option value="repair">Oprava</option>
-              <option value="follow_up">Následná návštěva</option>
+              <option value="follow_up">{t('visit_follow_up_visit')}</option>
               <option value="revision">Revize</option>
             </select>
           </div>
 
           {!isCompleted && (
             <div className={styles.field}>
-              <label>Stav</label>
+              <label>{t('visit_status')}</label>
               <select
                 value={formData.status}
                 onChange={(e) => handleChange('status', e.target.value)}
                 disabled={isSubmitting}
               >
-                <option value="planned">Naplánováno</option>
-                <option value="in_progress">Probíhá</option>
-                <option value="cancelled">Zrušeno</option>
-                <option value="rescheduled">Přeplánováno</option>
+                <option value="planned">{t('visit_status_planned')}</option>
+                <option value="in_progress">{t('visit_status_in_progress')}</option>
+                <option value="cancelled">{t('visit_status_cancelled')}</option>
+                <option value="rescheduled">{t('visit_result_rescheduled')}</option>
               </select>
             </div>
           )}
@@ -230,35 +232,35 @@ export function VisitDetailDialog({
                   className={styles.completeButton}
                   onClick={() => setShowCompleteForm(true)}
                 >
-                  ✓ Označit jako dokončenou
+                  {t('visit_mark_complete')}
                 </button>
               ) : (
                 <div className={styles.completeForm}>
-                  <h4>Dokončit návštěvu</h4>
+                  <h4>{t('visit_complete_dialog_title')}</h4>
                   
                   <div className={styles.field}>
-                    <label>Výsledek *</label>
+                    <label>{t('visit_complete_result')}</label>
                     <select
                       value={completeData.result}
                       onChange={(e) => setCompleteData({ ...completeData, result: e.target.value as Visit['result'] & string })}
                       disabled={isSubmitting}
                     >
-                      <option value="successful">Úspěšná</option>
-                      <option value="partial">Částečná</option>
-                      <option value="failed">Neúspěšná</option>
-                      <option value="customer_absent">Zákazník nepřítomen</option>
-                      <option value="rescheduled">Přeplánováno</option>
+                      <option value="successful">{t('visit_result_successful')}</option>
+                      <option value="partial">{t('visit_result_partial')}</option>
+                      <option value="failed">{t('visit_result_failed')}</option>
+                      <option value="customer_absent">{t('visit_result_customer_absent')}</option>
+                      <option value="rescheduled">{t('visit_result_rescheduled')}</option>
                     </select>
                   </div>
 
                   <div className={styles.field}>
-                    <label>Poznámka k výsledku</label>
+                    <label>{t('visit_result_note')}</label>
                     <textarea
                       rows={2}
                       value={completeData.resultNotes}
                       onChange={(e) => setCompleteData({ ...completeData, resultNotes: e.target.value })}
                       disabled={isSubmitting}
-                      placeholder="Volitelná poznámka..."
+                      placeholder={t('visit_optional_note_placeholder')}
                     />
                   </div>
 
@@ -270,19 +272,19 @@ export function VisitDetailDialog({
                         onChange={(e) => setCompleteData({ ...completeData, requiresFollowUp: e.target.checked })}
                         disabled={isSubmitting}
                       />
-                      Vyžaduje následnou návštěvu
+                      {t('visit_complete_follow_up')}
                     </label>
                   </div>
 
                   {completeData.requiresFollowUp && (
                     <div className={styles.field}>
-                      <label>Důvod následné návštěvy</label>
+                      <label>{t('visit_complete_follow_up_reason')}</label>
                       <input
                         type="text"
                         value={completeData.followUpReason}
                         onChange={(e) => setCompleteData({ ...completeData, followUpReason: e.target.value })}
                         disabled={isSubmitting}
-                        placeholder="Proč je potřeba další návštěva..."
+                        placeholder={t('visit_complete_follow_up_placeholder')}
                       />
                     </div>
                   )}
@@ -294,7 +296,7 @@ export function VisitDetailDialog({
                       onClick={() => setShowCompleteForm(false)}
                       disabled={isSubmitting}
                     >
-                      Zrušit
+                      {t('common:cancel')}
                     </button>
                     <button
                       type="button"
@@ -302,7 +304,7 @@ export function VisitDetailDialog({
                       onClick={handleComplete}
                       disabled={isSubmitting}
                     >
-                      {isSubmitting ? 'Ukládám...' : 'Dokončit návštěvu'}
+                      {isSubmitting ? t('settings:saving') : t('visit_complete_dialog_title')}
                     </button>
                   </div>
                 </div>
@@ -314,14 +316,14 @@ export function VisitDetailDialog({
           {isCompleted && (
             <div className={styles.completedInfo}>
               {visit.result && (
-                <p><strong>Výsledek:</strong> {getVisitResultLabel(visit.result)}</p>
+                <p><strong>{t('visit_result')}:</strong> {getVisitResultLabel(visit.result)}</p>
               )}
               {visit.resultNotes && (
-                <p><strong>Poznámka:</strong> {visit.resultNotes}</p>
+                <p><strong>{t('visit_note_label')}</strong> {visit.resultNotes}</p>
               )}
               {visit.requiresFollowUp && (
                 <p className={styles.followUp}>
-                  <strong>Vyžaduje následnou návštěvu</strong>
+                  <strong>{t('visit_complete_follow_up')}</strong>
                   {visit.followUpReason && <span>: {visit.followUpReason}</span>}
                 </p>
               )}
@@ -336,7 +338,7 @@ export function VisitDetailDialog({
             onClick={onClose}
             disabled={isSubmitting}
           >
-            Zavřít
+            {t('common:close')}
           </button>
           {!isCompleted && (
             <button
@@ -345,7 +347,7 @@ export function VisitDetailDialog({
               onClick={handleSave}
               disabled={isSubmitting || !isConnected}
             >
-              {isSubmitting ? 'Ukládám...' : 'Uložit změny'}
+              {isSubmitting ? t('settings:saving') : t('settings:save_changes')}
             </button>
           )}
         </div>

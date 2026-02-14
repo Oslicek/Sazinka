@@ -7,6 +7,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useSearch, useNavigate, Link } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import { useNatsStore } from '../stores/natsStore';
 import * as settingsService from '../services/settingsService';
 import * as visitService from '../services/visitService';
@@ -25,6 +26,7 @@ interface WorkLogSearchParams {
 }
 
 export function WorkLog() {
+  const { t } = useTranslation('pages');
   const navigate = useNavigate();
   const searchParams = useSearch({ strict: false }) as WorkLogSearchParams;
   const { isConnected } = useNatsStore();
@@ -82,7 +84,7 @@ export function WorkLog() {
         }
       } catch (err) {
         console.error('Failed to load settings:', err);
-        setError('Nepodařilo se načíst nastavení');
+        setError(t('worklog_error_settings'));
       } finally {
         setIsLoadingSettings(false);
       }
@@ -109,7 +111,7 @@ export function WorkLog() {
       setVisits(response.visits);
     } catch (err) {
       console.error('Failed to load visits:', err);
-      setError('Nepodařilo se načíst záznamy práce');
+      setError(t('worklog_error_load'));
     } finally {
       setIsLoadingVisits(false);
     }
@@ -194,7 +196,7 @@ export function WorkLog() {
   // ─── Helpers ────────────────────────────────────────────────────
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr + 'T00:00:00').toLocaleDateString('cs-CZ', {
+    return new Date(dateStr + 'T00:00:00').toLocaleDateString(undefined, {
       weekday: 'short',
       day: 'numeric',
       month: 'numeric',
@@ -254,7 +256,7 @@ export function WorkLog() {
       await refreshVisits();
     } catch (err) {
       console.error('Failed to complete visit:', err);
-      setError(err instanceof Error ? err.message : 'Nepodařilo se dokončit návštěvu');
+      setError(err instanceof Error ? err.message : t('worklog_error_complete'));
     } finally {
       setIsCompleting(false);
     }
@@ -291,9 +293,9 @@ export function WorkLog() {
     <div className={styles.page}>
       <div className={styles.header}>
         <div className={styles.headerMain}>
-          <h1 className={styles.title}>Záznam práce</h1>
+          <h1 className={styles.title}>{t('worklog_title')}</h1>
           <span className={styles.count}>
-            {filteredVisits.length} {filteredVisits.length === 1 ? 'záznam' : filteredVisits.length >= 2 && filteredVisits.length <= 4 ? 'záznamy' : 'záznamů'}
+            {filteredVisits.length} {filteredVisits.length === 1 ? t('worklog_count_one') : filteredVisits.length >= 2 && filteredVisits.length <= 4 ? t('worklog_count_few') : t('worklog_count_other')}
           </span>
         </div>
         <button
@@ -301,7 +303,7 @@ export function WorkLog() {
           className={styles.quickCreateBtn}
           onClick={() => setIsQuickVisitDialogOpen(true)}
         >
-          + Rychlý záznam
+          {t('worklog_quick_create')}
         </button>
       </div>
 
@@ -330,13 +332,13 @@ export function WorkLog() {
       {isLoadingVisits || isLoadingSettings ? (
         <div className={styles.loading}>
           <div className={styles.spinner} />
-          <span>Načítám záznamy...</span>
+          <span>{t('worklog_loading')}</span>
         </div>
       ) : filteredVisits.length === 0 ? (
         <div className={styles.empty}>
           <span className={styles.emptyIcon}>📋</span>
-          <p>Žádné záznamy práce pro zvolené období</p>
-          <p className={styles.emptyHint}>Zkuste změnit filtry nebo rozšířit datový rozsah.</p>
+          <p>{t('worklog_empty')}</p>
+          <p className={styles.emptyHint}>{t('worklog_empty_hint')}</p>
         </div>
       ) : (
         <div className={styles.tableWrapper}>
@@ -354,14 +356,14 @@ export function WorkLog() {
               <table className={styles.table}>
                 <thead>
                   <tr>
-                    <th className={styles.thTime}>Čas</th>
-                    <th className={styles.thCustomer}>Zákazník</th>
-                    <th className={styles.thAddress}>Adresa</th>
-                    <th className={styles.thType}>Typ</th>
-                    <th className={styles.thCrew}>Posádka</th>
-                    <th className={styles.thStatus}>Stav</th>
-                    <th className={styles.thResult}>Výsledek</th>
-                    <th className={styles.thActions}>Akce</th>
+                    <th className={styles.thTime}>{t('worklog_col_time')}</th>
+                    <th className={styles.thCustomer}>{t('worklog_col_customer')}</th>
+                    <th className={styles.thAddress}>{t('worklog_col_address')}</th>
+                    <th className={styles.thType}>{t('worklog_col_type')}</th>
+                    <th className={styles.thCrew}>{t('worklog_col_crew')}</th>
+                    <th className={styles.thStatus}>{t('worklog_col_status')}</th>
+                    <th className={styles.thResult}>{t('worklog_col_result')}</th>
+                    <th className={styles.thActions}>{t('worklog_col_actions')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -440,7 +442,7 @@ export function WorkLog() {
                             className={styles.completeBtn}
                             onClick={() => openCompleteDialog(visit)}
                           >
-                            Dokončit
+                            {t('worklog_complete')}
                           </button>
                         ) : (
                           <span className={styles.actionPlaceholder}>–</span>
@@ -467,13 +469,13 @@ export function WorkLog() {
       {visitToComplete && (
         <div className={styles.overlay} onClick={closeCompleteDialog}>
           <div className={styles.dialog} onClick={(e) => e.stopPropagation()}>
-            <h3 className={styles.dialogTitle}>Dokončit návštěvu</h3>
+            <h3 className={styles.dialogTitle}>{t('worklog_complete_title')}</h3>
             <p className={styles.dialogSubtitle}>
-              {visitToComplete.customerName || 'Zákazník'} ({formatDate(visitToComplete.scheduledDate)})
+              {visitToComplete.customerName || t('worklog_complete_customer')} ({formatDate(visitToComplete.scheduledDate)})
             </p>
             <form className={styles.dialogForm} onSubmit={handleCompleteVisit}>
               <label className={styles.dialogField}>
-                <span>Výsledek</span>
+                <span>{t('worklog_complete_result')}</span>
                 <select
                   value={completeResult}
                   onChange={(e) => setCompleteResult(e.target.value as VisitResult)}
@@ -488,12 +490,12 @@ export function WorkLog() {
               </label>
 
               <label className={styles.dialogField}>
-                <span>Poznámka</span>
+                <span>{t('worklog_complete_notes')}</span>
                 <textarea
                   rows={3}
                   value={completeNotes}
                   onChange={(e) => setCompleteNotes(e.target.value)}
-                  placeholder="Krátké shrnutí provedené práce"
+                  placeholder={t('worklog_complete_notes_placeholder')}
                   disabled={isCompleting}
                 />
               </label>
@@ -505,17 +507,17 @@ export function WorkLog() {
                   onChange={(e) => setRequiresFollowUp(e.target.checked)}
                   disabled={isCompleting}
                 />
-                <span>Vyžaduje navazující krok</span>
+                <span>{t('worklog_complete_follow_up')}</span>
               </label>
 
               {requiresFollowUp && (
                 <label className={styles.dialogField}>
-                  <span>Důvod navazujícího kroku</span>
+                  <span>{t('worklog_complete_follow_up_reason')}</span>
                   <input
                     type="text"
                     value={followUpReason}
                     onChange={(e) => setFollowUpReason(e.target.value)}
-                    placeholder="Např. čekáme na materiál"
+                    placeholder={t('worklog_complete_follow_up_placeholder')}
                     disabled={isCompleting}
                   />
                 </label>
@@ -523,10 +525,10 @@ export function WorkLog() {
 
               <div className={styles.dialogActions}>
                 <button type="button" className={styles.dialogCancelBtn} onClick={closeCompleteDialog} disabled={isCompleting}>
-                  Zrušit
+                  {t('common:cancel')}
                 </button>
                 <button type="submit" className={styles.dialogSubmitBtn} disabled={isCompleting}>
-                  {isCompleting ? 'Ukládám...' : 'Potvrdit dokončení'}
+                  {isCompleting ? t('common:loading') : t('worklog_complete_confirm')}
                 </button>
               </div>
             </form>

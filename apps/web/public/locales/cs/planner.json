@@ -285,5 +285,15 @@
   "add_drawer_add_button": "Přidat do trasy",
   "add_drawer_fetch_error": "Nepodařilo se načíst dostupné termíny",
   "add_drawer_add_error": "Nepodařilo se přidat do trasy",
-  "add_drawer_due": "Termín:"
+  "add_drawer_due": "Termín:",
+
+  "shortcut_escape": "Zavřít / Zrušit",
+  "shortcut_search": "Hledat",
+  "shortcut_prev": "Předchozí kandidát",
+  "shortcut_next": "Další kandidát",
+  "shortcut_select_slot": "Vybrat slot {{index}}",
+  "shortcut_schedule": "Domluvit termín",
+  "shortcut_snooze": "Odložit",
+  "shortcut_fix_address": "Opravit adresu",
+  "shortcut_save": "Uložit plán"
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNatsStore } from '../stores/natsStore';
 import { createRequest } from '@shared/messages';
 import { getToken } from '@/utils/auth';
@@ -82,6 +83,7 @@ const unwrapPayload = <T,>(response: ApiEnvelope<T> | T): T => {
 };
 
 export function Admin() {
+  const { t } = useTranslation('pages');
   const { request, isConnected: connected } = useNatsStore();
   const [services, setServices] = useState<ServiceStatus[]>([
     { name: 'NATS', status: 'unknown' },
@@ -136,14 +138,14 @@ export function Admin() {
     try {
       const result = await submitGeocodeAllPending();
       if (result) {
-        alert(`Geokódování spuštěno! Job ID: ${result.jobId}`);
+        alert(t('admin_geocode_success', { jobId: result.jobId }));
       } else {
-        alert('Žádní zákazníci k geokódování.');
+        alert(t('admin_geocode_none'));
       }
       // Refresh status after submission
       runHealthCheck();
     } catch (error) {
-      alert(`Chyba při spouštění geokódování: ${error instanceof Error ? error.message : 'Neznámá chyba'}`);
+      alert(t('admin_geocode_error', { error: error instanceof Error ? error.message : String(error) }));
     } finally {
       setIsSubmittingGeocode(false);
     }
@@ -322,7 +324,7 @@ export function Admin() {
         const queuedJobs = geocodeResult.streamMessages || 0;
         let details = `${pendingCustomers} pending`;
         if (failedCustomers > 0) {
-          details += `, ${failedCustomers} chybných`;
+          details += `, ${failedCustomers} ${t('admin_failed_count')}`;
         }
         details += `, ${queuedJobs} jobs queued`;
         newServices[geocodeIdx] = {
@@ -363,16 +365,16 @@ export function Admin() {
 
   // Reset database
   const resetDatabase = async () => {
-    if (!confirm('Opravdu chcete smazat a znovu vytvořit databázi? Všechna data budou ztracena!')) {
+    if (!confirm(t('admin_db_confirm_reset'))) {
       return;
     }
     setIsResettingDb(true);
     try {
       await request('sazinka.admin.db.reset', createRequest(getToken(), {}));
-      alert('Databáze byla resetována.');
+      alert(t('admin_db_reset_success'));
       runHealthCheck();
     } catch (e) {
-      alert('Chyba při resetování databáze: ' + String(e));
+      alert(t('admin_db_reset_error') + ' ' + String(e));
     }
     setIsResettingDb(false);
   };
@@ -427,7 +429,7 @@ export function Admin() {
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <h1>Administrace systému</h1>
+        <h1>{t('admin_title')}</h1>
         <div className={styles.headerActions}>
           <label className={styles.autoRefresh}>
             <input
@@ -435,7 +437,7 @@ export function Admin() {
               checked={autoRefresh}
               onChange={(e) => setAutoRefresh(e.target.checked)}
             />
-            Auto-refresh (5s)
+            {t('admin_auto_refresh')}
           </label>
         </div>
       </div>
@@ -443,14 +445,14 @@ export function Admin() {
       {/* Services Status Section */}
       <section className={styles.section}>
         <div className={styles.sectionHeader}>
-          <h2>Stav služeb</h2>
+          <h2>{t('admin_services_title')}</h2>
           <button 
             type="button"
             className={styles.primaryButton}
             onClick={runHealthCheck}
             disabled={isChecking || !connected}
           >
-            {isChecking ? 'Kontroluji...' : 'Spustit health check'}
+            {isChecking ? t('admin_checking') : t('admin_health_check')}
           </button>
         </div>
 
@@ -470,7 +472,7 @@ export function Admin() {
                 )}
                 {service.lastCheck && (
                   <span className={styles.lastCheck}>
-                    Poslední kontrola: {new Date(service.lastCheck).toLocaleTimeString()}
+                    {t('admin_last_check')} {new Date(service.lastCheck).toLocaleTimeString()}
                   </span>
                 )}
               </div>
@@ -480,17 +482,17 @@ export function Admin() {
                     className={styles.smallButton}
                     onClick={handleTriggerGeocode}
                     disabled={isSubmittingGeocode || !connected}
-                    title="Spustit geokódování pro čekající zákazníky"
+                    title={t('admin_geocode_trigger')}
                   >
-                    {isSubmittingGeocode ? '⏳ Odesílám...' : '▶ Spustit'}
+                    {isSubmittingGeocode ? t('admin_geocode_submitting') : t('admin_geocode_run')}
                   </button>
                 ) : (
                   <button 
                     className={styles.smallButton}
                     disabled={service.name === 'Frontend'}
-                    title="Restartovat službu"
+                    title={t('admin_restart_title')}
                   >
-                    ↻ Restart
+                    {t('admin_restart')}
                   </button>
                 )}
               </div>
@@ -502,33 +504,33 @@ export function Admin() {
       {/* Database Section */}
       <section className={styles.section}>
         <div className={styles.sectionHeader}>
-          <h2>Databáze</h2>
+          <h2>{t('admin_db_title')}</h2>
         </div>
 
         {dbInfo ? (
           <div className={styles.dbInfo}>
             <div className={styles.dbStats}>
               <div className={styles.dbStat}>
-                <span className={styles.dbStatLabel}>Velikost</span>
+                <span className={styles.dbStatLabel}>{t('admin_db_size')}</span>
                 <span className={styles.dbStatValue}>{dbInfo.size_human}</span>
               </div>
               <div className={styles.dbStat}>
-                <span className={styles.dbStatLabel}>Stav</span>
+                <span className={styles.dbStatLabel}>{t('admin_db_status')}</span>
                 <span className={`${styles.dbStatValue} ${dbInfo.connection_status === 'connected' ? styles.textGreen : styles.textRed}`}>
-                  {dbInfo.connection_status === 'connected' ? 'Připojeno' : 'Odpojeno'}
+                  {dbInfo.connection_status === 'connected' ? t('admin_db_connected') : t('admin_db_disconnected')}
                 </span>
               </div>
             </div>
 
             {dbInfo.tables && dbInfo.tables.length > 0 && (
               <div className={styles.tablesContainer}>
-                <h3>Tabulky</h3>
+                <h3>{t('admin_db_tables')}</h3>
                 <table className={styles.table}>
                   <thead>
                     <tr>
-                      <th>Název</th>
-                      <th>Řádků</th>
-                      <th>Velikost</th>
+                      <th>{t('admin_db_col_name')}</th>
+                      <th>{t('admin_db_col_rows')}</th>
+                      <th>{t('admin_db_col_size')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -551,13 +553,13 @@ export function Admin() {
                 onClick={resetDatabase}
                 disabled={isResettingDb}
               >
-                {isResettingDb ? 'Resetuji...' : 'Smazat a znovu vytvořit databázi'}
+                {isResettingDb ? t('admin_db_resetting') : t('admin_db_reset')}
               </button>
             </div>
           </div>
         ) : (
           <div className={styles.noData}>
-            Načítám informace o databázi...
+            {t('admin_db_loading')}
           </div>
         )}
       </section>
@@ -565,7 +567,7 @@ export function Admin() {
       {/* Export Section */}
       <section className={styles.section}>
         <div className={styles.sectionHeader}>
-          <h2>Export dat</h2>
+          <h2>{t('admin_export_title', { defaultValue: 'Export dat' })}</h2>
         </div>
         <ExportPlusPanel adminMode />
       </section>
@@ -573,15 +575,15 @@ export function Admin() {
       {/* Import Section */}
       <section className={styles.section}>
         <div className={styles.sectionHeader}>
-          <h2>Import dat</h2>
+          <h2>{t('admin_import_title', { defaultValue: 'Import dat' })}</h2>
         </div>
 
         <div className={styles.exportContainer}>
           {/* Customers Import */}
           <div className={styles.exportCard}>
-            <h3>1. Import zákazníků</h3>
+            <h3>{t('admin_import_customers_title', { defaultValue: '1. Import zákazníků' })}</h3>
             <p className={styles.exportDescription}>
-              Importuje zákazníky z CSV. Automaticky spustí geokódování adres.
+              {t('admin_import_customers_desc', { defaultValue: 'Importuje zákazníky z CSV. Automaticky spustí geokódování adres.' })}
             </p>
             <button
               type="button"
@@ -589,15 +591,15 @@ export function Admin() {
               onClick={handleOpenCustomerImport}
               disabled={!connected}
             >
-              📤 Importovat zákazníky
+              {t('admin_import_customers_btn', { defaultValue: '📤 Importovat zákazníky' })}
             </button>
           </div>
 
           {/* Devices Import */}
           <div className={styles.exportCard}>
-            <h3>2. Import zařízení</h3>
+            <h3>{t('admin_import_devices_title', { defaultValue: '2. Import zařízení' })}</h3>
             <p className={styles.exportDescription}>
-              Importuje zařízení z CSV. Vyžaduje existující zákazníky (propojení přes IČO/email/telefon).
+              {t('admin_import_devices_desc', { defaultValue: 'Importuje zařízení z CSV. Vyžaduje existující zákazníky (propojení přes IČO/email/telefon).' })}
             </p>
             <button
               type="button"
@@ -605,15 +607,15 @@ export function Admin() {
               onClick={() => handleOpenImport('device')}
               disabled={!connected}
             >
-              📤 Importovat zařízení
+              {t('admin_import_devices_btn', { defaultValue: '📤 Importovat zařízení' })}
             </button>
           </div>
 
           {/* Revisions Import */}
           <div className={styles.exportCard}>
-            <h3>3. Import revizí</h3>
+            <h3>{t('admin_import_revisions_title', { defaultValue: '3. Import revizí' })}</h3>
             <p className={styles.exportDescription}>
-              Importuje revize z CSV. Vyžaduje existující zařízení (propojení přes sériové číslo).
+              {t('admin_import_revisions_desc', { defaultValue: 'Importuje revize z CSV. Vyžaduje existující zařízení (propojení přes sériové číslo).' })}
             </p>
             <button
               type="button"
@@ -621,15 +623,15 @@ export function Admin() {
               onClick={() => handleOpenImport('revision')}
               disabled={!connected}
             >
-              📤 Importovat revize
+              {t('admin_import_revisions_btn', { defaultValue: '📤 Importovat revize' })}
             </button>
           </div>
 
           {/* Communications Import */}
           <div className={styles.exportCard}>
-            <h3>4. Import komunikace</h3>
+            <h3>{t('admin_import_comm_title', { defaultValue: '4. Import komunikace' })}</h3>
             <p className={styles.exportDescription}>
-              Importuje historii komunikace (hovory, emaily, poznámky) z CSV.
+              {t('admin_import_comm_desc', { defaultValue: 'Importuje historii komunikace (hovory, emaily, poznámky) z CSV.' })}
             </p>
             <button
               type="button"
@@ -637,15 +639,15 @@ export function Admin() {
               onClick={() => handleOpenImport('communication')}
               disabled={!connected}
             >
-              📤 Importovat komunikaci
+              {t('admin_import_comm_btn', { defaultValue: '📤 Importovat komunikaci' })}
             </button>
           </div>
 
           {/* Visits Import */}
           <div className={styles.exportCard}>
-            <h3>5. Import pracovního deníku</h3>
+            <h3>{t('admin_import_worklog_title', { defaultValue: '5. Import pracovního deníku' })}</h3>
             <p className={styles.exportDescription}>
-              Importuje pracovní deník (work_log) z CSV.
+              {t('admin_import_worklog_desc', { defaultValue: 'Importuje pracovní deník (work_log) z CSV.' })}
             </p>
             <button
               type="button"
@@ -653,16 +655,15 @@ export function Admin() {
               onClick={() => handleOpenImport('work_log')}
               disabled={!connected}
             >
-              📤 Importovat pracovní deník
+              {t('admin_import_worklog_btn', { defaultValue: '📤 Importovat pracovní deník' })}
             </button>
           </div>
 
           {/* ZIP Import */}
           <div className={styles.exportCard}>
-            <h3>📦 Import ZIP</h3>
+            <h3>{t('admin_import_zip_title', { defaultValue: '📦 Import ZIP' })}</h3>
             <p className={styles.exportDescription}>
-              Importujte více souborů najednou z jednoho ZIP archivu. Automaticky rozpozná typy souborů
-              a importuje je ve správném pořadí.
+              {t('admin_import_zip_desc', { defaultValue: 'Importujte více souborů najednou z jednoho ZIP archivu. Automaticky rozpozná typy souborů a importuje je ve správném pořadí.' })}
             </p>
             <button
               type="button"
@@ -670,7 +671,7 @@ export function Admin() {
               onClick={() => handleOpenImport('zip')}
               disabled={!connected}
             >
-              📦 Importovat ZIP
+              {t('admin_import_zip_btn', { defaultValue: '📦 Importovat ZIP' })}
             </button>
           </div>
         </div>
@@ -678,11 +679,11 @@ export function Admin() {
         <div className={styles.importHint}>
           <p>
             📋 <a href="/PROJECT_IMPORT.MD" target="_blank" rel="noopener noreferrer">
-              Dokumentace formátů CSV pro import
+              {t('admin_import_docs', { defaultValue: 'Dokumentace formátů CSV pro import' })}
             </a>
           </p>
           <p>
-            Importujte v uvedeném pořadí (1-5). Každý import vyžaduje data z předchozích kroků.
+            {t('admin_import_order_hint', { defaultValue: 'Importujte v uvedeném pořadí (1-5). Každý import vyžaduje data z předchozích kroků.' })}
           </p>
         </div>
       </section>
@@ -704,18 +705,18 @@ export function Admin() {
       {/* Logs Section */}
       <section className={styles.section}>
         <div className={styles.sectionHeader}>
-          <h2>Logy</h2>
+          <h2>{t('admin_logs_title')}</h2>
           <div className={styles.logControls}>
             <select 
               value={logFilter} 
               onChange={(e) => setLogFilter(e.target.value)}
               className={styles.select}
             >
-              <option value="all">Všechny úrovně</option>
-              <option value="error">Pouze chyby</option>
-              <option value="warn">Varování a výše</option>
-              <option value="info">Info a výše</option>
-              <option value="debug">Debug a výše</option>
+              <option value="all">{t('admin_logs_all')}</option>
+              <option value="error">{t('admin_logs_error')}</option>
+              <option value="warn">{t('admin_logs_warn')}</option>
+              <option value="info">{t('admin_logs_info')}</option>
+              <option value="debug">{t('admin_logs_debug')}</option>
             </select>
             <button 
               type="button"
@@ -723,7 +724,7 @@ export function Admin() {
               onClick={loadLogs}
               disabled={isLoadingLogs}
             >
-              {isLoadingLogs ? 'Načítám...' : 'Obnovit logy'}
+              {isLoadingLogs ? t('admin_logs_loading') : t('admin_logs_refresh')}
             </button>
           </div>
         </div>
@@ -747,7 +748,7 @@ export function Admin() {
             </div>
           ) : (
             <div className={styles.noData}>
-              {isLoadingLogs ? 'Načítám logy...' : 'Žádné logy k zobrazení'}
+              {isLoadingLogs ? t('admin_logs_loading_text') : t('admin_logs_empty')}
             </div>
           )}
         </div>
@@ -756,7 +757,7 @@ export function Admin() {
       {/* Connection Status Banner */}
       {!connected && (
         <div className={styles.connectionBanner}>
-          ⚠️ Nejste připojeni k NATS serveru. Některé funkce nebudou dostupné.
+          {t('admin_not_connected')}
         </div>
       )}
     </div>

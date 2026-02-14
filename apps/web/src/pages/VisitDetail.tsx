@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link, useNavigate } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import maplibregl from 'maplibre-gl';
 import type { Visit } from '@shared/visit';
 import type { VisitWorkItem } from '@shared/workItem';
@@ -48,6 +49,7 @@ interface VisitData {
 }
 
 export function VisitDetail() {
+  const { t } = useTranslation('pages');
   const { visitId } = useParams({ strict: false }) as { visitId: string };
   const navigate = useNavigate();
   const isConnected = useNatsStore((s) => s.isConnected);
@@ -77,13 +79,13 @@ export function VisitDetail() {
 
   const loadVisit = useCallback(async () => {
     if (!isConnected) {
-      setError('Není připojení k serveru');
+      setError(t('visit_error_connection'));
       setIsLoading(false);
       return;
     }
 
     if (!visitId) {
-      setError('ID návštěvy není zadáno');
+      setError(t('visit_error_no_id'));
       setIsLoading(false);
       return;
     }
@@ -103,7 +105,7 @@ export function VisitDetail() {
       }
     } catch (err) {
       console.error('Failed to load visit:', err);
-      setError(err instanceof Error ? err.message : 'Nepodařilo se načíst návštěvu');
+      setError(err instanceof Error ? err.message : t('visit_error_load'));
     } finally {
       setIsLoading(false);
     }
@@ -166,7 +168,7 @@ export function VisitDetail() {
       setShowEditDialog(false);
       await loadVisit();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nepodařilo se uložit změny');
+      setError(err instanceof Error ? err.message : t('visit_error_save'));
     } finally {
       setIsSubmitting(false);
     }
@@ -189,7 +191,7 @@ export function VisitDetail() {
       setShowCompleteDialog(false);
       await loadVisit();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nepodařilo se dokončit návštěvu');
+      setError(err instanceof Error ? err.message : t('visit_error_complete'));
     } finally {
       setIsSubmitting(false);
     }
@@ -198,7 +200,7 @@ export function VisitDetail() {
   // Cancel handler
   const handleCancel = useCallback(async () => {
     if (!data) return;
-    if (!confirm('Opravdu chcete zrušit tuto návštěvu?')) return;
+    if (!confirm(t('visit_confirm_cancel'))) return;
 
     try {
       setIsSubmitting(true);
@@ -209,7 +211,7 @@ export function VisitDetail() {
       });
       await loadVisit();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nepodařilo se zrušit návštěvu');
+      setError(err instanceof Error ? err.message : t('visit_error_cancel'));
     } finally {
       setIsSubmitting(false);
     }
@@ -224,7 +226,7 @@ export function VisitDetail() {
   // Format date
   const formatDate = (dateStr: string): string => {
     const d = new Date(dateStr + 'T00:00:00');
-    return d.toLocaleDateString('cs-CZ', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    return d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   };
 
   // Calculate duration
@@ -243,7 +245,7 @@ export function VisitDetail() {
       <div className={styles.container}>
         <div className={styles.loading}>
           <div className={styles.spinner} />
-          <span>Načítám návštěvu...</span>
+          <span>{t('visit_loading')}</span>
         </div>
       </div>
     );
@@ -254,9 +256,9 @@ export function VisitDetail() {
       <div className={styles.container}>
         <div className={styles.errorState}>
           <span className={styles.errorIcon}>⚠️</span>
-          <h2>Chyba</h2>
+          <h2>{t('visit_error')}</h2>
           <p>{error}</p>
-          <Link to="/worklog" className={styles.backButton}>← Zpět na záznam práce</Link>
+          <Link to="/worklog" className={styles.backButton}>{t('visit_back_worklog')}</Link>
         </div>
       </div>
     );
@@ -267,9 +269,9 @@ export function VisitDetail() {
       <div className={styles.container}>
         <div className={styles.errorState}>
           <span className={styles.errorIcon}>🔍</span>
-          <h2>Návštěva nenalezena</h2>
-          <p>Požadovaná návštěva neexistuje nebo byla smazána.</p>
-          <Link to="/worklog" className={styles.backButton}>← Zpět na záznam práce</Link>
+          <h2>{t('visit_not_found')}</h2>
+          <p>{t('visit_not_found_desc')}</p>
+          <Link to="/worklog" className={styles.backButton}>{t('visit_back_worklog')}</Link>
         </div>
       </div>
     );
@@ -284,7 +286,7 @@ export function VisitDetail() {
       {/* Header */}
       <header className={styles.header}>
         <div className={styles.breadcrumb}>
-          <Link to="/worklog" className={styles.backLink}>← Záznam práce</Link>
+          <Link to="/worklog" className={styles.backLink}>{t('visit_breadcrumb_worklog')}</Link>
           {data.customerName && (
             <>
               <span className={styles.breadcrumbSeparator}>/</span>
@@ -302,7 +304,7 @@ export function VisitDetail() {
         <div className={styles.titleRow}>
           <div className={styles.titleSection}>
             <h1 className={styles.title}>
-              {getVisitTypeLabel(visit.visitType)} u {data.customerName || 'zákazníka'}
+              {getVisitTypeLabel(visit.visitType)} {t('visit_title_at')} {data.customerName || t('visit_customer')}
             </h1>
             <span className={`${styles.statusBadge} ${styles[`status-${visit.status}`]}`}>
               {getVisitStatusLabel(visit.status)}
@@ -342,11 +344,11 @@ export function VisitDetail() {
         <div className={styles.mainColumn}>
           {/* Basic info card */}
           <div className={styles.card}>
-            <h3 className={styles.cardTitle}>Základní informace</h3>
+            <h3 className={styles.cardTitle}>{t('visit_basic_info')}</h3>
             <div className={styles.cardContent}>
               <div className={styles.detailGrid}>
                 <div className={styles.detailItem}>
-                  <span className={styles.detailLabel}>Zákazník</span>
+                  <span className={styles.detailLabel}>{t('visit_customer')}</span>
                   <Link 
                     to="/customers/$customerId" 
                     params={{ customerId: visit.customerId }}
@@ -356,22 +358,22 @@ export function VisitDetail() {
                   </Link>
                 </div>
                 <div className={styles.detailItem}>
-                  <span className={styles.detailLabel}>Typ návštěvy</span>
+                  <span className={styles.detailLabel}>{t('visit_type')}</span>
                   <span className={styles.detailValue}>{getVisitTypeLabel(visit.visitType)}</span>
                 </div>
                 <div className={styles.detailItem}>
-                  <span className={styles.detailLabel}>Datum</span>
+                  <span className={styles.detailLabel}>{t('visit_date')}</span>
                   <span className={styles.detailValue}>{formatDate(visit.scheduledDate)}</span>
                 </div>
                 <div className={styles.detailItem}>
-                  <span className={styles.detailLabel}>Stav</span>
+                  <span className={styles.detailLabel}>{t('visit_status')}</span>
                   <span className={`${styles.statusBadge} ${styles[`status-${visit.status}`]}`}>
                     {getVisitStatusLabel(visit.status)}
                   </span>
                 </div>
                 {visit.result && (
                   <div className={styles.detailItem}>
-                    <span className={styles.detailLabel}>Výsledek</span>
+                    <span className={styles.detailLabel}>{t('visit_result')}</span>
                     <span className={styles.detailValue}>{getVisitResultLabel(visit.result)}</span>
                   </div>
                 )}
@@ -379,7 +381,7 @@ export function VisitDetail() {
 
               {data.customerStreet && data.customerCity && (
                 <div className={styles.addressSection}>
-                  <span className={styles.detailLabel}>Adresa</span>
+                  <span className={styles.detailLabel}>{t('visit_address')}</span>
                   <p className={styles.address}>
                     {data.customerStreet}
                     <br />
@@ -391,7 +393,7 @@ export function VisitDetail() {
 
               {data.customerPhone && (
                 <div className={styles.detailItem}>
-                  <span className={styles.detailLabel}>Telefon</span>
+                  <span className={styles.detailLabel}>{t('visit_phone')}</span>
                   <a href={`tel:${data.customerPhone}`} className={styles.phoneLink}>
                     📞 {data.customerPhone}
                   </a>
@@ -400,7 +402,7 @@ export function VisitDetail() {
 
               {visit.resultNotes && (
                 <div className={styles.notesSection}>
-                  <span className={styles.detailLabel}>Poznámky</span>
+                  <span className={styles.detailLabel}>{t('visit_notes')}</span>
                   <p className={styles.notes}>{visit.resultNotes}</p>
                 </div>
               )}
@@ -410,17 +412,17 @@ export function VisitDetail() {
           {/* Map */}
           {data.customerLat && data.customerLng && (
             <div className={styles.card}>
-              <h3 className={styles.cardTitle}>Poloha</h3>
+              <h3 className={styles.cardTitle}>{t('visit_location')}</h3>
               <div ref={mapContainer} className={styles.map} />
             </div>
           )}
 
           {/* Timeline */}
           <div className={styles.card}>
-            <h3 className={styles.cardTitle}>Časová osa</h3>
+            <h3 className={styles.cardTitle}>{t('visit_timeline')}</h3>
             <div className={styles.timeline}>
               <div className={styles.timelineItem}>
-                <span className={styles.timelineLabel}>Naplánovaný čas</span>
+                <span className={styles.timelineLabel}>{t('visit_scheduled_time')}</span>
                 <span className={styles.timelineValue}>
                   {formatTime(visit.scheduledTimeStart)} – {formatTime(visit.scheduledTimeEnd)}
                   {scheduledDuration && <span className={styles.duration}> ({scheduledDuration})</span>}
@@ -428,19 +430,19 @@ export function VisitDetail() {
               </div>
               {visit.actualArrival && (
                 <div className={styles.timelineItem}>
-                  <span className={styles.timelineLabel}>Příjezd</span>
+                  <span className={styles.timelineLabel}>{t('visit_arrival')}</span>
                   <span className={styles.timelineValue}>{formatTime(visit.actualArrival)}</span>
                 </div>
               )}
               {visit.actualDeparture && (
                 <div className={styles.timelineItem}>
-                  <span className={styles.timelineLabel}>Odjezd</span>
+                  <span className={styles.timelineLabel}>{t('visit_departure')}</span>
                   <span className={styles.timelineValue}>{formatTime(visit.actualDeparture)}</span>
                 </div>
               )}
               {actualDuration && (
                 <div className={styles.timelineItem}>
-                  <span className={styles.timelineLabel}>Skutečná délka</span>
+                  <span className={styles.timelineLabel}>{t('visit_actual_duration')}</span>
                   <span className={styles.timelineValue}>{actualDuration}</span>
                 </div>
               )}
@@ -449,9 +451,9 @@ export function VisitDetail() {
 
           {/* Work items */}
           <div className={styles.card}>
-            <h3 className={styles.cardTitle}>Provedené úkony ({data.workItems.length})</h3>
+            <h3 className={styles.cardTitle}>{t('visit_work_items')} ({data.workItems.length})</h3>
             {data.workItems.length === 0 ? (
-              <p className={styles.placeholder}>Zatím nebyly přidány žádné úkony.</p>
+              <p className={styles.placeholder}>{t('visit_no_work_items')}</p>
             ) : (
               <div className={styles.workItemsList}>
                 {data.workItems.map((item) => (
@@ -484,16 +486,16 @@ export function VisitDetail() {
 
           {/* Photos placeholder */}
           <div className={styles.card}>
-            <h3 className={styles.cardTitle}>Fotografie</h3>
+            <h3 className={styles.cardTitle}>{t('visit_photos')}</h3>
             <p className={styles.placeholder}>
-              Sekce pro fotografie z návštěvy bude implementována v budoucnu.
+              {t('visit_photos_placeholder')}
             </p>
           </div>
         </div>
 
         {/* Right column - Actions panel */}
         <div className={styles.actionsPanel}>
-          <h3 className={styles.panelTitle}>Akce</h3>
+          <h3 className={styles.panelTitle}>{t('visit_actions')}</h3>
 
           <div className={styles.actions}>
             {visit.status === 'planned' && (
@@ -503,14 +505,14 @@ export function VisitDetail() {
                   onClick={() => setShowEditDialog(true)}
                   disabled={isSubmitting}
                 >
-                  ✏️ Upravit čas
+                  {t('visit_edit_time')}
                 </button>
                 <button 
                   className={styles.actionButton}
                   onClick={() => setShowCompleteDialog(true)}
                   disabled={isSubmitting}
                 >
-                  ✅ Dokončit návštěvu
+                  {t('visit_complete')}
                 </button>
               </>
             )}
@@ -520,7 +522,7 @@ export function VisitDetail() {
                 onClick={handleCancel}
                 disabled={isSubmitting}
               >
-                ❌ Zrušit návštěvu
+                {t('visit_cancel')}
               </button>
             )}
           </div>
@@ -531,10 +533,10 @@ export function VisitDetail() {
       {showEditDialog && (
         <div className={styles.dialogOverlay} onClick={() => setShowEditDialog(false)}>
           <div className={styles.dialog} onClick={e => e.stopPropagation()}>
-            <h3>Upravit čas návštěvy</h3>
+            <h3>{t('visit_edit_dialog_title')}</h3>
             <div className={styles.dialogRow}>
               <div className={styles.dialogField}>
-                <label>Čas od</label>
+                <label>{t('visit_time_from')}</label>
                 <input 
                   type="time" 
                   value={editTimeStart} 
@@ -542,7 +544,7 @@ export function VisitDetail() {
                 />
               </div>
               <div className={styles.dialogField}>
-                <label>Čas do</label>
+                <label>{t('visit_time_to')}</label>
                 <input 
                   type="time" 
                   value={editTimeEnd} 
@@ -556,14 +558,14 @@ export function VisitDetail() {
                 onClick={() => setShowEditDialog(false)}
                 disabled={isSubmitting}
               >
-                Zrušit
+                {t('common:cancel')}
               </button>
               <button 
                 className={styles.confirmButton}
                 onClick={handleEdit}
                 disabled={isSubmitting}
               >
-                {isSubmitting ? 'Ukládám...' : 'Uložit'}
+                {isSubmitting ? t('common:loading') : t('common:save')}
               </button>
             </div>
           </div>
@@ -574,26 +576,26 @@ export function VisitDetail() {
       {showCompleteDialog && (
         <div className={styles.dialogOverlay} onClick={() => setShowCompleteDialog(false)}>
           <div className={styles.dialog} onClick={e => e.stopPropagation()}>
-            <h3>Dokončit návštěvu</h3>
+            <h3>{t('visit_complete_dialog_title')}</h3>
             <div className={styles.dialogField}>
-              <label>Výsledek *</label>
+              <label>{t('visit_complete_result')}</label>
               <select 
                 value={completeResult} 
                 onChange={e => setCompleteResult(e.target.value as any)}
               >
-                <option value="successful">Úspěšně</option>
-                <option value="partial">Částečně</option>
-                <option value="failed">Neúspěšně</option>
-                <option value="customer_absent">Zákazník nepřítomen</option>
-                <option value="rescheduled">Přeplánováno</option>
+                <option value="successful">{t('visit_result_successful')}</option>
+                <option value="partial">{t('visit_result_partial')}</option>
+                <option value="failed">{t('visit_result_failed')}</option>
+                <option value="customer_absent">{t('visit_result_customer_absent')}</option>
+                <option value="rescheduled">{t('visit_result_rescheduled')}</option>
               </select>
             </div>
             <div className={styles.dialogField}>
-              <label>Poznámky</label>
+              <label>{t('visit_complete_notes')}</label>
               <textarea 
                 value={completeNotes} 
                 onChange={e => setCompleteNotes(e.target.value)}
-                placeholder="Poznámky k návštěvě..."
+                placeholder={t('visit_complete_notes_placeholder')}
                 rows={3}
               />
             </div>
@@ -604,16 +606,16 @@ export function VisitDetail() {
                   checked={requiresFollowUp} 
                   onChange={e => setRequiresFollowUp(e.target.checked)}
                 />
-                <span>Vyžaduje následnou návštěvu</span>
+                <span>{t('visit_complete_follow_up')}</span>
               </label>
             </div>
             {requiresFollowUp && (
               <div className={styles.dialogField}>
-                <label>Důvod následné návštěvy</label>
+                <label>{t('visit_complete_follow_up_reason')}</label>
                 <textarea 
                   value={followUpReason} 
                   onChange={e => setFollowUpReason(e.target.value)}
-                  placeholder="Proč je potřeba další návštěva..."
+                  placeholder={t('visit_complete_follow_up_placeholder')}
                   rows={2}
                 />
               </div>
@@ -624,14 +626,14 @@ export function VisitDetail() {
                 onClick={() => setShowCompleteDialog(false)}
                 disabled={isSubmitting}
               >
-                Zrušit
+                {t('common:cancel')}
               </button>
               <button 
                 className={styles.confirmButton}
                 onClick={handleComplete}
                 disabled={isSubmitting}
               >
-                {isSubmitting ? 'Ukládám...' : 'Dokončit'}
+                {isSubmitting ? t('common:loading') : t('visit_complete_btn')}
               </button>
             </div>
           </div>

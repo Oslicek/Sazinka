@@ -1,3 +1,5 @@
+import i18n from '@/i18n';
+
 /**
  * Customer form data structure
  */
@@ -33,11 +35,11 @@ export function validateName(name: string): string | null {
   const trimmed = name.trim();
   
   if (!trimmed) {
-    return 'Jméno je povinné';
+    return i18n.t('validation:name_required');
   }
   
   if (trimmed.length < 2) {
-    return 'Jméno musí mít alespoň 2 znaky';
+    return i18n.t('validation:name_min_length');
   }
   
   return null;
@@ -57,7 +59,7 @@ export function validateEmail(email: string | undefined): string | null {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   
   if (!emailRegex.test(email)) {
-    return 'Neplatný formát emailu';
+    return i18n.t('validation:email_invalid');
   }
   
   return null;
@@ -77,7 +79,7 @@ export function validatePhone(phone: string | undefined): string | null {
   const digits = phone.replace(/\D/g, '');
   
   if (digits.length < 9) {
-    return 'Telefon musí mít alespoň 9 číslic';
+    return i18n.t('validation:phone_min_digits');
   }
   
   return null;
@@ -90,14 +92,14 @@ export function validatePhone(phone: string | undefined): string | null {
  */
 export function validatePostalCode(postalCode: string): string | null {
   if (!postalCode || postalCode.trim() === '') {
-    return 'PSČ je povinné';
+    return i18n.t('validation:postal_code_required');
   }
   
   // Remove spaces and check for 5 digits
   const digits = postalCode.replace(/\s/g, '');
   
   if (!/^\d{5}$/.test(digits)) {
-    return 'PSČ musí mít 5 číslic';
+    return i18n.t('validation:postal_code_format');
   }
   
   return null;
@@ -114,11 +116,11 @@ export function validateAddress(
   const errors: ValidationErrors = {};
   
   if (!street || street.trim() === '') {
-    errors.street = 'Ulice je povinná';
+    errors.street = i18n.t('validation:street_required');
   }
   
   if (!city || city.trim() === '') {
-    errors.city = 'Město je povinné';
+    errors.city = i18n.t('validation:city_required');
   }
   
   const postalCodeError = validatePostalCode(postalCode);

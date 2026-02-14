@@ -1,0 +1,10 @@
+{
+  "name_required": "Name is required",
+  "name_min_length": "Name must be at least 2 characters",
+  "email_invalid": "Invalid email format",
+  "phone_min_digits": "Phone must have at least 9 digits",
+  "postal_code_required": "Postal code is required",
+  "postal_code_format": "Postal code must have 5 digits",
+  "street_required": "Street is required",
+  "city_required": "City is required"
+}

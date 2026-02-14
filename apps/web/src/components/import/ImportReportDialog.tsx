@@ -3,6 +3,7 @@
  * Shows summary, error/warning breakdown, and detailed issue list
  */
 import { useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { ImportReport, ImportIssue, ImportIssueCode, ImportIssueSummary } from '@shared/import';
 import styles from './ImportReportDialog.module.css';
 
@@ -11,34 +12,30 @@ interface ImportReportDialogProps {
   onClose: () => void;
 }
 
-// Human-readable labels for issue codes
-const ISSUE_CODE_LABELS: Record<ImportIssueCode, string> = {
-  CUSTOMER_NOT_FOUND: 'Zákazník nenalezen',
-  DEVICE_NOT_FOUND: 'Zařízení nenalezeno',
-  DUPLICATE_RECORD: 'Duplicitní záznam',
-  MISSING_FIELD: 'Chybějící pole',
-  INVALID_DATE: 'Neplatné datum',
-  INVALID_VALUE: 'Neplatná hodnota',
-  INVALID_STATUS: 'Neplatný stav',
-  INVALID_RESULT: 'Neplatný výsledek',
-  DB_ERROR: 'Chyba databáze',
-  PARSE_ERROR: 'Chyba parsování',
-  UNKNOWN: 'Neznámá chyba',
+// i18n keys for issue codes
+const ISSUE_CODE_KEYS: Record<ImportIssueCode, string> = {
+  CUSTOMER_NOT_FOUND: 'report_code_customer_not_found',
+  DEVICE_NOT_FOUND: 'report_code_device_not_found',
+  DUPLICATE_RECORD: 'report_code_duplicate_record',
+  MISSING_FIELD: 'report_code_missing_field',
+  INVALID_DATE: 'report_code_invalid_date',
+  INVALID_VALUE: 'report_code_invalid_value',
+  INVALID_STATUS: 'report_code_invalid_status',
+  INVALID_RESULT: 'report_code_invalid_result',
+  DB_ERROR: 'report_code_db_error',
+  PARSE_ERROR: 'report_code_parse_error',
+  UNKNOWN: 'report_code_unknown',
 };
 
-// Job type labels
-const JOB_TYPE_LABELS: Record<string, string> = {
-  'import.customer': 'Import zákazníků',
-  'import.device': 'Import zařízení',
-  'import.revision': 'Import revizí',
-  'import.communication': 'Import komunikace',
-  'import.visit': 'Import návštěv',
-  'import.zip': 'Import ZIP',
+// i18n keys for job types
+const JOB_TYPE_KEYS: Record<string, string> = {
+  'import.customer': 'report_job_customer',
+  'import.device': 'report_job_device',
+  'import.revision': 'report_job_revision',
+  'import.communication': 'report_job_communication',
+  'import.visit': 'report_job_visit',
+  'import.zip': 'report_job_zip',
 };
-
-function getJobTypeLabel(jobType: string): string {
-  return JOB_TYPE_LABELS[jobType] || jobType;
-}
 
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms} ms`;
@@ -52,7 +49,7 @@ function formatDuration(ms: number): string {
 function formatDate(isoString: string): string {
   try {
     const d = new Date(isoString);
-    return d.toLocaleString('cs-CZ');
+    return d.toLocaleString(undefined);
   } catch {
     return isoString;
   }
@@ -86,6 +83,7 @@ function summarizeIssues(issues: ImportIssue[]): ImportIssueSummary[] {
 }
 
 export function ImportReportDialog({ report, onClose }: ImportReportDialogProps) {
+  const { t } = useTranslation('import');
   const [showDetails, setShowDetails] = useState(false);
   const [filterCode, setFilterCode] = useState<ImportIssueCode | null>(null);
 
@@ -103,7 +101,7 @@ export function ImportReportDialog({ report, onClose }: ImportReportDialogProps)
   const hasErrors = errorCount > 0;
   const hasWarnings = warningCount > 0;
   const statusClass = hasErrors ? styles.statusError : hasWarnings ? styles.statusWarning : styles.statusSuccess;
-  const statusText = hasErrors ? 'Dokončeno s chybami' : hasWarnings ? 'Dokončeno s varováními' : 'Úspěšně dokončeno';
+  const statusText = hasErrors ? t('report_status_errors') : hasWarnings ? t('report_status_warnings') : t('report_status_success');
 
   return (
     <div className={styles.overlay} onClick={onClose}>
@@ -111,12 +109,12 @@ export function ImportReportDialog({ report, onClose }: ImportReportDialogProps)
         {/* Header */}
         <div className={styles.header}>
           <div>
-            <h2 className={styles.title}>Import Report</h2>
+            <h2 className={styles.title}>{t('report_title')}</h2>
             <p className={styles.subtitle}>
-              {getJobTypeLabel(report.jobType)} &mdash; {report.filename}
+              {t(JOB_TYPE_KEYS[report.jobType] || report.jobType)} &mdash; {report.filename}
             </p>
           </div>
-          <button className={styles.closeButton} onClick={onClose} aria-label="Zavřít">
+          <button className={styles.closeButton} onClick={onClose} aria-label={t('report_close')}>
             &times;
           </button>
         </div>
@@ -130,48 +128,48 @@ export function ImportReportDialog({ report, onClose }: ImportReportDialogProps)
         <div className={styles.statsGrid}>
           <div className={styles.statCard}>
             <div className={styles.statValue}>{report.totalRows}</div>
-            <div className={styles.statLabel}>Celkem řádků</div>
+            <div className={styles.statLabel}>{t('report_total_rows')}</div>
           </div>
           <div className={`${styles.statCard} ${styles.statSuccess}`}>
             <div className={styles.statValue}>{report.importedCount}</div>
-            <div className={styles.statLabel}>Importováno</div>
+            <div className={styles.statLabel}>{t('report_imported')}</div>
           </div>
           {report.updatedCount > 0 && (
             <div className={`${styles.statCard} ${styles.statInfo}`}>
               <div className={styles.statValue}>{report.updatedCount}</div>
-              <div className={styles.statLabel}>Aktualizováno</div>
+              <div className={styles.statLabel}>{t('report_updated')}</div>
             </div>
           )}
           {report.skippedCount > 0 && (
             <div className={`${styles.statCard} ${styles.statWarning}`}>
               <div className={styles.statValue}>{report.skippedCount}</div>
-              <div className={styles.statLabel}>Přeskočeno</div>
+              <div className={styles.statLabel}>{t('report_skipped')}</div>
             </div>
           )}
           {errorCount > 0 && (
             <div className={`${styles.statCard} ${styles.statError}`}>
               <div className={styles.statValue}>{errorCount}</div>
-              <div className={styles.statLabel}>Chyby</div>
+              <div className={styles.statLabel}>{t('report_errors')}</div>
             </div>
           )}
           {warningCount > 0 && (
             <div className={`${styles.statCard} ${styles.statWarning}`}>
               <div className={styles.statValue}>{warningCount}</div>
-              <div className={styles.statLabel}>Varování</div>
+              <div className={styles.statLabel}>{t('report_warnings')}</div>
             </div>
           )}
         </div>
 
         {/* Meta info */}
         <div className={styles.metaRow}>
-          <span>Datum: {formatDate(report.importedAt)}</span>
-          <span>Trvání: {formatDuration(report.durationMs)}</span>
+          <span>{t('report_date')} {formatDate(report.importedAt)}</span>
+          <span>{t('report_duration')} {formatDuration(report.durationMs)}</span>
         </div>
 
         {/* Issue summary (aggregated by code) */}
         {summary.length > 0 && (
           <div className={styles.section}>
-            <h3 className={styles.sectionTitle}>Přehled problémů</h3>
+            <h3 className={styles.sectionTitle}>{t('report_issues_title')}</h3>
             <div className={styles.issueSummaryList}>
               {summary.map((s, i) => (
                 <button
@@ -186,7 +184,7 @@ export function ImportReportDialog({ report, onClose }: ImportReportDialogProps)
                   }}
                 >
                   <span className={styles.issueSummaryCode}>
-                    {ISSUE_CODE_LABELS[s.code] || s.code}
+                    {t(ISSUE_CODE_KEYS[s.code]) || s.code}
                   </span>
                   <span className={styles.issueSummaryCount}>{s.count}x</span>
                 </button>
@@ -202,14 +200,14 @@ export function ImportReportDialog({ report, onClose }: ImportReportDialogProps)
               className={styles.detailsToggle}
               onClick={() => setShowDetails(!showDetails)}
             >
-              {showDetails ? '▼' : '▶'} Detail chyb ({filteredIssues.length}
-              {filterCode ? ` — ${ISSUE_CODE_LABELS[filterCode]}` : ''})
+              {showDetails ? '▼' : '▶'} {t('report_details_toggle')} ({filteredIssues.length}
+              {filterCode ? ` — ${t(ISSUE_CODE_KEYS[filterCode])}` : ''})
               {filterCode && (
                 <span
                   className={styles.clearFilter}
                   onClick={(e) => { e.stopPropagation(); setFilterCode(null); }}
                 >
-                  ✕ zrušit filtr
+                  {t('report_clear_filter')}
                 </span>
               )}
             </button>
@@ -218,11 +216,11 @@ export function ImportReportDialog({ report, onClose }: ImportReportDialogProps)
                 <table className={styles.issueTable}>
                   <thead>
                     <tr>
-                      <th>Řádek</th>
-                      <th>Typ</th>
-                      <th>Kód</th>
-                      <th>Pole</th>
-                      <th>Zpráva</th>
+                      <th>{t('report_col_row')}</th>
+                      <th>{t('report_col_type')}</th>
+                      <th>{t('report_col_code')}</th>
+                      <th>{t('report_col_field')}</th>
+                      <th>{t('report_col_message')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -237,17 +235,17 @@ export function ImportReportDialog({ report, onClose }: ImportReportDialogProps)
                             issue.level === 'error' ? styles.badgeError :
                             issue.level === 'warning' ? styles.badgeWarning : styles.badgeInfo
                           }`}>
-                            {issue.level === 'error' ? 'Chyba' :
-                             issue.level === 'warning' ? 'Varování' : 'Info'}
+                            {issue.level === 'error' ? t('report_level_error') :
+                             issue.level === 'warning' ? t('report_level_warning') : t('report_level_info')}
                           </span>
                         </td>
-                        <td className={styles.cellCode}>{ISSUE_CODE_LABELS[issue.code] || issue.code}</td>
+                        <td className={styles.cellCode}>{t(ISSUE_CODE_KEYS[issue.code]) || issue.code}</td>
                         <td className={styles.cellField}>{issue.field || '—'}</td>
                         <td className={styles.cellMessage}>
                           {issue.message}
                           {issue.originalValue && (
                             <span className={styles.originalValue}>
-                              Původní hodnota: &quot;{issue.originalValue}&quot;
+                              {t('report_original_value')} &quot;{issue.originalValue}&quot;
                             </span>
                           )}
                         </td>
@@ -257,7 +255,7 @@ export function ImportReportDialog({ report, onClose }: ImportReportDialogProps)
                 </table>
                 {filteredIssues.length > 200 && (
                   <p className={styles.truncated}>
-                    Zobrazeno 200 z {filteredIssues.length} záznamů
+                    {t('report_truncated', { count: filteredIssues.length })}
                   </p>
                 )}
               </div>
@@ -268,7 +266,7 @@ export function ImportReportDialog({ report, onClose }: ImportReportDialogProps)
         {/* Footer */}
         <div className={styles.footer}>
           <button className={styles.closeButtonFooter} onClick={onClose}>
-            Zavřít
+            {t('report_close')}
           </button>
         </div>
       </div>

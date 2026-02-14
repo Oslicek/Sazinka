@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNatsStore } from '../stores/natsStore';
 import { useAuthStore } from '../stores/authStore';
 import * as settingsService from '../services/settingsService';
@@ -34,6 +35,7 @@ const DEFAULT_BREAK_SETTINGS: BreakSettings = {
 };
 
 export function Settings() {
+  const { t } = useTranslation('settings');
   const { isConnected } = useNatsStore();
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const user = useAuthStore((s) => s.user);
@@ -69,11 +71,11 @@ export function Settings() {
       setWorkers(workerList);
     } catch (e) {
       console.error('Failed to load settings:', e);
-      setError('Nepodařilo se načíst nastavení');
+      setError(t('error_load'));
     } finally {
       setLoading(false);
     }
-  }, [isConnected]);
+  }, [isConnected, t]);
 
   useEffect(() => {
     loadSettings();
@@ -109,16 +111,16 @@ export function Settings() {
 
   // Tab components - all available tabs
   const allTabs: { id: SettingsTab; label: string; permission: string }[] = [
-    { id: 'preferences', label: 'Moje nastavení', permission: 'settings:preferences' },
-    { id: 'work', label: 'Pracovní doba', permission: 'settings:work' },
-    { id: 'breaks', label: 'Pauzy', permission: 'settings:breaks' },
-    { id: 'workers', label: 'Pracovníci', permission: 'settings:workers' },
-    { id: 'roles', label: 'Role', permission: 'settings:roles' },
-    { id: 'crews', label: 'Posádky', permission: 'settings:crews' },
-    { id: 'depots', label: 'Depa', permission: 'settings:depots' },
-    { id: 'email', label: 'E-mailové šablony', permission: 'settings:email' },
-    { id: 'business', label: 'Firemní údaje', permission: 'settings:business' },
-    { id: 'import-export', label: 'Import/export', permission: 'settings:import-export' },
+    { id: 'preferences', label: t('tab_preferences'), permission: 'settings:preferences' },
+    { id: 'work', label: t('tab_work'), permission: 'settings:work' },
+    { id: 'breaks', label: t('tab_breaks'), permission: 'settings:breaks' },
+    { id: 'workers', label: t('tab_workers'), permission: 'settings:workers' },
+    { id: 'roles', label: t('tab_roles'), permission: 'settings:roles' },
+    { id: 'crews', label: t('tab_crews'), permission: 'settings:crews' },
+    { id: 'depots', label: t('tab_depots'), permission: 'settings:depots' },
+    { id: 'email', label: t('tab_email'), permission: 'settings:email' },
+    { id: 'business', label: t('tab_business'), permission: 'settings:business' },
+    { id: 'import-export', label: t('tab_import_export'), permission: 'settings:import-export' },
   ];
 
   // Filter tabs based on user permissions
@@ -127,8 +129,8 @@ export function Settings() {
   if (loading) {
     return (
       <div className={styles.settings}>
-        <h1>Nastavení</h1>
-        <div className={styles.loading}>Načítám nastavení...</div>
+        <h1>{t('title')}</h1>
+        <div className={styles.loading}>{t('loading')}</div>
       </div>
     );
   }
@@ -136,10 +138,10 @@ export function Settings() {
   if (error && !settings) {
     return (
       <div className={styles.settings}>
-        <h1>Nastavení</h1>
+        <h1>{t('title')}</h1>
         <div className={styles.error}>{error}</div>
         <button className="btn-primary" onClick={loadSettings}>
-          Zkusit znovu
+          {t('retry')}
         </button>
       </div>
     );
@@ -147,7 +149,7 @@ export function Settings() {
 
   return (
     <div className={styles.settings}>
-      <h1>Nastavení</h1>
+      <h1>{t('title')}</h1>
 
       <div className={styles.settingsLayout}>
         {/* Sidebar Navigation */}
@@ -181,9 +183,9 @@ export function Settings() {
               try {
                 const updated = await settingsService.updatePreferences(data);
                 setSettings((prev) => prev ? { ...prev, preferences: updated } : null);
-                showSuccess('Preference uloženy');
+                showSuccess(t('success_preferences'));
               } catch (e) {
-                setError('Nepodařilo se uložit preference');
+                setError(t('error_preferences'));
               } finally {
                 setSaving(false);
               }
@@ -201,9 +203,9 @@ export function Settings() {
               try {
                 const updated = await settingsService.updateWorkConstraints(data);
                 setSettings((prev) => prev ? { ...prev, workConstraints: updated } : null);
-                showSuccess('Nastavení pracovní doby uloženo');
+                showSuccess(t('success_work'));
               } catch (e) {
-                setError('Nepodařilo se uložit nastavení');
+                setError(t('error_work'));
               } finally {
                 setSaving(false);
               }
@@ -221,9 +223,9 @@ export function Settings() {
               try {
                 const updated = await settingsService.updateBusinessInfo(data);
                 setSettings((prev) => prev ? { ...prev, businessInfo: updated } : null);
-                showSuccess('Firemní údaje uloženy');
+                showSuccess(t('success_business'));
               } catch (e) {
-                setError('Nepodařilo se uložit firemní údaje');
+                setError(t('error_business'));
               } finally {
                 setSaving(false);
               }
@@ -241,9 +243,9 @@ export function Settings() {
               try {
                 const updated = await settingsService.updateEmailTemplates(data);
                 setSettings((prev) => prev ? { ...prev, emailTemplates: updated } : null);
-                showSuccess('E-mailové šablony uloženy');
+                showSuccess(t('success_email'));
               } catch (e) {
-                setError('Nepodařilo se uložit šablony');
+                setError(t('error_email'));
               } finally {
                 setSaving(false);
               }
@@ -261,10 +263,10 @@ export function Settings() {
               try {
                 const updated = await settingsService.updateBreakSettings(data);
                 setSettings((prev) => prev ? { ...prev, breakSettings: updated } : null);
-                showSuccess('Nastavení pauz uloženo');
+                showSuccess(t('success_breaks'));
               } catch (e) {
                 console.error('Failed to update break settings:', e);
-                setError('Nepodařilo se uložit nastavení pauz');
+                setError(t('error_breaks'));
               } finally {
                 setSaving(false);
               }
@@ -313,7 +315,7 @@ export function Settings() {
           <div className={styles.importExportContent}>
             {/* Export Section */}
             <section className={styles.section}>
-              <h2 className={styles.sectionTitle}>Export dat</h2>
+              <h2 className={styles.sectionTitle}>{t('export_title')}</h2>
               <ExportPlusPanel
                 crewOptions={crews.map((c) => ({ id: c.id, label: c.name }))}
                 depotOptions={(settings?.depots || []).map((d) => ({ id: d.id, label: d.name }))}
@@ -322,14 +324,14 @@ export function Settings() {
 
             {/* Import Section */}
             <section className={styles.section}>
-              <h2 className={styles.sectionTitle}>Import dat</h2>
+              <h2 className={styles.sectionTitle}>{t('import_title')}</h2>
 
               <div className={styles.exportContainer}>
                 {/* Customers Import */}
                 <div className={styles.exportCard}>
-                  <h3>1. Import zákazníků</h3>
+                  <h3>{t('import_customers_title')}</h3>
                   <p className={styles.exportDescription}>
-                    Importuje zákazníky z CSV. Automaticky spustí geokódování adres.
+                    {t('import_customers_desc')}
                   </p>
                   <button
                     type="button"
@@ -337,15 +339,15 @@ export function Settings() {
                     onClick={handleOpenCustomerImport}
                     disabled={!isConnected}
                   >
-                    📤 Importovat zákazníky
+                    {t('import_customers_btn')}
                   </button>
                 </div>
 
                 {/* Devices Import */}
                 <div className={styles.exportCard}>
-                  <h3>2. Import zařízení</h3>
+                  <h3>{t('import_devices_title')}</h3>
                   <p className={styles.exportDescription}>
-                    Importuje zařízení z CSV. Vyžaduje existující zákazníky (propojení přes IČO/email/telefon).
+                    {t('import_devices_desc')}
                   </p>
                   <button
                     type="button"
@@ -353,15 +355,15 @@ export function Settings() {
                     onClick={() => handleOpenImport('device')}
                     disabled={!isConnected}
                   >
-                    📤 Importovat zařízení
+                    {t('import_devices_btn')}
                   </button>
                 </div>
 
                 {/* Revisions Import */}
                 <div className={styles.exportCard}>
-                  <h3>3. Import revizí</h3>
+                  <h3>{t('import_revisions_title')}</h3>
                   <p className={styles.exportDescription}>
-                    Importuje revize z CSV. Vyžaduje existující zařízení (propojení přes sériové číslo).
+                    {t('import_revisions_desc')}
                   </p>
                   <button
                     type="button"
@@ -369,15 +371,15 @@ export function Settings() {
                     onClick={() => handleOpenImport('revision')}
                     disabled={!isConnected}
                   >
-                    📤 Importovat revize
+                    {t('import_revisions_btn')}
                   </button>
                 </div>
 
                 {/* Communications Import */}
                 <div className={styles.exportCard}>
-                  <h3>4. Import komunikace</h3>
+                  <h3>{t('import_comm_title')}</h3>
                   <p className={styles.exportDescription}>
-                    Importuje historii komunikace (hovory, emaily, poznámky) z CSV.
+                    {t('import_comm_desc')}
                   </p>
                   <button
                     type="button"
@@ -385,15 +387,15 @@ export function Settings() {
                     onClick={() => handleOpenImport('communication')}
                     disabled={!isConnected}
                   >
-                    📤 Importovat komunikaci
+                    {t('import_comm_btn')}
                   </button>
                 </div>
 
                 {/* Work Log Import */}
                 <div className={styles.exportCard}>
-                  <h3>5. Import pracovního deníku</h3>
+                  <h3>{t('import_worklog_title')}</h3>
                   <p className={styles.exportDescription}>
-                    Importuje pracovní deník (work_log) z CSV.
+                    {t('import_worklog_desc')}
                   </p>
                   <button
                     type="button"
@@ -401,16 +403,15 @@ export function Settings() {
                     onClick={() => handleOpenImport('work_log')}
                     disabled={!isConnected}
                   >
-                    📤 Importovat pracovní deník
+                    {t('import_worklog_btn')}
                   </button>
                 </div>
 
                 {/* ZIP Import */}
                 <div className={styles.exportCard}>
-                  <h3>📦 Import ZIP</h3>
+                  <h3>{t('import_zip_title')}</h3>
                   <p className={styles.exportDescription}>
-                    Importujte více souborů najednou z jednoho ZIP archivu. Automaticky rozpozná typy souborů
-                    a importuje je ve správném pořadí.
+                    {t('import_zip_desc')}
                   </p>
                   <button
                     type="button"
@@ -418,7 +419,7 @@ export function Settings() {
                     onClick={() => handleOpenImport('zip')}
                     disabled={!isConnected}
                   >
-                    📦 Importovat ZIP
+                    {t('import_zip_btn')}
                   </button>
                 </div>
               </div>
@@ -426,11 +427,11 @@ export function Settings() {
               <div className={styles.importHint}>
                 <p>
                   📋 <a href="/PROJECT_IMPORT.MD" target="_blank" rel="noopener noreferrer">
-                    Dokumentace formátů CSV pro import
+                    {t('import_docs_link')}
                   </a>
                 </p>
                 <p>
-                  Importujte v uvedeném pořadí (1-5). Každý import vyžaduje data z předchozích kroků.
+                  {t('import_order_hint')}
                 </p>
               </div>
             </section>
@@ -469,6 +470,7 @@ interface PreferencesFormProps {
 }
 
 function PreferencesForm({ defaultCrewId, defaultDepotId, crews, depots, saving, onSave }: PreferencesFormProps) {
+  const { t } = useTranslation('settings');
   const [crewId, setCrewId] = useState(defaultCrewId ?? '');
   const [depotId, setDepotId] = useState(defaultDepotId ?? '');
 
@@ -482,19 +484,19 @@ function PreferencesForm({ defaultCrewId, defaultDepotId, crews, depots, saving,
 
   return (
     <form onSubmit={handleSubmit} className={styles.form}>
-      <h3>Moje nastavení</h3>
+      <h3>{t('pref_title')}</h3>
       <p className={styles.formDescription}>
-        Nastavte svou výchozí posádku a depo. Tyto hodnoty se použijí jako výchozí filtry v plánovači tras.
+        {t('pref_description')}
       </p>
 
       <div className={styles.formGroup}>
-        <label>Výchozí posádka</label>
+        <label>{t('pref_default_crew')}</label>
         <select
           value={crewId}
           onChange={(e) => setCrewId(e.target.value)}
           className={styles.input}
         >
-          <option value="">— Žádná —</option>
+          <option value="">{t('pref_no_crew')}</option>
           {crews.map((crew) => (
             <option key={crew.id} value={crew.id}>
               {crew.name}
@@ -504,23 +506,23 @@ function PreferencesForm({ defaultCrewId, defaultDepotId, crews, depots, saving,
       </div>
 
       <div className={styles.formGroup}>
-        <label>Výchozí depo</label>
+        <label>{t('pref_default_depot')}</label>
         <select
           value={depotId}
           onChange={(e) => setDepotId(e.target.value)}
           className={styles.input}
         >
-          <option value="">— Žádné —</option>
+          <option value="">{t('pref_no_depot')}</option>
           {depots.map((depot) => (
             <option key={depot.id} value={depot.id}>
-              {depot.name}{depot.isPrimary ? ' (primární)' : ''}
+              {depot.name}{depot.isPrimary ? ` ${t('pref_primary')}` : ''}
             </option>
           ))}
         </select>
       </div>
 
       <button type="submit" className={styles.saveButton} disabled={saving}>
-        {saving ? 'Ukládám...' : 'Uložit'}
+        {saving ? t('saving') : t('save')}
       </button>
     </form>
   );
@@ -537,6 +539,7 @@ interface WorkConstraintsFormProps {
 }
 
 function WorkConstraintsForm({ data, saving, onSave }: WorkConstraintsFormProps) {
+  const { t } = useTranslation('settings');
   const [formData, setFormData] = useState({
     workingHoursStart: data.workingHoursStart || '08:00',
     workingHoursEnd: data.workingHoursEnd || '17:00',
@@ -553,11 +556,11 @@ function WorkConstraintsForm({ data, saving, onSave }: WorkConstraintsFormProps)
   return (
     <form className={styles.form} onSubmit={handleSubmit}>
       <div className={styles.formSection}>
-        <h3>Pracovní doba</h3>
+        <h3>{t('work_title')}</h3>
         
         <div className={styles.formRow}>
           <div className={styles.formGroup}>
-            <label htmlFor="workStart">Začátek</label>
+            <label htmlFor="workStart">{t('work_start')}</label>
             <input
               type="time"
               id="workStart"
@@ -566,7 +569,7 @@ function WorkConstraintsForm({ data, saving, onSave }: WorkConstraintsFormProps)
             />
           </div>
           <div className={styles.formGroup}>
-            <label htmlFor="workEnd">Konec</label>
+            <label htmlFor="workEnd">{t('work_end')}</label>
             <input
               type="time"
               id="workEnd"
@@ -578,10 +581,10 @@ function WorkConstraintsForm({ data, saving, onSave }: WorkConstraintsFormProps)
       </div>
 
       <div className={styles.formSection}>
-        <h3>Revize</h3>
+        <h3>{t('work_revisions')}</h3>
         
         <div className={styles.formGroup}>
-          <label htmlFor="maxRevisions">Max revizí za den</label>
+          <label htmlFor="maxRevisions">{t('work_max_per_day')}</label>
           <input
             type="number"
             id="maxRevisions"
@@ -593,7 +596,7 @@ function WorkConstraintsForm({ data, saving, onSave }: WorkConstraintsFormProps)
         </div>
         
         <div className={styles.formGroup}>
-          <label htmlFor="serviceDuration">Výchozí doba revize (min)</label>
+          <label htmlFor="serviceDuration">{t('work_default_duration')}</label>
           <input
             type="number"
             id="serviceDuration"
@@ -606,7 +609,7 @@ function WorkConstraintsForm({ data, saving, onSave }: WorkConstraintsFormProps)
         </div>
         
         <div className={styles.formGroup}>
-          <label htmlFor="interval">Výchozí interval revizí (měsíce)</label>
+          <label htmlFor="interval">{t('work_default_interval')}</label>
           <input
             type="number"
             id="interval"
@@ -620,7 +623,7 @@ function WorkConstraintsForm({ data, saving, onSave }: WorkConstraintsFormProps)
 
       <div className={styles.formActions}>
         <button type="submit" className="btn-primary" disabled={saving}>
-          {saving ? 'Ukládám...' : 'Uložit změny'}
+          {saving ? t('saving') : t('save_changes')}
         </button>
       </div>
     </form>
@@ -638,6 +641,7 @@ interface BusinessInfoFormProps {
 }
 
 function BusinessInfoForm({ data, saving, onSave }: BusinessInfoFormProps) {
+  const { t } = useTranslation('settings');
   const [formData, setFormData] = useState({
     name: data.name || '',
     phone: data.phone || '',
@@ -657,10 +661,10 @@ function BusinessInfoForm({ data, saving, onSave }: BusinessInfoFormProps) {
   return (
     <form className={styles.form} onSubmit={handleSubmit}>
       <div className={styles.formSection}>
-        <h3>Kontaktní údaje</h3>
+        <h3>{t('business_contact')}</h3>
         
         <div className={styles.formGroup}>
-          <label htmlFor="name">Jméno a příjmení</label>
+          <label htmlFor="name">{t('business_full_name')}</label>
           <input
             type="text"
             id="name"
@@ -670,7 +674,7 @@ function BusinessInfoForm({ data, saving, onSave }: BusinessInfoFormProps) {
         </div>
         
         <div className={styles.formGroup}>
-          <label htmlFor="phone">Telefon</label>
+          <label htmlFor="phone">{t('business_phone')}</label>
           <input
             type="tel"
             id="phone"
@@ -681,10 +685,10 @@ function BusinessInfoForm({ data, saving, onSave }: BusinessInfoFormProps) {
       </div>
 
       <div className={styles.formSection}>
-        <h3>Fakturační údaje</h3>
+        <h3>{t('business_billing')}</h3>
         
         <div className={styles.formGroup}>
-          <label htmlFor="businessName">Název firmy</label>
+          <label htmlFor="businessName">{t('business_company_name')}</label>
           <input
             type="text"
             id="businessName"
@@ -695,7 +699,7 @@ function BusinessInfoForm({ data, saving, onSave }: BusinessInfoFormProps) {
         
         <div className={styles.formRow}>
           <div className={styles.formGroup}>
-            <label htmlFor="ico">IČO</label>
+            <label htmlFor="ico">{t('business_ico')}</label>
             <input
               type="text"
               id="ico"
@@ -704,7 +708,7 @@ function BusinessInfoForm({ data, saving, onSave }: BusinessInfoFormProps) {
             />
           </div>
           <div className={styles.formGroup}>
-            <label htmlFor="dic">DIČ</label>
+            <label htmlFor="dic">{t('business_dic')}</label>
             <input
               type="text"
               id="dic"
@@ -716,10 +720,10 @@ function BusinessInfoForm({ data, saving, onSave }: BusinessInfoFormProps) {
       </div>
 
       <div className={styles.formSection}>
-        <h3>Adresa</h3>
+        <h3>{t('business_address')}</h3>
         
         <div className={styles.formGroup}>
-          <label htmlFor="street">Ulice a č.p.</label>
+          <label htmlFor="street">{t('business_street')}</label>
           <input
             type="text"
             id="street"
@@ -730,7 +734,7 @@ function BusinessInfoForm({ data, saving, onSave }: BusinessInfoFormProps) {
         
         <div className={styles.formRow}>
           <div className={styles.formGroup}>
-            <label htmlFor="city">Město</label>
+            <label htmlFor="city">{t('business_city')}</label>
             <input
               type="text"
               id="city"
@@ -739,7 +743,7 @@ function BusinessInfoForm({ data, saving, onSave }: BusinessInfoFormProps) {
             />
           </div>
           <div className={styles.formGroup}>
-            <label htmlFor="postalCode">PSČ</label>
+            <label htmlFor="postalCode">{t('business_postal_code')}</label>
             <input
               type="text"
               id="postalCode"
@@ -752,7 +756,7 @@ function BusinessInfoForm({ data, saving, onSave }: BusinessInfoFormProps) {
 
       <div className={styles.formActions}>
         <button type="submit" className="btn-primary" disabled={saving}>
-          {saving ? 'Ukládám...' : 'Uložit změny'}
+          {saving ? t('saving') : t('save_changes')}
         </button>
       </div>
     </form>
@@ -770,6 +774,7 @@ interface EmailTemplatesFormProps {
 }
 
 function EmailTemplatesForm({ data, saving, onSave }: EmailTemplatesFormProps) {
+  const { t } = useTranslation('settings');
   const [formData, setFormData] = useState({
     confirmationSubjectTemplate: data.confirmationSubjectTemplate || 'Potvrzení termínu - {{customerName}}',
     confirmationBodyTemplate: data.confirmationBodyTemplate || 'Dobrý den,\n\npotvrzujeme dohodnutý termín návštěvy.\n\nS pozdravem',
@@ -788,13 +793,13 @@ function EmailTemplatesForm({ data, saving, onSave }: EmailTemplatesFormProps) {
   return (
     <form className={styles.form} onSubmit={handleSubmit}>
       <div className={styles.formSection}>
-        <h3>1) Potvrzení dohodnutého termínu (ihned)</h3>
+        <h3>{t('email_confirmation_title')}</h3>
         <p className={styles.hint}>
-          Odesílá se ihned po dohodnutí termínu.
+          {t('email_confirmation_hint')}
         </p>
 
         <div className={styles.formGroup}>
-          <label htmlFor="subject">Předmět e-mailu</label>
+          <label htmlFor="subject">{t('email_subject')}</label>
           <input
             type="text"
             id="subject"
@@ -804,7 +809,7 @@ function EmailTemplatesForm({ data, saving, onSave }: EmailTemplatesFormProps) {
         </div>
 
         <div className={styles.formGroup}>
-          <label htmlFor="body">Text e-mailu</label>
+          <label htmlFor="body">{t('email_body')}</label>
           <textarea
             id="body"
             rows={10}
@@ -815,14 +820,14 @@ function EmailTemplatesForm({ data, saving, onSave }: EmailTemplatesFormProps) {
       </div>
 
       <div className={styles.formSection}>
-        <h3>2) Připomínka termínu (den předem)</h3>
+        <h3>{t('email_reminder_title')}</h3>
         <p className={styles.hint}>
-          Použijte proměnné: {'{{customerName}}'}, {'{{deviceName}}'}, {'{{dueDate}}'}
+          {t('email_reminder_hint')}
         </p>
 
         <div className={styles.formRow}>
           <div className={styles.formGroup}>
-            <label htmlFor="reminderSendTime">Čas automatického odeslání</label>
+            <label htmlFor="reminderSendTime">{t('email_reminder_send_time')}</label>
             <input
               type="time"
               id="reminderSendTime"
@@ -833,7 +838,7 @@ function EmailTemplatesForm({ data, saving, onSave }: EmailTemplatesFormProps) {
         </div>
 
         <div className={styles.formGroup}>
-          <label htmlFor="reminderSubject">Předmět e-mailu</label>
+          <label htmlFor="reminderSubject">{t('email_subject')}</label>
           <input
             type="text"
             id="reminderSubject"
@@ -843,7 +848,7 @@ function EmailTemplatesForm({ data, saving, onSave }: EmailTemplatesFormProps) {
         </div>
 
         <div className={styles.formGroup}>
-          <label htmlFor="reminderBody">Text e-mailu</label>
+          <label htmlFor="reminderBody">{t('email_body')}</label>
           <textarea
             id="reminderBody"
             rows={10}
@@ -854,35 +859,35 @@ function EmailTemplatesForm({ data, saving, onSave }: EmailTemplatesFormProps) {
       </div>
 
       <div className={styles.formSection}>
-        <h3>3) Třetí šablona (rezervováno)</h3>
+        <h3>{t('email_third_title')}</h3>
         <p className={styles.hint}>
-          Tato šablona je připravená pro další scénář.
+          {t('email_third_hint')}
         </p>
         <div className={styles.formGroup}>
-          <label htmlFor="thirdSubjectTemplate">Předmět e-mailu</label>
+          <label htmlFor="thirdSubjectTemplate">{t('email_subject')}</label>
           <input
             type="text"
             id="thirdSubjectTemplate"
             value={formData.thirdSubjectTemplate}
             onChange={(e) => setFormData({ ...formData, thirdSubjectTemplate: e.target.value })}
-            placeholder="Doplníte později"
+            placeholder={t('email_placeholder_later')}
           />
         </div>
         <div className={styles.formGroup}>
-          <label htmlFor="thirdBodyTemplate">Text e-mailu</label>
+          <label htmlFor="thirdBodyTemplate">{t('email_body')}</label>
           <textarea
             id="thirdBodyTemplate"
             rows={8}
             value={formData.thirdBodyTemplate}
             onChange={(e) => setFormData({ ...formData, thirdBodyTemplate: e.target.value })}
-            placeholder="Doplníte později"
+            placeholder={t('email_placeholder_later')}
           />
         </div>
       </div>
 
       <div className={styles.formActions}>
         <button type="submit" className="btn-primary" disabled={saving}>
-          {saving ? 'Ukládám...' : 'Uložit změny'}
+          {saving ? t('saving') : t('save_changes')}
         </button>
       </div>
     </form>
@@ -900,6 +905,7 @@ interface BreakSettingsFormProps {
 }
 
 function BreakSettingsForm({ data, saving, onSave }: BreakSettingsFormProps) {
+  const { t } = useTranslation('settings');
   const resolvedData = data ?? DEFAULT_BREAK_SETTINGS;
   const [enforceDrivingBreakRule, setEnforceDrivingBreakRule] = useState<boolean>(() => {
     const raw = localStorage.getItem('planningInbox.enforceDrivingBreakRule');
@@ -923,9 +929,9 @@ function BreakSettingsForm({ data, saving, onSave }: BreakSettingsFormProps) {
   return (
     <form className={styles.form} onSubmit={handleSubmit}>
       <div className={styles.formSection}>
-        <h3>Automatická pauza v trasách</h3>
+        <h3>{t('break_title')}</h3>
         <p className={styles.hint}>
-          Nastavte, zda se má do nově vytvořených tras automaticky vkládat obědová pauza.
+          {t('break_description')}
         </p>
         
         <div className={styles.formGroup}>
@@ -935,12 +941,12 @@ function BreakSettingsForm({ data, saving, onSave }: BreakSettingsFormProps) {
               checked={formData.breakEnabled}
               onChange={(e) => setFormData({ ...formData, breakEnabled: e.target.checked })}
             />
-            <span>Automaticky vkládat pauzu do nových tras</span>
+            <span>{t('break_auto_insert')}</span>
           </label>
         </div>
 
         <div className={styles.formGroup}>
-          <label htmlFor="duration">Délka pauzy (minuty)</label>
+          <label htmlFor="duration">{t('break_duration')}</label>
           <input
             type="number"
             id="duration"
@@ -954,7 +960,7 @@ function BreakSettingsForm({ data, saving, onSave }: BreakSettingsFormProps) {
 
         <div className={styles.formRow}>
           <div className={styles.formGroup}>
-            <label htmlFor="earliestTime">Časové rozmezí - od</label>
+            <label htmlFor="earliestTime">{t('break_time_from')}</label>
             <input
               type="time"
               id="earliestTime"
@@ -964,7 +970,7 @@ function BreakSettingsForm({ data, saving, onSave }: BreakSettingsFormProps) {
             />
           </div>
           <div className={styles.formGroup}>
-            <label htmlFor="latestTime">Časové rozmezí - do</label>
+            <label htmlFor="latestTime">{t('break_time_to')}</label>
             <input
               type="time"
               id="latestTime"
@@ -976,12 +982,12 @@ function BreakSettingsForm({ data, saving, onSave }: BreakSettingsFormProps) {
         </div>
 
         <p className={styles.hint}>
-          Pauza bude umístěna v čase mezi {formData.breakEarliestTime} a {formData.breakLatestTime}.
+          {t('break_time_hint', { from: formData.breakEarliestTime, to: formData.breakLatestTime })}
         </p>
 
         <div className={styles.formRow}>
           <div className={styles.formGroup}>
-            <label htmlFor="minKm">Rozmezí najetých km - od</label>
+            <label htmlFor="minKm">{t('break_km_from')}</label>
             <input
               type="number"
               id="minKm"
@@ -994,7 +1000,7 @@ function BreakSettingsForm({ data, saving, onSave }: BreakSettingsFormProps) {
             />
           </div>
           <div className={styles.formGroup}>
-            <label htmlFor="maxKm">Rozmezí najetých km - do</label>
+            <label htmlFor="maxKm">{t('break_km_to')}</label>
             <input
               type="number"
               id="maxKm"
@@ -1009,7 +1015,7 @@ function BreakSettingsForm({ data, saving, onSave }: BreakSettingsFormProps) {
         </div>
 
         <p className={styles.hint}>
-          Pauza bude umístěna po najetí {formData.breakMinKm} až {formData.breakMaxKm} km od startu.
+          {t('break_km_hint', { min: formData.breakMinKm, max: formData.breakMaxKm })}
         </p>
 
         <div className={styles.formGroup}>
@@ -1019,14 +1025,14 @@ function BreakSettingsForm({ data, saving, onSave }: BreakSettingsFormProps) {
               checked={enforceDrivingBreakRule}
               onChange={(e) => setEnforceDrivingBreakRule(e.target.checked)}
             />
-            <span>Vložit pauzu 45 minut nejpozději po 4,5 hodinách kumulovaného řízení</span>
+            <span>{t('break_driving_rule')}</span>
           </label>
         </div>
       </div>
 
       <div className={styles.formActions}>
         <button type="submit" className="btn-primary" disabled={saving}>
-          {saving ? 'Ukládám...' : 'Uložit změny'}
+          {saving ? t('saving') : t('save_changes')}
         </button>
       </div>
     </form>
@@ -1043,6 +1049,7 @@ interface DepotsManagerProps {
 }
 
 function DepotsManager({ depots, onUpdate }: DepotsManagerProps) {
+  const { t } = useTranslation('settings');
   const [showForm, setShowForm] = useState(false);
   const [editingDepot, setEditingDepot] = useState<Depot | null>(null);
   const [saving, setSaving] = useState(false);
@@ -1057,7 +1064,7 @@ function DepotsManager({ depots, onUpdate }: DepotsManagerProps) {
       const geocoded = await settingsService.geocodeDepotAddress(data);
       
       if (!geocoded.coordinates) {
-        setError('Adresa nebyla nalezena. Zkontrolujte prosím zadané údaje.');
+        setError(t('depot_error_geocode'));
         setSaving(false);
         return;
       }
@@ -1076,7 +1083,7 @@ function DepotsManager({ depots, onUpdate }: DepotsManagerProps) {
       setShowForm(false);
       await onUpdate();
     } catch (e) {
-      setError('Nepodařilo se vytvořit depo');
+      setError(t('depot_error_create'));
     } finally {
       setSaving(false);
     }
@@ -1105,20 +1112,20 @@ function DepotsManager({ depots, onUpdate }: DepotsManagerProps) {
       setEditingDepot(null);
       await onUpdate();
     } catch (e) {
-      setError('Nepodařilo se aktualizovat depo');
+      setError(t('depot_error_update'));
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = async (depotId: string) => {
-    if (!confirm('Opravdu chcete smazat toto depo?')) return;
+    if (!confirm(t('depot_confirm_delete'))) return;
     
     try {
       await settingsService.deleteDepot(depotId);
       await onUpdate();
     } catch (e) {
-      setError('Nepodařilo se smazat depo');
+      setError(t('depot_error_delete'));
     }
   };
 
@@ -1130,7 +1137,7 @@ function DepotsManager({ depots, onUpdate }: DepotsManagerProps) {
       });
       await onUpdate();
     } catch (e) {
-      setError('Nepodařilo se nastavit primární depo');
+      setError(t('depot_error_primary'));
     }
   };
 
@@ -1141,14 +1148,14 @@ function DepotsManager({ depots, onUpdate }: DepotsManagerProps) {
       {/* Depot list */}
       <div className={styles.depotList}>
         {depots.length === 0 ? (
-          <p className={styles.empty}>Zatím nemáte žádné depo. Vytvořte první.</p>
+          <p className={styles.empty}>{t('depot_empty')}</p>
         ) : (
           depots.map((depot) => (
             <div key={depot.id} className={`${styles.depotCard} ${depot.isPrimary ? styles.primary : ''}`}>
               <div className={styles.depotInfo}>
                 <div className={styles.depotHeader}>
                   <strong>{depot.name}</strong>
-                  {depot.isPrimary && <span className={styles.primaryBadge}>Primární</span>}
+                  {depot.isPrimary && <span className={styles.primaryBadge}>{t('depot_primary')}</span>}
                 </div>
                 <small>
                   {depot.street && `${depot.street}, `}
@@ -1162,7 +1169,7 @@ function DepotsManager({ depots, onUpdate }: DepotsManagerProps) {
                     type="button"
                     className={styles.iconButton}
                     onClick={() => handleSetPrimary(depot)}
-                    title="Nastavit jako primární"
+                    title={t('depot_set_primary')}
                   >
                     ⭐
                   </button>
@@ -1171,7 +1178,7 @@ function DepotsManager({ depots, onUpdate }: DepotsManagerProps) {
                   type="button"
                   className={styles.iconButton}
                   onClick={() => setEditingDepot(depot)}
-                  title="Upravit"
+                  title={t('edit')}
                 >
                   ✏️
                 </button>
@@ -1179,7 +1186,7 @@ function DepotsManager({ depots, onUpdate }: DepotsManagerProps) {
                   type="button"
                   className={`${styles.iconButton} ${styles.danger}`}
                   onClick={() => handleDelete(depot.id)}
-                  title="Smazat"
+                  title={t('delete_action')}
                 >
                   🗑️
                 </button>
@@ -1209,7 +1216,7 @@ function DepotsManager({ depots, onUpdate }: DepotsManagerProps) {
           className="btn-primary"
           onClick={() => setShowForm(true)}
         >
-          + Přidat depo
+          {t('depot_add')}
         </button>
       )}
     </div>
@@ -1228,6 +1235,7 @@ interface DepotFormProps {
 }
 
 function DepotForm({ depot, saving, onSave, onCancel }: DepotFormProps) {
+  const { t } = useTranslation('settings');
   const [formData, setFormData] = useState({
     name: depot?.name || '',
     street: depot?.street || '',
@@ -1242,10 +1250,10 @@ function DepotForm({ depot, saving, onSave, onCancel }: DepotFormProps) {
 
   return (
     <form className={styles.depotForm} onSubmit={handleSubmit}>
-      <h4>{depot ? 'Upravit depo' : 'Nové depo'}</h4>
+      <h4>{depot ? t('depot_edit_title') : t('depot_new_title')}</h4>
       
       <div className={styles.formGroup}>
-        <label htmlFor="depotName">Název</label>
+        <label htmlFor="depotName">{t('depot_name')}</label>
         <input
           type="text"
           id="depotName"
@@ -1256,7 +1264,7 @@ function DepotForm({ depot, saving, onSave, onCancel }: DepotFormProps) {
       </div>
       
       <div className={styles.formGroup}>
-        <label htmlFor="depotStreet">Ulice a č.p.</label>
+        <label htmlFor="depotStreet">{t('depot_street')}</label>
         <input
           type="text"
           id="depotStreet"
@@ -1268,7 +1276,7 @@ function DepotForm({ depot, saving, onSave, onCancel }: DepotFormProps) {
       
       <div className={styles.formRow}>
         <div className={styles.formGroup}>
-          <label htmlFor="depotCity">Město</label>
+          <label htmlFor="depotCity">{t('depot_city')}</label>
           <input
             type="text"
             id="depotCity"
@@ -1278,7 +1286,7 @@ function DepotForm({ depot, saving, onSave, onCancel }: DepotFormProps) {
           />
         </div>
         <div className={styles.formGroup}>
-          <label htmlFor="depotPostalCode">PSČ</label>
+          <label htmlFor="depotPostalCode">{t('depot_postal_code')}</label>
           <input
             type="text"
             id="depotPostalCode"
@@ -1290,10 +1298,10 @@ function DepotForm({ depot, saving, onSave, onCancel }: DepotFormProps) {
       
       <div className={styles.formActions}>
         <button type="button" className="btn-secondary" onClick={onCancel}>
-          Zrušit
+          {t('common:cancel')}
         </button>
         <button type="submit" className="btn-primary" disabled={saving}>
-          {saving ? 'Ukládám...' : (depot ? 'Uložit' : 'Vytvořit')}
+          {saving ? t('saving') : (depot ? t('save') : t('depot_create'))}
         </button>
       </div>
     </form>
@@ -1310,6 +1318,7 @@ interface CrewsManagerProps {
 }
 
 function CrewsManager({ crews, onUpdate }: CrewsManagerProps) {
+  const { t } = useTranslation('settings');
   const [showForm, setShowForm] = useState(false);
   const [editingCrew, setEditingCrew] = useState<Crew | null>(null);
   const [saving, setSaving] = useState(false);
@@ -1330,7 +1339,7 @@ function CrewsManager({ crews, onUpdate }: CrewsManagerProps) {
       setShowForm(false);
       await onUpdate();
     } catch (e) {
-      setError('Nepodařilo se vytvořit posádku');
+      setError(t('crew_error_create'));
     } finally {
       setSaving(false);
     }
@@ -1354,20 +1363,20 @@ function CrewsManager({ crews, onUpdate }: CrewsManagerProps) {
       setEditingCrew(null);
       await onUpdate();
     } catch (e) {
-      setError('Nepodařilo se aktualizovat posádku');
+      setError(t('crew_error_update'));
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = async (crewId: string) => {
-    if (!confirm('Opravdu chcete smazat tuto posádku?')) return;
+    if (!confirm(t('crew_confirm_delete'))) return;
     
     try {
       await crewService.deleteCrew(crewId);
       await onUpdate();
     } catch (e) {
-      setError('Nepodařilo se smazat posádku');
+      setError(t('crew_error_delete'));
     }
   };
 
@@ -1379,7 +1388,7 @@ function CrewsManager({ crews, onUpdate }: CrewsManagerProps) {
       });
       await onUpdate();
     } catch (e) {
-      setError('Nepodařilo se změnit stav posádky');
+      setError(t('crew_error_toggle'));
     }
   };
 
@@ -1390,19 +1399,19 @@ function CrewsManager({ crews, onUpdate }: CrewsManagerProps) {
       {/* Crew list */}
       <div className={styles.depotList}>
         {crews.length === 0 ? (
-          <p className={styles.empty}>Zatím nemáte žádné posádky. Vytvořte první.</p>
+          <p className={styles.empty}>{t('crew_empty')}</p>
         ) : (
           crews.map((crew) => (
             <div key={crew.id} className={`${styles.depotCard} ${!crew.isActive ? styles.inactive : ''}`}>
               <div className={styles.depotInfo}>
                 <div className={styles.depotHeader}>
                   <strong>{crew.name}</strong>
-                  {!crew.isActive && <span className={styles.inactiveBadge}>Neaktivní</span>}
+                  {!crew.isActive && <span className={styles.inactiveBadge}>{t('crew_inactive')}</span>}
                 </div>
                 <small>
                   {crew.workingHoursStart?.slice(0, 5) || '08:00'}–{crew.workingHoursEnd?.slice(0, 5) || '17:00'}
                   {' · '}
-                  Rezerva {crew.arrivalBufferPercent ?? 10} %{(crew.arrivalBufferFixedMinutes ?? 0) > 0 ? ` + ${crew.arrivalBufferFixedMinutes} min` : ''}
+                  {t('crew_buffer')} {crew.arrivalBufferPercent ?? 10} %{(crew.arrivalBufferFixedMinutes ?? 0) > 0 ? ` + ${crew.arrivalBufferFixedMinutes} min` : ''}
                 </small>
               </div>
               <div className={styles.depotActions}>
@@ -1410,7 +1419,7 @@ function CrewsManager({ crews, onUpdate }: CrewsManagerProps) {
                   type="button"
                   className={styles.iconButton}
                   onClick={() => handleToggleActive(crew)}
-                  title={crew.isActive ? 'Deaktivovat' : 'Aktivovat'}
+                  title={crew.isActive ? t('crew_deactivate') : t('crew_activate')}
                 >
                   {crew.isActive ? '✓' : '○'}
                 </button>
@@ -1418,7 +1427,7 @@ function CrewsManager({ crews, onUpdate }: CrewsManagerProps) {
                   type="button"
                   className={styles.iconButton}
                   onClick={() => setEditingCrew(crew)}
-                  title="Upravit"
+                  title={t('edit')}
                 >
                   ✏️
                 </button>
@@ -1426,7 +1435,7 @@ function CrewsManager({ crews, onUpdate }: CrewsManagerProps) {
                   type="button"
                   className={`${styles.iconButton} ${styles.danger}`}
                   onClick={() => handleDelete(crew.id)}
-                  title="Smazat"
+                  title={t('delete_action')}
                 >
                   🗑️
                 </button>
@@ -1456,7 +1465,7 @@ function CrewsManager({ crews, onUpdate }: CrewsManagerProps) {
           className="btn-primary"
           onClick={() => setShowForm(true)}
         >
-          + Přidat posádku
+          {t('crew_add')}
         </button>
       )}
     </div>
@@ -1483,6 +1492,7 @@ interface CrewFormProps {
 }
 
 function CrewForm({ crew, saving, onSave, onCancel }: CrewFormProps) {
+  const { t } = useTranslation('settings');
   const [formData, setFormData] = useState<CrewFormData>({
     name: crew?.name || '',
     arrivalBufferPercent: crew?.arrivalBufferPercent ?? 10,
@@ -1498,23 +1508,23 @@ function CrewForm({ crew, saving, onSave, onCancel }: CrewFormProps) {
 
   return (
     <form className={styles.depotForm} onSubmit={handleSubmit}>
-      <h4>{crew ? 'Upravit posádku' : 'Nová posádka'}</h4>
+      <h4>{crew ? t('crew_edit_title') : t('crew_new_title')}</h4>
       
       <div className={styles.formGroup}>
-        <label htmlFor="crewName">Název</label>
+        <label htmlFor="crewName">{t('crew_name')}</label>
         <input
           type="text"
           id="crewName"
           value={formData.name}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
           required
-          placeholder="např. Posádka 1"
+          placeholder={t('crew_name_placeholder')}
         />
       </div>
 
       <div className={styles.crewDetailRow}>
         <div className={styles.formGroup}>
-          <label htmlFor="crewWorkStart">Začátek směny</label>
+          <label htmlFor="crewWorkStart">{t('crew_shift_start')}</label>
           <input
             type="time"
             id="crewWorkStart"
@@ -1523,7 +1533,7 @@ function CrewForm({ crew, saving, onSave, onCancel }: CrewFormProps) {
           />
         </div>
         <div className={styles.formGroup}>
-          <label htmlFor="crewWorkEnd">Konec směny</label>
+          <label htmlFor="crewWorkEnd">{t('crew_shift_end')}</label>
           <input
             type="time"
             id="crewWorkEnd"
@@ -1534,7 +1544,7 @@ function CrewForm({ crew, saving, onSave, onCancel }: CrewFormProps) {
       </div>
 
       <div className={styles.formGroup}>
-        <label htmlFor="crewBuffer">Rezerva příjezdu (%)</label>
+        <label htmlFor="crewBuffer">{t('crew_arrival_buffer_percent')}</label>
         <input
           type="number"
           id="crewBuffer"
@@ -1545,13 +1555,12 @@ function CrewForm({ crew, saving, onSave, onCancel }: CrewFormProps) {
           step={1}
         />
         <p className={styles.bufferHint}>
-          Procento doby přejezdu, o které posádka přijede dříve před naplánovaným oknem.
-          Např. 10 % z 60minutového přejezdu = příjezd 6 minut před oknem.
+          {t('crew_arrival_buffer_hint')}
         </p>
       </div>
 
       <div className={styles.formGroup}>
-        <label htmlFor="crewBufferFixed">Fixní rezerva příjezdu (min)</label>
+        <label htmlFor="crewBufferFixed">{t('crew_arrival_buffer_fixed')}</label>
         <input
           type="number"
           id="crewBufferFixed"
@@ -1562,17 +1571,16 @@ function CrewForm({ crew, saving, onSave, onCancel }: CrewFormProps) {
           step={1}
         />
         <p className={styles.bufferHint}>
-          Pevná časová rezerva v minutách přidaná ke každému přejezdu navíc k procentuální rezervě.
-          Celková rezerva = (přejezd × procento) + fixní minuty.
+          {t('crew_arrival_buffer_fixed_hint')}
         </p>
       </div>
       
       <div className={styles.formActions}>
         <button type="button" className="btn-secondary" onClick={onCancel}>
-          Zrušit
+          {t('common:cancel')}
         </button>
         <button type="submit" className="btn-primary" disabled={saving}>
-          {saving ? 'Ukládám...' : (crew ? 'Uložit' : 'Vytvořit')}
+          {saving ? t('saving') : (crew ? t('save') : t('crew_create'))}
         </button>
       </div>
     </form>
@@ -1589,6 +1597,7 @@ interface WorkersManagerProps {
 }
 
 function WorkersManager({ workers, onUpdate }: WorkersManagerProps) {
+  const { t } = useTranslation('settings');
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1646,11 +1655,11 @@ function WorkersManager({ workers, onUpdate }: WorkersManagerProps) {
 
   const handleSubmit = async () => {
     if (!name || !email || !password) {
-      setError('Vyplňte všechna povinná pole');
+      setError(t('worker_error_required'));
       return;
     }
     if (password.length < 8) {
-      setError('Heslo musí mít alespoň 8 znaků');
+      setError(t('worker_error_password'));
       return;
     }
     setSaving(true);
@@ -1661,19 +1670,19 @@ function WorkersManager({ workers, onUpdate }: WorkersManagerProps) {
       resetForm();
       await onUpdate();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Nepodařilo se vytvořit pracovníka');
+      setError(e instanceof Error ? e.message : t('worker_error_create'));
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = async (workerId: string, workerName: string) => {
-    if (!confirm(`Opravdu chcete smazat pracovníka "${workerName}"?`)) return;
+    if (!confirm(t('worker_confirm_delete', { name: workerName }))) return;
     try {
       await workerService.deleteWorker(workerId);
       await onUpdate();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Nepodařilo se smazat pracovníka');
+      setError(e instanceof Error ? e.message : t('worker_error_delete'));
     }
   };
 
@@ -1696,7 +1705,7 @@ function WorkersManager({ workers, onUpdate }: WorkersManagerProps) {
       const roles = await roleService.getUserRoles(editingWorkerRoles);
       setWorkerRoles(new Map(workerRoles.set(editingWorkerRoles, roles)));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Nepodařilo se uložit role');
+      setError(e instanceof Error ? e.message : t('worker_error_roles'));
     }
   };
 
@@ -1728,31 +1737,30 @@ function WorkersManager({ workers, onUpdate }: WorkersManagerProps) {
   return (
     <div>
       <div className={styles.sectionHeader}>
-        <h2 className={styles.sectionTitle}>Pracovníci</h2>
+        <h2 className={styles.sectionTitle}>{t('worker_title')}</h2>
         <button className={styles.addButton} onClick={() => setShowForm(true)}>
-          + Přidat pracovníka
+          {t('worker_add')}
         </button>
       </div>
 
       <p className={styles.sectionDescription}>
-        Pracovníci mají přístup k zákazníkům, kalendáři, plánovači a dalším stránkám.
-        Nemohou měnit nastavení ani spravovat admin panel.
+        {t('worker_description')}
       </p>
 
       {error && <div className={styles.error}>{error}</div>}
 
       {showForm && (
         <div className={styles.formCard}>
-          <h3>Nový pracovník</h3>
+          <h3>{t('worker_new')}</h3>
           <div className={styles.formGrid}>
             <div className={styles.formGroup}>
-              <label className={styles.label}>Jméno *</label>
+              <label className={styles.label}>{t('worker_name')}</label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className={styles.input}
-                placeholder="Jan Novák"
+                placeholder={t('worker_name_placeholder')}
               />
             </div>
             <div className={styles.formGroup}>
@@ -1762,17 +1770,17 @@ function WorkersManager({ workers, onUpdate }: WorkersManagerProps) {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className={styles.input}
-                placeholder="jan@firma.cz"
+                placeholder={t('worker_email_placeholder')}
               />
             </div>
             <div className={styles.formGroup}>
-              <label className={styles.label}>Heslo * (min. 8 znaků)</label>
+              <label className={styles.label}>{t('worker_password')}</label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className={styles.input}
-                placeholder="Heslo pro přihlášení"
+                placeholder={t('worker_password_placeholder')}
                 minLength={8}
               />
             </div>
@@ -1780,7 +1788,7 @@ function WorkersManager({ workers, onUpdate }: WorkersManagerProps) {
           
           {roles.length > 0 && (
             <div className={styles.formGroup} style={{ marginTop: '1rem' }}>
-              <label className={styles.label}>Role (volitelné)</label>
+              <label className={styles.label}>{t('worker_roles')}</label>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem' }}>
                 {roles.map((role) => (
                   <label key={role.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
@@ -1798,10 +1806,10 @@ function WorkersManager({ workers, onUpdate }: WorkersManagerProps) {
           
           <div className={styles.formActions}>
             <button className={styles.saveButton} onClick={handleSubmit} disabled={saving}>
-              {saving ? 'Ukládám...' : 'Vytvořit pracovníka'}
+              {saving ? t('saving') : t('worker_create')}
             </button>
             <button className={styles.cancelButton} onClick={resetForm}>
-              Zrušit
+              {t('common:cancel')}
             </button>
           </div>
         </div>
@@ -1809,8 +1817,8 @@ function WorkersManager({ workers, onUpdate }: WorkersManagerProps) {
 
       {workers.length === 0 ? (
         <div className={styles.emptyState}>
-          <p>Zatím nemáte žádné pracovníky.</p>
-          <p>Pracovníci se mohou přihlásit pod svým účtem a pracovat se systémem.</p>
+          <p>{t('worker_empty')}</p>
+          <p>{t('worker_empty_hint')}</p>
         </div>
       ) : (
         <div className={styles.crewList}>
@@ -1844,7 +1852,7 @@ function WorkersManager({ workers, onUpdate }: WorkersManagerProps) {
                   <button
                     className={styles.editCrewButton}
                     onClick={() => handleEditRoles(worker.id)}
-                    title="Upravit role"
+                    title={t('worker_edit_roles')}
                   >
                     🔑
                   </button>
@@ -1852,7 +1860,7 @@ function WorkersManager({ workers, onUpdate }: WorkersManagerProps) {
                 <button
                   className={styles.deleteCrewButton}
                   onClick={() => handleDelete(worker.id, worker.name)}
-                  title="Smazat pracovníka"
+                  title={t('worker_delete')}
                 >
                   🗑️
                 </button>

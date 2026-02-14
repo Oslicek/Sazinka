@@ -7,6 +7,7 @@
  */
 
 import { useCallback, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   submitDeviceImportJob,
   submitRevisionImportJob,
@@ -21,20 +22,20 @@ import styles from './ImportModal.module.css';
 
 export type ImportEntityType = 'device' | 'revision' | 'communication' | 'work_log' | 'zip';
 
-const ENTITY_LABELS: Record<ImportEntityType, string> = {
-  device: 'zařízení',
-  revision: 'revizí',
-  communication: 'komunikace',
-  work_log: 'pracovního deníku',
-  zip: 'souborů',
+const ENTITY_LABEL_KEYS: Record<ImportEntityType, string> = {
+  device: 'modal_entity_device',
+  revision: 'modal_entity_revision',
+  communication: 'modal_entity_communication',
+  work_log: 'modal_entity_work_log',
+  zip: 'modal_entity_zip',
 };
 
-const ENTITY_TITLES: Record<ImportEntityType, string> = {
-  device: 'Import zařízení',
-  revision: 'Import revizí',
-  communication: 'Import komunikace',
-  work_log: 'Import pracovního deníku',
-  zip: 'Import ZIP',
+const ENTITY_TITLE_KEYS: Record<ImportEntityType, string> = {
+  device: 'modal_title_device',
+  revision: 'modal_title_revision',
+  communication: 'modal_title_communication',
+  work_log: 'modal_title_work_log',
+  zip: 'modal_title_zip',
 };
 
 const JOB_TYPES: Record<ImportEntityType, JobType> = {
@@ -73,6 +74,7 @@ interface FilePreview {
 }
 
 export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportModalProps) {
+  const { t } = useTranslation('import');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [state, setState] = useState<ModalState>('idle');
@@ -92,7 +94,7 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
           const lines = text.split(/\r?\n/).filter(line => line.trim());
 
           if (lines.length < 2) {
-            reject(new Error('CSV soubor musí obsahovat alespoň hlavičku a jeden řádek dat'));
+            reject(new Error(t('modal_csv_min_rows')));
             return;
           }
 
@@ -136,10 +138,10 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
         }
       };
 
-      reader.onerror = () => reject(new Error('Nepodařilo se načíst soubor'));
+      reader.onerror = () => reject(new Error(t('modal_error_read')));
       reader.readAsText(file, 'utf-8');
     });
-  }, []);
+  }, [t]);
 
   const parseZipPreview = useCallback(async (file: File): Promise<FilePreview> => {
     return new Promise((resolve, reject) => {
@@ -166,7 +168,7 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
         }
       };
 
-      reader.onerror = () => reject(new Error('Nepodařilo se načíst ZIP soubor'));
+      reader.onerror = () => reject(new Error(t('modal_error_read_zip')));
       reader.readAsArrayBuffer(file);
     });
   }, []);
@@ -176,19 +178,19 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
     const expectsZip = entityType === 'zip';
 
     if (expectsZip && !isZip) {
-      setError('Prosím vyberte soubor ZIP.');
+      setError(t('modal_error_select_zip'));
       setState('error');
       return;
     }
 
     if (!expectsZip && isZip) {
-      setError('Prosím vyberte soubor CSV, ne ZIP.');
+      setError(t('modal_error_select_csv_not_zip'));
       setState('error');
       return;
     }
 
     if (!expectsZip && !file.name.endsWith('.csv') && file.type !== 'text/csv') {
-      setError('Prosím vyberte soubor CSV.');
+      setError(t('modal_error_select_csv'));
       setState('error');
       return;
     }
@@ -208,10 +210,10 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
       setPreview(filePreview);
       setState('preview');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nepodařilo se zpracovat soubor');
+      setError(err instanceof Error ? err.message : t('modal_error_process'));
       setState('error');
     }
-  }, [entityType, parseCSVPreview, parseZipPreview]);
+  }, [entityType, parseCSVPreview, parseZipPreview, t]);
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -266,7 +268,7 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
           result = await submitZipImportJob(preview.content, preview.filename);
           break;
         default:
-          throw new Error(`Nepodporovaný typ importu: ${entityType}`);
+          throw new Error(`${t('modal_unsupported_type')}: ${entityType}`);
       }
 
       // Add job to active jobs store for immediate tracking
@@ -275,7 +277,7 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
         type: JOB_TYPES[entityType],
         name: `Import: ${preview.filename}`,
         status: 'queued',
-        progressText: 'Čeká ve frontě...',
+        progressText: t('modal_queue_waiting'),
         startedAt: new Date(),
       });
 
@@ -293,7 +295,7 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
       }, 1500);
 
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nepodařilo se spustit import');
+      setError(err instanceof Error ? err.message : t('modal_error_submit'));
       setState('error');
     }
   }, [preview, entityType, addJob, onComplete]);
@@ -330,7 +332,7 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
     <div className={styles.overlay} onClick={handleClose}>
       <div className={styles.modal} onClick={e => e.stopPropagation()}>
         <div className={styles.header}>
-          <h2>{ENTITY_TITLES[entityType]}</h2>
+          <h2>{t(ENTITY_TITLE_KEYS[entityType])}</h2>
           <button className={styles.closeButton} onClick={handleClose}>×</button>
         </div>
 
@@ -346,10 +348,10 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
             >
               <div className={styles.dropIcon}>{entityType === 'zip' ? '📦' : '📄'}</div>
               <p className={styles.dropText}>
-                Přetáhněte {entityType === 'zip' ? 'ZIP' : 'CSV'} soubor sem
+                {entityType === 'zip' ? t('modal_drop_text_zip') : t('modal_drop_text_csv')}
               </p>
               <p className={styles.dropHint}>
-                nebo klikněte pro výběr souboru
+                {t('modal_drop_hint')}
               </p>
               <input
                 ref={fileInputRef}
@@ -365,7 +367,7 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
           {state === 'parsing' && (
             <div className={styles.processing}>
               <div className={styles.spinner} />
-              <p className={styles.processingText}>Načítám soubor...</p>
+              <p className={styles.processingText}>{t('modal_parsing')}</p>
             </div>
           )}
 
@@ -378,7 +380,7 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
                   <span className={styles.fileSize}>{formatFileSize(preview.fileSize)}</span>
                   {preview.totalRows && (
                     <span className={styles.rowCount}>
-                      {preview.totalRows.toLocaleString('cs-CZ')} {ENTITY_LABELS[entityType]}
+                      {preview.totalRows} {t(ENTITY_LABEL_KEYS[entityType])}
                     </span>
                   )}
                 </div>
@@ -407,7 +409,7 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
                   </table>
                   {preview.totalRows && preview.totalRows > 5 && (
                     <div className={styles.previewMore}>
-                      ...a dalších {(preview.totalRows - 5).toLocaleString('cs-CZ')} řádků
+                      {t('customer_more_rows', { count: preview.totalRows - 5 })}
                     </div>
                   )}
                 </div>
@@ -417,27 +419,25 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
               {preview.isZip && (
                 <div className={styles.zipInfo}>
                   <p>
-                    ZIP soubor bude rozbalen a soubory budou importovány v pořadí:
+                    {t('modal_zip_info')}
                   </p>
                   <ol className={styles.importOrder}>
-                    <li>Zákazníci (customers)</li>
-                    <li>Zařízení (devices)</li>
-                    <li>Revize (revisions)</li>
-                    <li>Komunikace (communications)</li>
-                    <li>Pracovní deník (work_log)</li>
+                    <li>{t('modal_zip_customers')}</li>
+                    <li>{t('modal_zip_devices')}</li>
+                    <li>{t('modal_zip_worklog')}</li>
                   </ol>
                   <p className={styles.zipNote}>
-                    Typy souborů jsou automaticky rozpoznány podle názvu souboru.
+                    {t('modal_zip_auto')}
                   </p>
                 </div>
               )}
 
               <div className={styles.previewActions}>
                 <button className={styles.cancelButton} onClick={handleReset}>
-                  Vybrat jiný soubor
+                  {t('modal_select_other')}
                 </button>
                 <button className={styles.importButton} onClick={handleSubmitImport}>
-                  Spustit import
+                  {t('customer_start_import')}
                 </button>
               </div>
             </div>
@@ -447,7 +447,7 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
           {state === 'submitting' && (
             <div className={styles.processing}>
               <div className={styles.spinner} />
-              <p className={styles.processingText}>Odesílám úlohu importu...</p>
+              <p className={styles.processingText}>{t('modal_submitting')}</p>
             </div>
           )}
 
@@ -455,9 +455,9 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
           {state === 'submitted' && (
             <div className={styles.submitted}>
               <div className={styles.successIcon}>✓</div>
-              <p className={styles.successText}>Import byl spuštěn</p>
+              <p className={styles.successText}>{t('modal_submitted')}</p>
               <p className={styles.successHint}>
-                Průběh můžete sledovat v sekci Úlohy nebo v horní liště.
+                {t('modal_submitted_hint')}
               </p>
               {submittedJobId && (
                 <small className={styles.jobId}>Job ID: {submittedJobId.slice(0, 8)}...</small>
@@ -471,7 +471,7 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
               <div className={styles.errorIcon}>❌</div>
               <p className={styles.errorText}>{error}</p>
               <button className={styles.retryButton} onClick={handleReset}>
-                Zkusit znovu
+                {t('customer_retry')}
               </button>
             </div>
           )}
@@ -485,7 +485,7 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
               rel="noopener noreferrer"
               className={styles.helpLink}
             >
-              Nápověda k formátu {entityType === 'zip' ? 'ZIP' : 'CSV'}
+              {t('modal_csv_help')}
             </a>
           )}
         </div>

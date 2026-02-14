@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNatsStore } from '@/stores/natsStore';
 import { useActiveJobsStore } from '@/stores/activeJobsStore';
 import { JobStatusTimeline } from '../components/common';
@@ -45,6 +46,7 @@ const JOB_STREAMS: JobType[] = [
 ];
 
 export function Jobs() {
+  const { t } = useTranslation('jobs');
   const isConnected = useNatsStore((s) => s.isConnected);
   const subscribe = useNatsStore((s) => s.subscribe);
   
@@ -123,7 +125,7 @@ export function Jobs() {
         setActionError(result.message);
       }
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Nepodařilo se zrušit úlohu');
+      setActionError(err instanceof Error ? err.message : t('error_cancel'));
     } finally {
       setActionLoading(null);
     }
@@ -143,7 +145,7 @@ export function Jobs() {
         setRecentJobs(prev => prev.filter(j => j.id !== jobId));
       }
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Nepodařilo se opakovat úlohu');
+      setActionError(err instanceof Error ? err.message : t('error_retry'));
     } finally {
       setActionLoading(null);
     }
@@ -165,7 +167,7 @@ export function Jobs() {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Export se nepodařilo stáhnout');
+      setActionError(err instanceof Error ? err.message : t('error_download'));
     } finally {
       setDownloadingExportId(null);
     }
@@ -231,14 +233,14 @@ export function Jobs() {
     if (status.type === 'queued') {
       jobStatus = { type: 'queued', position: status.position };
     } else if (status.type === 'parsing') {
-      jobStatus = { type: 'processing', progress: status.progress, message: 'Parsování CSV...' };
+      jobStatus = { type: 'processing', progress: status.progress, message: t('parsing_csv') };
     } else if (status.type === 'importing') {
       jobStatus = { 
         type: 'processing', 
         progress: Math.round((status.processed / status.total) * 100),
         processed: status.processed,
         total: status.total,
-        message: `${status.succeeded} úspěšně, ${status.failed} chyb`
+        message: t('import_progress', { succeeded: status.succeeded, failed: status.failed })
       };
     } else if (status.type === 'completed') {
       jobStatus = { type: 'completed', result: { succeeded: status.succeeded, failed: status.failed, total: status.total } };
@@ -318,19 +320,19 @@ export function Jobs() {
   // Format time ago
   const formatTimeAgo = (date: Date): string => {
     const diff = Date.now() - date.getTime();
-    if (diff < 60000) return 'právě teď';
-    if (diff < 3600000) return `před ${Math.floor(diff / 60000)}m`;
-    if (diff < 86400000) return `před ${Math.floor(diff / 3600000)}h`;
-    return date.toLocaleDateString('cs-CZ');
+    if (diff < 60000) return t('time_just_now');
+    if (diff < 3600000) return t('time_minutes_ago', { count: Math.floor(diff / 60000) });
+    if (diff < 86400000) return t('time_hours_ago', { count: Math.floor(diff / 3600000) });
+    return date.toLocaleDateString(undefined);
   };
   
   return (
     <div className={styles.jobs}>
-      <h1>Úlohy na pozadí</h1>
+      <h1>{t('title')}</h1>
       
       {!isConnected && (
         <div className={styles.warning}>
-          Nejste připojeni k serveru. Úlohy se nezobrazují v reálném čase.
+          {t('not_connected')}
         </div>
       )}
       
@@ -344,7 +346,7 @@ export function Jobs() {
       {/* Active Jobs Section */}
       <section className={styles.section}>
         <h2>
-          Aktivní úlohy
+          {t('active_title')}
           {activeJobsList.length > 0 && (
             <span className={styles.badge}>{activeJobsList.length}</span>
           )}
@@ -352,7 +354,7 @@ export function Jobs() {
         
         {activeJobsList.length === 0 ? (
           <div className={styles.empty}>
-            Žádné aktivní úlohy
+            {t('active_empty')}
           </div>
         ) : (
           <div className={styles.jobsList}>
@@ -366,7 +368,7 @@ export function Jobs() {
                     className={styles.cancelBtn}
                     onClick={() => handleCancelJob(job.id, job.type)}
                     disabled={actionLoading === job.id}
-                    title="Zrušit úlohu"
+                    title={t('cancel_job')}
                   >
                     {actionLoading === job.id ? '...' : '×'}
                   </button>
@@ -379,7 +381,7 @@ export function Jobs() {
                 />
                 
                 <div className={styles.jobMeta}>
-                  <span>Spuštěno: {formatTimeAgo(job.startedAt)}</span>
+                  <span>{t('started')} {formatTimeAgo(job.startedAt)}</span>
                 </div>
               </div>
             ))}
@@ -390,49 +392,49 @@ export function Jobs() {
       {/* Recent Jobs Section */}
       <section className={styles.section}>
         <div className={styles.sectionHeader}>
-          <h2>Historie úloh</h2>
+          <h2>{t('history_title')}</h2>
           
           <div className={styles.filterTabs}>
             <button 
               className={filter === 'all' ? styles.activeTab : ''}
               onClick={() => setFilter('all')}
             >
-              Vše
+              {t('filter_all')}
             </button>
             <button 
               className={filter === 'completed' ? styles.activeTab : ''}
               onClick={() => setFilter('completed')}
             >
-              Dokončené
+              {t('filter_completed')}
             </button>
             <button 
               className={filter === 'failed' ? styles.activeTab : ''}
               onClick={() => setFilter('failed')}
             >
-              Selhané
+              {t('filter_failed')}
             </button>
           </div>
         </div>
         
         {isLoadingHistory ? (
           <div className={styles.empty}>
-            Načítání historie...
+            {t('loading_history')}
           </div>
         ) : displayedRecentJobs.length === 0 ? (
           <div className={styles.empty}>
-            Žádné záznamy
+            {t('history_empty')}
           </div>
         ) : (
           <div className={styles.recentList}>
             <table className={styles.table}>
               <thead>
                 <tr>
-                  <th>Typ</th>
+                  <th>{t('col_type')}</th>
                   <th>ID</th>
-                  <th>Status</th>
-                  <th>Trvání</th>
-                  <th>Dokončeno</th>
-                  <th>Akce</th>
+                  <th>{t('col_status')}</th>
+                  <th>{t('col_duration')}</th>
+                  <th>{t('col_completed')}</th>
+                  <th>{t('col_actions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -445,7 +447,7 @@ export function Jobs() {
                     <td className={styles.mono}>#{job.id.slice(0, 8)}</td>
                     <td>
                       <span className={`${styles.statusBadge} ${styles[job.status.type]}`}>
-                        {job.status.type === 'completed' ? 'Hotovo' : 'Selhalo'}
+                        {job.status.type === 'completed' ? t('status_completed') : t('status_failed')}
                       </span>
                     </td>
                     <td>{formatDuration(job.duration)}</td>
@@ -462,7 +464,7 @@ export function Jobs() {
                                 className={styles.reportBtn}
                                 onClick={() => setReportDialogData(jobReport)}
                               >
-                                Zobrazit report
+                                {t('show_report')}
                               </button>
                             )}
                             {job.status.type === 'failed' && (
@@ -471,7 +473,7 @@ export function Jobs() {
                                 onClick={() => handleRetryJob(job.id, job.type)}
                                 disabled={actionLoading === job.id}
                               >
-                                {actionLoading === job.id ? '...' : 'Opakovat'}
+                                {actionLoading === job.id ? '...' : t('retry')}
                               </button>
                             )}
                             {job.type === 'export' && job.status.type === 'completed' && (
@@ -480,7 +482,7 @@ export function Jobs() {
                                 onClick={() => handleDownloadExport(job.id)}
                                 disabled={downloadingExportId === job.id}
                               >
-                                {downloadingExportId === job.id ? 'Stahuji...' : 'Stáhnout export'}
+                                {downloadingExportId === job.id ? t('downloading') : t('download_export')}
                               </button>
                             )}
                           </>
@@ -497,7 +499,7 @@ export function Jobs() {
       
       {/* Summary Stats */}
       <section className={styles.section}>
-        <h2>Přehled</h2>
+        <h2>{t('summary_title')}</h2>
         <div className={styles.statsGrid}>
           {JOB_STREAMS.map(jobType => {
             const activeCount = activeJobsList.filter(j => j.type === jobType).length;
@@ -514,13 +516,13 @@ export function Jobs() {
                 </div>
                 <div className={styles.statNumbers}>
                   {activeCount > 0 && (
-                    <span className={styles.statActive}>{activeCount} aktivní</span>
+                    <span className={styles.statActive}>{t('stat_active', { count: activeCount })}</span>
                   )}
                   {completedCount > 0 && (
-                    <span className={styles.statCompleted}>{completedCount} hotových</span>
+                    <span className={styles.statCompleted}>{t('stat_completed', { count: completedCount })}</span>
                   )}
                   {failedCount > 0 && (
-                    <span className={styles.statFailed}>{failedCount} selhání</span>
+                    <span className={styles.statFailed}>{t('stat_failed', { count: failedCount })}</span>
                   )}
                 </div>
               </div>

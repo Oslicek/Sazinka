@@ -4,6 +4,7 @@
  */
 
 import { useCallback, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { submitCustomerImportJob } from '../../services/importJobService';
 import { useActiveJobsStore } from '../../stores/activeJobsStore';
 import { getToken } from '@/utils/auth';
@@ -28,6 +29,7 @@ export function ImportCustomersModal({
   isOpen, 
   onClose,
 }: ImportCustomersModalProps) {
+  const { t } = useTranslation('import');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [state, setState] = useState<ModalState>('idle');
@@ -47,7 +49,7 @@ export function ImportCustomersModal({
           const lines = text.split(/\r?\n/).filter(line => line.trim());
           
           if (lines.length < 2) {
-            reject(new Error('CSV soubor musí obsahovat alespoň hlavičku a jeden řádek dat'));
+            reject(new Error(t('customer_error_min_rows')));
             return;
           }
           
@@ -89,14 +91,14 @@ export function ImportCustomersModal({
         }
       };
       
-      reader.onerror = () => reject(new Error('Nepodařilo se načíst soubor'));
+      reader.onerror = () => reject(new Error(t('customer_error_read')));
       reader.readAsText(file, 'utf-8');
     });
-  }, []);
+  }, [t]);
 
   const handleFileSelect = useCallback(async (file: File) => {
     if (!file.name.endsWith('.csv') && file.type !== 'text/csv') {
-      setError('Prosím vyberte soubor CSV.');
+      setError(t('customer_error_csv'));
       setState('error');
       return;
     }
@@ -109,7 +111,7 @@ export function ImportCustomersModal({
       setPreview(csvPreview);
       setState('preview');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nepodařilo se zpracovat soubor');
+      setError(err instanceof Error ? err.message : t('customer_error_process'));
       setState('error');
     }
   }, [parseCSVPreview]);
@@ -159,7 +161,7 @@ export function ImportCustomersModal({
         type: 'import.customer',
         name: `Import: ${preview.filename}`,
         status: 'queued',
-        progressText: 'Čeká ve frontě...',
+        progressText: t('customer_queue_waiting'),
         startedAt: new Date(),
       });
       
@@ -172,7 +174,7 @@ export function ImportCustomersModal({
       }, 1500);
       
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nepodařilo se spustit import');
+      setError(err instanceof Error ? err.message : t('customer_error_submit'));
       setState('error');
     }
   }, [preview, addJob]);
@@ -203,7 +205,7 @@ export function ImportCustomersModal({
     <div className={styles.overlay} onClick={handleClose}>
       <div className={styles.modal} onClick={e => e.stopPropagation()}>
         <div className={styles.header}>
-          <h2>Import zákazníků</h2>
+          <h2>{t('customer_modal_title')}</h2>
           <button className={styles.closeButton} onClick={handleClose}>×</button>
         </div>
 
@@ -219,10 +221,10 @@ export function ImportCustomersModal({
             >
               <div className={styles.dropIcon}>📄</div>
               <p className={styles.dropText}>
-                Přetáhněte CSV soubor sem
+                {t('customer_drop_text')}
               </p>
               <p className={styles.dropHint}>
-                nebo klikněte pro výběr souboru
+                {t('customer_drop_hint')}
               </p>
               <input
                 ref={fileInputRef}
@@ -238,7 +240,7 @@ export function ImportCustomersModal({
           {state === 'parsing' && (
             <div className={styles.processing}>
               <div className={styles.spinner} />
-              <p className={styles.processingText}>Načítám soubor...</p>
+              <p className={styles.processingText}>{t('customer_parsing')}</p>
             </div>
           )}
 
@@ -248,7 +250,7 @@ export function ImportCustomersModal({
               <div className={styles.previewHeader}>
                 <div className={styles.previewInfo}>
                   <span className={styles.filename}>{preview.filename}</span>
-                  <span className={styles.rowCount}>{preview.totalRows.toLocaleString('cs-CZ')} zákazníků</span>
+                  <span className={styles.rowCount}>{t('customer_row_count', { count: preview.totalRows })}</span>
                 </div>
               </div>
               
@@ -273,17 +275,17 @@ export function ImportCustomersModal({
                 </table>
                 {preview.totalRows > 5 && (
                   <div className={styles.previewMore}>
-                    ...a dalších {(preview.totalRows - 5).toLocaleString('cs-CZ')} řádků
+                    {t('customer_more_rows', { count: preview.totalRows - 5 })}
                   </div>
                 )}
               </div>
               
               <div className={styles.previewActions}>
                 <button className={styles.cancelButton} onClick={handleReset}>
-                  Vybrat jiný soubor
+                  {t('customer_select_other')}
                 </button>
                 <button className={styles.importButton} onClick={handleSubmitImport}>
-                  Spustit import
+                  {t('customer_start_import')}
                 </button>
               </div>
             </div>
@@ -293,7 +295,7 @@ export function ImportCustomersModal({
           {state === 'submitting' && (
             <div className={styles.processing}>
               <div className={styles.spinner} />
-              <p className={styles.processingText}>Odesílám úlohu importu...</p>
+              <p className={styles.processingText}>{t('customer_submitting')}</p>
             </div>
           )}
 
@@ -301,9 +303,9 @@ export function ImportCustomersModal({
           {state === 'submitted' && (
             <div className={styles.submitted}>
               <div className={styles.successIcon}>✓</div>
-              <p className={styles.successText}>Import byl spuštěn</p>
+              <p className={styles.successText}>{t('customer_submitted')}</p>
               <p className={styles.successHint}>
-                Průběh můžete sledovat v sekci Úlohy nebo v horní liště.
+                {t('customer_submitted_hint')}
               </p>
               {submittedJobId && (
                 <small className={styles.jobId}>Job ID: {submittedJobId.slice(0, 8)}...</small>
@@ -317,7 +319,7 @@ export function ImportCustomersModal({
               <div className={styles.errorIcon}>❌</div>
               <p className={styles.errorText}>{error}</p>
               <button className={styles.retryButton} onClick={handleReset}>
-                Zkusit znovu
+                {t('customer_retry')}
               </button>
             </div>
           )}
@@ -331,7 +333,7 @@ export function ImportCustomersModal({
               rel="noopener noreferrer"
               className={styles.helpLink}
             >
-              Nápověda k formátu CSV
+              {t('customer_csv_help')}
             </a>
           )}
         </div>

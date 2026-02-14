@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link, useNavigate, useSearch } from '@tanstack/react-router';
+import { useTranslation } from 'react-i18next';
 import type { Revision } from '@shared/revision';
 import { REVISION_STATUS_LABELS } from '@shared/revision';
 import { 
@@ -19,6 +20,7 @@ interface SearchParams {
 }
 
 export function RevisionDetail() {
+  const { t } = useTranslation('pages');
   const { revisionId } = useParams({ strict: false }) as { revisionId: string };
   const navigate = useNavigate();
   const searchParams = useSearch({ strict: false }) as SearchParams;
@@ -49,13 +51,13 @@ export function RevisionDetail() {
 
   const loadRevision = useCallback(async () => {
     if (!isConnected) {
-      setError('Není připojení k serveru');
+      setError(t('revision_error_connection'));
       setIsLoading(false);
       return;
     }
 
     if (!revisionId) {
-      setError('ID revize není zadáno');
+      setError(t('revision_error_no_id'));
       setIsLoading(false);
       return;
     }
@@ -67,7 +69,7 @@ export function RevisionDetail() {
       setRevision(data);
     } catch (err) {
       console.error('Failed to load revision:', err);
-      setError(err instanceof Error ? err.message : 'Nepodařilo se načíst revizi');
+      setError(err instanceof Error ? err.message : t('revision_error_load'));
     } finally {
       setIsLoading(false);
     }
@@ -95,7 +97,7 @@ export function RevisionDetail() {
       // Navigate to planner for that date
       navigate({ to: '/planner', search: { date: scheduleDate } });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nepodařilo se naplánovat revizi');
+      setError(err instanceof Error ? err.message : t('revision_error_schedule'));
     } finally {
       setIsSubmitting(false);
     }
@@ -116,7 +118,7 @@ export function RevisionDetail() {
       setShowSnoozeDialog(false);
       await loadRevision();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nepodařilo se odložit revizi');
+      setError(err instanceof Error ? err.message : t('revision_error_snooze'));
     } finally {
       setIsSubmitting(false);
     }
@@ -136,7 +138,7 @@ export function RevisionDetail() {
   // Cancel handler
   const handleCancel = useCallback(async () => {
     if (!revision) return;
-    if (!confirm('Opravdu chcete zrušit tuto revizi?')) return;
+    if (!confirm(t('revision_confirm_cancel'))) return;
 
     try {
       setIsSubmitting(true);
@@ -147,7 +149,7 @@ export function RevisionDetail() {
       });
       await loadRevision();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nepodařilo se zrušit revizi');
+      setError(err instanceof Error ? err.message : t('revision_error_cancel'));
     } finally {
       setIsSubmitting(false);
     }
@@ -158,7 +160,7 @@ export function RevisionDetail() {
       <div className={styles.container}>
         <div className={styles.loading}>
           <div className={styles.spinner} />
-          <span>Načítám revizi...</span>
+          <span>{t('revision_loading')}</span>
         </div>
       </div>
     );
@@ -169,9 +171,9 @@ export function RevisionDetail() {
       <div className={styles.container}>
         <div className={styles.errorState}>
           <span className={styles.errorIcon}>⚠️</span>
-          <h2>Chyba</h2>
+          <h2>{t('revision_error')}</h2>
           <p>{error}</p>
-          <Link to="/inbox" className={styles.backButton}>← Zpět na frontu</Link>
+          <Link to="/inbox" className={styles.backButton}>{t('revision_back_queue')}</Link>
         </div>
       </div>
     );
@@ -182,9 +184,9 @@ export function RevisionDetail() {
       <div className={styles.container}>
         <div className={styles.errorState}>
           <span className={styles.errorIcon}>🔍</span>
-          <h2>Revize nenalezena</h2>
-          <p>Požadovaná revize neexistuje nebo byla smazána.</p>
-          <Link to="/inbox" className={styles.backButton}>← Zpět na frontu</Link>
+          <h2>{t('revision_not_found')}</h2>
+          <p>{t('revision_not_found_desc')}</p>
+          <Link to="/inbox" className={styles.backButton}>{t('revision_back_queue')}</Link>
         </div>
       </div>
     );
@@ -195,13 +197,13 @@ export function RevisionDetail() {
       {/* Header with breadcrumb and title */}
       <header className={styles.header}>
         <div className={styles.breadcrumb}>
-          <Link to="/inbox" className={styles.backLink}>← Fronta</Link>
+          <Link to="/inbox" className={styles.backLink}>{t('revision_breadcrumb_queue')}</Link>
         </div>
         
         <div className={styles.titleRow}>
           <div className={styles.titleSection}>
             <h1 className={styles.title}>
-              {revision.deviceName || revision.deviceType || 'Revize'}
+              {revision.deviceName || revision.deviceType || t('revision_default_title')}
             </h1>
             <span className={`${styles.statusBadge} ${styles[`status-${revision.status}`]}`}>
               {REVISION_STATUS_LABELS[revision.status as keyof typeof REVISION_STATUS_LABELS] || revision.status}
@@ -211,7 +213,7 @@ export function RevisionDetail() {
           <div className={styles.headerMeta}>
             {revision.scheduledDate && (
               <span className={styles.metaItem}>
-                📅 {new Date(revision.scheduledDate).toLocaleDateString('cs-CZ')}
+                📅 {new Date(revision.scheduledDate).toLocaleDateString(undefined)}
               </span>
             )}
             {revision.scheduledTimeStart && revision.scheduledTimeEnd && (
@@ -246,12 +248,12 @@ export function RevisionDetail() {
         tabs={{
           progress: (
             <div className={styles.tabPlaceholder}>
-              <p>Průběh revize a její výsledky budou zobrazeny zde.</p>
+              <p>{t('revision_tab_progress_placeholder')}</p>
             </div>
           ),
           history: (
             <div className={styles.tabPlaceholder}>
-              <p>Historie návštěv a změn bude zobrazena zde.</p>
+              <p>{t('revision_tab_history_placeholder')}</p>
             </div>
           ),
         }}
@@ -261,9 +263,9 @@ export function RevisionDetail() {
       {showScheduleDialog && (
         <div className={styles.dialogOverlay} onClick={() => setShowScheduleDialog(false)}>
           <div className={styles.dialog} onClick={e => e.stopPropagation()}>
-            <h3>{revision.scheduledDate ? 'Přeplánovat revizi' : 'Domluvit termín'}</h3>
+            <h3>{revision.scheduledDate ? t('revision_reschedule_title') : t('revision_schedule_title')}</h3>
             <div className={styles.dialogField}>
-              <label>Datum *</label>
+              <label>{t('revision_schedule_date')}</label>
               <input 
                 type="date" 
                 value={scheduleDate} 
@@ -272,7 +274,7 @@ export function RevisionDetail() {
             </div>
             <div className={styles.dialogRow}>
               <div className={styles.dialogField}>
-                <label>Čas od</label>
+                <label>{t('revision_schedule_time_from')}</label>
                 <input 
                   type="time" 
                   value={scheduleTimeStart} 
@@ -280,7 +282,7 @@ export function RevisionDetail() {
                 />
               </div>
               <div className={styles.dialogField}>
-                <label>Čas do</label>
+                <label>{t('revision_schedule_time_to')}</label>
                 <input 
                   type="time" 
                   value={scheduleTimeEnd} 
@@ -289,7 +291,7 @@ export function RevisionDetail() {
               </div>
             </div>
             <div className={styles.dialogField}>
-              <label>Délka (min)</label>
+              <label>{t('revision_schedule_duration')}</label>
               <input 
                 type="number" 
                 value={scheduleDuration} 
@@ -304,14 +306,14 @@ export function RevisionDetail() {
                 onClick={() => setShowScheduleDialog(false)}
                 disabled={isSubmitting}
               >
-                Zrušit
+                {t('common:cancel')}
               </button>
               <button 
                 className={styles.confirmButton}
                 onClick={handleSchedule}
                 disabled={isSubmitting || !scheduleDate}
               >
-                {isSubmitting ? 'Ukládám...' : 'Potvrdit'}
+                {isSubmitting ? t('common:loading') : t('revision_schedule_confirm')}
               </button>
             </div>
           </div>
@@ -322,9 +324,9 @@ export function RevisionDetail() {
       {showSnoozeDialog && (
         <div className={styles.dialogOverlay} onClick={() => setShowSnoozeDialog(false)}>
           <div className={styles.dialog} onClick={e => e.stopPropagation()}>
-            <h3>Odložit revizi</h3>
+            <h3>{t('revision_snooze_title')}</h3>
             <div className={styles.dialogField}>
-              <label>Odložit do *</label>
+              <label>{t('revision_snooze_until')}</label>
               <input 
                 type="date" 
                 value={snoozeUntil} 
@@ -332,11 +334,11 @@ export function RevisionDetail() {
               />
             </div>
             <div className={styles.dialogField}>
-              <label>Důvod</label>
+              <label>{t('revision_snooze_reason')}</label>
               <textarea 
                 value={snoozeReason} 
                 onChange={e => setSnoozeReason(e.target.value)}
-                placeholder="Volitelný důvod odložení..."
+                placeholder={t('revision_snooze_placeholder')}
                 rows={3}
               />
             </div>
@@ -346,14 +348,14 @@ export function RevisionDetail() {
                 onClick={() => setShowSnoozeDialog(false)}
                 disabled={isSubmitting}
               >
-                Zrušit
+                {t('common:cancel')}
               </button>
               <button 
                 className={styles.confirmButton}
                 onClick={handleSnooze}
                 disabled={isSubmitting || !snoozeUntil}
               >
-                {isSubmitting ? 'Ukládám...' : 'Odložit'}
+                {isSubmitting ? t('common:loading') : t('revision_snooze_confirm')}
               </button>
             </div>
           </div>

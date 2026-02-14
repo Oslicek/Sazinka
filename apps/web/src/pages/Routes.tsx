@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSearch, useNavigate, Link } from '@tanstack/react-router';
 import { useNatsStore } from '../stores/natsStore';
 import * as settingsService from '../services/settingsService';
@@ -14,6 +15,7 @@ import { listCrews, type Crew } from '../services/crewService';
 import type { Depot } from '@shared/settings';
 import type { SavedRoute } from '../services/routeService';
 import { PlannerFilters } from '../components/shared/PlannerFilters';
+import { getWeekdayNames } from '@/i18n/formatters';
 import styles from './Routes.module.css';
 
 interface RoutesSearchParams {
@@ -24,6 +26,7 @@ interface RoutesSearchParams {
 }
 
 export function Routes() {
+  const { t } = useTranslation('pages');
   const navigate = useNavigate();
   const searchParams = useSearch({ strict: false }) as RoutesSearchParams;
   const { isConnected } = useNatsStore();
@@ -101,7 +104,7 @@ export function Routes() {
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       console.error('Failed to load routes:', detail);
-      setError(`Nepodařilo se načíst trasy: ${detail}`);
+      setError(t('routes_error_load', { detail }));
       setRoutes([]);
     } finally {
       setIsLoadingRoutes(false);
@@ -148,7 +151,7 @@ export function Routes() {
   // ─── Delete route ─────────────────────────────────────────────
 
   const handleDeleteRoute = useCallback(async (routeId: string) => {
-    if (!window.confirm('Opravdu chcete smazat tuto trasu?')) return;
+    if (!window.confirm(t('routes_confirm_delete'))) return;
 
     setDeletingRouteId(routeId);
     try {
@@ -156,7 +159,7 @@ export function Routes() {
       setRoutes((prev) => prev.filter((r) => r.id !== routeId));
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      setError(`Nepodařilo se smazat trasu: ${detail}`);
+      setError(t('routes_error_delete', { detail }));
     } finally {
       setDeletingRouteId(null);
     }
@@ -176,7 +179,7 @@ export function Routes() {
       );
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      setError(`Nepodařilo se přiřadit posádku: ${detail}`);
+      setError(t('routes_error_assign', { detail }));
     }
   }, [crews]);
 
@@ -184,8 +187,10 @@ export function Routes() {
 
   function formatDate(dateStr: string): string {
     const d = new Date(dateStr + 'T00:00:00');
-    const dayNames = ['Ne', 'Po', 'Út', 'St', 'Čt', 'Pá', 'So'];
-    return `${dayNames[d.getDay()]} ${d.getDate()}.${d.getMonth() + 1}.`;
+    const dayNames = getWeekdayNames('short');
+    const dayIndex = d.getDay();
+    const dayName = dayNames[dayIndex === 0 ? 6 : dayIndex - 1];
+    return `${dayName} ${d.getDate()}.${d.getMonth() + 1}.`;
   }
 
   function formatDuration(minutes: number | null): string {
@@ -209,12 +214,12 @@ export function Routes() {
   function getStatusBadge(status: string): { label: string; className: string } {
     switch (status) {
       case 'active':
-        return { label: 'Aktivní', className: styles.badgeActive };
+        return { label: t('routes_status_active'), className: styles.badgeActive };
       case 'completed':
-        return { label: 'Dokončeno', className: styles.badgeCompleted };
+        return { label: t('routes_status_completed'), className: styles.badgeCompleted };
       case 'draft':
       default:
-        return { label: 'Koncept', className: styles.badgeDraft };
+        return { label: t('routes_status_draft'), className: styles.badgeDraft };
     }
   }
 
@@ -223,9 +228,9 @@ export function Routes() {
   return (
     <div className={styles.page}>
       <div className={styles.header}>
-        <h1 className={styles.title}>Trasy</h1>
+        <h1 className={styles.title}>{t('routes_title')}</h1>
         <span className={styles.count}>
-          {routes.length > 0 ? `${routes.length} tras` : ''}
+          {routes.length > 0 ? t('routes_count', { count: routes.length }) : ''}
         </span>
       </div>
 
@@ -254,27 +259,27 @@ export function Routes() {
       {isLoadingRoutes ? (
         <div className={styles.loading}>
           <div className={styles.spinner} />
-          <span>Načítám trasy...</span>
+          <span>{t('routes_loading')}</span>
         </div>
       ) : routes.length === 0 ? (
         <div className={styles.empty}>
           <div className={styles.emptyIcon}>🗺️</div>
-          <p>Žádné trasy pro vybrané období.</p>
-          <p className={styles.emptyHint}>Zkuste změnit rozsah dat nebo filtry.</p>
+          <p>{t('routes_empty')}</p>
+          <p className={styles.emptyHint}>{t('routes_empty_hint')}</p>
         </div>
       ) : (
         <div className={styles.tableWrapper}>
           <table className={styles.table}>
             <thead>
               <tr>
-                <th className={styles.thDate}>Datum</th>
-                <th className={styles.thCrew}>Posádka</th>
-                <th className={styles.thDepot}>Depo</th>
-                <th className={styles.thStops}>Zastávky</th>
-                <th className={styles.thDistance}>Vzdálenost</th>
-                <th className={styles.thDuration}>Doba</th>
-                <th className={styles.thStatus}>Stav</th>
-                <th className={styles.thActions}>Akce</th>
+                <th className={styles.thDate}>{t('routes_col_date')}</th>
+                <th className={styles.thCrew}>{t('routes_col_crew')}</th>
+                <th className={styles.thDepot}>{t('routes_col_depot')}</th>
+                <th className={styles.thStops}>{t('routes_col_stops')}</th>
+                <th className={styles.thDistance}>{t('routes_col_distance')}</th>
+                <th className={styles.thDuration}>{t('routes_col_duration')}</th>
+                <th className={styles.thStatus}>{t('routes_col_status')}</th>
+                <th className={styles.thActions}>{t('routes_col_actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -296,7 +301,7 @@ export function Routes() {
                         onChange={(e) => handleCrewAssign(route.id, e.target.value)}
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <option value="">— Nepřiřazena —</option>
+                        <option value="">{t('routes_crew_unassigned')}</option>
                         {crews.map((c) => (
                           <option key={c.id} value={c.id}>{c.name}</option>
                         ))}
@@ -314,7 +319,7 @@ export function Routes() {
                         to="/planner"
                         search={{ date: route.date }}
                         className={styles.actionLink}
-                        title="Zobrazit v plánu"
+                        title={t('routes_view_plan')}
                       >
                         📋
                       </Link>
@@ -326,7 +331,7 @@ export function Routes() {
                           handleDeleteRoute(route.id);
                         }}
                         disabled={isDeleting}
-                        title="Smazat trasu"
+                        title={t('routes_delete')}
                       >
                         {isDeleting ? '...' : '🗑️'}
                       </button>

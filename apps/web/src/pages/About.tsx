@@ -1,35 +1,36 @@
+import { useTranslation } from 'react-i18next';
 import styles from './About.module.css';
 
 export function About() {
+  const { t } = useTranslation('pages');
+
   return (
     <div className={styles.container}>
       <div className={styles.card}>
-        <h1 className={styles.title}>O službě Ariadline</h1>
+        <h1 className={styles.title}>{t('about_title')}</h1>
         
         <section className={styles.section}>
-          <h2>Co je Ariadline?</h2>
+          <h2>{t('about_what')}</h2>
           <p>
-            Ariadline je CRM systém pro revizní techniky a další řemeslníky, 
-            kteří pravidelně navštěvují své zákazníky. Pomáhá s plánováním 
-            revizí, optimalizací tras a komunikací se zákazníky.
+            {t('about_description')}
           </p>
         </section>
 
         <section className={styles.section}>
-          <h2>Hlavní funkce</h2>
+          <h2>{t('about_features')}</h2>
           <ul className={styles.featureList}>
-            <li>Evidence zákazníků a zařízení k revizi</li>
-            <li>Automatické plánování revizí podle intervalů</li>
-            <li>Optimalizace denních tras s ohledem na časová okna</li>
-            <li>Kalendář a fronta čekajících revizí</li>
-            <li>Import a export dat (CSV)</li>
-            <li>Správa posádek a pracovníků</li>
-            <li>Role-based přístup (Admin, Zákazník, Pracovník)</li>
+            <li>{t('about_feature_customers')}</li>
+            <li>{t('about_feature_planning')}</li>
+            <li>{t('about_feature_routes')}</li>
+            <li>{t('about_feature_calendar')}</li>
+            <li>{t('about_feature_import')}</li>
+            <li>{t('about_feature_crews')}</li>
+            <li>{t('about_feature_roles')}</li>
           </ul>
         </section>
 
         <section className={styles.section}>
-          <h2>Verze</h2>
+          <h2>{t('about_version')}</h2>
           <p className={styles.version}>v0.16.0 (2026-02-07)</p>
         </section>
       </div>

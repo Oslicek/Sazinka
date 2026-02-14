@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useRef } from 'react';
+import i18n from '@/i18n';
 
 export interface KeyboardShortcut {
   key: string;
@@ -107,7 +108,7 @@ export function usePlannerShortcuts({
     shortcuts.push({
       key: 'Escape',
       action: onEscape,
-      description: 'Zavřít / Zrušit',
+      description: i18n.t('planner:shortcut_escape'),
       global: true,
     });
   }
@@ -117,7 +118,7 @@ export function usePlannerShortcuts({
     shortcuts.push({
       key: '/',
       action: onSearch,
-      description: 'Hledat',
+      description: i18n.t('planner:shortcut_search'),
     });
   }
 
@@ -130,7 +131,7 @@ export function usePlannerShortcuts({
     shortcuts.push({
       key: 'ArrowUp',
       action: onMoveUp,
-      description: 'Předchozí kandidát',
+      description: i18n.t('planner:shortcut_prev'),
     });
   }
 
@@ -138,7 +139,7 @@ export function usePlannerShortcuts({
     shortcuts.push({
       key: 'ArrowDown',
       action: onMoveDown,
-      description: 'Další kandidát',
+      description: i18n.t('planner:shortcut_next'),
     });
   }
 
@@ -148,7 +149,7 @@ export function usePlannerShortcuts({
       shortcuts.push({
         key: String(i),
         action: () => onSelectSlot(i - 1),
-        description: `Vybrat slot ${i}`,
+        description: i18n.t('planner:shortcut_select_slot', { index: i }),
       });
     }
   }
@@ -158,7 +159,7 @@ export function usePlannerShortcuts({
     shortcuts.push({
       key: 'd',
       action: onSchedule,
-      description: 'Domluvit termín',
+      description: i18n.t('planner:shortcut_schedule'),
     });
   }
 
@@ -166,7 +167,7 @@ export function usePlannerShortcuts({
     shortcuts.push({
       key: 'o',
       action: onSnooze,
-      description: 'Odložit',
+      description: i18n.t('planner:shortcut_snooze'),
     });
   }
 
@@ -174,7 +175,7 @@ export function usePlannerShortcuts({
     shortcuts.push({
       key: 'e',
       action: onFixAddress,
-      description: 'Opravit adresu',
+      description: i18n.t('planner:shortcut_fix_address'),
     });
   }
 
@@ -184,7 +185,7 @@ export function usePlannerShortcuts({
       key: 's',
       ctrl: true,
       action: onSave,
-      description: 'Uložit plán',
+      description: i18n.t('planner:shortcut_save'),
       global: true,
     });
   }

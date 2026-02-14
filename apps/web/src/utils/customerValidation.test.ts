@@ -12,15 +12,15 @@ import {
 describe('customerValidation', () => {
   describe('validateName', () => {
     it('should return error for empty name', () => {
-      expect(validateName('')).toBe('Jméno je povinné');
+      expect(validateName('')).toBe('validation:name_required');
     });
 
     it('should return error for whitespace-only name', () => {
-      expect(validateName('   ')).toBe('Jméno je povinné');
+      expect(validateName('   ')).toBe('validation:name_required');
     });
 
     it('should return error for name shorter than 2 characters', () => {
-      expect(validateName('A')).toBe('Jméno musí mít alespoň 2 znaky');
+      expect(validateName('A')).toBe('validation:name_min_length');
     });
 
     it('should return null for valid name', () => {
@@ -39,10 +39,10 @@ describe('customerValidation', () => {
     });
 
     it('should return error for invalid email format', () => {
-      expect(validateEmail('invalid')).toBe('Neplatný formát emailu');
-      expect(validateEmail('invalid@')).toBe('Neplatný formát emailu');
-      expect(validateEmail('@example.com')).toBe('Neplatný formát emailu');
-      expect(validateEmail('invalid@.com')).toBe('Neplatný formát emailu');
+      expect(validateEmail('invalid')).toBe('validation:email_invalid');
+      expect(validateEmail('invalid@')).toBe('validation:email_invalid');
+      expect(validateEmail('@example.com')).toBe('validation:email_invalid');
+      expect(validateEmail('invalid@.com')).toBe('validation:email_invalid');
     });
 
     it('should return null for valid email', () => {
@@ -59,7 +59,7 @@ describe('customerValidation', () => {
     });
 
     it('should return error for phone with less than 9 digits', () => {
-      expect(validatePhone('12345678')).toBe('Telefon musí mít alespoň 9 číslic');
+      expect(validatePhone('12345678')).toBe('validation:phone_min_digits');
     });
 
     it('should return null for valid Czech phone formats', () => {
@@ -77,13 +77,13 @@ describe('customerValidation', () => {
 
   describe('validatePostalCode', () => {
     it('should return error for empty postal code', () => {
-      expect(validatePostalCode('')).toBe('PSČ je povinné');
+      expect(validatePostalCode('')).toBe('validation:postal_code_required');
     });
 
     it('should return error for invalid Czech postal code format', () => {
-      expect(validatePostalCode('1234')).toBe('PSČ musí mít 5 číslic');
-      expect(validatePostalCode('123456')).toBe('PSČ musí mít 5 číslic');
-      expect(validatePostalCode('abcde')).toBe('PSČ musí mít 5 číslic');
+      expect(validatePostalCode('1234')).toBe('validation:postal_code_format');
+      expect(validatePostalCode('123456')).toBe('validation:postal_code_format');
+      expect(validatePostalCode('abcde')).toBe('validation:postal_code_format');
     });
 
     it('should return null for valid Czech postal codes', () => {
@@ -96,17 +96,17 @@ describe('customerValidation', () => {
   describe('validateAddress', () => {
     it('should return error for empty street', () => {
       const errors = validateAddress('', 'Praha', '11000');
-      expect(errors.street).toBe('Ulice je povinná');
+      expect(errors.street).toBe('validation:street_required');
     });
 
     it('should return error for empty city', () => {
       const errors = validateAddress('Hlavní 123', '', '11000');
-      expect(errors.city).toBe('Město je povinné');
+      expect(errors.city).toBe('validation:city_required');
     });
 
     it('should return error for empty postal code', () => {
       const errors = validateAddress('Hlavní 123', 'Praha', '');
-      expect(errors.postalCode).toBe('PSČ je povinné');
+      expect(errors.postalCode).toBe('validation:postal_code_required');
     });
 
     it('should return no errors for valid address', () => {

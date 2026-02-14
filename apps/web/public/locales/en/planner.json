@@ -284,5 +284,15 @@
   "add_drawer_add_button": "Add to route",
   "add_drawer_fetch_error": "Failed to load available time slots",
   "add_drawer_add_error": "Failed to add to route",
-  "add_drawer_due": "Due:"
+  "add_drawer_due": "Due:",
+
+  "shortcut_escape": "Close / Cancel",
+  "shortcut_search": "Search",
+  "shortcut_prev": "Previous candidate",
+  "shortcut_next": "Next candidate",
+  "shortcut_select_slot": "Select slot {{index}}",
+  "shortcut_schedule": "Schedule appointment",
+  "shortcut_snooze": "Snooze",
+  "shortcut_fix_address": "Fix address",
+  "shortcut_save": "Save plan"
 }

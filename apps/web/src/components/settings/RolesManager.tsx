@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import * as roleService from '../../services/roleService';
 import type { RoleWithPermissions } from '@shared/auth';
 import { PAGE_PERMISSIONS, SETTINGS_PERMISSIONS } from '@shared/auth';
@@ -9,6 +10,7 @@ interface RolesManagerProps {
 }
 
 export function RolesManager({ onUpdate }: RolesManagerProps) {
+  const { t } = useTranslation('settings');
   const [roles, setRoles] = useState<RoleWithPermissions[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -27,11 +29,11 @@ export function RolesManager({ onUpdate }: RolesManagerProps) {
       setRoles(data);
     } catch (e) {
       console.error('Failed to load roles:', e);
-      setError(e instanceof Error ? e.message : 'Nepodařilo se načíst role');
+      setError(e instanceof Error ? e.message : t('role_error_load'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     loadRoles();
@@ -60,7 +62,7 @@ export function RolesManager({ onUpdate }: RolesManagerProps) {
 
   const handleSave = async () => {
     if (!formName.trim()) {
-      alert('Zadejte název role');
+      alert(t('role_error_name'));
       return;
     }
 
@@ -87,12 +89,12 @@ export function RolesManager({ onUpdate }: RolesManagerProps) {
       onUpdate?.();
     } catch (e) {
       console.error('Failed to save role:', e);
-      alert(e instanceof Error ? e.message : 'Nepodařilo se uložit roli');
+      alert(e instanceof Error ? e.message : t('role_error_save'));
     }
   };
 
   const handleDelete = async (roleId: string, roleName: string) => {
-    if (!confirm(`Opravdu chcete smazat roli "${roleName}"? Tato akce je nevratná.`)) {
+    if (!confirm(t('role_confirm_delete', { name: roleName }))) {
       return;
     }
 
@@ -102,7 +104,7 @@ export function RolesManager({ onUpdate }: RolesManagerProps) {
       onUpdate?.();
     } catch (e) {
       console.error('Failed to delete role:', e);
-      alert(e instanceof Error ? e.message : 'Nepodařilo se smazat roli');
+      alert(e instanceof Error ? e.message : t('role_error_delete'));
     }
   };
 
@@ -117,7 +119,7 @@ export function RolesManager({ onUpdate }: RolesManagerProps) {
   };
 
   if (loading) {
-    return <div className={styles.loading}>Načítám role...</div>;
+    return <div className={styles.loading}>{t('role_loading')}</div>;
   }
 
   if (error) {
@@ -125,7 +127,7 @@ export function RolesManager({ onUpdate }: RolesManagerProps) {
       <div className={styles.error}>
         <p>{error}</p>
         <button className="btn-primary" onClick={loadRoles}>
-          Zkusit znovu
+          {t('retry')}
         </button>
       </div>
     );
@@ -137,17 +139,17 @@ export function RolesManager({ onUpdate }: RolesManagerProps) {
       {!isCreating && !editingRole && (
         <div className={styles.rolesList}>
           <div className={styles.rolesHeader}>
-            <h3>Vlastní role</h3>
+            <h3>{t('role_custom')}</h3>
             <button className="btn-primary" onClick={handleCreate}>
-              + Vytvořit novou roli
+              {t('role_create_new')}
             </button>
           </div>
 
           {roles.length === 0 ? (
             <div className={styles.emptyState}>
-              <p>Zatím nemáte žádné vlastní role.</p>
+              <p>{t('role_empty')}</p>
               <p className={styles.emptyStateHint}>
-                Vytvořte role pro své pracovníky a přiřaďte jim oprávnění k jednotlivým stránkám a sekcím.
+                {t('role_empty_hint')}
               </p>
             </div>
           ) : (
@@ -160,14 +162,14 @@ export function RolesManager({ onUpdate }: RolesManagerProps) {
                       <button
                         className={styles.roleActionButton}
                         onClick={() => handleEdit(role)}
-                        title="Upravit"
+                        title={t('edit')}
                       >
                         ✏️
                       </button>
                       <button
                         className={styles.roleActionButton}
                         onClick={() => handleDelete(role.id, role.name)}
-                        title="Smazat"
+                        title={t('delete_action')}
                       >
                         🗑️
                       </button>
@@ -175,7 +177,7 @@ export function RolesManager({ onUpdate }: RolesManagerProps) {
                   </div>
                   <div className={styles.rolePermissions}>
                     <span className={styles.permissionCount}>
-                      {role.permissions.length} {role.permissions.length === 1 ? 'oprávnění' : 'oprávnění'}
+                      {role.permissions.length} {t('role_permissions_count')}
                     </span>
                   </div>
                 </div>
@@ -189,7 +191,7 @@ export function RolesManager({ onUpdate }: RolesManagerProps) {
       {(isCreating || editingRole) && (
         <div className={styles.roleEditor}>
           <div className={styles.editorHeader}>
-            <h3>{isCreating ? 'Nová role' : `Upravit roli: ${editingRole?.name}`}</h3>
+            <h3>{isCreating ? t('role_new') : t('role_edit', { name: editingRole?.name })}</h3>
             <button className={styles.closeButton} onClick={handleCancel}>
               ×
             </button>
@@ -198,20 +200,20 @@ export function RolesManager({ onUpdate }: RolesManagerProps) {
           <div className={styles.editorContent}>
             {/* Role Name */}
             <div className={styles.formGroup}>
-              <label className={styles.formLabel}>Název role</label>
+              <label className={styles.formLabel}>{t('role_name')}</label>
               <input
                 type="text"
                 className={styles.formInput}
                 value={formName}
                 onChange={(e) => setFormName(e.target.value)}
-                placeholder="např. Technik, Dispečer, ..."
+                placeholder={t('role_name_placeholder')}
                 autoFocus
               />
             </div>
 
             {/* Page Permissions */}
             <div className={styles.formGroup}>
-              <h4 className={styles.permissionSectionTitle}>Přístup ke stránkám</h4>
+              <h4 className={styles.permissionSectionTitle}>{t('role_page_access')}</h4>
               <div className={styles.permissionGrid}>
                 {PAGE_PERMISSIONS.map((perm) => (
                   <label key={perm.key} className={styles.permissionCheckbox}>
@@ -228,7 +230,7 @@ export function RolesManager({ onUpdate }: RolesManagerProps) {
 
             {/* Settings Permissions */}
             <div className={styles.formGroup}>
-              <h4 className={styles.permissionSectionTitle}>Přístup k sekcím nastavení</h4>
+              <h4 className={styles.permissionSectionTitle}>{t('role_settings_access')}</h4>
               <div className={styles.permissionGrid}>
                 {SETTINGS_PERMISSIONS.map((perm) => (
                   <label key={perm.key} className={styles.permissionCheckbox}>
@@ -246,10 +248,10 @@ export function RolesManager({ onUpdate }: RolesManagerProps) {
             {/* Actions */}
             <div className={styles.editorActions}>
               <button className="btn-secondary" onClick={handleCancel}>
-                Zrušit
+                {t('common:cancel')}
               </button>
               <button className="btn-primary" onClick={handleSave}>
-                {isCreating ? 'Vytvořit' : 'Uložit'}
+                {isCreating ? t('role_create') : t('common:save')}
               </button>
             </div>
           </div>
