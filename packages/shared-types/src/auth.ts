@@ -20,6 +20,8 @@ export interface UserPublic {
   phone?: string;
   businessName?: string;
   permissions?: string[];
+  /** BCP-47 locale code (e.g. 'en', 'cs', 'en-GB'). Default: 'en'. */
+  locale: string;
 }
 
 export interface AuthResponse {

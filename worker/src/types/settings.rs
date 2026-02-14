@@ -239,6 +239,8 @@ pub struct UserWithSettings {
     pub break_latest_time: NaiveTime,
     pub break_min_km: f64,
     pub break_max_km: f64,
+    /// BCP-47 locale code (e.g. "en", "cs", "en-GB"). Default: "en".
+    pub locale: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

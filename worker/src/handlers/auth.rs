@@ -197,7 +197,7 @@ pub async fn handle_register(
                     }
                 };
                 // Generate JWT
-                let token = match auth::generate_token(user.id, &user.email, &user.role, None, &permissions, &jwt_secret) {
+                let token = match auth::generate_token(user.id, &user.email, &user.role, None, &permissions, &user.locale, &jwt_secret) {
                     Ok(t) => t,
                     Err(e) => {
                         error!("Failed to generate token: {}", e);
@@ -310,7 +310,7 @@ pub async fn handle_login(
         };
 
         // Generate JWT
-        let token = match auth::generate_token(user.id, &user.email, &user.role, user.owner_id, &permissions, &jwt_secret) {
+        let token = match auth::generate_token(user.id, &user.email, &user.role, user.owner_id, &permissions, &user.locale, &jwt_secret) {
             Ok(t) => t,
             Err(e) => {
                 error!("Failed to generate token: {}", e);
@@ -465,7 +465,7 @@ pub async fn handle_refresh(
                 };
                 // Issue a fresh token
                 let owner_id = claims.owner_id.as_deref().and_then(|id| Uuid::parse_str(id).ok());
-                match auth::generate_token(user_id, &user.email, &claims.role, owner_id, &permissions, &jwt_secret) {
+                match auth::generate_token(user_id, &user.email, &claims.role, owner_id, &permissions, &user.locale, &jwt_secret) {
                     Ok(new_token) => {
                         let mut user_public = UserPublic::from(user);
                         user_public.permissions = permissions;

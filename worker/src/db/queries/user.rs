@@ -15,6 +15,7 @@ const USER_COLUMNS: &str = r#"
     working_hours_start, working_hours_end,
     max_revisions_per_day,
     role, owner_id,
+    locale,
     created_at, updated_at
 "#;
 

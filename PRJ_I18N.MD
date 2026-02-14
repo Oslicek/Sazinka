@@ -769,39 +769,34 @@ The `locale` field is included in the JWT payload and `UserPublic` type so it's 
 
 > Last updated: 2026-02-14
 
-### Phase 0: Infrastructure — 🔄 IN PROGRESS
+### Phase 0: Infrastructure — ✅ COMPLETE
 
 | Step | Status | Notes |
 |------|--------|-------|
-| 0.1.1 i18n instance | ✅ Done | `apps/web/src/i18n/index.ts` created with full config (HttpBackend, LanguageDetector, initReactI18next, zustandDetector, `languageChanged` listener). |
-| 0.1.1 test | ⚠️ Failing | `apps/web/src/i18n/index.test.ts` exists (6 tests). 4/6 fail due to `beforeEach` timeout — HTTP backend tries to fetch `/locales/en/common.json` which doesn't exist yet. 2/6 pass (options checks). |
-| 0.1.2 Provider | ❌ Not started | `<App>` not yet wrapped in `<I18nextProvider>` / `<Suspense>`. |
-| 0.1.3 Locale JSONs | ❌ Not started | `apps/web/public/locales/` directory and JSON files do not exist yet. |
-| 0.2 Zustand detector | ✅ Done | Implemented inline in `i18n/index.ts` (reads `authStore.user.locale`). |
+| 0.1.1 i18n instance | ✅ Done | `apps/web/src/i18n/index.ts` — HttpBackend, LanguageDetector, initReactI18next, zustandDetector, `languageChanged` listener. |
+| 0.1.1 tests | ✅ 10/10 pass | `apps/web/src/i18n/index.test.ts` — test i18n instance with in-memory resources + production config options check. |
+| 0.1.2 Provider | ✅ Done | `main.tsx` imports `./i18n`, wraps `<App>` in `<Suspense>`. |
+| 0.1.3 Locale JSONs | ✅ Done | `apps/web/public/locales/en/common.json` (36 keys) and `cs/common.json` (39 keys, incl. Czech `_few` plurals). |
+| 0.2 Zustand detector | ✅ Done | Inline in `i18n/index.ts` (reads `authStore.user.locale`). |
 | 0.2.2 lang attribute | ✅ Done | `i18n.on('languageChanged')` listener sets `document.documentElement.lang`. |
-| 0.3 Formatters | ❌ Not started | `i18n/formatters.ts` does not exist. |
-| 0.4 resolveBackendMessage | ❌ Not started | `i18n/resolveBackendMessage.ts` does not exist. |
-| 0.5 DB & shared types | ❌ Not started | No `locale` field in `UserPublic` or DB. |
-| 0.6 Key parity script | ❌ Not started | `scripts/check-i18n-keys.ts` does not exist. |
+| 0.3 Formatters | ✅ 28/28 pass | `i18n/formatters.ts` + `i18n/formatters.test.ts` — `formatDate`, `formatTime`, `formatNumber`, `formatDistance`, `formatDuration`, `formatRelativeTime`, `getWeekdayNames`, `getMonthNames`. |
+| 0.4 resolveBackendMessage | ✅ 8/8 pass | `i18n/resolveBackendMessage.ts` + test — legacy passthrough, `{ key, params }` translation, missing key fallback. |
+| 0.5.1 Shared types | ✅ Done | Added `locale: string` to `UserPublic` in `packages/shared-types/src/auth.ts`. Updated `authStore.test.ts` (3 test user objects). |
+| 0.5.2 SQL migration | ✅ Done | `worker/migrations/017_add_user_locale.sql` — `ALTER TABLE users ADD COLUMN locale VARCHAR(10) NOT NULL DEFAULT 'en'`. |
+| 0.5.3 Rust backend | ✅ Done | Added `locale` field to `User` struct, `UserPublic` struct (+ `From<User>` impl), `UserWithSettings` struct. Updated `USER_COLUMNS`, settings query. Added `locale` to JWT `Claims` (with `#[serde(default)]`), `generate_token()` signature. Updated all 3 callers in `handlers/auth.rs` and all 7 test calls. 19/19 Rust auth tests pass. |
+| 0.6 Key parity script | ✅ Done | `scripts/check-i18n-keys.js` — plural-suffix-aware comparison, exits 0 when base keys match. |
 
-**Dependencies installed:** ✅ `i18next@^25.8.7`, `i18next-browser-languagedetector@^8.2.1`, `i18next-http-backend@^3.0.2`, `react-i18next@^16.5.4` added to `apps/web/package.json` and `pnpm-lock.yaml` updated.
+**Dependencies installed:** ✅ `i18next@^25.8.7`, `i18next-browser-languagedetector@^8.2.1`, `i18next-http-backend@^3.0.2`, `react-i18next@^16.5.4`.
 
-### Unrelated refactoring found in working tree (pre-crash)
+**Test summary:** 59 frontend tests across 4 files + 19 Rust auth tests, all passing.
 
-The previous session also performed a **UI refactoring** (not i18n-related) that extracted route summary stats and actions from `RouteDetailTimeline` and `PlanningTimeline` into shared components:
+### Pre-crash UI refactoring (fixed)
 
-- **New:** `RouteSummaryStats.tsx` + `.module.css` — extracted stats bar (Začátek, Konec, Celkový čas, Práce, Jízda, Zastávky, Vzdálenost)
-- **New:** `RouteSummaryActions.tsx` + `.module.css` — extracted action buttons (Optimalizovat, Pauza, Smazat trasu)
-- **Modified:** `PlanningInbox.tsx`, `Planner.tsx` — use new shared components instead of inline JSX
-- **Modified:** `RouteDetailTimeline.tsx`, `PlanningTimeline.tsx` — removed metrics/actions props and JSX
-- **Modified:** `PlanningInbox.module.css` — removed ~100 lines of now-extracted CSS
-- **Modified:** `Planner.module.css` — added `.routeSummaryBar` style
-
-**TypeScript errors introduced by this refactoring (must fix before continuing):**
-1. `RouteSummaryStats.tsx` imports from `../../utils/timeFormatters` which does not exist (should use `formatMinutesHm` from PlanningInbox or create the utility)
-2. `PlanningTimeline.tsx` destructures removed props (`onAddBreak`, `onOptimize`, `onDeleteRoute`, `deleteRouteLabel`, `isOptimizing`, `metrics`) that no longer exist in its interface
-3. `Planner.tsx` passes removed props (`onAddBreak`, `onOptimize`, `onDeleteRoute`, `isOptimizing`, `metrics`) to `<PlanningTimeline>`
-4. `Planner.tsx` accesses `result.route?.depotDeparture` but `SavedRoute` type doesn't have `depotDeparture` field
+The previous session extracted route summary stats/actions into shared components (`RouteSummaryStats`, `RouteSummaryActions`). The crash left 4 TypeScript errors which have been fixed:
+1. Created `utils/timeFormatters.ts` for the missing `formatMinutesHm` import.
+2. Removed stale destructured props from `PlanningTimeline.tsx`.
+3. Removed stale prop passes from `Planner.tsx` → `<PlanningTimeline>`.
+4. Replaced `result.route?.depotDeparture` (non-existent field) with computation from first stop's arrival time.
 
 ### Phases 1–9: ❌ Not started
 

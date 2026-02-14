@@ -97,10 +97,11 @@ function main() {
     const ns = nsFile.replace('.json', '');
     console.log(`\n📦 Namespace: ${ns}`);
 
-    // Load reference keys
+    // Load reference keys (base keys for parity, raw keys for reporting)
     const refPath = path.join(LOCALES_DIR, referenceLocale, nsFile);
     const refData = JSON.parse(fs.readFileSync(refPath, 'utf-8'));
-    const refKeys = extractKeys(refData);
+    const refBaseKeys = extractBaseKeys(refData);
+    const refRawKeys = extractKeys(refData);
 
     for (const locale of locales) {
       if (locale === referenceLocale) continue;
@@ -115,22 +116,23 @@ function main() {
       }
 
       const localeData = JSON.parse(fs.readFileSync(localePath, 'utf-8'));
-      const localeKeys = extractKeys(localeData);
+      const localeBaseKeys = extractBaseKeys(localeData);
+      const localeRawKeys = extractKeys(localeData);
 
-      // Find missing and extra keys
-      const missingInLocale = refKeys.filter((k) => !localeKeys.includes(k));
-      const extraInLocale = localeKeys.filter((k) => !refKeys.includes(k));
+      // Compare base keys (plural-suffix-agnostic)
+      const missingInLocale = refBaseKeys.filter((k) => !localeBaseKeys.includes(k));
+      const extraInLocale = localeBaseKeys.filter((k) => !refBaseKeys.includes(k));
 
       if (missingInLocale.length === 0 && extraInLocale.length === 0) {
-        console.log(`  ✅ ${locale}/${nsFile} — ${localeKeys.length} keys match`);
+        console.log(`  ✅ ${locale}/${nsFile} — ${localeRawKeys.length} keys (${localeBaseKeys.length} base keys match)`);
       } else {
         hasErrors = true;
         if (missingInLocale.length > 0) {
-          console.error(`  ❌ ${locale}/${nsFile} — missing ${missingInLocale.length} keys:`);
+          console.error(`  ❌ ${locale}/${nsFile} — missing ${missingInLocale.length} base keys:`);
           missingInLocale.forEach((k) => console.error(`     - ${k}`));
         }
         if (extraInLocale.length > 0) {
-          console.error(`  ⚠️  ${locale}/${nsFile} — extra ${extraInLocale.length} keys:`);
+          console.error(`  ⚠️  ${locale}/${nsFile} — extra ${extraInLocale.length} base keys:`);
           extraInLocale.forEach((k) => console.error(`     + ${k}`));
         }
       }

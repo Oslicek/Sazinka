@@ -784,3 +784,125 @@ Tyto změny opravují **aktuální bugy** bez změny datového modelu:
 | 1 | **Kritická** | Aktuální import **ztrácí data** (status, result). |
 | 2 | Střední | Zlepšuje integritu, ale nerozbíjí funkčnost. |
 | 3 | Nízká (design-first) | Vyžaduje značný refaktoring frontendu i backendu. Nejprve navrhnout, pak implementovat. |
+
+---
+
+## 8. Database Indexes
+
+Databáze má **~40 indexů** pro optimalizaci dotazů. Všechny foreign keys jsou indexované, plus složené indexy pro časté multi-column queries.
+
+### 8.1 Customers (zákazníci)
+
+| Index | Typ | Sloupce | Poznámka |
+|-------|-----|---------|----------|
+| `idx_customers_user` | Regular | `user_id` | FK index |
+| `idx_customers_geocode` | Composite | `(user_id, geocode_status)` | Pro filtrování geocode stavu |
+| `idx_customers_user_anonymized` | Composite | `(user_id, is_anonymized)` | Pro GDPR queries |
+
+### 8.2 Users (uživatelé)
+
+| Index | Typ | Sloupce | Poznámka |
+|-------|-----|---------|----------|
+| `idx_users_role` | Regular | `role` | Pro RBAC |
+| `idx_users_owner` | Regular | `owner_id` | FK index |
+| `idx_users_default_crew_id` | Regular | `default_crew_id` | FK index |
+| `idx_users_default_depot_id` | Regular | `default_depot_id` | FK index |
+
+### 8.3 Depots (sklady)
+
+| Index | Typ | Sloupce | Poznámka |
+|-------|-----|---------|----------|
+| `idx_depots_primary` | **UNIQUE** | `(user_id, is_primary)` WHERE `is_primary = TRUE` | Pouze jeden primární depot na uživatele |
+
+### 8.4 Crews (čety)
+
+| Index | Typ | Sloupce | Poznámka |
+|-------|-----|---------|----------|
+| `idx_crews_user` | Regular | `user_id` | FK index |
+
+### 8.5 Devices (zařízení)
+
+| Index | Typ | Sloupce | Poznámka |
+|-------|-----|---------|----------|
+| `idx_devices_customer` | Regular | `customer_id` | FK index |
+| `idx_devices_user` | Regular | `user_id` | FK index |
+| `idx_devices_serial` | **UNIQUE** | `(user_id, serial_number)` WHERE `serial_number IS NOT NULL` | Partial index |
+| `idx_devices_name_type` | **UNIQUE** | `(customer_id, name, device_type)` | Business constraint |
+
+### 8.6 Revisions (revize)
+
+| Index | Typ | Sloupce | Poznámka |
+|-------|-----|---------|----------|
+| `idx_revisions_device` | Regular | `device_id` | FK index |
+| `idx_revisions_customer` | Regular | `customer_id` | FK index |
+| `idx_revisions_user` | Regular | `user_id` | FK index |
+| `idx_revisions_status` | Composite | `(user_id, status)` | Pro filtrování podle stavu |
+| `idx_revisions_due` | Composite | `(user_id, due_date)` | Pro due date queries |
+| `idx_revisions_user_scheduled_date` | Composite | `(user_id, scheduled_date)` WHERE `scheduled_date IS NOT NULL` | Partial index pro plánované revize |
+| `idx_revisions_completed_at` | Regular | `completed_at` WHERE `completed_at IS NOT NULL` | Partial index pro dokončené |
+| `idx_revisions_device_due` | **UNIQUE** | `(device_id, due_date)` | Jedna revize na zařízení na datum |
+
+### 8.7 Visits (návštěvy)
+
+| Index | Typ | Sloupce | Poznámka |
+|-------|-----|---------|----------|
+| `idx_visits_user` | Regular | `user_id` | FK index |
+| `idx_visits_customer` | Regular | `customer_id` | FK index |
+| `idx_visits_date` | Composite | `(user_id, scheduled_date)` | Pro kalendář queries |
+| `idx_visits_crew` | Regular | `crew_id` WHERE `crew_id IS NOT NULL` | Partial index |
+
+### 8.8 Visit Work Items (pracovní položky návštěv)
+
+| Index | Typ | Sloupce | Poznámka |
+|-------|-----|---------|----------|
+| `idx_work_items_visit` | Regular | `visit_id` | FK index |
+| `idx_work_items_device` | Regular | `device_id` WHERE `device_id IS NOT NULL` | Partial index |
+| `idx_work_items_revision` | Regular | `revision_id` WHERE `revision_id IS NOT NULL` | Partial index |
+
+### 8.9 Communications (komunikace)
+
+| Index | Typ | Sloupce | Poznámka |
+|-------|-----|---------|----------|
+| `idx_communications_customer` | Regular | `customer_id` | FK index |
+| `idx_communications_user` | Regular | `user_id` | FK index |
+
+### 8.10 Routes (trasy)
+
+| Index | Typ | Sloupce | Poznámka |
+|-------|-----|---------|----------|
+| `idx_routes_depot` | Regular | `depot_id` | FK index |
+| `idx_routes_user_date_crew` | **UNIQUE** | `(user_id, route_date, crew_id)` | Jedna trasa na četu na den |
+
+### 8.11 Route Stops (zastávky tras)
+
+| Index | Typ | Sloupce | Poznámka |
+|-------|-----|---------|----------|
+| `idx_route_stops_route` | Regular | `route_id` | FK index |
+| `idx_route_stops_type` | Regular | `stop_type` | Pro filtrování typu zastávky (break/customer) |
+| `idx_route_stops_revision_id` | Regular | `revision_id` | FK index |
+
+### 8.12 RBAC (Role-Based Access Control)
+
+| Index | Typ | Sloupce | Poznámka |
+|-------|-----|---------|----------|
+| `idx_roles_owner` | Regular | `owner_id` | FK index |
+| `idx_role_permissions_role` | Regular | `role_id` | FK index |
+| `idx_user_roles_user` | Regular | `user_id` | FK index |
+| `idx_user_roles_role` | Regular | `role_id` | FK index |
+
+### 8.13 Index Coverage Summary
+
+✅ **Dobře pokryté oblasti:**
+- Všechny foreign keys mají indexy
+- Časté filtry (`user_id`, `status`, `scheduled_date`)
+- Složené indexy pro multi-column queries
+- Partial indexy (WHERE podmínky) pro úsporu místa
+- UNIQUE indexy pro business constraints
+
+📊 **Statistiky:**
+- **Celkem indexů**: ~40
+- **UNIQUE indexů**: 6
+- **Partial indexů**: 5 (WHERE podmínky)
+- **Composite indexů**: 10+
+
+💡 **Poznámka**: Marketing site (D1 databáze v Cloudflare) zatím indexy nemá - obsahuje jen 2 jednoduché tabulky (`contacts`, `newsletter_subscribers`) bez high-traffic queries.

@@ -39,6 +39,10 @@ pub struct User {
     pub role: String,
     pub owner_id: Option<Uuid>,
     
+    // i18n
+    /// BCP-47 locale code (e.g. "en", "cs", "en-GB"). Default: "en".
+    pub locale: String,
+    
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -55,6 +59,8 @@ pub struct UserPublic {
     pub business_name: Option<String>,
     #[serde(default)]
     pub permissions: Vec<String>,
+    /// BCP-47 locale code (e.g. "en", "cs", "en-GB"). Default: "en".
+    pub locale: String,
 }
 
 impl From<User> for UserPublic {
@@ -67,6 +73,7 @@ impl From<User> for UserPublic {
             phone: user.phone,
             business_name: user.business_name,
             permissions: Vec::new(),
+            locale: user.locale,
         }
     }
 }
