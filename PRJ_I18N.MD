@@ -299,14 +299,18 @@ An i18n library with ICU MessageFormat or similar pluralization support is requi
 
 ### Rollout priority
 
-1. **P0 — Infrastructure:** i18n library, locale setting, translation file structure
-2. **P1 — Auth:** Login, Register (first thing users see)
-3. **P2 — Shell:** Layout (navigation), ErrorBoundary, common components
-4. **P3 — Core pages:** Dashboard, Calendar, Customers, CustomerDetail
-5. **P4 — Planning:** PlanningInbox, Planner, CandidateDetail, RouteDetailTimeline
-6. **P5 — Secondary:** Settings, Jobs, Routes, WorkLog, Import/Export
-7. **P6 — Backend:** NATS response messages, email templates
-8. **P7 — Shared types:** Label records, import aliases
+> See **Migration Path** section below for the full TDD implementation plan with test-first steps.
+
+1. **Phase 0 — Infrastructure:** i18n library, locale setting, formatters, translation file structure, DB migration
+2. **Phase 1 — Auth:** Login, Register (first thing users see)
+3. **Phase 2 — Shell:** Layout (navigation), ErrorBoundary, common components
+4. **Phase 3 — Core pages:** Dashboard, Calendar, Customers, CustomerDetail
+5. **Phase 4 — Planning:** PlanningInbox, Planner, CandidateDetail, RouteDetailTimeline
+6. **Phase 5 — Secondary:** Settings, Jobs, Routes, WorkLog, Import/Export
+7. **Phase 6 — Stores, services, utils:** Zustand stores, service functions, utilities
+8. **Phase 7 — Shared types:** Label records, import aliases
+9. **Phase 8 — Backend:** NATS response messages, email templates, export
+10. **Phase 9 — Verification & cleanup:** Key parity, dead code removal, final visual check
 
 ---
 ---
@@ -763,26 +767,253 @@ The `locale` field is included in the JWT payload and `UserPublic` type so it's 
 
 ## Migration Path (file-by-file, no big bang)
 
-### Phase 0: Infrastructure (this task)
-- Install `i18next`, `react-i18next`, `i18next-http-backend`, `i18next-browser-languagedetector`
-- Create `apps/web/src/i18n/` with instance setup
-- Create `apps/web/public/locales/en/common.json` (primary; English default)
-- Create `apps/web/public/locales/cs/common.json` (same keys, Czech values)
-- Wrap `<App>` in i18n provider
-- Add `locale` to `UserPublic` and DB (DEFAULT `'en'`)
-- Create `formatters.ts` utility
-- Add `resolveBackendMessage()` helper for unified backend message handling (legacy string vs `{ key, params }`)
+> **Approach:** TDD (Red → Green → Refactor) for every step. Tests are written first; implementation follows. Each phase is independently deployable.
 
-### Phase 1-7: Incremental extraction
-- One page/component at a time
-- Replace hardcoded strings with `t()` calls
-- Move strings to the appropriate namespace JSON
-- Add English translations alongside
-- Each phase is independently deployable
+---
+
+### Phase 0: Infrastructure
+
+**Goal:** i18n plumbing in place; zero functional change; app still shows Czech.
+
+#### 0.1 i18n instance & provider
+
+| Step | TDD: Red (write test) | Green (implement) |
+|------|----------------------|-------------------|
+| 0.1.1 | Test: `i18n/index.ts` exports an initialized i18next instance with `fallbackLng: 'en'`, `supportedLngs` includes `['en','en-GB','en-US','cs']`, `nonExplicitSupportedLngs: true`. | Create `apps/web/src/i18n/index.ts` with full config (no `lng`, detector chain, HTTP backend). |
+| 0.1.2 | Test: `<App>` renders inside `<I18nextProvider>` (or `<Suspense>` wrapping). | Wrap `<App>` in `main.tsx` with i18n provider; add `<Suspense fallback>` for async loading. |
+| 0.1.3 | Test: `en/common.json` and `cs/common.json` exist, are valid JSON, and have identical key sets. | Create `apps/web/public/locales/en/common.json` and `cs/common.json` with initial keys: `loading`, `save`, `cancel`, `delete`, `confirm`, `error`, `status.overdue`, `units.km`, `units.min`, `units.hours`. |
+
+#### 0.2 Zustand language detector
+
+| Step | TDD: Red | Green |
+|------|---------|-------|
+| 0.2.1 | Test: `zustandDetector.lookup()` returns `user.locale` from `authStore` when logged in; returns `undefined` when no user. | Implement custom i18next language detector plugin. |
+| 0.2.2 | Test: on `i18n.changeLanguage('cs')`, `document.documentElement.lang` updates to `'cs'`. | Add `i18n.on('languageChanged')` listener in init. |
+
+#### 0.3 Formatters
+
+| Step | TDD: Red | Green |
+|------|---------|-------|
+| 0.3.1 | Test: `formatDate('2026-03-15', 'short')` returns locale-appropriate string for `en` and `cs`. | Implement `formatDate()` in `i18n/formatters.ts`. |
+| 0.3.2 | Test: `formatTime('2026-03-15T14:30:00')` returns `'2:30 PM'` for `en`, `'14:30'` for `cs`. | Implement `formatTime()`. |
+| 0.3.3 | Test: `formatNumber(1234.5, 1)` returns `'1,234.5'` for `en`, `'1 234,5'` for `cs`. | Implement `formatNumber()`. |
+| 0.3.4 | Test: `formatDistance(12.3)` returns `'12.3 km'` for `en`, `'12,3 km'` for `cs`. | Implement `formatDistance()`. |
+| 0.3.5 | Test: `formatDuration(125)` returns `'2h 05min'`. | Implement `formatDuration()`. |
+| 0.3.6 | Test: `formatRelativeTime(new Date(Date.now() - 3600000))` returns a string containing "hour" (en) or "hodin" (cs). | Implement `formatRelativeTime()`. |
+| 0.3.7 | Test: `getWeekdayNames('short')` returns 7 items, first is Monday equivalent. `getMonthNames()` returns 12 items. | Implement `getWeekdayNames()`, `getMonthNames()`. |
+
+#### 0.4 resolveBackendMessage
+
+| Step | TDD: Red | Green |
+|------|---------|-------|
+| 0.4.1 | Test: `resolveBackendMessage('Načítám...')` returns `'Načítám...'` (legacy passthrough). | Implement `resolveBackendMessage()` in `i18n/resolveBackendMessage.ts`. |
+| 0.4.2 | Test: `resolveBackendMessage({ key: 'common:loading', params: {} })` returns translated string. | Handle `{ key, params }` shape. |
+| 0.4.3 | Test: `resolveBackendMessage({ key: 'unknown:missing_key' })` returns generic fallback, does not throw. | Handle missing key gracefully. |
+
+#### 0.5 DB & shared types
+
+| Step | TDD: Red | Green |
+|------|---------|-------|
+| 0.5.1 | Test: `UserPublic` type includes `locale: string`. | Add `locale` field to `UserPublic` in `packages/shared-types/src/auth.ts`. |
+| 0.5.2 | Backend: SQL migration test (if applicable) or manual verification. | Create SQL migration: `ALTER TABLE users ADD COLUMN locale VARCHAR(10) NOT NULL DEFAULT 'en'`. |
+| 0.5.3 | Test: Rust `User` struct includes `locale` field; login response contains it. | Update Rust `User` struct, auth handler, JWT claims. |
+
+#### 0.6 Translation key parity script
+
+| Step | TDD: Red | Green |
+|------|---------|-------|
+| 0.6.1 | Test: Script exits 0 when `en` and `cs` keys match; exits 1 when they differ. | Create `scripts/check-i18n-keys.ts` (or `.js`) that compares key sets across locale folders. |
+
+**Phase 0 done criteria:** App boots, shows existing Czech UI unchanged. i18n instance initializes. Formatters pass all tests. Parity script passes. `locale` field exists in DB and types.
+
+---
+
+### Phase 1: Auth pages (Login, Register)
+
+**Goal:** First user-visible i18n — the entry point of the app.
+
+| Step | TDD: Red | Green |
+|------|---------|-------|
+| 1.1 | Test: `en/auth.json` and `cs/auth.json` exist with identical keys. | Create namespace files with keys for Login + Register. |
+| 1.2 | Test: `Login.tsx` renders `t('auth:login_title')` text, not hardcoded Czech. | Replace hardcoded strings in `Login.tsx` with `t()` calls. |
+| 1.3 | Test: `Register.tsx` renders `t('auth:register_title')`, locale selector is present. | Replace strings in `Register.tsx`; add locale confirmation UI. |
+| 1.4 | Test: On register, `user.locale` is set from browser language (mapped to supported). | Wire registration form to set `locale` from `navigator.language`. |
+| 1.5 | Test: Switching language on login page re-renders all visible text. | Verify `useTranslation('auth')` reactivity. |
+
+**Phase 1 done criteria:** Login and Register render in English by default. Czech user sees Czech after locale detection. ~20 keys in `auth` namespace.
+
+---
+
+### Phase 2: Shell (Layout, Navigation, ErrorBoundary)
+
+**Goal:** All persistent UI chrome is translated.
+
+| Step | TDD: Red | Green |
+|------|---------|-------|
+| 2.1 | Test: `en/nav.json` and `cs/nav.json` exist with identical keys. | Create namespace files. |
+| 2.2 | Test: Sidebar/navigation items render from `t('nav:...')` keys. | Replace hardcoded nav labels. |
+| 2.3 | Test: `ErrorBoundary` renders `t('common:errors...')` messages. | Replace hardcoded error messages. |
+| 2.4 | Test: Common components (`CollapseButton`, `ConfirmDialog`, etc.) use `t()`. | Replace hardcoded strings in common components. |
+| 2.5 | Test: `<html lang=...>` attribute updates when language changes. | Verify `languageChanged` listener from Phase 0 works end-to-end. |
+| 2.6 | Test: `<title>` updates dynamically based on locale. | Replace hardcoded `<title>`. |
+
+**Phase 2 done criteria:** Navigation, error states, and all shared chrome render in the active locale. ~15 keys in `nav`.
+
+---
+
+### Phase 3: Core pages (Dashboard, Calendar, Customers, CustomerDetail)
+
+**Goal:** Main daily-use screens are fully translated.
+
+| Step | TDD: Red | Green |
+|------|---------|-------|
+| 3.1 | Test: `en/calendar.json` and `cs/calendar.json` exist with identical keys. | Create namespace files. |
+| 3.2 | Test: `Calendar.tsx` uses `getMonthNames()` and `getWeekdayNames()` from formatters, not hardcoded arrays. | Replace `MONTH_NAMES`, `WEEKDAY_NAMES`. |
+| 3.3 | Test: `CalendarGrid.tsx` renders weekday headers from `getWeekdayNames('short')`. | Replace hardcoded array. |
+| 3.4 | Test: `en/customers.json` and `cs/customers.json` exist with identical keys. | Create namespace files. |
+| 3.5 | Test: `Customers.tsx` filter labels, empty states, and error messages use `t()`. | Replace hardcoded strings. |
+| 3.6 | Test: `CustomerForm.tsx` renders all form labels/placeholders from `t()`. | Replace ~18 form labels. |
+| 3.7 | Test: `CustomerSummary.tsx` stats labels use `t()`. | Replace hardcoded labels. |
+| 3.8 | Test: `Dashboard.tsx` status labels and stats use `t()`. | Replace hardcoded strings. |
+| 3.9 | Test: `DeleteConfirmDialog.tsx` uses `t()` for confirm/cancel text. | Replace hardcoded strings. |
+| 3.10 | Test: All `toLocaleDateString('cs-CZ')` calls in these files replaced with `formatDate()`/`formatTime()`. | Replace date formatting calls. |
+| 3.11 | Test: `overdueUtils.ts` pluralization uses `t('common:duration...')` with `{ count }`. | Replace manual Czech plural logic with i18next pluralization. |
+
+**Phase 3 done criteria:** Dashboard, Calendar, Customers, CustomerDetail render in active locale. Czech plurals work via i18next. ~120 keys across `calendar` and `customers` namespaces.
+
+---
+
+### Phase 4: Planning (PlanningInbox, Planner, CandidateDetail, RouteDetailTimeline)
+
+**Goal:** The most string-heavy area of the app is translated.
+
+| Step | TDD: Red | Green |
+|------|---------|-------|
+| 4.1 | Test: `en/planner.json` and `cs/planner.json` exist with identical keys. | Create namespace files (~150 keys). |
+| 4.2 | Test: `PlanningInbox.tsx` filter presets, labels, tooltips use `t()`. | Replace ~50 strings. |
+| 4.3 | Test: `planningInboxFilters.ts` preset labels use `t()`. | Replace filter labels. |
+| 4.4 | Test: `CandidateDetail.tsx` state flags, buttons, snooze labels use `t()`. | Replace strings. |
+| 4.5 | Test: `CandidateRow.tsx` metric labels, tooltips use `t()`. | Replace strings. |
+| 4.6 | Test: `RouteDetailTimeline.tsx` stop labels, confirmations use `t()`. | Replace strings. |
+| 4.7 | Test: `RouteListPanel.tsx` uses `formatDate()` and `t()` for units. | Replace hardcoded weekday array + "zast.", "min", "km". |
+| 4.8 | Test: `CapacityMetrics.tsx`, `DraftModeBar.tsx`, `SortableStopItem.tsx`, `SlotSuggestions.tsx` use `t()`. | Replace strings in remaining planner components. |
+| 4.9 | Test: `PlanningTimeline.tsx` late-arrival warning uses `t()` with interpolation. | Replace formatted warning string. |
+| 4.10 | Test: `ProblemsSegment.tsx`, `VirtualizedInboxList.tsx` use `t()`. | Replace remaining strings. |
+
+**Phase 4 done criteria:** Entire Planning module renders in active locale. ~150 keys in `planner` namespace.
+
+---
+
+### Phase 5: Secondary pages (Settings, Jobs, Routes, WorkLog, Import/Export)
+
+**Goal:** All remaining frontend pages translated.
+
+| Step | TDD: Red | Green |
+|------|---------|-------|
+| 5.1 | Test: `en/settings.json`, `en/import.json`, `en/jobs.json` and their `cs` counterparts exist with identical keys. | Create namespace files. |
+| 5.2 | Test: `Settings.tsx` tabs, labels, CRUD messages use `t()`. | Replace ~60 strings. |
+| 5.3 | Test: `Jobs.tsx` status labels, relative time use `t()` and `formatRelativeTime()`. | Replace strings. |
+| 5.4 | Test: `Routes.tsx` tooltips and errors use `t()`. | Replace strings. |
+| 5.5 | Test: `WorkLog.tsx`, `VisitDetail.tsx`, `RevisionDetail.tsx` use `t()`. | Replace strings. |
+| 5.6 | Test: `ImportCustomersModal.tsx`, `ImportReportDialog.tsx` use `t()`. | Replace strings. |
+| 5.7 | Test: `exportService.ts` CSV column headers use `t()`. | Replace ~16 hardcoded CSV labels. |
+| 5.8 | Test: `CallQueue.tsx` labels and buttons use `t()`. | Replace strings. |
+| 5.9 | Test: `Admin.tsx`, `About.tsx` use `t()`. | Replace strings. |
+| 5.10 | Test: `useKeyboardShortcuts.ts` descriptions use `t()`. | Replace ~10 shortcut labels. |
+| 5.11 | Test: `en/validation.json` and `cs/validation.json` exist with identical keys. | Create namespace files. |
+| 5.12 | Test: `customerValidation.ts` messages use `t()`. | Replace validation messages. |
+| 5.13 | Test: Import alias maps accept English aliases alongside Czech. | Extend alias maps in shared-types. |
+
+**Phase 5 done criteria:** All frontend pages and services render in active locale. ~170 keys across `settings`, `import`, `jobs`, `validation` namespaces.
+
+---
+
+### Phase 6: Stores, services, utilities
+
+**Goal:** Non-React code (Zustand stores, service functions, utils) uses i18n.
+
+| Step | TDD: Red | Green |
+|------|---------|-------|
+| 6.1 | Test: `authStore.ts` error messages use `i18n.t()`. | Replace 3 hardcoded error strings. |
+| 6.2 | Test: `activeJobsStore.ts` job type names use `i18n.t()`. | Replace job type labels. |
+| 6.3 | Test: `natsStore.ts` connection error messages use `i18n.t()`. | Replace 2 error strings. |
+| 6.4 | Test: `calendarService.ts`, `visitService.ts`, `communicationService.ts` labels use `i18n.t()`. | Replace service-level labels. |
+| 6.5 | Test: `insertionService.ts` format strings use `i18n.t()`. | Replace "+Xmin / +Ykm" patterns. |
+| 6.6 | Test: `breakUtils.ts` unit labels use `i18n.t()`. | Replace "km", "min" strings. |
+
+**Phase 6 done criteria:** No hardcoded Czech in stores, services, or utils. ~25 keys moved to existing namespaces.
+
+---
+
+### Phase 7: Shared types (label records, import aliases)
+
+**Goal:** `packages/shared-types` label maps become i18n key maps.
+
+| Step | TDD: Red | Green |
+|------|---------|-------|
+| 7.1 | Test: `DEVICE_TYPE_KEYS` maps each `DeviceType` to a `common:device_type.*` key; `t(key)` resolves. | Rename `DEVICE_TYPE_LABELS` → `DEVICE_TYPE_KEYS`; add keys to `common.json`. |
+| 7.2 | Test: `WORK_TYPE_KEYS`, `WORK_RESULT_KEYS` map correctly. | Same pattern. |
+| 7.3 | Test: `ROUTE_STATUS_KEYS`, `REVISION_STATUS_KEYS`, `REVISION_RESULT_KEYS` map correctly. | Same pattern. |
+| 7.4 | Test: `PAGE_PERMISSIONS`, `SETTINGS_PERMISSIONS` labels use keys. | Same pattern. |
+| 7.5 | Test: All components that previously used `*_LABELS[value]` now use `t(*_KEYS[value])`. | Update all call sites (~20 files). |
+| 7.6 | Test: Import alias maps include English aliases for all enum types. | Extend `DEVICE_TYPE_ALIASES`, `REVISION_STATUS_ALIASES`, etc. |
+
+**Phase 7 done criteria:** No Czech strings in `packages/shared-types`. All labels resolved via i18n. ~50 keys added to `common.json`.
+
+---
 
 ### Phase 8: Backend key migration
-- Replace Czech NATS status strings with unified `{ key, params }` shape
-- Frontend uses `resolveBackendMessage()`: if payload has `key`, translate; if legacy plain string, display as-is
+
+**Goal:** Rust backend sends `{ key, params }` instead of Czech strings.
+
+| Step | TDD: Red | Green |
+|------|---------|-------|
+| 8.1 | Test (Rust): Job progress messages are valid `{ key, params }` JSON. | Replace ~20 `status_message` strings in `jobs.rs`. |
+| 8.2 | Test (Rust): Import error messages use `{ key, params }` shape. | Replace ~30 messages in `import_processors.rs`, `import.rs`. |
+| 8.3 | Test (Rust): Route warnings use `{ key, params }` shape. | Replace ~10 messages in `vrp/pragmatic.rs`, `vrp/mod.rs`. |
+| 8.4 | Test (Rust): Slot/insertion messages use `{ key, params }` shape. | Replace ~10 messages in `slots.rs`, `insertion.rs`. |
+| 8.5 | Test (Rust): Export progress messages use `{ key, params }` shape. | Replace ~5 messages in `export_processor.rs`. |
+| 8.6 | Test (Frontend): `resolveBackendMessage()` correctly translates all new backend keys. | Verify frontend handles all new keys; add missing keys to JSON. |
+| 8.7 | Test (Rust): Default email templates are locale-aware (en defaults for new accounts). | Implement `default_email_templates(locale)` in `types/settings.rs`. |
+| 8.8 | Test (Rust): Mixed English backend messages ("Database reset successfully", etc.) converted to keys. | Unify remaining English messages. |
+
+**Phase 8 done criteria:** Backend sends only keys + params. Zero Czech strings in Rust user-facing messages. ~120 keys added to various namespaces.
+
+---
+
+### Phase 9: Final verification & cleanup
+
+**Goal:** Verify completeness; remove dead code.
+
+| Step | TDD: Red | Green |
+|------|---------|-------|
+| 9.1 | Test: Parity script passes for all namespace files across `en` and `cs`. | Fix any missing keys. |
+| 9.2 | Test: `grep -r "cs-CZ" apps/web/src/` returns zero matches. | Remove any remaining hardcoded `'cs-CZ'` locale strings. |
+| 9.3 | Test: `grep -r "toLocaleDateString\|toLocaleTimeString\|toLocaleString" apps/web/src/` returns zero matches outside `formatters.ts`. | Replace any remaining direct Intl calls. |
+| 9.4 | Test: No Czech string literals remain in `apps/web/src/**/*.{ts,tsx}` (excluding test files and JSON). | Scan and fix stragglers. |
+| 9.5 | Test: App renders correctly in `en` and `cs` (manual visual check or automated screenshot comparison). | Fix any layout issues from longer/shorter translated strings. |
+| 9.6 | Remove old `*_LABELS` exports from shared-types (if any consumers remain, update them). | Clean up dead exports. |
+| 9.7 | Update `index.html` `<title>` and `lang` attribute to be dynamic. | Already done via Phase 0 listener; verify. |
+
+**Phase 9 done criteria:** Zero hardcoded Czech in frontend code. Zero `'cs-CZ'` literals. Full key parity. Clean build.
+
+---
+
+### Estimated effort per phase
+
+| Phase | Description | Est. keys | Est. effort |
+|:-----:|-------------|:---------:|:-----------:|
+| 0 | Infrastructure | ~15 | 1 day |
+| 1 | Auth (Login, Register) | ~20 | 0.5 day |
+| 2 | Shell (Nav, Layout, common) | ~15 | 0.5 day |
+| 3 | Core pages (Dashboard, Calendar, Customers) | ~120 | 2 days |
+| 4 | Planning (Inbox, Planner, Timeline) | ~150 | 2 days |
+| 5 | Secondary pages (Settings, Jobs, Import) | ~170 | 2 days |
+| 6 | Stores, services, utils | ~25 | 0.5 day |
+| 7 | Shared types | ~50 | 1 day |
+| 8 | Backend keys | ~120 | 2 days |
+| 9 | Verification & cleanup | — | 0.5 day |
+| **Total** | | **~685** | **~12 days** |
 
 ---
 

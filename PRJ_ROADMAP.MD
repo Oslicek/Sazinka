@@ -1791,7 +1791,10 @@ Explicitly excluded:
 - Document attachments
 - Incoming email processing
 - Advanced reporting/analytics
-- Multi-region support
+- ~~Multi-region support~~ → Internationalization (i18n) is now **in scope** — see `PRJ_I18N.MD`
+- RTL languages (Arabic, Hebrew)
+- Currency conversion
+- Per-tenant locale overrides
 
 ---
 
@@ -2004,4 +2007,20 @@ Phase 10: Smart Slot Heuristics (v0.19.0): ✅ COMPLETED
     - Real-time validation on manual time input (debounced 500ms) ✅
     - Warning confirmation before scheduling conflicting slots ✅
     - groupSuggestionsByCrew() + getStatusColor() utilities ✅
+
+Phase 11: Internationalization (i18n): 🔲 PLANNED
+  → Full design: PRJ_I18N.MD
+  → TDD approach: Red → Green → Refactor for every step
+  → Estimated ~685 translation keys, ~12 days
+  
+  11.0 Infrastructure (i18n lib, formatters, DB migration, key parity script)
+  11.1 Auth pages (Login, Register — first thing users see)
+  11.2 Shell (Navigation, Layout, ErrorBoundary, common components)
+  11.3 Core pages (Dashboard, Calendar, Customers, CustomerDetail)
+  11.4 Planning (PlanningInbox, Planner, CandidateDetail, RouteDetailTimeline)
+  11.5 Secondary pages (Settings, Jobs, Routes, WorkLog, Import/Export)
+  11.6 Stores, services, utilities (Zustand stores, service functions)
+  11.7 Shared types (label records → key maps, import aliases)
+  11.8 Backend key migration (Rust NATS messages → { key, params } shape)
+  11.9 Final verification & cleanup (key parity, dead code, visual check)
 ```

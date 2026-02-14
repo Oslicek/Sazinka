@@ -1506,7 +1506,7 @@ interface ImportIssue {
   level: 'error' | 'warning' | 'info';
   code: ImportIssueCode;     // Strojově čitelný kód chyby
   field: string;             // Název pole, ve kterém k chybě došlo
-  message: string;           // Lidsky čitelná zpráva (česky)
+  message: string;           // Lidsky čitelná zpráva (česky) → will migrate to { key, params } shape per PRJ_I18N.MD Phase 8
   originalValue?: string;    // Původní hodnota z CSV (pokud relevantní)
 }
 ```

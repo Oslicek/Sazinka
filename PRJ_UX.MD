@@ -40,6 +40,12 @@
 > - `/today` → přesměrování na `/planner`
 > - Navigační položka "Můj den" odstraněna
 
+### ⚠️ Internationalization note
+
+> All UI labels, button text, error messages, and user-visible strings in this document are in Czech (original MVP language). These will be extracted to translation keys and available in English as part of the i18n migration — see `PRJ_I18N.MD` for the full phased plan. When implementing new UI features, use `t()` keys from the start, not hardcoded strings.
+
+---
+
 ## Přehled
 
 Tento dokument popisuje workflow a UI koncept pro klíčovou část aplikace Sazinka - plánování pravidelných revizí a návštěv u zákazníků.

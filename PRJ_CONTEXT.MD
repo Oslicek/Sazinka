@@ -1502,7 +1502,7 @@ cargo test
 
 - Development on Windows 11
 - Docker Desktop uses WSL2 for Linux containers on Windows 11 Home
-- Czech language UI (later)
+- ~~Czech language UI (later)~~ → Internationalization in progress — see `PRJ_I18N.MD` for architecture and phased implementation plan (i18next + react-i18next, English default, 10 phases, TDD)
 - MVP focuses on core CRM + route planning
 - Email notifications deferred to later phase
 - Invoicing/billing architecture prepared but not implemented

@@ -386,6 +386,7 @@ mod tests {
 - **Time window validation**: Constraint checking
 - **Message handlers**: Request → response flow
 - **TypeScript utilities**: Formatting, validation
+- **i18n**: Translation key parity across locales, formatter output, resolveBackendMessage handling
 
 ### What NOT to Test
 - Framework code (React, Tokio)
@@ -407,6 +408,7 @@ sazinka/
 │       │   ├── stores/         # Zustand stores
 │       │   ├── services/       # NATS, Nominatim clients
 │       │   ├── routes/         # TanStack Router pages
+│       │   ├── i18n/            # i18n instance, formatters, resolveBackendMessage (see PRJ_I18N.MD)
 │       │   ├── lib/            # Utilities
 │       │   └── types/          # TypeScript types
 │       ├── package.json
@@ -439,6 +441,38 @@ sazinka/
 ├── PROJECT_CONTEXT.MD
 └── PROJECT_RULES.MD
 ```
+
+---
+
+## Internationalization (i18n) Conventions
+
+> Full architecture documented in `PRJ_I18N.MD`.
+
+### Translation Keys
+- **Convention:** `namespace:section.action_or_noun` (colon separates namespace, dots separate hierarchy)
+- **Namespaces:** `common`, `auth`, `nav`, `calendar`, `customers`, `planner`, `settings`, `import`, `jobs`, `validation`
+- **English is the default/fallback language** — all `en/*.json` files are the source of truth
+- Keys use `snake_case`: `planner:filters.due_this_week`
+
+### Translation Files
+- Location: `apps/web/public/locales/{lng}/{namespace}.json`
+- All locales must have identical key sets — enforced by `scripts/check-i18n-keys.ts`
+- Never commit a key to one locale without adding it to all others
+
+### Component Rules
+- Use `useTranslation(namespace)` hook in React components
+- Use `i18n.t()` directly in stores, services, and non-React code
+- Never hardcode user-visible strings — always use `t()` or formatter functions
+- Date/time/number formatting: always use `i18n/formatters.ts`, never `toLocaleDateString('cs-CZ')` or similar
+
+### Backend Messages
+- Rust backend sends `{ key: "namespace:key.path", params: { ... } }` — never localized strings
+- Frontend resolves via `resolveBackendMessage()` helper
+- Legacy plain strings (pre-migration) are passed through as-is
+
+### Shared Types
+- Label maps use key maps (`*_KEYS`) pointing to translation keys, not `*_LABELS` with hardcoded Czech
+- Example: `DEVICE_TYPE_KEYS: Record<DeviceType, string>` where values are `'common:device_type.boiler'` etc.
 
 ---
 
@@ -477,6 +511,13 @@ sazinka/
 - [ ] UUID arrays use `ANY($N)` pattern, not formatted `NOT IN ('...')`
 - [ ] Numeric request values use parameterized intervals
 - [ ] Dynamic WHERE/HAVING conditions track `param_idx` correctly
+
+### i18n
+- [ ] No new hardcoded user-visible strings — use `t()` keys
+- [ ] New keys added to both `en` and `cs` locale files
+- [ ] Date/time/number formatting uses `formatters.ts`, not inline `toLocaleString`
+- [ ] Backend messages use `{ key, params }` shape, not localized strings
+- [ ] `scripts/check-i18n-keys.ts` passes (key parity)
 
 ### General
 - [ ] No security vulnerabilities

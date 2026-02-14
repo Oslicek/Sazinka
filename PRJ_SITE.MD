@@ -180,6 +180,8 @@ Astro má vestavěnou i18n podporu (od v4+):
 - **Auto-detekce jazyka na root `/`**: Minimalistický JS redirect podle `navigator.language`;
   při vypnutém JS fallback na `/en/`.
 
+> **Relationship with `apps/web` i18n:** The two apps use **fully separate i18n architectures** (decided — see `PRJ_I18N.MD`). `apps/site` uses build-time Astro SSG with URL-based locale routing; `apps/web` uses runtime i18next with state-based locale. No shared translation files. Future improvement: pass locale from site to app via `?lang=cs` query parameter on login/register links.
+
 ### 3.4 Analytics: Umami Cloud
 
 **Rozhodnutí**: **Umami** s backendem **Umami Cloud** (hosted).
