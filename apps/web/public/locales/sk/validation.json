@@ -1,0 +1,1 @@
+{"name_required":"Jméno je povinné","name_min_length":"Jméno musí mít alespoň 2 znaky","email_invalid":"Neplatný formát emailu","phone_min_digits":"Telefon musí mít alespoň 9 číslic","postal_code_required":"PSČ je povinné","postal_code_format":"PSČ musí mít 5 číslic","street_required":"Ulice je povinná","city_required":"Město je povinné"}

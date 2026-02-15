@@ -54,6 +54,13 @@ export function Settings() {
   const [importEntityType, setImportEntityType] = useState<ImportEntityType>('device');
   const [showCustomerImport, setShowCustomerImport] = useState(false);
 
+  const resolveTabFromHash = useCallback((): SettingsTab | null => {
+    if (typeof window === 'undefined') return null;
+    const raw = window.location.hash.replace(/^#/, '');
+    if (!raw) return null;
+    return raw as SettingsTab;
+  }, []);
+
   // Load settings and crews
   const loadSettings = useCallback(async () => {
     if (!isConnected) return;
@@ -127,6 +134,33 @@ export function Settings() {
   // Filter tabs based on user permissions
   const tabs = allTabs.filter((tab) => hasPermission(tab.permission));
 
+  // Sync active tab from URL hash (e.g. /settings#preferences)
+  useEffect(() => {
+    const hashTab = resolveTabFromHash();
+    if (hashTab && tabs.some((tab) => tab.id === hashTab)) {
+      setActiveTab(hashTab);
+      return;
+    }
+
+    // Keep selected tab valid when permissions change.
+    if (!tabs.some((tab) => tab.id === activeTab) && tabs.length > 0) {
+      setActiveTab(tabs[0].id);
+    }
+  }, [activeTab, resolveTabFromHash, tabs]);
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hashTab = resolveTabFromHash();
+      if (hashTab && tabs.some((tab) => tab.id === hashTab)) {
+        setActiveTab(hashTab);
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange);
+    };
+  }, [resolveTabFromHash, tabs]);
+
   if (loading) {
     return (
       <div className={styles.settings}>
@@ -159,7 +193,10 @@ export function Settings() {
             <button
               key={tab.id}
               className={`${styles.sidebarItem} ${activeTab === tab.id ? styles.sidebarItemActive : ''}`}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => {
+                setActiveTab(tab.id);
+                window.location.hash = tab.id;
+              }}
             >
               {tab.label}
             </button>
@@ -184,10 +221,8 @@ export function Settings() {
               setError(null);
               try {
                 const updated = await settingsService.updatePreferences(data);
-                await i18n.changeLanguage(data.locale);
-                useAuthStore.setState((state) => (
-                  state.user ? { user: { ...state.user, locale: data.locale } } : {}
-                ));
+                // Language is already switched immediately on dropdown change;
+                // this persists the choice to the backend.
                 setSettings((prev) => prev ? { ...prev, preferences: updated } : null);
                 showSuccess(t('success_preferences'));
               } catch (e) {
@@ -478,9 +513,24 @@ interface PreferencesFormProps {
 
 function PreferencesForm({ defaultCrewId, defaultDepotId, currentLocale, crews, depots, saving, onSave }: PreferencesFormProps) {
   const { t } = useTranslation('settings');
-  const [locale, setLocale] = useState(currentLocale.toLowerCase().startsWith('cs') ? 'cs' : 'en');
+  const normalizeLocale = (value: string): 'en' | 'cs' | 'sk' => {
+    const base = value.toLowerCase().split('-')[0];
+    if (base === 'cs') return 'cs';
+    if (base === 'sk') return 'sk';
+    return 'en';
+  };
+  const [locale, setLocale] = useState<'en' | 'cs' | 'sk'>(normalizeLocale(currentLocale));
   const [crewId, setCrewId] = useState(defaultCrewId ?? '');
   const [depotId, setDepotId] = useState(defaultDepotId ?? '');
+
+  const handleLocaleChange = (newLocale: string) => {
+    setLocale(newLocale);
+    // Switch the UI language immediately
+    i18n.changeLanguage(newLocale);
+    useAuthStore.setState((state) =>
+      state.user ? { user: { ...state.user, locale: newLocale } } : {}
+    );
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -502,11 +552,12 @@ function PreferencesForm({ defaultCrewId, defaultDepotId, currentLocale, crews, 
         <label>{t('pref_language')}</label>
         <select
           value={locale}
-          onChange={(e) => setLocale(e.target.value)}
+          onChange={(e) => handleLocaleChange(e.target.value)}
           className={styles.input}
         >
           <option value="en">{t('pref_language_en')}</option>
           <option value="cs">{t('pref_language_cs')}</option>
+          <option value="sk">{t('pref_language_sk')}</option>
         </select>
       </div>
 
@@ -672,6 +723,7 @@ function BusinessInfoForm({ data, saving, onSave }: BusinessInfoFormProps) {
     street: data.street || '',
     city: data.city || '',
     postalCode: data.postalCode || '',
+    companyLocale: data.companyLocale || 'cs',
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -702,6 +754,21 @@ function BusinessInfoForm({ data, saving, onSave }: BusinessInfoFormProps) {
             value={formData.phone}
             onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
           />
+        </div>
+
+        <div className={styles.formGroup}>
+          <label htmlFor="companyLocale">{t('business_language')}</label>
+          <select
+            id="companyLocale"
+            value={formData.companyLocale}
+            onChange={(e) => setFormData({ ...formData, companyLocale: e.target.value })}
+            className={styles.input}
+          >
+            <option value="cs">{t('business_language_cs')}</option>
+            <option value="en">{t('business_language_en')}</option>
+            <option value="sk">{t('business_language_sk')}</option>
+          </select>
+          <small className={styles.hint}>{t('business_language_hint')}</small>
         </div>
       </div>
 

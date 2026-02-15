@@ -74,6 +74,8 @@ export interface BusinessInfo {
   city?: string;
   postalCode?: string;
   country?: string;
+  /** Company-level locale for emails and external communication (e.g. "en", "cs"). */
+  companyLocale: string;
 }
 
 // Email template settings
@@ -130,6 +132,8 @@ export interface UpdateBusinessInfoRequest {
   city?: string;
   postalCode?: string;
   country?: string;
+  /** Company-level locale for emails and external communication (e.g. "en", "cs"). */
+  companyLocale?: string;
 }
 
 export interface UpdateEmailTemplatesRequest {

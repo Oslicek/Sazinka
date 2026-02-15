@@ -92,6 +92,8 @@ pub struct BusinessInfo {
     pub city: Option<String>,
     pub postal_code: Option<String>,
     pub country: Option<String>,
+    /// Company-level locale for emails and external communication (e.g. "en", "cs").
+    pub company_locale: String,
 }
 
 /// Email template settings
@@ -165,6 +167,8 @@ pub struct UpdateBusinessInfoRequest {
     pub city: Option<String>,
     pub postal_code: Option<String>,
     pub country: Option<String>,
+    /// Company-level locale for emails and external communication (e.g. "en", "cs").
+    pub company_locale: Option<String>,
 }
 
 /// Update email templates request
@@ -243,6 +247,8 @@ pub struct UserWithSettings {
     pub break_max_km: f64,
     /// BCP-47 locale code (e.g. "en", "cs", "en-GB"). Default: "en".
     pub locale: String,
+    /// Company-level locale for emails and external communication. Default: "cs".
+    pub company_locale: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -273,12 +279,13 @@ impl UserWithSettings {
             city: self.city.clone(),
             postal_code: self.postal_code.clone(),
             country: self.country.clone(),
+            company_locale: self.company_locale.clone(),
         }
     }
 
-    /// Convert to email template settings (locale-aware defaults)
+    /// Convert to email template settings (uses company_locale for external communication)
     pub fn to_email_templates(&self) -> EmailTemplateSettings {
-        let locale = &self.locale;
+        let locale = &self.company_locale;
         let reminder_subject = self.email_reminder_subject_template.clone()
             .or_else(|| self.email_subject_template.clone())
             .unwrap_or_else(|| default_reminder_subject(locale));
@@ -350,6 +357,20 @@ If you need to reschedule, please contact us.
 Thank you,
 {{companyName}}"#;
 
+/// Default reminder email template - Slovak
+pub const DEFAULT_REMINDER_EMAIL_TEMPLATE_SK: &str = r#"Dobrý deň,
+
+radi by sme Vám pripomenuli blížiaci sa termín pravidelnej revízie Vášho zariadenia {{device_type}}.
+
+Plánovaný termín: {{due_date}}
+
+V prípade záujmu nás prosím kontaktujte pre dohodnutie termínu.
+
+S pozdravom,
+{{business_name}}
+{{phone}}
+{{email}}"#;
+
 /// Default confirmation email template - Czech
 pub const DEFAULT_CONFIRMATION_EMAIL_TEMPLATE_CS: &str = r#"Dobrý den,
 
@@ -376,11 +397,26 @@ If you need to change the appointment, please contact us.
 Thank you,
 {{companyName}}"#;
 
+/// Default confirmation email template - Slovak
+pub const DEFAULT_CONFIRMATION_EMAIL_TEMPLATE_SK: &str = r#"Dobrý deň,
+
+potvrdzujeme dohodnutý termín návštevy.
+
+Termín: {{due_date}}
+
+Tešíme sa na spoluprácu.
+
+S pozdravom,
+{{business_name}}
+{{phone}}
+{{email}}"#;
+
 /// Return the default reminder email template for the given locale.
 pub fn default_reminder_template(locale: &str) -> &'static str {
     let lang = locale.split('-').next().unwrap_or(locale);
     match lang {
         "cs" => DEFAULT_REMINDER_EMAIL_TEMPLATE_CS,
+        "sk" => DEFAULT_REMINDER_EMAIL_TEMPLATE_SK,
         _ => DEFAULT_REMINDER_EMAIL_TEMPLATE_EN,
     }
 }
@@ -390,6 +426,7 @@ pub fn default_confirmation_template(locale: &str) -> &'static str {
     let lang = locale.split('-').next().unwrap_or(locale);
     match lang {
         "cs" => DEFAULT_CONFIRMATION_EMAIL_TEMPLATE_CS,
+        "sk" => DEFAULT_CONFIRMATION_EMAIL_TEMPLATE_SK,
         _ => DEFAULT_CONFIRMATION_EMAIL_TEMPLATE_EN,
     }
 }
@@ -399,6 +436,7 @@ pub fn default_reminder_subject(locale: &str) -> String {
     let lang = locale.split('-').next().unwrap_or(locale);
     match lang {
         "cs" => "Připomínka termínu - {{customerName}}".to_string(),
+        "sk" => "Pripomienka termínu - {{customerName}}".to_string(),
         _ => "Appointment reminder - {{customerName}}".to_string(),
     }
 }
@@ -408,6 +446,7 @@ pub fn default_confirmation_subject(locale: &str) -> String {
     let lang = locale.split('-').next().unwrap_or(locale);
     match lang {
         "cs" => "Potvrzení termínu - {{customerName}}".to_string(),
+        "sk" => "Potvrdenie termínu - {{customerName}}".to_string(),
         _ => "Appointment confirmation - {{customerName}}".to_string(),
     }
 }

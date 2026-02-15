@@ -10,12 +10,14 @@ function detectLocale(): string {
   const nav = navigator.language; // e.g. "cs", "cs-CZ", "en-US"
   const base = nav.split('-')[0].toLowerCase();
   if (base === 'cs') return 'cs';
+  if (base === 'sk') return 'sk';
   return 'en'; // default
 }
 
 const SUPPORTED_LOCALES = [
   { code: 'en', label: 'English' },
   { code: 'cs', label: 'Čeština' },
+  { code: 'sk', label: 'Slovenčina' },
 ] as const;
 
 export function Register() {

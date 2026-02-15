@@ -27,7 +27,7 @@ i18n
   .use(initReactI18next)
   .init({
     fallbackLng: 'en',
-    supportedLngs: ['en', 'en-GB', 'en-US', 'cs'],
+    supportedLngs: ['en', 'en-GB', 'en-US', 'cs', 'sk', 'sk-SK'],
     nonExplicitSupportedLngs: true,
     // Do not set lng - let detector chain determine it
     

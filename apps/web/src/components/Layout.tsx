@@ -82,17 +82,6 @@ export function Layout({ children }: LayoutProps) {
             {isConnected ? t('online') : t('offline')}
           </div>
 
-          {showSettings && (
-            <Link
-              to="/settings"
-              className={styles.settingsButton}
-              title={t('settings')}
-              aria-label={t('settings')}
-            >
-              ⚙
-            </Link>
-          )}
-
           {user && (
             <div className={styles.userMenu}>
               <span className={styles.userName}>{user.name}</span>

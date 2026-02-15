@@ -15,7 +15,7 @@ beforeAll(async () => {
     .use(initReactI18next)
     .init({
       fallbackLng: 'en',
-      supportedLngs: ['en', 'en-GB', 'en-US', 'cs'],
+      supportedLngs: ['en', 'en-GB', 'en-US', 'cs', 'sk', 'sk-SK'],
       nonExplicitSupportedLngs: true,
       ns: ['common'],
       defaultNS: 'common',
@@ -30,6 +30,12 @@ beforeAll(async () => {
           common: {
             loading: 'Načítám…',
             save: 'Uložit',
+          },
+        },
+        sk: {
+          common: {
+            loading: 'Načítavam…',
+            save: 'Uložiť',
           },
         },
       },
@@ -48,12 +54,13 @@ describe('i18n instance configuration', () => {
     expect(testI18n.options.fallbackLng).toEqual(['en']);
   });
 
-  it('should have supportedLngs including en, en-GB, en-US, cs', () => {
+  it('should have supportedLngs including en, en-GB, en-US, cs, sk', () => {
     const supportedLngs = testI18n.options.supportedLngs as string[];
     expect(supportedLngs).toContain('en');
     expect(supportedLngs).toContain('en-GB');
     expect(supportedLngs).toContain('en-US');
     expect(supportedLngs).toContain('cs');
+    expect(supportedLngs).toContain('sk');
   });
 
   it('should have nonExplicitSupportedLngs set to true', () => {
@@ -104,5 +111,6 @@ describe('i18n production instance (index.ts)', () => {
     expect(supportedLngs).toContain('en-GB');
     expect(supportedLngs).toContain('en-US');
     expect(supportedLngs).toContain('cs');
+    expect(supportedLngs).toContain('sk');
   });
 });

@@ -39,7 +39,7 @@ pub async fn get_user_settings(pool: &PgPool, user_id: Uuid) -> Result<Option<Us
             break_enabled, break_duration_minutes,
             break_earliest_time, break_latest_time,
             break_min_km, break_max_km,
-            locale,
+            locale, company_locale,
             created_at, updated_at
         FROM users
         WHERE id = $1
@@ -109,7 +109,8 @@ pub async fn update_business_info(
             street = COALESCE($7, street),
             city = COALESCE($8, city),
             postal_code = COALESCE($9, postal_code),
-            country = COALESCE($10, country)
+            country = COALESCE($10, country),
+            company_locale = COALESCE($11, company_locale)
         WHERE id = $1
         "#
     )
@@ -123,6 +124,7 @@ pub async fn update_business_info(
     .bind(&req.city)
     .bind(&req.postal_code)
     .bind(&req.country)
+    .bind(&req.company_locale)
     .execute(pool)
     .await?;
 

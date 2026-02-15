@@ -9,6 +9,7 @@ import { I18nextProvider, initReactI18next } from 'react-i18next';
 
 import enAuth from '../../public/locales/en/auth.json';
 import csAuth from '../../public/locales/cs/auth.json';
+import skAuth from '../../public/locales/sk/auth.json';
 
 // ── i18n test instance ──
 const testI18n = i18next.createInstance();
@@ -17,12 +18,13 @@ beforeAll(async () => {
   await testI18n.use(initReactI18next).init({
     lng: 'en',
     fallbackLng: 'en',
-    supportedLngs: ['en', 'cs'],
+    supportedLngs: ['en', 'cs', 'sk'],
     ns: ['auth'],
     defaultNS: 'auth',
     resources: {
       en: { auth: enAuth },
       cs: { auth: csAuth },
+      sk: { auth: skAuth },
     },
     interpolation: { escapeValue: false },
   });
@@ -87,18 +89,20 @@ describe('Register page i18n', () => {
     expect(screen.getByText('Přihlaste se')).toBeInTheDocument();
   });
 
-  it('has a locale selector with en and cs options', () => {
+  it('has a locale selector with en, cs and sk options', () => {
     renderRegister('en');
     const select = screen.getByLabelText('Language');
     expect(select).toBeInTheDocument();
     expect(select).toHaveValue('en');
 
     const options = select.querySelectorAll('option');
-    expect(options).toHaveLength(2);
+    expect(options).toHaveLength(3);
     expect(options[0]).toHaveValue('en');
     expect(options[0]).toHaveTextContent('English');
     expect(options[1]).toHaveValue('cs');
     expect(options[1]).toHaveTextContent('Čeština');
+    expect(options[2]).toHaveValue('sk');
+    expect(options[2]).toHaveTextContent('Slovenčina');
   });
 
   it('switches form language when locale selector changes', () => {
