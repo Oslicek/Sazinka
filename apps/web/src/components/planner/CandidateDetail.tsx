@@ -168,6 +168,16 @@ export function CandidateDetail({
     }
   };
 
+  const formatPhoneDisplay = (phone: string): string => {
+    const compact = phone.replace(/\s+/g, '');
+    if (compact.startsWith('+420')) {
+      const localDigits = compact.slice(4).replace(/\D/g, '');
+      const groups = localDigits.match(/.{1,3}/g) ?? [];
+      return groups.length > 0 ? `+420 ${groups.join(' ')}` : '+420';
+    }
+    return phone;
+  };
+
   return (
     <div className={styles.container}>
       {/* Header */}
@@ -324,16 +334,29 @@ export function CandidateDetail({
 
       {/* Kontakt */}
       <section className={styles.section}>
-        <h4 className={styles.sectionTitle}>{t('candidate_contact')}</h4>
+        <div className={styles.sectionHeader}>
+          <h4 className={styles.sectionTitle}>{t('candidate_contact')}</h4>
+          {onFixAddress && (
+            <button
+              type="button"
+              className={styles.sectionEditButton}
+              onClick={() => onFixAddress(candidate.customerId)}
+              title={t('candidate_fix_address')}
+              aria-label={t('candidate_fix_address')}
+            >
+              ✏️
+            </button>
+          )}
+        </div>
         {candidate.phone ? (
           <div className={styles.contactItem}>
             <a href={`tel:${candidate.phone}`} className={styles.phoneLink}>
-              📞 {candidate.phone}
+              📞 {formatPhoneDisplay(candidate.phone)}
             </a>
             <button
               type="button"
               className={styles.copyButton}
-              onClick={() => navigator.clipboard.writeText(candidate.phone!).catch(console.error)}
+              onClick={() => navigator.clipboard.writeText(formatPhoneDisplay(candidate.phone!)).catch(console.error)}
               title={t('candidate_copy')}
             >
               📋
@@ -363,13 +386,25 @@ export function CandidateDetail({
 
       {/* Adresa */}
       <section className={styles.section}>
-        <h4 className={styles.sectionTitle}>{t('candidate_address')}</h4>
+        <div className={styles.sectionHeader}>
+          <h4 className={styles.sectionTitle}>{t('candidate_address')}</h4>
+          {onFixAddress && (
+            <button
+              type="button"
+              className={styles.sectionEditButton}
+              onClick={() => onFixAddress(candidate.customerId)}
+              title={t('candidate_fix_address')}
+              aria-label={t('candidate_fix_address')}
+            >
+              ✏️
+            </button>
+          )}
+        </div>
         <div className={styles.addressRow}>
-          <div>
+          <div className={styles.addressText}>
             <p className={styles.address}>{candidate.street}</p>
-            <p className={styles.address}>
-              {candidate.postalCode && `${candidate.postalCode} `}{candidate.city}
-            </p>
+            <p className={styles.address}>{candidate.city}</p>
+            <p className={styles.address}>PSČ: {candidate.postalCode ?? ''}</p>
           </div>
           {candidate.hasCoordinates === false ? (
             <span className={styles.addressNotLocated}>⚠ {t('candidate_geocode_error')}</span>
@@ -377,15 +412,6 @@ export function CandidateDetail({
             <span className={styles.addressLocated}>✅ {t('candidate_address_located')}</span>
           )}
         </div>
-        {onFixAddress && (
-          <button
-            type="button"
-            className={`${styles.fixAddressButton} ${candidate.hasCoordinates === false ? styles.fixAddressButtonWarning : ''}`}
-            onClick={() => onFixAddress(candidate.id)}
-          >
-            {t('candidate_fix_address')}
-          </button>
-        )}
       </section>
 
       {/* Notes */}

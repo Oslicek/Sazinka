@@ -741,3 +741,13 @@ The application is now fully deployed with RBAC enabled. Users can:
    - v. Čas jízdy (travel time)
    - vi. Počet zastávek (stop count, excluding breaks)
    - vii. Vzdálenost (distance in km)
+
+## 2026-02-15: Inbox - detail zákazníka úpravy
+
+### Požadavky uživatele
+
+1. V sekci adresa odstranit tlačítko `Opravit adresu` a nahradit ho ikonou tužky v pravém horním rohu sekce.
+2. Stejný mechanismus (ikona tužky vpravo nahoře) použít i pro sekci kontakt, aby šly kontakty editovat stejným způsobem.
+3. V adrese zobrazovat také PSČ; pokud není v datech, pole bude zatím prázdné.
+4. Label `Určena na mapě` posunout k pravému okraji sloupce.
+5. Telefon zobrazovat ve formátu `+420 738 980 138` (mezera po předvolbě a dále po trojicích číslic).
