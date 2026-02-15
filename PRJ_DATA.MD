@@ -233,17 +233,16 @@ users (DELETE)
 | `danger_zone` | Danger Zone | Nebezpečná zóna | Nebezpečná zóna |
 | **Level 1 — Data only** | | | |
 | `delete_data_title` | Delete Company Data | Smazat firemní data | Vymazať firemné dáta |
-| `delete_data_desc` | Delete all customers, devices, ... Your user account will be preserved. | Smaže všechny zákazníky, ... Váš účet zůstane zachován. | Vymaže všetkých zákazníkov, ... Váš účet zostane zachovaný. |
+| `delete_data_desc` | Permanently delete all ... Even Ariadline support cannot recover the deleted data. Your user account will be preserved. | Trvale smaže všechny ... Ani podpora Ariadline nemůže smazaná data obnovit. Váš účet zůstane zachován. | Trvalo vymaže všetkých ... Ani podpora Ariadline nemôže vymazané dáta obnoviť. Váš účet zostane zachovaný. |
 | `delete_data_button` | Delete all data | Smazat všechna data | Vymazať všetky dáta |
 | `delete_data_dialog_title` | Delete Company Data | Smazání firemních dat | Vymazanie firemných dát |
-| `delete_data_dialog_warning` | This operation will PERMANENTLY delete all your company data: | Tato operace TRVALE smaže veškerá vaše firemní data: | Táto operácia TRVALO vymaže všetky vaše firemné dáta: |
-| `delete_data_dialog_irreversible` | ... Your user account and login credentials will be preserved. | ... Váš účet a přihlašovací údaje zůstanou zachovány. | ... Váš účet a prihlasovacie údaje zostanú zachované. |
 | `delete_data_confirm_button` | Permanently delete all data | Definitivně smazat všechna data | Definitívne vymazať všetky dáta |
 | `delete_data_success` | All company data has been permanently deleted. Your account is preserved. | Veškerá firemní data byla trvale smazána. Váš účet je zachován. | Všetky firemné dáta boli trvalo vymazané. Váš účet je zachovaný. |
 | **Level 2 — Data + Account** | | | |
 | `delete_all_title` | Data Excise — Delete Account | Vyříznutí dat — Smazání účtu | Vyrezanie dát — Vymazanie účtu |
-| `delete_all_desc` | Permanently and irreversibly delete your account and all associated data. | Trvale a nevratně smaže váš účet a veškerá související data. | Trvalo a nenávratne vymaže váš účet a všetky súvisiace dáta. |
+| `delete_all_desc` | ... Even Ariadline support cannot recover data removed this way. If you want to continue using the service, you will need to register again. | ... Ani podpora Ariadline nemůže obnovit data. Pokud budete chtít službu dále používat, budete se muset znovu zaregistrovat. | ... Ani podpora Ariadline nemôže obnoviť dáta. Ak budete chcieť službu naďalej používať, budete sa musieť znova zaregistrovať. |
 | `delete_all_button` | Delete account and all data | Smazat účet a všechna data | Vymazať účet a všetky dáta |
+| **Shared (both levels)** | | | |
 | `delete_dialog_title` | Data Excise — Delete Account | Vyříznutí dat — Smazání účtu | Vyrezanie dát — Vymazanie účtu |
 | `delete_dialog_warning` | This operation will PERMANENTLY AND IRREVERSIBLY delete: | Tato operace TRVALE A NEVRATNĚ smaže: | Táto operácia TRVALO A NENÁVRATNE vymaže: |
 | `delete_dialog_item_customers` | All customers and their contact information | Všechny zákazníky a jejich kontaktní údaje | Všetkých zákazníkov a ich kontaktné údaje |
@@ -251,8 +250,9 @@ users (DELETE)
 | `delete_dialog_item_routes` | All routes, visits, and work logs | Všechny trasy, návštěvy a pracovní záznamy | Všetky trasy, návštevy a pracovné záznamy |
 | `delete_dialog_item_comms` | All communication records | Všechny záznamy komunikace | Všetky záznamy komunikácie |
 | `delete_dialog_item_settings` | All settings, crews, depots, and email templates | Všechna nastavení, posádky, depa a e-mailové šablony | Všetky nastavenia, posádky, depá a e-mailové šablóny |
-| `delete_dialog_item_accounts` | Your user account and all worker accounts | Váš uživatelský účet a všechny účty pracovníků | Váš používateľský účet a všetky účty pracovníkov |
+| `delete_dialog_item_accounts` | Your user account and all worker accounts *(Level 2 only)* | Váš uživatelský účet a všechny účty pracovníků *(jen Level 2)* | Váš používateľský účet a všetky účty pracovníkov *(len Level 2)* |
 | `delete_dialog_irreversible` | This action is IRREVERSIBLE. Data will be definitively excised from the system. Even Ariadline support cannot recover data removed this way. | Tato akce je NEVRATNÁ. Data budou definitivně vyříznuta ze systému. Ani podpora Ariadline nemůže obnovit data odstraněná tímto způsobem. | Táto akcia je NENÁVRATNÁ. Dáta budú definitívne vyrezané zo systému. Ani podpora Ariadline nemôže obnoviť dáta odstránené týmto spôsobom. |
+| `delete_account_preserved` | Your user account and login credentials will be preserved. *(Level 1 only)* | Váš uživatelský účet a přihlašovací údaje zůstanou zachovány. *(jen Level 1)* | Váš používateľský účet a prihlasovacie údaje zostanú zachované. *(len Level 1)* |
 | `delete_dialog_download_hint` | We recommend downloading a complete backup of your data before deletion: | Doporučujeme si před smazáním stáhnout kompletní zálohu vašich dat: | Odporúčame si pred vymazaním stiahnuť kompletnú zálohu vašich dát: |
 | `delete_dialog_download_btn` | Download full data export | Stáhnout kompletní export dat | Stiahnuť kompletný export dát |
 | `delete_dialog_continue` | Continue to deletion | Pokračovat ke smazání | Pokračovať k vymazaniu |
@@ -309,9 +309,11 @@ users (DELETE)
 | 2026-02-15 | Backend | `delete_user_account` volá Level 1 + smaže user row (Level 2) |
 | 2026-02-15 | Backend | Handler rozlišuje `level: 1` vs `level: 2` v requestu |
 | 2026-02-15 | Frontend | `deleteCompanyData()` (Level 1) + `deleteAccount()` (Level 2) v settingsService |
-| 2026-02-15 | Frontend | DangerZoneSection: dva tlačítka (oranžové L1, červené L2) |
+| 2026-02-15 | Frontend | DangerZoneSection: dva červená tlačítka (L1 data, L2 účet + data) |
 | 2026-02-15 | Frontend | DeleteAccountDialog: adaptivní UI podle levelu (barvy, texty, chování po smazání) |
 | 2026-02-15 | Překlady | Přidáno 8 nových klíčů pro Level 1 ve všech 3 jazycích |
+| 2026-02-15 | Překlady | Level 1: přidáno upozornění "ani podpora nemůže obnovit" — shodné s Level 2 |
+| 2026-02-15 | UI/UX | Sjednocení: obě tlačítka červená, sdílený dialog (warning, irreversible), Level 1 přidá "účet zachován", Level 2 desc: "budete se muset znovu zaregistrovat" |
 
 ---
 

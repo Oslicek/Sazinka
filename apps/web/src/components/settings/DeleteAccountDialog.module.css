@@ -53,33 +53,7 @@
   max-width: 400px;
 }
 
-/* Level 1: orange/warning button */
-.deleteDataButton {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1.25rem;
-  font-size: 0.875rem;
-  font-weight: 700;
-  color: #fff;
-  background: #d97706;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.15s, transform 0.1s;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.deleteDataButton:hover {
-  background: #b45309;
-}
-
-.deleteDataButton:active {
-  transform: scale(0.98);
-}
-
-/* Level 2: red/danger button */
+/* Red danger button (both levels) */
 .deleteButton {
   display: inline-flex;
   align-items: center;
@@ -139,7 +113,7 @@
   to { transform: translateY(0); opacity: 1; }
 }
 
-/* Dialog header — Level 2 (red/danger) */
+/* Dialog header (both levels) */
 .dialogHeader {
   display: flex;
   align-items: center;
@@ -149,18 +123,6 @@
   font-size: 1.125rem;
   font-weight: 700;
   color: var(--color-danger, #dc2626);
-}
-
-/* Dialog header — Level 1 (orange/warning) */
-.dialogHeaderWarning {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 1.25rem 1.5rem;
-  border-bottom: 1px solid var(--color-border, #e5e7eb);
-  font-size: 1.125rem;
-  font-weight: 700;
-  color: #d97706;
 }
 
 .dialogBody {
@@ -205,7 +167,7 @@
   font-weight: bold;
 }
 
-/* Irreversible warning box — Level 2 (red) */
+/* Irreversible warning box (both levels) */
 .irreversibleBox {
   background: color-mix(in srgb, var(--color-danger, #dc2626) 8%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-danger, #dc2626) 30%, transparent);
@@ -222,21 +184,8 @@
   line-height: 1.5;
 }
 
-/* Irreversible warning box — Level 1 (orange) */
-.irreversibleBoxWarning {
-  background: color-mix(in srgb, #d97706 8%, transparent);
-  border: 1px solid color-mix(in srgb, #d97706 30%, transparent);
-  border-radius: 8px;
-  padding: 1rem;
-  margin: 0 0 1.25rem 0;
-}
-
-.irreversibleBoxWarning p {
-  margin: 0;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #b45309;
-  line-height: 1.5;
+.irreversibleBox p + p {
+  margin-top: 0.5rem;
 }
 
 /* Download hint */
@@ -283,7 +232,7 @@
   background: var(--color-bg-hover, #e5e7eb);
 }
 
-/* Continue/confirm button — Level 2 (red) */
+/* Continue/confirm button (both levels) */
 .continueButton {
   padding: 0.625rem 1.25rem;
   font-size: 0.875rem;
@@ -301,28 +250,6 @@
 }
 
 .continueButton:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* Continue/confirm button — Level 1 (orange) */
-.continueButtonWarning {
-  padding: 0.625rem 1.25rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #fff;
-  background: #d97706;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.continueButtonWarning:hover {
-  background: #b45309;
-}
-
-.continueButtonWarning:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

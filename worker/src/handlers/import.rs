@@ -1387,7 +1387,15 @@ pub struct CsvCustomerRow {
     pub street: Option<String>,
     #[serde(alias = "city", alias = "mesto", alias = "obec")]
     pub city: Option<String>,
-    #[serde(alias = "postal_code", alias = "psc", alias = "zip")]
+    #[serde(
+        alias = "postal_code",
+        alias = "postalCode",
+        alias = "postalcode",
+        alias = "postal code",
+        alias = "psc",
+        alias = "psč",
+        alias = "zip"
+    )]
     pub postal_code: Option<String>,
     #[serde(alias = "country", alias = "zeme", alias = "stat")]
     pub country: Option<String>,

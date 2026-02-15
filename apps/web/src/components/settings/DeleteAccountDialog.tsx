@@ -1,8 +1,8 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from '@tanstack/react-router';
 import { deleteCompanyData, deleteAccount } from '@/services/settingsService';
-import { submitExportJob } from '@/services/exportPlusService';
+import { submitExportJob, subscribeExportJob, downloadExportJob } from '@/services/exportPlusService';
 import { useAuthStore } from '@/stores/authStore';
 import styles from './DeleteAccountDialog.module.css';
 
@@ -31,10 +31,10 @@ export function DangerZoneSection() {
           </div>
           <button
             type="button"
-            className={styles.deleteDataButton}
+            className={styles.deleteButton}
             onClick={() => setDialogLevel(1)}
           >
-            🗑️ {t('delete_data_button')}
+            ⛔ {t('delete_data_button')}
           </button>
         </div>
 
@@ -84,12 +84,19 @@ function DeleteAccountDialog({ level, onClose }: DeleteAccountDialogProps) {
   const [pin] = useState(() => generatePin());
   const [pinInput, setPinInput] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [downloadState, setDownloadState] = useState<'idle' | 'exporting' | 'done' | 'error'>('idle');
+  const unsubRef = useRef<(() => void) | null>(null);
 
   const pinMatches = pinInput.trim() === pin;
 
   function generatePin(): string {
     return String(Math.floor(1000 + Math.random() * 9000));
   }
+
+  // Cleanup export subscription on unmount
+  useEffect(() => {
+    return () => { unsubRef.current?.(); };
+  }, []);
 
   // Close on Escape
   useEffect(() => {
@@ -100,16 +107,42 @@ function DeleteAccountDialog({ level, onClose }: DeleteAccountDialogProps) {
     return () => window.removeEventListener('keydown', handler);
   }, [onClose, step]);
 
-  // Handle data export download
+  // Handle data export download — full flow: submit → subscribe → download file
   const handleDownload = useCallback(async () => {
+    setDownloadState('exporting');
     try {
-      await submitExportJob({
-        files: ['customers', 'devices', 'revisions', 'communications', 'work_log', 'routes'],
+      unsubRef.current?.();
+      const result = await submitExportJob({
         scope: 'all_workers_combined',
-        format: 'zip',
+        selectedFiles: ['customers', 'devices', 'revisions', 'communications', 'work_log', 'routes'],
+        filters: {},
+        userTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        userTimeZoneOffsetMinutes: new Date().getTimezoneOffset(),
+      });
+
+      unsubRef.current = await subscribeExportJob(result.jobId, async (update) => {
+        if (update.status.type === 'completed') {
+          try {
+            const { filename, blob } = await downloadExportJob(update.jobId);
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+            setDownloadState('done');
+          } catch {
+            setDownloadState('error');
+          }
+          unsubRef.current?.();
+        }
+        if (update.status.type === 'failed') {
+          setDownloadState('error');
+          unsubRef.current?.();
+        }
       });
     } catch {
-      // Export submission error — non-blocking, user can still proceed
+      setDownloadState('error');
     }
   }, []);
 
@@ -151,6 +184,7 @@ function DeleteAccountDialog({ level, onClose }: DeleteAccountDialogProps) {
           <WarningStep
             t={t}
             level={level}
+            downloadState={downloadState}
             onClose={onClose}
             onContinue={() => setStep('pin')}
             onDownload={handleDownload}
@@ -182,23 +216,22 @@ function DeleteAccountDialog({ level, onClose }: DeleteAccountDialogProps) {
 interface WarningStepProps {
   t: (key: string, opts?: Record<string, string>) => string;
   level: DeleteLevel;
+  downloadState: 'idle' | 'exporting' | 'done' | 'error';
   onClose: () => void;
   onContinue: () => void;
   onDownload: () => void;
 }
 
-function WarningStep({ t, level, onClose, onContinue, onDownload }: WarningStepProps) {
+function WarningStep({ t, level, downloadState, onClose, onContinue, onDownload }: WarningStepProps) {
   const title = level === 1 ? t('delete_data_dialog_title') : t('delete_dialog_title');
-  const warning = level === 1 ? t('delete_data_dialog_warning') : t('delete_dialog_warning');
-  const irreversible = level === 1 ? t('delete_data_dialog_irreversible') : t('delete_dialog_irreversible');
 
   return (
     <>
-      <div className={level === 1 ? styles.dialogHeaderWarning : styles.dialogHeader}>
-        {level === 1 ? '⚠️' : '⛔'} {title}
+      <div className={styles.dialogHeader}>
+        ⛔ {title}
       </div>
       <div className={styles.dialogBody}>
-        <p className={styles.warningText}>{warning}</p>
+        <p className={styles.warningText}>{t('delete_dialog_warning')}</p>
         <ul className={styles.deleteList}>
           <li>{t('delete_dialog_item_customers')}</li>
           <li>{t('delete_dialog_item_devices')}</li>
@@ -208,8 +241,9 @@ function WarningStep({ t, level, onClose, onContinue, onDownload }: WarningStepP
           {level === 2 && <li>{t('delete_dialog_item_accounts')}</li>}
         </ul>
 
-        <div className={level === 1 ? styles.irreversibleBoxWarning : styles.irreversibleBox}>
-          <p>{level === 1 ? '⚠️' : '⛔'} {irreversible}</p>
+        <div className={styles.irreversibleBox}>
+          <p>⛔ {t('delete_dialog_irreversible')}</p>
+          {level === 1 && <p>{t('delete_account_preserved')}</p>}
         </div>
 
         <p className={styles.downloadHint}>{t('delete_dialog_download_hint')}</p>
@@ -217,8 +251,17 @@ function WarningStep({ t, level, onClose, onContinue, onDownload }: WarningStepP
           type="button"
           className={styles.downloadButton}
           onClick={onDownload}
+          disabled={downloadState === 'exporting'}
         >
-          📥 {t('delete_dialog_download_btn')}
+          {downloadState === 'exporting' && '⏳ '}
+          {downloadState === 'done' && '✅ '}
+          {downloadState === 'error' && '❌ '}
+          {downloadState === 'idle' && '📥 '}
+          {downloadState === 'exporting'
+            ? t('delete_dialog_download_exporting')
+            : downloadState === 'done'
+              ? t('delete_dialog_download_done')
+              : t('delete_dialog_download_btn')}
         </button>
       </div>
       <div className={styles.dialogFooter}>
@@ -227,7 +270,7 @@ function WarningStep({ t, level, onClose, onContinue, onDownload }: WarningStepP
         </button>
         <button
           type="button"
-          className={level === 1 ? styles.continueButtonWarning : styles.continueButton}
+          className={styles.continueButton}
           onClick={onContinue}
         >
           {t('delete_dialog_continue')} →
@@ -258,8 +301,8 @@ function PinStep({ t, level, pin, pinInput, onPinChange, pinMatches, error, onCl
 
   return (
     <>
-      <div className={level === 1 ? styles.dialogHeaderWarning : styles.dialogHeader}>
-        {level === 1 ? '⚠️' : '⛔'} {t('delete_confirm_title')}
+      <div className={styles.dialogHeader}>
+        ⛔ {t('delete_confirm_title')}
       </div>
       <div className={styles.dialogBody}>
         <p className={styles.pinInstruction}>{t('delete_confirm_instruction')}</p>
@@ -292,11 +335,11 @@ function PinStep({ t, level, pin, pinInput, onPinChange, pinMatches, error, onCl
         </button>
         <button
           type="button"
-          className={level === 1 ? styles.continueButtonWarning : styles.continueButton}
+          className={styles.continueButton}
           onClick={onConfirm}
           disabled={!pinMatches}
         >
-          🗑️ {confirmButton}
+          ⛔ {confirmButton}
         </button>
       </div>
     </>
@@ -313,10 +356,12 @@ interface DeletingStepProps {
 }
 
 function DeletingStep({ t, level }: DeletingStepProps) {
+  const title = level === 1 ? t('delete_data_dialog_title') : t('delete_dialog_title');
+
   return (
     <>
-      <div className={level === 1 ? styles.dialogHeaderWarning : styles.dialogHeader}>
-        ⏳ {level === 1 ? t('delete_data_dialog_title') : t('delete_dialog_title')}
+      <div className={styles.dialogHeader}>
+        ⏳ {title}
       </div>
       <div className={styles.dialogBody}>
         <div className={styles.deleting}>

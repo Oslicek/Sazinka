@@ -55,7 +55,7 @@ pub async fn ensure_dev_admin_password(pool: &PgPool) {
             match crate::auth::hash_password("password123") {
                 Ok(new_hash) => {
                     let result = sqlx::query(
-                        "UPDATE users SET password_hash = $1 WHERE id = $2"
+                        "UPDATE users SET password_hash = $1, role = 'admin' WHERE id = $2"
                     )
                     .bind(&new_hash)
                     .bind(dev_id)
@@ -63,7 +63,7 @@ pub async fn ensure_dev_admin_password(pool: &PgPool) {
                     .await;
 
                     match result {
-                        Ok(_) => info!("Dev admin password has been reset"),
+                        Ok(_) => info!("Dev admin password and role have been reset"),
                         Err(e) => warn!("Failed to update dev admin password: {}", e),
                     }
                 }

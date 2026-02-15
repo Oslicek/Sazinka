@@ -88,6 +88,7 @@ const unwrapPayload = <T,>(response: ApiEnvelope<T> | T): T => {
 
 export function Admin() {
   const { t } = useTranslation('pages');
+  const { t: tJobs } = useTranslation('jobs');
   const { request, isConnected: connected } = useNatsStore();
   const [services, setServices] = useState<ServiceStatus[]>([
     { name: 'NATS', status: 'unknown' },
@@ -591,9 +592,9 @@ export function Admin() {
             {runningExportJobs.map(job => (
               <div key={job.id} className={styles.runningJobRow}>
                 <span className={styles.runningJobPulse} />
-                <span>{i18n.t('jobs:running_job_notice', { name: job.name })}</span>
+                <span>{tJobs('running_job_notice', { name: job.name })}</span>
                 {job.progressText && <span className={styles.runningJobProgress}>{job.progressText}</span>}
-                <Link to="/jobs" className={styles.runningJobLink}>{i18n.t('jobs:go_to_jobs')} &rarr;</Link>
+                <Link to="/jobs" className={styles.runningJobLink}>{tJobs('go_to_jobs')} &rarr;</Link>
               </div>
             ))}
           </div>
@@ -611,9 +612,9 @@ export function Admin() {
             {runningImportJobs.map(job => (
               <div key={job.id} className={styles.runningJobRow}>
                 <span className={styles.runningJobPulse} />
-                <span>{i18n.t('jobs:running_job_notice', { name: job.name })}</span>
+                <span>{tJobs('running_job_notice', { name: job.name })}</span>
                 {job.progressText && <span className={styles.runningJobProgress}>{job.progressText}</span>}
-                <Link to="/jobs" className={styles.runningJobLink}>{i18n.t('jobs:go_to_jobs')} &rarr;</Link>
+                <Link to="/jobs" className={styles.runningJobLink}>{tJobs('go_to_jobs')} &rarr;</Link>
               </div>
             ))}
           </div>

@@ -785,6 +785,7 @@ export function PlanningInbox() {
         email: selectedCandidate.customerEmail ?? undefined,
         street: selectedCandidate.customerStreet ?? '',
         city: selectedCandidate.customerCity ?? '',
+        postalCode: selectedCandidate.customerPostalCode ?? undefined,
         dueDate: selectedCandidate.dueDate ?? new Date().toISOString(),
         daysUntilDue: selectedCandidate.daysUntilDue,
         priority: toPriority(selectedCandidate),

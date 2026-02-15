@@ -404,7 +404,7 @@ export function CandidateDetail({
           <div className={styles.addressText}>
             <p className={styles.address}>{candidate.street}</p>
             <p className={styles.address}>{candidate.city}</p>
-            <p className={styles.address}>PSČ: {candidate.postalCode ?? ''}</p>
+            <p className={styles.address}>{candidate.postalCode ? candidate.postalCode.replace(/\s/g, '').replace(/^(\d{3})(\d+)$/, '$1 $2') : ''}</p>
           </div>
           {candidate.hasCoordinates === false ? (
             <span className={styles.addressNotLocated}>⚠ {t('candidate_geocode_error')}</span>
