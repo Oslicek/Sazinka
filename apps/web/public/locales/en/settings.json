@@ -51,6 +51,7 @@
 
   "business_contact": "Contact Details",
   "business_full_name": "Full Name",
+  "business_email": "Email",
   "business_phone": "Phone",
   "business_billing": "Billing Details",
   "business_company_name": "Company Name",
@@ -75,6 +76,8 @@
   "email_reminder_send_time": "Automatic Send Time",
   "email_third_title": "3) Third Template (reserved)",
   "email_third_hint": "This template is prepared for another scenario.",
+  "email_edited_at": "Manually edited on {{date}}. Changing company language won't affect this template.",
+  "email_using_default": "Using default template based on company language.",
   "email_placeholder_later": "Fill in later",
   "default_confirmation_subject": "Appointment confirmation - {{customerName}}",
   "default_confirmation_body": "Hello,\n\nWe confirm the agreed appointment.\n\nBest regards",

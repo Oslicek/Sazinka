@@ -160,6 +160,8 @@
   "candidate_contact": "Kontakt",
   "candidate_missing_phone": "Chybí telefon",
   "candidate_missing_email": "Chybí email",
+  "candidate_copy": "Kopírovat",
+  "candidate_address_located": "Určena na mapě",
   "candidate_address": "Adresa",
   "candidate_geocode_error": "Adresu nelze najít na mapě",
   "candidate_fix_address": "Opravit adresu",

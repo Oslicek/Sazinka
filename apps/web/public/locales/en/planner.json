@@ -159,6 +159,8 @@
   "candidate_contact": "Contact",
   "candidate_missing_phone": "Missing phone",
   "candidate_missing_email": "Missing email",
+  "candidate_copy": "Copy",
+  "candidate_address_located": "Located on map",
   "candidate_address": "Address",
   "candidate_geocode_error": "Address cannot be found on map",
   "candidate_fix_address": "Fix address",

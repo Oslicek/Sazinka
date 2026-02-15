@@ -51,6 +51,7 @@
 
   "business_contact": "Kontaktní údaje",
   "business_full_name": "Jméno a příjmení",
+  "business_email": "E-mail",
   "business_phone": "Telefon",
   "business_billing": "Fakturační údaje",
   "business_company_name": "Název firmy",
@@ -75,6 +76,8 @@
   "email_reminder_send_time": "Čas automatického odeslání",
   "email_third_title": "3) Třetí šablona (rezervováno)",
   "email_third_hint": "Tato šablona je připravená pro další scénář.",
+  "email_edited_at": "Ručně upraveno {{date}}. Změna jazyka firmy tuto šablonu neovlivní.",
+  "email_using_default": "Používá výchozí šablonu podle jazyka firmy.",
   "email_placeholder_later": "Doplníte později",
   "default_confirmation_subject": "Potvrzení termínu - {{customerName}}",
   "default_confirmation_body": "Dobrý den,\n\npotvrzujeme dohodnutý termín návštěvy.\n\nS pozdravem",

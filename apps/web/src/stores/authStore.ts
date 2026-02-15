@@ -61,6 +61,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const { token, user } = response.payload;
       localStorage.setItem(TOKEN_KEY, token);
       set({ user, token, isAuthenticated: true, isLoading: false, error: null });
+      
+      // Update i18n language when user logs in
+      if (user.locale) {
+        i18n.changeLanguage(user.locale);
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : i18n.t('auth:error_login');
       set({ isLoading: false, error: msg });
@@ -92,6 +97,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const { token, user } = response.payload;
       localStorage.setItem(TOKEN_KEY, token);
       set({ user, token, isAuthenticated: true, isLoading: false, error: null });
+      
+      // Update i18n language when user registers
+      if (user.locale) {
+        i18n.changeLanguage(user.locale);
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : i18n.t('auth:error_register');
       set({ isLoading: false, error: msg });
@@ -133,6 +143,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isAuthenticated: true,
         isLoading: false,
       });
+      
+      // Update i18n language when token is verified
+      if (response.payload.locale) {
+        i18n.changeLanguage(response.payload.locale);
+      }
     } catch {
       // Network error or NATS not connected yet - keep token, try again later
       // Don't remove token on network errors (user might just be loading)
@@ -163,6 +178,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const { token, user } = response.payload;
       localStorage.setItem(TOKEN_KEY, token);
       set({ user, token, isAuthenticated: true });
+      
+      // Update i18n language when token is refreshed
+      if (user.locale) {
+        i18n.changeLanguage(user.locale);
+      }
     } catch {
       // Network error — don't logout, just skip refresh
     }

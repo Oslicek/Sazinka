@@ -148,8 +148,8 @@
   "preview_address_cannot_locate": "Adresu nelze lokalizovat",
   "preview_map_unavailable": "Mapa není k dispozici",
 
-  "address_status_verified": "Ověřeno",
-  "address_status_pending": "Čeká na ověření",
+  "address_status_verified": "Určena na mapě",
+  "address_status_pending": "Čeká na určení polohy",
   "address_status_failed": "Nelze lokalizovat",
   "address_status_missing": "Chybí adresa",
   "address_status_pending_short": "Čeká",

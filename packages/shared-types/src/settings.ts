@@ -87,6 +87,12 @@ export interface EmailTemplateSettings {
   reminderSendTime: string; // "HH:MM"
   thirdSubjectTemplate: string;
   thirdBodyTemplate: string;
+  /** When confirmation template was last manually edited (ISO 8601). Null = using defaults. */
+  confirmationEditedAt: string | null;
+  /** When reminder template was last manually edited (ISO 8601). Null = using defaults. */
+  reminderEditedAt: string | null;
+  /** When third template was last manually edited (ISO 8601). Null = using defaults. */
+  thirdEditedAt: string | null;
 }
 
 // Combined user settings
@@ -124,6 +130,7 @@ export interface UpdateWorkConstraintsRequest {
 
 export interface UpdateBusinessInfoRequest {
   name?: string;
+  email?: string;
   phone?: string;
   businessName?: string;
   ico?: string;

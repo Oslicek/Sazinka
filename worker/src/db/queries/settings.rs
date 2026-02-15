@@ -40,6 +40,7 @@ pub async fn get_user_settings(pool: &PgPool, user_id: Uuid) -> Result<Option<Us
             break_earliest_time, break_latest_time,
             break_min_km, break_max_km,
             locale, company_locale,
+            email_confirmation_edited_at, email_reminder_edited_at, email_third_edited_at,
             created_at, updated_at
         FROM users
         WHERE id = $1
@@ -102,20 +103,22 @@ pub async fn update_business_info(
         r#"
         UPDATE users SET
             name = COALESCE($2, name),
-            phone = COALESCE($3, phone),
-            business_name = COALESCE($4, business_name),
-            ico = COALESCE($5, ico),
-            dic = COALESCE($6, dic),
-            street = COALESCE($7, street),
-            city = COALESCE($8, city),
-            postal_code = COALESCE($9, postal_code),
-            country = COALESCE($10, country),
-            company_locale = COALESCE($11, company_locale)
+            email = COALESCE($3, email),
+            phone = COALESCE($4, phone),
+            business_name = COALESCE($5, business_name),
+            ico = COALESCE($6, ico),
+            dic = COALESCE($7, dic),
+            street = COALESCE($8, street),
+            city = COALESCE($9, city),
+            postal_code = COALESCE($10, postal_code),
+            country = COALESCE($11, country),
+            company_locale = COALESCE($12, company_locale)
         WHERE id = $1
         "#
     )
     .bind(user_id)
     .bind(&req.name)
+    .bind(&req.email)
     .bind(&req.phone)
     .bind(&req.business_name)
     .bind(&req.ico)
@@ -131,7 +134,10 @@ pub async fn update_business_info(
     Ok(())
 }
 
-/// Update email templates
+/// Update email templates.
+///
+/// Sets `*_edited_at = NOW()` for each template pair that is provided,
+/// locking it so that future company_locale changes won't overwrite it.
 pub async fn update_email_templates(
     pool: &PgPool,
     user_id: Uuid,
@@ -140,6 +146,14 @@ pub async fn update_email_templates(
     let reminder_send_time = req.reminder_send_time.as_ref()
         .map(|s| NaiveTime::parse_from_str(s, "%H:%M"))
         .transpose()?;
+
+    // Determine which template pairs were provided (= user intentionally saved them)
+    let confirmation_edited = req.confirmation_subject_template.is_some()
+        || req.confirmation_body_template.is_some();
+    let reminder_edited = req.reminder_subject_template.is_some()
+        || req.reminder_body_template.is_some();
+    let third_edited = req.third_subject_template.is_some()
+        || req.third_body_template.is_some();
 
     sqlx::query(
         r#"
@@ -151,6 +165,10 @@ pub async fn update_email_templates(
             email_reminder_send_time = COALESCE($6, email_reminder_send_time),
             email_third_subject_template = COALESCE($7, email_third_subject_template),
             email_third_body_template = COALESCE($8, email_third_body_template),
+            -- Lock edited templates by setting edited_at = NOW()
+            email_confirmation_edited_at = CASE WHEN $9 THEN NOW() ELSE email_confirmation_edited_at END,
+            email_reminder_edited_at = CASE WHEN $10 THEN NOW() ELSE email_reminder_edited_at END,
+            email_third_edited_at = CASE WHEN $11 THEN NOW() ELSE email_third_edited_at END,
             -- Backward compatibility: keep legacy columns in sync with reminder template.
             email_subject_template = COALESCE($4, email_subject_template),
             email_body_template = COALESCE($5, email_body_template)
@@ -165,6 +183,9 @@ pub async fn update_email_templates(
     .bind(reminder_send_time)
     .bind(&req.third_subject_template)
     .bind(&req.third_body_template)
+    .bind(confirmation_edited)
+    .bind(reminder_edited)
+    .bind(third_edited)
     .execute(pool)
     .await?;
 

@@ -263,7 +263,14 @@ export function Settings() {
               setError(null);
               try {
                 const updated = await settingsService.updateBusinessInfo(data);
-                setSettings((prev) => prev ? { ...prev, businessInfo: updated } : null);
+                // Refetch full settings to get email templates regenerated
+                // with the (possibly new) company locale.
+                const full = await settingsService.getSettings();
+                setSettings((prev) => prev ? {
+                  ...prev,
+                  businessInfo: updated,
+                  emailTemplates: full.emailTemplates,
+                } : null);
                 showSuccess(t('success_business'));
               } catch (e) {
                 setError(t('error_business'));
@@ -277,6 +284,7 @@ export function Settings() {
         {activeTab === 'email' && settings && (
           <EmailTemplatesForm
             data={settings.emailTemplates}
+            companyLocale={settings.businessInfo.companyLocale || 'cs'}
             saving={saving}
             onSave={async (data) => {
               setSaving(true);
@@ -716,6 +724,7 @@ function BusinessInfoForm({ data, saving, onSave }: BusinessInfoFormProps) {
   const { t } = useTranslation('settings');
   const [formData, setFormData] = useState({
     name: data.name || '',
+    email: data.email || '',
     phone: data.phone || '',
     businessName: data.businessName || '',
     ico: data.ico || '',
@@ -743,6 +752,16 @@ function BusinessInfoForm({ data, saving, onSave }: BusinessInfoFormProps) {
             id="name"
             value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+          />
+        </div>
+
+        <div className={styles.formGroup}>
+          <label htmlFor="email">{t('business_email')}</label>
+          <input
+            type="email"
+            id="email"
+            value={formData.email}
+            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
           />
         </div>
         
@@ -857,25 +876,79 @@ function BusinessInfoForm({ data, saving, onSave }: BusinessInfoFormProps) {
 
 interface EmailTemplatesFormProps {
   data: EmailTemplateSettings;
+  companyLocale: string;
   saving: boolean;
   onSave: (data: Partial<EmailTemplateSettings>) => Promise<void>;
 }
 
-function EmailTemplatesForm({ data, saving, onSave }: EmailTemplatesFormProps) {
+/** Locale-aware default templates (mirrors Rust defaults on the backend). */
+const TEMPLATE_DEFAULTS: Record<string, {
+  confirmationSubject: string; confirmationBody: string;
+  reminderSubject: string; reminderBody: string;
+}> = {
+  cs: {
+    confirmationSubject: 'Potvrzení termínu - {{customerName}}',
+    confirmationBody: 'Dobrý den,\n\npotvrzujeme dohodnutý termín návštěvy.\n\nTermín: {{due_date}}\n\nTěšíme se na spolupráci.\n\nS pozdravem,\n{{business_name}}\n{{phone}}\n{{email}}',
+    reminderSubject: 'Připomínka termínu - {{customerName}}',
+    reminderBody: 'Dobrý den,\n\ndovolujeme si Vás upozornit, že se blíží termín pravidelné revize Vašeho zařízení {{device_type}}.\n\nPlánovaný termín: {{due_date}}\n\nV případě zájmu nás prosím kontaktujte pro domluvení termínu.\n\nS pozdravem,\n{{business_name}}\n{{phone}}\n{{email}}',
+  },
+  sk: {
+    confirmationSubject: 'Potvrdenie termínu - {{customerName}}',
+    confirmationBody: 'Dobrý deň,\n\npotvrdzujeme dohodnutý termín návštevy.\n\nTermín: {{due_date}}\n\nTešíme sa na spoluprácu.\n\nS pozdravom,\n{{business_name}}\n{{phone}}\n{{email}}',
+    reminderSubject: 'Pripomienka termínu - {{customerName}}',
+    reminderBody: 'Dobrý deň,\n\nradi by sme Vám pripomenuli blížiaci sa termín pravidelnej revízie Vášho zariadenia {{device_type}}.\n\nPlánovaný termín: {{due_date}}\n\nV prípade záujmu nás prosím kontaktujte pre dohodnutie termínu.\n\nS pozdravom,\n{{business_name}}\n{{phone}}\n{{email}}',
+  },
+  en: {
+    confirmationSubject: 'Appointment confirmation - {{customerName}}',
+    confirmationBody: 'Dear {{customerName}},\n\nwe confirm your appointment on {{date}} at {{time}}.\n\nAddress: {{address}}.\n\nIf you need to change the appointment, please contact us.\n\nThank you,\n{{companyName}}',
+    reminderSubject: 'Appointment reminder - {{customerName}}',
+    reminderBody: 'Dear {{customerName}},\n\nwe would like to remind you of your upcoming appointment on {{date}} at {{time}}.\n\nIf you need to reschedule, please contact us.\n\nThank you,\n{{companyName}}',
+  },
+};
+
+function getTemplateDefault(companyLocale: string, key: keyof typeof TEMPLATE_DEFAULTS['en']): string {
+  const lang = companyLocale.split('-')[0];
+  return (TEMPLATE_DEFAULTS[lang] ?? TEMPLATE_DEFAULTS['en'])[key];
+}
+
+function EmailTemplatesForm({ data, companyLocale, saving, onSave }: EmailTemplatesFormProps) {
   const { t } = useTranslation('settings');
+
+  // Use backend-provided values. If backend returns empty strings (before migration 019),
+  // fall back to locale-aware defaults based on COMPANY locale (not UI locale).
   const [formData, setFormData] = useState({
-    confirmationSubjectTemplate: data.confirmationSubjectTemplate || i18n.t('settings:default_confirmation_subject'),
-    confirmationBodyTemplate: data.confirmationBodyTemplate || i18n.t('settings:default_confirmation_body'),
-    reminderSubjectTemplate: data.reminderSubjectTemplate || i18n.t('settings:default_reminder_subject'),
-    reminderBodyTemplate: data.reminderBodyTemplate || i18n.t('settings:default_reminder_body'),
+    confirmationSubjectTemplate: data.confirmationSubjectTemplate || getTemplateDefault(companyLocale, 'confirmationSubject'),
+    confirmationBodyTemplate: data.confirmationBodyTemplate || getTemplateDefault(companyLocale, 'confirmationBody'),
+    reminderSubjectTemplate: data.reminderSubjectTemplate || getTemplateDefault(companyLocale, 'reminderSubject'),
+    reminderBodyTemplate: data.reminderBodyTemplate || getTemplateDefault(companyLocale, 'reminderBody'),
     reminderSendTime: data.reminderSendTime || '09:00',
     thirdSubjectTemplate: data.thirdSubjectTemplate || '',
     thirdBodyTemplate: data.thirdBodyTemplate || '',
   });
 
+  const formatEditedDate = (isoDate: string | null): string | null => {
+    if (!isoDate) return null;
+    try {
+      return new Date(isoDate).toLocaleString(i18n.language, {
+        year: 'numeric', month: 'short', day: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+      });
+    } catch {
+      return isoDate;
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSave(formData);
+  };
+
+  const renderEditedInfo = (editedAt: string | null) => {
+    if (editedAt) {
+      const formatted = formatEditedDate(editedAt);
+      return <small className={styles.hint}>{t('email_edited_at', { date: formatted })}</small>;
+    }
+    return <small className={styles.hint}>{t('email_using_default')}</small>;
   };
 
   return (
@@ -905,6 +978,8 @@ function EmailTemplatesForm({ data, saving, onSave }: EmailTemplatesFormProps) {
             onChange={(e) => setFormData({ ...formData, confirmationBodyTemplate: e.target.value })}
           />
         </div>
+
+        {renderEditedInfo(data.confirmationEditedAt)}
       </div>
 
       <div className={styles.formSection}>
@@ -944,6 +1019,8 @@ function EmailTemplatesForm({ data, saving, onSave }: EmailTemplatesFormProps) {
             onChange={(e) => setFormData({ ...formData, reminderBodyTemplate: e.target.value })}
           />
         </div>
+
+        {renderEditedInfo(data.reminderEditedAt)}
       </div>
 
       <div className={styles.formSection}>
@@ -971,6 +1048,8 @@ function EmailTemplatesForm({ data, saving, onSave }: EmailTemplatesFormProps) {
             placeholder={t('email_placeholder_later')}
           />
         </div>
+
+        {renderEditedInfo(data.thirdEditedAt)}
       </div>
 
       <div className={styles.formActions}>

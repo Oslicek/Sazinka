@@ -326,16 +326,36 @@ export function CandidateDetail({
       <section className={styles.section}>
         <h4 className={styles.sectionTitle}>{t('candidate_contact')}</h4>
         {candidate.phone ? (
-          <a href={`tel:${candidate.phone}`} className={styles.phoneLink}>
-            📞 {candidate.phone}
-          </a>
+          <div className={styles.contactItem}>
+            <a href={`tel:${candidate.phone}`} className={styles.phoneLink}>
+              📞 {candidate.phone}
+            </a>
+            <button
+              type="button"
+              className={styles.copyButton}
+              onClick={() => navigator.clipboard.writeText(candidate.phone!).catch(console.error)}
+              title={t('candidate_copy')}
+            >
+              📋
+            </button>
+          </div>
         ) : (
           <span className={styles.missingInfo}>📵 {t('candidate_missing_phone')}</span>
         )}
         {candidate.email ? (
-          <a href={`mailto:${candidate.email}`} className={styles.emailLink}>
-            ✉️ {candidate.email}
-          </a>
+          <div className={styles.contactItem}>
+            <a href={`mailto:${candidate.email}`} className={styles.emailLink}>
+              ✉️ {candidate.email}
+            </a>
+            <button
+              type="button"
+              className={styles.copyButton}
+              onClick={() => navigator.clipboard.writeText(candidate.email!).catch(console.error)}
+              title={t('candidate_copy')}
+            >
+              📋
+            </button>
+          </div>
         ) : (
           <span className={styles.missingInfo}>✉️ {t('candidate_missing_email')}</span>
         )}
@@ -344,16 +364,19 @@ export function CandidateDetail({
       {/* Adresa */}
       <section className={styles.section}>
         <h4 className={styles.sectionTitle}>{t('candidate_address')}</h4>
-        {candidate.hasCoordinates === false && (
-          <div className={styles.geocodeError}>
-            <span className={styles.geocodeErrorIcon}>📍</span>
-            {t('candidate_geocode_error')}
+        <div className={styles.addressRow}>
+          <div>
+            <p className={styles.address}>{candidate.street}</p>
+            <p className={styles.address}>
+              {candidate.postalCode && `${candidate.postalCode} `}{candidate.city}
+            </p>
           </div>
-        )}
-        <p className={styles.address}>{candidate.street}</p>
-        <p className={styles.address}>
-          {candidate.postalCode && `${candidate.postalCode} `}{candidate.city}
-        </p>
+          {candidate.hasCoordinates === false ? (
+            <span className={styles.addressNotLocated}>⚠ {t('candidate_geocode_error')}</span>
+          ) : candidate.hasCoordinates && (
+            <span className={styles.addressLocated}>✅ {t('candidate_address_located')}</span>
+          )}
+        </div>
         {onFixAddress && (
           <button
             type="button"

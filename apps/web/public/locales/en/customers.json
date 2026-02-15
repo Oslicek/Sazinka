@@ -148,8 +148,8 @@
   "preview_address_cannot_locate": "Address cannot be located",
   "preview_map_unavailable": "Map not available",
 
-  "address_status_verified": "Verified",
-  "address_status_pending": "Awaiting verification",
+  "address_status_verified": "Located on map",
+  "address_status_pending": "Awaiting geolocation",
   "address_status_failed": "Cannot locate",
   "address_status_missing": "No address",
   "address_status_pending_short": "Pending",

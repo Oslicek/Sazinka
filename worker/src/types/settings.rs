@@ -107,6 +107,12 @@ pub struct EmailTemplateSettings {
     pub reminder_send_time: String, // "HH:MM"
     pub third_subject_template: String,
     pub third_body_template: String,
+    /// When the confirmation template was last manually edited (ISO 8601). Null = using defaults.
+    pub confirmation_edited_at: Option<String>,
+    /// When the reminder template was last manually edited (ISO 8601). Null = using defaults.
+    pub reminder_edited_at: Option<String>,
+    /// When the third template was last manually edited (ISO 8601). Null = using defaults.
+    pub third_edited_at: Option<String>,
 }
 
 /// User preferences
@@ -159,6 +165,7 @@ pub struct UpdateWorkConstraintsRequest {
 #[serde(rename_all = "camelCase")]
 pub struct UpdateBusinessInfoRequest {
     pub name: Option<String>,
+    pub email: Option<String>,
     pub phone: Option<String>,
     pub business_name: Option<String>,
     pub ico: Option<String>,
@@ -249,6 +256,12 @@ pub struct UserWithSettings {
     pub locale: String,
     /// Company-level locale for emails and external communication. Default: "cs".
     pub company_locale: String,
+    /// When the confirmation email template was last manually edited.
+    pub email_confirmation_edited_at: Option<DateTime<Utc>>,
+    /// When the reminder email template was last manually edited.
+    pub email_reminder_edited_at: Option<DateTime<Utc>>,
+    /// When the third email template was last manually edited.
+    pub email_third_edited_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -283,31 +296,82 @@ impl UserWithSettings {
         }
     }
 
-    /// Convert to email template settings (uses company_locale for external communication)
+    /// Convert to email template settings (uses company_locale for external communication).
+    ///
+    /// Logic: if `edited_at` is set for a template pair, use the stored value (user locked it
+    /// by manually editing). Otherwise, generate defaults from `company_locale` so that
+    /// changing the company language automatically updates unedited templates.
+    ///
+    /// Empty strings in the DB are treated as NULL (unset) — the user never intentionally
+    /// saved an empty template, so we fall back to locale-based defaults.
     pub fn to_email_templates(&self) -> EmailTemplateSettings {
         let locale = &self.company_locale;
-        let reminder_subject = self.email_reminder_subject_template.clone()
-            .or_else(|| self.email_subject_template.clone())
-            .unwrap_or_else(|| default_reminder_subject(locale));
-        let reminder_body = self.email_reminder_body_template.clone()
-            .or_else(|| self.email_body_template.clone())
-            .unwrap_or_else(|| default_reminder_template(locale).to_string());
+
+        /// Filter out empty strings — treat "" the same as None.
+        fn non_empty(opt: Option<String>) -> Option<String> {
+            opt.filter(|s| !s.trim().is_empty())
+        }
+
+        // Confirmation template
+        let (confirmation_subject, confirmation_body) = if self.email_confirmation_edited_at.is_some() {
+            // Manually edited → use stored values (fall back to default if NULL or empty)
+            (
+                non_empty(self.email_confirmation_subject_template.clone())
+                    .unwrap_or_else(|| default_confirmation_subject(locale)),
+                non_empty(self.email_confirmation_body_template.clone())
+                    .unwrap_or_else(|| default_confirmation_template(locale).to_string()),
+            )
+        } else {
+            // Never edited → always use defaults from company_locale
+            (
+                default_confirmation_subject(locale),
+                default_confirmation_template(locale).to_string(),
+            )
+        };
+
+        // Reminder template
+        let (reminder_subject, reminder_body) = if self.email_reminder_edited_at.is_some() {
+            // Manually edited → use stored values
+            (
+                non_empty(self.email_reminder_subject_template.clone())
+                    .or_else(|| non_empty(self.email_subject_template.clone()))
+                    .unwrap_or_else(|| default_reminder_subject(locale)),
+                non_empty(self.email_reminder_body_template.clone())
+                    .or_else(|| non_empty(self.email_body_template.clone()))
+                    .unwrap_or_else(|| default_reminder_template(locale).to_string()),
+            )
+        } else {
+            // Never edited → always use defaults from company_locale
+            (
+                default_reminder_subject(locale),
+                default_reminder_template(locale).to_string(),
+            )
+        };
+
+        // Third template (no locale defaults — empty is valid for an unused template)
+        let (third_subject, third_body) = if self.email_third_edited_at.is_some() {
+            (
+                self.email_third_subject_template.clone().unwrap_or_default(),
+                self.email_third_body_template.clone().unwrap_or_default(),
+            )
+        } else {
+            (String::new(), String::new())
+        };
 
         EmailTemplateSettings {
-            confirmation_subject_template: self.email_confirmation_subject_template.clone()
-                .unwrap_or_else(|| default_confirmation_subject(locale)),
-            confirmation_body_template: self.email_confirmation_body_template.clone()
-                .unwrap_or_else(|| default_confirmation_template(locale).to_string()),
+            confirmation_subject_template: confirmation_subject,
+            confirmation_body_template: confirmation_body,
             reminder_subject_template: reminder_subject,
             reminder_body_template: reminder_body,
             reminder_send_time: self.email_reminder_send_time
                 .unwrap_or_else(|| NaiveTime::from_hms_opt(9, 0, 0).expect("valid default time"))
                 .format("%H:%M")
                 .to_string(),
-            third_subject_template: self.email_third_subject_template.clone()
-                .unwrap_or_else(|| "".to_string()),
-            third_body_template: self.email_third_body_template.clone()
-                .unwrap_or_else(|| "".to_string()),
+            third_subject_template: third_subject,
+            third_body_template: third_body,
+            confirmation_edited_at: self.email_confirmation_edited_at.map(|dt| dt.to_rfc3339()),
+            reminder_edited_at: self.email_reminder_edited_at.map(|dt| dt.to_rfc3339()),
+            third_edited_at: self.email_third_edited_at.map(|dt| dt.to_rfc3339()),
         }
     }
 

@@ -184,8 +184,10 @@ export function CustomerPreviewPanel({
         {/* Address section */}
         <section className={styles.section}>
           <h4 className={styles.sectionTitle}>{t('preview_address')}</h4>
-          <AddressStatus status={c.geocodeStatus} t={t} />
-          <p className={styles.address}>{fullAddress || t('preview_address_empty')}</p>
+          <div className={styles.addressRow}>
+            <p className={styles.address}>{fullAddress || t('preview_address_empty')}</p>
+            <AddressStatus status={c.geocodeStatus} t={t} />
+          </div>
 
           {hasCoordinates && (
             <div className={styles.mapContainer}>
