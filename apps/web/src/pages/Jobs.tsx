@@ -56,9 +56,10 @@ export function Jobs() {
   
   const [localActiveJobs, setLocalActiveJobs] = useState<Map<string, ActiveJob>>(new Map());
   const [recentJobs, setRecentJobs] = useState<CompletedJob[]>([]);
-  const [filter, setFilter] = useState<'all' | 'active' | 'completed' | 'failed'>('all');
+  const [filter, setFilter] = useState<'all' | 'active' | 'completed' | 'failed' | 'cancelled'>('all');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [confirmingCancelId, setConfirmingCancelId] = useState<string | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [reportDialogData, setReportDialogData] = useState<ImportReport | null>(null);
   const [downloadingExportId, setDownloadingExportId] = useState<string | null>(null);
@@ -97,6 +98,8 @@ export function Jobs() {
           type: entry.jobType as JobType,
           status: entry.status === 'completed' 
             ? { type: 'completed' as const }
+            : entry.status === 'cancelled'
+            ? { type: 'cancelled' as const }
             : { type: 'failed' as const, error: entry.error || 'Unknown error' },
           startedAt: new Date(entry.startedAt),
           lastUpdate: new Date(entry.completedAt),
@@ -245,6 +248,8 @@ export function Jobs() {
       };
     } else if (status.type === 'completed') {
       jobStatus = { type: 'completed', result: { succeeded: status.succeeded, failed: status.failed, total: status.total } };
+    } else if (status.type === 'cancelled') {
+      jobStatus = { type: 'cancelled' };
     } else if (status.type === 'failed') {
       jobStatus = { type: 'failed', error: status.error };
     } else {
@@ -308,6 +313,7 @@ export function Jobs() {
   const displayedRecentJobs = recentJobs.filter(job => {
     if (filter === 'completed') return job.status.type === 'completed';
     if (filter === 'failed') return job.status.type === 'failed';
+    if (filter === 'cancelled') return job.status.type === 'cancelled';
     return true;
   });
   
@@ -365,14 +371,40 @@ export function Jobs() {
                   <span className={styles.jobIcon}>{getJobTypeIcon(job.type)}</span>
                   <span className={styles.jobType}>{getJobTypeName(job.type)}</span>
                   <span className={styles.jobId}>#{job.id.slice(0, 8)}</span>
-                  <button
-                    className={styles.cancelBtn}
-                    onClick={() => handleCancelJob(job.id, job.type)}
-                    disabled={actionLoading === job.id}
-                    title={t('cancel_job')}
-                  >
-                    {actionLoading === job.id ? '...' : '×'}
-                  </button>
+
+                  {confirmingCancelId === job.id ? (
+                    <div className={styles.confirmInline}>
+                      <span className={styles.confirmText}>{t('stop_job_confirm')}</span>
+                      <button
+                        className={styles.confirmYes}
+                        onClick={() => {
+                          setConfirmingCancelId(null);
+                          handleCancelJob(job.id, job.type);
+                        }}
+                        disabled={actionLoading === job.id}
+                      >
+                        {t('stop_job_yes')}
+                      </button>
+                      <button
+                        className={styles.confirmNo}
+                        onClick={() => setConfirmingCancelId(null)}
+                      >
+                        {t('stop_job_no')}
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      className={styles.stopBtn}
+                      onClick={() => setConfirmingCancelId(job.id)}
+                      disabled={actionLoading === job.id}
+                    >
+                      {actionLoading === job.id ? (
+                        <span className={styles.stopBtnSpinner} />
+                      ) : (
+                        <>&#9632; {t('stop_job')}</>
+                      )}
+                    </button>
+                  )}
                 </div>
                 
                 <JobStatusTimeline 
@@ -414,6 +446,12 @@ export function Jobs() {
             >
               {t('filter_failed')}
             </button>
+            <button 
+              className={filter === 'cancelled' ? styles.activeTab : ''}
+              onClick={() => setFilter('cancelled')}
+            >
+              {t('filter_cancelled')}
+            </button>
           </div>
         </div>
         
@@ -440,7 +478,7 @@ export function Jobs() {
               </thead>
               <tbody>
                 {displayedRecentJobs.map(job => (
-                  <tr key={job.id} className={job.status.type === 'failed' ? styles.failedRow : ''}>
+                  <tr key={job.id} className={job.status.type === 'failed' ? styles.failedRow : job.status.type === 'cancelled' ? styles.cancelledRow : ''}>
                     <td>
                       <span className={styles.tableIcon}>{getJobTypeIcon(job.type)}</span>
                       {getJobTypeName(job.type)}
@@ -448,7 +486,7 @@ export function Jobs() {
                     <td className={styles.mono}>#{job.id.slice(0, 8)}</td>
                     <td>
                       <span className={`${styles.statusBadge} ${styles[job.status.type]}`}>
-                        {job.status.type === 'completed' ? t('status_completed') : t('status_failed')}
+                        {job.status.type === 'completed' ? t('status_completed') : job.status.type === 'cancelled' ? t('status_cancelled') : t('status_failed')}
                       </span>
                     </td>
                     <td>{formatDuration(job.duration)}</td>
@@ -506,8 +544,9 @@ export function Jobs() {
             const activeCount = activeJobsList.filter(j => j.type === jobType).length;
             const completedCount = recentJobs.filter(j => j.type === jobType && j.status.type === 'completed').length;
             const failedCount = recentJobs.filter(j => j.type === jobType && j.status.type === 'failed').length;
+            const cancelledCount = recentJobs.filter(j => j.type === jobType && j.status.type === 'cancelled').length;
             
-            if (activeCount === 0 && completedCount === 0 && failedCount === 0) return null;
+            if (activeCount === 0 && completedCount === 0 && failedCount === 0 && cancelledCount === 0) return null;
             
             return (
               <div key={jobType} className={styles.statCard}>
@@ -521,6 +560,9 @@ export function Jobs() {
                   )}
                   {completedCount > 0 && (
                     <span className={styles.statCompleted}>{t('stat_completed', { count: completedCount })}</span>
+                  )}
+                  {cancelledCount > 0 && (
+                    <span className={styles.statCancelled}>{t('stat_cancelled', { count: cancelledCount })}</span>
                   )}
                   {failedCount > 0 && (
                     <span className={styles.statFailed}>{t('stat_failed', { count: failedCount })}</span>

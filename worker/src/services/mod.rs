@@ -1,5 +1,6 @@
 //! Business logic services
 
+pub mod cancellation;
 pub mod email_processor;
 pub mod export_processor;
 pub mod geo;

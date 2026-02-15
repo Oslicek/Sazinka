@@ -206,6 +206,8 @@ pub enum CustomerImportJobStatus {
     Completed { total: u32, succeeded: u32, failed: u32, report: ImportReport },
     #[serde(rename_all = "camelCase")]
     Failed { error: String },
+    #[serde(rename_all = "camelCase")]
+    Cancelled { processed: u32, total: u32 },
 }
 
 /// Status update message for customer import job
@@ -282,6 +284,8 @@ pub enum DeviceImportJobStatus {
     Completed { total: u32, succeeded: u32, failed: u32, report: ImportReport },
     #[serde(rename_all = "camelCase")]
     Failed { error: String },
+    #[serde(rename_all = "camelCase")]
+    Cancelled { processed: u32, total: u32 },
 }
 
 /// Status update message for device import job
@@ -358,6 +362,8 @@ pub enum RevisionImportJobStatus {
     Completed { total: u32, succeeded: u32, failed: u32, report: ImportReport },
     #[serde(rename_all = "camelCase")]
     Failed { error: String },
+    #[serde(rename_all = "camelCase")]
+    Cancelled { processed: u32, total: u32 },
 }
 
 /// Status update message for revision import job
@@ -434,6 +440,8 @@ pub enum CommunicationImportJobStatus {
     Completed { total: u32, succeeded: u32, failed: u32, report: ImportReport },
     #[serde(rename_all = "camelCase")]
     Failed { error: String },
+    #[serde(rename_all = "camelCase")]
+    Cancelled { processed: u32, total: u32 },
 }
 
 /// Status update message for communication import job
@@ -510,6 +518,8 @@ pub enum WorkLogImportJobStatus {
     Completed { total: u32, succeeded: u32, failed: u32, report: ImportReport },
     #[serde(rename_all = "camelCase")]
     Failed { error: String },
+    #[serde(rename_all = "camelCase")]
+    Cancelled { processed: u32, total: u32 },
 }
 
 /// Status update message for work log import job
@@ -671,6 +681,8 @@ pub enum ZipImportJobStatus {
     },
     #[serde(rename_all = "camelCase")]
     Failed { error: String },
+    #[serde(rename_all = "camelCase")]
+    Cancelled { completed_files: u32, total_files: u32 },
 }
 
 /// Status update message for ZIP import job

@@ -327,10 +327,20 @@ impl DeviceImportProcessor {
     }
     
     async fn process_job(&self, msg: jetstream::Message) -> Result<()> {
+        use crate::services::cancellation::CANCELLATION;
+        
         let job: QueuedDeviceImportJob = serde_json::from_slice(&msg.payload)?;
         let job_id = job.id;
         let user_id = job.user_id;
         let started_at = job.submitted_at;
+        
+        let _guard = CANCELLATION.register(job_id, user_id);
+        if CANCELLATION.is_cancelled(&job_id) {
+            msg.ack().await.ok();
+            self.publish_status(job_id, DeviceImportJobStatus::Cancelled { processed: 0, total: 0 }).await?;
+            JOB_HISTORY.record_cancelled(job_id, "import.device", user_id, started_at);
+            return Ok(());
+        }
         
         info!("Processing device import job {} from file '{}'", job_id, job.request.filename);
         self.pending_count.fetch_sub(1, Ordering::Relaxed);
@@ -347,7 +357,7 @@ impl DeviceImportProcessor {
             Err(e) => {
                 let error_msg = json!({"key": "import:csv_parse_error", "params": {"error": e.to_string()}}).to_string();
                 self.publish_status(job_id, DeviceImportJobStatus::Failed { error: error_msg.clone() }).await?;
-                JOB_HISTORY.record_failed(job_id, "import.device", started_at, error_msg);
+                JOB_HISTORY.record_failed(job_id, "import.device", user_id, started_at, error_msg);
                 return Ok(());
             }
         };
@@ -356,7 +366,7 @@ impl DeviceImportProcessor {
         if total == 0 {
             let error_msg = "import:csv_empty".to_string();
             self.publish_status(job_id, DeviceImportJobStatus::Failed { error: error_msg.clone() }).await?;
-            JOB_HISTORY.record_failed(job_id, "import.device", started_at, error_msg);
+            JOB_HISTORY.record_failed(job_id, "import.device", user_id, started_at, error_msg);
             return Ok(());
         }
         
@@ -368,6 +378,12 @@ impl DeviceImportProcessor {
         
         for (idx, row) in rows.iter().enumerate() {
             let processed = (idx + 1) as u32;
+            
+            if idx % 50 == 0 && CANCELLATION.is_cancelled(&job_id) {
+                self.publish_status(job_id, DeviceImportJobStatus::Cancelled { processed: idx as u32, total }).await?;
+                JOB_HISTORY.record_cancelled(job_id, "import.device", user_id, started_at);
+                return Ok(());
+            }
             
             if processed % 10 == 0 || processed == total {
                 self.publish_status(job_id, DeviceImportJobStatus::Importing {
@@ -413,6 +429,7 @@ impl DeviceImportProcessor {
         JOB_HISTORY.record_completed(
             job_id,
             "import.device",
+            user_id,
             started_at,
             Some(json!({"key": "import:completed_summary", "params": {"succeeded": succeeded, "total": total}}).to_string()),
         );
@@ -625,10 +642,20 @@ impl RevisionImportProcessor {
     }
     
     async fn process_job(&self, msg: jetstream::Message) -> Result<()> {
+        use crate::services::cancellation::CANCELLATION;
+        
         let job: QueuedRevisionImportJob = serde_json::from_slice(&msg.payload)?;
         let job_id = job.id;
         let user_id = job.user_id;
         let started_at = job.submitted_at;
+        
+        let _guard = CANCELLATION.register(job_id, user_id);
+        if CANCELLATION.is_cancelled(&job_id) {
+            msg.ack().await.ok();
+            self.publish_status(job_id, RevisionImportJobStatus::Cancelled { processed: 0, total: 0 }).await?;
+            JOB_HISTORY.record_cancelled(job_id, "import.revision", user_id, started_at);
+            return Ok(());
+        }
         
         info!("Processing revision import job {} from file '{}'", job_id, job.request.filename);
         self.pending_count.fetch_sub(1, Ordering::Relaxed);
@@ -645,7 +672,7 @@ impl RevisionImportProcessor {
             Err(e) => {
                 let error_msg = json!({"key": "import:csv_parse_error", "params": {"error": e.to_string()}}).to_string();
                 self.publish_status(job_id, RevisionImportJobStatus::Failed { error: error_msg.clone() }).await?;
-                JOB_HISTORY.record_failed(job_id, "import.revision", started_at, error_msg);
+                JOB_HISTORY.record_failed(job_id, "import.revision", user_id, started_at, error_msg);
                 return Ok(());
             }
         };
@@ -654,7 +681,7 @@ impl RevisionImportProcessor {
         if total == 0 {
             let error_msg = "import:csv_empty".to_string();
             self.publish_status(job_id, RevisionImportJobStatus::Failed { error: error_msg.clone() }).await?;
-            JOB_HISTORY.record_failed(job_id, "import.revision", started_at, error_msg);
+            JOB_HISTORY.record_failed(job_id, "import.revision", user_id, started_at, error_msg);
             return Ok(());
         }
         
@@ -666,6 +693,12 @@ impl RevisionImportProcessor {
         
         for (idx, row) in rows.iter().enumerate() {
             let processed = (idx + 1) as u32;
+            
+            if idx % 50 == 0 && CANCELLATION.is_cancelled(&job_id) {
+                self.publish_status(job_id, RevisionImportJobStatus::Cancelled { processed: idx as u32, total }).await?;
+                JOB_HISTORY.record_cancelled(job_id, "import.revision", user_id, started_at);
+                return Ok(());
+            }
             
             if processed % 10 == 0 || processed == total {
                 self.publish_status(job_id, RevisionImportJobStatus::Importing {
@@ -711,6 +744,7 @@ impl RevisionImportProcessor {
         JOB_HISTORY.record_completed(
             job_id,
             "import.revision",
+            user_id,
             started_at,
             Some(json!({"key": "import:completed_summary", "params": {"succeeded": succeeded, "total": total}}).to_string()),
         );
@@ -967,10 +1001,20 @@ impl CommunicationImportProcessor {
     }
     
     async fn process_job(&self, msg: jetstream::Message) -> Result<()> {
+        use crate::services::cancellation::CANCELLATION;
+        
         let job: QueuedCommunicationImportJob = serde_json::from_slice(&msg.payload)?;
         let job_id = job.id;
         let user_id = job.user_id;
         let started_at = job.submitted_at;
+        
+        let _guard = CANCELLATION.register(job_id, user_id);
+        if CANCELLATION.is_cancelled(&job_id) {
+            msg.ack().await.ok();
+            self.publish_status(job_id, CommunicationImportJobStatus::Cancelled { processed: 0, total: 0 }).await?;
+            JOB_HISTORY.record_cancelled(job_id, "import.communication", user_id, started_at);
+            return Ok(());
+        }
         
         info!("Processing communication import job {} from file '{}'", job_id, job.request.filename);
         self.pending_count.fetch_sub(1, Ordering::Relaxed);
@@ -987,7 +1031,7 @@ impl CommunicationImportProcessor {
             Err(e) => {
                 let error_msg = json!({"key": "import:csv_parse_error", "params": {"error": e.to_string()}}).to_string();
                 self.publish_status(job_id, CommunicationImportJobStatus::Failed { error: error_msg.clone() }).await?;
-                JOB_HISTORY.record_failed(job_id, "import.communication", started_at, error_msg);
+                JOB_HISTORY.record_failed(job_id, "import.communication", user_id, started_at, error_msg);
                 return Ok(());
             }
         };
@@ -996,7 +1040,7 @@ impl CommunicationImportProcessor {
         if total == 0 {
             let error_msg = "import:csv_empty".to_string();
             self.publish_status(job_id, CommunicationImportJobStatus::Failed { error: error_msg.clone() }).await?;
-            JOB_HISTORY.record_failed(job_id, "import.communication", started_at, error_msg);
+            JOB_HISTORY.record_failed(job_id, "import.communication", user_id, started_at, error_msg);
             return Ok(());
         }
         
@@ -1008,6 +1052,12 @@ impl CommunicationImportProcessor {
         
         for (idx, row) in rows.iter().enumerate() {
             let processed = (idx + 1) as u32;
+            
+            if idx % 50 == 0 && CANCELLATION.is_cancelled(&job_id) {
+                self.publish_status(job_id, CommunicationImportJobStatus::Cancelled { processed: idx as u32, total }).await?;
+                JOB_HISTORY.record_cancelled(job_id, "import.communication", user_id, started_at);
+                return Ok(());
+            }
             
             if processed % 10 == 0 || processed == total {
                 self.publish_status(job_id, CommunicationImportJobStatus::Importing {
@@ -1053,6 +1103,7 @@ impl CommunicationImportProcessor {
         JOB_HISTORY.record_completed(
             job_id,
             "import.communication",
+            user_id,
             started_at,
             Some(json!({"key": "import:completed_summary", "params": {"succeeded": succeeded, "total": total}}).to_string()),
         );
@@ -1258,10 +1309,20 @@ impl WorkLogImportProcessor {
     }
     
     async fn process_job(&self, msg: jetstream::Message) -> Result<()> {
+        use crate::services::cancellation::CANCELLATION;
+        
         let job: QueuedWorkLogImportJob = serde_json::from_slice(&msg.payload)?;
         let job_id = job.id;
         let user_id = job.user_id;
         let started_at = job.submitted_at;
+        
+        let _guard = CANCELLATION.register(job_id, user_id);
+        if CANCELLATION.is_cancelled(&job_id) {
+            msg.ack().await.ok();
+            self.publish_status(job_id, WorkLogImportJobStatus::Cancelled { processed: 0, total: 0 }).await?;
+            JOB_HISTORY.record_cancelled(job_id, "import.visit", user_id, started_at);
+            return Ok(());
+        }
         
         info!("Processing visit import job {} from file '{}'", job_id, job.request.filename);
         self.pending_count.fetch_sub(1, Ordering::Relaxed);
@@ -1278,7 +1339,7 @@ impl WorkLogImportProcessor {
             Err(e) => {
                 let error_msg = json!({"key": "import:csv_parse_error", "params": {"error": e.to_string()}}).to_string();
                 self.publish_status(job_id, WorkLogImportJobStatus::Failed { error: error_msg.clone() }).await?;
-                JOB_HISTORY.record_failed(job_id, "import.visit", started_at, error_msg);
+                JOB_HISTORY.record_failed(job_id, "import.visit", user_id, started_at, error_msg);
                 return Ok(());
             }
         };
@@ -1287,7 +1348,7 @@ impl WorkLogImportProcessor {
         if total == 0 {
             let error_msg = "import:csv_empty".to_string();
             self.publish_status(job_id, WorkLogImportJobStatus::Failed { error: error_msg.clone() }).await?;
-            JOB_HISTORY.record_failed(job_id, "import.visit", started_at, error_msg);
+            JOB_HISTORY.record_failed(job_id, "import.visit", user_id, started_at, error_msg);
             return Ok(());
         }
         
@@ -1299,6 +1360,12 @@ impl WorkLogImportProcessor {
         
         for (idx, row) in rows.iter().enumerate() {
             let processed = (idx + 1) as u32;
+            
+            if idx % 50 == 0 && CANCELLATION.is_cancelled(&job_id) {
+                self.publish_status(job_id, WorkLogImportJobStatus::Cancelled { processed: idx as u32, total }).await?;
+                JOB_HISTORY.record_cancelled(job_id, "import.visit", user_id, started_at);
+                return Ok(());
+            }
             
             if processed % 10 == 0 || processed == total {
                 self.publish_status(job_id, WorkLogImportJobStatus::Importing {
@@ -1344,6 +1411,7 @@ impl WorkLogImportProcessor {
         JOB_HISTORY.record_completed(
             job_id,
             "import.visit",
+            user_id,
             started_at,
             Some(json!({"key": "import:completed_summary", "params": {"succeeded": succeeded, "total": total}}).to_string()),
         );
@@ -1607,11 +1675,21 @@ impl ZipImportProcessor {
     }
     
     async fn process_job(&self, msg: jetstream::Message) -> Result<()> {
+        use crate::services::cancellation::CANCELLATION;
+        
         let job: QueuedZipImportJob = serde_json::from_slice(&msg.payload)?;
         let job_id = job.id;
         let user_id = job.user_id;
         let started_at = job.submitted_at;
         let total_files = job.files.len() as u32;
+        
+        let _guard = CANCELLATION.register(job_id, user_id);
+        if CANCELLATION.is_cancelled(&job_id) {
+            msg.ack().await.ok();
+            self.publish_status(job_id, ZipImportJobStatus::Cancelled { completed_files: 0, total_files }).await?;
+            JOB_HISTORY.record_cancelled(job_id, "import.zip", user_id, started_at);
+            return Ok(());
+        }
         
         info!("Processing ZIP import job {} from file '{}' with {} files", 
               job_id, job.request.filename, total_files);
@@ -1634,7 +1712,7 @@ impl ZipImportProcessor {
             Err(e) => {
                 let error_msg = json!({"key": "import:zip_decode_error", "params": {"error": e.to_string()}}).to_string();
                 self.publish_status(job_id, ZipImportJobStatus::Failed { error: error_msg.clone() }).await?;
-                JOB_HISTORY.record_failed(job_id, "import.zip", started_at, error_msg);
+                JOB_HISTORY.record_failed(job_id, "import.zip", user_id, started_at, error_msg);
                 return Ok(());
             }
         };
@@ -1645,7 +1723,7 @@ impl ZipImportProcessor {
             Err(e) => {
                 let error_msg = json!({"key": "import:zip_open_error", "params": {"error": e.to_string()}}).to_string();
                 self.publish_status(job_id, ZipImportJobStatus::Failed { error: error_msg.clone() }).await?;
-                JOB_HISTORY.record_failed(job_id, "import.zip", started_at, error_msg);
+                JOB_HISTORY.record_failed(job_id, "import.zip", user_id, started_at, error_msg);
                 return Ok(());
             }
         };
@@ -1658,6 +1736,13 @@ impl ZipImportProcessor {
         let mut completed_files = 0u32;
         
         for file_info in &job.files {
+            // Check cancellation before each file
+            if CANCELLATION.is_cancelled(&job_id) {
+                self.publish_status(job_id, ZipImportJobStatus::Cancelled { completed_files, total_files }).await?;
+                JOB_HISTORY.record_cancelled(job_id, "import.zip", user_id, started_at);
+                return Ok(());
+            }
+            
             self.publish_status(job_id, ZipImportJobStatus::Importing {
                 current_file: file_info.filename.clone(),
                 current_file_type: file_info.file_type,
@@ -1764,6 +1849,7 @@ impl ZipImportProcessor {
         JOB_HISTORY.record_completed(
             job_id,
             "import.zip",
+            user_id,
             started_at,
             Some(json!({"key": "import:zip_completed_summary", "params": {"files": total_files, "succeeded": total_succeeded, "failed": total_failed}}).to_string()),
         );

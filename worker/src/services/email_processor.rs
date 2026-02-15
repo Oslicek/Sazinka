@@ -169,6 +169,13 @@ impl EmailProcessor {
         let job: QueuedEmailJob = serde_json::from_slice(&msg.payload)?;
         let job_id = job.id;
         
+        // Lazy pre-cancel check for atomic job
+        if crate::services::cancellation::CANCELLATION.is_cancelled(&job_id) {
+            msg.ack().await.ok();
+            crate::services::cancellation::CANCELLATION.remove(&job_id);
+            return Ok(());
+        }
+        
         info!("Processing email job {} ({})", job_id, job.request.type_name());
         
         self.publish_status(job_id, EmailJobStatus::Sending).await?;

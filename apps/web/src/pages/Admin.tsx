@@ -1,5 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from '@tanstack/react-router';
+import i18n from '@/i18n';
 import { useNatsStore } from '../stores/natsStore';
 import { createRequest } from '@shared/messages';
 import { getToken } from '@/utils/auth';
@@ -7,6 +9,7 @@ import { importCustomersBatch, submitGeocodeAllPending } from '../services/custo
 import { ImportModal, type ImportEntityType } from '../components/import';
 import { ImportCustomersModal } from '../components/customers/ImportCustomersModal';
 import { ExportPlusPanel } from '../components/shared/ExportPlusPanel';
+import { useActiveJobsStore, type ActiveJob } from '../stores/activeJobsStore';
 import { logger } from '../utils/logger';
 import { formatTime, formatNumber } from '../i18n/formatters';
 import styles from './Admin.module.css';
@@ -108,6 +111,19 @@ export function Admin() {
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importEntityType, setImportEntityType] = useState<ImportEntityType>('device');
   const [showCustomerImport, setShowCustomerImport] = useState(false);
+
+  // Running import/export jobs from global store
+  const allJobs = useActiveJobsStore((s) => s.jobs);
+  const { runningImportJobs, runningExportJobs } = useMemo(() => {
+    const imports: ActiveJob[] = [];
+    const exports: ActiveJob[] = [];
+    for (const job of allJobs.values()) {
+      if (job.status !== 'queued' && job.status !== 'processing') continue;
+      if (job.type.startsWith('import')) imports.push(job);
+      else if (job.type === 'export') exports.push(job);
+    }
+    return { runningImportJobs: imports, runningExportJobs: exports };
+  }, [allJobs]);
   
   const handleOpenImport = (entityType: ImportEntityType) => {
     setImportEntityType(entityType);
@@ -570,6 +586,18 @@ export function Admin() {
         <div className={styles.sectionHeader}>
           <h2>{t('admin_export_title')}</h2>
         </div>
+        {runningExportJobs.length > 0 && (
+          <div className={styles.runningJobNotice}>
+            {runningExportJobs.map(job => (
+              <div key={job.id} className={styles.runningJobRow}>
+                <span className={styles.runningJobPulse} />
+                <span>{i18n.t('jobs:running_job_notice', { name: job.name })}</span>
+                {job.progressText && <span className={styles.runningJobProgress}>{job.progressText}</span>}
+                <Link to="/jobs" className={styles.runningJobLink}>{i18n.t('jobs:go_to_jobs')} &rarr;</Link>
+              </div>
+            ))}
+          </div>
+        )}
         <ExportPlusPanel adminMode />
       </section>
 
@@ -578,6 +606,18 @@ export function Admin() {
         <div className={styles.sectionHeader}>
           <h2>{t('admin_import_title')}</h2>
         </div>
+        {runningImportJobs.length > 0 && (
+          <div className={styles.runningJobNotice}>
+            {runningImportJobs.map(job => (
+              <div key={job.id} className={styles.runningJobRow}>
+                <span className={styles.runningJobPulse} />
+                <span>{i18n.t('jobs:running_job_notice', { name: job.name })}</span>
+                {job.progressText && <span className={styles.runningJobProgress}>{job.progressText}</span>}
+                <Link to="/jobs" className={styles.runningJobLink}>{i18n.t('jobs:go_to_jobs')} &rarr;</Link>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className={styles.exportContainer}>
           {/* Customers Import */}

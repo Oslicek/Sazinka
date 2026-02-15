@@ -422,6 +422,57 @@
   cursor: not-allowed;
 }
 
+/* Running job notice */
+.runningJobNotice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.runningJobRow {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.625rem 1rem;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  color: #1e40af;
+}
+
+.runningJobPulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3b82f6;
+  flex-shrink: 0;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.8); }
+}
+
+.runningJobProgress {
+  color: #6b7280;
+  font-size: 0.8125rem;
+}
+
+.runningJobLink {
+  margin-left: auto;
+  color: #3b82f6;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.runningJobLink:hover {
+  text-decoration: underline;
+}
+
 .exportFilters {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

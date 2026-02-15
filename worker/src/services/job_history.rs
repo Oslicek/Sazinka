@@ -18,6 +18,7 @@ const MAX_HISTORY_SIZE: usize = 100;
 #[serde(rename_all = "camelCase")]
 pub struct JobHistoryEntry {
     pub id: Uuid,
+    pub user_id: Uuid,
     pub job_type: String,
     pub status: String,
     pub started_at: DateTime<Utc>,
@@ -52,6 +53,7 @@ impl JobHistoryService {
         &self,
         id: Uuid,
         job_type: &str,
+        user_id: Uuid,
         started_at: DateTime<Utc>,
         details: Option<String>,
     ) {
@@ -60,6 +62,7 @@ impl JobHistoryService {
         
         let entry = JobHistoryEntry {
             id,
+            user_id,
             job_type: job_type.to_string(),
             status: "completed".to_string(),
             started_at,
@@ -77,6 +80,7 @@ impl JobHistoryService {
         &self,
         id: Uuid,
         job_type: &str,
+        user_id: Uuid,
         started_at: DateTime<Utc>,
         error: String,
     ) {
@@ -85,12 +89,39 @@ impl JobHistoryService {
         
         let entry = JobHistoryEntry {
             id,
+            user_id,
             job_type: job_type.to_string(),
             status: "failed".to_string(),
             started_at,
             completed_at,
             duration_ms,
             error: Some(error),
+            details: None,
+        };
+        
+        self.add_entry(entry);
+    }
+    
+    /// Record a cancelled job
+    pub fn record_cancelled(
+        &self,
+        id: Uuid,
+        job_type: &str,
+        user_id: Uuid,
+        started_at: DateTime<Utc>,
+    ) {
+        let completed_at = Utc::now();
+        let duration_ms = (completed_at - started_at).num_milliseconds() as u64;
+        
+        let entry = JobHistoryEntry {
+            id,
+            user_id,
+            job_type: job_type.to_string(),
+            status: "cancelled".to_string(),
+            started_at,
+            completed_at,
+            duration_ms,
+            error: None,
             details: None,
         };
         
@@ -109,7 +140,7 @@ impl JobHistoryService {
         history.push_front(entry);
     }
     
-    /// Get recent job history
+    /// Get recent job history (all users — for admin use only)
     pub fn get_recent(&self, limit: usize) -> JobHistoryResponse {
         let history = self.history.read();
         let jobs: Vec<JobHistoryEntry> = history
@@ -118,6 +149,20 @@ impl JobHistoryService {
             .cloned()
             .collect();
         let total = history.len();
+        
+        JobHistoryResponse { jobs, total }
+    }
+    
+    /// Get recent job history filtered by user (multi-tenant safe)
+    pub fn get_recent_for_user(&self, user_id: Uuid, limit: usize) -> JobHistoryResponse {
+        let history = self.history.read();
+        let jobs: Vec<JobHistoryEntry> = history
+            .iter()
+            .filter(|j| j.user_id == user_id)
+            .take(limit)
+            .cloned()
+            .collect();
+        let total = jobs.len();
         
         JobHistoryResponse { jobs, total }
     }
@@ -170,23 +215,26 @@ mod tests {
     fn test_record_completed_job() {
         let service = JobHistoryService::new();
         let id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
         let started_at = Utc::now() - chrono::Duration::seconds(5);
         
-        service.record_completed(id, "geocode", started_at, Some("5 addresses".to_string()));
+        service.record_completed(id, "geocode", user_id, started_at, Some("5 addresses".to_string()));
         
         let history = service.get_recent(10);
         assert_eq!(history.jobs.len(), 1);
         assert_eq!(history.jobs[0].id, id);
         assert_eq!(history.jobs[0].status, "completed");
+        assert_eq!(history.jobs[0].user_id, user_id);
     }
 
     #[test]
     fn test_record_failed_job() {
         let service = JobHistoryService::new();
         let id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
         let started_at = Utc::now();
         
-        service.record_failed(id, "geocode", started_at, "Connection timeout".to_string());
+        service.record_failed(id, "geocode", user_id, started_at, "Connection timeout".to_string());
         
         let history = service.get_recent(10);
         assert_eq!(history.jobs.len(), 1);
@@ -197,11 +245,12 @@ mod tests {
     #[test]
     fn test_history_limit() {
         let service = JobHistoryService::new();
+        let user_id = Uuid::new_v4();
         
         // Add more than MAX_HISTORY_SIZE jobs
         for i in 0..150 {
             let id = Uuid::new_v4();
-            service.record_completed(id, "test", Utc::now(), Some(format!("Job {}", i)));
+            service.record_completed(id, "test", user_id, Utc::now(), Some(format!("Job {}", i)));
         }
         
         let history = service.get_recent(200);
@@ -211,12 +260,68 @@ mod tests {
     #[test]
     fn test_get_by_type() {
         let service = JobHistoryService::new();
+        let user_id = Uuid::new_v4();
         
-        service.record_completed(Uuid::new_v4(), "geocode", Utc::now(), None);
-        service.record_completed(Uuid::new_v4(), "route", Utc::now(), None);
-        service.record_completed(Uuid::new_v4(), "geocode", Utc::now(), None);
+        service.record_completed(Uuid::new_v4(), "geocode", user_id, Utc::now(), None);
+        service.record_completed(Uuid::new_v4(), "route", user_id, Utc::now(), None);
+        service.record_completed(Uuid::new_v4(), "geocode", user_id, Utc::now(), None);
         
         let geocode_jobs = service.get_by_type("geocode", 10);
         assert_eq!(geocode_jobs.jobs.len(), 2);
+    }
+
+    // ── 2.1 ──────────────────────────────────────────────────────────────
+    #[test]
+    fn test_record_cancelled_appears_in_history() {
+        let service = JobHistoryService::new();
+        let id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let started_at = Utc::now() - chrono::Duration::seconds(3);
+
+        service.record_cancelled(id, "import.customer", user_id, started_at);
+
+        let history = service.get_recent(10);
+        assert_eq!(history.jobs.len(), 1);
+        assert_eq!(history.jobs[0].id, id);
+        assert_eq!(history.jobs[0].status, "cancelled");
+        assert_eq!(history.jobs[0].user_id, user_id);
+        assert_eq!(history.jobs[0].job_type, "import.customer");
+        assert!(history.jobs[0].error.is_none());
+    }
+
+    // ── 2.2 ──────────────────────────────────────────────────────────────
+    #[test]
+    fn test_get_recent_for_user_isolates_users() {
+        let service = JobHistoryService::new();
+        let user_a = Uuid::new_v4();
+        let user_b = Uuid::new_v4();
+
+        service.record_completed(Uuid::new_v4(), "geocode", user_a, Utc::now(), None);
+        service.record_completed(Uuid::new_v4(), "route", user_b, Utc::now(), None);
+        service.record_completed(Uuid::new_v4(), "export", user_a, Utc::now(), None);
+        service.record_cancelled(Uuid::new_v4(), "import", user_b, Utc::now());
+
+        let history_a = service.get_recent_for_user(user_a, 50);
+        assert_eq!(history_a.jobs.len(), 2);
+        assert!(history_a.jobs.iter().all(|j| j.user_id == user_a));
+
+        let history_b = service.get_recent_for_user(user_b, 50);
+        assert_eq!(history_b.jobs.len(), 2);
+        assert!(history_b.jobs.iter().all(|j| j.user_id == user_b));
+    }
+
+    // ── 2.3 ──────────────────────────────────────────────────────────────
+    #[test]
+    fn test_record_completed_with_user_id() {
+        let service = JobHistoryService::new();
+        let id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+        let started_at = Utc::now();
+
+        service.record_completed(id, "route", user_id, started_at, Some("10 stops".to_string()));
+
+        let history = service.get_recent(10);
+        assert_eq!(history.jobs[0].user_id, user_id);
+        assert_eq!(history.jobs[0].status, "completed");
     }
 }

@@ -181,7 +181,17 @@ impl JobProcessor {
         
         let job: QueuedJob = serde_json::from_slice(&msg.payload)?;
         let job_id = job.id;
+        let user_id = job.request.user_id.unwrap_or(Uuid::nil());
         let started_at = Utc::now();
+        
+        // Register in cancellation registry
+        let _guard = crate::services::cancellation::CANCELLATION.register(job_id, user_id);
+        if crate::services::cancellation::CANCELLATION.is_cancelled(&job_id) {
+            msg.ack().await.ok();
+            self.publish_status(job_id, JobStatus::Cancelled { message: "jobs:cancelled_by_user".to_string() }).await?;
+            JOB_HISTORY.record_cancelled(job_id, "route", user_id, started_at);
+            return Ok(());
+        }
         
         info!("Processing route job {} with {} customers", job_id, job.request.customer_ids.len());
         self.pending_count.fetch_sub(1, Ordering::Relaxed);
@@ -204,6 +214,7 @@ impl JobProcessor {
                 JOB_HISTORY.record_completed(
                     job_id,
                     "route",
+                    user_id,
                     started_at,
                     Some(json!({"key": "jobs:route_completed_summary", "params": {"stops": result.stops.len(), "km": format!("{:.1}", result.total_distance_km)}}).to_string()),
                 );
@@ -217,7 +228,7 @@ impl JobProcessor {
                 }).await?;
                 
                 // Record failure in job history
-                JOB_HISTORY.record_failed(job_id, "route", started_at, e.to_string());
+                JOB_HISTORY.record_failed(job_id, "route", user_id, started_at, e.to_string());
                 
                 // Ack to prevent infinite retries for permanent failures
                 let _ = msg.ack().await;
@@ -877,7 +888,7 @@ pub async fn handle_job_history(
         };
 
         // Require authentication
-        let _user_id = match crate::auth::extract_auth(&request, &jwt_secret) {
+        let caller_id = match crate::auth::extract_auth(&request, &jwt_secret) {
             Ok(info) => info.data_user_id(),
             Err(_) => {
                 let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
@@ -888,11 +899,8 @@ pub async fn handle_job_history(
         
         let limit = request.payload.limit.unwrap_or(50);
         
-        let history: JobHistoryResponse = match (&request.payload.job_type, &request.payload.status) {
-            (Some(job_type), _) => JOB_HISTORY.get_by_type(job_type, limit),
-            (_, Some(status)) => JOB_HISTORY.get_by_status(status, limit),
-            _ => JOB_HISTORY.get_recent(limit),
-        };
+        // Filter by caller_id for multi-tenant isolation
+        let history: JobHistoryResponse = JOB_HISTORY.get_recent_for_user(caller_id, limit);
         
         let success = SuccessResponse::new(request.id, history);
         let _ = client.publish(reply, serde_json::to_vec(&success)?.into()).await;
@@ -930,12 +938,14 @@ pub struct JobActionResponse {
     pub job_id: Uuid,
 }
 
-/// Handle jobs.cancel requests
+/// Handle jobs.cancel requests — with owner verification via CancellationRegistry
 pub async fn handle_job_cancel(
     client: Client,
     mut subscriber: async_nats::Subscriber,
     jwt_secret: Arc<String>,
 ) -> Result<()> {
+    use crate::services::cancellation::{CANCELLATION, CancelError};
+
     while let Some(msg) = subscriber.next().await {
         let reply = match msg.reply {
             Some(ref r) => r.clone(),
@@ -953,7 +963,7 @@ pub async fn handle_job_cancel(
         };
 
         // Require authentication
-        let _user_id = match crate::auth::extract_auth(&request, &jwt_secret) {
+        let caller_id = match crate::auth::extract_auth(&request, &jwt_secret) {
             Ok(info) => info.data_user_id(),
             Err(_) => {
                 let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
@@ -963,41 +973,39 @@ pub async fn handle_job_cancel(
         };
         
         let job_id = request.payload.job_id;
-        let job_type = &request.payload.job_type;
         
-        info!("Attempting to cancel job {} of type {}", job_id, job_type);
+        info!("User {} attempting to cancel job {}", caller_id, job_id);
         
-        // For now, we publish a "cancelled" status to notify subscribers
-        // In a full implementation, we would remove the job from JetStream queue
-        let status_subject = format!("sazinka.job.{}.status.{}", job_type, job_id);
-        let cancel_status = serde_json::json!({
-            "jobId": job_id.to_string(),
-            "timestamp": chrono::Utc::now().to_rfc3339(),
-            "status": {
-                "type": "failed",
-                "error": "Job cancelled by user"
+        match CANCELLATION.cancel(&job_id, caller_id) {
+            Ok(true) => {
+                // Job was running and is now cancelled.
+                // Processor will detect is_cancelled() in next loop iteration
+                // and publish Cancelled status itself.
+                let response = JobActionResponse {
+                    success: true,
+                    message: "jobs:cancel_requested".to_string(),
+                    job_id,
+                };
+                let success = SuccessResponse::new(request.id, response);
+                let _ = client.publish(reply, serde_json::to_vec(&success)?.into()).await;
             }
-        });
-        
-        if let Err(e) = client.publish(status_subject, serde_json::to_vec(&cancel_status)?.into()).await {
-            warn!("Failed to publish cancel status: {}", e);
-            let response = JobActionResponse {
-                success: false,
-                message: format!("Failed to cancel job: {}", e),
-                job_id,
-            };
-            let success = SuccessResponse::new(request.id, response);
-            let _ = client.publish(reply, serde_json::to_vec(&success)?.into()).await;
-            continue;
+            Ok(false) => {
+                // Job not yet processing — pre-cancel so processor skips it when picked up
+                CANCELLATION.pre_cancel(job_id, caller_id);
+                let response = JobActionResponse {
+                    success: true,
+                    message: "jobs:cancel_requested".to_string(),
+                    job_id,
+                };
+                let success = SuccessResponse::new(request.id, response);
+                let _ = client.publish(reply, serde_json::to_vec(&success)?.into()).await;
+            }
+            Err(CancelError::NotOwner) => {
+                warn!("User {} attempted to cancel job {} owned by another user", caller_id, job_id);
+                let error = ErrorResponse::new(request.id, "FORBIDDEN", "You can only cancel your own jobs");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
         }
-        
-        let response = JobActionResponse {
-            success: true,
-            message: "jobs:cancel_requested".to_string(),
-            job_id,
-        };
-        let success = SuccessResponse::new(request.id, response);
-        let _ = client.publish(reply, serde_json::to_vec(&success)?.into()).await;
     }
     
     Ok(())

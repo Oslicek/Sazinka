@@ -28,7 +28,7 @@ function isErrorResponse(response: NatsResponse<unknown>): response is ErrorResp
 export interface JobHistoryEntry {
   id: string;
   jobType: string;
-  status: 'completed' | 'failed';
+  status: 'completed' | 'failed' | 'cancelled';
   startedAt: string;
   completedAt: string;
   durationMs: number;

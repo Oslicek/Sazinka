@@ -53,7 +53,8 @@ interface ExportJobStatusUpdate {
     | { type: 'queued'; position?: number }
     | { type: 'processing'; progress?: number; message?: string }
     | { type: 'completed'; result?: { fileName?: string } }
-    | { type: 'failed'; error: string };
+    | { type: 'failed'; error: string }
+    | { type: 'cancelled'; message?: string };
 }
 
 // Active job info
@@ -61,7 +62,7 @@ export interface ActiveJob {
   id: string;
   type: JobType;
   name: string;
-  status: 'queued' | 'processing' | 'completed' | 'failed';
+  status: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
   progress?: number;
   progressText?: string;
   startedAt: Date;
@@ -317,6 +318,10 @@ function handleImportJobStatusUpdate(update: GenericImportJobStatusUpdate, jobTy
     }
     completedAt = new Date();
     report = status.report;
+  } else if (status.type === 'cancelled') {
+    jobStatus = 'cancelled';
+    progressText = i18n.t('jobs:cancelled_by_user');
+    completedAt = new Date();
   } else if (status.type === 'failed') {
     jobStatus = 'failed';
     error = status.error;
@@ -407,6 +412,10 @@ function handleZipImportJobStatusUpdate(update: ZipImportJobStatusUpdate) {
       skippedCount: 0,
       issues: allIssues,
     };
+  } else if (status.type === 'cancelled') {
+    jobStatus = 'cancelled';
+    progressText = i18n.t('jobs:cancelled_by_user');
+    completedAt = new Date();
   } else if (status.type === 'failed') {
     jobStatus = 'failed';
     error = status.error;
@@ -469,6 +478,10 @@ function handleGeocodeJobStatusUpdate(update: GeocodeJobStatusUpdate) {
     progress = 100;
     progressText = i18n.t('jobs:geocode_completed', { succeeded: status.succeeded, total: status.total });
     completedAt = new Date();
+  } else if (status.type === 'cancelled') {
+    jobStatus = 'cancelled';
+    progressText = i18n.t('jobs:cancelled_by_user');
+    completedAt = new Date();
   } else if (status.type === 'failed') {
     jobStatus = 'failed';
     error = status.error;
@@ -529,6 +542,10 @@ function handleExportJobStatusUpdate(update: ExportJobStatusUpdate) {
     progress = 100;
     const fileName = status.result?.fileName;
     progressText = fileName ? i18n.t('jobs:export_completed_file', { fileName }) : i18n.t('jobs:export_completed');
+    completedAt = new Date();
+  } else if (status.type === 'cancelled') {
+    jobStatus = 'cancelled';
+    progressText = i18n.t('jobs:cancelled_by_user');
     completedAt = new Date();
   } else if (status.type === 'failed') {
     jobStatus = 'failed';

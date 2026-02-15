@@ -234,12 +234,22 @@ impl GeocodeProcessor {
     /// Process a single geocoding job
     async fn process_job(&self, msg: jetstream::Message) -> Result<()> {
         use crate::services::job_history::JOB_HISTORY;
+        use crate::services::cancellation::CANCELLATION;
         
         let job: QueuedGeocodeJob = serde_json::from_slice(&msg.payload)?;
         let job_id = job.id;
+        let user_id = job.request.user_id;
         let started_at = job.submitted_at;
         let customer_ids = &job.request.customer_ids;
         let total = customer_ids.len() as u32;
+        
+        let _guard = CANCELLATION.register(job_id, user_id);
+        if CANCELLATION.is_cancelled(&job_id) {
+            msg.ack().await.ok();
+            self.publish_status(job_id, GeocodeJobStatus::Cancelled { processed: 0, total }).await?;
+            JOB_HISTORY.record_cancelled(job_id, "geocode", user_id, started_at);
+            return Ok(());
+        }
         
         info!("Processing geocode job {} with {} customers", job_id, total);
         
@@ -249,6 +259,16 @@ impl GeocodeProcessor {
         
         for (i, customer_id) in customer_ids.iter().enumerate() {
             let processed = (i + 1) as u32;
+            
+            // Check cancellation every 10 customers
+            if i % 10 == 0 && CANCELLATION.is_cancelled(&job_id) {
+                self.publish_status(job_id, GeocodeJobStatus::Cancelled { processed: i as u32, total }).await?;
+                JOB_HISTORY.record_cancelled(job_id, "geocode", user_id, started_at);
+                if let Err(e) = msg.ack().await {
+                    error!("Failed to ack geocode job {}: {:?}", job_id, e);
+                }
+                return Ok(());
+            }
             
             // Publish progress every 10 customers or at the end
             if processed % 10 == 0 || processed == total {
@@ -299,6 +319,7 @@ impl GeocodeProcessor {
         JOB_HISTORY.record_completed(
             job_id,
             "geocode",
+            user_id,
             started_at,
             Some(format!("{}/{} succeeded", succeeded, total)),
         );
@@ -316,13 +337,23 @@ impl GeocodeProcessor {
         #[serde(rename_all = "camelCase")]
         struct QueuedAddressJob {
             id: Uuid,
+            #[serde(default)]
+            user_id: Option<Uuid>,
             submitted_at: chrono::DateTime<chrono::Utc>,
             request: GeocodeAddressJobRequest,
         }
 
         let job: QueuedAddressJob = serde_json::from_slice(&msg.payload)?;
         let job_id = job.id;
+        let user_id = job.user_id.unwrap_or(Uuid::nil());
         let started_at = job.submitted_at;
+
+        // Lazy pre-cancel check for atomic job
+        if crate::services::cancellation::CANCELLATION.is_cancelled(&job_id) {
+            msg.ack().await.ok();
+            crate::services::cancellation::CANCELLATION.remove(&job_id);
+            return Ok(());
+        }
 
         self.publish_address_status(job_id, GeocodeAddressJobStatus::Processing).await?;
 
@@ -339,14 +370,14 @@ impl GeocodeProcessor {
                     display_name: Some(geo.display_name.clone()),
                 }).await?;
                 let _ = msg.ack().await;
-                JOB_HISTORY.record_completed(job_id, "geocode.address", started_at, Some(geo.display_name));
+                JOB_HISTORY.record_completed(job_id, "geocode.address", user_id, started_at, Some(geo.display_name));
             }
             None => {
                 self.publish_address_status(job_id, GeocodeAddressJobStatus::Failed {
                     error: "jobs:address_not_found".to_string(),
                 }).await?;
                 let _ = msg.ack().await;
-                JOB_HISTORY.record_failed(job_id, "geocode.address", started_at, "jobs:address_not_found".to_string());
+                JOB_HISTORY.record_failed(job_id, "geocode.address", user_id, started_at, "jobs:address_not_found".to_string());
             }
         }
 
@@ -360,13 +391,23 @@ impl GeocodeProcessor {
         #[serde(rename_all = "camelCase")]
         struct QueuedReverseJob {
             id: Uuid,
+            #[serde(default)]
+            user_id: Option<Uuid>,
             submitted_at: chrono::DateTime<chrono::Utc>,
             request: ReverseGeocodeJobRequest,
         }
 
         let job: QueuedReverseJob = serde_json::from_slice(&msg.payload)?;
         let job_id = job.id;
+        let user_id = job.user_id.unwrap_or(Uuid::nil());
         let started_at = job.submitted_at;
+
+        // Lazy pre-cancel check for atomic job
+        if crate::services::cancellation::CANCELLATION.is_cancelled(&job_id) {
+            msg.ack().await.ok();
+            crate::services::cancellation::CANCELLATION.remove(&job_id);
+            return Ok(());
+        }
 
         self.publish_reverse_status(job_id, ReverseGeocodeJobStatus::Processing).await?;
 
@@ -397,14 +438,14 @@ impl GeocodeProcessor {
                     display_name: Some(addr.display_name.clone()),
                 }).await?;
                 let _ = msg.ack().await;
-                JOB_HISTORY.record_completed(job_id, "geocode.reverse", started_at, Some(addr.display_name));
+                JOB_HISTORY.record_completed(job_id, "geocode.reverse", user_id, started_at, Some(addr.display_name));
             }
             None => {
                 self.publish_reverse_status(job_id, ReverseGeocodeJobStatus::Failed {
                     error: "jobs:reverse_geocode_failed".to_string(),
                 }).await?;
                 let _ = msg.ack().await;
-                JOB_HISTORY.record_failed(job_id, "geocode.reverse", started_at, "jobs:reverse_geocode_failed".to_string());
+                JOB_HISTORY.record_failed(job_id, "geocode.reverse", user_id, started_at, "jobs:reverse_geocode_failed".to_string());
             }
         }
 

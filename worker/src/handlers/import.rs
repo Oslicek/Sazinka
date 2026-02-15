@@ -1101,11 +1101,23 @@ impl CustomerImportProcessor {
     /// Process a single customer import job
     async fn process_job(&self, msg: jetstream::Message) -> Result<()> {
         use crate::services::job_history::JOB_HISTORY;
+        use crate::services::cancellation::CANCELLATION;
         
         let job: QueuedCustomerImportJob = serde_json::from_slice(&msg.payload)?;
         let job_id = job.id;
         let user_id = job.user_id;
         let started_at = job.submitted_at;
+        
+        // Register in cancellation registry (RAII guard auto-removes on drop)
+        let _guard = CANCELLATION.register(job_id, user_id);
+        
+        // Check pre-cancel (job was cancelled while in queue)
+        if CANCELLATION.is_cancelled(&job_id) {
+            msg.ack().await.ok();
+            self.publish_status(job_id, CustomerImportJobStatus::Cancelled { processed: 0, total: 0 }).await?;
+            JOB_HISTORY.record_cancelled(job_id, "import.customer", user_id, started_at);
+            return Ok(());
+        }
         
         info!("Processing customer import job {} from file '{}'", job_id, job.request.filename);
         self.pending_count.fetch_sub(1, Ordering::Relaxed);
@@ -1125,7 +1137,7 @@ impl CustomerImportProcessor {
             Err(e) => {
                 let error_msg = json!({"key": "import:csv_parse_error", "params": {"error": e.to_string()}}).to_string();
                 self.publish_status(job_id, CustomerImportJobStatus::Failed { error: error_msg.clone() }).await?;
-                JOB_HISTORY.record_failed(job_id, "import.customer", started_at, error_msg);
+                JOB_HISTORY.record_failed(job_id, "import.customer", user_id, started_at, error_msg);
                 return Ok(());
             }
         };
@@ -1134,7 +1146,7 @@ impl CustomerImportProcessor {
         if total == 0 {
             let error_msg = "import:csv_empty".to_string();
             self.publish_status(job_id, CustomerImportJobStatus::Failed { error: error_msg.clone() }).await?;
-            JOB_HISTORY.record_failed(job_id, "import.customer", started_at, error_msg);
+            JOB_HISTORY.record_failed(job_id, "import.customer", user_id, started_at, error_msg);
             return Ok(());
         }
         
@@ -1147,6 +1159,16 @@ impl CustomerImportProcessor {
         
         for (idx, row) in rows.iter().enumerate() {
             let processed = (idx + 1) as u32;
+            
+            // Check cancellation every 50 rows
+            if idx % 50 == 0 && CANCELLATION.is_cancelled(&job_id) {
+                self.publish_status(job_id, CustomerImportJobStatus::Cancelled {
+                    processed: idx as u32,
+                    total,
+                }).await?;
+                JOB_HISTORY.record_cancelled(job_id, "import.customer", user_id, started_at);
+                return Ok(());
+            }
             
             // Publish progress every 10 customers or at milestones
             if processed % 10 == 0 || processed == total {
@@ -1197,6 +1219,7 @@ impl CustomerImportProcessor {
         JOB_HISTORY.record_completed(
             job_id,
             "import.customer",
+            user_id,
             started_at,
             Some(json!({"key": "import:completed_summary", "params": {"succeeded": succeeded, "total": total}}).to_string()),
         );

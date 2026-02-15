@@ -14,7 +14,7 @@
 import i18n from '@/i18n';
 
 /** Job status type enum */
-export type JobStatusType = 'queued' | 'processing' | 'completed' | 'failed';
+export type JobStatusType = 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
 
 /** Job waiting in queue */
 export interface JobStatusQueued {
@@ -52,12 +52,20 @@ export interface JobStatusFailed {
   retryable?: boolean;
 }
 
+/** Job cancelled by user */
+export interface JobStatusCancelled {
+  type: 'cancelled';
+  /** Optional message */
+  message?: string;
+}
+
 /** Union type for all job statuses */
 export type JobStatus<T = unknown> = 
   | JobStatusQueued 
   | JobStatusProcessing 
   | JobStatusCompleted<T> 
-  | JobStatusFailed;
+  | JobStatusFailed
+  | JobStatusCancelled;
 
 /** Job status update message from backend */
 export interface JobStatusUpdate<T = unknown> {
@@ -152,9 +160,14 @@ export function isFailed(status: JobStatus | null): status is JobStatusFailed {
   return status !== null && status.type === 'failed';
 }
 
-/** Check if job is in a terminal state (completed or failed) */
+/** Type guard for JobStatusCancelled */
+export function isCancelled(status: JobStatus | null): status is JobStatusCancelled {
+  return status !== null && status.type === 'cancelled';
+}
+
+/** Check if job is in a terminal state (completed, failed, or cancelled) */
 export function isTerminal(status: JobStatus | null): boolean {
-  return status !== null && (status.type === 'completed' || status.type === 'failed');
+  return status !== null && (status.type === 'completed' || status.type === 'failed' || status.type === 'cancelled');
 }
 
 /** Check if job is active (queued or processing) */

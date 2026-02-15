@@ -381,6 +381,11 @@ pub enum JobStatus {
     Failed {
         error: String,
     },
+    /// Job cancelled by user
+    #[serde(rename_all = "camelCase")]
+    Cancelled {
+        message: String,
+    },
 }
 
 /// A status update message published to the job status subject
@@ -533,6 +538,12 @@ pub enum GeocodeJobStatus {
     #[serde(rename_all = "camelCase")]
     Failed {
         error: String,
+    },
+    /// Job cancelled by user
+    #[serde(rename_all = "camelCase")]
+    Cancelled {
+        processed: u32,
+        total: u32,
     },
 }
 

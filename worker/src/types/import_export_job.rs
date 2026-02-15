@@ -375,6 +375,11 @@ pub enum ExportJobStatus {
     Failed {
         error: String,
     },
+    /// Job cancelled by user
+    #[serde(rename_all = "camelCase")]
+    Cancelled {
+        message: String,
+    },
 }
 
 /// A queued export job in JetStream

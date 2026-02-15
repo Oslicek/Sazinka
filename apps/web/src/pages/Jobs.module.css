@@ -99,7 +99,6 @@
   font-family: monospace;
   font-size: 0.875rem;
   color: var(--text-muted, #666);
-  margin-left: auto;
 }
 
 .jobMeta {
@@ -172,6 +171,14 @@
   background: var(--error-bg-hover, #fee2e2) !important;
 }
 
+.cancelledRow {
+  background: #fffbeb;
+}
+
+.cancelledRow:hover {
+  background: #fef3c7 !important;
+}
+
 .tableIcon {
   margin-right: 0.5rem;
 }
@@ -198,6 +205,11 @@
 .statusBadge.failed {
   background: var(--error-bg, #fee2e2);
   color: var(--error-text, #dc2626);
+}
+
+.statusBadge.cancelled {
+  background: #fef3c7;
+  color: #92400e;
 }
 
 /* Stats grid */
@@ -257,6 +269,13 @@
   border-radius: 4px;
 }
 
+.statCancelled {
+  background: #fef3c7;
+  color: #92400e;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+}
+
 /* Error banner */
 .error {
   background: var(--error-bg, #fee2e2);
@@ -283,31 +302,97 @@
   opacity: 0.7;
 }
 
-/* Cancel button in job card */
-.cancelBtn {
+/* Stop job button in job card */
+.stopBtn {
   margin-left: auto;
-  background: var(--error-bg, #fee2e2);
-  color: var(--error-text, #dc2626);
-  border: none;
-  border-radius: 4px;
-  width: 24px;
-  height: 24px;
-  font-size: 1rem;
-  cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
+  gap: 0.375rem;
+  background: transparent;
+  color: var(--text-muted, #6b7280);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 6px;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
 }
 
-.cancelBtn:hover:not(:disabled) {
-  background: var(--error-text, #dc2626);
-  color: white;
+.stopBtn:hover:not(:disabled) {
+  background: var(--error-bg, #fef2f2);
+  color: var(--error-text, #dc2626);
+  border-color: var(--error-text, #dc2626);
 }
 
-.cancelBtn:disabled {
+.stopBtn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.stopBtnSpinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #e5e7eb;
+  border-top-color: #6b7280;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Inline confirmation (replaces stop button) */
+.confirmInline {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.confirmText {
+  font-size: 0.8125rem;
+  color: var(--text-muted, #6b7280);
+}
+
+.confirmYes {
+  background: var(--error-text, #dc2626);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.confirmYes:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+.confirmYes:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.confirmNo {
+  background: transparent;
+  color: var(--text-muted, #6b7280);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 6px;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.confirmNo:hover {
+  background: var(--card-nested-bg, #f1f5f9);
 }
 
 /* Retry button */

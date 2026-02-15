@@ -22,6 +22,15 @@ use zip::write::SimpleFileOptions;
 use crate::db::queries;
 use crate::services::job_history::JOB_HISTORY;
 
+/// Typed error for export operations — distinguishes cancellation from real errors.
+#[derive(thiserror::Error, Debug)]
+pub enum ExportError {
+    #[error("Job cancelled")]
+    Cancelled,
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
+}
+
 const STREAM_NAME: &str = "SAZINKA_EXPORT_JOBS";
 const CONSUMER_NAME: &str = "export_workers";
 const SUBJECT: &str = "sazinka.jobs.export";
@@ -245,12 +254,22 @@ impl ExportProcessor {
     }
 
     async fn process_job(&self, msg: jetstream::Message) -> Result<()> {
+        use crate::services::cancellation::CANCELLATION;
+        
         let started_wall = Utc::now();
         let started = Instant::now();
         let job: QueuedExportJob = serde_json::from_slice(&msg.payload)?;
 
         let job_id = job.id;
         let user_id = job.user_id;
+
+        let _guard = CANCELLATION.register(job_id, user_id);
+        if CANCELLATION.is_cancelled(&job_id) {
+            msg.ack().await.ok();
+            self.publish_status(job_id, json!({ "type": "cancelled", "message": "jobs:cancelled_by_user" })).await?;
+            JOB_HISTORY.record_cancelled(job_id, "export", user_id, started_wall);
+            return Ok(());
+        }
 
         self.publish_status(
             job_id,
@@ -280,15 +299,22 @@ impl ExportProcessor {
                 JOB_HISTORY.record_completed(
                     job_id,
                     "export",
+                    user_id,
                     started_wall,
                     Some(json!({"key": "jobs:export_completed_summary", "params": {"rows": row_count, "bytes": file_size}}).to_string()),
                 );
             }
-            Err(e) => {
+            Err(ExportError::Cancelled) => {
+                info!("Export job {} cancelled by user", job_id);
+                self.publish_status(job_id, json!({ "type": "cancelled", "message": "jobs:cancelled_by_user" }))
+                    .await?;
+                JOB_HISTORY.record_cancelled(job_id, "export", user_id, started_wall);
+            }
+            Err(ExportError::Other(e)) => {
                 warn!("Export job {} failed: {}", job_id, e);
                 self.publish_status(job_id, json!({ "type": "failed", "error": e.to_string() }))
                     .await?;
-                JOB_HISTORY.record_failed(job_id, "export", started_wall, e.to_string());
+                JOB_HISTORY.record_failed(job_id, "export", user_id, started_wall, e.to_string());
             }
         }
 
@@ -309,7 +335,9 @@ impl ExportProcessor {
         user_id: Uuid,
         request: &ExportPlusRequest,
         job_id: Uuid,
-    ) -> Result<(u32, u64, String)> {
+    ) -> Result<(u32, u64, String), ExportError> {
+        use crate::services::cancellation::CANCELLATION;
+
         let filters = &request.filters;
         let date_from = parse_date_opt(filters.date_from.as_deref())?.unwrap_or_else(|| {
             NaiveDate::from_ymd_opt(2000, 1, 1).expect("valid static default date")
@@ -319,6 +347,11 @@ impl ExportProcessor {
         });
 
         let dataset = self.load_dataset(user_id, filters, date_from, date_to).await?;
+
+        // ── Cancellation check: after data loading ──
+        if CANCELLATION.is_cancelled(&job_id) {
+            return Err(ExportError::Cancelled);
+        }
 
         self.publish_status(
             job_id,
@@ -384,6 +417,11 @@ impl ExportProcessor {
             }
         }
 
+        // ── Cancellation check: after CSV generation ──
+        if CANCELLATION.is_cancelled(&job_id) {
+            return Err(ExportError::Cancelled);
+        }
+
         self.publish_status(
             job_id,
             json!({ "type": "processing", "progress": 80, "message": "jobs:packing_zip" }),
@@ -396,11 +434,11 @@ impl ExportProcessor {
 
         for (name, content) in files {
             total_rows += content.lines().skip(1).count() as u32;
-            zip_writer.start_file(name, options)?;
-            zip_writer.write_all(content.as_bytes())?;
+            zip_writer.start_file(name, options).map_err(|e| ExportError::Other(anyhow::Error::from(e)))?;
+            zip_writer.write_all(content.as_bytes()).map_err(|e| ExportError::Other(anyhow::Error::from(e)))?;
         }
 
-        let zip_cursor = zip_writer.finish()?;
+        let zip_cursor = zip_writer.finish().map_err(|e| ExportError::Other(anyhow::Error::from(e)))?;
         let zip_bytes = zip_cursor.into_inner();
         let file_size = zip_bytes.len() as u64;
         Self::save_export_file(user_id, job_id, &zip_bytes)?;

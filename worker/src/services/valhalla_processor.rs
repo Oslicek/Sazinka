@@ -161,6 +161,13 @@ impl ValhallaProcessor {
         let job_id = job.id;
         let locations = &job.request.locations;
         
+        // Lazy pre-cancel check for atomic job
+        if crate::services::cancellation::CANCELLATION.is_cancelled(&job_id) {
+            msg.ack().await.ok();
+            crate::services::cancellation::CANCELLATION.remove(&job_id);
+            return Ok(());
+        }
+        
         info!("Processing matrix job {} with {} locations", job_id, locations.len());
         
         // Publish processing status
@@ -288,6 +295,13 @@ impl ValhallaProcessor {
         let job: QueuedGeometryJob = serde_json::from_slice(&msg.payload)?;
         let job_id = job.id;
         let locations = &job.request.locations;
+        
+        // Lazy pre-cancel check for atomic job
+        if crate::services::cancellation::CANCELLATION.is_cancelled(&job_id) {
+            msg.ack().await.ok();
+            crate::services::cancellation::CANCELLATION.remove(&job_id);
+            return Ok(());
+        }
         
         info!("Processing geometry job {} with {} locations", job_id, locations.len());
         

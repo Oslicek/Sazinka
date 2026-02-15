@@ -27,7 +27,8 @@ export type CustomerImportJobStatus =
   | { type: 'parsing'; progress: number }
   | { type: 'importing'; processed: number; total: number; succeeded: number; failed: number }
   | { type: 'completed'; total: number; succeeded: number; failed: number; report: ImportReport }
-  | { type: 'failed'; error: string };
+  | { type: 'failed'; error: string }
+  | { type: 'cancelled'; processed: number; total: number };
 
 /**
  * Status update message for import job
@@ -57,7 +58,8 @@ export type GeocodeJobStatus =
   | { type: 'queued'; position: number }
   | { type: 'processing'; processed: number; total: number; succeeded: number; failed: number }
   | { type: 'completed'; total: number; succeeded: number; failed: number; failedAddresses: string[] }
-  | { type: 'failed'; error: string };
+  | { type: 'failed'; error: string }
+  | { type: 'cancelled'; processed: number; total: number };
 
 /**
  * Status update message for geocode job
@@ -82,7 +84,8 @@ export type DeviceImportJobStatus =
   | { type: 'parsing'; progress: number }
   | { type: 'importing'; processed: number; total: number; succeeded: number; failed: number }
   | { type: 'completed'; total: number; succeeded: number; failed: number; report: ImportReport }
-  | { type: 'failed'; error: string };
+  | { type: 'failed'; error: string }
+  | { type: 'cancelled'; processed: number; total: number };
 
 export interface DeviceImportJobStatusUpdate {
   jobId: string;
@@ -109,7 +112,8 @@ export type RevisionImportJobStatus =
   | { type: 'parsing'; progress: number }
   | { type: 'importing'; processed: number; total: number; succeeded: number; failed: number }
   | { type: 'completed'; total: number; succeeded: number; failed: number; report: ImportReport }
-  | { type: 'failed'; error: string };
+  | { type: 'failed'; error: string }
+  | { type: 'cancelled'; processed: number; total: number };
 
 export interface RevisionImportJobStatusUpdate {
   jobId: string;
@@ -136,7 +140,8 @@ export type CommunicationImportJobStatus =
   | { type: 'parsing'; progress: number }
   | { type: 'importing'; processed: number; total: number; succeeded: number; failed: number }
   | { type: 'completed'; total: number; succeeded: number; failed: number; report: ImportReport }
-  | { type: 'failed'; error: string };
+  | { type: 'failed'; error: string }
+  | { type: 'cancelled'; processed: number; total: number };
 
 export interface CommunicationImportJobStatusUpdate {
   jobId: string;
@@ -163,7 +168,8 @@ export type WorkLogImportJobStatus =
   | { type: 'parsing'; progress: number }
   | { type: 'importing'; processed: number; total: number; succeeded: number; failed: number }
   | { type: 'completed'; total: number; succeeded: number; failed: number; report: ImportReport }
-  | { type: 'failed'; error: string };
+  | { type: 'failed'; error: string }
+  | { type: 'cancelled'; processed: number; total: number };
 
 export interface WorkLogImportJobStatusUpdate {
   jobId: string;
@@ -217,7 +223,8 @@ export type ZipImportJobStatus =
         report: ImportReport;
       }>;
     }
-  | { type: 'failed'; error: string };
+  | { type: 'failed'; error: string }
+  | { type: 'cancelled'; completedFiles: number; totalFiles: number };
 
 export interface ZipImportJobStatusUpdate {
   jobId: string;
