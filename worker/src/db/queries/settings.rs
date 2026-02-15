@@ -409,6 +409,97 @@ pub async fn delete_depot(pool: &PgPool, depot_id: Uuid, user_id: Uuid) -> Resul
     Ok(result.rows_affected() > 0)
 }
 
+/// Level 1: Delete all COMPANY DATA but keep the user account.
+///
+/// Removes customers, devices, revisions, visits, communications, routes,
+/// depots, crews, roles, and worker accounts. The owner's user row is
+/// preserved so they can log in and start fresh.
+pub async fn delete_company_data(pool: &PgPool, user_id: Uuid) -> Result<()> {
+    // Delete worker accounts first (they reference this user via owner_id)
+    sqlx::query("DELETE FROM users WHERE owner_id = $1")
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    // Delete roles (CASCADE removes role_permissions and user_roles)
+    sqlx::query("DELETE FROM roles WHERE owner_id = $1")
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    // Delete routes (CASCADE removes route_stops)
+    sqlx::query("DELETE FROM routes WHERE user_id = $1")
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    // Delete customers (CASCADE removes devices, revisions, visits,
+    // communications, route_stops, visit_work_items)
+    sqlx::query("DELETE FROM customers WHERE user_id = $1")
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    // Delete depots
+    sqlx::query("DELETE FROM depots WHERE user_id = $1")
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    // Delete crews
+    sqlx::query("DELETE FROM crews WHERE user_id = $1")
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    // Reset user preferences to defaults (clear depot/crew refs, keep locale)
+    sqlx::query(
+        r#"
+        UPDATE users SET
+            default_crew_id = NULL,
+            default_depot_id = NULL,
+            email_subject_template = NULL,
+            email_body_template = NULL,
+            email_confirmation_subject_template = NULL,
+            email_confirmation_body_template = NULL,
+            email_reminder_subject_template = NULL,
+            email_reminder_body_template = NULL,
+            email_third_subject_template = NULL,
+            email_third_body_template = NULL,
+            email_confirmation_edited_at = NULL,
+            email_reminder_edited_at = NULL,
+            email_third_edited_at = NULL
+        WHERE id = $1
+        "#
+    )
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Level 2: Delete user account and ALL associated data (GDPR data excise).
+///
+/// 1. Wipes all company data (Level 1).
+/// 2. Deletes the user row itself — the account ceases to exist.
+pub async fn delete_user_account(pool: &PgPool, user_id: Uuid) -> Result<()> {
+    // Level 1: wipe company data first
+    delete_company_data(pool, user_id).await?;
+
+    // Level 2: delete the owner account itself
+    let result = sqlx::query("DELETE FROM users WHERE id = $1")
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    if result.rows_affected() == 0 {
+        anyhow::bail!("User not found");
+    }
+
+    Ok(())
+}
+
 /// Get primary depot for a user
 pub async fn get_primary_depot(pool: &PgPool, user_id: Uuid) -> Result<Option<Depot>> {
     let depot = sqlx::query_as::<_, Depot>(

@@ -279,6 +279,63 @@ export async function deleteDepot(
   return response.payload.deleted;
 }
 
+// ============================================================================
+// Account Deletion API (GDPR Data Excise)
+// ============================================================================
+
+/**
+ * Delete account response from backend
+ */
+export interface DeleteAccountResponse {
+  deleted: boolean;
+  message: string;
+  /** Which level was executed: 1 = data only, 2 = data + account */
+  level: number;
+}
+
+/**
+ * Level 1: Delete all company data but KEEP the user account.
+ * The user can log in afterwards and start fresh.
+ */
+export async function deleteCompanyData(
+  deps: SettingsServiceDeps = getDefaultDeps()
+): Promise<DeleteAccountResponse> {
+  const request = createRequest(getToken(), { confirmation: true, level: 1 });
+
+  const response = await deps.request<typeof request, NatsResponse<DeleteAccountResponse>>(
+    'sazinka.account.delete',
+    request
+  );
+
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+
+  return response.payload;
+}
+
+/**
+ * Level 2: Permanently delete the user account and ALL associated data.
+ * This is irreversible — GDPR Article 17 data excise.
+ * The user will be logged out and cannot log in again.
+ */
+export async function deleteAccount(
+  deps: SettingsServiceDeps = getDefaultDeps()
+): Promise<DeleteAccountResponse> {
+  const request = createRequest(getToken(), { confirmation: true, level: 2 });
+
+  const response = await deps.request<typeof request, NatsResponse<DeleteAccountResponse>>(
+    'sazinka.account.delete',
+    request
+  );
+
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+
+  return response.payload;
+}
+
 /**
  * Geocode depot address response
  */

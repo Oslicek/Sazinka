@@ -17,6 +17,7 @@ use crate::types::{
     ListDepotsResponse, UserSettings,
     UpdateWorkConstraintsRequest, UpdateBusinessInfoRequest, UpdateEmailTemplatesRequest,
     UpdatePreferencesRequest, UpdateBreakSettingsRequest,
+    DeleteAccountRequest, DeleteAccountResponse,
 };
 
 // ============================================================================
@@ -728,7 +729,7 @@ pub async fn handle_update_break_settings(
     jwt_secret: Arc<String>,
 ) -> Result<()> {
     while let Some(msg) = subscriber.next().await {
-        debug!("Received settings.break.update message");
+        debug!("Received settings.break.update message (break)");
 
         let reply = match msg.reply {
             Some(ref reply) => reply.clone(),
@@ -777,6 +778,120 @@ pub async fn handle_update_break_settings(
             Err(e) => {
                 error!("Failed to update break settings: {}", e);
                 let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// Delete Account Handler (GDPR Data Excise)
+// ============================================================================
+
+/// Handle account.delete messages — permanently deletes all user data.
+///
+/// Only the account owner (role = "customer", no owner_id) can invoke this.
+/// Workers and admins are rejected.
+pub async fn handle_delete_account(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+    jwt_secret: Arc<String>,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received account.delete message");
+
+        let reply = match msg.reply {
+            Some(ref reply) => reply.clone(),
+            None => {
+                warn!("Message without reply subject");
+                continue;
+            }
+        };
+
+        let request: Request<DeleteAccountRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("Failed to parse delete account request: {}", e);
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        let auth_info = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info,
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        // Only the account owner (customer role, no owner_id) can delete
+        if auth_info.role != "customer" {
+            let error = ErrorResponse::new(request.id, "FORBIDDEN", "Only the account owner can delete the account");
+            let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            continue;
+        }
+        if auth_info.owner_id.is_some() {
+            let error = ErrorResponse::new(request.id, "FORBIDDEN", "Workers cannot delete the account");
+            let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            continue;
+        }
+
+        // Require explicit confirmation
+        if !request.payload.confirmation {
+            let error = ErrorResponse::new(request.id, "CONFIRMATION_REQUIRED", "Confirmation flag must be true");
+            let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            continue;
+        }
+
+        let level = request.payload.level;
+        if level != 1 && level != 2 {
+            let error = ErrorResponse::new(request.id, "INVALID_LEVEL", "Level must be 1 (data only) or 2 (data + account)");
+            let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            continue;
+        }
+
+        let user_id = auth_info.user_id;
+
+        // Audit log — record the deletion before it happens
+        if let Ok(Some(user)) = queries::settings::get_user_settings(&pool, user_id).await {
+            warn!(
+                "DATA EXCISE L{}: User {} (email: {}, business: {:?}) at {}",
+                level, user_id, user.email, user.business_name, chrono::Utc::now()
+            );
+        } else {
+            warn!("DATA EXCISE L{}: User {} (could not fetch details)", level, user_id);
+        }
+
+        // Perform the deletion based on level
+        let result = match level {
+            1 => queries::settings::delete_company_data(&pool, user_id).await,
+            _ => queries::settings::delete_user_account(&pool, user_id).await,
+        };
+
+        match result {
+            Ok(()) => {
+                let msg = if level == 1 {
+                    "settings:delete_data_success"
+                } else {
+                    "settings:delete_success"
+                };
+                warn!("DATA EXCISE L{} COMPLETE: User {}", level, user_id);
+                let response = SuccessResponse::new(request.id, DeleteAccountResponse {
+                    deleted: true,
+                    message: msg.to_string(),
+                    level,
+                });
+                let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+            }
+            Err(e) => {
+                error!("DATA EXCISE L{} FAILED for user {}: {}", level, user_id, e);
+                let error = ErrorResponse::new(request.id, "DELETE_FAILED", e.to_string());
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
             }
         }

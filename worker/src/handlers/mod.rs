@@ -222,6 +222,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let settings_email_update_sub = client.subscribe("sazinka.settings.email.update").await?;
     let settings_preferences_update_sub = client.subscribe("sazinka.settings.preferences.update").await?;
     let settings_break_update_sub = client.subscribe("sazinka.settings.break.update").await?;
+    let account_delete_sub = client.subscribe("sazinka.account.delete").await?;
     
     // Depot subjects
     let depot_list_sub = client.subscribe("sazinka.depot.list").await?;
@@ -351,6 +352,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let client_settings_email = client.clone();
     let client_settings_preferences = client.clone();
     let client_settings_break = client.clone();
+    let client_account_delete = client.clone();
     
     // Depot handler clones
     let client_depot_list = client.clone();
@@ -366,6 +368,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_settings_email = pool.clone();
     let pool_settings_preferences = pool.clone();
     let pool_settings_break = pool.clone();
+    let pool_account_delete = pool.clone();
     
     // Depot pool clones
     let pool_depot_list = pool.clone();
@@ -490,6 +493,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let jwt_secret_settings_email = Arc::clone(&jwt_secret);
     let jwt_secret_settings_preferences = Arc::clone(&jwt_secret);
     let jwt_secret_settings_break = Arc::clone(&jwt_secret);
+    let jwt_secret_account_delete = Arc::clone(&jwt_secret);
     
     // JWT secret clones for depot handlers
     let jwt_secret_depot_list = Arc::clone(&jwt_secret);
@@ -803,6 +807,10 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     
     let settings_break_handle = tokio::spawn(async move {
         settings::handle_update_break_settings(client_settings_break, settings_break_update_sub, pool_settings_break, jwt_secret_settings_break).await
+    });
+    
+    let account_delete_handle = tokio::spawn(async move {
+        settings::handle_delete_account(client_account_delete, account_delete_sub, pool_account_delete, jwt_secret_account_delete).await
     });
     
     // Depot handlers
@@ -1527,6 +1535,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         settings_email_handle.boxed(),
         settings_preferences_handle.boxed(),
         settings_break_handle.boxed(),
+        account_delete_handle.boxed(),
         depot_list_handle.boxed(),
         depot_create_handle.boxed(),
         depot_update_handle.boxed(),

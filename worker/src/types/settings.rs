@@ -212,6 +212,32 @@ pub struct UpdateBreakSettingsRequest {
     pub break_max_km: Option<f64>,
 }
 
+/// Delete account request (GDPR data excise)
+///
+/// `level`:
+///   1 = delete all company data but keep the user account (start fresh)
+///   2 = delete everything including the user account (full excise)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteAccountRequest {
+    pub confirmation: bool,
+    /// 1 = data only, 2 = data + account
+    #[serde(default = "default_delete_level")]
+    pub level: i32,
+}
+
+fn default_delete_level() -> i32 { 2 }
+
+/// Delete account response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteAccountResponse {
+    pub deleted: bool,
+    pub message: String,
+    /// Which level was executed (1 or 2)
+    pub level: i32,
+}
+
 /// Extended user with all settings fields (for DB queries)
 #[derive(Debug, Clone, FromRow)]
 pub struct UserWithSettings {

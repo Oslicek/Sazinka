@@ -89,7 +89,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           ? i18n.t('auth:error_duplicate_email')
           : response.error.code === 'VALIDATION_ERROR'
             ? response.error.message
-            : response.error.message;
+            : i18n.t('auth:error_register');
         set({ isLoading: false, error: msg });
         throw new Error(msg);
       }

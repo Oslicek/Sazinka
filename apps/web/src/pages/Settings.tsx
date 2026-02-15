@@ -24,6 +24,7 @@ import { ImportModal, type ImportEntityType } from '../components/import';
 import { ImportCustomersModal } from '../components/customers/ImportCustomersModal';
 import { ExportPlusPanel } from '../components/shared/ExportPlusPanel';
 import { RolesManager } from '../components/settings/RolesManager';
+import { DangerZoneSection } from '../components/settings/DeleteAccountDialog';
 import styles from './Settings.module.css';
 
 type SettingsTab = 'preferences' | 'work' | 'business' | 'email' | 'breaks' | 'depots' | 'crews' | 'workers' | 'import-export' | 'roles';
@@ -39,6 +40,7 @@ const DEFAULT_BREAK_SETTINGS: BreakSettings = {
 
 export function Settings() {
   const { t } = useTranslation('settings');
+  const { t: tJobs } = useTranslation('jobs');
   const { isConnected } = useNatsStore();
   const hasPermission = useAuthStore((s) => s.hasPermission);
   const user = useAuthStore((s) => s.user);
@@ -385,9 +387,9 @@ export function Settings() {
                   {runningExportJobs.map(job => (
                     <div key={job.id} className={styles.runningJobRow}>
                       <span className={styles.runningJobPulse} />
-                      <span>{i18n.t('jobs:running_job_notice', { name: job.name })}</span>
+                      <span>{tJobs('running_job_notice', { name: job.name })}</span>
                       {job.progressText && <span className={styles.runningJobProgress}>{job.progressText}</span>}
-                      <Link to="/jobs" className={styles.runningJobLink}>{i18n.t('jobs:go_to_jobs')} &rarr;</Link>
+                      <Link to="/jobs" className={styles.runningJobLink}>{tJobs('go_to_jobs')} &rarr;</Link>
                     </div>
                   ))}
                 </div>
@@ -406,9 +408,9 @@ export function Settings() {
                   {runningImportJobs.map(job => (
                     <div key={job.id} className={styles.runningJobRow}>
                       <span className={styles.runningJobPulse} />
-                      <span>{i18n.t('jobs:running_job_notice', { name: job.name })}</span>
+                      <span>{tJobs('running_job_notice', { name: job.name })}</span>
                       {job.progressText && <span className={styles.runningJobProgress}>{job.progressText}</span>}
-                      <Link to="/jobs" className={styles.runningJobLink}>{i18n.t('jobs:go_to_jobs')} &rarr;</Link>
+                      <Link to="/jobs" className={styles.runningJobLink}>{tJobs('go_to_jobs')} &rarr;</Link>
                     </div>
                   ))}
                 </div>
@@ -523,6 +525,11 @@ export function Settings() {
                 </p>
               </div>
             </section>
+
+            {/* Danger Zone — only visible to account owner (customer role, not a worker) */}
+            {user && user.role === 'customer' && (
+              <DangerZoneSection />
+            )}
           </div>
         )}
         </div>

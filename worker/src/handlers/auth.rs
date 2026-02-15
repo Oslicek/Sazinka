@@ -25,6 +25,19 @@ use crate::types::{
 
 use serde::{Deserialize, Serialize};
 
+fn is_duplicate_email_error(err: &anyhow::Error) -> bool {
+    let Some(sqlx_err) = err.downcast_ref::<sqlx::Error>() else {
+        return false;
+    };
+    match sqlx_err {
+        sqlx::Error::Database(db_err) => {
+            db_err.code().as_deref() == Some("23505")
+                && db_err.message().contains("users_email_key")
+        }
+        _ => false,
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LoginRequest {
@@ -221,6 +234,11 @@ pub async fn handle_register(
                 debug!("Registered user: {}", response.payload.user.email);
             }
             Err(e) => {
+                if is_duplicate_email_error(&e) {
+                    let error = ErrorResponse::new(request.id, "DUPLICATE_EMAIL", "Email is already registered");
+                    let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                    continue;
+                }
                 error!("Failed to create user: {}", e);
                 let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
@@ -616,6 +634,11 @@ pub async fn handle_create_worker(
                 let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
             }
             Err(e) => {
+                if is_duplicate_email_error(&e) {
+                    let error = ErrorResponse::new(request.id, "DUPLICATE_EMAIL", "Email is already registered");
+                    let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                    continue;
+                }
                 error!("Failed to create worker: {}", e);
                 let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;

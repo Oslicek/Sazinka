@@ -1,0 +1,423 @@
+/* ============================================================================
+   Delete Account Dialog — Danger Zone Styling (Two-Level)
+   ============================================================================ */
+
+/* Danger Zone section at bottom of Import/Export tab */
+.dangerZone {
+  margin-top: 3rem;
+  padding: 1.5rem;
+  border: 2px solid var(--color-danger, #dc2626);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-danger, #dc2626) 4%, transparent);
+}
+
+.dangerZoneTitle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-danger, #dc2626);
+  margin: 0 0 1.25rem 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Two danger options stacked */
+.dangerOption {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1rem 0;
+  border-top: 1px solid color-mix(in srgb, var(--color-danger, #dc2626) 20%, transparent);
+}
+
+.dangerOption:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.dangerOptionTitle {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-text, #111);
+  margin: 0 0 0.25rem 0;
+}
+
+.dangerOptionDesc {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  margin: 0;
+  line-height: 1.5;
+  max-width: 400px;
+}
+
+/* Level 1: orange/warning button */
+.deleteDataButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #fff;
+  background: #d97706;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.deleteDataButton:hover {
+  background: #b45309;
+}
+
+.deleteDataButton:active {
+  transform: scale(0.98);
+}
+
+/* Level 2: red/danger button */
+.deleteButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #fff;
+  background: var(--color-danger, #dc2626);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.deleteButton:hover {
+  background: color-mix(in srgb, var(--color-danger, #dc2626) 85%, #000);
+}
+
+.deleteButton:active {
+  transform: scale(0.98);
+}
+
+/* Modal overlay */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.15s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Dialog box */
+.dialog {
+  background: var(--color-bg, #fff);
+  border-radius: 12px;
+  max-width: 560px;
+  width: 90vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.2s ease-out;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* Dialog header — Level 2 (red/danger) */
+.dialogHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--color-border, #e5e7eb);
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--color-danger, #dc2626);
+}
+
+/* Dialog header — Level 1 (orange/warning) */
+.dialogHeaderWarning {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--color-border, #e5e7eb);
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #d97706;
+}
+
+.dialogBody {
+  padding: 1.5rem;
+}
+
+.dialogFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--color-border, #e5e7eb);
+}
+
+/* Warning list */
+.warningText {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-text, #111);
+  margin: 0 0 0.75rem 0;
+}
+
+.deleteList {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.25rem 0;
+}
+
+.deleteList li {
+  padding: 0.375rem 0;
+  padding-left: 1.5rem;
+  position: relative;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.deleteList li::before {
+  content: "\2022";
+  position: absolute;
+  left: 0.5rem;
+  color: var(--color-danger, #dc2626);
+  font-weight: bold;
+}
+
+/* Irreversible warning box — Level 2 (red) */
+.irreversibleBox {
+  background: color-mix(in srgb, var(--color-danger, #dc2626) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-danger, #dc2626) 30%, transparent);
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 0 0 1.25rem 0;
+}
+
+.irreversibleBox p {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-danger, #dc2626);
+  line-height: 1.5;
+}
+
+/* Irreversible warning box — Level 1 (orange) */
+.irreversibleBoxWarning {
+  background: color-mix(in srgb, #d97706 8%, transparent);
+  border: 1px solid color-mix(in srgb, #d97706 30%, transparent);
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 0 0 1.25rem 0;
+}
+
+.irreversibleBoxWarning p {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #b45309;
+  line-height: 1.5;
+}
+
+/* Download hint */
+.downloadHint {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  margin: 0 0 0.75rem 0;
+}
+
+.downloadButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-primary, #2563eb);
+  background: var(--color-bg, #fff);
+  border: 1px solid var(--color-primary, #2563eb);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+  margin-bottom: 0.5rem;
+}
+
+.downloadButton:hover {
+  background: color-mix(in srgb, var(--color-primary, #2563eb) 8%, transparent);
+}
+
+/* Buttons */
+.cancelButton {
+  padding: 0.625rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-secondary, #f3f4f6);
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.cancelButton:hover {
+  background: var(--color-bg-hover, #e5e7eb);
+}
+
+/* Continue/confirm button — Level 2 (red) */
+.continueButton {
+  padding: 0.625rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--color-danger, #dc2626);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.continueButton:hover {
+  background: color-mix(in srgb, var(--color-danger, #dc2626) 85%, #000);
+}
+
+.continueButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Continue/confirm button — Level 1 (orange) */
+.continueButtonWarning {
+  padding: 0.625rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+  background: #d97706;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.continueButtonWarning:hover {
+  background: #b45309;
+}
+
+.continueButtonWarning:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* PIN confirmation step */
+.pinDisplay {
+  display: flex;
+  justify-content: center;
+  margin: 1rem 0;
+}
+
+.pinCode {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: 0.5em;
+  padding: 0.75rem 1.5rem;
+  background: var(--color-bg-secondary, #f3f4f6);
+  border: 2px dashed var(--color-border, #d1d5db);
+  border-radius: 8px;
+  color: var(--color-text, #111);
+  font-family: 'Courier New', monospace;
+  user-select: none;
+}
+
+.pinInstruction {
+  font-size: 0.9375rem;
+  color: var(--color-text-secondary);
+  text-align: center;
+  margin: 0 0 1rem 0;
+}
+
+.pinInput {
+  display: block;
+  width: 100%;
+  max-width: 200px;
+  margin: 0 auto 1rem;
+  padding: 0.625rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+  text-align: center;
+  letter-spacing: 0.3em;
+  border: 2px solid var(--color-border, #d1d5db);
+  border-radius: 6px;
+  background: var(--color-bg, #fff);
+  color: var(--color-text, #111);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.pinInput:focus {
+  border-color: var(--color-danger, #dc2626);
+}
+
+.pinInputLabel {
+  display: block;
+  text-align: center;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+/* Deleting state */
+.deleting {
+  text-align: center;
+  padding: 2rem 0;
+}
+
+.deletingSpinner {
+  display: inline-block;
+  width: 2rem;
+  height: 2rem;
+  border: 3px solid var(--color-border, #e5e7eb);
+  border-top-color: var(--color-danger, #dc2626);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 1rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.deletingText {
+  font-size: 0.9375rem;
+  color: var(--color-text-secondary);
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .dangerOption {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .dangerOptionDesc {
+    max-width: none;
+  }
+}
