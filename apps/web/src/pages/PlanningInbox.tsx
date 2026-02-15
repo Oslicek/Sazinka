@@ -1808,6 +1808,32 @@ export function PlanningInbox() {
     incrementRouteVersion();
   }, [breakSettings, context, enforceDrivingBreakRule, incrementRouteVersion]);
 
+  // Route building: update break start time or duration
+  const handleUpdateBreak = useCallback((stopId: string, patch: { breakTimeStart?: string; breakDurationMinutes?: number }) => {
+    setIsBreakManuallyAdjusted(true);
+    setRouteStops((prev) =>
+      prev.map((s) => {
+        if (s.id !== stopId || s.stopType !== 'break') return s;
+        const breakTimeStart = patch.breakTimeStart ?? s.breakTimeStart ?? '12:00';
+        const breakDurationMinutes = patch.breakDurationMinutes ?? s.breakDurationMinutes ?? 30;
+        const [h, m] = breakTimeStart.split(':').map(Number);
+        const total = h * 60 + m + breakDurationMinutes;
+        const depH = Math.floor(total / 60) % 24;
+        const depM = total % 60;
+        const estimatedDeparture = `${String(depH).padStart(2, '0')}:${String(depM).padStart(2, '0')}`;
+        return {
+          ...s,
+          breakTimeStart,
+          breakDurationMinutes,
+          estimatedArrival: breakTimeStart,
+          estimatedDeparture,
+        };
+      })
+    );
+    setHasChanges(true);
+    incrementRouteVersion();
+  }, [incrementRouteVersion]);
+
   // Route building: clear all stops and delete route from backend
   const handleClearRoute = useCallback(async () => {
     // If we have a saved route, delete it from the backend
@@ -2389,6 +2415,7 @@ export function PlanningInbox() {
               onSegmentClick={setHighlightedSegment}
               onReorder={handleReorder}
               onRemoveStop={handleRemoveFromRoute}
+              onUpdateBreak={handleUpdateBreak}
               isSaving={isSaving}
               warnings={routeWarnings}
               routeStartTime={routeStartTime}
@@ -2408,6 +2435,7 @@ export function PlanningInbox() {
               }}
               onReorder={handleReorder}
               onRemoveStop={handleRemoveFromRoute}
+              onUpdateBreak={handleUpdateBreak}
               isSaving={isSaving}
               routeStartTime={routeStartTime}
               routeEndTime={routeEndTime}

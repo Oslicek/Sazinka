@@ -125,6 +125,67 @@ export function Planner() {
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // --- Resizable layout ---
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const saved = localStorage.getItem('planner.sidebarWidth');
+    return saved ? parseInt(saved, 10) : 420;
+  });
+  const [routeListHeight, setRouteListHeight] = useState(() => {
+    const saved = localStorage.getItem('planner.routeListHeight');
+    return saved ? parseInt(saved, 10) : 200;
+  });
+  const sidebarRef = useRef<HTMLDivElement>(null);
+
+  const handleSidebarResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = sidebarWidth;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const delta = moveEvent.clientX - startX;
+      const newWidth = Math.max(300, Math.min(800, startWidth + delta));
+      setSidebarWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      setSidebarWidth((w) => { localStorage.setItem('planner.sidebarWidth', String(w)); return w; });
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, [sidebarWidth]);
+
+  const handleRouteListResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startHeight = routeListHeight;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const delta = moveEvent.clientY - startY;
+      const newHeight = Math.max(80, Math.min(500, startHeight + delta));
+      setRouteListHeight(newHeight);
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      setRouteListHeight((h) => { localStorage.setItem('planner.routeListHeight', String(h)); return h; });
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+  }, [routeListHeight]);
+
   // --- Map highlighting ---
   const [highlightedSegment, setHighlightedSegment] = useState<number | null>(null);
   const [highlightedStopId, setHighlightedStopId] = useState<string | null>(null);
@@ -743,7 +804,7 @@ export function Planner() {
 
   return (
     <div className={styles.planner}>
-      <div className={styles.sidebar}>
+      <div className={styles.sidebar} ref={sidebarRef} style={{ width: sidebarWidth }}>
         {/* Filters */}
         <PlannerFilters
           dateFrom={dateFrom}
@@ -776,7 +837,7 @@ export function Planner() {
         )}
 
         {/* Route list */}
-        <div className={styles.routeListSection}>
+        <div className={styles.routeListSection} style={{ height: routeListHeight, minHeight: 80, maxHeight: 500 }}>
           <div className={styles.sectionHeader}>
             <h3>{t('planned_routes', { count: routes.length })}</h3>
             <button
@@ -796,6 +857,8 @@ export function Planner() {
             isLoading={isLoadingRoutes}
           />
         </div>
+        {/* Resize handle for route list height */}
+        <div className={styles.routeListResizer} onMouseDown={handleRouteListResizeStart} />
 
         {/* Route detail timeline */}
         {selectedRoute && (
@@ -851,6 +914,7 @@ export function Planner() {
                 routeEndTime={routeEndTime}
                 onReorder={handleReorder}
                 onRemoveStop={handleRemoveStop}
+                onUpdateBreak={handleUpdateBreak}
                 warnings={routeWarnings}
                 returnToDepotDistanceKm={returnToDepotLeg?.distanceKm ?? null}
                 returnToDepotDurationMinutes={returnToDepotLeg?.durationMinutes ?? null}
@@ -866,6 +930,9 @@ export function Planner() {
           </div>
         )}
       </div>
+
+      {/* Sidebar/Map resize handle */}
+      <div className={styles.sidebarResizer} onMouseDown={handleSidebarResizeStart} />
 
       {/* Map */}
       <div className={styles.mapWrapper}>

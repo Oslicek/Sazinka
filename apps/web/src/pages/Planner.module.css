@@ -20,6 +20,39 @@
   overflow-y: auto;
 }
 
+/* ── Sidebar/Map resize handle ── */
+
+.sidebarResizer {
+  flex: 0 0 5px;
+  cursor: col-resize;
+  background: var(--color-border);
+  border-radius: 2px;
+  transition: background 0.15s;
+  position: relative;
+}
+
+.sidebarResizer:hover,
+.sidebarResizer:active {
+  background: var(--color-primary);
+}
+
+.sidebarResizer::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 32px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 1px;
+}
+
+.sidebarResizer:hover::after,
+.sidebarResizer:active::after {
+  background: rgba(255, 255, 255, 0.7);
+}
+
 /* ── Filters ── */
 
 .filtersSection {
@@ -170,11 +203,44 @@
 /* ── Route list section ── */
 
 .routeListSection {
-  margin-bottom: 0.75rem;
   flex-shrink: 0;
-  max-height: 40%;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Route list resize handle ── */
+
+.routeListResizer {
+  flex: 0 0 5px;
+  cursor: row-resize;
+  background: var(--color-border);
+  border-radius: 2px;
+  transition: background 0.15s;
+  position: relative;
+  margin: 0.25rem 0;
+}
+
+.routeListResizer:hover,
+.routeListResizer:active {
+  background: var(--color-primary);
+}
+
+.routeListResizer::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 32px;
+  height: 2px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 1px;
+}
+
+.routeListResizer:hover::after,
+.routeListResizer:active::after {
+  background: rgba(255, 255, 255, 0.7);
 }
 
 .routeStats {
@@ -263,8 +329,12 @@
   }
 
   .sidebar {
-    width: 100%;
+    width: 100% !important;
     max-height: none;
+  }
+
+  .sidebarResizer {
+    display: none;
   }
 
   .mapWrapper {
@@ -274,6 +344,11 @@
 
   .routeListSection {
     max-height: none;
+    height: auto !important;
+  }
+
+  .routeListResizer {
+    display: none;
   }
 }
 

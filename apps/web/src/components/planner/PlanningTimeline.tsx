@@ -121,12 +121,14 @@ function SortableStopCard({
   isSelected,
   onStopClick,
   onRemoveStop,
+  onUpdateBreak,
 }: {
   item: TimelineItem;
   stopIndex: number;
   isSelected: boolean;
   onStopClick: (customerId: string, index: number) => void;
   onRemoveStop?: (stopId: string) => void;
+  onUpdateBreak?: (stopId: string, patch: { breakTimeStart?: string; breakDurationMinutes?: number }) => void;
 }) {
   const { t } = useTranslation('planner');
   const {
@@ -169,24 +171,71 @@ function SortableStopCard({
         <span className={styles.dragIcon}>&#x2801;&#x2801;</span>
       </div>
 
+      {isBreak && <div className={styles.breakIcon}>☕</div>}
+
       <div className={styles.cardContent}>
         <div className={styles.cardHeader}>
           {isBreak ? (
-            <span className={styles.cardName}>{t('timeline_break')}</span>
+            <>
+              <span className={styles.cardName}>{t('timeline_break')}</span>
+              <span className={styles.badgeBreak}>{t('timeline_break').toUpperCase()}</span>
+            </>
           ) : (
             <>
               <span className={styles.cardOrder}>{stopIndex + 1}</span>
               <span className={styles.cardName}>{stop.customerName ?? t('timeline_unknown')}</span>
             </>
           )}
-          <span className={`${styles.cardTime} ${item.lateArrivalMinutes ? styles.cardTimeLate : ''}`}>
-            {formatTime(item.startTime)} – {formatTime(item.endTime)}
-          </span>
+          {!isBreak && (
+            <span className={`${styles.cardTime} ${item.lateArrivalMinutes ? styles.cardTimeLate : ''}`}>
+              {formatTime(item.startTime)} – {formatTime(item.endTime)}
+            </span>
+          )}
         </div>
+        {isBreak && (
+          <div className={styles.breakMetaRow}>
+            <div className={styles.breakField}>
+              <span className={styles.breakFieldLabel}>{t('timeline_break_start')}</span>
+              <div>
+                {onUpdateBreak ? (
+                  <input
+                    type="time"
+                    className={styles.breakInput}
+                    value={stop.breakTimeStart?.substring(0, 5) || '12:00'}
+                    onChange={(e) => onUpdateBreak(stop.id, { breakTimeStart: e.target.value })}
+                  />
+                ) : (
+                  <span className={styles.breakFieldValue}>{formatTime(stop.breakTimeStart || null)}</span>
+                )}
+              </div>
+            </div>
+            <div className={styles.breakField}>
+              <span className={styles.breakFieldLabel}>{t('timeline_break_duration')}</span>
+              <div>
+                {onUpdateBreak ? (
+                  <input
+                    type="number"
+                    min={1}
+                    max={240}
+                    className={styles.breakInputNumber}
+                    value={stop.breakDurationMinutes ?? 30}
+                    onChange={(e) =>
+                      onUpdateBreak(stop.id, {
+                        breakDurationMinutes: Math.max(1, parseInt(e.target.value || '30', 10)),
+                      })
+                    }
+                  />
+                ) : (
+                  <span className={styles.breakFieldValue}>{stop.breakDurationMinutes ?? 30} min</span>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
         {!isBreak && stop.address && (
           <div className={styles.cardAddress}>{stop.address}</div>
         )}
-        {item.durationMinutes > 0 && (
+        {!isBreak && item.durationMinutes > 0 && (
           <div className={styles.cardDuration}>{formatDurationHm(item.durationMinutes)}</div>
         )}
         {item.lateArrivalMinutes != null && item.lateArrivalMinutes > 0 && (
@@ -228,6 +277,7 @@ export function PlanningTimeline({
   selectedStopId,
   onReorder,
   onRemoveStop,
+  onUpdateBreak,
   isSaving = false,
   routeStartTime,
   routeEndTime,
@@ -491,6 +541,7 @@ export function PlanningTimeline({
                       isSelected={item.stop?.customerId === selectedStopId}
                       onStopClick={onStopClick}
                       onRemoveStop={onRemoveStop}
+                      onUpdateBreak={onUpdateBreak}
                     />
                   );
                 }
