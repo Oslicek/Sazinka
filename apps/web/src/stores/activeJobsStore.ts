@@ -277,6 +277,17 @@ export const useActiveJobsStore = create<ActiveJobsState>((set, get) => ({
 }));
 
 /**
+ * Auto-remove a terminal job from the store after a short delay.
+ * This prevents stale completed/failed/cancelled jobs from lingering
+ * in the active jobs map and confusing the UI.
+ */
+function scheduleRemoval(jobId: string, delayMs = 5000) {
+  setTimeout(() => {
+    useActiveJobsStore.getState().removeJob(jobId);
+  }, delayMs);
+}
+
+/**
  * Generic import job status update type
  */
 type GenericImportJobStatusUpdate = CustomerImportJobStatusUpdate | DeviceImportJobStatusUpdate | RevisionImportJobStatusUpdate | CommunicationImportJobStatusUpdate | WorkLogImportJobStatusUpdate;
@@ -356,6 +367,10 @@ function handleImportJobStatusUpdate(update: GenericImportJobStatusUpdate, jobTy
       error,
       report,
     });
+  }
+
+  if (jobStatus === 'completed' || jobStatus === 'failed' || jobStatus === 'cancelled') {
+    scheduleRemoval(jobId);
   }
 }
 
@@ -450,6 +465,10 @@ function handleZipImportJobStatusUpdate(update: ZipImportJobStatusUpdate) {
       report,
     });
   }
+
+  if (jobStatus === 'completed' || jobStatus === 'failed' || jobStatus === 'cancelled') {
+    scheduleRemoval(jobId);
+  }
 }
 
 /**
@@ -513,6 +532,10 @@ function handleGeocodeJobStatusUpdate(update: GeocodeJobStatusUpdate) {
       completedAt,
       error,
     });
+  }
+
+  if (jobStatus === 'completed' || jobStatus === 'failed' || jobStatus === 'cancelled') {
+    scheduleRemoval(jobId);
   }
 }
 
@@ -578,6 +601,10 @@ function handleExportJobStatusUpdate(update: ExportJobStatusUpdate) {
       completedAt,
       error,
     });
+  }
+
+  if (jobStatus === 'completed' || jobStatus === 'failed' || jobStatus === 'cancelled') {
+    scheduleRemoval(jobId);
   }
 }
 

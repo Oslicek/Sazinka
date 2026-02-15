@@ -107,7 +107,19 @@ export function Jobs() {
           duration: entry.durationMs,
         }));
         
-        setRecentJobs(jobs);
+        // Merge with any jobs already added via real-time updates, dedup by ID
+        setRecentJobs(prev => {
+          const merged = new Map<string, CompletedJob>();
+          // Real-time entries take priority (fresher data)
+          for (const j of prev) merged.set(j.id, j);
+          // Backend entries fill in anything not yet seen
+          for (const j of jobs) {
+            if (!merged.has(j.id)) merged.set(j.id, j);
+          }
+          return [...merged.values()]
+            .sort((a, b) => (b.completedAt?.getTime() ?? 0) - (a.completedAt?.getTime() ?? 0))
+            .slice(0, 50);
+        });
       } catch (err) {
         console.error('Failed to load job history:', err);
       } finally {
@@ -199,9 +211,9 @@ export function Jobs() {
           };
           
           setRecentJobs(prevRecent => {
-            // Keep only last 50 completed jobs
-            const updated = [completedJob, ...prevRecent].slice(0, 50);
-            return updated;
+            // Deduplicate by job ID, keep only last 50
+            const withoutDup = prevRecent.filter(j => j.id !== jobId);
+            return [completedJob, ...withoutDup].slice(0, 50);
           });
         }
         next.delete(jobId);
@@ -536,43 +548,7 @@ export function Jobs() {
         )}
       </section>
       
-      {/* Summary Stats */}
-      <section className={styles.section}>
-        <h2>{t('summary_title')}</h2>
-        <div className={styles.statsGrid}>
-          {JOB_STREAMS.map(jobType => {
-            const activeCount = activeJobsList.filter(j => j.type === jobType).length;
-            const completedCount = recentJobs.filter(j => j.type === jobType && j.status.type === 'completed').length;
-            const failedCount = recentJobs.filter(j => j.type === jobType && j.status.type === 'failed').length;
-            const cancelledCount = recentJobs.filter(j => j.type === jobType && j.status.type === 'cancelled').length;
-            
-            if (activeCount === 0 && completedCount === 0 && failedCount === 0 && cancelledCount === 0) return null;
-            
-            return (
-              <div key={jobType} className={styles.statCard}>
-                <div className={styles.statHeader}>
-                  <span className={styles.statIcon}>{getJobTypeIcon(jobType)}</span>
-                  <span className={styles.statType}>{getJobTypeName(jobType)}</span>
-                </div>
-                <div className={styles.statNumbers}>
-                  {activeCount > 0 && (
-                    <span className={styles.statActive}>{t('stat_active', { count: activeCount })}</span>
-                  )}
-                  {completedCount > 0 && (
-                    <span className={styles.statCompleted}>{t('stat_completed', { count: completedCount })}</span>
-                  )}
-                  {cancelledCount > 0 && (
-                    <span className={styles.statCancelled}>{t('stat_cancelled', { count: cancelledCount })}</span>
-                  )}
-                  {failedCount > 0 && (
-                    <span className={styles.statFailed}>{t('stat_failed', { count: failedCount })}</span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
+
 
       {/* Import Report Dialog */}
       {reportDialogData && (
