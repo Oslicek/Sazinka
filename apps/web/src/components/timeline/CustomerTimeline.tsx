@@ -222,6 +222,8 @@ function TimelineItemCard({
   item: TimelineItem; 
   onVisitClick: (visit: Visit) => void;
 }) {
+  const { t } = useTranslation('customers');
+  
   if (item.type === 'communication') {
     const comm = item.data as Communication;
     return (
