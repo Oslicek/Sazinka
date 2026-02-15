@@ -179,13 +179,15 @@ pub async fn update_preferences(
         r#"
         UPDATE users SET
             default_crew_id = $2,
-            default_depot_id = $3
+            default_depot_id = $3,
+            locale = $4
         WHERE id = $1
         "#
     )
     .bind(user_id)
     .bind(req.default_crew_id)
     .bind(req.default_depot_id)
+    .bind(&req.locale)
     .execute(pool)
     .await?;
 

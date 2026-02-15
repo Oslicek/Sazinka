@@ -124,7 +124,7 @@
   "timeline_depot": "Depo",
 
   "planning_timeline_window": "Okno {{start}} - {{end}}",
-  "planning_timeline_late_arrival": "Příjezd {{time}} ({{minutes}} min pozdě) — nutné domluvit nový čas",
+  "planning_timeline_late_arrival": "Příjezd {{time}} ({{delay}} pozdě) — nutné domluvit nový čas",
   "planning_timeline_remove_break": "Odstranit pauzu",
   "planning_timeline_remove_stop": "Odebrat zastávku",
 

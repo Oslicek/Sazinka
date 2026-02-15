@@ -175,6 +175,7 @@ export function Settings() {
           <PreferencesForm
             defaultCrewId={settings.preferences?.defaultCrewId ?? null}
             defaultDepotId={settings.preferences?.defaultDepotId ?? null}
+            currentLocale={user?.locale ?? i18n.language ?? 'en'}
             crews={crews.filter((c) => c.isActive)}
             depots={settings.depots}
             saving={saving}
@@ -183,6 +184,10 @@ export function Settings() {
               setError(null);
               try {
                 const updated = await settingsService.updatePreferences(data);
+                await i18n.changeLanguage(data.locale);
+                useAuthStore.setState((state) => (
+                  state.user ? { user: { ...state.user, locale: data.locale } } : {}
+                ));
                 setSettings((prev) => prev ? { ...prev, preferences: updated } : null);
                 showSuccess(t('success_preferences'));
               } catch (e) {
@@ -464,14 +469,16 @@ export function Settings() {
 interface PreferencesFormProps {
   defaultCrewId: string | null;
   defaultDepotId: string | null;
+  currentLocale: string;
   crews: Crew[];
   depots: Depot[];
   saving: boolean;
-  onSave: (data: { defaultCrewId: string | null; defaultDepotId: string | null }) => Promise<void>;
+  onSave: (data: { defaultCrewId: string | null; defaultDepotId: string | null; locale: string }) => Promise<void>;
 }
 
-function PreferencesForm({ defaultCrewId, defaultDepotId, crews, depots, saving, onSave }: PreferencesFormProps) {
+function PreferencesForm({ defaultCrewId, defaultDepotId, currentLocale, crews, depots, saving, onSave }: PreferencesFormProps) {
   const { t } = useTranslation('settings');
+  const [locale, setLocale] = useState(currentLocale.toLowerCase().startsWith('cs') ? 'cs' : 'en');
   const [crewId, setCrewId] = useState(defaultCrewId ?? '');
   const [depotId, setDepotId] = useState(defaultDepotId ?? '');
 
@@ -480,6 +487,7 @@ function PreferencesForm({ defaultCrewId, defaultDepotId, crews, depots, saving,
     onSave({
       defaultCrewId: crewId || null,
       defaultDepotId: depotId || null,
+      locale,
     });
   };
 
@@ -489,6 +497,18 @@ function PreferencesForm({ defaultCrewId, defaultDepotId, crews, depots, saving,
       <p className={styles.formDescription}>
         {t('pref_description')}
       </p>
+
+      <div className={styles.formGroup}>
+        <label>{t('pref_language')}</label>
+        <select
+          value={locale}
+          onChange={(e) => setLocale(e.target.value)}
+          className={styles.input}
+        >
+          <option value="en">{t('pref_language_en')}</option>
+          <option value="cs">{t('pref_language_cs')}</option>
+        </select>
+      </div>
 
       <div className={styles.formGroup}>
         <label>{t('pref_default_crew')}</label>

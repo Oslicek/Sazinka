@@ -192,7 +192,10 @@ function SortableStopCard({
         {item.lateArrivalMinutes != null && item.lateArrivalMinutes > 0 && (
           <div className={styles.lateWarning}>
             <span className={styles.lateWarningIcon}>&#x26A0;</span>
-            {t('planning_timeline_late_arrival', { time: formatTime(item.actualArrivalTime ?? null), minutes: item.lateArrivalMinutes })}
+            {t('planning_timeline_late_arrival', {
+              time: formatTime(item.actualArrivalTime ?? null),
+              delay: formatDurationHm(item.lateArrivalMinutes),
+            })}
           </div>
         )}
       </div>
@@ -234,6 +237,7 @@ export function PlanningTimeline({
   candidateForInsertion,
   onInsertCandidate,
 }: PlanningTimelineProps) {
+  const { t } = useTranslation('planner');
   const depotName = depot?.name ?? 'Depo';
   const workdayStart = routeStartTime ?? '08:00';
   const workdayEnd = routeEndTime ?? '16:00';

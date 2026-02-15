@@ -28,6 +28,9 @@
 
   "pref_title": "Moje nastavení",
   "pref_description": "Nastavte svou výchozí posádku a depo. Tyto hodnoty se použijí jako výchozí filtry v plánovači tras.",
+  "pref_language": "Jazyk",
+  "pref_language_en": "Angličtina",
+  "pref_language_cs": "Čeština",
   "pref_default_crew": "Výchozí posádka",
   "pref_no_crew": "— Žádná —",
   "pref_default_depot": "Výchozí depo",

@@ -697,8 +697,13 @@ pub async fn handle_update_preferences(
 
         match queries::settings::update_preferences(&pool, user_id, &request.payload).await {
             Ok(_) => {
-                let response = SuccessResponse::new(request.id, EmptyPayload {});
-                let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+                if let Ok(Some(user)) = queries::settings::get_user_settings(&pool, user_id).await {
+                    let response = SuccessResponse::new(request.id, user.to_preferences());
+                    let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+                } else {
+                    let error = ErrorResponse::new(request.id, "USER_NOT_FOUND", "User not found");
+                    let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                }
             }
             Err(e) => {
                 error!("Failed to update preferences: {}", e);

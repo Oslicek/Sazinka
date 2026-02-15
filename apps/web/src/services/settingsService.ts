@@ -162,11 +162,13 @@ export async function updateBreakSettings(
 export interface UpdatePreferencesRequest {
   defaultCrewId: string | null;
   defaultDepotId: string | null;
+  locale: string;
 }
 
 export interface UserPreferences {
   defaultCrewId: string | null;
   defaultDepotId: string | null;
+  locale: string;
 }
 
 /**

@@ -113,6 +113,7 @@ pub struct EmailTemplateSettings {
 pub struct UserPreferences {
     pub default_crew_id: Option<Uuid>,
     pub default_depot_id: Option<Uuid>,
+    pub locale: String,
 }
 
 /// Break/pause settings
@@ -185,6 +186,7 @@ pub struct UpdateEmailTemplatesRequest {
 pub struct UpdatePreferencesRequest {
     pub default_crew_id: Option<Uuid>,
     pub default_depot_id: Option<Uuid>,
+    pub locale: String,
 }
 
 /// Update break settings request
@@ -307,6 +309,7 @@ impl UserWithSettings {
         UserPreferences {
             default_crew_id: self.default_crew_id,
             default_depot_id: self.default_depot_id,
+            locale: self.locale.clone(),
         }
     }
 

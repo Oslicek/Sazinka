@@ -28,6 +28,9 @@
 
   "pref_title": "My Settings",
   "pref_description": "Set your default crew and depot. These values will be used as default filters in the route planner.",
+  "pref_language": "Language",
+  "pref_language_en": "English",
+  "pref_language_cs": "Czech",
   "pref_default_crew": "Default Crew",
   "pref_no_crew": "— None —",
   "pref_default_depot": "Default Depot",

@@ -91,6 +91,8 @@ export interface EmailTemplateSettings {
 export interface UserPreferences {
   defaultCrewId: string | null;
   defaultDepotId: string | null;
+  /** BCP-47 locale code (e.g. "en", "cs", "en-GB"). */
+  locale: string;
 }
 
 export interface UserSettings {
@@ -147,6 +149,12 @@ export interface UpdateBreakSettingsRequest {
   breakLatestTime?: string;
   breakMinKm?: number;
   breakMaxKm?: number;
+}
+
+export interface UpdatePreferencesRequest {
+  defaultCrewId: string | null;
+  defaultDepotId: string | null;
+  locale: string;
 }
 
 // List depots response
