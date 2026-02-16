@@ -126,8 +126,6 @@ function SortableStopCard({
   onStopClick,
   onRemoveStop,
   onUpdateBreak,
-  onUpdateServiceDuration,
-  onResetServiceDuration,
 }: {
   item: TimelineItem;
   stopIndex: number;
@@ -135,8 +133,6 @@ function SortableStopCard({
   onStopClick: (customerId: string, index: number) => void;
   onRemoveStop?: (stopId: string) => void;
   onUpdateBreak?: (stopId: string, patch: { breakTimeStart?: string; breakDurationMinutes?: number }) => void;
-  onUpdateServiceDuration?: (stopId: string, minutes: number) => void;
-  onResetServiceDuration?: (stopId: string) => void;
 }) {
   const { t } = useTranslation('planner');
   const {
@@ -243,35 +239,12 @@ function SortableStopCard({
         {!isBreak && stop.address && (
           <div className={styles.cardAddress}>{stop.address}</div>
         )}
-        {!isBreak && (
+        {!isBreak && item.durationMinutes > 0 && (
           <div className={styles.cardDuration}>
-            {onUpdateServiceDuration ? (
-              <span className={styles.inlineEditGroup}>
-                <input
-                  type="number"
-                  className={styles.inlineInput}
-                  value={stop.overrideServiceDurationMinutes ?? stop.serviceDurationMinutes ?? item.durationMinutes}
-                  min={1}
-                  max={480}
-                  onClick={(e) => e.stopPropagation()}
-                  onChange={(e) => {
-                    const val = Math.max(1, parseInt(e.target.value || '30', 10));
-                    onUpdateServiceDuration(stop.id, val);
-                  }}
-                />
-                <span className={styles.inlineUnit}>min</span>
-                {stop.overrideServiceDurationMinutes != null && onResetServiceDuration && (
-                  <button
-                    type="button"
-                    className={styles.overrideReset}
-                    onClick={(e) => { e.stopPropagation(); onResetServiceDuration(stop.id); }}
-                    title={t('override_reset_tooltip')}
-                  >⚠️</button>
-                )}
-              </span>
-            ) : (
-              item.durationMinutes > 0 ? <span>{formatDurationHm(item.durationMinutes)}</span> : null
-            )}
+            {stop.overrideServiceDurationMinutes != null
+              ? <span>{stop.overrideServiceDurationMinutes} min ⚠️</span>
+              : <span>{formatDurationHm(item.durationMinutes)}</span>
+            }
           </div>
         )}
         {item.lateArrivalMinutes != null && item.lateArrivalMinutes > 0 && (
@@ -520,33 +493,11 @@ export function PlanningTimeline({
                       <div className={styles.travelLine} />
                       {item.durationMinutes > 0 && (
                         <div className={styles.travelInfo}>
-                          {onUpdateTravelDuration && item.stop ? (
-                            <span className={styles.inlineEditGroup}>
-                              <input
-                                type="number"
-                                className={styles.inlineInput}
-                                value={item.stop.overrideTravelDurationMinutes ?? item.durationMinutes}
-                                min={0}
-                                max={999}
-                                onClick={(e) => e.stopPropagation()}
-                                onChange={(e) => {
-                                  const val = Math.max(0, parseInt(e.target.value || '0', 10));
-                                  onUpdateTravelDuration(item.stop!.id, val);
-                                }}
-                              />
-                              <span className={styles.inlineUnit}>min</span>
-                              {item.stop.overrideTravelDurationMinutes != null && onResetTravelDuration && (
-                                <button
-                                  type="button"
-                                  className={styles.overrideReset}
-                                  onClick={(e) => { e.stopPropagation(); onResetTravelDuration(item.stop!.id); }}
-                                  title={t('override_reset_tooltip')}
-                                >⚠️</button>
-                              )}
-                            </span>
-                          ) : (
-                            <span>{formatDurationHm(item.durationMinutes)}</span>
-                          )}
+                          <span>
+                            {item.stop?.overrideTravelDurationMinutes != null
+                              ? `${item.stop.overrideTravelDurationMinutes} min ⚠️`
+                              : formatDurationHm(item.durationMinutes)}
+                          </span>
                           {item.distanceKm != null && item.distanceKm > 0 && (
                             <span> &middot; {item.distanceKm.toFixed(1)} km</span>
                           )}
@@ -608,8 +559,6 @@ export function PlanningTimeline({
                       onStopClick={onStopClick}
                       onRemoveStop={onRemoveStop}
                       onUpdateBreak={onUpdateBreak}
-                      onUpdateServiceDuration={onUpdateServiceDuration}
-                      onResetServiceDuration={onResetServiceDuration}
                     />
                   );
                 }
