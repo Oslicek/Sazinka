@@ -407,6 +407,8 @@ CREATE TABLE route_stops (
     status                         VARCHAR(20) DEFAULT 'pending',
     actual_arrival                 TIMESTAMPTZ,
     actual_departure               TIMESTAMPTZ,
+    override_service_duration_minutes INTEGER,
+    override_travel_duration_minutes  INTEGER,
     UNIQUE(route_id, stop_order)
 );
 
