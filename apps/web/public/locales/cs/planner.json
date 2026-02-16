@@ -317,6 +317,12 @@
     "arrival_delayed": "Příjezd k {{name}} opožděn o {{lateMinutes}} min (dohodnuto do {{windowEnd}})"
   },
 
+  "buffer_info": "Rezerva příjezdu: {{percent}} % + {{fixed}} min",
+  "buffer_percent_label": "Procento",
+  "buffer_fixed_label": "Fixní min",
+  "buffer_save": "Uložit",
+  "buffer_cancel": "Zrušit",
+
   "slot": {
     "no_active_crew": "Nebyla nalezena žádná aktivní posádka.",
     "crew_route_failed": "Posádka {{name}}: nepodařilo se spočítat trasu.",

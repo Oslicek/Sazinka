@@ -308,16 +308,13 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR:
 ### Fáze 11: Frontend — Settings crew form (odebrat buffer)
 
 - [x] **11.1** `Settings.tsx` — odebráno buffer z `CrewFormData`, `createCrew`, `updateCrew`, crew list display, form inputs ✅
-- [ ] **11.2** Odebrat překlad. klíče `crew_arrival_buffer_percent`, `crew_arrival_buffer_hint`, `crew_arrival_buffer_fixed`, `crew_arrival_buffer_fixed_hint`, `crew_buffer` z `{cs,en,sk}/settings.json`.
+- [x] **11.2** Odebrány překlad. klíče `crew_arrival_buffer_*` a `crew_buffer` z `{cs,en,sk}/settings.json` ✅
 - [ ] **11.3** `tsc --noEmit`
 
 ### Fáze 12: Frontend — překlady (nové klíče)
 
-- [ ] **12.1** Přidat překlady do `{cs,en,sk}/planner.json`:
-  - `route_buffer_label` — „Rezerva" / „Buffer" / „Rezerva"
-  - `route_buffer_percent_suffix` — „% z přejezdu" / „% of travel" / „% z prejazdu"
-  - `route_buffer_fixed_suffix` — „fixní min" / „fixed min" / „fixné min"
-  - `route_buffer_edit` — „Upravit rezervu" / „Edit buffer" / „Upraviť rezervu"
+- [x] **12.1** Přidány překlady `buffer_info`, `buffer_percent_label`, `buffer_fixed_label`, `buffer_save`, `buffer_cancel` do `{cs,en,sk}/planner.json` ✅
+- [x] **12.2** Odebrány staré crew buffer klíče z `{cs,en,sk}/settings.json` ✅
 
 ### Fáze 13: Finální ověření
 

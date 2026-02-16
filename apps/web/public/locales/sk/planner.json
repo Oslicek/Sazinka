@@ -297,5 +297,11 @@
     "minimal_slack_after": "Po slotu je minimální časová rezerva.",
     "crew_heavily_loaded": "Den posádky je silně vytížen ({{load}}%).",
     "conflicts_with_break": "Slot zasahuje do preferovaného okna pauzy."
-  }
+  },
+
+  "buffer_info": "Rezerva príchodu: {{percent}} % + {{fixed}} min",
+  "buffer_percent_label": "Percento",
+  "buffer_fixed_label": "Fixné min",
+  "buffer_save": "Uložiť",
+  "buffer_cancel": "Zrušiť"
 }

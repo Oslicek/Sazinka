@@ -116,7 +116,6 @@
 
   "crew_empty": "Zatím nemáte žádné posádky. Vytvořte první.",
   "crew_inactive": "Neaktivní",
-  "crew_buffer": "Rezerva",
   "crew_deactivate": "Deaktivovat",
   "crew_activate": "Aktivovat",
   "crew_edit_title": "Upravit posádku",
@@ -125,10 +124,6 @@
   "crew_name_placeholder": "např. Posádka 1",
   "crew_shift_start": "Začátek směny",
   "crew_shift_end": "Konec směny",
-  "crew_arrival_buffer_percent": "Rezerva příjezdu (%)",
-  "crew_arrival_buffer_hint": "Procento doby přejezdu, o které posádka přijede dříve před naplánovaným oknem.\nNapř. 10 % z 60minutového přejezdu = příjezd 6 minut před oknem.",
-  "crew_arrival_buffer_fixed": "Fixní rezerva příjezdu (min)",
-  "crew_arrival_buffer_fixed_hint": "Pevná časová rezerva v minutách přidaná ke každému přejezdu navíc k procentuální rezervě.\nCelková rezerva = (přejezd × procento) + fixní minuty.",
   "crew_add": "+ Přidat posádku",
   "crew_create": "Vytvořit",
   "crew_error_create": "Nepodařilo se vytvořit posádku",

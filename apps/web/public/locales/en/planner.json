@@ -316,6 +316,12 @@
     "arrival_delayed": "Arrival at {{name}} delayed by {{lateMinutes}} min (agreed until {{windowEnd}})"
   },
 
+  "buffer_info": "Arrival buffer: {{percent}} % + {{fixed}} min",
+  "buffer_percent_label": "Percent",
+  "buffer_fixed_label": "Fixed min",
+  "buffer_save": "Save",
+  "buffer_cancel": "Cancel",
+
   "slot": {
     "no_active_crew": "No active crew found.",
     "crew_route_failed": "Crew {{name}}: failed to calculate route.",

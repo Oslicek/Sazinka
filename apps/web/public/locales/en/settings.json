@@ -116,7 +116,6 @@
 
   "crew_empty": "You don't have any crews yet. Create the first one.",
   "crew_inactive": "Inactive",
-  "crew_buffer": "Buffer",
   "crew_deactivate": "Deactivate",
   "crew_activate": "Activate",
   "crew_edit_title": "Edit Crew",
@@ -125,10 +124,6 @@
   "crew_name_placeholder": "e.g. Crew 1",
   "crew_shift_start": "Shift Start",
   "crew_shift_end": "Shift End",
-  "crew_arrival_buffer_percent": "Arrival Buffer (%)",
-  "crew_arrival_buffer_hint": "Percentage of travel time by which the crew arrives earlier before the scheduled window.\nE.g. 10% of a 60-minute trip = arrival 6 minutes before the window.",
-  "crew_arrival_buffer_fixed": "Fixed Arrival Buffer (min)",
-  "crew_arrival_buffer_fixed_hint": "Fixed time buffer in minutes added to each trip in addition to the percentage buffer.\nTotal buffer = (trip × percentage) + fixed minutes.",
   "crew_add": "+ Add Crew",
   "crew_create": "Create",
   "crew_error_create": "Failed to create crew",
