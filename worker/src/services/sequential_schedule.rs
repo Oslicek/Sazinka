@@ -39,6 +39,10 @@ pub struct ScheduleStop {
     pub service_duration_minutes: Option<i32>,
     /// For break stops only.
     pub break_duration_minutes: Option<i32>,
+    /// Manual override for service duration (replaces calculated/agreed value).
+    pub override_service_duration_minutes: Option<i32>,
+    /// Manual override for travel duration from previous stop (replaces matrix value).
+    pub override_travel_duration_minutes: Option<i32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -170,6 +174,11 @@ pub fn compute_sequential_schedule(
         // Break stops happen at the same location — no travel.
         let (travel_dist_m, travel_dur_s, travel_min) = if stop.stop_type == StopType::Break {
             (0u64, 0u64, 0i32)
+        } else if let Some(override_min) = stop.override_travel_duration_minutes {
+            // Manual override: use overridden duration, keep matrix distance.
+            let d = distance_matrix[prev_matrix_idx][stop_mx];
+            let t_s = override_min as u64 * 60;
+            (d, t_s, override_min)
         } else {
             let d = distance_matrix[prev_matrix_idx][stop_mx];
             let raw_t = duration_matrix[prev_matrix_idx][stop_mx];
@@ -179,19 +188,24 @@ pub fn compute_sequential_schedule(
         };
 
         // Service duration for this stop.
-        let service_min = match stop.stop_type {
-            StopType::Break => stop.break_duration_minutes.unwrap_or(30),
-            StopType::Customer => {
-                // 1. Explicit per-stop value
-                // 2. Derived from scheduled window (end - start)
-                // 3. Global default
-                if let Some(explicit) = stop.service_duration_minutes {
-                    explicit
-                } else if let (Some(s), Some(e)) = (stop.scheduled_time_start, stop.scheduled_time_end) {
-                    let diff = time_to_minutes(e) - time_to_minutes(s);
-                    if diff > 0 { diff } else { input.default_service_minutes }
-                } else {
-                    input.default_service_minutes
+        // Manual override takes highest priority.
+        let service_min = if let Some(override_svc) = stop.override_service_duration_minutes {
+            override_svc
+        } else {
+            match stop.stop_type {
+                StopType::Break => stop.break_duration_minutes.unwrap_or(30),
+                StopType::Customer => {
+                    // 1. Explicit per-stop value
+                    // 2. Derived from scheduled window (end - start)
+                    // 3. Global default
+                    if let Some(explicit) = stop.service_duration_minutes {
+                        explicit
+                    } else if let (Some(s), Some(e)) = (stop.scheduled_time_start, stop.scheduled_time_end) {
+                        let diff = time_to_minutes(e) - time_to_minutes(s);
+                        if diff > 0 { diff } else { input.default_service_minutes }
+                    } else {
+                        input.default_service_minutes
+                    }
                 }
             }
         };
@@ -362,6 +376,8 @@ mod tests {
                 scheduled_time_end: None,
                 service_duration_minutes: None,
                 break_duration_minutes: None,
+                override_service_duration_minutes: None,
+                override_travel_duration_minutes: None,
             }],
             stop_matrix_indices: vec![1],
             workday_start: hm(8, 0),
@@ -401,6 +417,8 @@ mod tests {
                 scheduled_time_end: Some(hm(10, 30)),
                 service_duration_minutes: None,
                 break_duration_minutes: None,
+                override_service_duration_minutes: None,
+                override_travel_duration_minutes: None,
             }],
             stop_matrix_indices: vec![1],
             workday_start: hm(7, 0),
@@ -433,11 +451,13 @@ mod tests {
                     stop_type: StopType::Customer,
                     scheduled_time_start: None, scheduled_time_end: None,
                     service_duration_minutes: Some(30), break_duration_minutes: None,
+                    override_service_duration_minutes: None, override_travel_duration_minutes: None,
                 },
                 ScheduleStop {
                     stop_type: StopType::Customer,
                     scheduled_time_start: None, scheduled_time_end: None,
                     service_duration_minutes: Some(45), break_duration_minutes: None,
+                    override_service_duration_minutes: None, override_travel_duration_minutes: None,
                 },
             ],
             stop_matrix_indices: vec![1, 2],
@@ -474,11 +494,13 @@ mod tests {
                     scheduled_time_start: Some(hm(8, 0)),
                     scheduled_time_end: Some(hm(9, 0)),
                     service_duration_minutes: None, break_duration_minutes: None,
+                    override_service_duration_minutes: None, override_travel_duration_minutes: None,
                 },
                 ScheduleStop {
                     stop_type: StopType::Customer,
                     scheduled_time_start: None, scheduled_time_end: None,
                     service_duration_minutes: Some(30), break_duration_minutes: None,
+                    override_service_duration_minutes: None, override_travel_duration_minutes: None,
                 },
             ],
             stop_matrix_indices: vec![1, 2],
@@ -519,12 +541,14 @@ mod tests {
                     scheduled_time_start: Some(hm(8, 0)),
                     scheduled_time_end: Some(hm(9, 0)),
                     service_duration_minutes: None, break_duration_minutes: None,
+                    override_service_duration_minutes: None, override_travel_duration_minutes: None,
                 },
                 ScheduleStop {
                     stop_type: StopType::Customer,
                     scheduled_time_start: Some(hm(11, 0)),
                     scheduled_time_end: Some(hm(12, 0)),
                     service_duration_minutes: None, break_duration_minutes: None,
+                    override_service_duration_minutes: None, override_travel_duration_minutes: None,
                 },
             ],
             stop_matrix_indices: vec![1, 2],
@@ -559,16 +583,19 @@ mod tests {
                     stop_type: StopType::Customer,
                     scheduled_time_start: None, scheduled_time_end: None,
                     service_duration_minutes: Some(30), break_duration_minutes: None,
+                    override_service_duration_minutes: None, override_travel_duration_minutes: None,
                 },
                 ScheduleStop {
                     stop_type: StopType::Break,
                     scheduled_time_start: None, scheduled_time_end: None,
                     service_duration_minutes: None, break_duration_minutes: Some(45),
+                    override_service_duration_minutes: None, override_travel_duration_minutes: None,
                 },
                 ScheduleStop {
                     stop_type: StopType::Customer,
                     scheduled_time_start: None, scheduled_time_end: None,
                     service_duration_minutes: Some(30), break_duration_minutes: None,
+                    override_service_duration_minutes: None, override_travel_duration_minutes: None,
                 },
             ],
             stop_matrix_indices: vec![1, 2, 3],
@@ -614,6 +641,7 @@ mod tests {
                 scheduled_time_end: Some(hm(10, 0)),
                 service_duration_minutes: Some(45),
                 break_duration_minutes: None,
+                override_service_duration_minutes: None, override_travel_duration_minutes: None,
             }],
             stop_matrix_indices: vec![1],
             workday_start: hm(9, 5),
@@ -644,6 +672,7 @@ mod tests {
                 scheduled_time_end: Some(hm(10, 0)),
                 service_duration_minutes: Some(60),
                 break_duration_minutes: None,
+                override_service_duration_minutes: None, override_travel_duration_minutes: None,
             }],
             stop_matrix_indices: vec![1],
             workday_start: hm(7, 0),
@@ -676,6 +705,7 @@ mod tests {
                 scheduled_time_end: Some(hm(10, 0)),
                 service_duration_minutes: Some(30),
                 break_duration_minutes: None,
+                override_service_duration_minutes: None, override_travel_duration_minutes: None,
             }],
             stop_matrix_indices: vec![1],
             workday_start: hm(9, 0),
@@ -704,6 +734,7 @@ mod tests {
                 stop_type: StopType::Customer,
                 scheduled_time_start: None, scheduled_time_end: None,
                 service_duration_minutes: Some(30), break_duration_minutes: None,
+                override_service_duration_minutes: None, override_travel_duration_minutes: None,
             }],
             stop_matrix_indices: vec![1],
             workday_start: hm(8, 0),
@@ -733,9 +764,9 @@ mod tests {
         let input = ScheduleInput {
             depot_matrix_idx: 0,
             stops: vec![
-                ScheduleStop { stop_type: StopType::Customer, scheduled_time_start: None, scheduled_time_end: None, service_duration_minutes: Some(20), break_duration_minutes: None },
-                ScheduleStop { stop_type: StopType::Customer, scheduled_time_start: None, scheduled_time_end: None, service_duration_minutes: Some(20), break_duration_minutes: None },
-                ScheduleStop { stop_type: StopType::Customer, scheduled_time_start: None, scheduled_time_end: None, service_duration_minutes: Some(20), break_duration_minutes: None },
+                ScheduleStop { stop_type: StopType::Customer, scheduled_time_start: None, scheduled_time_end: None, service_duration_minutes: Some(20), break_duration_minutes: None, override_service_duration_minutes: None, override_travel_duration_minutes: None },
+                ScheduleStop { stop_type: StopType::Customer, scheduled_time_start: None, scheduled_time_end: None, service_duration_minutes: Some(20), break_duration_minutes: None, override_service_duration_minutes: None, override_travel_duration_minutes: None },
+                ScheduleStop { stop_type: StopType::Customer, scheduled_time_start: None, scheduled_time_end: None, service_duration_minutes: Some(20), break_duration_minutes: None, override_service_duration_minutes: None, override_travel_duration_minutes: None },
             ],
             stop_matrix_indices: vec![1, 2, 3],
             workday_start: hm(8, 0),
@@ -767,6 +798,7 @@ mod tests {
                 scheduled_time_start: Some(hm(7, 30)),
                 scheduled_time_end: Some(hm(8, 30)),
                 service_duration_minutes: None, break_duration_minutes: None,
+                override_service_duration_minutes: None, override_travel_duration_minutes: None,
             }],
             stop_matrix_indices: vec![1],
             workday_start: hm(7, 0),
@@ -800,16 +832,19 @@ mod tests {
                     stop_type: StopType::Customer,
                     scheduled_time_start: None, scheduled_time_end: None,
                     service_duration_minutes: Some(60), break_duration_minutes: None,
+                    override_service_duration_minutes: None, override_travel_duration_minutes: None,
                 },
                 ScheduleStop {
                     stop_type: StopType::Break,
                     scheduled_time_start: None, scheduled_time_end: None,
                     service_duration_minutes: None, break_duration_minutes: Some(45),
+                    override_service_duration_minutes: None, override_travel_duration_minutes: None,
                 },
                 ScheduleStop {
                     stop_type: StopType::Customer,
                     scheduled_time_start: None, scheduled_time_end: None,
                     service_duration_minutes: Some(60), break_duration_minutes: None,
+                    override_service_duration_minutes: None, override_travel_duration_minutes: None,
                 },
             ],
             stop_matrix_indices: vec![1, 2, 3],
@@ -853,6 +888,7 @@ mod tests {
                 scheduled_time_end: None,
                 service_duration_minutes: Some(60),
                 break_duration_minutes: None,
+                override_service_duration_minutes: None, override_travel_duration_minutes: None,
             }],
             stop_matrix_indices: vec![1],
             workday_start: hm(7, 0),
@@ -886,6 +922,7 @@ mod tests {
                 scheduled_time_end: Some(hm(10, 0)),
                 service_duration_minutes: None,
                 break_duration_minutes: None,
+                override_service_duration_minutes: None, override_travel_duration_minutes: None,
             }],
             stop_matrix_indices: vec![1],
             workday_start: hm(7, 0),
@@ -914,6 +951,7 @@ mod tests {
                 scheduled_time_end: None,
                 service_duration_minutes: Some(60),
                 break_duration_minutes: None,
+                override_service_duration_minutes: None, override_travel_duration_minutes: None,
             }],
             stop_matrix_indices: vec![1],
             workday_start: hm(7, 0),
@@ -924,5 +962,120 @@ mod tests {
 
         let result = compute_sequential_schedule(&input, &dm, &tm);
         assert_eq!(result.stops[0].duration_from_previous_minutes, 39);
+    }
+
+    // -----------------------------------------------------------------------
+    // Override: travel duration override replaces matrix value
+    // -----------------------------------------------------------------------
+    #[test]
+    fn override_travel_duration_replaces_matrix() {
+        // Matrix says 15 min, but override says 60 min.
+        let (dm, tm) = uniform_matrix(2, 10_000, 900); // 900s = 15 min
+
+        let input = ScheduleInput {
+            depot_matrix_idx: 0,
+            stops: vec![ScheduleStop {
+                stop_type: StopType::Customer,
+                scheduled_time_start: None,
+                scheduled_time_end: None,
+                service_duration_minutes: Some(30),
+                break_duration_minutes: None,
+                override_service_duration_minutes: None,
+                override_travel_duration_minutes: Some(60),
+            }],
+            stop_matrix_indices: vec![1],
+            workday_start: hm(8, 0),
+            default_service_minutes: 60,
+            arrival_buffer_percent: 0.0,
+            arrival_buffer_fixed_minutes: 0.0,
+        };
+
+        let result = compute_sequential_schedule(&input, &dm, &tm);
+        let s = &result.stops[0];
+        // Travel should be 60 min (override), not 15 min (matrix)
+        assert_eq!(s.duration_from_previous_minutes, 60);
+        assert_eq!(s.estimated_arrival, hm(9, 0));
+        assert_eq!(s.estimated_departure, hm(9, 30));
+    }
+
+    // -----------------------------------------------------------------------
+    // Override: service duration override replaces calculated value
+    // -----------------------------------------------------------------------
+    #[test]
+    fn override_service_duration_replaces_calculated() {
+        let (dm, tm) = uniform_matrix(2, 10_000, 900); // 15 min travel
+
+        let input = ScheduleInput {
+            depot_matrix_idx: 0,
+            stops: vec![ScheduleStop {
+                stop_type: StopType::Customer,
+                scheduled_time_start: None,
+                scheduled_time_end: None,
+                service_duration_minutes: Some(30),
+                break_duration_minutes: None,
+                override_service_duration_minutes: Some(45),
+                override_travel_duration_minutes: None,
+            }],
+            stop_matrix_indices: vec![1],
+            workday_start: hm(8, 0),
+            default_service_minutes: 60,
+            arrival_buffer_percent: 0.0,
+            arrival_buffer_fixed_minutes: 0.0,
+        };
+
+        let result = compute_sequential_schedule(&input, &dm, &tm);
+        let s = &result.stops[0];
+        assert_eq!(s.estimated_arrival, hm(8, 15));
+        // Service should be 45 min (override), not 30 min (explicit)
+        assert_eq!(s.service_duration_minutes, 45);
+        assert_eq!(s.estimated_departure, hm(9, 0));
+    }
+
+    // -----------------------------------------------------------------------
+    // Override: both travel and service overrides together
+    // -----------------------------------------------------------------------
+    #[test]
+    fn both_overrides_together() {
+        let (dm, tm) = uniform_matrix(3, 10_000, 900); // 15 min travel
+
+        let input = ScheduleInput {
+            depot_matrix_idx: 0,
+            stops: vec![
+                ScheduleStop {
+                    stop_type: StopType::Customer,
+                    scheduled_time_start: None, scheduled_time_end: None,
+                    service_duration_minutes: Some(30), break_duration_minutes: None,
+                    override_service_duration_minutes: Some(45),
+                    override_travel_duration_minutes: Some(20),
+                },
+                ScheduleStop {
+                    stop_type: StopType::Customer,
+                    scheduled_time_start: None, scheduled_time_end: None,
+                    service_duration_minutes: Some(30), break_duration_minutes: None,
+                    override_service_duration_minutes: None,
+                    override_travel_duration_minutes: None,
+                },
+            ],
+            stop_matrix_indices: vec![1, 2],
+            workday_start: hm(8, 0),
+            default_service_minutes: 60,
+            arrival_buffer_percent: 0.0,
+            arrival_buffer_fixed_minutes: 0.0,
+        };
+
+        let result = compute_sequential_schedule(&input, &dm, &tm);
+        // Stop 1: travel 20 min (override), service 45 min (override)
+        let a = &result.stops[0];
+        assert_eq!(a.duration_from_previous_minutes, 20);
+        assert_eq!(a.estimated_arrival, hm(8, 20));
+        assert_eq!(a.service_duration_minutes, 45);
+        assert_eq!(a.estimated_departure, hm(9, 5));
+
+        // Stop 2: normal travel 15 min, normal service 30 min
+        let b = &result.stops[1];
+        assert_eq!(b.duration_from_previous_minutes, 15);
+        assert_eq!(b.estimated_arrival, hm(9, 20));
+        assert_eq!(b.service_duration_minutes, 30);
+        assert_eq!(b.estimated_departure, hm(9, 50));
     }
 }

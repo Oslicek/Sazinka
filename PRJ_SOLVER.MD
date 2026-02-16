@@ -426,7 +426,7 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR.
 | B | DB schéma — override sloupce v `route_stops` | ✅ Hotovo, commitnuto & pushnuto |
 | C | Rust typy — override pole + TDD testy | ✅ Hotovo, commitnuto & pushnuto |
 | D | DB dotazy — SELECT/INSERT s overrides | ✅ Hotovo, commitnuto & pushnuto |
-| E | Backend recalculate — respektovat overrides | ❌ Nezahájeno |
+| E | Backend recalculate — respektovat overrides | ✅ Hotovo, commitnuto & pushnuto |
 | F | Frontend shared types — override pole | ❌ Nezahájeno |
 | G | Inline editace úseku cesty (travel duration) | ❌ Nezahájeno |
 | H | Inline editace zastávky (service duration) | ❌ Nezahájeno |
@@ -439,7 +439,7 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR.
 - `e749984` — phase B: add override columns to route_stops schema
 - `cb7bfd9` — phase C: add override fields to Rust types with TDD tests
 
-- `xxxxxxx` — phase D: add override fields to DB queries (SELECT/INSERT)
+- `48b2d80` — phase D: add override fields to DB queries (SELECT/INSERT)
 
 ### Fáze A: Sdílená komponenta ArrivalBufferBar
 
@@ -474,11 +474,11 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR.
 
 ### Fáze E: Backend recalculate — respektovat overrides
 
-- [ ] **E.1** RED: Test `test_recalculate_uses_override_travel_duration` — vstup s `override_travel_duration_minutes: Some(60)` vrátí ETA lišící se od Valhalla výpočtu.
-  - GREEN: V `sequential_schedule.rs` (nebo `handle_recalculate`): pokud stop má `override_travel_duration_minutes`, použít místo matice.
-- [ ] **E.2** RED: Test `test_recalculate_uses_override_service_duration` — vstup s `override_service_duration_minutes: Some(45)` vrátí departure = arrival + 45 min.
+- [x] **E.1** RED: Test `override_travel_duration_replaces_matrix` — vstup s `override_travel_duration_minutes: Some(60)` vrátí ETA lišící se od Valhalla výpočtu.
+  - GREEN: V `sequential_schedule.rs`: pokud stop má `override_travel_duration_minutes`, použít místo matice.
+- [x] **E.2** RED: Test `override_service_duration_replaces_calculated` — vstup s `override_service_duration_minutes: Some(45)` vrátí departure = arrival + 45 min.
   - GREEN: V scheduling logice: pokud stop má `override_service_duration_minutes`, použít místo default/scheduled.
-- [ ] **E.3** `cargo test`.
+- [x] **E.3** `cargo test` — 20/20 testů prošlo (včetně `both_overrides_together`).
 
 ### Fáze F: Frontend shared types — override pole
 
