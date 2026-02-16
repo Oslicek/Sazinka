@@ -601,6 +601,42 @@ export function Planner() {
     setReturnToDepotLeg(null);
   }, []);
 
+  // Override: update travel duration for a stop
+  const handleUpdateTravelDuration = useCallback((stopId: string, minutes: number) => {
+    setSelectedRouteStops((prev) =>
+      prev.map((s) =>
+        s.id === stopId ? { ...s, overrideTravelDurationMinutes: minutes } : s
+      )
+    );
+  }, []);
+
+  // Override: reset travel duration override for a stop
+  const handleResetTravelDuration = useCallback((stopId: string) => {
+    setSelectedRouteStops((prev) =>
+      prev.map((s) =>
+        s.id === stopId ? { ...s, overrideTravelDurationMinutes: undefined } : s
+      )
+    );
+  }, []);
+
+  // Override: update service duration for a stop
+  const handleUpdateServiceDuration = useCallback((stopId: string, minutes: number) => {
+    setSelectedRouteStops((prev) =>
+      prev.map((s) =>
+        s.id === stopId ? { ...s, overrideServiceDurationMinutes: minutes } : s
+      )
+    );
+  }, []);
+
+  // Override: reset service duration override for a stop
+  const handleResetServiceDuration = useCallback((stopId: string) => {
+    setSelectedRouteStops((prev) =>
+      prev.map((s) =>
+        s.id === stopId ? { ...s, overrideServiceDurationMinutes: undefined } : s
+      )
+    );
+  }, []);
+
   const handleBufferChange = useCallback((percent: number, fixedMinutes: number) => {
     setRouteBufferPercent(percent);
     setRouteBufferFixedMinutes(fixedMinutes);
@@ -932,6 +968,10 @@ export function Planner() {
                 onSegmentClick={handleSegmentClick}
                 onRemoveStop={handleRemoveStop}
                 onUpdateBreak={handleUpdateBreak}
+                onUpdateTravelDuration={handleUpdateTravelDuration}
+                onResetTravelDuration={handleResetTravelDuration}
+                onUpdateServiceDuration={handleUpdateServiceDuration}
+                onResetServiceDuration={handleResetServiceDuration}
                 warnings={routeWarnings}
                 routeStartTime={routeStartTime}
                 routeEndTime={routeEndTime}
@@ -949,6 +989,10 @@ export function Planner() {
                 onReorder={handleReorder}
                 onRemoveStop={handleRemoveStop}
                 onUpdateBreak={handleUpdateBreak}
+                onUpdateTravelDuration={handleUpdateTravelDuration}
+                onResetTravelDuration={handleResetTravelDuration}
+                onUpdateServiceDuration={handleUpdateServiceDuration}
+                onResetServiceDuration={handleResetServiceDuration}
                 warnings={routeWarnings}
                 returnToDepotDistanceKm={returnToDepotLeg?.distanceKm ?? null}
                 returnToDepotDurationMinutes={returnToDepotLeg?.durationMinutes ?? null}

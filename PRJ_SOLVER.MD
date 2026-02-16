@@ -430,7 +430,7 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR.
 | F | Frontend shared types — override pole | ✅ Hotovo, commitnuto & pushnuto |
 | G | Inline editace úseku cesty (travel duration) | ✅ Hotovo, commitnuto & pushnuto |
 | H | Inline editace zastávky (service duration) | ✅ Hotovo, commitnuto & pushnuto |
-| I | Handlery v PlanningInbox + Planner | ❌ Nezahájeno |
+| I | Handlery v PlanningInbox + Planner | ✅ Hotovo, commitnuto & pushnuto |
 | J | Překlady | ❌ Nezahájeno |
 | K | Finální ověření | ❌ Nezahájeno |
 
@@ -503,16 +503,12 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR.
 
 ### Fáze I: Frontend — handlery v PlanningInbox + Planner
 
-- [ ] **I.1** `PlanningInbox.tsx` — implementovat:
-  - `handleUpdateTravelDuration(stopId, minutes)` — nastaví `overrideTravelDurationMinutes` na daném stopu, spustí přepočet shora dolů.
-  - `handleResetTravelDuration(stopId)` — nastaví `overrideTravelDurationMinutes = null`, spustí přepočet.
-  - `handleUpdateServiceDuration(stopId, minutes)` — nastaví `overrideServiceDurationMinutes`, spustí přepočet.
-  - `handleResetServiceDuration(stopId)` — nastaví `overrideServiceDurationMinutes = null`, spustí přepočet.
-- [ ] **I.2** Předat všechny 4 handlery jako props do `RouteDetailTimeline` a `PlanningTimeline`.
-- [ ] **I.3** `triggerRecalculate` — při budování `RecalcStopInput[]` zahrnout override pole z aktuálních route stops.
-- [ ] **I.4** `autoSaveFn` — v `SaveRouteRequest` zahrnout override pole pro každý stop.
-- [ ] **I.5** `Planner.tsx` — implementovat totožné handlery (I.1–I.4) pro Planner page.
-- [ ] **I.6** Ověřit, že DnD reorder zachovává override hodnoty na přesunutých stopech.
+- [x] **I.1** `PlanningInbox.tsx` — 4 handlery implementovány (`handleUpdateTravelDuration`, `handleResetTravelDuration`, `handleUpdateServiceDuration`, `handleResetServiceDuration`), každý spouští `triggerRecalculate`.
+- [x] **I.2** Všechny 4 handlery předány jako props do obou timeline komponent.
+- [x] **I.3** `triggerRecalculate` — override pole zahrnuta v `RecalcStopInput[]`.
+- [x] **I.4** `autoSaveFn` — override pole zahrnuta v `SaveRouteRequest`.
+- [x] **I.5** `Planner.tsx` — totožné handlery implementovány (local state only, Planner nemá recalculate).
+- [x] **I.6** DnD reorder zachovává override hodnoty (spread operator na stop objektech).
 
 ### Fáze J: Frontend — překlady
 

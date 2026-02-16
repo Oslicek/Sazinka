@@ -288,6 +288,8 @@ export function PlanningInbox() {
         breakTimeStart: s.stopType === 'break' ? (s.breakTimeStart ?? s.estimatedArrival ?? '12:00') : undefined,
         status: s.status === 'unassigned' ? 'unassigned' : undefined,
         serviceDurationMinutes: s.serviceDurationMinutes ?? undefined,
+        overrideServiceDurationMinutes: s.overrideServiceDurationMinutes ?? undefined,
+        overrideTravelDurationMinutes: s.overrideTravelDurationMinutes ?? undefined,
       })),
       totalDistanceKm: metrics?.distanceKm ?? 0,
       totalDurationMinutes: (metrics?.travelTimeMin ?? 0) + (metrics?.serviceTimeMin ?? 0),
@@ -1115,6 +1117,8 @@ export function PlanningInbox() {
       scheduledTimeEnd: s.scheduledTimeEnd ?? undefined,
       serviceDurationMinutes: s.serviceDurationMinutes ?? undefined,
       breakDurationMinutes: s.breakDurationMinutes ?? undefined,
+      overrideServiceDurationMinutes: s.overrideServiceDurationMinutes ?? undefined,
+      overrideTravelDurationMinutes: s.overrideTravelDurationMinutes ?? undefined,
       id: s.id,
       customerId: s.customerId ?? undefined,
       customerName: s.customerName ?? undefined,
@@ -1884,6 +1888,54 @@ export function PlanningInbox() {
     incrementRouteVersion();
   }, [incrementRouteVersion]);
 
+  // Override: update travel duration for a stop
+  const handleUpdateTravelDuration = useCallback((stopId: string, minutes: number) => {
+    setRouteStops((prev) => {
+      const updated = prev.map((s) =>
+        s.id === stopId ? { ...s, overrideTravelDurationMinutes: minutes } : s
+      );
+      triggerRecalculate(updated);
+      return updated;
+    });
+    setHasChanges(true);
+  }, [triggerRecalculate]);
+
+  // Override: reset travel duration override for a stop
+  const handleResetTravelDuration = useCallback((stopId: string) => {
+    setRouteStops((prev) => {
+      const updated = prev.map((s) =>
+        s.id === stopId ? { ...s, overrideTravelDurationMinutes: undefined } : s
+      );
+      triggerRecalculate(updated);
+      return updated;
+    });
+    setHasChanges(true);
+  }, [triggerRecalculate]);
+
+  // Override: update service duration for a stop
+  const handleUpdateServiceDuration = useCallback((stopId: string, minutes: number) => {
+    setRouteStops((prev) => {
+      const updated = prev.map((s) =>
+        s.id === stopId ? { ...s, overrideServiceDurationMinutes: minutes } : s
+      );
+      triggerRecalculate(updated);
+      return updated;
+    });
+    setHasChanges(true);
+  }, [triggerRecalculate]);
+
+  // Override: reset service duration override for a stop
+  const handleResetServiceDuration = useCallback((stopId: string) => {
+    setRouteStops((prev) => {
+      const updated = prev.map((s) =>
+        s.id === stopId ? { ...s, overrideServiceDurationMinutes: undefined } : s
+      );
+      triggerRecalculate(updated);
+      return updated;
+    });
+    setHasChanges(true);
+  }, [triggerRecalculate]);
+
   // Route building: clear all stops and delete route from backend
   const handleClearRoute = useCallback(async () => {
     // If we have a saved route, delete it from the backend
@@ -2466,6 +2518,10 @@ export function PlanningInbox() {
               onReorder={handleReorder}
               onRemoveStop={handleRemoveFromRoute}
               onUpdateBreak={handleUpdateBreak}
+              onUpdateTravelDuration={handleUpdateTravelDuration}
+              onResetTravelDuration={handleResetTravelDuration}
+              onUpdateServiceDuration={handleUpdateServiceDuration}
+              onResetServiceDuration={handleResetServiceDuration}
               isSaving={isSaving}
               warnings={routeWarnings}
               routeStartTime={routeStartTime}
@@ -2486,6 +2542,10 @@ export function PlanningInbox() {
               onReorder={handleReorder}
               onRemoveStop={handleRemoveFromRoute}
               onUpdateBreak={handleUpdateBreak}
+              onUpdateTravelDuration={handleUpdateTravelDuration}
+              onResetTravelDuration={handleResetTravelDuration}
+              onUpdateServiceDuration={handleUpdateServiceDuration}
+              onResetServiceDuration={handleResetServiceDuration}
               isSaving={isSaving}
               routeStartTime={routeStartTime}
               routeEndTime={routeEndTime}
