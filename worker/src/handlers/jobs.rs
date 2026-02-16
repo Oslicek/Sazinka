@@ -264,9 +264,8 @@ impl JobProcessor {
             None
         };
 
-        // TODO(PRJ_SOLVER phase 6): read buffer from request payload instead of hardcoded defaults
-        let arrival_buffer_percent = 10.0_f64;
-        let arrival_buffer_fixed_minutes = 0.0_f64;
+        let arrival_buffer_percent = request.arrival_buffer_percent;
+        let arrival_buffer_fixed_minutes = request.arrival_buffer_fixed_minutes;
         let solver = VrpSolver::new(SolverConfig::with_buffer(5, 500, arrival_buffer_percent, arrival_buffer_fixed_minutes));
         
         // Validate request

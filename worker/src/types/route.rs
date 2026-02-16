@@ -126,9 +126,17 @@ pub struct RoutePlanRequest {
     pub date: NaiveDate,
     /// Working hours
     pub working_hours: Option<WorkingHours>,
-    /// Crew ID — if provided, crew-specific settings (arrival buffer) are used
+    /// Crew ID — if provided, crew-specific settings are used
     pub crew_id: Option<Uuid>,
+    /// Arrival buffer as percentage of travel time (default 10%)
+    #[serde(default = "default_route_buffer_percent")]
+    pub arrival_buffer_percent: f64,
+    /// Fixed arrival buffer in minutes (default 0)
+    #[serde(default)]
+    pub arrival_buffer_fixed_minutes: f64,
 }
+
+fn default_route_buffer_percent() -> f64 { 10.0 }
 
 /// Working hours configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]

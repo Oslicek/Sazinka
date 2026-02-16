@@ -150,9 +150,8 @@ pub async fn handle_plan(
             None
         };
 
-        // TODO(PRJ_SOLVER phase 6): read buffer from route/request instead of hardcoded defaults
-        let arrival_buffer_percent = 10.0_f64;
-        let arrival_buffer_fixed_minutes = 0.0_f64;
+        let arrival_buffer_percent = plan_request.arrival_buffer_percent;
+        let arrival_buffer_fixed_minutes = plan_request.arrival_buffer_fixed_minutes;
 
         // Load user settings for service duration, break config, and fallback working hours
         let (user_shift_start, user_shift_end, service_duration, break_config) = match queries::settings::get_user_settings(&pool, user_id).await {
@@ -822,6 +821,15 @@ pub async fn handle_save(
                 );
                 let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
                 info!("Saved route {} with {} stops", route.id, saved_count);
+
+                // Update user's last-used buffer preferences
+                if let Err(e) = queries::settings::update_last_arrival_buffer(
+                    &pool, user_id,
+                    payload.arrival_buffer_percent,
+                    payload.arrival_buffer_fixed_minutes,
+                ).await {
+                    warn!("Failed to update last arrival buffer preferences: {}", e);
+                }
             }
             Err(e) => {
                 error!("Failed to save route: {}", e);

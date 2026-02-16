@@ -129,6 +129,8 @@ mod tests {
             start_location: crate::types::Coordinates { lat: 50.0, lng: 14.0 },
             crew_id: None,
             time_windows: vec![],
+            arrival_buffer_percent: 10.0,
+            arrival_buffer_fixed_minutes: 0.0,
         };
         
         let json = serde_json::to_string(&request).unwrap();
@@ -235,6 +237,8 @@ mod tests {
                     end: "09:00".to_string(),
                 },
             ],
+            arrival_buffer_percent: 10.0,
+            arrival_buffer_fixed_minutes: 0.0,
         };
 
         let json = serde_json::to_string(&request).unwrap();
@@ -453,14 +457,22 @@ pub struct RoutePlanJobRequest {
     pub date: chrono::NaiveDate,
     /// Starting location (depot)
     pub start_location: crate::types::Coordinates,
-    /// Crew ID — if provided, crew-specific settings (arrival buffer) are used
+    /// Crew ID — if provided, crew-specific settings are used
     #[serde(default)]
     pub crew_id: Option<Uuid>,
     /// Time windows for customers, passed directly from the saved route stops.
     /// Takes priority over DB lookup (revisions/visits) when present.
     #[serde(default)]
     pub time_windows: Vec<CustomerTimeWindow>,
+    /// Arrival buffer as percentage of travel time (default 10%)
+    #[serde(default = "default_buffer_percent")]
+    pub arrival_buffer_percent: f64,
+    /// Fixed arrival buffer in minutes (default 0)
+    #[serde(default)]
+    pub arrival_buffer_fixed_minutes: f64,
 }
+
+fn default_buffer_percent() -> f64 { 10.0 }
 
 /// A job stored in the JetStream queue
 #[derive(Debug, Clone, Serialize, Deserialize)]

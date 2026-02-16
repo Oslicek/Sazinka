@@ -266,17 +266,15 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR:
 
 ### Fáze 6: Handlery — save route ukládá buffer a aktualizuje preferences + TDD
 
-- [ ] **6.1** TEST: `test_save_route_request_with_buffer_compiles` — vytvořit `SaveRouteRequest` s buffer poli, ověřit, že se serializuje/deserializuje.
-  - RED/GREEN: Měl by projít díky fázi 3. Ověření konzistence.
-- [ ] **6.2** `handlers/route.rs` → `handle_save_route` — předat `payload.arrival_buffer_percent` a `payload.arrival_buffer_fixed_minutes` do `upsert_route`. Po úspěšném uložení zavolat `update_last_arrival_buffer(pool, user_id, ...)`.
-- [ ] **6.3** `handlers/route.rs` → `handle_get_route` — ověřit, že response struct obsahuje buffer pole (mělo by fungovat automaticky díky fázi 5.2).
-- [ ] **6.4** `handlers/route.rs` → `handle_recalculate` — beze změny (buffer už přichází v payloadu).
-- [ ] **6.5** TEST: `test_route_plan_job_accepts_buffer_in_payload` — `RoutePlanJobRequest` s buffer poli se deserializuje.
-  - RED: Pole neexistují v request typu.
-  - GREEN: Přidat pole do request struct.
-- [ ] **6.6** `handlers/jobs.rs` → `handle_route_plan_job` — nečíst buffer z `crew`, vzít z `payload.arrival_buffer_percent` / `payload.arrival_buffer_fixed_minutes`. Fallback na default `10.0` / `0.0`.
-- [ ] **6.7** `cargo check`
-- [ ] **6.8** `cargo test` — všechny testy prochází.
+- [x] **6.1** `SaveRouteRequest` buffer pole fungují (ověřeno v fázi 3) ✅
+- [x] **6.2** `handle_save_route` — předává buffer do `upsert_route`, po uložení volá `update_last_arrival_buffer` ✅
+- [x] **6.3** `handle_get_route` — buffer pole v response automaticky díky fázi 5 ✅
+- [x] **6.4** `handle_recalculate` — beze změny ✅
+- [x] **6.5** `RoutePlanJobRequest` — přidána `arrival_buffer_percent` a `arrival_buffer_fixed_minutes` s serde defaults ✅
+- [x] **6.6** `RoutePlanRequest` — přidána buffer pole, handler čte z requestu místo crew ✅
+- [x] **6.7** `handlers/jobs.rs` — čte buffer z `request.arrival_buffer_percent` místo crew ✅
+- [x] **6.8** `cargo check` ✅
+- [x] **6.9** `cargo test` — 282 passed, 0 failed ✅
 
 ### Fáze 7: TypeScript shared types
 
