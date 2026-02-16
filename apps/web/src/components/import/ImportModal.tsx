@@ -242,8 +242,10 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
     setDragOver(false);
   }, []);
 
+  const submittingRef = useRef(false);
   const handleSubmitImport = useCallback(async () => {
-    if (!preview) return;
+    if (!preview || submittingRef.current) return;
+    submittingRef.current = true;
 
     setState('submitting');
     setError(null);
@@ -297,6 +299,7 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
     } catch (err) {
       setError(err instanceof Error ? err.message : t('modal_error_submit'));
       setState('error');
+      submittingRef.current = false;
     }
   }, [preview, entityType, addJob, onComplete]);
 
@@ -305,6 +308,7 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
     setPreview(null);
     setError(null);
     setSubmittedJobId(null);
+    submittingRef.current = false;
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -436,7 +440,7 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
                 <button className={styles.cancelButton} onClick={handleReset}>
                   {t('modal_select_other')}
                 </button>
-                <button className={styles.importButton} onClick={handleSubmitImport}>
+                <button className={styles.importButton} onClick={handleSubmitImport} disabled={state === 'submitting'}>
                   {t('customer_start_import')}
                 </button>
               </div>
