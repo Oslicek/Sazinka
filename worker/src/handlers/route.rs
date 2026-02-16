@@ -609,6 +609,8 @@ where
     Uuid::parse_str(&s).map_err(serde::de::Error::custom)
 }
 
+fn default_buffer_percent() -> f64 { 10.0 }
+
 /// Request to save a route
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -626,6 +628,10 @@ pub struct SaveRouteRequest {
     pub return_to_depot_distance_km: Option<f64>,
     #[serde(default)]
     pub return_to_depot_duration_minutes: Option<i32>,
+    #[serde(default = "default_buffer_percent")]
+    pub arrival_buffer_percent: f64,
+    #[serde(default)]
+    pub arrival_buffer_fixed_minutes: f64,
 }
 
 /// A stop to save
@@ -2146,5 +2152,35 @@ mod tests {
         let hours = WorkingHours::default();
         assert_eq!(hours.start.hour(), 0);
         assert_eq!(hours.end.hour(), 23);
+    }
+
+    #[test]
+    fn test_save_route_request_deserializes_buffer() {
+        let json = r#"{
+            "date": "2026-01-15",
+            "stops": [],
+            "totalDistanceKm": 0.0,
+            "totalDurationMinutes": 0,
+            "optimizationScore": 0,
+            "arrivalBufferPercent": 12.0,
+            "arrivalBufferFixedMinutes": 2.0
+        }"#;
+        let req: SaveRouteRequest = serde_json::from_str(json).unwrap();
+        assert!((req.arrival_buffer_percent - 12.0).abs() < f64::EPSILON);
+        assert!((req.arrival_buffer_fixed_minutes - 2.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_save_route_request_buffer_defaults() {
+        let json = r#"{
+            "date": "2026-01-15",
+            "stops": [],
+            "totalDistanceKm": 0.0,
+            "totalDurationMinutes": 0,
+            "optimizationScore": 0
+        }"#;
+        let req: SaveRouteRequest = serde_json::from_str(json).unwrap();
+        assert!((req.arrival_buffer_percent - 10.0).abs() < f64::EPSILON);
+        assert!(req.arrival_buffer_fixed_minutes.abs() < f64::EPSILON);
     }
 }

@@ -20,6 +20,8 @@ pub struct Route {
     pub total_distance_km: Option<f64>,
     pub total_duration_minutes: Option<i32>,
     pub optimization_score: Option<i32>,
+    pub arrival_buffer_percent: f64,
+    pub arrival_buffer_fixed_minutes: f64,
     pub return_to_depot_distance_km: Option<f64>,
     pub return_to_depot_duration_minutes: Option<i32>,
     pub created_at: DateTime<Utc>,
@@ -216,4 +218,33 @@ pub struct PlannedRouteStop {
     /// Duration from previous location in minutes (Valhalla matrix based)
     #[serde(default)]
     pub duration_from_previous_minutes: Option<i32>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_route_serializes_buffer_fields() {
+        let route = Route {
+            id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            crew_id: None,
+            depot_id: None,
+            date: NaiveDate::from_ymd_opt(2026, 1, 15).unwrap(),
+            status: RouteStatus::Draft,
+            total_distance_km: None,
+            total_duration_minutes: None,
+            optimization_score: None,
+            arrival_buffer_percent: 15.0,
+            arrival_buffer_fixed_minutes: 3.0,
+            return_to_depot_distance_km: None,
+            return_to_depot_duration_minutes: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        let json = serde_json::to_string(&route).unwrap();
+        assert!(json.contains("\"arrivalBufferPercent\":15.0"));
+        assert!(json.contains("\"arrivalBufferFixedMinutes\":3.0"));
+    }
 }

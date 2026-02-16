@@ -243,16 +243,13 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR:
 
 ### Fáze 3: Rust typy — route (přidat buffer) + TDD
 
-- [ ] **3.1** TEST: `test_route_serializes_buffer_fields` — struct `Route` s `arrival_buffer_percent: 15.0` a `arrival_buffer_fixed_minutes: 3.0` se serializuje s klíči `arrivalBufferPercent` a `arrivalBufferFixedMinutes`.
-  - RED: Test failuje, pole neexistují.
-  - GREEN: Přidat pole do `types/route.rs` → struct `Route`.
-- [ ] **3.2** TEST: `test_save_route_request_deserializes_buffer` — JSON `{"date": "2026-01-15", "stops": [], ... , "arrivalBufferPercent": 12.0, "arrivalBufferFixedMinutes": 2.0}` se deserializuje do `SaveRouteRequest` s odpovídajícími hodnotami.
-  - RED: Test failuje, pole neexistují v `SaveRouteRequest`.
-  - GREEN: Přidat pole do `SaveRouteRequest` v `handlers/route.rs`.
-- [ ] **3.3** TEST: `test_save_route_request_buffer_defaults` — JSON bez buffer polí se deserializuje s defaulty `10.0` a `0.0`.
-  - RED: Test failuje (pole neexistují nebo nemají default).
-  - GREEN: Přidat `#[serde(default = "default_buffer_percent")]` a `#[serde(default)]` atributy.
-- [ ] **3.4** `cargo check`
+- [x] **3.1** TEST: `test_route_serializes_buffer_fields` — Route serializuje `arrivalBufferPercent` a `arrivalBufferFixedMinutes` ✅
+  - GREEN: Přidána pole do `types/route.rs` → struct `Route`.
+- [x] **3.2** TEST: `test_save_route_request_deserializes_buffer` — SaveRouteRequest deserializuje buffer z JSON ✅
+  - GREEN: Přidána pole do `SaveRouteRequest` v `handlers/route.rs`.
+- [x] **3.3** TEST: `test_save_route_request_buffer_defaults` — bez buffer polí defaultuje na 10.0 / 0.0 ✅
+  - GREEN: `#[serde(default = "default_buffer_percent")]` a `#[serde(default)]`.
+- [x] **3.4** `cargo check` ✅
 
 ### Fáze 4: Rust typy — user preferences (přidat last-used buffer) + TDD
 
