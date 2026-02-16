@@ -18,7 +18,7 @@ import type { BreakSettings, Depot } from '@shared/settings';
 import type { RouteWarning } from '@shared/route';
 import { validateBreak } from '../utils/breakUtils';
 import { logger } from '../utils/logger';
-import { RouteListPanel, RouteDetailTimeline, RouteMapPanel, type RouteMetrics, PlanningTimeline, TimelineViewToggle, type TimelineView, RouteSummaryStats, RouteSummaryActions } from '../components/planner';
+import { RouteListPanel, RouteDetailTimeline, RouteMapPanel, type RouteMetrics, PlanningTimeline, TimelineViewToggle, type TimelineView, RouteSummaryStats, RouteSummaryActions, ArrivalBufferBar } from '../components/planner';
 import { PlannerFilters } from '../components/shared/PlannerFilters';
 import styles from './Planner.module.css';
 
@@ -200,6 +200,10 @@ export function Planner() {
   // TODO: Store warnings in DB when route is saved from optimization
   const [routeWarnings] = useState<RouteWarning[]>([]);
 
+  // --- Arrival buffer (route-level) ---
+  const [routeBufferPercent, setRouteBufferPercent] = useState(10);
+  const [routeBufferFixedMinutes, setRouteBufferFixedMinutes] = useState(0);
+
   // ─── Load settings (crews, depots, user preferences) ─────────────
 
   useEffect(() => {
@@ -226,6 +230,14 @@ export function Planner() {
         }
         if (!searchParams?.depot && prefs?.defaultDepotId) {
           setFilterDepotId(prefs.defaultDepotId);
+        }
+
+        // Initialize buffer from user preferences
+        if (prefs?.lastArrivalBufferPercent != null) {
+          setRouteBufferPercent(prefs.lastArrivalBufferPercent);
+        }
+        if (prefs?.lastArrivalBufferFixedMinutes != null) {
+          setRouteBufferFixedMinutes(prefs.lastArrivalBufferFixedMinutes);
         }
 
         // Set depot for map
@@ -346,6 +358,14 @@ export function Planner() {
           if (routeDepot) {
             setDepot({ lat: routeDepot.lat, lng: routeDepot.lng, name: routeDepot.name });
           }
+        }
+
+        // Initialize buffer from loaded route
+        if (result.route?.arrivalBufferPercent != null) {
+          setRouteBufferPercent(result.route.arrivalBufferPercent);
+        }
+        if (result.route?.arrivalBufferFixedMinutes != null) {
+          setRouteBufferFixedMinutes(result.route.arrivalBufferFixedMinutes);
         }
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
@@ -579,6 +599,13 @@ export function Planner() {
       })
     );
     setReturnToDepotLeg(null);
+  }, []);
+
+  const handleBufferChange = useCallback((percent: number, fixedMinutes: number) => {
+    setRouteBufferPercent(percent);
+    setRouteBufferFixedMinutes(fixedMinutes);
+    // Note: In Planner, buffer changes are informational — route is already saved.
+    // The buffer will be persisted when the route is next saved/optimized.
   }, []);
 
   useEffect(() => {
@@ -885,6 +912,13 @@ export function Planner() {
                 deleteLabel="Smazat trasu"
               />
             </div>
+
+            {/* Arrival buffer bar — between actions and timeline */}
+            <ArrivalBufferBar
+              percent={routeBufferPercent}
+              fixedMinutes={routeBufferFixedMinutes}
+              onChange={handleBufferChange}
+            />
 
             {isLoadingStops ? (
               <div className={styles.loading}>{t('loading_stops')}</div>

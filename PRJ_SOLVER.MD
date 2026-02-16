@@ -331,7 +331,223 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR:
 
 ---
 
-## 7. Soubory dotčené změnami
+## 8. Inline editace timeline + sdílený ArrivalBufferBar
+
+### 8.1 Motivace
+
+Po přesunu bufferu na trasu přichází další krok: umožnit dispečerovi **přímo v timeline** ručně upravit trvání libovolné položky — zastávky (servis), úseky cesty a pauzy. Jde o řešení mimořádných situací (zácpa, prodloužený servis). Tyto overridem „natvrdo" nastavené hodnoty přepíší vypočítané/dohodnuté a uloží se do DB.
+
+Současně se `ArrivalBufferBar` stane sdílenou komponentou použitou v `PlanningInbox` i `Planner`.
+
+### 8.2 Chování
+
+1. **Každá položka timeline** (zastávka, úsek cesty, pauza) bude mít v pravé části **editovatelný údaj trvání**.
+2. Po ručním přepsání hodnoty se pole vizuálně odliší: **výstražná ikona ⚠️** + tooltip „Ručně upraveno".
+3. Kliknutím na ikonu ⚠️ se hodnota **vrátí na původní** (vypočítanou / dohodnutou).
+4. **Přepočet shora dolů**: změna na pozici N přepočítá časy od pozice N+1 dolů. Události před N se nemění. Pokud buffery po trase absorbují rozdíl, přepočet se neprojeví.
+5. **Drag & drop reorder** zastávek — už funguje (DnD kit), zachováme.
+6. Chování je identické v `PlanningInbox` i `Planner`.
+
+### 8.3 Datový model — override sloupce v `route_stops`
+
+```sql
+-- Přidat do tabulky route_stops v 001_initial_schema.sql:
+override_service_duration_minutes  INTEGER,   -- NULL = použij vypočítanou, non-NULL = manuální override
+override_travel_duration_minutes   INTEGER,   -- NULL = použij Valhalla čas, non-NULL = manuální override
+```
+
+Logika:
+- `effectiveServiceDuration = override_service_duration_minutes ?? service_duration_minutes ?? default`
+- `effectiveTravelDuration = override_travel_duration_minutes ?? duration_from_previous_minutes`
+- Vzdálenost (`distance_from_previous_km`) se overridem nemění.
+
+### 8.4 Rust structs — rozšíření
+
+```rust
+// RouteStop (existující) — přidat:
+pub override_service_duration_minutes: Option<i32>,
+pub override_travel_duration_minutes: Option<i32>,
+```
+
+### 8.5 TypeScript types — rozšíření
+
+```typescript
+// SavedRouteStop — přidat:
+overrideServiceDurationMinutes?: number | null;
+overrideTravelDurationMinutes?: number | null;
+```
+
+### 8.6 RecalcStopInput — rozšíření
+
+```typescript
+// Přidat do RecalcStopInput:
+overrideServiceDurationMinutes?: number | null;
+overrideTravelDurationMinutes?: number | null;
+```
+
+Backend `handle_recalculate`:
+- Pokud `overrideTravelDurationMinutes` je nastaveno, použije ho místo Valhalla doby jízdy.
+- Pokud `overrideServiceDurationMinutes` je nastaveno, použije ho místo defaultu/scheduled.
+
+### 8.7 UI mockup — inline editace
+
+```
+📍 Depo D1                                   07:30
+   Rezerva příjezdu: 10 % + 0 min            ← ArrivalBufferBar
+   ▼ 45.5 km • [41 min] ⚠️                   ← editovatelný úsek cesty, override indikátor
+   ┌─────────────────────────────────────┐
+   │ 1  KomínServis trade k.s.  08:41–09:11 │
+   │    [30 min] ⚠️                         │ ← editovatelná doba servisu
+   └─────────────────────────────────────────┘
+   ▼ 12.3 km • 18 min                        ← normální (bez override)
+   ┌─────────────────────────────────────┐
+   │ 2  Radek Černý           09:29–09:59 │
+   │    30 min                              │ ← normální
+   └─────────────────────────────────────────┘
+```
+
+- `[41 min]` — inline input (number), editovatelný kliknutím.
+- `⚠️` — indikátor override. Klik → reset na vypočítanou hodnotu.
+- Pole bez override se zobrazují normálně (bez ikony).
+
+---
+
+## 9. Implementační plán — Inline editace timeline (TDD)
+
+Databázi nemigrujeme — bude vytvořena znovu (`001_initial_schema.sql`).
+
+Každý krok se řídí cyklem RED → GREEN → REFACTOR.
+
+### Fáze A: Sdílená komponenta ArrivalBufferBar
+
+- [ ] **A.1** Přesunout `ArrivalBufferBar` z `PlanningInbox.tsx` do `apps/web/src/components/planner/ArrivalBufferBar.tsx` jako exportovanou komponentu.
+- [ ] **A.2** CSS styly `.bufferBar`, `.bufferBarExpanded`, `.bufferEditRow`, `.bufferEditActions`, `.bufferLabel` přesunout do `ArrivalBufferBar.module.css`.
+- [ ] **A.3** V `PlanningInbox.tsx` importovat `ArrivalBufferBar` ze sdílené komponenty, odebrat lokální definici a CSS.
+- [ ] **A.4** V `Planner.tsx` přidat buffer state (`routeBufferPercent`, `routeBufferFixedMinutes`), inicializaci z user preferences, `handleBufferChange` handler.
+- [ ] **A.5** V `Planner.tsx` vložit `<ArrivalBufferBar>` mezi akce a timeline (stejná pozice jako v PlanningInbox).
+- [ ] **A.6** Exportovat `ArrivalBufferBar` z `components/planner/index.ts`.
+- [ ] **A.7** Ověřit zobrazení v obou pohledech (`PlanningInbox` + `Planner`).
+
+### Fáze B: DB schéma — override sloupce
+
+- [ ] **B.1** V `001_initial_schema.sql` přidat do `route_stops`:
+  - `override_service_duration_minutes INTEGER` (nullable)
+  - `override_travel_duration_minutes INTEGER` (nullable)
+- [ ] **B.2** Ověřit, že schema je validní (`psql -f`).
+
+### Fáze C: Rust typy — route stop overrides + TDD
+
+- [ ] **C.1** RED: Test `test_route_stop_override_fields_serialize` — struct s `override_service_duration_minutes: Some(45)` se serializuje s klíčem `overrideServiceDurationMinutes`.
+  - GREEN: Přidat `override_service_duration_minutes: Option<i32>` a `override_travel_duration_minutes: Option<i32>` do struct v `types/route.rs` (nebo příslušný stop struct).
+- [ ] **C.2** RED: Test `test_route_stop_override_null_skipped` — struct s `None` neobsahuje klíč v JSON (skip_serializing_if).
+  - GREEN: `#[serde(skip_serializing_if = "Option::is_none")]`.
+- [ ] **C.3** `cargo check` — ověřit kompilaci.
+
+### Fáze D: DB dotazy — route stops s overrides + TDD
+
+- [ ] **D.1** Přidat `override_service_duration_minutes` a `override_travel_duration_minutes` do SELECT dotazů v `db/queries/route.rs` (všechny funkce vracející route stops).
+- [ ] **D.2** Přidat override pole do INSERT/UPDATE dotazu pro route stops (v `upsert_route` nebo `save_route_stops`).
+- [ ] **D.3** `cargo check`.
+
+### Fáze E: Backend recalculate — respektovat overrides
+
+- [ ] **E.1** RED: Test `test_recalculate_uses_override_travel_duration` — vstup s `override_travel_duration_minutes: Some(60)` vrátí ETA lišící se od Valhalla výpočtu.
+  - GREEN: V `sequential_schedule.rs` (nebo `handle_recalculate`): pokud stop má `override_travel_duration_minutes`, použít místo matice.
+- [ ] **E.2** RED: Test `test_recalculate_uses_override_service_duration` — vstup s `override_service_duration_minutes: Some(45)` vrátí departure = arrival + 45 min.
+  - GREEN: V scheduling logice: pokud stop má `override_service_duration_minutes`, použít místo default/scheduled.
+- [ ] **E.3** `cargo test`.
+
+### Fáze F: Frontend shared types — override pole
+
+- [ ] **F.1** `packages/shared-types/src/route.ts` — přidat `overrideServiceDurationMinutes?: number | null` a `overrideTravelDurationMinutes?: number | null` do `RouteStop` interface (pokud existuje).
+- [ ] **F.2** `apps/web/src/services/routeService.ts` — přidat override pole do `SavedRouteStop`, `RecalcStopInput`.
+
+### Fáze G: Frontend — inline editace úseku cesty (travel duration) + TDD
+
+- [ ] **G.1** `RouteDetailTimeline.tsx` — segment (úsek cesty) zobrazí dobu jízdy jako `<input type="number">` (inline, malý). Po změně volá nový callback `onUpdateTravelDuration(stopId, minutes)`.
+- [ ] **G.2** Pokud `overrideTravelDurationMinutes != null`, zobrazit vedle inputu ikonu ⚠️. Klik na ikonu → reset (`onResetTravelDuration(stopId)`).
+- [ ] **G.3** CSS styly pro inline input v segmentu + override indikátor.
+- [ ] **G.4** `PlanningTimeline.tsx` — stejná logika jako G.1–G.3 (travel segment editace).
+- [ ] **G.5** Props: přidat `onUpdateTravelDuration` a `onResetTravelDuration` do obou timeline komponent.
+
+### Fáze H: Frontend — inline editace zastávky (service duration) + TDD
+
+- [ ] **H.1** `RouteDetailTimeline.tsx` — zastávka zobrazí dobu servisu jako `<input type="number">` (inline). Po změně volá `onUpdateServiceDuration(stopId, minutes)`.
+- [ ] **H.2** Pokud `overrideServiceDurationMinutes != null`, zobrazit vedle inputu ikonu ⚠️. Klik na ikonu → reset (`onResetServiceDuration(stopId)`).
+- [ ] **H.3** CSS styly pro inline input u zastávky + override indikátor.
+- [ ] **H.4** `PlanningTimeline.tsx` — stejná logika jako H.1–H.3.
+- [ ] **H.5** Props: přidat `onUpdateServiceDuration` a `onResetServiceDuration` do obou timeline komponent.
+
+### Fáze I: Frontend — handlery v PlanningInbox + Planner
+
+- [ ] **I.1** `PlanningInbox.tsx` — implementovat:
+  - `handleUpdateTravelDuration(stopId, minutes)` — nastaví `overrideTravelDurationMinutes` na daném stopu, spustí přepočet shora dolů.
+  - `handleResetTravelDuration(stopId)` — nastaví `overrideTravelDurationMinutes = null`, spustí přepočet.
+  - `handleUpdateServiceDuration(stopId, minutes)` — nastaví `overrideServiceDurationMinutes`, spustí přepočet.
+  - `handleResetServiceDuration(stopId)` — nastaví `overrideServiceDurationMinutes = null`, spustí přepočet.
+- [ ] **I.2** Předat všechny 4 handlery jako props do `RouteDetailTimeline` a `PlanningTimeline`.
+- [ ] **I.3** `triggerRecalculate` — při budování `RecalcStopInput[]` zahrnout override pole z aktuálních route stops.
+- [ ] **I.4** `autoSaveFn` — v `SaveRouteRequest` zahrnout override pole pro každý stop.
+- [ ] **I.5** `Planner.tsx` — implementovat totožné handlery (I.1–I.4) pro Planner page.
+- [ ] **I.6** Ověřit, že DnD reorder zachovává override hodnoty na přesunutých stopech.
+
+### Fáze J: Frontend — překlady
+
+- [ ] **J.1** `{cs,en,sk}/planner.json` — přidat klíče:
+  - `override_reset_tooltip` — „Vrátit na vypočítanou hodnotu"
+  - `override_indicator_tooltip` — „Ručně upraveno"
+  - `travel_duration_label` — „Doba jízdy"
+  - `service_duration_label` — „Doba servisu"
+
+### Fáze K: Finální ověření
+
+- [ ] **K.1** `cargo check` — backend kompiluje.
+- [ ] **K.2** `cargo test` — všechny testy prochází.
+- [ ] **K.3** `tsc --noEmit` — frontend kompiluje (opravit test fixtures).
+- [ ] **K.4** Manuální QA:
+  - Vytvořit trasu se 3+ zastávkami.
+  - Kliknout na dobu jízdy v segmentu → změnit na vyšší hodnotu → ověřit přepočet ETA shora dolů.
+  - Ověřit ⚠️ ikonu u overridnutého segmentu.
+  - Kliknout na ⚠️ → ověřit reset na původní hodnotu.
+  - Kliknout na dobu servisu u zastávky → změnit → ověřit přepočet.
+  - Uložit trasu → reload → ověřit, že overrides přetrvají.
+  - Ověřit identické chování v Planner.
+  - Ověřit ArrivalBufferBar v Planner.
+  - DnD reorder zastávky s override → override se zachová.
+
+---
+
+## 10. Soubory dotčené změnami (inline editace)
+
+### Nové soubory
+- `apps/web/src/components/planner/ArrivalBufferBar.tsx` — sdílená komponenta
+- `apps/web/src/components/planner/ArrivalBufferBar.module.css` — styly
+
+### Změněné soubory — backend
+- `worker/migrations/001_initial_schema.sql` — override sloupce v `route_stops`
+- `worker/src/types/route.rs` — override pole ve struct
+- `worker/src/db/queries/route.rs` — override v SELECT/INSERT/UPDATE
+- `worker/src/handlers/route.rs` — override v recalculate/save
+- `worker/src/services/sequential_schedule.rs` — respektovat overrides při scheduling
+
+### Změněné soubory — shared types
+- `packages/shared-types/src/route.ts` — override pole
+
+### Změněné soubory — frontend
+- `apps/web/src/services/routeService.ts` — override v `SavedRouteStop`, `RecalcStopInput`
+- `apps/web/src/pages/PlanningInbox.tsx` — odebrat lokální `ArrivalBufferBar`, přidat override handlery
+- `apps/web/src/pages/PlanningInbox.module.css` — odebrat buffer styly (přesunuty do sdílené komponenty)
+- `apps/web/src/pages/Planner.tsx` — přidat buffer state + `ArrivalBufferBar` + override handlery
+- `apps/web/src/components/planner/RouteDetailTimeline.tsx` — inline editace duration + override indikátory
+- `apps/web/src/components/planner/RouteDetailTimeline.module.css` — styly pro inline editing
+- `apps/web/src/components/planner/PlanningTimeline.tsx` — inline editace duration + override indikátory
+- `apps/web/src/components/planner/PlanningTimeline.module.css` — styly pro inline editing
+- `apps/web/src/components/planner/index.ts` — export `ArrivalBufferBar`
+- `apps/web/public/locales/{cs,en,sk}/planner.json` — nové překlady
+
+---
+
+## 7. Soubory dotčené změnami (fáze 1–13, buffer přesun — HOTOVO)
 
 ### Smazané soubory
 - `worker/migrations/004_add_crew_buffer.sql`
@@ -346,10 +562,8 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR:
 - `worker/src/db/queries/crew.rs` — odebrat buffer z dotazů
 - `worker/src/db/queries/route.rs` — přidat buffer do upsert/select
 - `worker/src/db/queries/settings.rs` — číst/zapisovat `last_arrival_buffer_*`
-- `worker/src/handlers/route.rs` — `handle_save_route` ukládá buffer + aktualizuje user prefs; `SaveRouteRequest` rozšířen
+- `worker/src/handlers/route.rs` — `handle_save_route` ukládá buffer + aktualizuje user prefs
 - `worker/src/handlers/jobs.rs` — nečíst buffer z crew, přijmout v payloadu
-- `worker/src/services/vrp/config.rs` — beze změny (buffer stále přichází zvenku)
-- `worker/src/services/sequential_schedule.rs` — beze změny (buffer stále přichází zvenku)
 
 ### Změněné soubory — shared types
 - `packages/shared-types/src/route.ts` — buffer pole
@@ -360,12 +574,9 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR:
 - `apps/web/src/services/crewService.ts` — odebrat buffer z `Crew`
 - `apps/web/src/services/settingsService.ts` — buffer preference
 - `apps/web/src/pages/Settings.tsx` — odebrat buffer z `CrewForm`
-- `apps/web/src/pages/PlanningInbox.tsx` — buffer stav, flow, props
-- `apps/web/src/components/planner/RouteDetailTimeline.tsx` — zobrazení + inline editor
-- `apps/web/src/components/planner/RouteDetailTimeline.module.css` — styly
-- `apps/web/public/locales/cs/planner.json` — nové překlady
-- `apps/web/public/locales/en/planner.json` — nové překlady
-- `apps/web/public/locales/sk/planner.json` — nové překlady
-- `apps/web/public/locales/cs/settings.json` — odebrat crew buffer klíče
-- `apps/web/public/locales/en/settings.json` — odebrat crew buffer klíče
-- `apps/web/public/locales/sk/settings.json` — odebrat crew buffer klíče
+- `apps/web/src/pages/PlanningInbox.tsx` — buffer stav, flow, `ArrivalBufferBar`
+- `apps/web/src/components/planner/RouteDetailTimeline.tsx` — (buffer odebrán, přesunut do PlanningInbox)
+- `apps/web/src/components/planner/PlanningTimeline.tsx` — (buffer odebrán, přesunut do PlanningInbox)
+- `apps/web/src/components/common/TimeInput.tsx` — dropdown time picker
+- `apps/web/public/locales/{cs,en,sk}/planner.json` — nové překlady buffer
+- `apps/web/public/locales/{cs,en,sk}/settings.json` — odebrat crew buffer klíče
