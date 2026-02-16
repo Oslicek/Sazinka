@@ -278,8 +278,8 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR:
 
 ### Fáze 7: TypeScript shared types
 
-- [ ] **7.1** `packages/shared-types/src/route.ts` — přidat `arrivalBufferPercent: number` a `arrivalBufferFixedMinutes: number` do `Route`.
-- [ ] **7.2** `packages/shared-types/src/settings.ts` — přidat `lastArrivalBufferPercent: number` a `lastArrivalBufferFixedMinutes: number` do `UserPreferences`.
+- [x] **7.1** `packages/shared-types/src/route.ts` — přidáno `arrivalBufferPercent` a `arrivalBufferFixedMinutes` do `Route` ✅
+- [x] **7.2** `packages/shared-types/src/settings.ts` — přidáno `lastArrivalBufferPercent` a `lastArrivalBufferFixedMinutes` do `UserPreferences` ✅
 
 ### Fáze 8: Frontend services
 

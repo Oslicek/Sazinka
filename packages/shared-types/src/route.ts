@@ -11,6 +11,8 @@ export interface Route {
   totalDistanceKm?: number;
   totalDurationMinutes?: number;
   optimizationScore?: number;
+  arrivalBufferPercent: number;
+  arrivalBufferFixedMinutes: number;
   createdAt: string;
   updatedAt: string;
 }

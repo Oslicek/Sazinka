@@ -101,6 +101,10 @@ export interface UserPreferences {
   defaultDepotId: string | null;
   /** BCP-47 locale code (e.g. "en", "cs", "en-GB"). */
   locale: string;
+  /** Last-used arrival buffer percentage (auto-filled into new routes). */
+  lastArrivalBufferPercent: number;
+  /** Last-used fixed arrival buffer in minutes (auto-filled into new routes). */
+  lastArrivalBufferFixedMinutes: number;
 }
 
 export interface UserSettings {
