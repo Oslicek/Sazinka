@@ -299,15 +299,10 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR:
 
 ### Fáze 10: Frontend — RouteDetailTimeline (zobrazení a editace)
 
-- [ ] **10.1** Přidat props do `RouteDetailTimelineProps`: `arrivalBufferPercent?: number`, `arrivalBufferFixedMinutes?: number`, `onBufferChange?: (percent: number, fixedMinutes: number) => void`.
-- [ ] **10.2** Zobrazit buffer info drobným písmem pod depot departure: „Rezerva: {pct} % + {fixed} min ✏️". Pokud `onBufferChange` chybí, nezobrazovat ✏️.
-- [ ] **10.3** Implementovat inline editor:
-  - Kliknutí na ✏️ přepne do edit módu.
-  - Dva malé inputy (`number`): procento a fixní minuty.
-  - ✓ potvrdí (zavolá `onBufferChange`) a zavře editor.
-  - ✕ zruší a zavře editor.
-  - Enter potvrdí, Escape zruší.
-- [ ] **10.4** Přidat CSS styly do `RouteDetailTimeline.module.css`: `.bufferInfo`, `.bufferText`, `.bufferEditBtn`, `.bufferEditor`, `.bufferInput`.
+- [x] **10.1** Props `arrivalBufferPercent`, `arrivalBufferFixedMinutes`, `onBufferChange` přidány ✅
+- [x] **10.2** Buffer info zobrazeno drobným písmem pod depot, kliknutím se rozbalí editor ✅
+- [x] **10.3** Inline editor: dva number inputy, Uložit/Zrušit tlačítka ✅
+- [x] **10.4** CSS styly `.bufferBar`, `.bufferEdit`, `.bufferEditRow`, `.bufferEditActions` ✅
 - [ ] **10.5** `tsc --noEmit`
 
 ### Fáze 11: Frontend — Settings crew form (odebrat buffer)
