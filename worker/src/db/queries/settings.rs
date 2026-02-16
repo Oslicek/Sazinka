@@ -39,7 +39,9 @@ pub async fn get_user_settings(pool: &PgPool, user_id: Uuid) -> Result<Option<Us
             break_enabled, break_duration_minutes,
             break_earliest_time, break_latest_time,
             break_min_km, break_max_km,
-            locale, company_locale,
+            locale,
+            last_arrival_buffer_percent, last_arrival_buffer_fixed_minutes,
+            company_locale,
             email_confirmation_edited_at, email_reminder_edited_at, email_third_edited_at,
             created_at, updated_at
         FROM users
@@ -211,6 +213,31 @@ pub async fn update_preferences(
     .bind(req.default_crew_id)
     .bind(req.default_depot_id)
     .bind(&req.locale)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Update user's last-used arrival buffer preferences (called after saving a route)
+pub async fn update_last_arrival_buffer(
+    pool: &PgPool,
+    user_id: Uuid,
+    buffer_percent: f64,
+    buffer_fixed_minutes: f64,
+) -> Result<()> {
+    sqlx::query(
+        r#"
+        UPDATE users SET
+            last_arrival_buffer_percent = $2,
+            last_arrival_buffer_fixed_minutes = $3,
+            updated_at = NOW()
+        WHERE id = $1
+        "#
+    )
+    .bind(user_id)
+    .bind(buffer_percent)
+    .bind(buffer_fixed_minutes)
     .execute(pool)
     .await?;
 

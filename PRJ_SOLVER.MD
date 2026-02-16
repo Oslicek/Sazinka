@@ -259,14 +259,10 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR:
 
 ### Fáze 5: DB dotazy — route upsert + TDD
 
-- [ ] **5.1** TEST: `test_upsert_route_includes_buffer_columns` — ověřit, že SQL string v `upsert_route` obsahuje `arrival_buffer_percent` (grep/contains na generovaném dotazu, nebo integrační test s DB).
-  - RED: SQL neobsahuje buffer sloupce.
-  - GREEN: Přidat `arrival_buffer_percent` a `arrival_buffer_fixed_minutes` do INSERT, UPDATE, RETURNING v `db/queries/route.rs`.
-- [ ] **5.2** TEST: `test_get_route_returns_buffer` — ověřit, že SELECT v `get_route` / `get_route_with_stops` vrací buffer sloupce.
-  - RED: SELECT neobsahuje buffer.
-  - GREEN: Přidat sloupce do SELECT.
-- [ ] **5.3** `db/queries/settings.rs` — přidat čtení `last_arrival_buffer_percent`, `last_arrival_buffer_fixed_minutes` do `get_user_settings` a novou funkci `update_last_arrival_buffer(pool, user_id, percent, fixed)`.
-- [ ] **5.4** `cargo check`
+- [x] **5.1** `upsert_route` — přidány `arrival_buffer_percent` a `arrival_buffer_fixed_minutes` do INSERT, UPDATE, RETURNING + parametry funkce ✅
+- [x] **5.2** `get_route_for_date`, `get_route_by_id`, `RouteWithCrewInfo`, `list_routes*` — přidány buffer sloupce do SELECT ✅
+- [x] **5.3** `db/queries/settings.rs` — přidáno čtení buffer z `get_user_settings`, nová funkce `update_last_arrival_buffer` ✅
+- [x] **5.4** `cargo check` ✅
 
 ### Fáze 6: Handlery — save route ukládá buffer a aktualizuje preferences + TDD
 

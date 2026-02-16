@@ -765,7 +765,7 @@ pub async fn handle_save(
             &pool,
             user_id,
             payload.crew_id,
-            payload.depot_id, // depot_id from request
+            payload.depot_id,
             payload.date,
             RouteStatus::Draft.as_str(),
             Some(payload.total_distance_km),
@@ -773,6 +773,8 @@ pub async fn handle_save(
             Some(payload.optimization_score),
             payload.return_to_depot_distance_km,
             payload.return_to_depot_duration_minutes,
+            payload.arrival_buffer_percent,
+            payload.arrival_buffer_fixed_minutes,
         ).await {
             Ok(route) => {
                 // Delete existing stops

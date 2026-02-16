@@ -40,6 +40,7 @@ pub async fn get_route_for_date(
             id, user_id, crew_id, depot_id, date, status,
             total_distance_km, total_duration_minutes,
             optimization_score,
+            arrival_buffer_percent, arrival_buffer_fixed_minutes,
             return_to_depot_distance_km, return_to_depot_duration_minutes,
             created_at, updated_at
         FROM routes
@@ -66,6 +67,7 @@ pub async fn get_route_by_id(
             id, user_id, crew_id, depot_id, date, status,
             total_distance_km, total_duration_minutes,
             optimization_score,
+            arrival_buffer_percent, arrival_buffer_fixed_minutes,
             return_to_depot_distance_km, return_to_depot_duration_minutes,
             created_at, updated_at
         FROM routes
@@ -94,6 +96,8 @@ pub struct RouteWithCrewInfo {
     pub total_distance_km: Option<f64>,
     pub total_duration_minutes: Option<i32>,
     pub optimization_score: Option<i32>,
+    pub arrival_buffer_percent: f64,
+    pub arrival_buffer_fixed_minutes: f64,
     pub return_to_depot_distance_km: Option<f64>,
     pub return_to_depot_duration_minutes: Option<i32>,
     pub stops_count: Option<i64>,
@@ -120,6 +124,8 @@ pub async fn list_routes_for_date(
             r.total_distance_km,
             r.total_duration_minutes,
             r.optimization_score,
+            r.arrival_buffer_percent,
+            r.arrival_buffer_fixed_minutes,
             r.return_to_depot_distance_km,
             r.return_to_depot_duration_minutes,
             COUNT(rs.id) FILTER (WHERE rs.stop_type = 'customer') as stops_count,
@@ -154,17 +160,19 @@ pub async fn upsert_route(
     optimization_score: Option<i32>,
     return_to_depot_distance_km: Option<f64>,
     return_to_depot_duration_minutes: Option<i32>,
+    arrival_buffer_percent: f64,
+    arrival_buffer_fixed_minutes: f64,
 ) -> Result<Route> {
     // Two-step upsert to handle NULL crew_id (NULL != NULL in SQL unique index)
     let existing = if let Some(cid) = crew_id {
         sqlx::query_as::<_, Route>(
-            "SELECT id, user_id, crew_id, depot_id, date, status, total_distance_km, total_duration_minutes, optimization_score, return_to_depot_distance_km, return_to_depot_duration_minutes, created_at, updated_at FROM routes WHERE user_id = $1 AND date = $2 AND crew_id = $3"
+            "SELECT id, user_id, crew_id, depot_id, date, status, total_distance_km, total_duration_minutes, optimization_score, arrival_buffer_percent, arrival_buffer_fixed_minutes, return_to_depot_distance_km, return_to_depot_duration_minutes, created_at, updated_at FROM routes WHERE user_id = $1 AND date = $2 AND crew_id = $3"
         )
         .bind(user_id).bind(date).bind(cid)
         .fetch_optional(pool).await?
     } else {
         sqlx::query_as::<_, Route>(
-            "SELECT id, user_id, crew_id, depot_id, date, status, total_distance_km, total_duration_minutes, optimization_score, return_to_depot_distance_km, return_to_depot_duration_minutes, created_at, updated_at FROM routes WHERE user_id = $1 AND date = $2 AND crew_id IS NULL"
+            "SELECT id, user_id, crew_id, depot_id, date, status, total_distance_km, total_duration_minutes, optimization_score, arrival_buffer_percent, arrival_buffer_fixed_minutes, return_to_depot_distance_km, return_to_depot_duration_minutes, created_at, updated_at FROM routes WHERE user_id = $1 AND date = $2 AND crew_id IS NULL"
         )
         .bind(user_id).bind(date)
         .fetch_optional(pool).await?
@@ -181,12 +189,15 @@ pub async fn upsert_route(
                 optimization_score = $5,
                 return_to_depot_distance_km = $6,
                 return_to_depot_duration_minutes = $7,
+                arrival_buffer_percent = $8,
+                arrival_buffer_fixed_minutes = $9,
                 updated_at = NOW()
             WHERE id = $1
             RETURNING
                 id, user_id, crew_id, depot_id, date, status,
                 total_distance_km, total_duration_minutes,
                 optimization_score,
+                arrival_buffer_percent, arrival_buffer_fixed_minutes,
                 return_to_depot_distance_km, return_to_depot_duration_minutes,
                 created_at, updated_at
             "#
@@ -198,6 +209,8 @@ pub async fn upsert_route(
         .bind(optimization_score)
         .bind(return_to_depot_distance_km)
         .bind(return_to_depot_duration_minutes)
+        .bind(arrival_buffer_percent)
+        .bind(arrival_buffer_fixed_minutes)
         .fetch_one(pool).await?
     } else {
         // Insert new route
@@ -207,14 +220,16 @@ pub async fn upsert_route(
                 id, user_id, crew_id, depot_id, date, status,
                 total_distance_km, total_duration_minutes,
                 optimization_score,
+                arrival_buffer_percent, arrival_buffer_fixed_minutes,
                 return_to_depot_distance_km, return_to_depot_duration_minutes,
                 created_at, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6::route_status, $7, $8, $9, $10, $11, NOW(), NOW())
+            VALUES ($1, $2, $3, $4, $5, $6::route_status, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())
             RETURNING
                 id, user_id, crew_id, depot_id, date, status,
                 total_distance_km, total_duration_minutes,
                 optimization_score,
+                arrival_buffer_percent, arrival_buffer_fixed_minutes,
                 return_to_depot_distance_km, return_to_depot_duration_minutes,
                 created_at, updated_at
             "#
@@ -228,6 +243,8 @@ pub async fn upsert_route(
         .bind(total_distance_km)
         .bind(total_duration_minutes)
         .bind(optimization_score)
+        .bind(arrival_buffer_percent)
+        .bind(arrival_buffer_fixed_minutes)
         .bind(return_to_depot_distance_km)
         .bind(return_to_depot_duration_minutes)
         .fetch_one(pool).await?
@@ -393,6 +410,8 @@ pub async fn list_routes(
             r.total_distance_km,
             r.total_duration_minutes,
             r.optimization_score,
+            r.arrival_buffer_percent,
+            r.arrival_buffer_fixed_minutes,
             r.return_to_depot_distance_km,
             r.return_to_depot_duration_minutes,
             COUNT(rs.id) FILTER (WHERE rs.stop_type = 'customer') as stops_count,
