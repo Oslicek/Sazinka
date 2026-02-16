@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { formatDate } from '@/i18n/formatters';
+import { updateCustomer } from '@/services/customerService';
 import { SlotSuggestions, type SlotSuggestion } from './SlotSuggestions';
 import styles from './CandidateDetail.module.css';
 
@@ -33,11 +34,20 @@ export interface CandidateDetailData {
 
 export type SnoozeDuration = 1 | 7 | 14 | 30;
 
+export interface CustomerUpdateFields {
+  customerId: string;
+  phone?: string;
+  email?: string;
+  street?: string;
+  city?: string;
+  postalCode?: string;
+}
+
 interface CandidateDetailProps {
   candidate: CandidateDetailData | null;
   onSchedule?: (candidateId: string, slot: SlotSuggestion) => void;
   onSnooze?: (candidateId: string, days: SnoozeDuration) => void;
-  onFixAddress?: (candidateId: string) => void;
+  onUpdateCustomer?: (fields: CustomerUpdateFields) => Promise<void>;
   isLoading?: boolean;
   /** Add candidate to the route. Second arg is the service duration chosen by the dispatcher. */
   onAddToRoute?: (candidateId: string, serviceDurationMinutes?: number) => void;
@@ -55,7 +65,7 @@ export function CandidateDetail({
   candidate,
   onSchedule,
   onSnooze,
-  onFixAddress,
+  onUpdateCustomer,
   isLoading,
   onAddToRoute,
   onRemoveFromRoute,
@@ -80,6 +90,66 @@ export function CandidateDetail({
     const saved = localStorage.getItem('sazinka.snooze.defaultDays');
     return (saved ? parseInt(saved) : 7) as SnoozeDuration;
   });
+
+  // Inline editing states
+  const [editingContact, setEditingContact] = useState(false);
+  const [editPhone, setEditPhone] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editingAddress, setEditingAddress] = useState(false);
+  const [editStreet, setEditStreet] = useState('');
+  const [editCity, setEditCity] = useState('');
+  const [editPostalCode, setEditPostalCode] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  const startEditContact = useCallback(() => {
+    if (!candidate) return;
+    setEditPhone(candidate.phone ?? '');
+    setEditEmail(candidate.email ?? '');
+    setEditingContact(true);
+  }, [candidate]);
+
+  const startEditAddress = useCallback(() => {
+    if (!candidate) return;
+    setEditStreet(candidate.street ?? '');
+    setEditCity(candidate.city ?? '');
+    setEditPostalCode(candidate.postalCode ?? '');
+    setEditingAddress(true);
+  }, [candidate]);
+
+  const saveContact = useCallback(async () => {
+    if (!candidate || !onUpdateCustomer) return;
+    setIsSaving(true);
+    try {
+      await onUpdateCustomer({
+        customerId: candidate.customerId,
+        phone: editPhone,
+        email: editEmail,
+      });
+      setEditingContact(false);
+    } catch {
+      // Error is handled by the parent
+    } finally {
+      setIsSaving(false);
+    }
+  }, [candidate, onUpdateCustomer, editPhone, editEmail]);
+
+  const saveAddress = useCallback(async () => {
+    if (!candidate || !onUpdateCustomer) return;
+    setIsSaving(true);
+    try {
+      await onUpdateCustomer({
+        customerId: candidate.customerId,
+        street: editStreet,
+        city: editCity,
+        postalCode: editPostalCode,
+      });
+      setEditingAddress(false);
+    } catch {
+      // Error is handled by the parent
+    } finally {
+      setIsSaving(false);
+    }
+  }, [candidate, onUpdateCustomer, editStreet, editCity, editPostalCode]);
 
   // Helper: add minutes to time string "HH:MM" → "HH:MM"
   const addMinutesToTime = (time: string, minutes: number): string => {
@@ -121,8 +191,9 @@ export function CandidateDetail({
     }
     setSchedNotes('');
     setShowSnoozeDropdown(false);
-    // Reset service duration to default when candidate changes
     setServiceDurationMinutes(defaultServiceDurationMinutes);
+    setEditingContact(false);
+    setEditingAddress(false);
   }, [candidate?.id, routeDate, defaultServiceDurationMinutes]);
   if (isLoading) {
     return (
@@ -336,51 +407,85 @@ export function CandidateDetail({
       <section className={styles.section}>
         <div className={styles.sectionHeader}>
           <h4 className={styles.sectionTitle}>{t('candidate_contact')}</h4>
-          {onFixAddress && (
+          {onUpdateCustomer && !editingContact && (
             <button
               type="button"
               className={styles.sectionEditButton}
-              onClick={() => onFixAddress(candidate.customerId)}
-              title={t('candidate_fix_address')}
-              aria-label={t('candidate_fix_address')}
+              onClick={startEditContact}
+              title={t('candidate_edit_contact')}
+              aria-label={t('candidate_edit_contact')}
             >
               ✏️
             </button>
           )}
         </div>
-        {candidate.phone ? (
-          <div className={styles.contactItem}>
-            <a href={`tel:${candidate.phone}`} className={styles.phoneLink}>
-              📞 {formatPhoneDisplay(candidate.phone)}
-            </a>
-            <button
-              type="button"
-              className={styles.copyButton}
-              onClick={() => navigator.clipboard.writeText(formatPhoneDisplay(candidate.phone!)).catch(console.error)}
-              title={t('candidate_copy')}
-            >
-              📋
-            </button>
+        {editingContact ? (
+          <div className={styles.inlineEditForm}>
+            <label className={styles.inlineEditLabel}>
+              📞 {t('candidate_phone')}
+              <input
+                type="tel"
+                className={styles.inlineEditInput}
+                value={editPhone}
+                onChange={(e) => setEditPhone(e.target.value)}
+                autoFocus
+              />
+            </label>
+            <label className={styles.inlineEditLabel}>
+              ✉️ {t('candidate_email')}
+              <input
+                type="email"
+                className={styles.inlineEditInput}
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
+              />
+            </label>
+            <div className={styles.inlineEditActions}>
+              <button type="button" className={styles.inlineEditSave} onClick={saveContact} disabled={isSaving}>
+                {isSaving ? '⏳' : '✓'} {t('candidate_edit_save')}
+              </button>
+              <button type="button" className={styles.inlineEditCancel} onClick={() => setEditingContact(false)} disabled={isSaving}>
+                {t('candidate_edit_cancel')}
+              </button>
+            </div>
           </div>
         ) : (
-          <span className={styles.missingInfo}>📵 {t('candidate_missing_phone')}</span>
-        )}
-        {candidate.email ? (
-          <div className={styles.contactItem}>
-            <a href={`mailto:${candidate.email}`} className={styles.emailLink}>
-              ✉️ {candidate.email}
-            </a>
-            <button
-              type="button"
-              className={styles.copyButton}
-              onClick={() => navigator.clipboard.writeText(candidate.email!).catch(console.error)}
-              title={t('candidate_copy')}
-            >
-              📋
-            </button>
-          </div>
-        ) : (
-          <span className={styles.missingInfo}>✉️ {t('candidate_missing_email')}</span>
+          <>
+            {candidate.phone ? (
+              <div className={styles.contactItem}>
+                <a href={`tel:${candidate.phone}`} className={styles.phoneLink}>
+                  📞 {formatPhoneDisplay(candidate.phone)}
+                </a>
+                <button
+                  type="button"
+                  className={styles.copyButton}
+                  onClick={() => navigator.clipboard.writeText(formatPhoneDisplay(candidate.phone!)).catch(console.error)}
+                  title={t('candidate_copy')}
+                >
+                  📋
+                </button>
+              </div>
+            ) : (
+              <span className={styles.missingInfo}>📵 {t('candidate_missing_phone')}</span>
+            )}
+            {candidate.email ? (
+              <div className={styles.contactItem}>
+                <a href={`mailto:${candidate.email}`} className={styles.emailLink}>
+                  ✉️ {candidate.email}
+                </a>
+                <button
+                  type="button"
+                  className={styles.copyButton}
+                  onClick={() => navigator.clipboard.writeText(candidate.email!).catch(console.error)}
+                  title={t('candidate_copy')}
+                >
+                  📋
+                </button>
+              </div>
+            ) : (
+              <span className={styles.missingInfo}>✉️ {t('candidate_missing_email')}</span>
+            )}
+          </>
         )}
       </section>
 
@@ -388,30 +493,71 @@ export function CandidateDetail({
       <section className={styles.section}>
         <div className={styles.sectionHeader}>
           <h4 className={styles.sectionTitle}>{t('candidate_address')}</h4>
-          {onFixAddress && (
+          {onUpdateCustomer && !editingAddress && (
             <button
               type="button"
               className={styles.sectionEditButton}
-              onClick={() => onFixAddress(candidate.customerId)}
-              title={t('candidate_fix_address')}
-              aria-label={t('candidate_fix_address')}
+              onClick={startEditAddress}
+              title={t('candidate_edit_address')}
+              aria-label={t('candidate_edit_address')}
             >
               ✏️
             </button>
           )}
         </div>
-        <div className={styles.addressRow}>
-          <div className={styles.addressText}>
-            <p className={styles.address}>{candidate.street}</p>
-            <p className={styles.address}>{candidate.city}</p>
-            <p className={styles.address}>{candidate.postalCode ? candidate.postalCode.replace(/\s/g, '').replace(/^(\d{3})(\d+)$/, '$1 $2') : ''}</p>
+        {editingAddress ? (
+          <div className={styles.inlineEditForm}>
+            <label className={styles.inlineEditLabel}>
+              {t('candidate_street')}
+              <input
+                type="text"
+                className={styles.inlineEditInput}
+                value={editStreet}
+                onChange={(e) => setEditStreet(e.target.value)}
+                autoFocus
+              />
+            </label>
+            <label className={styles.inlineEditLabel}>
+              {t('candidate_city')}
+              <input
+                type="text"
+                className={styles.inlineEditInput}
+                value={editCity}
+                onChange={(e) => setEditCity(e.target.value)}
+              />
+            </label>
+            <label className={styles.inlineEditLabel}>
+              {t('candidate_postal_code')}
+              <input
+                type="text"
+                className={styles.inlineEditInput}
+                value={editPostalCode}
+                onChange={(e) => setEditPostalCode(e.target.value)}
+              />
+            </label>
+            <div className={styles.inlineEditActions}>
+              <button type="button" className={styles.inlineEditSave} onClick={saveAddress} disabled={isSaving}>
+                {isSaving ? '⏳' : '✓'} {t('candidate_edit_save')}
+              </button>
+              <button type="button" className={styles.inlineEditCancel} onClick={() => setEditingAddress(false)} disabled={isSaving}>
+                {t('candidate_edit_cancel')}
+              </button>
+            </div>
           </div>
-          {candidate.hasCoordinates === false ? (
-            <span className={styles.addressNotLocated}>⚠ {t('candidate_geocode_error')}</span>
-          ) : candidate.hasCoordinates && (
-            <span className={styles.addressLocated}>✅ {t('candidate_address_located')}</span>
-          )}
-        </div>
+        ) : (
+          <div className={styles.addressRow}>
+            <div className={styles.addressText}>
+              <p className={styles.address}>{candidate.street}</p>
+              <p className={styles.address}>{candidate.city}</p>
+              <p className={styles.address}>{candidate.postalCode ? candidate.postalCode.replace(/\s/g, '').replace(/^(\d{3})(\d+)$/, '$1 $2') : ''}</p>
+            </div>
+            {candidate.hasCoordinates === false ? (
+              <span className={styles.addressNotLocated}>⚠ {t('candidate_geocode_error')}</span>
+            ) : candidate.hasCoordinates && (
+              <span className={styles.addressLocated}>✅ {t('candidate_address_located')}</span>
+            )}
+          </div>
+        )}
       </section>
 
       {/* Notes */}

@@ -68,6 +68,8 @@ import {
   type TriState,
 } from './planningInboxFilters';
 import { getMonthNames, getWeekdayNames } from '@/i18n/formatters';
+import { updateCustomer } from '../services/customerService';
+import type { CustomerUpdateFields } from '../components/planner/CandidateDetail';
 import styles from './PlanningInbox.module.css';
 
 /** Parse "HH:MM" or "HH:MM:SS" to total minutes from midnight. */
@@ -1312,9 +1314,22 @@ export function PlanningInbox() {
     }
   }, [candidates, selectNextCandidate]);
 
-  const handleFixAddress = useCallback((candidateId: string) => {
-    navigate({ to: '/customers/$customerId', params: { customerId: candidateId } });
-  }, [navigate]);
+  const handleUpdateCustomer = useCallback(async (fields: CustomerUpdateFields) => {
+    await updateCustomer({ id: fields.customerId, phone: fields.phone, email: fields.email, street: fields.street, city: fields.city, postalCode: fields.postalCode });
+    setCandidates((prev) =>
+      prev.map((c) => {
+        if (c.customerId !== fields.customerId) return c;
+        return {
+          ...c,
+          ...(fields.phone !== undefined && { customerPhone: fields.phone }),
+          ...(fields.email !== undefined && { customerEmail: fields.email }),
+          ...(fields.street !== undefined && { customerStreet: fields.street }),
+          ...(fields.city !== undefined && { customerCity: fields.city }),
+          ...(fields.postalCode !== undefined && { customerPostalCode: fields.postalCode }),
+        };
+      })
+    );
+  }, []);
 
   // Route building: toggle checkbox selection
   const handleSelectionChange = useCallback((id: string, selected: boolean) => {
@@ -1903,12 +1918,6 @@ export function PlanningInbox() {
     }
   }, [selectedCandidateId, handleSnooze]);
 
-  const handleFixAddressShortcut = useCallback(() => {
-    if (selectedCandidateId) {
-      handleFixAddress(selectedCandidateId);
-    }
-  }, [selectedCandidateId, handleFixAddress]);
-
   const handleSearch = useCallback(() => {
     searchInputRef.current?.focus();
   }, []);
@@ -1925,7 +1934,6 @@ export function PlanningInbox() {
     onSelectSlot: handleSelectSlot,
     onSchedule: handleScheduleShortcut,
     onSnooze: handleSnoozeShortcut,
-    onFixAddress: handleFixAddressShortcut,
     onSearch: handleSearch,
     onEscape: handleEscape,
     enabled: true,
@@ -2500,7 +2508,7 @@ export function PlanningInbox() {
           candidate={selectedCandidateDetail}
           onSchedule={handleSchedule}
           onSnooze={handleSnooze}
-          onFixAddress={handleFixAddress}
+          onUpdateCustomer={handleUpdateCustomer}
           isLoading={isCalculatingSlots}
           onAddToRoute={(candidateId, serviceDurationMinutes) =>
             handleAddToRoute(candidateId, serviceDurationMinutes)
