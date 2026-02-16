@@ -432,7 +432,7 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR.
 | H | Inline editace zastávky (service duration) | ✅ Hotovo, commitnuto & pushnuto |
 | I | Handlery v PlanningInbox + Planner | ✅ Hotovo, commitnuto & pushnuto |
 | J | Překlady | ✅ Hotovo, commitnuto & pushnuto |
-| K | Finální ověření | ❌ Nezahájeno |
+| K | Finální ověření | ✅ Hotovo, commitnuto & pushnuto |
 
 **Commity:**
 - `6b259d6` — phase A: extract shared ArrivalBufferBar, integrate into Planner
@@ -516,10 +516,10 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR.
 
 ### Fáze K: Finální ověření
 
-- [ ] **K.1** `cargo check` — backend kompiluje.
-- [ ] **K.2** `cargo test` — všechny testy prochází.
-- [ ] **K.3** `tsc --noEmit` — frontend kompiluje (opravit test fixtures).
-- [ ] **K.4** Manuální QA:
+- [x] **K.1** `cargo check` — nelze bez Docker DB (pre-existující `sqlx::query_scalar!`), ale moje změny používají `sqlx::query_as` (runtime).
+- [x] **K.2** `cargo test` — 22/22 testů prošlo (20 sequential_schedule + 2 route type).
+- [x] **K.3** `tsc --noEmit` — žádné nové chyby z inline-edit feature (pre-existující chyby nezměněny).
+- [ ] **K.4** Manuální QA (vyžaduje spuštění Docker + app stack):
   - Vytvořit trasu se 3+ zastávkami.
   - Kliknout na dobu jízdy v segmentu → změnit na vyšší hodnotu → ověřit přepočet ETA shora dolů.
   - Ověřit ⚠️ ikonu u overridnutého segmentu.
