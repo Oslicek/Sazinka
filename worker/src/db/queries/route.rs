@@ -26,6 +26,8 @@ pub struct SavedRouteStop {
     pub break_duration_minutes: Option<i32>,
     pub break_time_start: Option<NaiveTime>,
     pub service_duration_minutes: Option<i32>,
+    pub override_service_duration_minutes: Option<i32>,
+    pub override_travel_duration_minutes: Option<i32>,
 }
 
 /// Get route for a specific date and optional crew
@@ -261,6 +263,7 @@ pub async fn delete_route_stops(pool: &PgPool, route_id: Uuid) -> Result<()> {
 }
 
 /// Insert a route stop (supports both customer and break stops)
+#[allow(clippy::too_many_arguments)]
 pub async fn insert_route_stop(
     pool: &PgPool,
     route_id: Uuid,
@@ -277,6 +280,8 @@ pub async fn insert_route_stop(
     break_time_start: Option<NaiveTime>,
     status: Option<&str>,
     service_duration_minutes: Option<i32>,
+    override_service_duration_minutes: Option<i32>,
+    override_travel_duration_minutes: Option<i32>,
 ) -> Result<SavedRouteStop> {
     let stop = sqlx::query_as::<_, SavedRouteStop>(
         r#"
@@ -285,15 +290,17 @@ pub async fn insert_route_stop(
             stop_order, estimated_arrival, estimated_departure,
             distance_from_previous_km, duration_from_previous_minutes,
             status, stop_type, break_duration_minutes, break_time_start,
-            service_duration_minutes
+            service_duration_minutes,
+            override_service_duration_minutes, override_travel_duration_minutes
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, COALESCE($14, 'pending'), $11, $12, $13, $15)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, COALESCE($14, 'pending'), $11, $12, $13, $15, $16, $17)
         RETURNING
             id, route_id, customer_id, visit_id, revision_id,
             stop_order, estimated_arrival, estimated_departure,
             distance_from_previous_km, duration_from_previous_minutes,
             status, stop_type, break_duration_minutes, break_time_start,
-            service_duration_minutes
+            service_duration_minutes,
+            override_service_duration_minutes, override_travel_duration_minutes
         "#
     )
     .bind(Uuid::new_v4())
@@ -311,6 +318,8 @@ pub async fn insert_route_stop(
     .bind(break_time_start)
     .bind(status)
     .bind(service_duration_minutes)
+    .bind(override_service_duration_minutes)
+    .bind(override_travel_duration_minutes)
     .fetch_one(pool)
     .await?;
     
@@ -346,6 +355,8 @@ pub struct RouteStopWithInfo {
     pub break_duration_minutes: Option<i32>,
     pub break_time_start: Option<NaiveTime>,
     pub service_duration_minutes: Option<i32>,
+    pub override_service_duration_minutes: Option<i32>,
+    pub override_travel_duration_minutes: Option<i32>,
 }
 
 /// Get all stops for a route with customer info
@@ -373,7 +384,9 @@ pub async fn get_route_stops_with_info(
             rev.status::text as revision_status,
             rs.break_duration_minutes,
             rs.break_time_start,
-            rs.service_duration_minutes
+            rs.service_duration_minutes,
+            rs.override_service_duration_minutes,
+            rs.override_travel_duration_minutes
         FROM route_stops rs
         LEFT JOIN customers c ON rs.customer_id = c.id
         LEFT JOIN revisions rev ON rs.revision_id = rev.id

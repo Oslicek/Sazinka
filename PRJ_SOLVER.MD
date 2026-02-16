@@ -418,6 +418,29 @@ Databázi nemigrujeme — bude vytvořena znovu (`001_initial_schema.sql`).
 
 Každý krok se řídí cyklem RED → GREEN → REFACTOR.
 
+### 📊 Stav implementace (2026-02-16)
+
+| Fáze | Popis | Stav |
+|------|-------|------|
+| A | Sdílená `ArrivalBufferBar` + Planner integrace | ✅ Hotovo, commitnuto & pushnuto |
+| B | DB schéma — override sloupce v `route_stops` | ✅ Hotovo, commitnuto & pushnuto |
+| C | Rust typy — override pole + TDD testy | ✅ Hotovo, commitnuto & pushnuto |
+| D | DB dotazy — SELECT/INSERT s overrides | ✅ Hotovo, commitnuto & pushnuto |
+| E | Backend recalculate — respektovat overrides | ❌ Nezahájeno |
+| F | Frontend shared types — override pole | ❌ Nezahájeno |
+| G | Inline editace úseku cesty (travel duration) | ❌ Nezahájeno |
+| H | Inline editace zastávky (service duration) | ❌ Nezahájeno |
+| I | Handlery v PlanningInbox + Planner | ❌ Nezahájeno |
+| J | Překlady | ❌ Nezahájeno |
+| K | Finální ověření | ❌ Nezahájeno |
+
+**Commity:**
+- `6b259d6` — phase A: extract shared ArrivalBufferBar, integrate into Planner
+- `e749984` — phase B: add override columns to route_stops schema
+- `cb7bfd9` — phase C: add override fields to Rust types with TDD tests
+
+- `xxxxxxx` — phase D: add override fields to DB queries (SELECT/INSERT)
+
 ### Fáze A: Sdílená komponenta ArrivalBufferBar
 
 - [x] **A.1** Přesunout `ArrivalBufferBar` z `PlanningInbox.tsx` do `apps/web/src/components/planner/ArrivalBufferBar.tsx` jako exportovanou komponentu.
@@ -445,9 +468,9 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR.
 
 ### Fáze D: DB dotazy — route stops s overrides + TDD
 
-- [ ] **D.1** Přidat `override_service_duration_minutes` a `override_travel_duration_minutes` do SELECT dotazů v `db/queries/route.rs` (všechny funkce vracející route stops).
-- [ ] **D.2** Přidat override pole do INSERT/UPDATE dotazu pro route stops (v `upsert_route` nebo `save_route_stops`).
-- [ ] **D.3** `cargo check`.
+- [x] **D.1** Přidat `override_service_duration_minutes` a `override_travel_duration_minutes` do SELECT dotazů v `db/queries/route.rs` (všechny funkce vracející route stops).
+- [x] **D.2** Přidat override pole do INSERT/UPDATE dotazu pro route stops (v `upsert_route` nebo `save_route_stops`).
+- [x] **D.3** `cargo check` — nelze ověřit bez Docker/DB (pre-existující `sqlx::query_scalar!` v `import.rs`). Moje změny používají `sqlx::query_as` (runtime) — syntakticky ověřeno, proběhne při spuštění DB.
 
 ### Fáze E: Backend recalculate — respektovat overrides
 

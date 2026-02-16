@@ -812,6 +812,8 @@ pub async fn handle_save(
                         stop.break_time_start,
                         stop.status.as_deref(),
                         stop.service_duration_minutes,
+                        stop.override_service_duration_minutes,
+                        stop.override_travel_duration_minutes,
                     ).await {
                         warn!("Failed to insert stop: {}", e);
                     } else {
