@@ -427,7 +427,7 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR.
 | C | Rust typy — override pole + TDD testy | ✅ Hotovo, commitnuto & pushnuto |
 | D | DB dotazy — SELECT/INSERT s overrides | ✅ Hotovo, commitnuto & pushnuto |
 | E | Backend recalculate — respektovat overrides | ✅ Hotovo, commitnuto & pushnuto |
-| F | Frontend shared types — override pole | ❌ Nezahájeno |
+| F | Frontend shared types — override pole | ✅ Hotovo, commitnuto & pushnuto |
 | G | Inline editace úseku cesty (travel duration) | ❌ Nezahájeno |
 | H | Inline editace zastávky (service duration) | ❌ Nezahájeno |
 | I | Handlery v PlanningInbox + Planner | ❌ Nezahájeno |
@@ -482,8 +482,8 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR.
 
 ### Fáze F: Frontend shared types — override pole
 
-- [ ] **F.1** `packages/shared-types/src/route.ts` — přidat `overrideServiceDurationMinutes?: number | null` a `overrideTravelDurationMinutes?: number | null` do `RouteStop` interface (pokud existuje).
-- [ ] **F.2** `apps/web/src/services/routeService.ts` — přidat override pole do `SavedRouteStop`, `RecalcStopInput`.
+- [x] **F.1** `packages/shared-types/src/route.ts` — přidáno do `RouteStop` a `PlannedRouteStop`.
+- [x] **F.2** `apps/web/src/services/routeService.ts` — přidáno do `SavedRouteStop`, `SaveRouteStop`, `RecalcStopInput`.
 
 ### Fáze G: Frontend — inline editace úseku cesty (travel duration) + TDD
 

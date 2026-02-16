@@ -48,6 +48,8 @@ export interface RouteStop {
   distanceFromPreviousKm?: number;
   durationFromPreviousMinutes?: number;
   serviceDurationMinutes: number;
+  overrideServiceDurationMinutes?: number | null;
+  overrideTravelDurationMinutes?: number | null;
   status: StopStatus;
   actualArrival?: string;
   actualDeparture?: string;
@@ -153,4 +155,8 @@ export interface PlannedRouteStop {
   distanceFromPreviousKm?: number;
   /** Duration from previous location in minutes (Valhalla matrix based) */
   durationFromPreviousMinutes?: number;
+  /** Manual override for service duration (replaces calculated/agreed value) */
+  overrideServiceDurationMinutes?: number | null;
+  /** Manual override for travel duration from previous stop (replaces matrix value) */
+  overrideTravelDurationMinutes?: number | null;
 }

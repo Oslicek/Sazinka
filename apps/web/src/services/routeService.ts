@@ -37,6 +37,10 @@ export interface SaveRouteStop {
   status?: string;
   /** Per-stop service duration in minutes. If omitted, global default is used. */
   serviceDurationMinutes?: number;
+  /** Manual override for service duration */
+  overrideServiceDurationMinutes?: number | null;
+  /** Manual override for travel duration */
+  overrideTravelDurationMinutes?: number | null;
 }
 
 export interface SaveRouteRequest {
@@ -106,6 +110,10 @@ export interface SavedRouteStop {
   breakTimeStart?: string | null; // HH:MM format
   /** Per-stop service duration in minutes */
   serviceDurationMinutes?: number | null;
+  /** Manual override for service duration */
+  overrideServiceDurationMinutes?: number | null;
+  /** Manual override for travel duration */
+  overrideTravelDurationMinutes?: number | null;
 }
 
 export interface GetRouteResponse {
@@ -311,6 +319,10 @@ export interface RecalcStopInput {
   scheduledTimeEnd?: string | null;
   serviceDurationMinutes?: number | null;
   breakDurationMinutes?: number | null;
+  /** Manual override for service duration */
+  overrideServiceDurationMinutes?: number | null;
+  /** Manual override for travel duration */
+  overrideTravelDurationMinutes?: number | null;
   /** Passthrough fields returned unchanged */
   id?: string;
   customerId?: string;
