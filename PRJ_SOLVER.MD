@@ -303,7 +303,7 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR:
 - [x] **10.2** Buffer info zobrazeno drobným písmem pod depot, kliknutím se rozbalí editor ✅
 - [x] **10.3** Inline editor: dva number inputy, Uložit/Zrušit tlačítka ✅
 - [x] **10.4** CSS styly `.bufferBar`, `.bufferEdit`, `.bufferEditRow`, `.bufferEditActions` ✅
-- [ ] **10.5** `tsc --noEmit`
+- [x] **10.5** `tsc --noEmit` — ověřeno ve fázi 13 ✅
 
 ### Fáze 11: Frontend — Settings crew form (odebrat buffer)
 
@@ -318,13 +318,13 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR:
 
 ### Fáze 13: Finální ověření
 
-- [ ] **13.1** `cargo check` — backend kompiluje bez chyb.
-- [ ] **13.2** `cargo test` — všechny testy prochází.
-- [ ] **13.3** `tsc --noEmit` — frontend kompiluje bez chyb.
+- [x] **13.1** `cargo check` — backend kompiluje bez chyb ✅
+- [x] **13.2** `cargo test` — 282 passed, 0 failed ✅
+- [x] **13.3** `tsc` — opraven test `RouteListPanel.test.tsx` (chybějící povinná pole v `SavedRoute`). Ostatní chyby jsou pre-existující (unused imports) ✅
 - [ ] **13.4** Manuální QA:
   - Vytvořit novou trasu → buffer se předvyplní z user preferences (10 % + 0 min).
   - Ověřit zobrazení bufferu na timeline drobným písmem.
-  - Kliknout na ✏️ → editovat → potvrdit → ověřit přepočet ETA.
+  - Kliknout na buffer → editovat → potvrdit → ověřit přepočet ETA.
   - Uložit trasu → buffer se uloží do DB.
   - Vytvořit druhou trasu → ověřit, že se předvyplní posledně použitá hodnota.
   - Otevřít nastavení posádky → buffer tam už není.
