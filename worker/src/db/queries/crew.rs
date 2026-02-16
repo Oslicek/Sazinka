@@ -18,15 +18,12 @@ pub async fn create_crew(
     let working_end = request.working_hours_end
         .unwrap_or_else(|| NaiveTime::from_hms_opt(17, 0, 0).unwrap());
 
-    let buffer_percent = request.arrival_buffer_percent.unwrap_or(10.0);
-    let buffer_fixed = request.arrival_buffer_fixed_minutes.unwrap_or(0.0);
-
     let crew = sqlx::query_as::<_, Crew>(
         r#"
-        INSERT INTO crews (user_id, name, home_depot_id, preferred_areas, working_hours_start, working_hours_end, arrival_buffer_percent, arrival_buffer_fixed_minutes)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        INSERT INTO crews (user_id, name, home_depot_id, preferred_areas, working_hours_start, working_hours_end)
+        VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING id, user_id, name, home_depot_id, preferred_areas, 
-                  working_hours_start, working_hours_end, is_active, arrival_buffer_percent, arrival_buffer_fixed_minutes, created_at, updated_at
+                  working_hours_start, working_hours_end, is_active, created_at, updated_at
         "#
     )
     .bind(user_id)
@@ -35,8 +32,6 @@ pub async fn create_crew(
     .bind(&request.preferred_areas)
     .bind(working_start)
     .bind(working_end)
-    .bind(buffer_percent)
-    .bind(buffer_fixed)
     .fetch_one(pool)
     .await?;
 
@@ -53,7 +48,7 @@ pub async fn list_crews(
         sqlx::query_as::<_, Crew>(
             r#"
             SELECT id, user_id, name, home_depot_id, preferred_areas,
-                   working_hours_start, working_hours_end, is_active, arrival_buffer_percent, arrival_buffer_fixed_minutes, created_at, updated_at
+                   working_hours_start, working_hours_end, is_active, created_at, updated_at
             FROM crews
             WHERE user_id = $1 AND is_active = true
             ORDER BY name ASC
@@ -66,7 +61,7 @@ pub async fn list_crews(
         sqlx::query_as::<_, Crew>(
             r#"
             SELECT id, user_id, name, home_depot_id, preferred_areas,
-                   working_hours_start, working_hours_end, is_active, arrival_buffer_percent, arrival_buffer_fixed_minutes, created_at, updated_at
+                   working_hours_start, working_hours_end, is_active, created_at, updated_at
             FROM crews
             WHERE user_id = $1
             ORDER BY name ASC
@@ -89,7 +84,7 @@ pub async fn get_crew(
     let crew = sqlx::query_as::<_, Crew>(
         r#"
         SELECT id, user_id, name, home_depot_id, preferred_areas,
-               working_hours_start, working_hours_end, is_active, arrival_buffer_percent, arrival_buffer_fixed_minutes, created_at, updated_at
+               working_hours_start, working_hours_end, is_active, created_at, updated_at
         FROM crews
         WHERE id = $1 AND user_id = $2
         "#
@@ -121,19 +116,16 @@ pub async fn update_crew(
     let working_start = request.working_hours_start.unwrap_or(existing.working_hours_start);
     let working_end = request.working_hours_end.unwrap_or(existing.working_hours_end);
     let is_active = request.is_active.unwrap_or(existing.is_active);
-    let buffer_percent = request.arrival_buffer_percent.unwrap_or(existing.arrival_buffer_percent);
-    let buffer_fixed = request.arrival_buffer_fixed_minutes.unwrap_or(existing.arrival_buffer_fixed_minutes);
 
     let crew = sqlx::query_as::<_, Crew>(
         r#"
         UPDATE crews
         SET name = $1, home_depot_id = $2, preferred_areas = $3,
             working_hours_start = $4, working_hours_end = $5, is_active = $6,
-            arrival_buffer_percent = $7, arrival_buffer_fixed_minutes = $8,
             updated_at = NOW()
-        WHERE id = $9 AND user_id = $10
+        WHERE id = $7 AND user_id = $8
         RETURNING id, user_id, name, home_depot_id, preferred_areas,
-                  working_hours_start, working_hours_end, is_active, arrival_buffer_percent, arrival_buffer_fixed_minutes, created_at, updated_at
+                  working_hours_start, working_hours_end, is_active, created_at, updated_at
         "#
     )
     .bind(&name)
@@ -142,8 +134,6 @@ pub async fn update_crew(
     .bind(working_start)
     .bind(working_end)
     .bind(is_active)
-    .bind(buffer_percent)
-    .bind(buffer_fixed)
     .bind(request.id)
     .bind(user_id)
     .fetch_optional(pool)

@@ -236,11 +236,10 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR:
 
 ### Fáze 2: Rust typy — crew (odebrat buffer) + testy
 
-- [ ] **2.1** TEST: `test_crew_no_buffer_fields` — `CreateCrewRequest` bez `arrivalBufferPercent` se deserializuje OK; serializovaný `Crew` neobsahuje klíč `arrivalBufferPercent`.
-  - RED: Test failuje, protože pole stále existují.
-  - GREEN: Odebrat `arrival_buffer_percent` a `arrival_buffer_fixed_minutes` ze struct `Crew`, `CreateCrewRequest`, `UpdateCrewRequest`. Smazat/upravit stávající buffer testy.
-- [ ] **2.2** `db/queries/crew.rs` — odebrat buffer sloupce z INSERT, UPDATE, SELECT dotazů.
-- [ ] **2.3** `cargo check` — očekáváme chyby v `handlers/route.rs` a `handlers/jobs.rs` (čtou crew buffer). Zakomentovat nebo dočasně defaultovat — opravíme ve fázi 5.
+- [x] **2.1** TEST: `test_crew_no_buffer_fields` — `CreateCrewRequest` bez `arrivalBufferPercent` se deserializuje OK; serializovaný `Crew` neobsahuje klíč `arrivalBufferPercent`. ✅
+  - GREEN: Odebráno ze struct `Crew`, `CreateCrewRequest`, `UpdateCrewRequest`. Testy přepsány.
+- [x] **2.2** `db/queries/crew.rs` — odebrány buffer sloupce z INSERT, UPDATE, SELECT dotazů ✅
+- [x] **2.3** `cargo check` — handlers dočasně defaultují buffer na 10.0/0.0 (TODO pro fázi 6) ✅
 
 ### Fáze 3: Rust typy — route (přidat buffer) + TDD
 

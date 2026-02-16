@@ -137,8 +137,8 @@ pub async fn handle_plan(
         let crew = if let Some(crew_id) = plan_request.crew_id {
             match queries::crew::get_crew(&pool, crew_id, user_id).await {
                 Ok(Some(c)) => {
-                    info!("Using crew '{}': working hours {:?}-{:?}, buffer {}% + {} min fixed",
-                        c.name, c.working_hours_start, c.working_hours_end, c.arrival_buffer_percent, c.arrival_buffer_fixed_minutes);
+                    info!("Using crew '{}': working hours {:?}-{:?}",
+                        c.name, c.working_hours_start, c.working_hours_end);
                     Some(c)
                 }
                 _ => {
@@ -150,8 +150,9 @@ pub async fn handle_plan(
             None
         };
 
-        let arrival_buffer_percent = crew.as_ref().map(|c| c.arrival_buffer_percent).unwrap_or(10.0);
-        let arrival_buffer_fixed_minutes = crew.as_ref().map(|c| c.arrival_buffer_fixed_minutes).unwrap_or(0.0);
+        // TODO(PRJ_SOLVER phase 6): read buffer from route/request instead of hardcoded defaults
+        let arrival_buffer_percent = 10.0_f64;
+        let arrival_buffer_fixed_minutes = 0.0_f64;
 
         // Load user settings for service duration, break config, and fallback working hours
         let (user_shift_start, user_shift_end, service_duration, break_config) = match queries::settings::get_user_settings(&pool, user_id).await {

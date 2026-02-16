@@ -251,8 +251,8 @@ impl JobProcessor {
         let crew = if let Some(crew_id) = request.crew_id {
             match queries::crew::get_crew(&self.pool, crew_id, user_id).await {
                 Ok(Some(c)) => {
-                    info!("Job: using crew '{}': working hours {:?}-{:?}, buffer {}%",
-                        c.name, c.working_hours_start, c.working_hours_end, c.arrival_buffer_percent);
+                    info!("Job: using crew '{}': working hours {:?}-{:?}",
+                        c.name, c.working_hours_start, c.working_hours_end);
                     Some(c)
                 }
                 _ => {
@@ -264,8 +264,9 @@ impl JobProcessor {
             None
         };
 
-        let arrival_buffer_percent = crew.as_ref().map(|c| c.arrival_buffer_percent).unwrap_or(10.0);
-        let arrival_buffer_fixed_minutes = crew.as_ref().map(|c| c.arrival_buffer_fixed_minutes).unwrap_or(0.0);
+        // TODO(PRJ_SOLVER phase 6): read buffer from request payload instead of hardcoded defaults
+        let arrival_buffer_percent = 10.0_f64;
+        let arrival_buffer_fixed_minutes = 0.0_f64;
         let solver = VrpSolver::new(SolverConfig::with_buffer(5, 500, arrival_buffer_percent, arrival_buffer_fixed_minutes));
         
         // Validate request
