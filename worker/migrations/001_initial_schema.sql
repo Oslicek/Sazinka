@@ -107,6 +107,8 @@ CREATE TABLE users (
     default_service_duration_minutes INTEGER DEFAULT 30,
     working_hours_start             TIME DEFAULT '08:00',
     working_hours_end               TIME DEFAULT '17:00',
+    last_arrival_buffer_percent     DOUBLE PRECISION NOT NULL DEFAULT 10.0,
+    last_arrival_buffer_fixed_minutes DOUBLE PRECISION NOT NULL DEFAULT 0.0,
     max_revisions_per_day           INTEGER DEFAULT 12,
     reminder_days_before            INTEGER[] DEFAULT '{30, 14, 7}',
     email_subject_template          TEXT,
@@ -368,16 +370,18 @@ CREATE INDEX idx_communications_user ON communications(user_id);
 -- Changes: added crew_id, UNIQUE changed to (user_id, date, crew_id)
 
 CREATE TABLE routes (
-    id                      UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id                 UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    crew_id                 UUID REFERENCES crews(id) ON DELETE SET NULL,
-    date                    DATE NOT NULL,
-    status                  route_status NOT NULL DEFAULT 'draft',
-    total_distance_km       DOUBLE PRECISION,
-    total_duration_minutes  INTEGER,
-    optimization_score      INTEGER,
-    created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id                              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id                         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    crew_id                         UUID REFERENCES crews(id) ON DELETE SET NULL,
+    date                            DATE NOT NULL,
+    status                          route_status NOT NULL DEFAULT 'draft',
+    total_distance_km               DOUBLE PRECISION,
+    total_duration_minutes          INTEGER,
+    optimization_score              INTEGER,
+    arrival_buffer_percent          DOUBLE PRECISION NOT NULL DEFAULT 10.0,
+    arrival_buffer_fixed_minutes    DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    created_at                      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at                      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- One route per user per crew per day

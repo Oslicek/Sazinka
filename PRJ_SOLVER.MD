@@ -1,467 +1,390 @@
-# Solver Architecture
+# PRJ_SOLVER — Rezerva příjezdu jako vlastnost trasy
 
-> **Last Updated:** 2026-02-13 (v0.19.0 — flexible time windows with service duration)
+## Stav: NÁVRH
 
-## Overview
+Tento dokument popisuje přesun parametrů „rezerva příjezdu" (arrival buffer) z posádky na trasu. Rezerva se stane vlastností konkrétní trasy uložené v DB, s automatickým předvyplněním z posledních použitých hodnot uživatele.
 
-Sazinka uses a **Vehicle Routing Problem with Time Windows (VRPTW)** solver to optimize daily routes for tradespeople (chimney sweeps, HVAC technicians, etc.). The solver takes a set of customer stops with optional time constraints and produces an ordered route that minimizes travel distance/time while respecting all scheduling constraints.
+---
 
-## Architecture
+## 1. Motivace
+
+Dnes je rezerva příjezdu (`arrival_buffer_percent`, `arrival_buffer_fixed_minutes`) nastavena na posádce. To je nepraktické:
+
+- Uživatel nemůže mít různé rezervy pro různé trasy téže posádky.
+- Změna na posádce zpětně ovlivní interpretaci všech starých tras.
+- Rezerva je logicky vlastnost konkrétní trasy, ne posádky.
+
+### Cílový stav
+
+- Rezerva příjezdu je **vlastnost trasy** (`routes` tabulka).
+- Při tvorbě nové trasy se automaticky použije **poslední použitá hodnota** daného uživatele (z `users` tabulky).
+- Na timeline detailu trasy je rezerva **viditelně uvedena drobným písmem** a **editovatelná** po rozkliknutí.
+- Z posádky se pole `arrival_buffer_percent` a `arrival_buffer_fixed_minutes` **odstraní**.
+
+---
+
+## 2. Inventář dotčených míst
+
+### 2.1 Odstranění z posádky (crew)
+
+| Soubor | Co odebrat |
+|---|---|
+| `worker/src/types/crew.rs` | Pole `arrival_buffer_percent` a `arrival_buffer_fixed_minutes` ze struct `Crew`, `CreateCrewRequest`, `UpdateCrewRequest` + testy |
+| `worker/src/db/queries/crew.rs` | Sloupce z INSERT/UPDATE/SELECT dotazů |
+| `worker/migrations/001_initial_schema.sql` | Odebrat sloupce z `crews` tabulky |
+| `worker/migrations/004_add_crew_buffer.sql` | Smazat celý soubor |
+| `worker/migrations/005_fix_crew_buffer_type.sql` | Smazat celý soubor |
+| `worker/migrations/014_add_crew_fixed_buffer.sql` | Smazat celý soubor |
+| `apps/web/src/services/crewService.ts` | Pole z `Crew`, `CreateCrewRequest`, `UpdateCrewRequest` |
+| `apps/web/src/pages/Settings.tsx` | Odebrat buffer inputy z `CrewForm` + `CrewFormData` + create/update volání |
+| `apps/web/public/locales/{cs,en,sk}/settings.json` | Klíče `crew_arrival_buffer_*` (4 klíče × 3 jazyky) |
+
+### 2.2 Přidání na trasu (route)
+
+| Soubor | Co přidat |
+|---|---|
+| `worker/migrations/001_initial_schema.sql` | Sloupce `arrival_buffer_percent` a `arrival_buffer_fixed_minutes` do `routes` tabulky |
+| `worker/src/types/route.rs` | Pole do struct `Route` |
+| `worker/src/db/queries/route.rs` | Sloupce do `upsert_route` (INSERT + UPDATE + SELECT) |
+| `worker/src/handlers/route.rs` | Pole do `SaveRouteRequest`, `RecalculateRequest` čte buffer z payloadu (beze změny — už to dělá) |
+| `worker/src/handlers/jobs.rs` | Čtení bufferu z trasy místo z posádky |
+| `packages/shared-types/src/route.ts` | Pole do `Route` interface |
+| `apps/web/src/services/routeService.ts` | Pole do `SaveRouteRequest`, `SavedRoute` |
+
+### 2.3 Uživatelské preference (last-used default)
+
+| Soubor | Co přidat |
+|---|---|
+| `worker/migrations/001_initial_schema.sql` | Sloupce `last_arrival_buffer_percent` a `last_arrival_buffer_fixed_minutes` do `users` tabulky |
+| `worker/src/types/settings.rs` | Pole do `UserPreferences` |
+| `worker/src/db/queries/settings.rs` | Čtení a zápis nových preferencí |
+| `worker/src/handlers/route.rs` | Po uložení trasy aktualizovat uživatelské preference |
+| `packages/shared-types/src/settings.ts` | Pole do `UserPreferences` |
+| `apps/web/src/services/settingsService.ts` | Pole do `UserPreferences` |
+
+### 2.4 Frontend — zobrazení a editace na timeline
+
+| Soubor | Co přidat |
+|---|---|
+| `apps/web/src/components/planner/RouteDetailTimeline.tsx` | Nový props, zobrazení drobným písmem, inline editor |
+| `apps/web/src/components/planner/RouteDetailTimeline.module.css` | Styly pro buffer info + editor |
+| `apps/web/src/pages/PlanningInbox.tsx` | Předání buffer props do timeline, handler pro změnu, přečtení defaultu z preferences |
+| `apps/web/public/locales/{cs,en,sk}/planner.json` | Překlady pro buffer label, editor |
+
+---
+
+## 3. Datový model
+
+### 3.1 Tabulka `routes` — nové sloupce
+
+```sql
+arrival_buffer_percent         DOUBLE PRECISION NOT NULL DEFAULT 10.0,
+arrival_buffer_fixed_minutes   DOUBLE PRECISION NOT NULL DEFAULT 0.0
+```
+
+### 3.2 Tabulka `users` — nové sloupce (preference)
+
+```sql
+last_arrival_buffer_percent         DOUBLE PRECISION NOT NULL DEFAULT 10.0,
+last_arrival_buffer_fixed_minutes   DOUBLE PRECISION NOT NULL DEFAULT 0.0
+```
+
+### 3.3 Tabulka `crews` — odebrané sloupce
 
 ```
-Frontend (React)                    NATS JetStream                   Rust Worker
-────────────────                    ──────────────                   ───────────
-PlanningInbox.tsx                   sazinka.route.submit             handlers/jobs.rs
-Planner.tsx                                                         ┌─────────────────────┐
- │                                                                  │ execute_route_plan() │
- │  submitRoutePlanJob({                                            │                     │
- │    customerIds,                                                  │ 1. Load customers   │
- │    date,                         ┌──────────────┐                │ 2. Resolve TWs      │
- │    startLocation,       ────────►│ SAZINKA_JOBS │───────────────►│ 3. Get matrices     │
- │    crewId?,                      │ (WorkQueue)  │                │ 4. Build VRP problem│
- │    timeWindows?  ◄──────────     └──────────────┘                │ 5. Solve            │
- │  })                status updates                                │ 6. Build geometry   │
- │                                                                  └──────┬──────────────┘
- │                                                                         │
- │                                                                         ▼
- │                                                              ┌──────────────────────┐
- │                                                              │ VrpSolver            │
- │                                                              │ ├─ vrp-pragmatic     │
- │                                                              │ │  (primary)         │
- │                                                              │ └─ nearest-neighbor  │
- │                                                              │    (fallback)        │
- │                                                              └──────────────────────┘
+arrival_buffer_percent         -- ODEBRAT
+arrival_buffer_fixed_minutes   -- ODEBRAT
 ```
 
-## Components
-
-### 1. Frontend: Time Window Extraction
-
-**Files:** `apps/web/src/pages/PlanningInbox.tsx`, `apps/web/src/pages/Planner.tsx`, `apps/web/src/services/routeService.ts`
-
-When the user clicks "Optimalizovat", the frontend extracts `scheduledTimeStart` and `scheduledTimeEnd` from each `SavedRouteStop` and passes them as `timeWindows` in the `RoutePlanJobRequest`. This ensures the solver sees exactly the same time windows the user sees in the UI.
-
-```typescript
-// routeService.ts
-export interface CustomerTimeWindow {
-  customerId: string;
-  start: string;  // "HH:MM"
-  end: string;    // "HH:MM"
-}
-
-export interface RoutePlanJobRequest {
-  customerIds: string[];
-  date: string;
-  startLocation: Coordinates;
-  crewId?: string;
-  timeWindows?: CustomerTimeWindow[];  // Takes priority over DB lookup
-}
-```
-
-**Critical invariant:** `timeWindows` are only included when `length > 0`. An omitted or empty array causes the backend to fall back to database lookup.
-
-### 2. Backend: Time Window Resolution
-
-**File:** `worker/src/handlers/jobs.rs` — `load_customers_for_route()`
-
-Time window resolution follows a strict priority chain:
-
-| Priority | Source | When Used |
-|----------|--------|-----------|
-| 1 | **Frontend `timeWindows`** | Always preferred when present and parseable |
-| 2 | **`revisions` table** | Fallback when frontend doesn't provide windows |
-| 3 | **`visits` table** | Legacy fallback when revision has no window |
-
-The frontend time windows are parsed from both `"HH:MM"` and `"HH:MM:SS"` formats.
-
-### 3. VRP Problem Builder
-
-**File:** `worker/src/handlers/jobs.rs` — `build_vrp_problem()`
-
-Converts `CustomerForRoute` records into `VrpProblem` with these key mappings:
-
-#### Time Window Mapping (Flexible vs Pinned)
-
-Scheduled customer visits support two modes:
-
-**Flexible mode** (when `service_duration_minutes` < window length):
-```
-Customer slot: 08:00 – 12:00 (agreed window)
-Service needed: 60 minutes
-  → VRP time window: [08:00, 11:00]  (latest start = 12:00 - 60min)
-  → Service duration: 60 minutes      (explicit, set by dispatcher)
-```
-The solver can place the visit anywhere within the window for optimal routing efficiency.
-
-**Pinned mode** (backward-compatible, when service fills the window):
-```
-Customer slot: 08:00 – 09:00 (agreed visit time)
-Service needed: 60 minutes (or not explicitly set)
-  → VRP time window: [08:00, 08:00]  (arrive exactly at slot start)
-  → Service duration: 60 minutes      (full slot length)
-```
-The crew must arrive at the start of the slot. Setting `start == end` forces `vrp-pragmatic` to schedule arrival exactly at that time.
-
-**Rationale:** When the agreed window is wider than needed, the solver optimizes placement. When the service fills the entire window, the visit is pinned to the agreed time (commitment to customer).
-
-#### Unscheduled Customers
-
-Customers without agreed times get:
-- No time window constraint (arrive anytime within shift)
-- Default service duration from user settings (typically 30 min)
-
-### 4. VRP Solver
-
-**File:** `worker/src/services/vrp/mod.rs`
-
-The `VrpSolver` wraps both solving strategies:
-
-#### Primary: vrp-pragmatic (Metaheuristic)
-
-**Files:** `worker/src/services/vrp/pragmatic.rs`, `worker/src/services/vrp/adapter.rs`
-
-Uses the `vrp-pragmatic` crate (pure Rust) with guided local search metaheuristics:
+### 3.4 Rust structs
 
 ```rust
-// Cargo.toml
-vrp-pragmatic = "1.25"
-vrp-core = "1.25"
-vrp-cli = "1.25"
-```
-
-**Features:**
-- Hard and soft time window constraints
-- Service duration per stop
-- Vehicle shift (working hours)
-- Mandatory breaks with configurable window
-- Arrival buffer (configurable % of segment travel time)
-- Single vehicle (crew) model
-
-**Execution model:** `solve()` is `async` — the CPU-bound solver runs in `tokio::task::spawn_blocking` wrapped with `tokio::time::timeout` (config time + 10s buffer).
-
-#### Fallback: Nearest-Neighbor Heuristic
-
-**File:** `worker/src/services/vrp/mod.rs` — `nearest_neighbor()` + `build_solution()`
-
-Used when vrp-pragmatic fails, panics, or times out:
-
-1. **Phase 1:** Sort stops with hard time windows by window start (earliest first)
-2. **Phase 2:** Fill remaining stops by nearest-neighbor from current position
-3. **Build solution:** Calculate arrival/departure times, wait if early, warn if late
-
-The heuristic always emits a `SOLVER_FALLBACK` warning so the user knows the result may be suboptimal.
-
-### 5. Arrival Buffer
-
-**File:** `worker/src/services/vrp/adapter.rs` — `apply_arrival_buffer()`
-
-For range time windows (not point windows), the solver shifts the window start earlier by a configurable percentage of the estimated segment travel time:
-
-```
-Buffer = arrival_buffer_percent × avg_travel_time_to_stop
-Example: 10% × 45 min = 4.5 min → arrive 4.5 min early
-
-Original window: [10:00, 12:00]
-Buffered window: [09:55:30, 12:00]
-```
-
-**Important:** Point windows (`start == end`) are **never** buffered — they represent fixed appointments where the exact arrival time matters.
-
-The buffer percentage comes from crew settings (default: 10%).
-
-### 6. Routing Engine (Valhalla)
-
-**File:** `worker/src/services/routing/`
-
-Valhalla provides real road distance/time matrices:
-
-- `POST /sources_to_targets` — N×N distance/time matrix
-- `POST /route` — Detailed route geometry (GeoJSON LineString for map display)
-
-**Fallback:** If Valhalla is unavailable, `MockRoutingService` uses Haversine × 1.3 coefficient and 40 km/h average speed.
-
-## Configuration
-
-### Solver Config Presets
-
-| Preset | `max_time_seconds` | `max_generations` | Use Case |
-|--------|-------------------|-------------------|----------|
-| `instant` | 2 | 200 | Interactive preview |
-| `fast` | 5 | 500 | Route planning (current default) |
-| `default` | 30 | 3000 | Background optimization |
-| `quality` | 60 | 10000 | Best results (batch mode) |
-
-The production route planning job uses `SolverConfig::with_buffer(5, 500, arrival_buffer_percent)`.
-
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `VALHALLA_URL` | — | Valhalla endpoint (e.g. `http://localhost:8002`) |
-
-## Data Flow (Complete)
-
-```
-1. User clicks "Optimalizovat" in PlanningInbox or Planner
-   ↓
-2. Frontend extracts timeWindows from saved route stops
-   ↓
-3. submitRoutePlanJob() sends NATS request to sazinka.route.submit
-   Payload: { customerIds, date, startLocation, crewId?, timeWindows? }
-   ↓
-4. JobProcessor.process_job() picks up from JetStream
-   ↓
-5. load_customers_for_route():
-   - For each customer ID:
-     a. Check frontend timeWindows map → use if found and parseable
-     b. Else query revisions table → use if found
-     c. Else query visits table → use if found
-     d. Else → no time window
-   ↓
-6. build_vrp_problem():
-   - Scheduled customers with flexible window → time window [start, end - service], service = explicit duration
-   - Scheduled customers with pinned window → point time window [start, start], service = slot length
-   - Unscheduled customers → no window, service = default from settings
-   - Shift: crew working hours (or user settings fallback)
-   - Break: from user settings (if enabled)
-   ↓
-7. Valhalla /sources_to_targets → distance/time matrices
-   ↓
-8. VrpSolver.solve():
-   - Primary: vrp-pragmatic (spawn_blocking + timeout)
-   - Fallback: nearest-neighbor heuristic
-   ↓
-9. Map solution → RoutePlanResponse
-   ↓
-10. Valhalla /route → GeoJSON geometry for map display
-    ↓
-11. Publish JobStatus::Completed with result → Frontend updates
-```
-
-## Quick Recalculation (Auto-ETA Update)
-
-**Purpose:** After inserting a stop or drag-and-drop reordering, recalculate ETAs/ETDs for the existing order without re-optimizing.
-
-**NATS Subject:** `sazinka.route.recalculate`
-
-**Handler:** `worker/src/handlers/route.rs` — `handle_recalculate()`
-
-**Algorithm:** `worker/src/services/sequential_schedule.rs` — `compute_sequential_schedule()`
-
-### Flow
-
-```
-1. User inserts stop or reorders via drag-and-drop
-   ↓
-2. Frontend calls recalculateRoute({ depot, stops, workdayStart, ... })
-   ↓
-3. Backend fetches Valhalla distance/time matrix
-   ↓
-4. compute_sequential_schedule():
-   - Walk stops in order
-   - Calculate earliest_arrival = previous_departure + travel_time
-   - For flexible windows: arrival = max(earliest_arrival, window_start), clamped to latest_start
-   - For pinned windows: arrival = scheduled_time_start (always)
-   - For unscheduled: arrival = earliest_arrival
-   - Determine service duration (explicit → scheduled window → default)
-   - Calculate departure = arrival + service_duration (flexible) or scheduled_time_end (pinned)
-   ↓
-5. Return RecalculateRouteResponse with updated ETAs/ETDs
-   ↓
-6. Frontend merges times back into route stops
-```
-
-### Key Features
-
-- **Pure function:** `compute_sequential_schedule()` has no side effects, fully unit-tested (14 tests)
-- **No reordering:** Preserves user's chosen order (dispatcher already placed stop correctly via slot suggestions)
-- **Flexible windows:** When service duration < window length, places stop optimally after travel within agreed window
-- **Backward compatible:** Stops without explicit service duration behave exactly as before (pinned to agreed times)
-- **Fast:** <100ms for typical routes (no metaheuristic search)
-- **Automatic:** Fires after every insert/reorder in `PlanningInbox` and `Planner`
-
-### Data Types
-
-```rust
-// worker/src/services/sequential_schedule.rs
-pub struct ScheduleInput {
-    pub depot_matrix_idx: usize,
-    pub stops: Vec<ScheduleStop>,
-    pub stop_matrix_indices: Vec<usize>,
-    pub workday_start: NaiveTime,
-    pub default_service_minutes: i32,
+// Route — přidat pole:
+pub struct Route {
+    // ... existující ...
+    pub arrival_buffer_percent: f64,
+    pub arrival_buffer_fixed_minutes: f64,
 }
 
-pub struct ScheduleStop {
-    pub stop_type: StopType,
-    pub scheduled_time_start: Option<NaiveTime>,
-    pub scheduled_time_end: Option<NaiveTime>,
-    pub service_duration_minutes: Option<i32>,
-    pub break_duration_minutes: Option<i32>,
+// SaveRouteRequest — přidat pole:
+pub struct SaveRouteRequest {
+    // ... existující ...
+    pub arrival_buffer_percent: f64,
+    pub arrival_buffer_fixed_minutes: f64,
 }
 
-pub struct ScheduleResult {
-    pub stops: Vec<ComputedStopSchedule>,
-    pub total_distance_km: f64,
-    pub total_travel_minutes: i32,
-    pub total_service_minutes: i32,
-    pub return_to_depot_distance_km: f64,
-    pub return_to_depot_duration_minutes: i32,
+// UserPreferences — přidat pole:
+pub struct UserPreferences {
+    // ... existující ...
+    pub last_arrival_buffer_percent: f64,
+    pub last_arrival_buffer_fixed_minutes: f64,
 }
 ```
+
+### 3.5 TypeScript types
 
 ```typescript
-// apps/web/src/services/routeService.ts
-export interface RecalcStopInput {
-  coordinates: { lat: number; lng: number };
-  stopType: string;
-  scheduledTimeStart?: string | null;
-  scheduledTimeEnd?: string | null;
-  serviceDurationMinutes?: number | null;
-  breakDurationMinutes?: number | null;
-  id?: string;
-  customerId?: string;
-  customerName?: string;
+// Route — přidat pole:
+export interface Route {
+  // ... existující ...
+  arrivalBufferPercent: number;
+  arrivalBufferFixedMinutes: number;
 }
 
-export interface RecalculateRouteRequest {
-  depot: { lat: number; lng: number };
-  stops: RecalcStopInput[];
-  workdayStart?: string;
-  workdayEnd?: string;
-  defaultServiceDurationMinutes?: number;
+// SaveRouteRequest — přidat pole:
+export interface SaveRouteRequest {
+  // ... existující ...
+  arrivalBufferPercent: number;
+  arrivalBufferFixedMinutes: number;
+}
+
+// SavedRoute — přidat pole:
+export interface SavedRoute {
+  // ... existující ...
+  arrivalBufferPercent: number;
+  arrivalBufferFixedMinutes: number;
+}
+
+// UserPreferences — přidat pole:
+export interface UserPreferences {
+  // ... existující ...
+  lastArrivalBufferPercent: number;
+  lastArrivalBufferFixedMinutes: number;
 }
 ```
 
-### Integration Points
+---
 
-```typescript
-// apps/web/src/pages/PlanningInbox.tsx
-const triggerRecalculate = useCallback(async (stopsSnapshot: SavedRouteStop[]) => {
-  const result = await recalculateRoute({ depot, stops, ... });
-  setRouteStops(prev => mergeRecalculatedTimes(prev, result.stops));
-  setReturnToDepotLeg({ distanceKm, durationMinutes });
-}, [currentDepot, routeStartTime, routeEndTime, defaultServiceDurationMinutes]);
+## 4. Chování
 
-const handleAddToRoute = useCallback((candidateId: string, insertAfterIndex?: number) => {
-  const updated = insertStopAtPosition(prev, newStop, insertIdx);
-  setRouteStops(updated);
-  requestAnimationFrame(() => triggerRecalculate(updated));
-}, [...]);
+### 4.1 Vytvoření nové trasy
 
-const handleReorder = useCallback((newStops: SavedRouteStop[]) => {
-  setRouteStops(newStops);
-  triggerRecalculate(newStops);
-}, [triggerRecalculate]);
+1. Frontend načte `settings.preferences.lastArrivalBufferPercent` a `lastArrivalBufferFixedMinutes`.
+2. Tyto hodnoty se drží v lokálním stavu `PlanningInbox` (state `routeBufferPercent`, `routeBufferFixedMinutes`).
+3. Při každém `recalculateRoute()` se pošlou jako `arrivalBufferPercent` / `arrivalBufferFixedMinutes`.
+4. Při každém `saveRoute()` se pošlou v `SaveRouteRequest`.
+5. Backend `handle_save_route` uloží buffer do `routes` tabulky.
+6. Backend po úspěšném uložení aktualizuje `users.last_arrival_buffer_percent` a `users.last_arrival_buffer_fixed_minutes`.
+
+### 4.2 Načtení existující trasy
+
+1. `getRoute()` vrací `SavedRoute` s `arrivalBufferPercent` a `arrivalBufferFixedMinutes`.
+2. Frontend z těchto hodnot inicializuje lokální stav.
+
+### 4.3 Editace bufferu na timeline
+
+1. Pod hlavičkou timeline (pod depot departure) je drobný text: „Rezerva: 10 % + 0 min".
+2. Po kliknutí se text změní na inline editor (dva malé inputy: `%` a `min`).
+3. Po potvrzení (Enter / blur) se:
+   a. Aktualizuje lokální stav.
+   b. Spustí `recalculateRoute()` s novými hodnotami.
+   c. Autosave uloží trasu (včetně nového bufferu).
+
+### 4.4 Route planning job (async)
+
+`handle_route_plan_job` v `handlers/jobs.rs` dnes čte buffer z posádky. Nově:
+
+1. Přijme buffer jako parametr v `RoutePlanJobRequest`.
+2. Frontend buffer předá při submitu jobu.
+3. Alternativně: job načte buffer z existující trasy v DB (pokud trasa už existuje).
+
+---
+
+## 5. UI mockup (RouteDetailTimeline)
+
+```
+📍 Sklad Brno                              ← depot card
+   Odjezd: 07:24
+   ─── Rezerva: 10 % + 0 min ✏️ ───        ← nový řádek, drobné písmo
+   ▼ 12.3 km • 18 min
+   ┌─────────────────────────────────┐
+   │ 1. Novák s.r.o.                │      ← stop card
+   │    Příjezd: 07:42 → Odjezd: ... │
+   └─────────────────────────────────┘
+   ▼ 8.1 km • 12 min
+   ...
 ```
 
-## Module Structure
+Po kliknutí na ✏️:
 
 ```
-worker/src/services/vrp/
-├── mod.rs          # VrpSolver: async solve(), heuristic fallback, build_solution()
-├── adapter.rs      # build_pragmatic_problem(), build_pragmatic_matrix(), arrival buffer
-├── pragmatic.rs    # solve_pragmatic(): vrp-pragmatic integration, solution mapping
-├── problem.rs      # VrpProblem, VrpStop, StopTimeWindow, BreakConfig, Depot
-├── solution.rs     # RouteSolution, PlannedStop, RouteWarning
-└── config.rs       # SolverConfig presets (instant/fast/default/quality)
-
-worker/src/services/
-└── sequential_schedule.rs  # compute_sequential_schedule(): pure sequential ETA calculator
-
-worker/src/handlers/
-├── jobs.rs         # JobProcessor: load_customers_for_route(), build_vrp_problem(),
-│                   #   execute_route_plan(), time window resolution chain
-└── route.rs        # handle_recalculate(): quick ETA recalc after insert/reorder
-
-worker/src/types/
-└── job.rs          # CustomerTimeWindow, RoutePlanJobRequest (with time_windows field)
-
-apps/web/src/services/
-└── routeService.ts # CustomerTimeWindow, RoutePlanJobRequest, submitRoutePlanJob(),
-                    #   RecalculateRouteRequest, recalculateRoute()
-
-apps/web/src/components/planner/
-└── insertStop.ts   # insertStopAtPosition(): pure function to insert stop at index
-
-apps/web/src/pages/
-├── PlanningInbox.tsx  # handleOptimizeRoute() — extracts timeWindows from route stops
-│                      # triggerRecalculate() — auto-recalc after insert/reorder
-│                      # handleAddToRoute() — uses insertStopAtPosition + recalc
-│                      # handleReorder() — auto-recalc after drag-and-drop
-└── Planner.tsx        # handleOptimizeRoute() — same extraction logic
-                       # handleReorder() — auto-recalc after drag-and-drop
+   ─── Rezerva: [10] % + [0] min  ✓ ✕ ─── ← inline edit
 ```
 
-## Test Coverage
+---
 
-### Rust Tests
+## 6. Implementační plán (TDD)
 
-| File | Tests | What They Guard |
-|------|-------|-----------------|
-| `worker/src/types/job.rs` | 6 tests | `CustomerTimeWindow` serde (camelCase), `RoutePlanJobRequest` deserialization with/without `timeWindows`, `#[serde(default)]` for missing field, roundtrip preservation |
-| `worker/src/services/vrp/mod.rs` | 13 tests | Solver config, empty/single/multi-stop problems, heuristic ordering (no-window nearest-neighbor, windowed-by-start), heuristic waiting for hard windows, late arrival warnings, `add_seconds_to_time` |
-| `worker/src/services/vrp/adapter.rs` | 14 tests | Problem JSON structure, time window encoding, point time window validity, break deserialization, arrival buffer (shift/noop/midnight clamp/point window skip), matrix flattening |
-| `worker/src/services/vrp/pragmatic.rs` | 8 tests | End-to-end pragmatic solve, service duration accounting, break config acceptance/placement, point time window assignment, post-solve validation (late/insufficient buffer/ok) |
-| `worker/src/services/vrp/problem.rs` | 3 tests | Type construction |
-| `worker/src/services/vrp/solution.rs` | 3 tests | Empty solution, planned stop, warning types |
-| `worker/src/services/vrp/config.rs` | 7 tests | Config presets, custom config, buffer config |
+Databázi nemigrujeme — bude vytvořena znovu. Upravíme přímo `001_initial_schema.sql` a smažeme staré buffer migrace.
 
-### TypeScript Tests
+Každý krok se řídí cyklem RED → GREEN → REFACTOR:
+1. Napsat failing test (RED)
+2. Napsat minimální implementaci, aby test prošel (GREEN)
+3. Refaktorovat pokud potřeba (REFACTOR)
+4. Odškrtnout krok v tomto souboru
 
-| File | Tests | What They Guard |
-|------|-------|-----------------|
-| `apps/web/src/services/routeService.test.ts` | 6 tests | `submitRoutePlanJob` includes/excludes `timeWindows` correctly, empty array handling, `crewId` pass-through, error propagation, `CustomerTimeWindow` type shape |
+### Fáze 1: Databáze a migrace (scaffold)
 
-## Key Invariants (Do Not Break)
+- [x] **1.1** V `001_initial_schema.sql` přidat do tabulky `routes`:
+  - `arrival_buffer_percent DOUBLE PRECISION NOT NULL DEFAULT 10.0`
+  - `arrival_buffer_fixed_minutes DOUBLE PRECISION NOT NULL DEFAULT 0.0`
+- [x] **1.2** V `001_initial_schema.sql` přidat do tabulky `users`:
+  - `last_arrival_buffer_percent DOUBLE PRECISION NOT NULL DEFAULT 10.0`
+  - `last_arrival_buffer_fixed_minutes DOUBLE PRECISION NOT NULL DEFAULT 0.0`
+- [x] **1.3** V `001_initial_schema.sql` odebrat z tabulky `crews`: nebyly v base schema (přidány migrací) ✅
+- [x] **1.4** Smazat migrace: `004_add_crew_buffer.sql`, `005_fix_crew_buffer_type.sql`, `014_add_crew_fixed_buffer.sql` ✅
 
-1. **Frontend time windows take priority** over database lookups. The `time_windows` field in `RoutePlanJobRequest` must always be checked first in `load_customers_for_route()`.
+### Fáze 2: Rust typy — crew (odebrat buffer) + testy
 
-2. **Point time window mapping:** Scheduled visits must use `[start, start]` (not `[start, end]`) so the solver forces arrival at the slot start. Service duration must equal the slot length (`end - start`).
+- [ ] **2.1** TEST: `test_crew_no_buffer_fields` — `CreateCrewRequest` bez `arrivalBufferPercent` se deserializuje OK; serializovaný `Crew` neobsahuje klíč `arrivalBufferPercent`.
+  - RED: Test failuje, protože pole stále existují.
+  - GREEN: Odebrat `arrival_buffer_percent` a `arrival_buffer_fixed_minutes` ze struct `Crew`, `CreateCrewRequest`, `UpdateCrewRequest`. Smazat/upravit stávající buffer testy.
+- [ ] **2.2** `db/queries/crew.rs` — odebrat buffer sloupce z INSERT, UPDATE, SELECT dotazů.
+- [ ] **2.3** `cargo check` — očekáváme chyby v `handlers/route.rs` a `handlers/jobs.rs` (čtou crew buffer). Zakomentovat nebo dočasně defaultovat — opravíme ve fázi 5.
 
-3. **Arrival buffer skips point windows:** `apply_arrival_buffer()` must return the window unchanged when `start == end`.
+### Fáze 3: Rust typy — route (přidat buffer) + TDD
 
-4. **`#[serde(default)]` on `time_windows`:** The field must have `#[serde(default)]` so older clients or requests without this field still deserialize correctly.
+- [ ] **3.1** TEST: `test_route_serializes_buffer_fields` — struct `Route` s `arrival_buffer_percent: 15.0` a `arrival_buffer_fixed_minutes: 3.0` se serializuje s klíči `arrivalBufferPercent` a `arrivalBufferFixedMinutes`.
+  - RED: Test failuje, pole neexistují.
+  - GREEN: Přidat pole do `types/route.rs` → struct `Route`.
+- [ ] **3.2** TEST: `test_save_route_request_deserializes_buffer` — JSON `{"date": "2026-01-15", "stops": [], ... , "arrivalBufferPercent": 12.0, "arrivalBufferFixedMinutes": 2.0}` se deserializuje do `SaveRouteRequest` s odpovídajícími hodnotami.
+  - RED: Test failuje, pole neexistují v `SaveRouteRequest`.
+  - GREEN: Přidat pole do `SaveRouteRequest` v `handlers/route.rs`.
+- [ ] **3.3** TEST: `test_save_route_request_buffer_defaults` — JSON bez buffer polí se deserializuje s defaulty `10.0` a `0.0`.
+  - RED: Test failuje (pole neexistují nebo nemají default).
+  - GREEN: Přidat `#[serde(default = "default_buffer_percent")]` a `#[serde(default)]` atributy.
+- [ ] **3.4** `cargo check`
 
-5. **Solver fallback chain:** vrp-pragmatic failure → nearest-neighbor heuristic. Never silently fail — always produce a solution or error.
+### Fáze 4: Rust typy — user preferences (přidat last-used buffer) + TDD
 
-6. **`timeWindows` exclusion when empty:** The frontend must not send `timeWindows: []` — either send the populated array or omit the field entirely.
+- [ ] **4.1** TEST: `test_user_preferences_has_last_buffer` — `UserPreferences` s `last_arrival_buffer_percent: 15.0` a `last_arrival_buffer_fixed_minutes: 5.0` se serializuje s odpovídajícími klíči.
+  - RED: Test failuje, pole neexistují.
+  - GREEN: Přidat pole do `types/settings.rs` → struct `UserPreferences`.
+- [ ] **4.2** `cargo check`
 
-## Performance
+### Fáze 5: DB dotazy — route upsert + TDD
 
-| Stops | Solver | Typical Time | Notes |
-|-------|--------|-------------|-------|
-| 1–5 | vrp-pragmatic | <100ms | Near-instant |
-| 5–10 | vrp-pragmatic | 100–500ms | Normal daily route |
-| 10–15 | vrp-pragmatic | 500ms–2s | Maximum practical size |
-| >15 | vrp-pragmatic | 2–5s | May hit timeout |
-| Any | heuristic fallback | <10ms | Fast but suboptimal |
+- [ ] **5.1** TEST: `test_upsert_route_includes_buffer_columns` — ověřit, že SQL string v `upsert_route` obsahuje `arrival_buffer_percent` (grep/contains na generovaném dotazu, nebo integrační test s DB).
+  - RED: SQL neobsahuje buffer sloupce.
+  - GREEN: Přidat `arrival_buffer_percent` a `arrival_buffer_fixed_minutes` do INSERT, UPDATE, RETURNING v `db/queries/route.rs`.
+- [ ] **5.2** TEST: `test_get_route_returns_buffer` — ověřit, že SELECT v `get_route` / `get_route_with_stops` vrací buffer sloupce.
+  - RED: SELECT neobsahuje buffer.
+  - GREEN: Přidat sloupce do SELECT.
+- [ ] **5.3** `db/queries/settings.rs` — přidat čtení `last_arrival_buffer_percent`, `last_arrival_buffer_fixed_minutes` do `get_user_settings` a novou funkci `update_last_arrival_buffer(pool, user_id, percent, fixed)`.
+- [ ] **5.4** `cargo check`
 
-Memory: ~10 MB per request.
+### Fáze 6: Handlery — save route ukládá buffer a aktualizuje preferences + TDD
 
-## Troubleshooting
+- [ ] **6.1** TEST: `test_save_route_request_with_buffer_compiles` — vytvořit `SaveRouteRequest` s buffer poli, ověřit, že se serializuje/deserializuje.
+  - RED/GREEN: Měl by projít díky fázi 3. Ověření konzistence.
+- [ ] **6.2** `handlers/route.rs` → `handle_save_route` — předat `payload.arrival_buffer_percent` a `payload.arrival_buffer_fixed_minutes` do `upsert_route`. Po úspěšném uložení zavolat `update_last_arrival_buffer(pool, user_id, ...)`.
+- [ ] **6.3** `handlers/route.rs` → `handle_get_route` — ověřit, že response struct obsahuje buffer pole (mělo by fungovat automaticky díky fázi 5.2).
+- [ ] **6.4** `handlers/route.rs` → `handle_recalculate` — beze změny (buffer už přichází v payloadu).
+- [ ] **6.5** TEST: `test_route_plan_job_accepts_buffer_in_payload` — `RoutePlanJobRequest` s buffer poli se deserializuje.
+  - RED: Pole neexistují v request typu.
+  - GREEN: Přidat pole do request struct.
+- [ ] **6.6** `handlers/jobs.rs` → `handle_route_plan_job` — nečíst buffer z `crew`, vzít z `payload.arrival_buffer_percent` / `payload.arrival_buffer_fixed_minutes`. Fallback na default `10.0` / `0.0`.
+- [ ] **6.7** `cargo check`
+- [ ] **6.8** `cargo test` — všechny testy prochází.
 
-### "Time windows are ignored"
+### Fáze 7: TypeScript shared types
 
-Check the worker log for lines like:
-```
-Customer <uuid> (<name>): using frontend time window Some(08:00:00)-Some(09:00:00)
-```
+- [ ] **7.1** `packages/shared-types/src/route.ts` — přidat `arrivalBufferPercent: number` a `arrivalBufferFixedMinutes: number` do `Route`.
+- [ ] **7.2** `packages/shared-types/src/settings.ts` — přidat `lastArrivalBufferPercent: number` a `lastArrivalBufferFixedMinutes: number` do `UserPreferences`.
 
-If you see "falling back to DB" or no time window log at all, the frontend is not passing `timeWindows` in the request.
+### Fáze 8: Frontend services
 
-### "Solver falls back to heuristic"
+- [ ] **8.1** `routeService.ts` — přidat `arrivalBufferPercent` a `arrivalBufferFixedMinutes` do `SaveRouteRequest` a `SavedRoute`.
+- [ ] **8.2** `crewService.ts` — odebrat `arrivalBufferPercent` a `arrivalBufferFixedMinutes` z `Crew`, `CreateCrewRequest`, `UpdateCrewRequest`.
+- [ ] **8.3** `settingsService.ts` — ověřit, že `UserPreferences` interface (ze shared-types) reflektuje nové buffer pole.
+- [ ] **8.4** `tsc --noEmit` — ověřit kompilaci (očekáváme chyby v PlanningInbox a Settings — opravíme v dalších fázích).
 
-Look for `pragmatic_error=`, `pragmatic_panic=`, or `pragmatic_timeout=` in `solver_log`. Common causes:
-- Invalid break config format (fixed in v0.18.4)
-- Infeasible problem (all stops unassignable within shift)
-- Timeout (increase `max_time_seconds`)
+### Fáze 9: Frontend — PlanningInbox (buffer state + flow)
 
-### "Stop is unassigned"
+- [ ] **9.1** Přidat lokální stav `routeBufferPercent` (init z `settings.preferences.lastArrivalBufferPercent ?? 10`) a `routeBufferFixedMinutes` (init z `settings.preferences.lastArrivalBufferFixedMinutes ?? 0`). Při načtení existující trasy přepsat hodnotami z `savedRoute`.
+- [ ] **9.2** `triggerRecalculate` — změnit zdroj bufferu z `currentCrew?.arrivalBufferPercent` na lokální `routeBufferPercent` / `routeBufferFixedMinutes`.
+- [ ] **9.3** `autoSaveFn` — předávat `arrivalBufferPercent` a `arrivalBufferFixedMinutes` v `SaveRouteRequest`.
+- [ ] **9.4** Přidat handler `handleBufferChange(percent: number, fixedMinutes: number)` → update stavu → `triggerRecalculate()`.
+- [ ] **9.5** Předat buffer props + `onBufferChange` do `RouteDetailTimeline` a `PlanningTimeline`.
+- [ ] **9.6** `tsc --noEmit` — ověřit kompilaci.
 
-The solver may mark stops as unassigned when:
-- Time window cannot be met (e.g., two stops with overlapping point windows and insufficient travel time)
-- Working hours are too short for all stops + travel
-- Break constraint conflicts with time windows
+### Fáze 10: Frontend — RouteDetailTimeline (zobrazení a editace)
 
-Check `solver_log` for `unassigned: <customer_name> - <reason>`.
+- [ ] **10.1** Přidat props do `RouteDetailTimelineProps`: `arrivalBufferPercent?: number`, `arrivalBufferFixedMinutes?: number`, `onBufferChange?: (percent: number, fixedMinutes: number) => void`.
+- [ ] **10.2** Zobrazit buffer info drobným písmem pod depot departure: „Rezerva: {pct} % + {fixed} min ✏️". Pokud `onBufferChange` chybí, nezobrazovat ✏️.
+- [ ] **10.3** Implementovat inline editor:
+  - Kliknutí na ✏️ přepne do edit módu.
+  - Dva malé inputy (`number`): procento a fixní minuty.
+  - ✓ potvrdí (zavolá `onBufferChange`) a zavře editor.
+  - ✕ zruší a zavře editor.
+  - Enter potvrdí, Escape zruší.
+- [ ] **10.4** Přidat CSS styly do `RouteDetailTimeline.module.css`: `.bufferInfo`, `.bufferText`, `.bufferEditBtn`, `.bufferEditor`, `.bufferInput`.
+- [ ] **10.5** `tsc --noEmit`
+
+### Fáze 11: Frontend — Settings crew form (odebrat buffer)
+
+- [ ] **11.1** `Settings.tsx` — odebrat `arrivalBufferPercent` a `arrivalBufferFixedMinutes` z `CrewFormData` interface. Odebrat inicializaci (defaulty 10 a 0). Odebrat oba input bloky. Odebrat z `createCrew()` a `updateCrew()` volání. Odebrat zobrazení v crew list.
+- [ ] **11.2** Odebrat překlad. klíče `crew_arrival_buffer_percent`, `crew_arrival_buffer_hint`, `crew_arrival_buffer_fixed`, `crew_arrival_buffer_fixed_hint` z `{cs,en,sk}/settings.json`.
+- [ ] **11.3** `tsc --noEmit`
+
+### Fáze 12: Frontend — překlady (nové klíče)
+
+- [ ] **12.1** Přidat překlady do `{cs,en,sk}/planner.json`:
+  - `route_buffer_label` — „Rezerva" / „Buffer" / „Rezerva"
+  - `route_buffer_percent_suffix` — „% z přejezdu" / „% of travel" / „% z prejazdu"
+  - `route_buffer_fixed_suffix` — „fixní min" / „fixed min" / „fixné min"
+  - `route_buffer_edit` — „Upravit rezervu" / „Edit buffer" / „Upraviť rezervu"
+
+### Fáze 13: Finální ověření
+
+- [ ] **13.1** `cargo check` — backend kompiluje bez chyb.
+- [ ] **13.2** `cargo test` — všechny testy prochází.
+- [ ] **13.3** `tsc --noEmit` — frontend kompiluje bez chyb.
+- [ ] **13.4** Manuální QA:
+  - Vytvořit novou trasu → buffer se předvyplní z user preferences (10 % + 0 min).
+  - Ověřit zobrazení bufferu na timeline drobným písmem.
+  - Kliknout na ✏️ → editovat → potvrdit → ověřit přepočet ETA.
+  - Uložit trasu → buffer se uloží do DB.
+  - Vytvořit druhou trasu → ověřit, že se předvyplní posledně použitá hodnota.
+  - Otevřít nastavení posádky → buffer tam už není.
+
+---
+
+## 7. Soubory dotčené změnami
+
+### Smazané soubory
+- `worker/migrations/004_add_crew_buffer.sql`
+- `worker/migrations/005_fix_crew_buffer_type.sql`
+- `worker/migrations/014_add_crew_fixed_buffer.sql`
+
+### Změněné soubory — backend
+- `worker/migrations/001_initial_schema.sql` — přidat buffer do `routes`, `users`; odebrat z `crews`
+- `worker/src/types/crew.rs` — odebrat buffer pole + opravit testy
+- `worker/src/types/route.rs` — přidat buffer pole
+- `worker/src/types/settings.rs` — přidat `last_arrival_buffer_*`
+- `worker/src/db/queries/crew.rs` — odebrat buffer z dotazů
+- `worker/src/db/queries/route.rs` — přidat buffer do upsert/select
+- `worker/src/db/queries/settings.rs` — číst/zapisovat `last_arrival_buffer_*`
+- `worker/src/handlers/route.rs` — `handle_save_route` ukládá buffer + aktualizuje user prefs; `SaveRouteRequest` rozšířen
+- `worker/src/handlers/jobs.rs` — nečíst buffer z crew, přijmout v payloadu
+- `worker/src/services/vrp/config.rs` — beze změny (buffer stále přichází zvenku)
+- `worker/src/services/sequential_schedule.rs` — beze změny (buffer stále přichází zvenku)
+
+### Změněné soubory — shared types
+- `packages/shared-types/src/route.ts` — buffer pole
+- `packages/shared-types/src/settings.ts` — `lastArrivalBufferPercent`, `lastArrivalBufferFixedMinutes`
+
+### Změněné soubory — frontend
+- `apps/web/src/services/routeService.ts` — buffer v `SaveRouteRequest`, `SavedRoute`
+- `apps/web/src/services/crewService.ts` — odebrat buffer z `Crew`
+- `apps/web/src/services/settingsService.ts` — buffer preference
+- `apps/web/src/pages/Settings.tsx` — odebrat buffer z `CrewForm`
+- `apps/web/src/pages/PlanningInbox.tsx` — buffer stav, flow, props
+- `apps/web/src/components/planner/RouteDetailTimeline.tsx` — zobrazení + inline editor
+- `apps/web/src/components/planner/RouteDetailTimeline.module.css` — styly
+- `apps/web/public/locales/cs/planner.json` — nové překlady
+- `apps/web/public/locales/en/planner.json` — nové překlady
+- `apps/web/public/locales/sk/planner.json` — nové překlady
+- `apps/web/public/locales/cs/settings.json` — odebrat crew buffer klíče
+- `apps/web/public/locales/en/settings.json` — odebrat crew buffer klíče
+- `apps/web/public/locales/sk/settings.json` — odebrat crew buffer klíče
