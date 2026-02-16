@@ -683,3 +683,46 @@
   border-radius: var(--radius-sm, 4px);
   cursor: pointer;
 }
+
+/* Inline editing for travel/service duration overrides */
+.inlineEditGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.inlineInput {
+  width: 50px;
+  padding: 0.125rem 0.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-size: 0.6875rem;
+  text-align: right;
+  background: var(--color-bg-primary);
+}
+
+.inlineInput:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+
+.inlineUnit {
+  font-size: 0.625rem;
+  color: var(--color-text-muted);
+}
+
+.overrideReset {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 0.125rem;
+  font-size: 0.75rem;
+  line-height: 1;
+  opacity: 0.8;
+  transition: opacity 0.15s;
+}
+
+.overrideReset:hover {
+  opacity: 1;
+}

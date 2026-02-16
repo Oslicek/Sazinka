@@ -38,6 +38,10 @@ interface RouteDetailTimelineProps {
   // Editing actions (optional - Inbox and Planner can both provide these)
   onRemoveStop?: (stopId: string) => void;
   onUpdateBreak?: (stopId: string, patch: { breakTimeStart?: string; breakDurationMinutes?: number }) => void;
+  onUpdateTravelDuration?: (stopId: string, minutes: number) => void;
+  onResetTravelDuration?: (stopId: string) => void;
+  onUpdateServiceDuration?: (stopId: string, minutes: number) => void;
+  onResetServiceDuration?: (stopId: string) => void;
   isSaving?: boolean;
   // Warnings from solver (LATE_ARRIVAL, INSUFFICIENT_BUFFER, etc.)
   warnings?: RouteWarning[];
@@ -141,6 +145,10 @@ export function RouteDetailTimeline({
   onReorder,
   onRemoveStop,
   onUpdateBreak,
+  onUpdateTravelDuration,
+  onResetTravelDuration,
+  onUpdateServiceDuration,
+  onResetServiceDuration,
   isSaving = false,
   warnings = [],
   returnToDepotDistanceKm = null,
@@ -287,7 +295,33 @@ export function RouteDetailTimeline({
                   <span className={styles.segmentDistance}>—</span>
                 )}
                 <span className={styles.segmentSeparator}>•</span>
-                <span className={styles.segmentDuration}>{formatDurationHm(segmentDuration)}</span>
+                {onUpdateTravelDuration && stop.stopType !== 'break' ? (
+                  <span className={styles.inlineEditGroup}>
+                    <input
+                      type="number"
+                      className={styles.inlineInput}
+                      value={stop.overrideTravelDurationMinutes ?? segmentDuration ?? 0}
+                      min={0}
+                      max={999}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => {
+                        const val = Math.max(0, parseInt(e.target.value || '0', 10));
+                        onUpdateTravelDuration(stop.id, val);
+                      }}
+                    />
+                    <span className={styles.inlineUnit}>min</span>
+                    {stop.overrideTravelDurationMinutes != null && onResetTravelDuration && (
+                      <button
+                        type="button"
+                        className={styles.overrideReset}
+                        onClick={(e) => { e.stopPropagation(); onResetTravelDuration(stop.id); }}
+                        title={t('override_reset_tooltip')}
+                      >⚠️</button>
+                    )}
+                  </span>
+                ) : (
+                  <span className={styles.segmentDuration}>{formatDurationHm(segmentDuration)}</span>
+                )}
               </div>
             </div>
 
@@ -411,6 +445,38 @@ export function RouteDetailTimeline({
                 )}
                 
                   <div className={styles.stopAddress}>{stop.address}</div>
+
+                  {/* Service duration (inline editable) */}
+                  <div className={styles.timeRow}>
+                    <span className={styles.timeLabel}>{t('service_duration_label')}</span>
+                    {onUpdateServiceDuration ? (
+                      <span className={styles.inlineEditGroup}>
+                        <input
+                          type="number"
+                          className={styles.inlineInput}
+                          value={stop.overrideServiceDurationMinutes ?? stop.serviceDurationMinutes ?? 30}
+                          min={1}
+                          max={480}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            const val = Math.max(1, parseInt(e.target.value || '30', 10));
+                            onUpdateServiceDuration(stop.id, val);
+                          }}
+                        />
+                        <span className={styles.inlineUnit}>min</span>
+                        {stop.overrideServiceDurationMinutes != null && onResetServiceDuration && (
+                          <button
+                            type="button"
+                            className={styles.overrideReset}
+                            onClick={(e) => { e.stopPropagation(); onResetServiceDuration(stop.id); }}
+                            title={t('override_reset_tooltip')}
+                          >⚠️</button>
+                        )}
+                      </span>
+                    ) : (
+                      <span>{stop.serviceDurationMinutes ?? 30} min</span>
+                    )}
+                  </div>
                   
                   {/* Per-stop warnings (LATE_ARRIVAL, INSUFFICIENT_BUFFER) */}
                   {warningsByStop.has(index) && (

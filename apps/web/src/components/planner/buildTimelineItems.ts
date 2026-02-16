@@ -136,6 +136,7 @@ export function buildTimelineItems(
       endTime: minutesToHm(travelEnd),
       durationMinutes: travelDuration,
       distanceKm: travelDistance,
+      stop,
     });
 
     cursor = travelEnd;

@@ -428,8 +428,8 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR.
 | D | DB dotazy — SELECT/INSERT s overrides | ✅ Hotovo, commitnuto & pushnuto |
 | E | Backend recalculate — respektovat overrides | ✅ Hotovo, commitnuto & pushnuto |
 | F | Frontend shared types — override pole | ✅ Hotovo, commitnuto & pushnuto |
-| G | Inline editace úseku cesty (travel duration) | ❌ Nezahájeno |
-| H | Inline editace zastávky (service duration) | ❌ Nezahájeno |
+| G | Inline editace úseku cesty (travel duration) | ✅ Hotovo, commitnuto & pushnuto |
+| H | Inline editace zastávky (service duration) | ✅ Hotovo, commitnuto & pushnuto |
 | I | Handlery v PlanningInbox + Planner | ❌ Nezahájeno |
 | J | Překlady | ❌ Nezahájeno |
 | K | Finální ověření | ❌ Nezahájeno |
@@ -485,21 +485,21 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR.
 - [x] **F.1** `packages/shared-types/src/route.ts` — přidáno do `RouteStop` a `PlannedRouteStop`.
 - [x] **F.2** `apps/web/src/services/routeService.ts` — přidáno do `SavedRouteStop`, `SaveRouteStop`, `RecalcStopInput`.
 
-### Fáze G: Frontend — inline editace úseku cesty (travel duration) + TDD
+### Fáze G: Frontend — inline editace úseku cesty (travel duration)
 
-- [ ] **G.1** `RouteDetailTimeline.tsx` — segment (úsek cesty) zobrazí dobu jízdy jako `<input type="number">` (inline, malý). Po změně volá nový callback `onUpdateTravelDuration(stopId, minutes)`.
-- [ ] **G.2** Pokud `overrideTravelDurationMinutes != null`, zobrazit vedle inputu ikonu ⚠️. Klik na ikonu → reset (`onResetTravelDuration(stopId)`).
-- [ ] **G.3** CSS styly pro inline input v segmentu + override indikátor.
-- [ ] **G.4** `PlanningTimeline.tsx` — stejná logika jako G.1–G.3 (travel segment editace).
-- [ ] **G.5** Props: přidat `onUpdateTravelDuration` a `onResetTravelDuration` do obou timeline komponent.
+- [x] **G.1** `RouteDetailTimeline.tsx` — segment zobrazí dobu jízdy jako `<input type="number">` (inline). Po změně volá `onUpdateTravelDuration(stopId, minutes)`.
+- [x] **G.2** Pokud `overrideTravelDurationMinutes != null`, zobrazit vedle inputu ikonu ⚠️. Klik → reset (`onResetTravelDuration(stopId)`).
+- [x] **G.3** CSS styly pro inline input v segmentu + override indikátor.
+- [x] **G.4** `PlanningTimeline.tsx` — stejná logika (travel segment editace).
+- [x] **G.5** Props přidány do obou timeline komponent. `buildTimelineItems.ts` — travel items nyní obsahují `stop` referenci.
 
-### Fáze H: Frontend — inline editace zastávky (service duration) + TDD
+### Fáze H: Frontend — inline editace zastávky (service duration)
 
-- [ ] **H.1** `RouteDetailTimeline.tsx` — zastávka zobrazí dobu servisu jako `<input type="number">` (inline). Po změně volá `onUpdateServiceDuration(stopId, minutes)`.
-- [ ] **H.2** Pokud `overrideServiceDurationMinutes != null`, zobrazit vedle inputu ikonu ⚠️. Klik na ikonu → reset (`onResetServiceDuration(stopId)`).
-- [ ] **H.3** CSS styly pro inline input u zastávky + override indikátor.
-- [ ] **H.4** `PlanningTimeline.tsx` — stejná logika jako H.1–H.3.
-- [ ] **H.5** Props: přidat `onUpdateServiceDuration` a `onResetServiceDuration` do obou timeline komponent.
+- [x] **H.1** `RouteDetailTimeline.tsx` — zastávka zobrazí dobu servisu jako `<input type="number">` (inline). Po změně volá `onUpdateServiceDuration(stopId, minutes)`.
+- [x] **H.2** Pokud `overrideServiceDurationMinutes != null`, zobrazit vedle inputu ikonu ⚠️. Klik → reset (`onResetServiceDuration(stopId)`).
+- [x] **H.3** CSS styly pro inline input u zastávky + override indikátor.
+- [x] **H.4** `PlanningTimeline.tsx` — stejná logika (SortableStopCard).
+- [x] **H.5** Props přidány do obou timeline komponent.
 
 ### Fáze I: Frontend — handlery v PlanningInbox + Planner
 
