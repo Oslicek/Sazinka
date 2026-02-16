@@ -86,6 +86,10 @@ pub struct RouteStop {
     pub distance_from_previous_km: Option<f64>,
     pub duration_from_previous_minutes: Option<i32>,
     pub service_duration_minutes: i32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub override_service_duration_minutes: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub override_travel_duration_minutes: Option<i32>,
 }
 
 /// Request to optimize a route
@@ -226,6 +230,12 @@ pub struct PlannedRouteStop {
     /// Duration from previous location in minutes (Valhalla matrix based)
     #[serde(default)]
     pub duration_from_previous_minutes: Option<i32>,
+    /// Override for service duration (manual edit)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub override_service_duration_minutes: Option<i32>,
+    /// Override for travel duration (manual edit)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub override_travel_duration_minutes: Option<i32>,
 }
 
 #[cfg(test)]
@@ -254,5 +264,55 @@ mod tests {
         let json = serde_json::to_string(&route).unwrap();
         assert!(json.contains("\"arrivalBufferPercent\":15.0"));
         assert!(json.contains("\"arrivalBufferFixedMinutes\":3.0"));
+    }
+
+    #[test]
+    fn test_route_stop_override_fields_serialize() {
+        let stop = PlannedRouteStop {
+            customer_id: Uuid::nil(),
+            customer_name: "Test".to_string(),
+            address: "Addr".to_string(),
+            coordinates: Coordinates { lat: 50.0, lng: 14.0 },
+            order: 1,
+            eta: NaiveTime::from_hms_opt(9, 0, 0).unwrap(),
+            etd: NaiveTime::from_hms_opt(9, 30, 0).unwrap(),
+            service_duration_minutes: 30,
+            time_window: None,
+            stop_type: None,
+            break_duration_minutes: None,
+            break_time_start: None,
+            distance_from_previous_km: Some(10.0),
+            duration_from_previous_minutes: Some(15),
+            override_service_duration_minutes: Some(45),
+            override_travel_duration_minutes: Some(20),
+        };
+        let json = serde_json::to_string(&stop).unwrap();
+        assert!(json.contains("\"overrideServiceDurationMinutes\":45"));
+        assert!(json.contains("\"overrideTravelDurationMinutes\":20"));
+    }
+
+    #[test]
+    fn test_route_stop_override_null_skipped() {
+        let stop = PlannedRouteStop {
+            customer_id: Uuid::nil(),
+            customer_name: "Test".to_string(),
+            address: "Addr".to_string(),
+            coordinates: Coordinates { lat: 50.0, lng: 14.0 },
+            order: 1,
+            eta: NaiveTime::from_hms_opt(9, 0, 0).unwrap(),
+            etd: NaiveTime::from_hms_opt(9, 30, 0).unwrap(),
+            service_duration_minutes: 30,
+            time_window: None,
+            stop_type: None,
+            break_duration_minutes: None,
+            break_time_start: None,
+            distance_from_previous_km: None,
+            duration_from_previous_minutes: None,
+            override_service_duration_minutes: None,
+            override_travel_duration_minutes: None,
+        };
+        let json = serde_json::to_string(&stop).unwrap();
+        assert!(!json.contains("overrideServiceDurationMinutes"));
+        assert!(!json.contains("overrideTravelDurationMinutes"));
     }
 }

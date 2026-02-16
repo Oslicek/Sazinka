@@ -297,6 +297,8 @@ pub async fn handle_plan(
                     break_time_start: None,
                     distance_from_previous_km: leg_distance_km,
                     duration_from_previous_minutes: leg_duration_min,
+                    override_service_duration_minutes: None,
+                    override_travel_duration_minutes: None,
                 });
                 if matrix_index > 0 {
                     previous_matrix_index = matrix_index;
@@ -319,6 +321,8 @@ pub async fn handle_plan(
                     break_time_start: Some(stop.arrival_time),
                     distance_from_previous_km: Some(0.0),
                     duration_from_previous_minutes: Some(0),
+                    override_service_duration_minutes: None,
+                    override_travel_duration_minutes: None,
                 });
             }
         }
@@ -655,6 +659,10 @@ pub struct SaveRouteStop {
     pub status: Option<String>,
     /// Per-stop service duration (minutes). If None, the global default is used.
     pub service_duration_minutes: Option<i32>,
+    #[serde(default)]
+    pub override_service_duration_minutes: Option<i32>,
+    #[serde(default)]
+    pub override_travel_duration_minutes: Option<i32>,
 }
 
 /// Response after saving a route

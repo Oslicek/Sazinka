@@ -453,6 +453,8 @@ impl JobProcessor {
                     break_time_start: None,
                     distance_from_previous_km: leg_distance_km,
                     duration_from_previous_minutes: leg_duration_min,
+                    override_service_duration_minutes: None,
+                    override_travel_duration_minutes: None,
                 });
                 if matrix_index > 0 {
                     previous_matrix_index = matrix_index;
@@ -475,6 +477,8 @@ impl JobProcessor {
                     break_time_start: Some(stop.arrival_time),
                     distance_from_previous_km: Some(0.0),
                     duration_from_previous_minutes: Some(0),
+                    override_service_duration_minutes: None,
+                    override_travel_duration_minutes: None,
                 });
             }
         }

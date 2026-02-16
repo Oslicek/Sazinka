@@ -420,28 +420,28 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR.
 
 ### Fáze A: Sdílená komponenta ArrivalBufferBar
 
-- [ ] **A.1** Přesunout `ArrivalBufferBar` z `PlanningInbox.tsx` do `apps/web/src/components/planner/ArrivalBufferBar.tsx` jako exportovanou komponentu.
-- [ ] **A.2** CSS styly `.bufferBar`, `.bufferBarExpanded`, `.bufferEditRow`, `.bufferEditActions`, `.bufferLabel` přesunout do `ArrivalBufferBar.module.css`.
-- [ ] **A.3** V `PlanningInbox.tsx` importovat `ArrivalBufferBar` ze sdílené komponenty, odebrat lokální definici a CSS.
-- [ ] **A.4** V `Planner.tsx` přidat buffer state (`routeBufferPercent`, `routeBufferFixedMinutes`), inicializaci z user preferences, `handleBufferChange` handler.
-- [ ] **A.5** V `Planner.tsx` vložit `<ArrivalBufferBar>` mezi akce a timeline (stejná pozice jako v PlanningInbox).
-- [ ] **A.6** Exportovat `ArrivalBufferBar` z `components/planner/index.ts`.
-- [ ] **A.7** Ověřit zobrazení v obou pohledech (`PlanningInbox` + `Planner`).
+- [x] **A.1** Přesunout `ArrivalBufferBar` z `PlanningInbox.tsx` do `apps/web/src/components/planner/ArrivalBufferBar.tsx` jako exportovanou komponentu.
+- [x] **A.2** CSS styly `.bufferBar`, `.bufferBarExpanded`, `.bufferEditRow`, `.bufferEditActions`, `.bufferLabel` přesunout do `ArrivalBufferBar.module.css`.
+- [x] **A.3** V `PlanningInbox.tsx` importovat `ArrivalBufferBar` ze sdílené komponenty, odebrat lokální definici a CSS.
+- [x] **A.4** V `Planner.tsx` přidat buffer state (`routeBufferPercent`, `routeBufferFixedMinutes`), inicializaci z user preferences, `handleBufferChange` handler.
+- [x] **A.5** V `Planner.tsx` vložit `<ArrivalBufferBar>` mezi akce a timeline (stejná pozice jako v PlanningInbox).
+- [x] **A.6** Exportovat `ArrivalBufferBar` z `components/planner/index.ts`.
+- [x] **A.7** Ověřit zobrazení v obou pohledech (`PlanningInbox` + `Planner`).
 
 ### Fáze B: DB schéma — override sloupce
 
-- [ ] **B.1** V `001_initial_schema.sql` přidat do `route_stops`:
+- [x] **B.1** V `001_initial_schema.sql` přidat do `route_stops`:
   - `override_service_duration_minutes INTEGER` (nullable)
   - `override_travel_duration_minutes INTEGER` (nullable)
-- [ ] **B.2** Ověřit, že schema je validní (`psql -f`).
+- [x] **B.2** Ověřit, že schema je validní (`psql -f`).
 
 ### Fáze C: Rust typy — route stop overrides + TDD
 
-- [ ] **C.1** RED: Test `test_route_stop_override_fields_serialize` — struct s `override_service_duration_minutes: Some(45)` se serializuje s klíčem `overrideServiceDurationMinutes`.
+- [x] **C.1** RED: Test `test_route_stop_override_fields_serialize` — struct s `override_service_duration_minutes: Some(45)` se serializuje s klíčem `overrideServiceDurationMinutes`.
   - GREEN: Přidat `override_service_duration_minutes: Option<i32>` a `override_travel_duration_minutes: Option<i32>` do struct v `types/route.rs` (nebo příslušný stop struct).
-- [ ] **C.2** RED: Test `test_route_stop_override_null_skipped` — struct s `None` neobsahuje klíč v JSON (skip_serializing_if).
+- [x] **C.2** RED: Test `test_route_stop_override_null_skipped` — struct s `None` neobsahuje klíč v JSON (skip_serializing_if).
   - GREEN: `#[serde(skip_serializing_if = "Option::is_none")]`.
-- [ ] **C.3** `cargo check` — ověřit kompilaci.
+- [x] **C.3** `cargo check` — ověřit kompilaci.
 
 ### Fáze D: DB dotazy — route stops s overrides + TDD
 
