@@ -299,6 +299,9 @@
     "conflicts_with_break": "Slot zasahuje do preferovaného okna pauzy."
   },
 
+  "service_duration_label": "Servis:",
+  "override_reset_tooltip": "Kliknutím vrátite pôvodnú vypočítanú hodnotu",
+
   "buffer_info": "Rezerva príchodu: {{percent}} % + {{fixed}} min",
   "buffer_percent_label": "Percento",
   "buffer_fixed_label": "Fixné min",

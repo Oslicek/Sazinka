@@ -317,6 +317,9 @@
     "arrival_delayed": "Příjezd k {{name}} opožděn o {{lateMinutes}} min (dohodnuto do {{windowEnd}})"
   },
 
+  "service_duration_label": "Servis:",
+  "override_reset_tooltip": "Kliknutím vrátíte původní vypočítanou hodnotu",
+
   "buffer_info": "Rezerva příjezdu: {{percent}} % + {{fixed}} min",
   "buffer_percent_label": "Procento",
   "buffer_fixed_label": "Fixní min",

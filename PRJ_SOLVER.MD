@@ -431,7 +431,7 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR.
 | G | Inline editace úseku cesty (travel duration) | ✅ Hotovo, commitnuto & pushnuto |
 | H | Inline editace zastávky (service duration) | ✅ Hotovo, commitnuto & pushnuto |
 | I | Handlery v PlanningInbox + Planner | ✅ Hotovo, commitnuto & pushnuto |
-| J | Překlady | ❌ Nezahájeno |
+| J | Překlady | ✅ Hotovo, commitnuto & pushnuto |
 | K | Finální ověření | ❌ Nezahájeno |
 
 **Commity:**
@@ -512,11 +512,7 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR.
 
 ### Fáze J: Frontend — překlady
 
-- [ ] **J.1** `{cs,en,sk}/planner.json` — přidat klíče:
-  - `override_reset_tooltip` — „Vrátit na vypočítanou hodnotu"
-  - `override_indicator_tooltip` — „Ručně upraveno"
-  - `travel_duration_label` — „Doba jízdy"
-  - `service_duration_label` — „Doba servisu"
+- [x] **J.1** `{cs,en,sk}/planner.json` — přidány klíče `service_duration_label` a `override_reset_tooltip`.
 
 ### Fáze K: Finální ověření
 

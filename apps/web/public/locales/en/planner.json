@@ -316,6 +316,9 @@
     "arrival_delayed": "Arrival at {{name}} delayed by {{lateMinutes}} min (agreed until {{windowEnd}})"
   },
 
+  "service_duration_label": "Service:",
+  "override_reset_tooltip": "Click to reset to the original calculated value",
+
   "buffer_info": "Arrival buffer: {{percent}} % + {{fixed}} min",
   "buffer_percent_label": "Percent",
   "buffer_fixed_label": "Fixed min",
