@@ -49,6 +49,8 @@ export interface SaveRouteRequest {
   optimizationScore: number;
   returnToDepotDistanceKm?: number | null;
   returnToDepotDurationMinutes?: number | null;
+  arrivalBufferPercent?: number;
+  arrivalBufferFixedMinutes?: number;
 }
 
 export interface SaveRouteResponse {
@@ -68,6 +70,8 @@ export interface SavedRoute {
   totalDistanceKm: number | null;
   totalDurationMinutes: number | null;
   optimizationScore: number | null;
+  arrivalBufferPercent: number;
+  arrivalBufferFixedMinutes: number;
   returnToDepotDistanceKm: number | null;
   returnToDepotDurationMinutes: number | null;
   stopsCount?: number;
@@ -390,10 +394,14 @@ export interface RoutePlanJobRequest {
   customerIds: string[];
   date: string;  // YYYY-MM-DD format
   startLocation: Coordinates;
-  /** Optional crew ID - if provided, crew-specific settings (arrival buffer) are used */
+  /** Optional crew ID - if provided, crew-specific settings are used */
   crewId?: string;
   /** Time windows from the saved route stops. Takes priority over DB lookup. */
   timeWindows?: CustomerTimeWindow[];
+  /** Arrival buffer as percentage of travel time (default 10%) */
+  arrivalBufferPercent?: number;
+  /** Fixed arrival buffer in minutes (default 0) */
+  arrivalBufferFixedMinutes?: number;
 }
 
 /** Response from submitting a route planning job */
@@ -430,6 +438,8 @@ export async function submitRoutePlanJob(
     startLocation: request.startLocation,
     ...(request.crewId ? { crewId: request.crewId } : {}),
     ...(request.timeWindows && request.timeWindows.length > 0 ? { timeWindows: request.timeWindows } : {}),
+    ...(request.arrivalBufferPercent !== undefined ? { arrivalBufferPercent: request.arrivalBufferPercent } : {}),
+    ...(request.arrivalBufferFixedMinutes !== undefined ? { arrivalBufferFixedMinutes: request.arrivalBufferFixedMinutes } : {}),
   });
   
   const response = await deps.request<typeof req, NatsResponse<RoutePlanJobSubmitResponse>>(

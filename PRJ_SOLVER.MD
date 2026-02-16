@@ -283,10 +283,10 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR:
 
 ### Fáze 8: Frontend services
 
-- [ ] **8.1** `routeService.ts` — přidat `arrivalBufferPercent` a `arrivalBufferFixedMinutes` do `SaveRouteRequest` a `SavedRoute`.
-- [ ] **8.2** `crewService.ts` — odebrat `arrivalBufferPercent` a `arrivalBufferFixedMinutes` z `Crew`, `CreateCrewRequest`, `UpdateCrewRequest`.
-- [ ] **8.3** `settingsService.ts` — ověřit, že `UserPreferences` interface (ze shared-types) reflektuje nové buffer pole.
-- [ ] **8.4** `tsc --noEmit` — ověřit kompilaci (očekáváme chyby v PlanningInbox a Settings — opravíme v dalších fázích).
+- [x] **8.1** `routeService.ts` — přidáno `arrivalBufferPercent` a `arrivalBufferFixedMinutes` do `SaveRouteRequest`, `SavedRoute`, `RoutePlanJobRequest` ✅
+- [x] **8.2** `crewService.ts` — odebráno `arrivalBufferPercent` a `arrivalBufferFixedMinutes` z `Crew`, `CreateCrewRequest`, `UpdateCrewRequest` ✅
+- [x] **8.3** `settingsService.ts` — přidáno `lastArrivalBufferPercent` a `lastArrivalBufferFixedMinutes` do `UserPreferences` ✅
+- [ ] **8.4** `tsc --noEmit` — očekáváme chyby v PlanningInbox a Settings (opravíme v dalších fázích)
 
 ### Fáze 9: Frontend — PlanningInbox (buffer state + flow)
 

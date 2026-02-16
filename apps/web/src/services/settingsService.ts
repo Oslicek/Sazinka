@@ -169,6 +169,8 @@ export interface UserPreferences {
   defaultCrewId: string | null;
   defaultDepotId: string | null;
   locale: string;
+  lastArrivalBufferPercent: number;
+  lastArrivalBufferFixedMinutes: number;
 }
 
 /**
