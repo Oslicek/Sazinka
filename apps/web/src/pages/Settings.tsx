@@ -25,6 +25,7 @@ import { ImportCustomersModal } from '../components/customers/ImportCustomersMod
 import { ExportPlusPanel } from '../components/shared/ExportPlusPanel';
 import { RolesManager } from '../components/settings/RolesManager';
 import { DangerZoneSection } from '../components/settings/DeleteAccountDialog';
+import { TimeInput } from '../components/common';
 import styles from './Settings.module.css';
 
 type SettingsTab = 'preferences' | 'work' | 'business' | 'email' | 'breaks' | 'depots' | 'crews' | 'workers' | 'import-export' | 'roles';
@@ -1738,20 +1739,18 @@ function CrewForm({ crew, saving, onSave, onCancel }: CrewFormProps) {
       <div className={styles.crewDetailRow}>
         <div className={styles.formGroup}>
           <label htmlFor="crewWorkStart">{t('crew_shift_start')}</label>
-          <input
-            type="time"
+          <TimeInput
             id="crewWorkStart"
-            value={formData.workingHoursStart.slice(0, 5)}
-            onChange={(e) => setFormData({ ...formData, workingHoursStart: e.target.value + ':00' })}
+            value={formData.workingHoursStart}
+            onChange={(v) => setFormData({ ...formData, workingHoursStart: v + ':00' })}
           />
         </div>
         <div className={styles.formGroup}>
           <label htmlFor="crewWorkEnd">{t('crew_shift_end')}</label>
-          <input
-            type="time"
+          <TimeInput
             id="crewWorkEnd"
-            value={formData.workingHoursEnd.slice(0, 5)}
-            onChange={(e) => setFormData({ ...formData, workingHoursEnd: e.target.value + ':00' })}
+            value={formData.workingHoursEnd}
+            onChange={(v) => setFormData({ ...formData, workingHoursEnd: v + ':00' })}
           />
         </div>
       </div>

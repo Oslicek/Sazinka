@@ -1,0 +1,22 @@
+.timeInput {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  max-width: 140px;
+}
+
+.timeInput input {
+  width: 100%;
+  padding-right: 2rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.clockIcon {
+  position: absolute;
+  right: 0.5rem;
+  pointer-events: none;
+  color: var(--color-text-muted, #999);
+  display: flex;
+  align-items: center;
+}
