@@ -290,11 +290,11 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR:
 
 ### Fáze 9: Frontend — PlanningInbox (buffer state + flow)
 
-- [ ] **9.1** Přidat lokální stav `routeBufferPercent` (init z `settings.preferences.lastArrivalBufferPercent ?? 10`) a `routeBufferFixedMinutes` (init z `settings.preferences.lastArrivalBufferFixedMinutes ?? 0`). Při načtení existující trasy přepsat hodnotami z `savedRoute`.
-- [ ] **9.2** `triggerRecalculate` — změnit zdroj bufferu z `currentCrew?.arrivalBufferPercent` na lokální `routeBufferPercent` / `routeBufferFixedMinutes`.
-- [ ] **9.3** `autoSaveFn` — předávat `arrivalBufferPercent` a `arrivalBufferFixedMinutes` v `SaveRouteRequest`.
-- [ ] **9.4** Přidat handler `handleBufferChange(percent: number, fixedMinutes: number)` → update stavu → `triggerRecalculate()`.
-- [ ] **9.5** Předat buffer props + `onBufferChange` do `RouteDetailTimeline` a `PlanningTimeline`.
+- [x] **9.1** Přidán lokální stav `routeBufferPercent` a `routeBufferFixedMinutes`, init z preferences, override ze savedRoute ✅
+- [x] **9.2** `triggerRecalculate` — čte z `routeBufferPercent` / `routeBufferFixedMinutes` místo crew ✅
+- [x] **9.3** `autoSaveFn` — předává buffer v `SaveRouteRequest` ✅
+- [x] **9.4** `handleBufferChange` handler → update stavu → `triggerRecalculate()` ✅
+- [x] **9.5** Buffer props + `onBufferChange` předány do `RouteDetailTimeline`, buffer do `submitRoutePlanJob` ✅
 - [ ] **9.6** `tsc --noEmit` — ověřit kompilaci.
 
 ### Fáze 10: Frontend — RouteDetailTimeline (zobrazení a editace)

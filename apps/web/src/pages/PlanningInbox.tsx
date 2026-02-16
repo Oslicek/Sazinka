@@ -223,6 +223,10 @@ export function PlanningInbox() {
   // Draft mode state (auto-save)
   const [hasChanges, setHasChanges] = useState(false);
   
+  // Route-level arrival buffer state (initialized from user preferences, overridden by saved route)
+  const [routeBufferPercent, setRouteBufferPercent] = useState(10);
+  const [routeBufferFixedMinutes, setRouteBufferFixedMinutes] = useState(0);
+  
   // Multi-crew state (TODO: implement multi-crew comparison)
   const [crewComparisons, _setCrewComparisons] = useState<CrewComparison[]>([]);
   
@@ -289,9 +293,11 @@ export function PlanningInbox() {
       optimizationScore: 0,
       returnToDepotDistanceKm: returnToDepotLeg?.distanceKm ?? null,
       returnToDepotDurationMinutes: returnToDepotLeg?.durationMinutes ?? null,
+      arrivalBufferPercent: routeBufferPercent,
+      arrivalBufferFixedMinutes: routeBufferFixedMinutes,
     });
     setHasChanges(false);
-  }, [routeStops, context, metrics, returnToDepotLeg]);
+  }, [routeStops, context, metrics, returnToDepotLeg, routeBufferPercent, routeBufferFixedMinutes]);
 
   const { isSaving, lastSaved, saveError, retry: retrySave } = useAutoSave({
     saveFn: autoSaveFn,
@@ -338,6 +344,14 @@ export function PlanningInbox() {
         setDefaultWorkingHoursStart(settings?.workConstraints?.workingHoursStart ?? null);
         setDefaultWorkingHoursEnd(settings?.workConstraints?.workingHoursEnd ?? null);
         setBreakSettings(settings?.breakSettings ?? DEFAULT_BREAK_SETTINGS);
+        
+        // Initialize route buffer from user's last-used preferences
+        if (settings?.preferences?.lastArrivalBufferPercent !== undefined) {
+          setRouteBufferPercent(settings.preferences.lastArrivalBufferPercent);
+        }
+        if (settings?.preferences?.lastArrivalBufferFixedMinutes !== undefined) {
+          setRouteBufferFixedMinutes(settings.preferences.lastArrivalBufferFixedMinutes);
+        }
         
         // Build initial context with whatever data we have
         const primaryDepot = loadedDepots.find((d) => 
@@ -635,6 +649,14 @@ export function PlanningInbox() {
             slackMin: Math.max(0, workingDayMin - totalMin),
             stopCount: response.stops.length,
           });
+
+          // Override buffer from saved route
+          if (response.route.arrivalBufferPercent !== undefined) {
+            setRouteBufferPercent(response.route.arrivalBufferPercent);
+          }
+          if (response.route.arrivalBufferFixedMinutes !== undefined) {
+            setRouteBufferFixedMinutes(response.route.arrivalBufferFixedMinutes);
+          }
 
           // Mark that we need to recalculate ETAs for the loaded route
           pendingRecalcStopsRef.current = response.stops;
@@ -1098,9 +1120,9 @@ export function PlanningInbox() {
     }));
 
     try {
-      const bufferPct = currentCrew?.arrivalBufferPercent ?? 0;
-      const bufferFixed = currentCrew?.arrivalBufferFixedMinutes ?? 0;
-      console.log('[recalculate] crew buffer: percent=', bufferPct, 'fixed=', bufferFixed, 'crewId=', currentCrew?.id);
+      const bufferPct = routeBufferPercent;
+      const bufferFixed = routeBufferFixedMinutes;
+      console.log('[recalculate] route buffer: percent=', bufferPct, 'fixed=', bufferFixed);
       const result = await recalculateRoute({
         depot: { lat: depot.lat, lng: depot.lng },
         stops: recalcStops,
@@ -1156,7 +1178,7 @@ export function PlanningInbox() {
       logger.error('Route recalculation failed:', err);
       // Non-fatal: the route still exists, just with stale ETAs
     }
-  }, [currentDepot, routeStartTime, routeEndTime, defaultServiceDurationMinutes, currentCrew?.arrivalBufferPercent, currentCrew?.arrivalBufferFixedMinutes]);
+  }, [currentDepot, routeStartTime, routeEndTime, defaultServiceDurationMinutes, routeBufferPercent, routeBufferFixedMinutes]);
 
   // Auto-recalculate when working hours or depot changes (but not on initial load)
   const prevWorkingHoursRef = useRef<{ start: string | null; end: string | null; depotId: string | null }>({
@@ -1579,6 +1601,17 @@ export function PlanningInbox() {
     triggerRecalculate(newStops);
   }, [incrementRouteVersion, triggerRecalculate]);
 
+  // Route building: update arrival buffer
+  const handleBufferChange = useCallback((percent: number, fixedMinutes: number) => {
+    setRouteBufferPercent(percent);
+    setRouteBufferFixedMinutes(fixedMinutes);
+    setHasChanges(true);
+    // Recalculate with new buffer values (will pick up from state on next render)
+    if (routeStops.length > 0) {
+      triggerRecalculate(routeStops);
+    }
+  }, [routeStops, triggerRecalculate]);
+
   // Route building: remove stop from route
   const handleRemoveFromRoute = useCallback(async (stopId: string) => {
     let remaining: SavedRouteStop[] = [];
@@ -1643,6 +1676,8 @@ export function PlanningInbox() {
         startLocation,
         crewId: context.crewId || undefined,
         timeWindows: timeWindows.length > 0 ? timeWindows : undefined,
+        arrivalBufferPercent: routeBufferPercent,
+        arrivalBufferFixedMinutes: routeBufferFixedMinutes,
       });
 
       setRouteJobProgress(t('optimizer_queued'));
@@ -2432,6 +2467,9 @@ export function PlanningInbox() {
               depotDeparture={depotDeparture}
               returnToDepotDistanceKm={returnToDepotLeg?.distanceKm ?? null}
               returnToDepotDurationMinutes={returnToDepotLeg?.durationMinutes ?? null}
+              arrivalBufferPercent={routeBufferPercent}
+              arrivalBufferFixedMinutes={routeBufferFixedMinutes}
+              onBufferChange={handleBufferChange}
             />
           ) : (
             <PlanningTimeline
