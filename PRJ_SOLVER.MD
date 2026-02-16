@@ -253,10 +253,9 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR:
 
 ### Fáze 4: Rust typy — user preferences (přidat last-used buffer) + TDD
 
-- [ ] **4.1** TEST: `test_user_preferences_has_last_buffer` — `UserPreferences` s `last_arrival_buffer_percent: 15.0` a `last_arrival_buffer_fixed_minutes: 5.0` se serializuje s odpovídajícími klíči.
-  - RED: Test failuje, pole neexistují.
-  - GREEN: Přidat pole do `types/settings.rs` → struct `UserPreferences`.
-- [ ] **4.2** `cargo check`
+- [x] **4.1** TEST: `test_user_preferences_has_last_buffer` — serializace/deserializace buffer polí v `UserPreferences` ✅
+  - GREEN: Přidána pole do `UserPreferences`, `UserWithSettings`, `to_preferences()`.
+- [x] **4.2** `cargo check` ✅
 
 ### Fáze 5: DB dotazy — route upsert + TDD
 

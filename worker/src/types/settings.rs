@@ -122,6 +122,10 @@ pub struct UserPreferences {
     pub default_crew_id: Option<Uuid>,
     pub default_depot_id: Option<Uuid>,
     pub locale: String,
+    /// Last-used arrival buffer percentage (auto-filled into new routes)
+    pub last_arrival_buffer_percent: f64,
+    /// Last-used fixed arrival buffer in minutes (auto-filled into new routes)
+    pub last_arrival_buffer_fixed_minutes: f64,
 }
 
 /// Break/pause settings
@@ -280,6 +284,10 @@ pub struct UserWithSettings {
     pub break_max_km: f64,
     /// BCP-47 locale code (e.g. "en", "cs", "en-GB"). Default: "en".
     pub locale: String,
+    /// Last-used arrival buffer percentage for new routes.
+    pub last_arrival_buffer_percent: f64,
+    /// Last-used fixed arrival buffer in minutes for new routes.
+    pub last_arrival_buffer_fixed_minutes: f64,
     /// Company-level locale for emails and external communication. Default: "cs".
     pub company_locale: String,
     /// When the confirmation email template was last manually edited.
@@ -407,6 +415,8 @@ impl UserWithSettings {
             default_crew_id: self.default_crew_id,
             default_depot_id: self.default_depot_id,
             locale: self.locale.clone(),
+            last_arrival_buffer_percent: self.last_arrival_buffer_percent,
+            last_arrival_buffer_fixed_minutes: self.last_arrival_buffer_fixed_minutes,
         }
     }
 
@@ -538,5 +548,29 @@ pub fn default_confirmation_subject(locale: &str) -> String {
         "cs" => "Potvrzení termínu - {{customerName}}".to_string(),
         "sk" => "Potvrdenie termínu - {{customerName}}".to_string(),
         _ => "Appointment confirmation - {{customerName}}".to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_user_preferences_has_last_buffer() {
+        let prefs = UserPreferences {
+            default_crew_id: None,
+            default_depot_id: None,
+            locale: "cs".to_string(),
+            last_arrival_buffer_percent: 15.0,
+            last_arrival_buffer_fixed_minutes: 5.0,
+        };
+        let json = serde_json::to_string(&prefs).unwrap();
+        assert!(json.contains("\"lastArrivalBufferPercent\":15.0"));
+        assert!(json.contains("\"lastArrivalBufferFixedMinutes\":5.0"));
+
+        // Deserialize back
+        let parsed: UserPreferences = serde_json::from_str(&json).unwrap();
+        assert!((parsed.last_arrival_buffer_percent - 15.0).abs() < f64::EPSILON);
+        assert!((parsed.last_arrival_buffer_fixed_minutes - 5.0).abs() < f64::EPSILON);
     }
 }
