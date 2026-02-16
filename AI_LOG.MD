@@ -751,3 +751,98 @@ The application is now fully deployed with RBAC enabled. Users can:
 3. V adrese zobrazovat také PSČ; pokud není v datech, pole bude zatím prázdné.
 4. Label `Určena na mapě` posunout k pravému okraji sloupce.
 5. Telefon zobrazovat ve formátu `+420 738 980 138` (mezera po předvolbě a dále po trojicích číslic).
+
+---
+
+## 2026-02-16: Přesun rezervy příjezdu z posádky na trasu
+
+### Kontext
+
+Implementována velká změna podle `PRJ_SOLVER.MD`: Rezerva příjezdu (arrival buffer) přesunuta z modelu Crew na Route.
+
+### Implementované změny
+
+#### Backend (Rust)
+- ✅ Upraveno DB schéma (`001_initial_schema.sql`):
+  - Přidány sloupce `arrival_buffer_percent` a `arrival_buffer_fixed_minutes` do tabulky `routes`
+  - Přidány sloupce `last_arrival_buffer_percent` a `last_arrival_buffer_fixed_minutes` do tabulky `users`
+  - Odstraněny staré migrace `004_add_crew_buffer.sql`, `005_fix_crew_buffer_type.sql`, `014_add_crew_fixed_buffer.sql`
+- ✅ Typy (`types/crew.rs`, `types/route.rs`, `types/settings.rs`, `types/job.rs`) - buffer odebrán z Crew, přidán do Route a UserPreferences
+- ✅ DB queries (`db/queries/crew.rs`, `db/queries/route.rs`, `db/queries/settings.rs`) - upraveny pro nové sloupce
+- ✅ Handlers (`handlers/route.rs`, `handlers/jobs.rs`) - buffer čten z route, ukládána poslední hodnota do user preferences
+- ✅ Všechny testy prochází (282 passed)
+
+#### Frontend (TypeScript/React)
+- ✅ Shared types (`packages/shared-types/src/route.ts`, `src/settings.ts`) - přidány buffer fields
+- ✅ Services (`services/routeService.ts`, `crewService.ts`, `settingsService.ts`) - buffer odebrán z Crew, přidán do Route
+- ✅ State management (`PlanningInbox.tsx`) - buffer v local state, inicializován z user preferences, použit při přepočtech
+- ✅ UI komponenta (`RouteDetailTimeline.tsx`) - implementováno zobrazení a editace bufferu (inline editor)
+- ✅ CSS styly (`RouteDetailTimeline.module.css`) - styly pro `.bufferBar`, `.bufferEdit` atd.
+- ✅ Lokalizace (CS/EN/SK) - přidány klíče pro buffer editor, odebrány klíče pro crew buffer
+- ✅ Settings (`Settings.tsx`) - odebrány buffer fields z crew formuláře
+
+#### Kompilace
+- ✅ `cargo check` - bez chyb
+- ✅ `cargo test` - 282 testů prošlo
+- ✅ `tsc --noEmit` - opraveny chybějící pole v test fixtures (RouteListPanel.test.tsx)
+
+### ❌ OTEVŘENÝ PROBLÉM: Buffer editor není viditelný v timeline
+
+**Popis**: 
+Implementovali jsme kompletní UI pro zobrazení a editaci bufferu v `RouteDetailTimeline.tsx` (řádky s `.bufferBar`, inline editor s inputy pro procenta a minuty), ale podle uživatelského screenshotu není buffer editor viditelný v timeline.
+
+**Lokace kódu**: 
+- `apps/web/src/components/planner/RouteDetailTimeline.tsx` - obsahuje `isBufferExpanded`, `handleBufferSave`, JSX pro buffer display a editor
+- `apps/web/src/components/planner/RouteDetailTimeline.module.css` - styly pro `.bufferBar`, `.bufferBarExpanded`, `.bufferEdit`
+
+**Možné příčiny**:
+1. Komponenta `RouteDetailTimeline` není použita na správné stránce (zkontrolovat PlanningInbox.tsx vs Planner.tsx)
+2. Buffer props (`arrivalBufferPercent`, `arrivalBufferFixedMinutes`, `onBufferChange`) nejsou správně předány do komponenty
+3. CSS styly jsou přepsány nebo element není renderován kvůli chybějící podmínce
+4. Buffer se zobrazuje pouze v určitém stavu (např. když je trasa načtená/optimalizovaná)
+
+**Status**: NEFIXOVÁNO - odloženo na později
+
+**Kroky k ověření**:
+1. Zkontrolovat, zda `PlanningInbox.tsx` skutečně předává buffer props do `RouteDetailTimeline`
+2. Ověřit v prohlížeči, zda se element `.bufferBar` renderuje v DOM (DevTools → Elements)
+3. Zkontrolovat console log pro případné React warnings/errors
+4. Ověřit, že trasa má načtené buffer hodnoty (zkontrolovat network tab pro NATS responses)
+
+---
+
+## 2026-02-16: TimeInput komponenta - dropdown time picker
+
+### Požadavek uživatele
+
+V nastavení posádky (Settings → Posádky) nefungují selektory času. `TimeInput` komponenta zobrazuje pouze textové pole s ikonou hodin, ale ikona není klikatelná a uživatel musí čas napsat ručně.
+
+**Původní stav**: `TimeInput` byl vytvořen jako náhrada nativního `<input type="time">` kvůli problému s AM/PM formátem na anglických OS locale, ale ztratil tím nativní time picker.
+
+### Implementované řešení
+
+Přidán **dropdown time picker** do `TimeInput` komponenty:
+
+#### Nové funkce
+1. **Dropdown menu** - Seznam časů v konfigurovatelných intervalech (výchozí 15 min: 00:00, 00:15, ..., 23:45)
+2. **Klikatelná ikona hodin** - Změněna z `<span>` na `<button>` s `onClick` handlerem
+3. **Auto-scroll** - Dropdown se automaticky posune na aktuálně vybraný/nejbližší čas
+4. **Klávesnice** - Šipka dolů otevře dropdown, Escape zavře, Enter potvrdí
+5. **Min/max omezení** - Dropdown respektuje `min` a `max` props (filtruje neplatné časy)
+6. **Konfigurovatelný krok** - Nový prop `step?: number` (výchozí 15)
+7. **Outside click** - Dropdown se zavře kliknutím mimo
+8. **Ruční vstup** - Stále funguje psaní HH:MM jako předtím
+
+#### Změny souborů
+- ✅ `apps/web/src/components/common/TimeInput.tsx` - přidán dropdown state, event handlers, rendering
+- ✅ `apps/web/src/components/common/TimeInput.module.css` - nové styly pro `.clockButton`, `.dropdown`, `.dropdownItem`
+
+#### Styly
+- Button hover efekty (modrá barva + světlé pozadí)
+- Dropdown s border-radius, shadow, max-height 200px s auto-scroll
+- Vybraný čas zvýrazněn modrou barvou a tučným písmem
+- Hover efekt na položkách dropdownu
+
+**Status**: ✅ IMPLEMENTOVÁNO
+
+**Zpětná kompatibilita**: Zachována - všechna existující použití `TimeInput` fungují beze změn.

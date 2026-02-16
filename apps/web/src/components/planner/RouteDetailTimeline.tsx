@@ -5,7 +5,7 @@
  * Clicking a stop or segment highlights it on the map.
  */
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   DndContext,
@@ -47,12 +47,6 @@ interface RouteDetailTimelineProps {
   depotDeparture?: string | null;
   returnToDepotDistanceKm?: number | null;
   returnToDepotDurationMinutes?: number | null;
-  /** Arrival buffer percentage (route-level) */
-  arrivalBufferPercent?: number;
-  /** Fixed arrival buffer in minutes (route-level) */
-  arrivalBufferFixedMinutes?: number;
-  /** Callback when buffer is changed by user */
-  onBufferChange?: (percent: number, fixedMinutes: number) => void;
 }
 
 function formatTime(time: string | null): string {
@@ -151,22 +145,9 @@ export function RouteDetailTimeline({
   warnings = [],
   returnToDepotDistanceKm = null,
   returnToDepotDurationMinutes = null,
-  arrivalBufferPercent = 10,
-  arrivalBufferFixedMinutes = 0,
-  onBufferChange,
 }: RouteDetailTimelineProps) {
   const { t } = useTranslation('planner');
   const depotName = depot?.name ?? t('timeline_depot');
-
-  // Buffer editing state
-  const [isBufferExpanded, setIsBufferExpanded] = useState(false);
-  const [editBufferPercent, setEditBufferPercent] = useState(arrivalBufferPercent);
-  const [editBufferFixed, setEditBufferFixed] = useState(arrivalBufferFixedMinutes);
-
-  const handleBufferSave = useCallback(() => {
-    onBufferChange?.(editBufferPercent, editBufferFixed);
-    setIsBufferExpanded(false);
-  }, [editBufferPercent, editBufferFixed, onBufferChange]);
 
   // DnD state
   const [pendingReorder, setPendingReorder] = useState<{
@@ -236,59 +217,6 @@ export function RouteDetailTimeline({
       <div className={styles.depotCard}>
         <span className={styles.depotIcon}>&#x1F4CD;</span>
         <span className={styles.depotName}>{depotName}</span>
-      </div>
-
-      {/* Arrival buffer info */}
-      <div
-        className={`${styles.bufferBar} ${isBufferExpanded ? styles.bufferBarExpanded : ''}`}
-        onClick={() => !isBufferExpanded && setIsBufferExpanded(true)}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => e.key === 'Enter' && !isBufferExpanded && setIsBufferExpanded(true)}
-      >
-        {isBufferExpanded ? (
-          <div className={styles.bufferEdit}>
-            <div className={styles.bufferEditRow}>
-              <label>{t('buffer_percent_label')}</label>
-              <input
-                type="number"
-                value={editBufferPercent}
-                onChange={(e) => setEditBufferPercent(parseFloat(e.target.value) || 0)}
-                min={0}
-                max={100}
-                step={1}
-              />
-              <span>%</span>
-            </div>
-            <div className={styles.bufferEditRow}>
-              <label>{t('buffer_fixed_label')}</label>
-              <input
-                type="number"
-                value={editBufferFixed}
-                onChange={(e) => setEditBufferFixed(parseFloat(e.target.value) || 0)}
-                min={0}
-                max={120}
-                step={1}
-              />
-              <span>min</span>
-            </div>
-            <div className={styles.bufferEditActions}>
-              <button type="button" onClick={handleBufferSave}>{t('buffer_save')}</button>
-              <button type="button" onClick={() => {
-                setEditBufferPercent(arrivalBufferPercent);
-                setEditBufferFixed(arrivalBufferFixedMinutes);
-                setIsBufferExpanded(false);
-              }}>{t('buffer_cancel')}</button>
-            </div>
-          </div>
-        ) : (
-          <span className={styles.bufferLabel}>
-            {t('buffer_info', {
-              percent: arrivalBufferPercent,
-              fixed: arrivalBufferFixedMinutes,
-            })}
-          </span>
-        )}
       </div>
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>

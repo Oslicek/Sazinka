@@ -123,6 +123,93 @@ function toPriority(item: CallQueueItem): CandidateRowData['priority'] {
   return 'upcoming';
 }
 
+// ---------------------------------------------------------------------------
+// Arrival buffer inline editor (displayed between actions and timeline)
+// ---------------------------------------------------------------------------
+
+function ArrivalBufferBar({
+  percent,
+  fixedMinutes,
+  onChange,
+}: {
+  percent: number;
+  fixedMinutes: number;
+  onChange: (percent: number, fixedMinutes: number) => void;
+}) {
+  const { t } = useTranslation('planner');
+  const [expanded, setExpanded] = useState(false);
+  const [editPct, setEditPct] = useState(percent);
+  const [editFixed, setEditFixed] = useState(fixedMinutes);
+
+  const handleSave = () => {
+    onChange(editPct, editFixed);
+    setExpanded(false);
+  };
+
+  const handleCancel = () => {
+    setEditPct(percent);
+    setEditFixed(fixedMinutes);
+    setExpanded(false);
+  };
+
+  // Sync local draft when parent value changes (e.g. after save round-trip)
+  useEffect(() => {
+    if (!expanded) {
+      setEditPct(percent);
+      setEditFixed(fixedMinutes);
+    }
+  }, [percent, fixedMinutes, expanded]);
+
+  if (!expanded) {
+    return (
+      <div
+        className={styles.bufferBar}
+        onClick={() => setExpanded(true)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => e.key === 'Enter' && setExpanded(true)}
+      >
+        <span className={styles.bufferLabel}>
+          {t('buffer_info', { percent, fixed: fixedMinutes })}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.bufferBarExpanded}>
+      <div className={styles.bufferEditRow}>
+        <label>{t('buffer_percent_label')}</label>
+        <input
+          type="number"
+          value={editPct}
+          onChange={(e) => setEditPct(parseFloat(e.target.value) || 0)}
+          min={0}
+          max={100}
+          step={1}
+        />
+        <span>%</span>
+      </div>
+      <div className={styles.bufferEditRow}>
+        <label>{t('buffer_fixed_label')}</label>
+        <input
+          type="number"
+          value={editFixed}
+          onChange={(e) => setEditFixed(parseFloat(e.target.value) || 0)}
+          min={0}
+          max={120}
+          step={1}
+        />
+        <span>min</span>
+      </div>
+      <div className={styles.bufferEditActions}>
+        <button type="button" onClick={handleSave}>{t('buffer_save')}</button>
+        <button type="button" onClick={handleCancel}>{t('buffer_cancel')}</button>
+      </div>
+    </div>
+  );
+}
+
 export function PlanningInbox() {
   const { t } = useTranslation('planner');
   const { isConnected } = useNatsStore();
@@ -1102,7 +1189,7 @@ export function PlanningInbox() {
 
   // Quick-recalculate ETAs for the current route after insert/reorder.
   // Fires in the background – updates stops in-place when the response arrives.
-  const triggerRecalculate = useCallback(async (stopsSnapshot: SavedRouteStop[]) => {
+  const triggerRecalculate = useCallback(async (stopsSnapshot: SavedRouteStop[], bufferOverride?: { percent: number; fixed: number }) => {
     const depot = currentDepot;
     if (!depot || stopsSnapshot.length === 0) return;
 
@@ -1120,9 +1207,8 @@ export function PlanningInbox() {
     }));
 
     try {
-      const bufferPct = routeBufferPercent;
-      const bufferFixed = routeBufferFixedMinutes;
-      console.log('[recalculate] route buffer: percent=', bufferPct, 'fixed=', bufferFixed);
+      const bufferPct = bufferOverride?.percent ?? routeBufferPercent;
+      const bufferFixed = bufferOverride?.fixed ?? routeBufferFixedMinutes;
       const result = await recalculateRoute({
         depot: { lat: depot.lat, lng: depot.lng },
         stops: recalcStops,
@@ -1606,9 +1692,8 @@ export function PlanningInbox() {
     setRouteBufferPercent(percent);
     setRouteBufferFixedMinutes(fixedMinutes);
     setHasChanges(true);
-    // Recalculate with new buffer values (will pick up from state on next render)
     if (routeStops.length > 0) {
-      triggerRecalculate(routeStops);
+      triggerRecalculate(routeStops, { percent, fixed: fixedMinutes });
     }
   }, [routeStops, triggerRecalculate]);
 
@@ -2446,6 +2531,13 @@ export function PlanningInbox() {
             />
           </div>
 
+          {/* Arrival buffer bar — between actions and timeline */}
+          <ArrivalBufferBar
+            percent={routeBufferPercent}
+            fixedMinutes={routeBufferFixedMinutes}
+            onChange={handleBufferChange}
+          />
+
           {timelineView === 'compact' ? (
             <RouteDetailTimeline
               stops={routeStops}
@@ -2467,9 +2559,6 @@ export function PlanningInbox() {
               depotDeparture={depotDeparture}
               returnToDepotDistanceKm={returnToDepotLeg?.distanceKm ?? null}
               returnToDepotDurationMinutes={returnToDepotLeg?.durationMinutes ?? null}
-              arrivalBufferPercent={routeBufferPercent}
-              arrivalBufferFixedMinutes={routeBufferFixedMinutes}
-              onBufferChange={handleBufferChange}
             />
           ) : (
             <PlanningTimeline
