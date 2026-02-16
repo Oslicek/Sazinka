@@ -1545,8 +1545,6 @@ function CrewsManager({ crews, onUpdate }: CrewsManagerProps) {
     try {
       await crewService.createCrew({
         name: data.name,
-        arrivalBufferPercent: data.arrivalBufferPercent,
-        arrivalBufferFixedMinutes: data.arrivalBufferFixedMinutes,
         workingHoursStart: data.workingHoursStart,
         workingHoursEnd: data.workingHoursEnd,
       });
@@ -1569,8 +1567,6 @@ function CrewsManager({ crews, onUpdate }: CrewsManagerProps) {
       await crewService.updateCrew({
         id: editingCrew.id,
         name: data.name,
-        arrivalBufferPercent: data.arrivalBufferPercent,
-        arrivalBufferFixedMinutes: data.arrivalBufferFixedMinutes,
         workingHoursStart: data.workingHoursStart,
         workingHoursEnd: data.workingHoursEnd,
       });
@@ -1624,8 +1620,6 @@ function CrewsManager({ crews, onUpdate }: CrewsManagerProps) {
                 </div>
                 <small>
                   {crew.workingHoursStart?.slice(0, 5) || '08:00'}–{crew.workingHoursEnd?.slice(0, 5) || '17:00'}
-                  {' · '}
-                  {t('crew_buffer')} {crew.arrivalBufferPercent ?? 10} %{(crew.arrivalBufferFixedMinutes ?? 0) > 0 ? ` + ${crew.arrivalBufferFixedMinutes} min` : ''}
                 </small>
               </div>
               <div className={styles.depotActions}>
@@ -1692,8 +1686,6 @@ function CrewsManager({ crews, onUpdate }: CrewsManagerProps) {
 
 interface CrewFormData {
   name: string;
-  arrivalBufferPercent: number;
-  arrivalBufferFixedMinutes: number;
   workingHoursStart: string;
   workingHoursEnd: string;
 }
@@ -1709,8 +1701,6 @@ function CrewForm({ crew, saving, onSave, onCancel }: CrewFormProps) {
   const { t } = useTranslation('settings');
   const [formData, setFormData] = useState<CrewFormData>({
     name: crew?.name || '',
-    arrivalBufferPercent: crew?.arrivalBufferPercent ?? 10,
-    arrivalBufferFixedMinutes: crew?.arrivalBufferFixedMinutes ?? 0,
     workingHoursStart: crew?.workingHoursStart || '08:00:00',
     workingHoursEnd: crew?.workingHoursEnd || '17:00:00',
   });
@@ -1755,38 +1745,6 @@ function CrewForm({ crew, saving, onSave, onCancel }: CrewFormProps) {
         </div>
       </div>
 
-      <div className={styles.formGroup}>
-        <label htmlFor="crewBuffer">{t('crew_arrival_buffer_percent')}</label>
-        <input
-          type="number"
-          id="crewBuffer"
-          value={formData.arrivalBufferPercent}
-          onChange={(e) => setFormData({ ...formData, arrivalBufferPercent: parseFloat(e.target.value) || 0 })}
-          min={0}
-          max={100}
-          step={1}
-        />
-        <p className={styles.bufferHint}>
-          {t('crew_arrival_buffer_hint')}
-        </p>
-      </div>
-
-      <div className={styles.formGroup}>
-        <label htmlFor="crewBufferFixed">{t('crew_arrival_buffer_fixed')}</label>
-        <input
-          type="number"
-          id="crewBufferFixed"
-          value={formData.arrivalBufferFixedMinutes}
-          onChange={(e) => setFormData({ ...formData, arrivalBufferFixedMinutes: parseFloat(e.target.value) || 0 })}
-          min={0}
-          max={120}
-          step={1}
-        />
-        <p className={styles.bufferHint}>
-          {t('crew_arrival_buffer_fixed_hint')}
-        </p>
-      </div>
-      
       <div className={styles.formActions}>
         <button type="button" className="btn-secondary" onClick={onCancel}>
           {t('common:cancel')}

@@ -307,8 +307,8 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR:
 
 ### Fáze 11: Frontend — Settings crew form (odebrat buffer)
 
-- [ ] **11.1** `Settings.tsx` — odebrat `arrivalBufferPercent` a `arrivalBufferFixedMinutes` z `CrewFormData` interface. Odebrat inicializaci (defaulty 10 a 0). Odebrat oba input bloky. Odebrat z `createCrew()` a `updateCrew()` volání. Odebrat zobrazení v crew list.
-- [ ] **11.2** Odebrat překlad. klíče `crew_arrival_buffer_percent`, `crew_arrival_buffer_hint`, `crew_arrival_buffer_fixed`, `crew_arrival_buffer_fixed_hint` z `{cs,en,sk}/settings.json`.
+- [x] **11.1** `Settings.tsx` — odebráno buffer z `CrewFormData`, `createCrew`, `updateCrew`, crew list display, form inputs ✅
+- [ ] **11.2** Odebrat překlad. klíče `crew_arrival_buffer_percent`, `crew_arrival_buffer_hint`, `crew_arrival_buffer_fixed`, `crew_arrival_buffer_fixed_hint`, `crew_buffer` z `{cs,en,sk}/settings.json`.
 - [ ] **11.3** `tsc --noEmit`
 
 ### Fáze 12: Frontend — překlady (nové klíče)
