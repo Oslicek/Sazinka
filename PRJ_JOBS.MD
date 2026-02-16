@@ -1,6 +1,6 @@
 # PRJ_JOBS — Zastavování běžících úloh
 
-## Stav: NÁVRH
+## Stav: IMPLEMENTOVÁNO
 
 Tento dokument popisuje návrh univerzálního mechanismu pro zastavování (cancellation) běžících úloh na pozadí. Řeší bezpečnost (multi-tenant izolaci), škálovatelnost a pokrývá všechny typy procesorů v systému.
 
@@ -714,3 +714,15 @@ Pro každý procesor: přidat `_guard = CANCELLATION.register(job_id, user_id)`,
 - `apps/web/public/locales/cs/jobs.json` — překlady
 - `apps/web/public/locales/en/jobs.json` — překlady
 - `apps/web/public/locales/sk/jobs.json` — překlady
+
+---
+
+## 13. Shrnutí
+
+Všechny fáze (1–8) jsou dokončeny. Mechanismus zrušení běžících úloh je plně implementován:
+
+- **Backend**: `CancellationRegistry`, ověření vlastníka, integrace do všech procesorů (loop + atomické)
+- **Historie**: user-scoped `get_recent_for_user`, `record_cancelled`
+- **Frontend**: status `cancelled`, vizuální odlišení, filtry, překlady
+
+Doporučené další kroky: manuální QA (zrušení běžícího importu/exportu/geocode), případné ladění UX.
