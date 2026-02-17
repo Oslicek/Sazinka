@@ -649,72 +649,223 @@ Všechny existující testy prošly (18/18: 8 slot_suggester + 10 insertion).
 
 ---
 
-## 12. Analýza slotové heuristiky — REVIEW NEEDED
+## 12. Analýza slotové heuristiky — DEEP REVIEW (2026-02-17)
 
-> **Stav:** Vyžaduje revizi. Současná implementace má známé nedostatky.
+> **Stav:** Vyžaduje refaktoring. Funkční s workaroundy, ale architektura má systémové nedostatky.
 
-### 12.1 Současná architektura
+---
 
-Slot návrhy mají **dvě cesty**:
+### 12.1 Přehled vstupních bodů
 
-1. **V1 (legacy):** `worker/src/services/slot_suggester.rs` — `SlotSuggester` se zavolá z `handle_suggest` v `slots.rs`. Používá mock travel time funkci (konstantní nebo souřadnicová vzdálenost). **Nepoužívá Valhalla.**
+Systém má **4 nezávislé NATS handlery** pro slot-related operace:
 
-2. **V2 (aktuální):** `worker/src/services/insertion.rs` — `calculate_insertion_positions` se volá z `handle_suggest_v2` a z `handle_insertion_calculate` (route handler). Používá **reálnou Valhalla matici**.
+| # | NATS Subject | Handler | Soubor | Algoritmus | Routing |
+|---|---|---|---|---|---|
+| 1 | `sazinka.slots.suggest` | `handle_suggest` | `slots.rs:33` | `SlotSuggester` (V1) | Mock (Euclidean) |
+| 2 | `sazinka.slots.suggest.v2` | `handle_suggest_v2` | `slots.rs:450` | `calculate_insertion_positions` | **Valhalla** |
+| 3 | `sazinka.route.insertion.calculate` | `handle_insertion_calculate` | `route.rs:1328` | `calculate_insertion_positions` | **Valhalla** |
+| 4 | `sazinka.slots.validate` | `handle_validate` | `slots.rs:799` | Direct time checks | **Valhalla** (prev/next only) |
 
-**Třetí vstupní bod:** `route.insertion.calculate` v `handlers/route.rs` — voláno přímo z frontendu při výběru kandidáta v PlanningInbox. Toto je aktuálně primární cesta pro UI "Doporučené sloty".
+**Primární UI cesta (PlanningInbox):** Frontend → `insertionService.calculateInsertion()` → `route.insertion.calculate` (#3)
 
-### 12.2 Identifikované problémy
+**Sekundární UI cesta (CallQueue schedule dialog):** Frontend → `slotService.suggestSlotsV2()` → `slots.suggest.v2` (#2)
 
-| # | Problém | Závažnost | Stav |
-|---|---------|-----------|------|
-| 1 | **Breaks nejsou v inserční kalkulaci** — insertion.rs pracuje jen s customer stops (potřebují koordináty pro matici). Pauzy nemají koordináty → nejsou v matici → algoritmus neví o blokovaném čase. | Vysoká | ⚠️ Workaround (frontend post-filter) |
-| 2 | **Crew working hours vs. user working hours** — solver používá `crew.working_hours_start/end`, ne user settings. Pokud se crew hodiny neaktualizují, solver počítá s nesprávným rozsahem. | Střední | ✅ Opraveno ručně v DB, ale chybí UI synchronizace |
-| 3 | **Žádná validace "fit" po inserci** — slot ukazuje `estimated_arrival` a `estimated_departure` kandidáta, ale neověřuje, zda vložení neposune následující zastávky mimo jejich time windows. | Střední | ❌ Neopraveno |
-| 4 | **V1 vs V2 nekonzistence** — V1 slot_suggester se stále používá přes `slots.suggest`, ale nemá Valhalla data. Může vracet jiné výsledky než V2. | Nízká | ❌ Neopraveno |
-| 5 | **`latest_start` nepočítá s travel od kandidáta k next stop** — `latest_start` v insertion.rs odečítá `candidate_service + travel_to_next`, ale `travel_to_next` se počítá z kandidáta k dalšímu stopu. Pokud kandidát je daleko od next stopu, `latest_start` může být negativní (správně detekováno jako conflict). | Nízká | ✅ OK (funguje korektně) |
+**Legacy (nepoužíváno v aktuálním UI):** `slots.suggest` (#1)
 
-### 12.3 Doporučené kroky
+---
 
-1. **Krátkodobé (hotfix):** ✅ Frontend post-filter na překrývající se sloty (implementováno).
+### 12.2 Architektura — datový tok
 
-2. **Střednědobé:** Předávat break časy jako "time blocks" do `calculate_insertion_positions`. Breaks nemají koordináty, ale blokují čas. Algoritmus by měl při výpočtu `latest_start` pro pozici za breakem posunout `prev_departure` o break duration.
-
-3. **Dlouhodobé:** Refaktorovat insertion heuristiku tak, aby:
-   - Simulovala celý forward pass (depot → stop1 → ... → candidate → ... → stopN → depot) s přesnými časy
-   - Kontrolovala feasibility všech time windows po inserci
-   - Zobrazovala uživateli přesný dopad na celou trasu (posun ETA downstream stops)
-
-### 12.4 Datový tok — slot suggestions (aktuální)
+#### A) Primární cesta: `route.insertion.calculate` (PlanningInbox)
 
 ```
 PlanningInbox.tsx
   │ useEffect([selectedCandidateId])
+  │ Filtruje routeStops na stopType === 'customer'  ← ⚠ BREAKS EXCLUDED
   │
   ▼
 insertionService.calculateInsertion({
-  routeStops: routeStops.filter(s => s.stopType === 'customer'),  ← BREAKS EXCLUDED
+  routeStops: [customer stops only],
   depot, candidate, date, workdayStart, workdayEnd
 })
   │
   ▼ NATS: route.insertion.calculate
   │
-handle_insertion_calculate (route.rs)
+handle_insertion_calculate (route.rs:1328)
+  │ Parsing: workdayStart/End z requestu (fallback na defaults)
+  │ Build locations: [candidate(0), depot(1), stop0(2), stop1(3), ...]
+  │ ⚠ BUG: service_duration_minutes pro VŠECHNY stops = candidate_service
+  │         (line 1451: `service_duration_minutes: candidate_service`)
+  │         Mitigováno tím, že frontend posílá departure_time (prioritní)
   │
-  ├── Load Valhalla matrix (depot + existing stops + candidate)
-  │
-  ▼
-calculate_insertion_positions (insertion.rs)
-  │ For each insert position 0..N:
-  │   earliest_start = ceil_quarter_hour(prev_departure + travel)
-  │   latest_start = next_stop_arrival - (service + travel_to_next)
-  │   status = earliest > latest ? "conflict" : slack < 15 ? "tight" : "ok"
-  │
-  ▼ Response: allPositions[], bestPosition
-  │
-PlanningInbox.tsx
-  │ Post-filter: check overlap with ALL routeStops (incl. breaks)
-  │ Filter out conflict slots
+  ├── Valhalla get_matrices() → NxN matrix
+  │   (fallback na MockRoutingService při chybě)
   │
   ▼
-SlotSuggestions.tsx — display only non-conflicting slots
+calculate_insertion_positions (insertion.rs:61)
+  │ Pro každou pozici 0..N:
+  │   1. prev_departure = stops_meta[i-1].departure_time ?? fallback
+  │   2. earliest_start = ceil_quarter_hour(prev_departure + travel_from_prev)
+  │   3. latest_start = next_arrival - (service + travel_to_next)
+  │   4. status = earliest > latest ? "conflict" : slack < 15 ? "tight" : "ok"
+  │
+  │ Výstup seřazen podle delta_min (vzestupně)
+  │
+  ▼ Response: { allPositions[], bestPosition, isFeasible }
+  │
+PlanningInbox.tsx (post-processing, lines 541-581)
+  │ 1. Build occupiedWindows z VŠECH routeStops (vč. breaks)
+  │ 2. Pro každý slot z allPositions:
+  │      if slot overlaps any occupiedWindow → status = 'conflict'
+  │ 3. Filter out conflict slots
+  │ 4. bestPosition = suggestions[0] (first non-conflict)
+  │
+  ▼
+SlotSuggestions.tsx — zobrazí jen non-conflicting sloty
 ```
+
+#### B) Sekundární cesta: `slots.suggest.v2` (multi-crew)
+
+```
+CallQueue / ScheduleDialog
+  │
+  ▼ NATS: slots.suggest.v2
+  │
+handle_suggest_v2 (slots.rs:450)
+  │ Pro KAŽDOU aktivní posádku:
+  │   1. build_crew_day_stops() ← ⚠ EXPLICITNĚ SKIPUJE BREAKS (line 380)
+  │   2. Build Valhalla matrix (candidate + depot + day_stops)
+  │   3. calculate_insertion_positions()
+  │   4. Skóring: slot_score() (travel 40%, fit 25%, preference 20%, balance 15%)
+  │
+  ▼ Response: CrewSlotSuggestion[] seřazené dle score
+```
+
+#### C) Validace: `slots.validate`
+
+```
+ScheduleDialog (ruční zadání času)
+  │
+  ▼ NATS: slots.validate
+  │
+handle_validate (slots.rs:799)
+  │ 1. build_crew_day_stops() ← ⚠ SKIPUJE BREAKS
+  │ 2. Kontrola: overlap s existujícími stopy (time_overlap_minutes)
+  │ 3. Kontrola: reachability (travel_prev → candidate, candidate → next)
+  │ 4. Kontrola: pracovní doba
+  │ 5. Kontrola: day load %
+  │ 6. ✅ Kontrola: break window overlap (settings.break_earliest/latest)
+  │      Toto je JEDINÉ místo, kde se break čas kontroluje na backendu!
+  │
+  ▼ Response: { feasible, warnings[], estimated_arrival, slack }
+```
+
+---
+
+### 12.3 Identifikované problémy (seřazeno dle závažnosti)
+
+#### 🔴 VYSOKÁ závažnost
+
+| # | Problém | Detail | Stav |
+|---|---------|--------|------|
+| P1 | **Breaks ignorovány v insertion kalkulaci** | `build_crew_day_stops()` (slots.rs:380) explicitně přeskakuje `stop_type == "break"`. Frontend (PlanningInbox.tsx:519) filtruje na `stopType === 'customer'`. Insertion algoritmus nemá žádnou informaci o blocích obsazených pauzami. | ⚠️ Workaround: frontend post-filter (occupiedWindows) |
+| P2 | **Service duration bug v handle_insertion_calculate** | `route.rs:1451`: `service_duration_minutes: candidate_service` — všem existujícím stopům se přiřazuje doba servisu KANDIDÁTA, ne jejich vlastní. Např. kandidát 60 min → všechny stopy budou považovány za 60 min. Toto ovlivňuje fallback výpočet departure_time, když frontend nepošle departure_time. | ⚠️ Mitigováno tím, že frontend posílá departure_time z recalculate |
+| P3 | **Žádný downstream feasibility check** | Insertion heuristika kontroluje jen, zda se kandidát vejde do mezery. NEKONTROLUJE, zda vložení kandidáta (+ extra travel time) neposune downstream stopy mimo jejich time windows. Uživatel vidí "OK" slot, ale po vložení se downstream stopy mohou opozdit. | ❌ Neopraveno |
+
+#### 🟡 STŘEDNÍ závažnost
+
+| # | Problém | Detail | Stav |
+|---|---------|--------|------|
+| P4 | **V1 vs V2 nekonzistence** | V1 (`slot_suggester.rs`) používá mock travel time (Euclidean), V2 (`insertion.rs`) Valhalla. V1 se stále registruje na `slots.suggest` a může být volaná z legacy UI cest. Výsledky mohou být dramaticky odlišné. | ❌ Neopraveno (V1 je legacy) |
+| P5 | **latest_start používá arrival_time jako hard deadline** | `insertion.rs:131`: `let next_deadline = next_meta.arrival_time.or(next_meta.time_window_end)`. Používá optimalizovaný arrival_time dalšího stopu jako nepřekročitelný deadline. V realitě ale time_window_end (= konec domluveného okna) je správný deadline — posun o několik minut by nemusel být problém, pokud stále stíhá okno. | ⚠️ Konzervativní — raději odmítne než přijme |
+| P6 | **validate SKIPUJE breaks v overlap kontrole, ale kontroluje break window** | `handle_validate` kontroluje overlap pouze s `day_stops` (bez breaks, P1). Ale zároveň kontroluje overlap se `settings.break_earliest_time/latest_time` (line 997-1011). Tyto dvě kontroly jsou redundantní/nekonzistentní — break v trase může mít jiný čas než settings break window. | ⚠️ Částečně mitigováno |
+
+#### 🟢 NÍZKÁ závažnost
+
+| # | Problém | Detail | Stav |
+|---|---------|--------|------|
+| P7 | **slack_before vždy 0** | `insertion.rs:139`: `let slack_before = Some(0)`. Slack before se nepočítá, je vždy 0. V UI i ve scoringu se zobrazuje 0. | ❌ Neopraveno |
+| P8 | **Scoring funkce ignoruje slot status** | `slot_score()` v `slots.rs` nepřidává žádnou penalizaci pro "tight" status. Sloty s 5 min slack a 60 min slack mohou mít stejné skóre, pokud mají stejný delta_travel. | ❌ Neopraveno |
+
+---
+
+### 12.4 Detailní analýza — `calculate_insertion_positions` (insertion.rs)
+
+```
+Vstup:
+  matrices: NxN Valhalla matice (distance + time)
+  candidate_idx: index kandidáta v matici (typicky 0)
+  depot_idx: index depa v matici (typicky 1)
+  stop_indices: indexy existujících stopů v matici [2, 3, 4, ...]
+  stops_meta: metadata pro každý stop (name, arrival, departure, time_window, service_duration)
+  candidate_service_minutes: doba servisu kandidáta
+  workday_start, workday_end: pracovní doba
+
+Algoritmus (pro každou insert pozici i = 0..N):
+  1. from = i == 0 ? depot : stop[i-1]
+     to   = i >= N ? depot : stop[i]
+
+  2. delta_km  = dist(from→candidate) + dist(candidate→to) - dist(from→to)
+     delta_min = time(from→candidate) + time(candidate→to) - time(from→to) + service_minutes
+
+  3. prev_departure:
+     - i == 0: workday_start
+     - else:   stops_meta[i-1].departure_time
+                ?? (time_window_start ?? arrival_time) + service_duration  ← fallback
+                ?? workday_start
+
+  4. earliest_start = ceil_quarter_hour(prev_departure + travel_from_to_candidate)
+
+  5. latest_start:
+     - i >= N (last position): workday_end - service
+     - else:   next_arrival ?? next_time_window_end ?? workday_end
+               minus (service + travel_to_next)
+
+  6. status = earliest > latest ? "conflict" : (slack < 15 ? "tight" : "ok")
+
+  7. Výsledek seřazen dle delta_min vzestupně (nejmenší objížďka = nejlepší)
+```
+
+**Klíčové omezení:** Algoritmus je "static gap check" — kontroluje, zda se kandidát vejde do existující mezery, aniž by simuloval reálný forward pass. Nepočítá s tím, že vložení kandidáta změní časy VŠECH následujících stopů.
+
+---
+
+### 12.5 Doporučené kroky
+
+#### Krátkodobé (hotfix) — ✅ Implementováno
+- Frontend post-filter na break overlaps (PlanningInbox.tsx)
+
+#### Střednědobé (backend fix)
+1. **P1 fix:** Předávat break bloky do `calculate_insertion_positions` jako parametr `blocked_windows: Vec<(NaiveTime, NaiveTime)>`. Při výpočtu `earliest_start` pro pozice za breakem posunout prev_departure o break duration. Alternativně: do `build_crew_day_stops()` zahrnout breaks jako pseudo-stopy bez koordinát a v insertion.rs je zpracovat zvlášť.
+
+2. **P2 fix:** V `handle_insertion_calculate` posílat `stop.departureTime - stop.arrivalTime` jako `service_duration_minutes` (nebo přidat `serviceDurationMinutes` jako explicitní pole do `RouteStop` v insertionService.ts).
+
+3. **P7 fix:** Spočítat `slack_before = earliest_start - prev_departure - travel_from` (kolik minut je k dispozici před příjezdem).
+
+#### Dlouhodobé (refactoring)
+1. **P3 fix — Forward pass simulation:** Po určení insertion pozice simulovat celý schedule s kandidátem vloženým. Porovnat downstream stopy s jejich time windows. Pokud jakýkoli downstream stop vypadne z okna, označit jako "tight" nebo "conflict" se zprávou "posune zastávku X o Y minut".
+
+2. **Sjednotit V1 a V2:** Odebrat V1 slot_suggester (nebo ho přetvořit na thin wrapper nad `calculate_insertion_positions`). Ponechat jeden insertion algoritmus.
+
+3. **Scoring v2:** Přidat slot status do scoring funkce. "tight" by měl mít penalizaci -20, "conflict" by neměl být v nabídce vůbec.
+
+---
+
+### 12.6 Soubory dotčené slotovou heuristikou
+
+#### Backend
+| Soubor | Popis |
+|---|---|
+| `worker/src/services/insertion.rs` | Sdílená insertion heuristika (`calculate_insertion_positions`) |
+| `worker/src/services/slot_suggester.rs` | Legacy V1 slot suggester (`SlotSuggester`) |
+| `worker/src/handlers/slots.rs` | Handlery: `handle_suggest`, `handle_suggest_v2`, `handle_validate` + helper `build_crew_day_stops` |
+| `worker/src/handlers/route.rs` | Handler: `handle_insertion_calculate` + `handle_insertion_batch` |
+
+#### Frontend
+| Soubor | Popis |
+|---|---|
+| `apps/web/src/services/insertionService.ts` | `calculateInsertion()`, `calculateBatchInsertion()` — volání do backendu |
+| `apps/web/src/services/slotService.ts` | `suggestSlots()` (V1), `suggestSlotsV2()`, `validateSlot()` |
+| `apps/web/src/pages/PlanningInbox.tsx` | Volání insertion + post-filter breaks + display |
+| `apps/web/src/components/planner/SlotSuggestions.tsx` | UI komponenta pro zobrazení slotů |
+| `apps/web/src/components/planner/CandidateDetail.tsx` | Detail kandidáta se sloty |
