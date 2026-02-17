@@ -85,6 +85,22 @@ if (-not $NoDocker) {
         Write-Host "CHYBA: PostgreSQL neni pripraven!" -ForegroundColor Red
         exit 1
     }
+    Write-Host "      PostgreSQL pripraven [OK]" -ForegroundColor Green
+    
+    Write-Host "      Cekam na NATS..." -ForegroundColor Gray
+    $maxRetries = 30
+    $retries = 0
+    do {
+        Start-Sleep -Seconds 1
+        $retries++
+        $result = docker exec sazinka-nats wget -q --spider http://localhost:8223/healthz 2>$null
+    } while ($LASTEXITCODE -ne 0 -and $retries -lt $maxRetries)
+    
+    if ($retries -ge $maxRetries) {
+        Write-Host "CHYBA: NATS neni pripraven!" -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "      NATS pripraven [OK]" -ForegroundColor Green
     
     Write-Host "      Docker services bezi [OK]" -ForegroundColor Green
     Write-Host "      (Nominatim a Valhalla mohou potrebovat chvili na zahrati)" -ForegroundColor Gray

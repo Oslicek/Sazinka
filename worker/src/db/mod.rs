@@ -17,13 +17,68 @@ pub async fn create_pool(database_url: &str) -> Result<PgPool> {
     Ok(pool)
 }
 
-/// Run database migrations
+/// Run database migrations.
+///
+/// Before running, fixes stored checksum mismatches caused by CRLF/LF
+/// line-ending differences (Windows git autocrlf). Without this,
+/// `sqlx::migrate!` refuses to run if the file was checked out with
+/// different line endings than when the migration was first applied.
 pub async fn run_migrations(pool: &PgPool) -> Result<()> {
     info!("Running database migrations...");
-    sqlx::migrate!("./migrations")
-        .run(pool)
-        .await?;
+
+    let migrator = sqlx::migrate!("./migrations");
+    fix_migration_checksums(pool, &migrator).await?;
+    migrator.run(pool).await?;
+
     info!("Database migrations complete");
+    Ok(())
+}
+
+/// Update stored checksums in `_sqlx_migrations` to match the checksums
+/// embedded in the current binary. This handles the case where a migration
+/// was applied on one platform (LF) and the binary was compiled on another
+/// (CRLF), producing a different SHA-384 for the same logical content.
+async fn fix_migration_checksums(pool: &PgPool, migrator: &sqlx::migrate::Migrator) -> Result<()> {
+    let table_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '_sqlx_migrations')"
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if !table_exists {
+        return Ok(());
+    }
+
+    for migration in migrator.iter() {
+        if migration.migration_type.is_down_migration() {
+            continue;
+        }
+
+        let stored: Option<(Vec<u8>,)> = sqlx::query_as(
+            "SELECT checksum FROM _sqlx_migrations WHERE version = $1"
+        )
+        .bind(migration.version)
+        .fetch_optional(pool)
+        .await?;
+
+        if let Some((stored_checksum,)) = stored {
+            let current_checksum: &[u8] = &migration.checksum;
+            if stored_checksum != current_checksum {
+                warn!(
+                    "Migration {} ({}) checksum mismatch — updating stored checksum (likely CRLF/LF difference)",
+                    migration.version, migration.description
+                );
+                sqlx::query(
+                    "UPDATE _sqlx_migrations SET checksum = $1 WHERE version = $2"
+                )
+                .bind(current_checksum)
+                .bind(migration.version)
+                .execute(pool)
+                .await?;
+            }
+        }
+    }
+
     Ok(())
 }
 

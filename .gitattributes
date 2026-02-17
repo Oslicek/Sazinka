@@ -1,0 +1,4 @@
+# Ensure SQL migration files always use LF line endings on all platforms.
+# SQLx computes checksums from file content — CRLF vs LF causes checksum
+# mismatches that prevent the worker from starting.
+*.sql text eol=lf

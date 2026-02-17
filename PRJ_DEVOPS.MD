@@ -1704,6 +1704,61 @@ Get-NetTCPConnection -LocalPort 5432
 Get-Process -Id <PID>
 ```
 
+### 17.8 NATS healthcheck selhává (unhealthy)
+
+**Symptom:** `docker ps` ukazuje NATS jako `(unhealthy)`, Worker se nemůže připojit, frontend hlásí "Server is unavailable".
+
+**Příčina:** NATS monitoring endpoint byl svázán na `127.0.0.1:8223`, což znemožňuje healthcheck z Docker containeru (musí být přístupný z `localhost` uvnitř containeru).
+
+**Oprava:**
+```bash
+# infra/nats-server.conf — změnit řádek:
+# BYLO: http: 127.0.0.1:8223
+# JE:   http: 8223
+
+# Restart NATS
+docker restart sazinka-nats
+
+# Ověřit healthcheck
+docker ps --filter "name=sazinka-nats"  # mělo by zobrazit (healthy)
+```
+
+**Automatická oprava:** `start.ps1` nyní čeká na NATS healthcheck před spuštěním Workeru (podobně jako čeká na PostgreSQL).
+
+### 17.9 Worker selhává s "migration 1 was previously applied but has been modified"
+
+**Symptom:** Worker crashuje při startu s chybou:
+```
+Error: migration 1 was previously applied but has been modified
+```
+
+**Příčina:** Git s `core.autocrlf=true` (Windows) konvertuje LF na CRLF při checkoutu. SQLx počítá checksumu z obsahu souboru na disku, takže:
+- Migrace byla původně aplikována s LF line endings (checksum A)
+- Po `git clone` na Windows má soubor CRLF (checksum B)
+- Cargo build embeduje checksum B do binárky
+- Binárka se snaží spustit migraci, ale DB má uložen checksum A → mismatch → crash
+
+**Oprava (provedena 2026-02-17):**
+
+1. **`.gitattributes`** — vynutí LF pro všechny `*.sql` soubory, bez ohledu na platformu nebo `git autocrlf`:
+```
+*.sql text eol=lf
+```
+
+2. **`worker/src/db/mod.rs`** — před spuštěním migrací automaticky opraví stored checksumy, pokud se liší:
+```rust
+pub async fn run_migrations(pool: &PgPool) -> Result<()> {
+    let migrator = sqlx::migrate!("./migrations");
+    fix_migration_checksums(pool, &migrator).await?;  // Auto-fix checksum mismatches
+    migrator.run(pool).await?;
+    Ok(())
+}
+```
+
+Funkce `fix_migration_checksums()` porovná embedované checksumy (z aktuální binárky) s uloženými checksumy v DB. Pokud se liší (typicky kvůli CRLF/LF rozdílu), automaticky updatuje DB na správnou hodnotu a loguje warning.
+
+**Výsledek:** Worker se nyní spustí bez chyby, i když byla migrace původně aplikována s jinými line endings než má aktuální soubor na disku.
+
 ---
 
 ## 18. Údržba

@@ -869,3 +869,20 @@ Algoritmus (pro každou insert pozici i = 0..N):
 | `apps/web/src/pages/PlanningInbox.tsx` | Volání insertion + post-filter breaks + display |
 | `apps/web/src/components/planner/SlotSuggestions.tsx` | UI komponenta pro zobrazení slotů |
 | `apps/web/src/components/planner/CandidateDetail.tsx` | Detail kandidáta se sloty |
+
+---
+
+## 13. Opravy a vylepšení (2026-02-17)
+
+### 13.1 PlanningTimeline — inline editace duration byla neaktivní
+
+**Problém:** Fáze G.4 a H.4 výše byly označeny jako hotové, ale `PlanningTimeline.tsx` (proporcionální timeline view) ve skutečnosti zobrazovala override hodnoty pouze jako read-only text. `RouteDetailTimeline` (compact list view) měla funkční inline editaci, ale PlanningTimeline ne.
+
+**Oprava:**
+- `apps/web/src/components/planner/PlanningTimeline.tsx` — přidána inline editace pro:
+  - **Travel duration** (segment mezi zastávkami) — `<input type="number">` s ⚠️ reset tlačítkem
+  - **Service duration** (zastávka) — `<input type="number">` s ⚠️ reset tlačítkem
+- `SortableStopCard` — props `onUpdateServiceDuration` a `onResetServiceDuration` přidány a předány z rodiče
+- CSS styly (`.inlineEditGroup`, `.inlineInput`, `.inlineUnit`, `.overrideReset`) již existovaly v `PlanningTimeline.module.css`
+
+Nyní obě timeline komponenty (RouteDetailTimeline i PlanningTimeline) mají funkční inline editaci duration override.
