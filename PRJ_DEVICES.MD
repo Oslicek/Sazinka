@@ -15,6 +15,7 @@ Tento dokument popisuje zavedení konfigurovatelných typů zařízení (device 
 5. Jeden tenant (firma) může mít **více účtů** — konfigurace typů je tenant-level, ne user-level.
 6. Typická doba revize podle typu zařízení se použije i v planneru, i v logice tvorby/počítání revizí.
 7. v1 nepovoluje vytváření nových typů zařízení; pouze úpravy předdefinovaných šablon.
+8. **tenant_id nesmí být user_id** — tenant model musí být explicitní (tabulka `tenants` + vazby). Mapování `tenant_id = user_id` se nepoužívá ani přechodně.
 
 ---
 
@@ -47,7 +48,12 @@ Cílový stav:
 ### 2.2 Mimo scope (v1)
 - Vytváření zcela nových typů zařízení.
 - Marketplace/sdílení šablon mezi tenanty.
-- Kompletní redesign importu CSV (jen minimální kompatibilita; plná podpora v navazující fázi).
+- Kompletní redesign importu CSV (plná podpora v navazující fázi).
+
+### 2.3 CSV import ve v1 (minimální změny)
+- Povoleny malé úpravy stávajícího importu.
+- Pravidla: neznámá custom pole se ignorují (logovat warning), import nezastaví.
+- Known custom fields se naparsují, pokud hlavička CSV odpovídá `fieldKey`.
 
 ---
 
@@ -57,12 +63,9 @@ Cílový stav:
 
 Konfigurace typů zařízení je tenant-level.
 
-- Pokud už tenant model existuje: používat existující `tenant_id`.
-- Pokud neexistuje: zavést minimálně vazbu, která umožní více účtů pod jedním tenantem.
+- Vyžaduje se explicitní tenant model: tabulka `tenants` (minimálně `id`, `name`, `created_at`) + pivot `user_tenants(user_id, tenant_id, role)`.
+- `tenant_id` **nesmí** být mapován na `user_id`; jeden tenant může mít více účtů.
 - `device_type_configs` musí být vázané na `tenant_id`, ne na `user_id`.
-
-Poznámka pro migraci:
-- Přechodné období může mapovat `tenant_id = user_id` u legacy dat.
 - V API a queries používat jednotně `tenant_id` odvozené z přihlášeného uživatele.
 
 ### 3.2 DeviceTypeConfig
@@ -73,7 +76,7 @@ DeviceTypeConfig {
   tenantId: UUID
   deviceTypeKey: string       -- immutable klíč (gas_boiler, chimney...)
   label: string               -- editable
-  icon?: string
+  icon?: string               -- TBD: formát (icon set name, URL?) — nepoužito ve v1
   isActive: boolean
   isBuiltin: boolean          -- v1 vždy true
   defaultRevisionDurationMinutes: int
@@ -81,6 +84,7 @@ DeviceTypeConfig {
   sortOrder: int
   createdAt, updatedAt
 }
+UNIQUE(tenant_id, device_type_key)  -- tenant nemůže mít duplicitní typ
 ```
 
 ### 3.3 DeviceTypeField
@@ -93,15 +97,26 @@ DeviceTypeField {
   label: string
   fieldType: enum             -- text | number | date | boolean | select
   isRequired: boolean
-  selectOptions?: json          -- [{ key: string, label: string, deprecated?: bool }]
-  defaultValue?: string
+  selectOptions?: json          -- [{ key: string, label: string, deprecated?: bool }]; key = technický klíč (en), label = lokalizovaný text
+  defaultValue?: string         -- viz formát níže
   sortOrder: int
   unit?: string
   placeholder?: string
   isActive: boolean           -- soft delete pole
   createdAt, updatedAt
 }
+UNIQUE(device_type_config_id, field_key)  -- typ nemůže mít duplicitní pole
 ```
+
+#### Formát defaultValue
+
+| fieldType | formát defaultValue |
+|---|---|
+| text | libovolný string |
+| number | stringová reprezentace čísla |
+| date | ISO 8601 string |
+| boolean | `"true"` nebo `"false"` |
+| select | `key` z `selectOptions` |
 
 #### Pravidlo lifecycle selectOptions
 
@@ -122,9 +137,10 @@ DeviceFieldValue {
   valueJson: JSONB            -- typed hodnota (string/number/boolean/date-string)
   createdAt, updatedAt
 }
+UNIQUE(device_id, field_id)   -- každé zařízení má max. jednu hodnotu na pole
 ```
 
-Backend vždy validuje `valueJson` proti `fieldType`.
+Backend vždy validuje `valueJson` proti `fieldType`. Při upsert custom fields zajistit, aby nevznikal duplicitní záznam (validace + správné upsert chování).
 
 #### Eager-load strategie (performance)
 
@@ -135,7 +151,7 @@ Postup:
 2. Batch dotaz: `SELECT * FROM device_field_values WHERE device_id = ANY($1)`.
 3. In-memory join a připojení k response DTO.
 
-Pro zobrazení field labels/types se config a fields pro aktivní typy cachují na úrovni handleru (per-request load, protože se mění zřídka).
+Pro zobrazení field labels/types se config a fields pro aktivní typy cachují na úrovni handleru s krátkým TTL (5–10 min), protože se mění zřídka. Write operace (`device_type_config.update`, `device_type_field.*`) invalidují cache okamžitě, aby uživatel viděl změny bez prodlevy.
 
 ### 3.5 Vztah k tabulce `devices`
 
@@ -157,50 +173,52 @@ Kritická úprava indexu:
 
 Typy zůstávají pevné (6 builtin šablon). Tabulky níže jsou **seed reference pro migraci**.
 
+U select polí: sloupec „options“ uvádí dvojice `key` (technický klíč EN) a `label` (lokalizovaný); při seedu vytvořit `selectOptions: [{ key, label }]`. Např. fuel_type pro kotel: `[{ key: "natural_gas", label: "zemní plyn" }, { key: "propane", label: "propan" }]`.
+
 ### 4.1 Plynový kotel (`gas_boiler`) -- duration 60 min, interval 12 měs.
 
-| fieldKey | label | fieldType | options / unit | required |
+| fieldKey | label | fieldType | options: key → label / unit | required |
 |---|---|---|---|---|
 | `rated_power` | Jmenovitý výkon | number | kW | no |
-| `combustion_type` | Typ spalování | select | atmosférický, turbo (kondenzační), turbo (nekondenzační) | no |
-| `fuel_type` | Palivo | select | zemní plyn, propan | no |
-| `flue_type` | Odvod spalin | select | komín, turbo, LAS | no |
+| `combustion_type` | Typ spalování | select | `atmospheric` → atmosférický, `turbo_condensing` → turbo (kondenzační), `turbo_non_condensing` → turbo (nekondenzační) | no |
+| `fuel_type` | Palivo | select | `natural_gas` → zemní plyn, `propane` → propan | no |
+| `flue_type` | Odvod spalin | select | `chimney` → komín, `turbo` → turbo, `las` → LAS | no |
 | `commission_date` | Datum uvedení do provozu | date | | no |
 
 ### 4.2 Plynový ohřívač vody (`gas_water_heater`) -- duration 45 min, interval 12 měs.
 
-| fieldKey | label | fieldType | options / unit | required |
+| fieldKey | label | fieldType | options: key → label / unit | required |
 |---|---|---|---|---|
 | `rated_power` | Jmenovitý výkon | number | kW | no |
 | `capacity_liters` | Objem nádrže | number | l | no |
-| `fuel_type` | Palivo | select | zemní plyn, propan | no |
+| `fuel_type` | Palivo | select | `natural_gas` → zemní plyn, `propane` → propan | no |
 
 ### 4.3 Komín (`chimney`) -- duration 30 min, interval 12 měs.
 
-| fieldKey | label | fieldType | options / unit | required |
+| fieldKey | label | fieldType | options: key → label / unit | required |
 |---|---|---|---|---|
-| `fuel_type` | Palivo | select | plyn, dřevo, uhlí, LTO, kombinované, jiné | **yes** |
+| `fuel_type` | Palivo | select | `gas` → plyn, `wood` → dřevo, `coal` → uhlí, `lfo` → LTO, `combined` → kombinované, `other` → jiné | **yes** |
 | `connected_appliance` | Připojený spotřebič (typ kotle) | text | | no |
 | `flue_diameter` | Průměr průduchu | number | mm | no |
-| `flue_material` | Materiál | select | keramika, nerez, plast, zdivo, jiné | no |
+| `flue_material` | Materiál | select | `ceramic` → keramika, `stainless_steel` → nerez, `plastic` → plast, `masonry` → zdivo, `other` → jiné | no |
 | `flue_count` | Počet průduchů | number | | no |
 | `chimney_height` | Výška komínu | number | m | no |
 
 ### 4.4 Krb / krbová vložka (`fireplace`) -- duration 30 min, interval 12 měs.
 
-| fieldKey | label | fieldType | options / unit | required |
+| fieldKey | label | fieldType | options: key → label / unit | required |
 |---|---|---|---|---|
-| `fireplace_type` | Typ | select | otevřený krb, krbová vložka, krbová kamna | no |
-| `fuel_type` | Palivo | select | dřevo, peletky, plyn, jiné | no |
+| `fireplace_type` | Typ | select | `open_fireplace` → otevřený krb, `fireplace_insert` → krbová vložka, `stove` → krbová kamna | no |
+| `fuel_type` | Palivo | select | `wood` → dřevo, `pellets` → peletky, `gas` → plyn, `other` → jiné | no |
 | `rated_power` | Jmenovitý výkon | number | kW | no |
 
 ### 4.5 Plynový sporák (`gas_stove`) -- duration 20 min, interval 36 měs.
 
-| fieldKey | label | fieldType | options / unit | required |
+| fieldKey | label | fieldType | options: key → label / unit | required |
 |---|---|---|---|---|
 | `burner_count` | Počet hořáků | number | | no |
 | `has_oven` | Trouba | boolean | | no |
-| `fuel_type` | Palivo | select | zemní plyn, propan | no |
+| `fuel_type` | Palivo | select | `natural_gas` → zemní plyn, `propane` → propan | no |
 
 ### 4.6 Jiné (`other`) -- duration 60 min, interval 12 měs.
 
@@ -227,7 +245,7 @@ Typy zůstávají pevné (6 builtin šablon). Tabulky níže jsou **seed referen
 | `sazinka.device_type_field.create` | přidání pole do šablony typu |
 | `sazinka.device_type_field.update` | update label, isRequired, defaultValue, selectOptions, unit, placeholder |
 | `sazinka.device_type_field.set_active` | nastavení `isActive` (deaktivace i reaktivace) |
-| `sazinka.device_type_field.reorder` | přeřazení polí |
+| `sazinka.device_type_field.reorder` | přeřazení polí; payload: `{ deviceTypeConfigId, fieldIds: UUID[] }` — pole v požadovaném pořadí |
 
 Pravidla:
 - `fieldKey` a `fieldType` jsou immutable -- nejsou součástí update payloadu.
@@ -238,8 +256,8 @@ Pravidla:
 
 | Subject | Změna |
 |---|---|
-| `sazinka.device.create` | přijímá `deviceTypeConfigId` + `customFields` |
-| `sazinka.device.update` | přijímá `customFields` |
+| `sazinka.device.create` | přijímá `deviceTypeConfigId` + `customFields`; validace: `deviceTypeConfigId` musí patřit tenantovi uživatele a typ musí být `isActive` |
+| `sazinka.device.update` | přijímá `customFields`; **nepřijímá** `deviceTypeConfigId` — typ zařízení nelze po vytvoření změnit |
 | `sazinka.device.list` | vrací `customFields` + config info |
 | `sazinka.device.get` | vrací `customFields` + config info |
 
@@ -259,6 +277,7 @@ Pravidla:
 
 ### 6.3 Label vs key
 - `deviceTypeKey` i `fieldKey` jsou technické identifikátory a zůstávají stabilní.
+- U `selectOptions`: `key` = technický klíč (en), `label` = lokalizovaný text.
 - Uživatel upravuje pouze popisky (`label`) a parametry.
 
 ### 6.4 Validace custom fields na frontendu
@@ -293,21 +312,27 @@ Výstup:
 
 ### Fáze 1 -- Migrace DB a seed (1-2 dny)
 
-Soubor:
-- `worker/migrations/020_device_type_configs.sql`
+Rozděleno na dva kroky pro bezpečnější nasazení infrastruktury.
 
-Obsah:
-- vytvoření `device_type_configs`, `device_type_fields`, `device_field_values`,
-- `device_type_config_id` do `devices`,
-- backfill z `device_type`,
-- nový unikátní index přes `device_type_config_id`,
-- seed 6 typů + polí pro každý tenant,
-- trigger/constraints pro integritu.
+#### Fáze 1A -- Zavedení tenant modelu
+Soubor: `worker/migrations/020_tenants.sql`
+- Vytvoření tabulek `tenants` a `user_tenants`.
+- Migrace existujících uživatelů -> vytvoření tenantů (1:1 nebo dle logiky).
+
+#### Fáze 1B -- Device types a seed
+Soubor: `worker/migrations/021_device_type_configs.sql`
+- Vytvoření `device_type_configs`, `device_type_fields`, `device_field_values`.
+- `device_type_config_id` do `devices`.
+- Backfill z `device_type`.
+- Nový unikátní index přes `device_type_config_id`.
+- Seed 6 typů + polí pro každý tenant (využívá tabulku `tenants` z Fáze 1A).
+- Trigger/constraints pro integritu.
 
 Seed strategie:
-- Migrace zjistí existující tenanty (nebo uživatele pokud tenant tabulka ještě neexistuje).
-- Pro každého tenanta vloží 6 builtin typů + jejich fields podle šablon z kapitoly 4.
+- Migrace předpokládá existující tabulku `tenants` (zavedeno ve Fázi 1A).
+- Pro každého existujícího tenanta vloží 6 builtin typů + jejich fields podle šablon z kapitoly 4.
 - `isActive` se nastaví na `true` pro všechny typy (tenant si pak deaktivuje co nechce).
+- **Noví tenanti po migraci:** trigger při vytvoření tenanta nebo lazy seed při prvním přístupu k device_type_config — vybrat před implementací.
 
 Testy:
 - migrace na čisté DB,
@@ -407,7 +432,6 @@ Scénáře:
 - nová required pole neblokují historické záznamy.
 
 Rollout:
-- feature flag na backend handler úrovni,
 - monitorovat query latency `device.list/get`,
 - migrace nejdřív staging + dry-run.
 
@@ -416,7 +440,8 @@ Rollout:
 ## 8. Dotčené soubory (aktualizovaný inventář)
 
 ### Backend
-- `worker/migrations/020_device_type_configs.sql` (nový)
+- `worker/migrations/020_tenants.sql` (nový — infrastruktura tenantů)
+- `worker/migrations/021_device_type_configs.sql` (nový — device types a seed)
 - `worker/src/types/device_type_config.rs` (nový)
 - `worker/src/db/queries/device_type_config.rs` (nový)
 - `worker/src/handlers/device_type_config.rs` (nový)
@@ -447,6 +472,9 @@ Rollout:
 - `apps/web/src/components/planner/CandidateDetail.tsx` (zobrazení custom fields)
 - `apps/web/src/components/customers/CustomerPreviewPanel.tsx` (custom fields v přehledu zákazníka)
 
+### CSV import
+- `worker/src/handlers/import*.rs` nebo ekvivalent — minimální úpravy (ignorovat neznámá custom pole, parsovat known fields dle fieldKey)
+
 ### Lokalizace
 - `apps/web/public/locales/{cs,en,sk}/settings.json`
 - `apps/web/public/locales/{cs,en,sk}/common.json`
@@ -468,8 +496,8 @@ Rollout:
 
 ## 10. Otevřené body
 
-1. **Tenant reprezentace v DB** -- pokud dnes neexistuje explicitní `tenants` tabulka, je potřeba ji zavést v rámci Fáze 1 (minimálně `tenants(id, name, created_at)` + pivot `user_tenants(user_id, tenant_id, role)`). Alternativa: `tenant_id` mapovat 1:1 na `user_id` jako přechodné řešení a refaktorovat později. -> Rozhodnout před začátkem Fáze 1.
+1. ~~**Tenant reprezentace v DB**~~ **Vyřešeno** — `tenant_id` nesmí být `user_id`. Zavést `tenants` + `user_tenants` v rámci Fáze 1.
 
-2. ~~Má mít device_type_field.deactivate možnost reactivate?~~ **Vyřešeno** -- API `set_active` pokrývá obojí (viz 5.2).
+2. ~~Má mít device_type_field.deactivate možnost reactivate?~~ **Vyřešeno** — API `set_active` pokrývá obojí (viz 5.2).
 
-3. **CSV import ve v1** -- doporučení: při importu ignorovat neznámá custom pole (logovat warning), ale nezastavovat import. Known custom fields se naparsují pokud je v CSV hlavička odpovídající `fieldKey`. -> Potvrdit, zda je CSV import vůbec v scope v1 (sekce 2.2 říká jen minimální kompatibilita).
+3. ~~**CSV import ve v1**~~ **Vyřešeno** — minimální změny povoleny (sekce 2.3): ignorovat neznámá custom pole, parsovat known fields dle fieldKey.
