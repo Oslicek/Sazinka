@@ -41,6 +41,20 @@ fn diff_minutes(a: NaiveTime, b: NaiveTime) -> i32 {
     (a - b).num_minutes() as i32
 }
 
+/// Round a time UP to the next quarter-hour boundary (00, 15, 30, 45).
+/// If already exactly on a quarter-hour, keep as-is.
+fn ceil_quarter_hour(t: NaiveTime) -> NaiveTime {
+    let total_mins = (t.num_seconds_from_midnight() + 59) / 60; // ceil to minute
+    let remainder = total_mins % 15;
+    if remainder == 0 {
+        NaiveTime::from_hms_opt(total_mins / 60, total_mins % 60, 0).unwrap_or(t)
+    } else {
+        let rounded = total_mins + (15 - remainder);
+        let clamped = rounded.min(23 * 60 + 45);
+        NaiveTime::from_hms_opt(clamped / 60, clamped % 60, 0).unwrap_or(t)
+    }
+}
+
 /// Shared insertion calculation used by:
 /// - route.insertion.calculate
 /// - slots.suggest.v2
@@ -106,7 +120,7 @@ pub fn calculate_insertion_positions(
             })
         };
 
-        let earliest_start = add_minutes(prev_departure, travel_from_min);
+        let earliest_start = ceil_quarter_hour(add_minutes(prev_departure, travel_from_min));
         let latest_start = if insert_idx >= num_stops {
             // Last position: no next stop, constrained only by workday end
             add_minutes(workday_end, -(candidate_service_minutes as i64))

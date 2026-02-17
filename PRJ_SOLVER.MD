@@ -418,7 +418,7 @@ Databázi nemigrujeme — bude vytvořena znovu (`001_initial_schema.sql`).
 
 Každý krok se řídí cyklem RED → GREEN → REFACTOR.
 
-### 📊 Stav implementace (2026-02-16)
+### 📊 Stav implementace (2026-02-17)
 
 | Fáze | Popis | Stav |
 |------|-------|------|
@@ -595,3 +595,126 @@ Každý krok se řídí cyklem RED → GREEN → REFACTOR.
 - `apps/web/src/components/common/TimeInput.tsx` — dropdown time picker
 - `apps/web/public/locales/{cs,en,sk}/planner.json` — nové překlady buffer
 - `apps/web/public/locales/{cs,en,sk}/settings.json` — odebrat crew buffer klíče
+
+---
+
+## 11. Opravy plánování a slotů (2026-02-17)
+
+### 11.1 Výchozí doba revize: 30 → 60 minut
+
+Výchozí doba servisu změněna z 30 na 60 minut ve všech místech:
+
+| Soubor | Změna |
+|---|---|
+| `worker/src/defaults.rs` | `DEFAULT_SERVICE_DURATION_MINUTES: u32 = 60` |
+| `apps/web/src/pages/Settings.tsx` | Fallback v formuláři `\|\| 60` |
+| `apps/web/src/pages/PlanningInbox.tsx` | `useState(60)` |
+| `apps/web/src/components/planner/CandidateDetail.tsx` | Default prop `= 60` |
+
+**Poznámka:** Migrace `001_initial_schema.sql` se nemodifikovala (checksum kontrola). Existující uživatelé updatováni přímo v DB: `UPDATE users SET default_service_duration_minutes = 60`.
+
+### 11.2 Sloty zarovnány na čtvrthodiny
+
+Navrhované sloty nyní začínají výhradně na celé čtvrthodině (00, 15, 30, 45 min). Přidána funkce `ceil_quarter_hour()` do:
+
+- `worker/src/services/insertion.rs` — aplikováno na `earliest_start`
+- `worker/src/services/slot_suggester.rs` — aplikováno na `arrival_time` v `try_insert_at_position`
+
+Všechny existující testy prošly (18/18: 8 slot_suggester + 10 insertion).
+
+### 11.3 Oprava překrývajících se slotů
+
+**Problém:** Navrhované sloty se překrývaly s existujícími zastávkami (včetně pauz). Backend insertion algoritmus zná pouze customer stops (s koordináty pro matici), ale ne pauzy.
+
+**Řešení (frontend post-check):**
+- V `PlanningInbox.tsx` se po obdržení slotů z backendu provede kontrola překrytí s VŠEMI `routeStops` (včetně `break` typů)
+- Sloty s překrytím se označí jako `conflict` a vyfiltrují z výsledků
+- Uživatel vidí pouze sloty, které nepřekrývají žádnou existující zastávku ani pauzu
+
+### 11.4 Oprava timeline layoutu
+
+- `PlanningTimeline.tsx` — zavedena `MIN_STOP_HEIGHT = 56px` pro stop/break karty (dříve 20px)
+- `PlanningTimeline.module.css` — odstraněna `margin: 0.125rem 0` z `.gapZone` (způsobovala kumulativní drift mezi hodinovou osou a obsahem)
+
+### 11.5 Oprava VRP activity-level timing
+
+`worker/src/services/vrp/pragmatic.rs` — customer stops nyní používají activity-level timing místo stop-level timing. Řeší problém, kdy co-located break + customer stop sdílely časy a zákazníkovi se přiřazovala nesprávná (delší) doba servisu.
+
+### 11.6 Oprava duplicitních tras
+
+`worker/src/db/queries/route.rs`:
+- `upsert_route` — vyhledává existující trasu podle `(user_id, date)` bez ohledu na `crew_id`, takže změna posádky/depa aktualizuje stávající trasu místo vytváření nové
+- UPDATE klauzule nyní správně aktualizuje `crew_id` a `depot_id`
+- `get_route_for_date` — přidáno `ORDER BY updated_at DESC LIMIT 1`
+
+---
+
+## 12. Analýza slotové heuristiky — REVIEW NEEDED
+
+> **Stav:** Vyžaduje revizi. Současná implementace má známé nedostatky.
+
+### 12.1 Současná architektura
+
+Slot návrhy mají **dvě cesty**:
+
+1. **V1 (legacy):** `worker/src/services/slot_suggester.rs` — `SlotSuggester` se zavolá z `handle_suggest` v `slots.rs`. Používá mock travel time funkci (konstantní nebo souřadnicová vzdálenost). **Nepoužívá Valhalla.**
+
+2. **V2 (aktuální):** `worker/src/services/insertion.rs` — `calculate_insertion_positions` se volá z `handle_suggest_v2` a z `handle_insertion_calculate` (route handler). Používá **reálnou Valhalla matici**.
+
+**Třetí vstupní bod:** `route.insertion.calculate` v `handlers/route.rs` — voláno přímo z frontendu při výběru kandidáta v PlanningInbox. Toto je aktuálně primární cesta pro UI "Doporučené sloty".
+
+### 12.2 Identifikované problémy
+
+| # | Problém | Závažnost | Stav |
+|---|---------|-----------|------|
+| 1 | **Breaks nejsou v inserční kalkulaci** — insertion.rs pracuje jen s customer stops (potřebují koordináty pro matici). Pauzy nemají koordináty → nejsou v matici → algoritmus neví o blokovaném čase. | Vysoká | ⚠️ Workaround (frontend post-filter) |
+| 2 | **Crew working hours vs. user working hours** — solver používá `crew.working_hours_start/end`, ne user settings. Pokud se crew hodiny neaktualizují, solver počítá s nesprávným rozsahem. | Střední | ✅ Opraveno ručně v DB, ale chybí UI synchronizace |
+| 3 | **Žádná validace "fit" po inserci** — slot ukazuje `estimated_arrival` a `estimated_departure` kandidáta, ale neověřuje, zda vložení neposune následující zastávky mimo jejich time windows. | Střední | ❌ Neopraveno |
+| 4 | **V1 vs V2 nekonzistence** — V1 slot_suggester se stále používá přes `slots.suggest`, ale nemá Valhalla data. Může vracet jiné výsledky než V2. | Nízká | ❌ Neopraveno |
+| 5 | **`latest_start` nepočítá s travel od kandidáta k next stop** — `latest_start` v insertion.rs odečítá `candidate_service + travel_to_next`, ale `travel_to_next` se počítá z kandidáta k dalšímu stopu. Pokud kandidát je daleko od next stopu, `latest_start` může být negativní (správně detekováno jako conflict). | Nízká | ✅ OK (funguje korektně) |
+
+### 12.3 Doporučené kroky
+
+1. **Krátkodobé (hotfix):** ✅ Frontend post-filter na překrývající se sloty (implementováno).
+
+2. **Střednědobé:** Předávat break časy jako "time blocks" do `calculate_insertion_positions`. Breaks nemají koordináty, ale blokují čas. Algoritmus by měl při výpočtu `latest_start` pro pozici za breakem posunout `prev_departure` o break duration.
+
+3. **Dlouhodobé:** Refaktorovat insertion heuristiku tak, aby:
+   - Simulovala celý forward pass (depot → stop1 → ... → candidate → ... → stopN → depot) s přesnými časy
+   - Kontrolovala feasibility všech time windows po inserci
+   - Zobrazovala uživateli přesný dopad na celou trasu (posun ETA downstream stops)
+
+### 12.4 Datový tok — slot suggestions (aktuální)
+
+```
+PlanningInbox.tsx
+  │ useEffect([selectedCandidateId])
+  │
+  ▼
+insertionService.calculateInsertion({
+  routeStops: routeStops.filter(s => s.stopType === 'customer'),  ← BREAKS EXCLUDED
+  depot, candidate, date, workdayStart, workdayEnd
+})
+  │
+  ▼ NATS: route.insertion.calculate
+  │
+handle_insertion_calculate (route.rs)
+  │
+  ├── Load Valhalla matrix (depot + existing stops + candidate)
+  │
+  ▼
+calculate_insertion_positions (insertion.rs)
+  │ For each insert position 0..N:
+  │   earliest_start = ceil_quarter_hour(prev_departure + travel)
+  │   latest_start = next_stop_arrival - (service + travel_to_next)
+  │   status = earliest > latest ? "conflict" : slack < 15 ? "tight" : "ok"
+  │
+  ▼ Response: allPositions[], bestPosition
+  │
+PlanningInbox.tsx
+  │ Post-filter: check overlap with ALL routeStops (incl. breaks)
+  │ Filter out conflict slots
+  │
+  ▼
+SlotSuggestions.tsx — display only non-conflicting slots
+```

@@ -671,7 +671,7 @@ function WorkConstraintsForm({ data, saving, onSave }: WorkConstraintsFormProps)
     workingHoursStart: data.workingHoursStart || '08:00',
     workingHoursEnd: data.workingHoursEnd || '17:00',
     maxRevisionsPerDay: data.maxRevisionsPerDay || 8,
-    defaultServiceDurationMinutes: data.defaultServiceDurationMinutes || 30,
+    defaultServiceDurationMinutes: data.defaultServiceDurationMinutes || 60,
     defaultRevisionIntervalMonths: data.defaultRevisionIntervalMonths || 12,
   });
 
@@ -731,7 +731,7 @@ function WorkConstraintsForm({ data, saving, onSave }: WorkConstraintsFormProps)
             max={180}
             step={15}
             value={formData.defaultServiceDurationMinutes}
-            onChange={(e) => setFormData({ ...formData, defaultServiceDurationMinutes: parseInt(e.target.value) || 30 })}
+            onChange={(e) => setFormData({ ...formData, defaultServiceDurationMinutes: parseInt(e.target.value) || 60 })}
           />
         </div>
         

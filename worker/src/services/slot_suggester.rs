@@ -168,8 +168,8 @@ impl SlotSuggester {
         preferred_start: Option<NaiveTime>,
         preferred_end: Option<NaiveTime>,
     ) -> Option<SuggestedSlot> {
-        // Calculate arrival time at this position
-        let arrival_time = self.calculate_arrival_at_position(position, customer_coords);
+        // Calculate arrival time at this position, rounded up to next quarter-hour
+        let arrival_time = ceil_quarter_hour(self.calculate_arrival_at_position(position, customer_coords));
         
         // Check if we can fit within work hours
         let departure_time = add_minutes(arrival_time, service_duration);
@@ -353,6 +353,20 @@ fn add_minutes(time: NaiveTime, minutes: i32) -> NaiveTime {
     let total_secs = time.num_seconds_from_midnight() as i32 + minutes * 60;
     NaiveTime::from_num_seconds_from_midnight_opt(total_secs as u32, 0)
         .unwrap_or(NaiveTime::from_hms_opt(23, 59, 59).unwrap())
+}
+
+/// Round a time UP to the next quarter-hour boundary (00, 15, 30, 45).
+/// If already exactly on a quarter-hour, keep as-is.
+fn ceil_quarter_hour(t: NaiveTime) -> NaiveTime {
+    let total_mins = (t.num_seconds_from_midnight() + 59) / 60; // ceil to minute
+    let remainder = total_mins % 15;
+    if remainder == 0 {
+        NaiveTime::from_hms_opt(total_mins / 60, total_mins % 60, 0).unwrap_or(t)
+    } else {
+        let rounded = total_mins + (15 - remainder);
+        let clamped = rounded.min(23 * 60 + 45);
+        NaiveTime::from_hms_opt(clamped / 60, clamped % 60, 0).unwrap_or(t)
+    }
 }
 
 /// Helper: calculate minutes between two times

@@ -1,8 +1,8 @@
 # Sazinka - Workflow & UI Koncept
 
-> **Status:** MVP kompletní + Phase 9 (Planner redesign) + sjednocení komponent + Smart Slot Heuristics (multi-crew, Valhalla) + Auto-recalculation + Chronological insertion & break constraints + Routing accuracy fixes + Timeline UX improvements + Flexible time windows + Client detail redesign  
-> **Verze:** 0.9.1  
-> **Datum:** 2026-02-13
+> **Status:** MVP kompletní + Phase 9 (Planner redesign) + sjednocení komponent + Smart Slot Heuristics (multi-crew, Valhalla) + Auto-recalculation + Chronological insertion & break constraints + Routing accuracy fixes + Timeline UX improvements + Flexible time windows + Client detail redesign + Slot heuristics fixes  
+> **Verze:** 0.9.2  
+> **Datum:** 2026-02-17
 > 
 > **Implementováno:**
 > - ✅ Fronta k obvolání (`/queue`) - filtry, statistiky, akce
@@ -34,6 +34,10 @@
 > - ✅ **Insertion preview deduplication** — opravena duplicitní vizualizace návrhu vložení kandidáta, kdy break rozdělující mezeru vytvářel dva náhledy místo jednoho; `insertAfterIndex` se přiřazuje jen mezerám před customer stopy
 > - ✅ **Flexible time windows** — rozlišení mezi domluveným časovým oknem (např. 08:00-12:00) a potřebným časem návštěvy (např. 1 hodina). Dispečer nastaví "Potřebný čas" v detailu zákazníka pod "Domluvený termín", solver umístí zastávku optimálně v rámci okna. Timeline zobrazuje okno jako světle modré pozadí za zastávkou s popiskem "Okno HH:MM - HH:MM". Backend scheduler i VRP solver respektují flexibilní okna. Backward-compatible: zastávky bez explicitního `serviceDurationMinutes` nebo kde `serviceDuration >= windowLength` zůstávají "pinned" (původní chování).
 > - ✅ **Client detail layout redesign** — přechod z dvousloupcového na jednosloupcový layout pro lepší čitelnost a využití prostoru. Sekce nyní v pořadí: Domluvený termín (s inline service duration inputem pro flexibilní okna), Revize nejpozději, Kontakt, Adresa, Poznámky. Akční tlačítka (Domluvit termín, Přidat do trasy, Odložit) přesunuty na konec. Odstraněn `window.prompt()` pro zadání potřebného času - nyní inline UI komponenta.
+> - ✅ **Default service duration 60 min** — výchozí doba revize změněna z 30 na 60 minut (backend defaults, frontend fallbacks, Settings page)
+> - ✅ **Quarter-hour aligned slots** — navrhované sloty zarovnány na čtvrthodiny (8:00, 8:15, 8:30, 8:45) pomocí `ceil_quarter_hour()` v backend insertion a slot_suggester
+> - ✅ **Slot overlap filtering** — navrhované sloty se kontrolují proti VŠEM existujícím zastávkám (vč. pauz); překrývající se sloty se filtrují a nezobrazují
+> - ✅ **Timeline layout fix** — oprava vertikálního layoutu PlanningTimeline: min. výška stop/break karet 56px, odstraněn margin drift v gapZone
 > 
 > **Změny v navigaci:**
 > - `/planner` → "Plán dne" (sloučeno Plánování + Můj den)
@@ -1602,4 +1606,4 @@ Inbox je prázdný – na tento den nejsou žádné položky k domluvení.
 ---
 
 *Dokument vytvořen: 2026-01-31*  
-*Poslední aktualizace: 2026-02-13 (Flexible time windows, client detail redesign)*
+*Poslední aktualizace: 2026-02-17 (Slot heuristics fixes, default duration 60min, quarter-hour alignment)*

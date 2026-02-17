@@ -84,6 +84,7 @@ interface PlanningTimelineProps {
 
 const PIXELS_PER_MINUTE = 1.25;
 const MIN_ITEM_HEIGHT = 20;
+const MIN_STOP_HEIGHT = 56;
 const MIN_GAP_HEIGHT = 24;
 
 function heightForDuration(minutes: number, minH = MIN_ITEM_HEIGHT): number {
@@ -147,8 +148,8 @@ function SortableStopCard({
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    height: heightForDuration(item.durationMinutes),
-    minHeight: MIN_ITEM_HEIGHT,
+    height: heightForDuration(item.durationMinutes, MIN_STOP_HEIGHT),
+    minHeight: MIN_STOP_HEIGHT,
     opacity: isDragging ? 0.5 : 1,
   };
 
@@ -403,7 +404,7 @@ export function PlanningTimeline({
       } else if (item.type === 'travel') {
         h = heightForDuration(item.durationMinutes, 8);
       } else {
-        h = heightForDuration(item.durationMinutes);
+        h = heightForDuration(item.durationMinutes, MIN_STOP_HEIGHT);
       }
       offsets.push({ startPx: px, endPx: px + h, startMin: sMin, endMin: eMin });
       px += h;

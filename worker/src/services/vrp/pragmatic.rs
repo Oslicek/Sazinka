@@ -149,13 +149,26 @@ fn map_solution(problem: &VrpProblem, solution: &PragmaticSolution) -> RouteSolu
 
                 let stop_id = activity.job_id.as_str();
                 if let Some(definition) = stop_by_id.get(stop_id) {
+                    // Use activity-level timing when available (a stop may
+                    // contain multiple activities like service + break, so the
+                    // stop-level schedule covers the whole visit).
+                    let (act_arrival, act_departure) = activity
+                        .time
+                        .as_ref()
+                        .and_then(|interval| {
+                            let a = parse_time(&interval.start)?;
+                            let d = parse_time(&interval.end)?;
+                            Some((a, d))
+                        })
+                        .unwrap_or((arrival_time, departure_time));
+
                     planned_stops.push(PlannedStop {
                         stop_id: definition.id.clone(),
                         customer_id: definition.customer_id,
                         customer_name: definition.customer_name.clone(),
                         order: (planned_stops.len() + 1) as u32,
-                        arrival_time,
-                        departure_time,
+                        arrival_time: act_arrival,
+                        departure_time: act_departure,
                         waiting_time_minutes: 0,
                     });
 
@@ -165,7 +178,7 @@ fn map_solution(problem: &VrpProblem, solution: &PragmaticSolution) -> RouteSolu
                             validate_arrival_vs_window(
                                 &definition.id,
                                 &definition.customer_name,
-                                arrival_time,
+                                act_arrival,
                                 tw,
                                 &mut warnings,
                             );

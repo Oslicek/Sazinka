@@ -71,7 +71,7 @@ export function CandidateDetail({
   onRemoveFromRoute,
   isInRoute = false,
   routeDate,
-  defaultServiceDurationMinutes = 30,
+  defaultServiceDurationMinutes = 60,
 }: CandidateDetailProps) {
   const { t } = useTranslation('planner');
   // Inline scheduling form state

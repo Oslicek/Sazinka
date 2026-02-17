@@ -47,6 +47,8 @@ pub async fn get_route_for_date(
             created_at, updated_at
         FROM routes
         WHERE user_id = $1 AND date = $2
+        ORDER BY updated_at DESC
+        LIMIT 1
         "#
     )
     .bind(user_id)
@@ -165,34 +167,30 @@ pub async fn upsert_route(
     arrival_buffer_percent: f64,
     arrival_buffer_fixed_minutes: f64,
 ) -> Result<Route> {
-    // Two-step upsert to handle NULL crew_id (NULL != NULL in SQL unique index)
-    let existing = if let Some(cid) = crew_id {
-        sqlx::query_as::<_, Route>(
-            "SELECT id, user_id, crew_id, depot_id, date, status, total_distance_km, total_duration_minutes, optimization_score, arrival_buffer_percent, arrival_buffer_fixed_minutes, return_to_depot_distance_km, return_to_depot_duration_minutes, created_at, updated_at FROM routes WHERE user_id = $1 AND date = $2 AND crew_id = $3"
-        )
-        .bind(user_id).bind(date).bind(cid)
-        .fetch_optional(pool).await?
-    } else {
-        sqlx::query_as::<_, Route>(
-            "SELECT id, user_id, crew_id, depot_id, date, status, total_distance_km, total_duration_minutes, optimization_score, arrival_buffer_percent, arrival_buffer_fixed_minutes, return_to_depot_distance_km, return_to_depot_duration_minutes, created_at, updated_at FROM routes WHERE user_id = $1 AND date = $2 AND crew_id IS NULL"
-        )
-        .bind(user_id).bind(date)
-        .fetch_optional(pool).await?
-    };
+    // Find any existing route for this user+date (regardless of crew_id).
+    // When the user switches crews, we update the existing route rather than
+    // creating a duplicate.
+    let existing = sqlx::query_as::<_, Route>(
+        "SELECT id, user_id, crew_id, depot_id, date, status, total_distance_km, total_duration_minutes, optimization_score, arrival_buffer_percent, arrival_buffer_fixed_minutes, return_to_depot_distance_km, return_to_depot_duration_minutes, created_at, updated_at FROM routes WHERE user_id = $1 AND date = $2 ORDER BY updated_at DESC LIMIT 1"
+    )
+    .bind(user_id).bind(date)
+    .fetch_optional(pool).await?;
 
     let route = if let Some(existing_route) = existing {
-        // Update existing route
+        // Update existing route (including crew_id and depot_id which may change)
         sqlx::query_as::<_, Route>(
             r#"
             UPDATE routes SET
-                status = $2::route_status,
-                total_distance_km = $3,
-                total_duration_minutes = $4,
-                optimization_score = $5,
-                return_to_depot_distance_km = $6,
-                return_to_depot_duration_minutes = $7,
-                arrival_buffer_percent = $8,
-                arrival_buffer_fixed_minutes = $9,
+                crew_id = $2,
+                depot_id = $3,
+                status = $4::route_status,
+                total_distance_km = $5,
+                total_duration_minutes = $6,
+                optimization_score = $7,
+                return_to_depot_distance_km = $8,
+                return_to_depot_duration_minutes = $9,
+                arrival_buffer_percent = $10,
+                arrival_buffer_fixed_minutes = $11,
                 updated_at = NOW()
             WHERE id = $1
             RETURNING
@@ -205,6 +203,8 @@ pub async fn upsert_route(
             "#
         )
         .bind(existing_route.id)
+        .bind(crew_id)
+        .bind(depot_id)
         .bind(status)
         .bind(total_distance_km)
         .bind(total_duration_minutes)

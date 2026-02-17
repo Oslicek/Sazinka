@@ -145,7 +145,7 @@ export function PlanningInbox() {
   const [context, setContext] = useState<RouteContext | null>(null);
   const [crews, setCrews] = useState<crewService.Crew[]>([]);
   const [depots, setDepots] = useState<Depot[]>([]);
-  const [defaultServiceDurationMinutes, setDefaultServiceDurationMinutes] = useState(30);
+  const [defaultServiceDurationMinutes, setDefaultServiceDurationMinutes] = useState(60);
   const [defaultWorkingHoursStart, setDefaultWorkingHoursStart] = useState<string | null>(null);
   const [defaultWorkingHoursEnd, setDefaultWorkingHoursEnd] = useState<string | null>(null);
   const [breakSettings, setBreakSettings] = useState<BreakSettings | null>(null);
@@ -538,32 +538,61 @@ export function PlanningInbox() {
           workdayEnd: defaultWorkingHoursEnd ?? undefined,
         });
         
-        // Convert to SlotSuggestion format
-        const suggestions: SlotSuggestion[] = response.allPositions.map((pos, idx) => ({
-          id: `slot-${idx}`,
-          date: context!.date,
-          timeStart: pos.estimatedArrival ?? '',
-          timeEnd: pos.estimatedDeparture ?? '',
-          status: pos.status as 'ok' | 'tight' | 'conflict',
-          deltaKm: pos.deltaKm,
-          deltaMin: pos.deltaMin,
-          insertAfterIndex: pos.insertAfterIndex,
-          insertAfterName: pos.insertAfterName,
-          insertBeforeName: pos.insertBeforeName,
-        }));
+        // Build time windows for ALL existing stops (including breaks)
+        // so we can detect overlaps the matrix-based algorithm misses.
+        const occupiedWindows = routeStops
+          .filter((s) => s.estimatedArrival && s.estimatedDeparture)
+          .map((s) => ({
+            start: parseTimeMins(s.estimatedArrival!),
+            end: parseTimeMins(s.estimatedDeparture!),
+          }));
+
+        // Convert to SlotSuggestion format, checking for break overlaps
+        const suggestions: SlotSuggestion[] = response.allPositions
+          .map((pos, idx) => {
+            let status = pos.status as 'ok' | 'tight' | 'conflict';
+
+            // Post-check: if slot overlaps with any existing stop (e.g. break),
+            // mark as conflict even if the matrix-based algorithm missed it.
+            if (status !== 'conflict' && pos.estimatedArrival && pos.estimatedDeparture) {
+              const slotStart = parseTimeMins(pos.estimatedArrival);
+              const slotEnd = parseTimeMins(pos.estimatedDeparture);
+              const overlaps = occupiedWindows.some(
+                (w) => slotStart < w.end && slotEnd > w.start,
+              );
+              if (overlaps) {
+                status = 'conflict';
+              }
+            }
+
+            return {
+              id: `slot-${idx}`,
+              date: context!.date,
+              timeStart: pos.estimatedArrival ?? '',
+              timeEnd: pos.estimatedDeparture ?? '',
+              status,
+              deltaKm: pos.deltaKm,
+              deltaMin: pos.deltaMin,
+              insertAfterIndex: pos.insertAfterIndex,
+              insertAfterName: pos.insertAfterName,
+              insertBeforeName: pos.insertBeforeName,
+            };
+          })
+          .filter((s) => s.status !== 'conflict');
         
         setSlotSuggestions(suggestions);
         
-        // Update candidate with best insertion metrics
-        if (response.bestPosition) {
+        // Update candidate with best insertion metrics (use first valid slot)
+        const best = suggestions[0];
+        if (best) {
           setCandidates((prev) => 
             prev.map((c) => 
               c.customerId === selectedCandidateId
                 ? {
                     ...c,
-                    deltaKm: response.bestPosition!.deltaKm,
-                    deltaMin: response.bestPosition!.deltaMin,
-                    slotStatus: response.bestPosition!.status as 'ok' | 'tight' | 'conflict',
+                    deltaKm: best.deltaKm,
+                    deltaMin: best.deltaMin,
+                    slotStatus: best.status,
                     suggestedSlots: suggestions,
                   }
                 : c

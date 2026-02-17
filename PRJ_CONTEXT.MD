@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-02-13 (v0.19.1 - Flexible time windows + client detail redesign)
+> **Last Updated:** 2026-02-17 (v0.19.2 - Slot heuristics fixes, default duration 60 min, quarter-hour alignment)
 
 ## Overview
 
