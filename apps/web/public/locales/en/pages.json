@@ -302,6 +302,7 @@
   "customer_geocode_failed": "Geocoding failed: {{error}}",
   "customer_geocode_warning": "Address cannot be geolocated. Customer will not be included in route optimization.",
   "customer_fix_address": "Fix address",
+  "customer_last_visit_note": "Note from last visit",
 
   "workitem_error_connection": "No server connection",
   "workitem_error_no_id": "Work item ID not specified",

@@ -2,7 +2,12 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { formatDate } from '@/i18n/formatters';
-import { updateCustomer } from '@/services/customerService';
+import { listDevices } from '@/services/deviceService';
+import { listVisits, getVisit, getVisitStatusLabel, getVisitResultLabel } from '@/services/visitService';
+import { DEVICE_TYPE_KEYS, type Device } from '@shared/device';
+import type { Visit } from '@shared/visit';
+import { useNatsStore } from '@/stores/natsStore';
+import { CustomerTimeline } from '../timeline';
 import { SlotSuggestions, type SlotSuggestion } from './SlotSuggestions';
 import styles from './CandidateDetail.module.css';
 
@@ -90,6 +95,59 @@ export function CandidateDetail({
     const saved = localStorage.getItem('sazinka.snooze.defaultDays');
     return (saved ? parseInt(saved) : 7) as SnoozeDuration;
   });
+
+  // Devices and visits
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [lastVisit, setLastVisit] = useState<Visit | null>(null);
+  const [lastVisitNotes, setLastVisitNotes] = useState<string | null>(null);
+  const [isLoadingExtra, setIsLoadingExtra] = useState(false);
+  const isConnected = useNatsStore((s) => s.isConnected);
+
+  useEffect(() => {
+    if (!candidate?.customerId || !isConnected) {
+      setDevices([]);
+      setLastVisit(null);
+      setLastVisitNotes(null);
+      return;
+    }
+    let cancelled = false;
+    setIsLoadingExtra(true);
+    Promise.all([
+      listDevices(candidate.customerId).catch(() => ({ items: [] as Device[] })),
+      listVisits({ customerId: candidate.customerId, status: 'completed', limit: 1 }).catch(() => ({ visits: [] as Visit[], total: 0 })),
+    ]).then(async ([devResp, visitResp]) => {
+      if (cancelled) return;
+      setDevices(devResp.items ?? []);
+      const visits = visitResp.visits ?? [];
+      if (visits.length > 0) {
+        const visit = visits[0];
+        setLastVisit(visit);
+        // Fetch full visit details to get work item notes
+        try {
+          const full = await getVisit(visit.id);
+          if (cancelled) return;
+          // Collect all notes: visit resultNotes + work item resultNotes + findings
+          const allNotes: string[] = [];
+          if (full.visit.resultNotes) allNotes.push(full.visit.resultNotes);
+          for (const wi of full.workItems ?? []) {
+            if (wi.resultNotes) allNotes.push(wi.resultNotes);
+            if (wi.findings) allNotes.push(wi.findings);
+            if (wi.requiresFollowUp && wi.followUpReason) allNotes.push(`⚠ ${wi.followUpReason}`);
+          }
+          setLastVisitNotes(allNotes.length > 0 ? allNotes.join('\n') : null);
+        } catch {
+          // If getVisit fails, just use the visit-level notes
+          setLastVisitNotes(visit.resultNotes ?? null);
+        }
+      } else {
+        setLastVisit(null);
+        setLastVisitNotes(null);
+      }
+    }).finally(() => {
+      if (!cancelled) setIsLoadingExtra(false);
+    });
+    return () => { cancelled = true; };
+  }, [candidate?.customerId, isConnected]);
 
   // Inline editing states
   const [editingContact, setEditingContact] = useState(false);
@@ -560,6 +618,28 @@ export function CandidateDetail({
         )}
       </section>
 
+      {/* Last visit note — prominent banner */}
+      {lastVisitNotes && (
+        <div className={styles.lastVisitBanner}>
+          <div className={styles.lastVisitBannerHeader}>
+            <span className={styles.lastVisitBannerIcon}>📝</span>
+            <span className={styles.lastVisitBannerTitle}>{t('candidate_visit_note', { defaultValue: 'Poznámka z poslední návštěvy' })}</span>
+            {lastVisit && (
+              <span className={styles.lastVisitBannerMeta}>
+                {formatDate(lastVisit.scheduledDate)}
+              </span>
+            )}
+          </div>
+          <p className={styles.lastVisitBannerNotes}>{lastVisitNotes}</p>
+          {lastVisit?.requiresFollowUp && lastVisit.followUpReason && (
+            <div className={styles.lastVisitFollowUp}>
+              <span className={styles.followUpIcon}>⚠</span>
+              <span>{lastVisit.followUpReason}</span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Notes */}
       {candidate.notes && (
         <section className={styles.section}>
@@ -567,6 +647,39 @@ export function CandidateDetail({
           <p className={styles.notes}>{candidate.notes}</p>
         </section>
       )}
+
+      {/* Devices */}
+      <section className={styles.section}>
+        <h4 className={styles.sectionTitle}>{t('candidate_devices', { defaultValue: 'Zařízení' })} ({devices.length})</h4>
+        {isLoadingExtra ? (
+          <span className={styles.loadingText}>{t('candidate_loading')}</span>
+        ) : devices.length === 0 ? (
+          <span className={styles.missingInfo}>{t('candidate_no_devices', { defaultValue: 'Žádná zařízení' })}</span>
+        ) : (
+          <div className={styles.deviceList}>
+            {devices.map((dev) => (
+              <div key={dev.id} className={styles.deviceItem}>
+                <span className={styles.deviceType}>{t(DEVICE_TYPE_KEYS[dev.deviceType])}</span>
+                {dev.deviceName && <span className={styles.deviceName}>{dev.deviceName}</span>}
+                {dev.nextDueDate && (
+                  <span className={
+                    new Date(dev.nextDueDate) < new Date()
+                      ? styles.deviceDueOverdue
+                      : styles.deviceDue
+                  }>
+                    {formatDate(dev.nextDueDate)}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Full history timeline */}
+      <section className={styles.section}>
+        <CustomerTimeline customerId={candidate.customerId} />
+      </section>
 
       {/* Links */}
       <div className={styles.links}>

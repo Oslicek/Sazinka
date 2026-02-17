@@ -7,6 +7,7 @@
 import { useTranslation } from 'react-i18next';
 import type { Crew } from '../../services/crewService';
 import type { Depot } from '@shared/settings';
+import { getWeekdayNames } from '@/i18n/formatters';
 import styles from './PlannerFilters.module.css';
 
 export interface PlannerFiltersProps {
@@ -49,6 +50,11 @@ export function PlannerFilters({
             onChange={(e) => onDateFromChange(e.target.value)}
             className={styles.dateInput}
           />
+          {dateFrom && !isDateRange && (
+            <span className={styles.weekdayLabel}>
+              {getWeekdayNames('long')[(new Date(dateFrom + 'T00:00:00').getDay() + 6) % 7]}
+            </span>
+          )}
           {isDateRange && (
             <>
               <span className={styles.dateSeparator}>–</span>

@@ -302,6 +302,7 @@
   "customer_geocode_failed": "Geokódování selhalo: {{error}}",
   "customer_geocode_warning": "Adresu nelze lokalizovat. Zákazník nebude zahrnut do optimalizace tras.",
   "customer_fix_address": "Opravit adresu",
+  "customer_last_visit_note": "Poznámka z poslední návštěvy",
 
   "workitem_error_connection": "Není připojení k serveru",
   "workitem_error_no_id": "ID úkonu není zadáno",

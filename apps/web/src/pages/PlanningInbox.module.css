@@ -51,6 +51,12 @@
   white-space: nowrap;
 }
 
+.dateWithWeekday {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
 .dateInput {
   width: 140px;
   padding: 0.3rem 0.5rem;
@@ -59,6 +65,14 @@
   color: var(--color-primary);
   border: 1.5px solid var(--color-primary-light, #93c5fd);
   border-radius: var(--radius-sm);
+}
+
+.weekdayLabel {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+  text-transform: capitalize;
 }
 
 .select {

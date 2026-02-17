@@ -2657,13 +2657,20 @@ export function PlanningInbox() {
     <div className={styles.contextSelectorsRow}>
       <div className={styles.selector}>
         <label htmlFor="route-date">{t('context_day')}</label>
-        <input
-          id="route-date"
-          type="date"
-          value={context?.date ?? ''}
-          onChange={(e) => handleDateChange(e.target.value)}
-          className={styles.dateInput}
-        />
+        <div className={styles.dateWithWeekday}>
+          <input
+            id="route-date"
+            type="date"
+            value={context?.date ?? ''}
+            onChange={(e) => handleDateChange(e.target.value)}
+            className={styles.dateInput}
+          />
+          {context?.date && (
+            <span className={styles.weekdayLabel}>
+              {getWeekdayNames('long')[(new Date(context.date + 'T00:00:00').getDay() + 6) % 7]}
+            </span>
+          )}
+        </div>
       </div>
 
       <div className={styles.selector}>

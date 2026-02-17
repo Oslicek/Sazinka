@@ -114,7 +114,7 @@ export function Planner() {
   const [routes, setRoutes] = useState<SavedRoute[]>([]);
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
   const [selectedRouteStops, setSelectedRouteStops] = useState<SavedRouteStop[]>([]);
-  const [timelineView, setTimelineView] = useState<TimelineView>('compact');
+  const [timelineView, setTimelineView] = useState<TimelineView>('planning');
   const [metrics, setMetrics] = useState<RouteMetrics | null>(null);
   const [depot, setDepot] = useState<{ lat: number; lng: number; name?: string } | null>(null);
 
@@ -986,6 +986,7 @@ export function Planner() {
                 onStopClick={handleStopClick}
                 routeStartTime={routeStartTime}
                 routeEndTime={routeEndTime}
+                depotDeparture={depotDeparture}
                 onReorder={handleReorder}
                 onRemoveStop={handleRemoveStop}
                 onUpdateBreak={handleUpdateBreak}

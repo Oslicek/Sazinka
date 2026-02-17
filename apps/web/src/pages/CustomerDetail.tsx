@@ -11,6 +11,8 @@ import {
 } from '../services/customerService';
 import { listCrews, type Crew as CrewData } from '../services/crewService';
 import { listDepots } from '../services/settingsService';
+import { listVisits, getVisit, getVisitStatusLabel, getVisitResultLabel } from '../services/visitService';
+import type { Visit } from '@shared/visit';
 import type { Depot } from '@shared/settings';
 import * as routeService from '../services/routeService';
 import * as insertionService from '../services/insertionService';
@@ -24,6 +26,7 @@ import { DeviceList } from '../components/devices';
 import { CustomerTimeline } from '../components/timeline';
 import { useNatsStore } from '../stores/natsStore';
 import { useTranslation } from 'react-i18next';
+import { formatDate } from '../i18n/formatters';
 import styles from './CustomerDetail.module.css';
 
 // Default mock crews (fallback when none in database)
@@ -66,7 +69,53 @@ export function CustomerDetail() {
   const [crews, setCrews] = useState<Crew[]>([]);
   const [depots, setDepots] = useState<Depot[]>([]);
 
+  // Last completed visit
+  const [lastVisit, setLastVisit] = useState<Visit | null>(null);
+  const [lastVisitNotes, setLastVisitNotes] = useState<string | null>(null);
+
   const isConnected = useNatsStore((s) => s.isConnected);
+
+  // Fetch last completed visit when customer loads
+  useEffect(() => {
+    if (!customerId || !isConnected) {
+      setLastVisit(null);
+      setLastVisitNotes(null);
+      return;
+    }
+    let cancelled = false;
+    listVisits({ customerId, status: 'completed', limit: 1 })
+      .then(async (resp) => {
+        if (cancelled) return;
+        if (resp.visits.length > 0) {
+          const visit = resp.visits[0];
+          setLastVisit(visit);
+          try {
+            const full = await getVisit(visit.id);
+            if (cancelled) return;
+            const allNotes: string[] = [];
+            if (full.visit.resultNotes) allNotes.push(full.visit.resultNotes);
+            for (const wi of full.workItems ?? []) {
+              if (wi.resultNotes) allNotes.push(wi.resultNotes);
+              if (wi.findings) allNotes.push(wi.findings);
+              if (wi.requiresFollowUp && wi.followUpReason) allNotes.push(`⚠ ${wi.followUpReason}`);
+            }
+            setLastVisitNotes(allNotes.length > 0 ? allNotes.join('\n') : null);
+          } catch {
+            setLastVisitNotes(visit.resultNotes ?? null);
+          }
+        } else {
+          setLastVisit(null);
+          setLastVisitNotes(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLastVisit(null);
+          setLastVisitNotes(null);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [customerId, isConnected]);
 
   const loadCustomer = useCallback(async () => {
     if (!isConnected) {
@@ -415,6 +464,38 @@ export function CustomerDetail() {
           <span>⚠️</span>
           <span>{t('customer_geocode_warning')}</span>
           <button onClick={handleOpenEditDrawer}>{t('customer_fix_address')}</button>
+        </div>
+      )}
+
+      {/* Last visit note — prominent */}
+      {lastVisit && (lastVisitNotes || (lastVisit.requiresFollowUp && lastVisit.followUpReason)) && (
+        <div className={styles.lastVisitBanner}>
+          <div className={styles.lastVisitBannerHeader}>
+            <span className={styles.lastVisitBannerIcon}>📝</span>
+            <span className={styles.lastVisitBannerTitle}>{t('customer_last_visit_note')}</span>
+            <span className={styles.lastVisitBannerMeta}>
+              {formatDate(lastVisit.scheduledDate)}
+              {' — '}
+              <span className={styles.lastVisitBannerStatus}>
+                {getVisitStatusLabel(lastVisit.status)}
+              </span>
+              {lastVisit.result && (
+                <>
+                  {' / '}
+                  {getVisitResultLabel(lastVisit.result)}
+                </>
+              )}
+            </span>
+          </div>
+          {lastVisitNotes && (
+            <p className={styles.lastVisitBannerNotes}>{lastVisitNotes}</p>
+          )}
+          {lastVisit.requiresFollowUp && lastVisit.followUpReason && (
+            <div className={styles.lastVisitBannerFollowUp}>
+              <span>⚠</span>
+              <span>{lastVisit.followUpReason}</span>
+            </div>
+          )}
         </div>
       )}
 
