@@ -37,6 +37,7 @@ import type { BreakSettings } from '@shared/settings';
 import { insertStopAtPosition, findChronologicalPosition } from '../components/planner/insertStop';
 import * as settingsService from '../services/settingsService';
 import { calculateBreakPosition, createBreakStop } from '../utils/breakUtils';
+import { resolveRevisionDuration } from '../utils/resolveRevisionDuration';
 import { logger } from '../utils/logger';
 import * as crewService from '../services/crewService';
 import * as routeService from '../services/routeService';
@@ -844,6 +845,7 @@ export function PlanningInbox() {
         postalCode: selectedCandidate.customerPostalCode ?? undefined,
         dueDate: selectedCandidate.dueDate ?? new Date().toISOString(),
         daysUntilDue: selectedCandidate.daysUntilDue,
+        deviceTypeDefaultDurationMinutes: selectedCandidate.deviceTypeDefaultDurationMinutes ?? undefined,
         priority: toPriority(selectedCandidate),
         suggestedSlots: slotSuggestions,
         isScheduled,
@@ -1524,7 +1526,9 @@ export function PlanningInbox() {
     const candidate = candidates.find((c) => c.id === candidateId || c.customerId === candidateId);
     if (!candidate || !candidate.customerLat || !candidate.customerLng) return;
     if (inRouteIds.has(candidate.customerId)) return;
-    const resolvedServiceDurationMinutes = serviceDurationOverride ?? defaultServiceDurationMinutes;
+    // Priority: dispatcher override → device type default → global default
+    const resolvedServiceDurationMinutes = serviceDurationOverride ??
+      resolveRevisionDuration(null, candidate.deviceTypeDefaultDurationMinutes, defaultServiceDurationMinutes);
 
     const newStop: SavedRouteStop = {
       id: crypto.randomUUID(), // Generate new UUID for route_stop

@@ -318,6 +318,8 @@ export interface RecalcStopInput {
   scheduledTimeStart?: string | null;
   scheduledTimeEnd?: string | null;
   serviceDurationMinutes?: number | null;
+  /** Default service duration from the device type config (minutes). Fallback between per-stop and global default. */
+  deviceTypeDefaultDurationMinutes?: number | null;
   breakDurationMinutes?: number | null;
   /** Manual override for service duration */
   overrideServiceDurationMinutes?: number | null;

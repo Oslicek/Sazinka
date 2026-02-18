@@ -615,6 +615,7 @@ pub async fn get_call_queue(
             c.lat as customer_lat, c.lng as customer_lng,
             c.geocode_status::text as customer_geocode_status,
             d.device_name, d.device_type::text,
+            dtc.default_revision_duration_minutes as device_type_default_duration_minutes,
             (r.due_date - $2::date)::int as days_until_due,
             CASE
                 WHEN r.due_date < $2 THEN 'overdue'
@@ -627,6 +628,7 @@ pub async fn get_call_queue(
         FROM revisions r
         INNER JOIN customers c ON r.customer_id = c.id
         INNER JOIN devices d ON r.device_id = d.id
+        LEFT JOIN device_type_configs dtc ON d.device_type_config_id = dtc.id AND dtc.is_active = true
         WHERE {}
         ORDER BY CASE WHEN r.due_date < $2 THEN 0 ELSE 1 END, r.due_date ASC
         LIMIT $3 OFFSET $4

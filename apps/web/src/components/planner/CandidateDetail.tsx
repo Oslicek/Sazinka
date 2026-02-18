@@ -7,6 +7,7 @@ import { listVisits, getVisit, getVisitStatusLabel, getVisitResultLabel } from '
 import { DEVICE_TYPE_KEYS, type Device } from '@shared/device';
 import type { Visit } from '@shared/visit';
 import { useNatsStore } from '@/stores/natsStore';
+import { resolveRevisionDuration } from '@/utils/resolveRevisionDuration';
 import { CustomerTimeline } from '../timeline';
 import { SlotSuggestions, type SlotSuggestion } from './SlotSuggestions';
 import styles from './CandidateDetail.module.css';
@@ -26,6 +27,8 @@ export interface CandidateDetailData {
   dueDate: string;
   daysUntilDue: number;
   priority: 'overdue' | 'due_this_week' | 'due_soon' | 'upcoming';
+  /** Default service duration for this device type (minutes), used as second-level fallback */
+  deviceTypeDefaultDurationMinutes?: number;
   // Route-aware data
   suggestedSlots?: SlotSuggestion[];
   // State flags
@@ -87,7 +90,10 @@ export function CandidateDetail({
   const [schedNotes, setSchedNotes] = useState('');
 
   // Service duration (time needed) — shown under "Domluvený termín" when window is flexible
-  const [serviceDurationMinutes, setServiceDurationMinutes] = useState<number>(defaultServiceDurationMinutes);
+  // Priority: stop override (set by user) → device type default → global default
+  const [serviceDurationMinutes, setServiceDurationMinutes] = useState<number>(() =>
+    resolveRevisionDuration(null, candidate?.deviceTypeDefaultDurationMinutes, defaultServiceDurationMinutes)
+  );
   
   // Snooze dropdown state
   const [showSnoozeDropdown, setShowSnoozeDropdown] = useState(false);
@@ -102,6 +108,13 @@ export function CandidateDetail({
   const [lastVisitNotes, setLastVisitNotes] = useState<string | null>(null);
   const [isLoadingExtra, setIsLoadingExtra] = useState(false);
   const isConnected = useNatsStore((s) => s.isConnected);
+
+  // Reset service duration when candidate changes to reflect device type default
+  useEffect(() => {
+    setServiceDurationMinutes(
+      resolveRevisionDuration(null, candidate?.deviceTypeDefaultDurationMinutes, defaultServiceDurationMinutes)
+    );
+  }, [candidate?.id, candidate?.deviceTypeDefaultDurationMinutes, defaultServiceDurationMinutes]);
 
   useEffect(() => {
     if (!candidate?.customerId || !isConnected) {

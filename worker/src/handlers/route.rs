@@ -1726,6 +1726,10 @@ pub struct RecalcStopInput {
     pub scheduled_time_start: Option<String>,
     pub scheduled_time_end: Option<String>,
     pub service_duration_minutes: Option<i32>,
+    /// Default service duration from the device type config.
+    /// Used as a fallback between per-stop explicit value and global default.
+    #[serde(default)]
+    pub device_type_default_duration_minutes: Option<i32>,
     pub break_duration_minutes: Option<i32>,
     #[serde(default)]
     pub override_service_duration_minutes: Option<i32>,
@@ -1922,6 +1926,7 @@ pub async fn handle_recalculate(
                         .as_deref()
                         .and_then(parse_time_flexible),
                     service_duration_minutes: s.service_duration_minutes,
+                    device_type_default_duration_minutes: s.device_type_default_duration_minutes,
                     break_duration_minutes: s.break_duration_minutes,
                     override_service_duration_minutes: s.override_service_duration_minutes,
                     override_travel_duration_minutes: s.override_travel_duration_minutes,

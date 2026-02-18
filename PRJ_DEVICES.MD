@@ -577,6 +577,29 @@ Poslední aktualizace: 2026-02-17
 - `apps/web/src/components/devices/DeviceList.tsx` — zobrazení custom field values v expanded view
 - Překlady cs/en/sk: `device_form_custom_fields`, `device_archived_type_warning`, `device_field_*`, `device_custom_fields`
 
-### Fáze 6 — Nezapočato
+### Fáze 6 ✅
 
-Planner/Inbox + revizní logika.
+Planner/Inbox + revizní logika:
+
+- `apps/web/src/utils/resolveRevisionDuration.ts` — utility funkce pro priority chain:
+  `override stop` → `device type default` → `global default`
+- `apps/web/src/utils/resolveRevisionDuration.test.ts` — **14/14 testů prošlo**
+- `apps/web/src/components/planner/CandidateDetail.tsx`:
+  - `CandidateDetailData` rozšířen o `deviceTypeDefaultDurationMinutes?: number`
+  - Inicializace `serviceDurationMinutes` přes `resolveRevisionDuration`
+  - `useEffect` pro reset při změně kandidáta
+- `apps/web/src/pages/PlanningInbox.tsx`:
+  - `handleAddToRoute` používá `resolveRevisionDuration` místo přímého `defaultServiceDurationMinutes`
+  - `selectedCandidateDetail` mapuje `deviceTypeDefaultDurationMinutes` z `CallQueueItem`
+  - Import `resolveRevisionDuration`
+- `apps/web/src/services/revisionService.ts` — `CallQueueItem` rozšířen o `deviceTypeDefaultDurationMinutes: number | null`
+- `apps/web/src/services/routeService.ts` — `RecalcStopInput` rozšířen o `deviceTypeDefaultDurationMinutes?: number | null`
+- `worker/src/types/revision.rs` — `CallQueueItem` rozšířen o `device_type_default_duration_minutes: Option<i32>`
+- `worker/src/db/queries/revision.rs` — SQL dotaz na call queue LEFT JOINuje `device_type_configs`
+  pro výplnění `device_type_default_duration_minutes`
+- `worker/src/services/sequential_schedule.rs`:
+  - `ScheduleStop` rozšířen o `device_type_default_duration_minutes: Option<i32>`
+  - Priority chain v duration resolution: override → explicit stop → device type default → global default
+  - Nové testy: `device_type_default_beats_global_default_when_no_explicit_stop_duration`,
+    `explicit_stop_duration_beats_device_type_default`
+- `worker/src/handlers/route.rs` — `RecalcStopInput` a mapování na `SeqScheduleStop` rozšířeny

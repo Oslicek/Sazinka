@@ -287,6 +287,10 @@ pub struct CallQueueItem {
     // Device fields
     pub device_name: Option<String>,
     pub device_type: String,
+    /// Default revision duration from the device type config (minutes).
+    /// None if the device has no device_type_config_id or the config has no default.
+    #[sqlx(default)]
+    pub device_type_default_duration_minutes: Option<i32>,
     
     // Computed fields
     pub days_until_due: i32,

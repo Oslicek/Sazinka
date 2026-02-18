@@ -167,6 +167,8 @@ export interface CallQueueItem {
   customerGeocodeStatus: 'pending' | 'success' | 'failed';
   deviceName: string | null;
   deviceType: string;
+  /** Default revision duration from the device type config (minutes). Null if not configured. */
+  deviceTypeDefaultDurationMinutes: number | null;
   daysUntilDue: number;
   priority: 'overdue' | 'due_this_week' | 'due_soon' | 'upcoming';
   lastContactAt: string | null;

@@ -35,8 +35,12 @@ pub struct ScheduleStop {
     pub scheduled_time_start: Option<NaiveTime>,
     /// Agreed/scheduled latest departure (type-1 slot).
     pub scheduled_time_end: Option<NaiveTime>,
-    /// Explicit per-stop service duration. Falls back to `default_service_minutes`.
+    /// Explicit per-stop service duration chosen by the dispatcher.
+    /// Falls back to `device_type_default_duration_minutes`, then `default_service_minutes`.
     pub service_duration_minutes: Option<i32>,
+    /// Default service duration from the device type configuration.
+    /// Acts as a secondary fallback between explicit per-stop value and global default.
+    pub device_type_default_duration_minutes: Option<i32>,
     /// For break stops only.
     pub break_duration_minutes: Option<i32>,
     /// Manual override for service duration (replaces calculated/agreed value).
@@ -188,23 +192,29 @@ pub fn compute_sequential_schedule(
         };
 
         // Service duration for this stop.
-        // Manual override takes highest priority.
+        // Priority chain:
+        // 1. Manual override (highest — dispatcher explicitly changed the value in route detail)
+        // 2. Explicit per-stop value (dispatcher's chosen duration when adding the stop)
+        // 3. Derived from scheduled window (end - start) when no explicit value
+        // 4. Device-type default (from device_type_configs)
+        // 5. Global default (lowest — org-level fallback)
         let service_min = if let Some(override_svc) = stop.override_service_duration_minutes {
             override_svc
         } else {
             match stop.stop_type {
                 StopType::Break => stop.break_duration_minutes.unwrap_or(30),
                 StopType::Customer => {
-                    // 1. Explicit per-stop value
-                    // 2. Derived from scheduled window (end - start)
-                    // 3. Global default
                     if let Some(explicit) = stop.service_duration_minutes {
                         explicit
                     } else if let (Some(s), Some(e)) = (stop.scheduled_time_start, stop.scheduled_time_end) {
                         let diff = time_to_minutes(e) - time_to_minutes(s);
-                        if diff > 0 { diff } else { input.default_service_minutes }
+                        if diff > 0 { diff } else {
+                            stop.device_type_default_duration_minutes.filter(|&v| v > 0)
+                                .unwrap_or(input.default_service_minutes)
+                        }
                     } else {
-                        input.default_service_minutes
+                        stop.device_type_default_duration_minutes.filter(|&v| v > 0)
+                            .unwrap_or(input.default_service_minutes)
                     }
                 }
             }
@@ -375,6 +385,7 @@ mod tests {
                 scheduled_time_start: None,
                 scheduled_time_end: None,
                 service_duration_minutes: None,
+                device_type_default_duration_minutes: None,
                 break_duration_minutes: None,
                 override_service_duration_minutes: None,
                 override_travel_duration_minutes: None,
@@ -416,6 +427,7 @@ mod tests {
                 scheduled_time_start: Some(hm(9, 0)),
                 scheduled_time_end: Some(hm(10, 30)),
                 service_duration_minutes: None,
+                device_type_default_duration_minutes: None,
                 break_duration_minutes: None,
                 override_service_duration_minutes: None,
                 override_travel_duration_minutes: None,
@@ -450,13 +462,13 @@ mod tests {
                 ScheduleStop {
                     stop_type: StopType::Customer,
                     scheduled_time_start: None, scheduled_time_end: None,
-                    service_duration_minutes: Some(30), break_duration_minutes: None,
+                    service_duration_minutes: Some(30), device_type_default_duration_minutes: None, break_duration_minutes: None,
                     override_service_duration_minutes: None, override_travel_duration_minutes: None,
                 },
                 ScheduleStop {
                     stop_type: StopType::Customer,
                     scheduled_time_start: None, scheduled_time_end: None,
-                    service_duration_minutes: Some(45), break_duration_minutes: None,
+                    service_duration_minutes: Some(45), device_type_default_duration_minutes: None, break_duration_minutes: None,
                     override_service_duration_minutes: None, override_travel_duration_minutes: None,
                 },
             ],
@@ -493,13 +505,13 @@ mod tests {
                     stop_type: StopType::Customer,
                     scheduled_time_start: Some(hm(8, 0)),
                     scheduled_time_end: Some(hm(9, 0)),
-                    service_duration_minutes: None, break_duration_minutes: None,
+                    service_duration_minutes: None, device_type_default_duration_minutes: None, break_duration_minutes: None,
                     override_service_duration_minutes: None, override_travel_duration_minutes: None,
                 },
                 ScheduleStop {
                     stop_type: StopType::Customer,
                     scheduled_time_start: None, scheduled_time_end: None,
-                    service_duration_minutes: Some(30), break_duration_minutes: None,
+                    service_duration_minutes: Some(30), device_type_default_duration_minutes: None, break_duration_minutes: None,
                     override_service_duration_minutes: None, override_travel_duration_minutes: None,
                 },
             ],
@@ -540,14 +552,14 @@ mod tests {
                     stop_type: StopType::Customer,
                     scheduled_time_start: Some(hm(8, 0)),
                     scheduled_time_end: Some(hm(9, 0)),
-                    service_duration_minutes: None, break_duration_minutes: None,
+                    service_duration_minutes: None, device_type_default_duration_minutes: None, break_duration_minutes: None,
                     override_service_duration_minutes: None, override_travel_duration_minutes: None,
                 },
                 ScheduleStop {
                     stop_type: StopType::Customer,
                     scheduled_time_start: Some(hm(11, 0)),
                     scheduled_time_end: Some(hm(12, 0)),
-                    service_duration_minutes: None, break_duration_minutes: None,
+                    service_duration_minutes: None, device_type_default_duration_minutes: None, break_duration_minutes: None,
                     override_service_duration_minutes: None, override_travel_duration_minutes: None,
                 },
             ],
@@ -582,19 +594,19 @@ mod tests {
                 ScheduleStop {
                     stop_type: StopType::Customer,
                     scheduled_time_start: None, scheduled_time_end: None,
-                    service_duration_minutes: Some(30), break_duration_minutes: None,
+                    service_duration_minutes: Some(30), device_type_default_duration_minutes: None, break_duration_minutes: None,
                     override_service_duration_minutes: None, override_travel_duration_minutes: None,
                 },
                 ScheduleStop {
                     stop_type: StopType::Break,
                     scheduled_time_start: None, scheduled_time_end: None,
-                    service_duration_minutes: None, break_duration_minutes: Some(45),
+                    service_duration_minutes: None, device_type_default_duration_minutes: None, break_duration_minutes: Some(45),
                     override_service_duration_minutes: None, override_travel_duration_minutes: None,
                 },
                 ScheduleStop {
                     stop_type: StopType::Customer,
                     scheduled_time_start: None, scheduled_time_end: None,
-                    service_duration_minutes: Some(30), break_duration_minutes: None,
+                    service_duration_minutes: Some(30), device_type_default_duration_minutes: None, break_duration_minutes: None,
                     override_service_duration_minutes: None, override_travel_duration_minutes: None,
                 },
             ],
@@ -640,6 +652,7 @@ mod tests {
                 scheduled_time_start: Some(hm(9, 0)),
                 scheduled_time_end: Some(hm(10, 0)),
                 service_duration_minutes: Some(45),
+                device_type_default_duration_minutes: None,
                 break_duration_minutes: None,
                 override_service_duration_minutes: None, override_travel_duration_minutes: None,
             }],
@@ -671,6 +684,7 @@ mod tests {
                 scheduled_time_start: Some(hm(9, 0)),
                 scheduled_time_end: Some(hm(10, 0)),
                 service_duration_minutes: Some(60),
+                device_type_default_duration_minutes: None,
                 break_duration_minutes: None,
                 override_service_duration_minutes: None, override_travel_duration_minutes: None,
             }],
@@ -704,6 +718,7 @@ mod tests {
                 scheduled_time_start: Some(hm(9, 0)),
                 scheduled_time_end: Some(hm(10, 0)),
                 service_duration_minutes: Some(30),
+                device_type_default_duration_minutes: None,
                 break_duration_minutes: None,
                 override_service_duration_minutes: None, override_travel_duration_minutes: None,
             }],
@@ -733,7 +748,7 @@ mod tests {
             stops: vec![ScheduleStop {
                 stop_type: StopType::Customer,
                 scheduled_time_start: None, scheduled_time_end: None,
-                service_duration_minutes: Some(30), break_duration_minutes: None,
+                service_duration_minutes: Some(30), device_type_default_duration_minutes: None, break_duration_minutes: None,
                 override_service_duration_minutes: None, override_travel_duration_minutes: None,
             }],
             stop_matrix_indices: vec![1],
@@ -764,9 +779,9 @@ mod tests {
         let input = ScheduleInput {
             depot_matrix_idx: 0,
             stops: vec![
-                ScheduleStop { stop_type: StopType::Customer, scheduled_time_start: None, scheduled_time_end: None, service_duration_minutes: Some(20), break_duration_minutes: None, override_service_duration_minutes: None, override_travel_duration_minutes: None },
-                ScheduleStop { stop_type: StopType::Customer, scheduled_time_start: None, scheduled_time_end: None, service_duration_minutes: Some(20), break_duration_minutes: None, override_service_duration_minutes: None, override_travel_duration_minutes: None },
-                ScheduleStop { stop_type: StopType::Customer, scheduled_time_start: None, scheduled_time_end: None, service_duration_minutes: Some(20), break_duration_minutes: None, override_service_duration_minutes: None, override_travel_duration_minutes: None },
+                ScheduleStop { stop_type: StopType::Customer, scheduled_time_start: None, scheduled_time_end: None, service_duration_minutes: Some(20), device_type_default_duration_minutes: None, break_duration_minutes: None, override_service_duration_minutes: None, override_travel_duration_minutes: None },
+                ScheduleStop { stop_type: StopType::Customer, scheduled_time_start: None, scheduled_time_end: None, service_duration_minutes: Some(20), device_type_default_duration_minutes: None, break_duration_minutes: None, override_service_duration_minutes: None, override_travel_duration_minutes: None },
+                ScheduleStop { stop_type: StopType::Customer, scheduled_time_start: None, scheduled_time_end: None, service_duration_minutes: Some(20), device_type_default_duration_minutes: None, break_duration_minutes: None, override_service_duration_minutes: None, override_travel_duration_minutes: None },
             ],
             stop_matrix_indices: vec![1, 2, 3],
             workday_start: hm(8, 0),
@@ -797,7 +812,7 @@ mod tests {
                 stop_type: StopType::Customer,
                 scheduled_time_start: Some(hm(7, 30)),
                 scheduled_time_end: Some(hm(8, 30)),
-                service_duration_minutes: None, break_duration_minutes: None,
+                service_duration_minutes: None, device_type_default_duration_minutes: None, break_duration_minutes: None,
                 override_service_duration_minutes: None, override_travel_duration_minutes: None,
             }],
             stop_matrix_indices: vec![1],
@@ -831,19 +846,19 @@ mod tests {
                 ScheduleStop {
                     stop_type: StopType::Customer,
                     scheduled_time_start: None, scheduled_time_end: None,
-                    service_duration_minutes: Some(60), break_duration_minutes: None,
+                    service_duration_minutes: Some(60), device_type_default_duration_minutes: None, break_duration_minutes: None,
                     override_service_duration_minutes: None, override_travel_duration_minutes: None,
                 },
                 ScheduleStop {
                     stop_type: StopType::Break,
                     scheduled_time_start: None, scheduled_time_end: None,
-                    service_duration_minutes: None, break_duration_minutes: Some(45),
+                    service_duration_minutes: None, device_type_default_duration_minutes: None, break_duration_minutes: Some(45),
                     override_service_duration_minutes: None, override_travel_duration_minutes: None,
                 },
                 ScheduleStop {
                     stop_type: StopType::Customer,
                     scheduled_time_start: None, scheduled_time_end: None,
-                    service_duration_minutes: Some(60), break_duration_minutes: None,
+                    service_duration_minutes: Some(60), device_type_default_duration_minutes: None, break_duration_minutes: None,
                     override_service_duration_minutes: None, override_travel_duration_minutes: None,
                 },
             ],
@@ -887,6 +902,7 @@ mod tests {
                 scheduled_time_start: None,
                 scheduled_time_end: None,
                 service_duration_minutes: Some(60),
+                device_type_default_duration_minutes: None,
                 break_duration_minutes: None,
                 override_service_duration_minutes: None, override_travel_duration_minutes: None,
             }],
@@ -921,6 +937,7 @@ mod tests {
                 scheduled_time_start: Some(hm(9, 0)),
                 scheduled_time_end: Some(hm(10, 0)),
                 service_duration_minutes: None,
+                device_type_default_duration_minutes: None,
                 break_duration_minutes: None,
                 override_service_duration_minutes: None, override_travel_duration_minutes: None,
             }],
@@ -950,6 +967,7 @@ mod tests {
                 scheduled_time_start: None,
                 scheduled_time_end: None,
                 service_duration_minutes: Some(60),
+                device_type_default_duration_minutes: None,
                 break_duration_minutes: None,
                 override_service_duration_minutes: None, override_travel_duration_minutes: None,
             }],
@@ -979,6 +997,7 @@ mod tests {
                 scheduled_time_start: None,
                 scheduled_time_end: None,
                 service_duration_minutes: Some(30),
+                device_type_default_duration_minutes: None,
                 break_duration_minutes: None,
                 override_service_duration_minutes: None,
                 override_travel_duration_minutes: Some(60),
@@ -1012,6 +1031,7 @@ mod tests {
                 scheduled_time_start: None,
                 scheduled_time_end: None,
                 service_duration_minutes: Some(30),
+                device_type_default_duration_minutes: None,
                 break_duration_minutes: None,
                 override_service_duration_minutes: Some(45),
                 override_travel_duration_minutes: None,
@@ -1044,14 +1064,14 @@ mod tests {
                 ScheduleStop {
                     stop_type: StopType::Customer,
                     scheduled_time_start: None, scheduled_time_end: None,
-                    service_duration_minutes: Some(30), break_duration_minutes: None,
+                    service_duration_minutes: Some(30), device_type_default_duration_minutes: None, break_duration_minutes: None,
                     override_service_duration_minutes: Some(45),
                     override_travel_duration_minutes: Some(20),
                 },
                 ScheduleStop {
                     stop_type: StopType::Customer,
                     scheduled_time_start: None, scheduled_time_end: None,
-                    service_duration_minutes: Some(30), break_duration_minutes: None,
+                    service_duration_minutes: Some(30), device_type_default_duration_minutes: None, break_duration_minutes: None,
                     override_service_duration_minutes: None,
                     override_travel_duration_minutes: None,
                 },
@@ -1077,5 +1097,72 @@ mod tests {
         assert_eq!(b.estimated_arrival, hm(9, 20));
         assert_eq!(b.service_duration_minutes, 30);
         assert_eq!(b.estimated_departure, hm(9, 50));
+    }
+
+    // -----------------------------------------------------------------------
+    // 13. Device-type default is used when no per-stop service_duration
+    // -----------------------------------------------------------------------
+    #[test]
+    fn device_type_default_beats_global_default_when_no_explicit_stop_duration() {
+        // stop has no service_duration_minutes, device type default is 45 min,
+        // global default is 60 min — device type default should win.
+        let (dm, tm) = uniform_matrix(2, 5_000, 600); // 5 km, 10 min travel
+
+        let input = ScheduleInput {
+            depot_matrix_idx: 0,
+            stops: vec![ScheduleStop {
+                stop_type: StopType::Customer,
+                scheduled_time_start: None,
+                scheduled_time_end: None,
+                service_duration_minutes: None,
+                device_type_default_duration_minutes: Some(45),
+                break_duration_minutes: None,
+                override_service_duration_minutes: None,
+                override_travel_duration_minutes: None,
+            }],
+            stop_matrix_indices: vec![1],
+            workday_start: hm(8, 0),
+            default_service_minutes: 60,
+            arrival_buffer_percent: 0.0,
+            arrival_buffer_fixed_minutes: 0.0,
+        };
+
+        let result = compute_sequential_schedule(&input, &dm, &tm);
+        let s = &result.stops[0];
+        // Travel 10 min → arrival 08:10, device type default 45 min → departure 08:55
+        assert_eq!(s.estimated_arrival, hm(8, 10));
+        assert_eq!(s.service_duration_minutes, 45);
+        assert_eq!(s.estimated_departure, hm(8, 55));
+    }
+
+    #[test]
+    fn explicit_stop_duration_beats_device_type_default() {
+        // stop has service_duration_minutes=30, device type default is 45 min —
+        // the explicit per-stop value should win.
+        let (dm, tm) = uniform_matrix(2, 5_000, 600);
+
+        let input = ScheduleInput {
+            depot_matrix_idx: 0,
+            stops: vec![ScheduleStop {
+                stop_type: StopType::Customer,
+                scheduled_time_start: None,
+                scheduled_time_end: None,
+                service_duration_minutes: Some(30),
+                device_type_default_duration_minutes: Some(45),
+                break_duration_minutes: None,
+                override_service_duration_minutes: None,
+                override_travel_duration_minutes: None,
+            }],
+            stop_matrix_indices: vec![1],
+            workday_start: hm(8, 0),
+            default_service_minutes: 60,
+            arrival_buffer_percent: 0.0,
+            arrival_buffer_fixed_minutes: 0.0,
+        };
+
+        let result = compute_sequential_schedule(&input, &dm, &tm);
+        let s = &result.stops[0];
+        assert_eq!(s.service_duration_minutes, 30);
+        assert_eq!(s.estimated_departure, hm(8, 40));
     }
 }
