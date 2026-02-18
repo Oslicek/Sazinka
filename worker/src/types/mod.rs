@@ -1,6 +1,7 @@
 //! Type definitions
 
 pub mod communication;
+pub mod country;
 pub mod customer;
 pub mod device;
 pub mod device_type_config;
@@ -20,6 +21,7 @@ pub mod visit;
 pub mod work_item;
 
 pub use communication::*;
+pub use country::*;
 pub use customer::*;
 pub use device::*;
 pub use import::*;

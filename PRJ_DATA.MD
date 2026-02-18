@@ -293,7 +293,7 @@ Postup:
 | Fáze | Stav |
 |---|---|
 | 1 — packages/countries | ✅ Dokončeno |
-| 2 — DB migrace + Rust typy | ⬜ Nezapočato |
+| 2 — DB migrace + Rust typy | ✅ Dokončeno |
 | 3 — Rust queries + handlers | ⬜ Nezapočato |
 | 4 — Admin page redesign | ⬜ Nezapočato |
 | 5 — Admin Countries sekce | ⬜ Nezapočato |
