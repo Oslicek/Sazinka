@@ -1,320 +1,302 @@
-# PRJ_DATA — Data Excise (GDPR Complete Data Deletion)
+# PRJ_DATA — Countries & Admin Page Redesign
 
-## Stav: IMPLEMENTOVÁNO
+## 1. Motivace a kontext
 
-Tento dokument popisuje implementaci funkce **Data Excise** — trvalého a nevratného smazání veškerých dat uživatelského účtu. Funkce je vyžadována evropským nařízením GDPR (Článek 17 — Právo na výmaz) a dalšími předpisy o ochraně osobních údajů.
+Aplikace Sazinka je mapová/plánovací aplikace. Informace o zemi je nutná:
+- Pro optimalizaci tras (Valhalla region, Nominatim geocoding scope)
+- Pro budoucí rollout pokrytí map (CZ → SK → PL → …)
+- Pro nastavení tenantu (výchozí země firmy)
+- Pro kontaktní formulář na webu (`apps/site`)
 
----
+Státy se mění — mění se názvy, státy se rozdělují, vznikají nové. Je potřeba mít:
+1. **Jednu definitivní datovou sadu** (source of truth) pod naší kontrolou
+2. **Tabulku `countries` v PostgreSQL** pro optimalizační dotazy a JOINy
+3. **Lazy-loaded dropdown se searchem** pro výběr země v Settings i na webu
+4. **Admin UI pro sync** — aktualizace seznamu zemí spouštěná z Admin stránky
 
-## 1. Motivace
+## 2. Architektura
 
-Vlastník účtu (role `customer`) musí mít možnost trvale odstranit veškerá svá data ze systému. Jedná se o tzv. **data excise** (česky **vyříznutí dat**) — kompletní a nevratné odstranění všech záznamů bez možnosti obnovení, a to ani ze strany technické podpory Ariadline.
+### 2.1 Source of truth: `packages/countries/countries.json`
 
-### Právní rámec
-
-- **GDPR čl. 17** — Právo na výmaz ("právo být zapomenut")
-- **GDPR čl. 20** — Právo na přenositelnost údajů (export před smazáním)
-- Uživatel musí být před smazáním informován o nevratnosti operace
-- Systém nesmí uchovávat kopie smazaných dat (žádný soft delete, žádný koš)
-
----
-
-## 2. Umístění v UI
-
-### Settings → Import/export → Danger Zone (spodní část)
-
-Na konci záložky Import/export se zobrazí výrazně oddělená sekce:
-
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚠️  DANGER ZONE — NEBEZPEČNÁ ZÓNA
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🗑️ Data Excise — Vyříznutí dat
-
-Trvale a nevratně smaže váš účet a veškerá související data.
-Tuto akci nelze vrátit zpět. Ani podpora Ariadline nemůže
-obnovit data odstraněná tímto způsobem.
-
-        ┌──────────────────────────────┐
-        │  🗑️ Smazat všechna moje data │  ← velké červené tlačítko
-        └──────────────────────────────┘
-```
-
-**Viditelnost:** Pouze pro vlastníka účtu (`role === 'customer'`, `owner_id === null`). Pracovníci (workers) tuto sekci nevidí.
-
----
-
-## 3. UX Flow — Tři kroky
-
-### Krok 1: Kliknutí na červené tlačítko
-
-Otevře se první dialog.
-
-### Krok 2: Dialog 1 — Export a varování
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  ⚠️  DATA EXCISE — Vyříznutí dat                        │
-│                                                         │
-│  Tato operace TRVALE A NEVRATNĚ smaže:                  │
-│                                                         │
-│    • Všechny zákazníky a jejich kontaktní údaje          │
-│    • Všechna zařízení a historii revizí                  │
-│    • Všechny trasy, návštěvy a pracovní záznamy          │
-│    • Všechny záznamy komunikace                          │
-│    • Všechna nastavení, posádky, depa, e-mailové šablony │
-│    • Váš uživatelský účet a všechny účty pracovníků      │
-│                                                         │
-│  ┌─────────────────────────────────────────────────┐    │
-│  │ ⛔ Tato akce je NEVRATNÁ.                       │    │
-│  │ Data budou definitivně vyříznuta ze systému.     │    │
-│  │ Ani podpora Ariadline nemůže obnovit data        │    │
-│  │ odstraněná tímto způsobem.                       │    │
-│  └─────────────────────────────────────────────────┘    │
-│                                                         │
-│  Doporučujeme si před smazáním stáhnout kompletní       │
-│  zálohu vašich dat:                                     │
-│                                                         │
-│  [ 📥 Stáhnout kompletní export dat ]                   │
-│                                                         │
-│  [ Zrušit ]              [ Pokračovat ke smazání → ]    │
-└─────────────────────────────────────────────────────────┘
-```
-
-Tlačítko "Stáhnout" spustí full export (existující mechanismus ExportPlus, scope `all_workers_combined`, formát ZIP).
-
-### Krok 3: Dialog 2 — Potvrzení PINem
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  ⛔  ZÁVĚREČNÉ POTVRZENÍ                                │
-│                                                         │
-│  Pro potvrzení vyříznutí dat zadejte tento kód:          │
-│                                                         │
-│              ┌───────────────────┐                       │
-│              │     7  3  9  2    │  ← náhodný 4-ciferný  │
-│              └───────────────────┘       PIN              │
-│                                                         │
-│  Zadejte kód: [ __________ ]                            │
-│                                                         │
-│  [ Zrušit ]          [ 🗑️ Definitivně smazat vše ]      │
-│                      ↑ neaktivní dokud PIN nesouhlasí    │
-└─────────────────────────────────────────────────────────┘
-```
-
-PIN je generován na klientu (4 náhodné cifry). Neslouží jako bezpečnostní mechanismus (autorizace je přes JWT), ale jako UX bariéra proti nechtěnému kliknutí.
-
----
-
-## 4. Backend
-
-### 4.1 NATS subject
-
-```
-sazinka.account.delete
-```
-
-### 4.2 Request/Response
-
-**Request payload:**
 ```json
-{
-  "confirmation": true,
-  "level": 1
-}
+[
+  { "code": "CZ", "alpha3": "CZE", "name": { "en": "Czechia", "cs": "Česko", "sk": "Česko" } },
+  { "code": "SK", "alpha3": "SVK", "name": { "en": "Slovakia", "cs": "Slovensko", "sk": "Slovensko" } }
+]
 ```
 
-- `level: 1` — smazat firemní data, zachovat uživatelský účet (start fresh)
-- `level: 2` — smazat vše včetně uživatelského účtu (plný data excise)
+Nový monorepo balíček `packages/countries` obsahuje:
+- `countries.json` — kanonická data
+- `src/types.ts` — TypeScript interface `Country`
+- `src/index.ts` — export dat, `searchCountries()` utility
+- `package.json` s názvem `@sazinka/countries`
 
-**Success response:**
-```json
-{
-  "deleted": true,
-  "message": "settings:delete_data_success",
-  "level": 1
-}
+### 2.2 PostgreSQL tabulka `countries`
+
+```sql
+CREATE TABLE countries (
+    code         TEXT PRIMARY KEY,       -- ISO 3166-1 alpha-2, e.g. "CZ"
+    alpha3       TEXT NOT NULL,          -- ISO 3166-1 alpha-3, e.g. "CZE"
+    name_en      TEXT NOT NULL,
+    name_cs      TEXT NOT NULL,
+    name_sk      TEXT NOT NULL,
+    -- Provozní sloupce (nikdy nepřepisovány syncem):
+    has_map_coverage    BOOLEAN NOT NULL DEFAULT false,
+    valhalla_region     TEXT,
+    nominatim_priority  INTEGER DEFAULT 999,
+    is_supported        BOOLEAN NOT NULL DEFAULT false,
+    sort_order          INTEGER NOT NULL DEFAULT 999,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 ```
 
-### 4.3 Handler logika
+### 2.3 Sync mechanismus
 
-1. Ověřit JWT — musí být `role = "customer"` a `owner_id IS NULL` (vlastník účtu)
-2. Ověřit `level` (1 nebo 2) a `confirmation = true`
-3. **Audit log** — zapsat do server logu: level, user ID, email, timestamp (před smazáním)
-4. **Level 1** (`delete_company_data`):
-   ```sql
-   DELETE FROM users WHERE owner_id = $1;       -- worker účty
-   DELETE FROM roles WHERE owner_id = $1;        -- role + oprávnění
-   DELETE FROM routes WHERE user_id = $1;        -- trasy + zastávky
-   DELETE FROM customers WHERE user_id = $1;     -- zákazníci + CASCADE
-   DELETE FROM depots WHERE user_id = $1;        -- depa
-   DELETE FROM crews WHERE user_id = $1;         -- posádky
-   UPDATE users SET default_crew_id = NULL, default_depot_id = NULL, ... WHERE id = $1;
-   ```
-5. **Level 2** (`delete_user_account`):
-   - Nejprve provede Level 1
-   - Poté: `DELETE FROM users WHERE id = $1;`
-6. Vrátit úspěch
-7. Frontend:
-   - Level 1: `window.location.reload()` (uživatel zůstane přihlášen)
-   - Level 2: `logout()` → redirect na `/login`
+NATS subject: `sazinka.admin.countries.sync`
 
-### 4.4 CASCADE řetězce (existující FK)
+1. Admin klikne "Synchronizovat země" v Admin UI
+2. Frontend pošle request přes NATS
+3. Rust handler čte `countries.json` (zakompilovaný do binary přes `include_str!`)
+4. Pro každý záznam provede UPSERT — aktualizuje **pouze** name sloupce a `alpha3`, nikdy nepřepisuje provozní sloupce
+5. Vrátí `{ synced: number, added: number, updated: number }`
 
-Díky `ON DELETE CASCADE` definovanému ve schématu stačí smazat řádek z `users`:
+### 2.4 Dva konzumenti
 
-```
-users (DELETE)
-  ├── customers (CASCADE)
-  │     ├── devices (CASCADE)
-  │     │     └── revisions (CASCADE)
-  │     │           └── visit_work_items (via revision_id, SET NULL)
-  │     ├── revisions (via customer_id, CASCADE)
-  │     ├── visits (via customer_id, CASCADE)
-  │     │     └── visit_work_items (CASCADE)
-  │     ├── communications (CASCADE)
-  │     └── route_stops (CASCADE)
-  ├── devices (via user_id, CASCADE)
-  ├── revisions (via user_id, CASCADE)
-  ├── visits (via user_id, CASCADE)
-  ├── communications (via user_id, CASCADE)
-  ├── routes (CASCADE)
-  │     └── route_stops (CASCADE)
-  ├── depots (CASCADE)
-  ├── crews (CASCADE)
-  ├── roles (via owner_id, CASCADE)
-  │     ├── role_permissions (CASCADE)
-  │     └── user_roles (CASCADE)
-  └── users (workers via owner_id, CASCADE)
-```
+| Konzument | Zdroj dat | Kde se zobrazí |
+|---|---|---|
+| `apps/web` (Settings) | NATS endpoint `sazinka.countries.list` → PG `countries` tabulka | Dropdown výběru země tenantu |
+| `apps/web` (Admin) | NATS endpoint `sazinka.admin.countries.sync` + `sazinka.admin.countries.list` | Countries management sekce |
+| `apps/site` (ContactForm) | `await import('@sazinka/countries')` → lazy JS chunk | Dropdown v kontaktním formuláři |
 
-### 4.5 Bezpečnost
+### 2.5 Admin page redesign
 
-- **Pouze vlastník:** Handler odmítne request od workerů a adminů
-- **Audit trail:** `warn!()` log s emailem a timestampem před DELETE
-- **Rate limiting:** Max 1 pokus za 60 sekund
-- **Hard delete:** Žádný soft delete, žádný koš, žádné tombstony — plný soulad s GDPR čl. 17
-- **JetStream cleanup:** Po smazání uživatele by měly být vyčištěny i případné pending joby v NATS JetStream (import, export, geocoding)
+Aktuální Admin stránka je jeden dlouhý scroll. Redesign na layout identický se Settings:
+- Sidebar vlevo (220px, sticky) s vertikálními sekcemi
+- Content area vpravo
 
----
+Sekce Admin stránky (po redesignu):
+1. **Služby** — health check (stávající services grid)
+2. **Databáze** — DB status, tabulky, reset (stávající)
+3. **Země** — NOVÉ: seznam zemí, sync tlačítko, editace provozních sloupců
+4. **Export** — stávající export panel
+5. **Import** — stávající import sekce
+6. **Logy** — stávající log viewer
 
-## 5. Soubory k vytvoření / úpravě
+## 3. Detailní plán implementace
 
-### Nové soubory
+### Fáze 1 — Balíček `packages/countries` (TDD)
 
-| Soubor | Popis |
-|--------|-------|
-| `apps/web/src/components/settings/DeleteAccountDialog.tsx` | Dvou-krokový modální dialog |
-| `apps/web/src/components/settings/DeleteAccountDialog.module.css` | Danger-zone styling (červená, výstražná) |
+**Odhadovaný čas: 1 hod**
 
-### Úpravy existujících souborů
+Soubory:
+- `packages/countries/package.json`
+- `packages/countries/tsconfig.json`
+- `packages/countries/countries.json`
+- `packages/countries/src/types.ts`
+- `packages/countries/src/index.ts`
+- `packages/countries/src/__tests__/search.test.ts`
 
-| Soubor | Změna |
-|--------|-------|
-| `apps/web/src/pages/Settings.tsx` | Přidat Danger Zone sekci na konec `import-export` záložky |
-| `apps/web/src/pages/Settings.module.css` | Přidat styly pro danger zone |
-| `apps/web/src/services/settingsService.ts` | Přidat `deleteAccount()` funkci |
-| `apps/web/public/locales/en/settings.json` | Přidat ~20 nových klíčů |
-| `apps/web/public/locales/cs/settings.json` | Přidat ~20 nových klíčů |
-| `apps/web/public/locales/sk/settings.json` | Přidat ~20 nových klíčů |
-| `worker/src/handlers/settings.rs` | Přidat `handle_delete_account` handler |
-| `worker/src/db/queries/settings.rs` | Přidat `delete_user_account` query |
-| `worker/src/main.rs` | Registrovat nový NATS subscription |
+Postup:
+1. Vytvořit balíček s `package.json` (`@sazinka/countries`)
+2. **TEST**: napsat testy pro `searchCountries()`:
+   - Vrátí všechny země pro prázdný query
+   - Filtruje podle lokalizovaného názvu (case-insensitive, substring match)
+   - Filtruje podle kódu (`CZ`, `cz`)
+   - Vrátí prázdné pole pro neexistující query
+   - Respektuje locale fallback (neznámý locale → `en`)
+3. **IMPL**: `types.ts` s `Country` interface, `index.ts` s `searchCountries()`
+4. Naplnit `countries.json` kompletním seznamem (~250 států)
+5. Přidat do `pnpm-workspace.yaml` a ověřit, že se buildí
 
----
+### Fáze 2 — DB migrace a Rust typy (TDD)
 
-## 6. Překladové klíče
+**Odhadovaný čas: 1.5 hod**
 
-### Namespace: `settings`
+Soubory:
+- `worker/migrations/022_countries.sql`
+- `worker/src/types/country.rs`
+- `worker/src/types/mod.rs`
 
-| Klíč | EN | CS | SK |
-|------|----|----|-----|
-| `danger_zone` | Danger Zone | Nebezpečná zóna | Nebezpečná zóna |
-| **Level 1 — Data only** | | | |
-| `delete_data_title` | Delete Company Data | Smazat firemní data | Vymazať firemné dáta |
-| `delete_data_desc` | Permanently delete all ... Even Ariadline support cannot recover the deleted data. Your user account will be preserved. | Trvale smaže všechny ... Ani podpora Ariadline nemůže smazaná data obnovit. Váš účet zůstane zachován. | Trvalo vymaže všetkých ... Ani podpora Ariadline nemôže vymazané dáta obnoviť. Váš účet zostane zachovaný. |
-| `delete_data_button` | Delete all data | Smazat všechna data | Vymazať všetky dáta |
-| `delete_data_dialog_title` | Delete Company Data | Smazání firemních dat | Vymazanie firemných dát |
-| `delete_data_confirm_button` | Permanently delete all data | Definitivně smazat všechna data | Definitívne vymazať všetky dáta |
-| `delete_data_success` | All company data has been permanently deleted. Your account is preserved. | Veškerá firemní data byla trvale smazána. Váš účet je zachován. | Všetky firemné dáta boli trvalo vymazané. Váš účet je zachovaný. |
-| **Level 2 — Data + Account** | | | |
-| `delete_all_title` | Data Excise — Delete Account | Vyříznutí dat — Smazání účtu | Vyrezanie dát — Vymazanie účtu |
-| `delete_all_desc` | ... Even Ariadline support cannot recover data removed this way. If you want to continue using the service, you will need to register again. | ... Ani podpora Ariadline nemůže obnovit data. Pokud budete chtít službu dále používat, budete se muset znovu zaregistrovat. | ... Ani podpora Ariadline nemôže obnoviť dáta. Ak budete chcieť službu naďalej používať, budete sa musieť znova zaregistrovať. |
-| `delete_all_button` | Delete account and all data | Smazat účet a všechna data | Vymazať účet a všetky dáta |
-| **Shared (both levels)** | | | |
-| `delete_dialog_title` | Data Excise — Delete Account | Vyříznutí dat — Smazání účtu | Vyrezanie dát — Vymazanie účtu |
-| `delete_dialog_warning` | This operation will PERMANENTLY AND IRREVERSIBLY delete: | Tato operace TRVALE A NEVRATNĚ smaže: | Táto operácia TRVALO A NENÁVRATNE vymaže: |
-| `delete_dialog_item_customers` | All customers and their contact information | Všechny zákazníky a jejich kontaktní údaje | Všetkých zákazníkov a ich kontaktné údaje |
-| `delete_dialog_item_devices` | All devices and revision history | Všechna zařízení a historii revizí | Všetky zariadenia a históriu revízií |
-| `delete_dialog_item_routes` | All routes, visits, and work logs | Všechny trasy, návštěvy a pracovní záznamy | Všetky trasy, návštevy a pracovné záznamy |
-| `delete_dialog_item_comms` | All communication records | Všechny záznamy komunikace | Všetky záznamy komunikácie |
-| `delete_dialog_item_settings` | All settings, crews, depots, and email templates | Všechna nastavení, posádky, depa a e-mailové šablony | Všetky nastavenia, posádky, depá a e-mailové šablóny |
-| `delete_dialog_item_accounts` | Your user account and all worker accounts *(Level 2 only)* | Váš uživatelský účet a všechny účty pracovníků *(jen Level 2)* | Váš používateľský účet a všetky účty pracovníkov *(len Level 2)* |
-| `delete_dialog_irreversible` | This action is IRREVERSIBLE. Data will be definitively excised from the system. Even Ariadline support cannot recover data removed this way. | Tato akce je NEVRATNÁ. Data budou definitivně vyříznuta ze systému. Ani podpora Ariadline nemůže obnovit data odstraněná tímto způsobem. | Táto akcia je NENÁVRATNÁ. Dáta budú definitívne vyrezané zo systému. Ani podpora Ariadline nemôže obnoviť dáta odstránené týmto spôsobom. |
-| `delete_account_preserved` | Your user account and login credentials will be preserved. *(Level 1 only)* | Váš uživatelský účet a přihlašovací údaje zůstanou zachovány. *(jen Level 1)* | Váš používateľský účet a prihlasovacie údaje zostanú zachované. *(len Level 1)* |
-| `delete_dialog_download_hint` | We recommend downloading a complete backup of your data before deletion: | Doporučujeme si před smazáním stáhnout kompletní zálohu vašich dat: | Odporúčame si pred vymazaním stiahnuť kompletnú zálohu vašich dát: |
-| `delete_dialog_download_btn` | Download full data export | Stáhnout kompletní export dat | Stiahnuť kompletný export dát |
-| `delete_dialog_continue` | Continue to deletion | Pokračovat ke smazání | Pokračovať k vymazaniu |
-| `delete_confirm_title` | Final Confirmation | Závěrečné potvrzení | Záverečné potvrdenie |
-| `delete_confirm_instruction` | To confirm the data excise, type this code: | Pro potvrzení vyříznutí dat zadejte tento kód: | Pre potvrdenie vyrezania dát zadajte tento kód: |
-| `delete_confirm_input_label` | Enter code | Zadejte kód | Zadajte kód |
-| `delete_confirm_button` | Permanently delete everything | Definitivně smazat vše | Definitívne vymazať všetko |
-| `delete_success` | Your data has been permanently deleted. | Vaše data byla trvale smazána. | Vaše dáta boli trvalo vymazané. |
-| `delete_error` | Failed to delete data. Please try again or contact support. | Nepodařilo se smazat data. Zkuste to znovu nebo kontaktujte podporu. | Nepodarilo sa vymazať dáta. Skúste to znova alebo kontaktujte podporu. |
+Postup:
+1. Vytvořit SQL migraci `022_countries.sql` s CREATE TABLE (viz sekce 2.2)
+2. Vložit do migrace seed data pro CZ a SK (s `has_map_coverage = true`, `is_supported = true`) — zbytek se dosync-uje z Admin UI
+3. **TEST**: Rust unit test pro serializaci/deserializaci `Country` struct
+4. **IMPL**: `country.rs` — structs:
+   - `Country` (DB row, `sqlx::FromRow`)
+   - `CountryListResponse { items: Vec<Country> }`
+   - `CountrySyncResponse { synced: i32, added: i32, updated: i32 }`
+   - `UpdateCountryRequest { code: String, has_map_coverage: Option<bool>, is_supported: Option<bool>, valhalla_region: Option<String>, nominatim_priority: Option<i32>, sort_order: Option<i32> }`
 
----
+### Fáze 3 — Rust DB queries a handlery (TDD)
 
-## 7. Implementační kroky
+**Odhadovaný čas: 2 hod**
 
-### Fáze 1: Backend
-1. Přidat `delete_user_account` SQL query do `worker/src/db/queries/settings.rs`
-2. Přidat `handle_delete_account` handler do `worker/src/handlers/settings.rs`
-3. Registrovat `sazinka.account.delete` subscription v `worker/src/main.rs`
-4. `cargo check` — ověřit kompilaci
+Soubory:
+- `worker/src/db/queries/country.rs`
+- `worker/src/db/queries/mod.rs`
+- `worker/src/handlers/country.rs`
+- `worker/src/handlers/mod.rs`
 
-### Fáze 2: Frontend service
-5. Přidat `deleteAccount()` do `apps/web/src/services/settingsService.ts`
+Postup:
 
-### Fáze 3: UI komponenty
-6. Vytvořit `DeleteAccountDialog.tsx` + `DeleteAccountDialog.module.css`
-7. Přidat Danger Zone sekci do `Settings.tsx` (záložka import-export)
-8. Přidat styly do `Settings.module.css`
+**Queries:**
+1. `list_countries(pool, include_unsupported: bool) -> Vec<Country>` — pro dropdown vrací jen `is_supported = true`, pro admin všechny
+2. `sync_countries(pool, entries: Vec<CountryJsonEntry>) -> SyncResult` — UPSERT loop, aktualizuje pouze name/alpha3
+3. `update_country(pool, req: UpdateCountryRequest) -> Option<Country>` — admin editace provozních sloupců
 
-### Fáze 4: Překlady
-9. Přidat všechny klíče do `en/settings.json`, `cs/settings.json`, `sk/settings.json`
+**Handlers (NATS subjects):**
+1. `sazinka.countries.list` — veřejný (auth required), vrací `is_supported` země
+2. `sazinka.admin.countries.list` — admin only, vrací všechny země
+3. `sazinka.admin.countries.sync` — admin only, spustí sync z embedded JSON
+4. `sazinka.admin.countries.update` — admin only, editace provozních sloupců jedné země
 
-### Fáze 5: Ověření
-10. Manuální test celého flow
-11. Ověřit, že po smazání je uživatel odhlášen a nemůže se přihlásit
+**Testy:**
+- Unit test: `sync_countries` — ověřit, že UPSERT přidá nové a aktualizuje jména, ale nepřepíše `has_map_coverage`
+- Unit test: `list_countries` s `include_unsupported = false` vrátí jen supported
+- Unit test: `update_country` změní `has_map_coverage`, ale ne `name_en`
 
----
+**Embedding JSON do Rust binary:**
+- V `country.rs` handler: `const COUNTRIES_JSON: &str = include_str!("../../../packages/countries/countries.json");`
+- Parse při sync requestu, ne při startu
 
-## 8. Implementační log
+### Fáze 4 — Admin page redesign: sidebar layout
 
-| Datum | Fáze | Popis |
-|-------|------|-------|
-| 2026-02-15 | Návrh | Vytvořen PRJ_DATA.MD s kompletním návrhem |
-| 2026-02-15 | Backend | Typy `DeleteAccountRequest`/`DeleteAccountResponse` v `types/settings.rs` |
-| 2026-02-15 | Backend | SQL query `delete_user_account` v `db/queries/settings.rs` |
-| 2026-02-15 | Backend | Handler `handle_delete_account` v `handlers/settings.rs` |
-| 2026-02-15 | Backend | NATS subscription `sazinka.account.delete` v `handlers/mod.rs` |
-| 2026-02-15 | Backend | `cargo check` — kompilace OK |
-| 2026-02-15 | Frontend | `deleteAccount()` v `services/settingsService.ts` |
-| 2026-02-15 | Frontend | `DeleteAccountDialog.tsx` + `DeleteAccountDialog.module.css` |
-| 2026-02-15 | Frontend | `DangerZoneSection` integrována do Settings.tsx (import-export tab) |
-| 2026-02-15 | Překlady | Všechny klíče přidány do `en/settings.json`, `cs/settings.json`, `sk/settings.json` |
-| 2026-02-15 | Redesign | Dvě úrovně: Level 1 (data only) + Level 2 (data + account) |
-| 2026-02-15 | Backend | `delete_company_data` query (Level 1) — maže data, zachovává účet |
-| 2026-02-15 | Backend | `delete_user_account` volá Level 1 + smaže user row (Level 2) |
-| 2026-02-15 | Backend | Handler rozlišuje `level: 1` vs `level: 2` v requestu |
-| 2026-02-15 | Frontend | `deleteCompanyData()` (Level 1) + `deleteAccount()` (Level 2) v settingsService |
-| 2026-02-15 | Frontend | DangerZoneSection: dva červená tlačítka (L1 data, L2 účet + data) |
-| 2026-02-15 | Frontend | DeleteAccountDialog: adaptivní UI podle levelu (barvy, texty, chování po smazání) |
-| 2026-02-15 | Překlady | Přidáno 8 nových klíčů pro Level 1 ve všech 3 jazycích |
-| 2026-02-15 | Překlady | Level 1: přidáno upozornění "ani podpora nemůže obnovit" — shodné s Level 2 |
-| 2026-02-15 | UI/UX | Sjednocení: obě tlačítka červená, sdílený dialog (warning, irreversible), Level 1 přidá "účet zachován", Level 2 desc: "budete se muset znovu zaregistrovat" |
+**Odhadovaný čas: 2 hod**
 
----
+Soubory:
+- `apps/web/src/pages/Admin.tsx` — kompletní refactor layoutu
+- `apps/web/src/pages/Admin.module.css` — nové styly (sidebar + content area)
+- `apps/web/public/locales/{cs,en,sk}/pages.json` — nové překlady pro tab labels
 
-*Poslední aktualizace: 2026-02-15*
+Postup:
+1. **TEST**: Admin page renderuje sidebar se sekcemi
+2. **TEST**: Kliknutí na sidebar item změní aktivní sekci
+3. **TEST**: URL hash sync (`/admin#countries`)
+4. **IMPL**: Refactor `Admin.tsx`:
+   - Definovat `AdminTab = 'services' | 'database' | 'countries' | 'export' | 'import' | 'logs'`
+   - Sidebar navigace (kopie patternu z `Settings.tsx`)
+   - Přesunout stávající sekce do podmíněného renderingu podle `activeTab`
+   - Grid layout: `grid-template-columns: 220px 1fr`
+5. **IMPL**: Styly — převzít z `Settings.module.css` pattern (`.sidebar`, `.sidebarItem`, `.sidebarItemActive`, `.contentArea`)
+6. **IMPL**: Překlady — `admin_tab_services`, `admin_tab_database`, `admin_tab_countries`, `admin_tab_export`, `admin_tab_import`, `admin_tab_logs`
+
+### Fáze 5 — Admin Countries sekce (UI)
+
+**Odhadovaný čas: 2.5 hod**
+
+Soubory:
+- `apps/web/src/components/admin/CountriesManager.tsx`
+- `apps/web/src/components/admin/CountriesManager.module.css`
+- `apps/web/src/components/admin/CountriesManager.test.tsx`
+- `apps/web/src/services/countryService.ts`
+- `apps/web/src/services/countryService.test.ts`
+- `apps/web/public/locales/{cs,en,sk}/pages.json` — překlady
+
+Postup:
+
+**Frontend service (`countryService.ts`):**
+1. **TEST**: `listCountries()` zavolá správný NATS subject
+2. **TEST**: `syncCountries()` zavolá admin subject
+3. **TEST**: `updateCountry()` pošle správný payload
+4. **IMPL**: Service funkce
+
+**CountriesManager komponenta:**
+1. **TEST**: Renderuje tabulku zemí
+2. **TEST**: Tlačítko "Synchronizovat" zavolá `syncCountries()`
+3. **TEST**: Po úspěšném syncu zobrazí výsledek (`added: X, updated: Y`)
+4. **TEST**: Checkbox `has_map_coverage` zavolá `updateCountry()`
+5. **TEST**: Checkbox `is_supported` zavolá `updateCountry()`
+6. **IMPL**: Tabulka s columns: vlajka (emoji z kódu), kód, název, alpha3, has_map_coverage (toggle), is_supported (toggle), valhalla_region (text input), sort_order
+7. **IMPL**: Tlačítko "Synchronizovat země z JSON" v hlavičce
+8. **IMPL**: Výsledek syncu (success banner s počty)
+9. **IMPL**: Search input nad tabulkou (filtruje client-side)
+
+### Fáze 6 — Settings dropdown: výběr země tenantu
+
+**Odhadovaný čas: 1.5 hod**
+
+Soubory:
+- `apps/web/src/components/common/CountrySelect.tsx`
+- `apps/web/src/components/common/CountrySelect.module.css`
+- `apps/web/src/components/common/CountrySelect.test.tsx`
+- `packages/shared-types/src/settings.ts` — přidat `countryCode` do tenant settings
+
+Postup:
+1. **TEST**: `CountrySelect` renderuje placeholder, po kliknutí načte země
+2. **TEST**: Typing do search filtru zúží seznam
+3. **TEST**: Výběr země zavolá `onChange` s kódem
+4. **IMPL**: Dropdown komponenta:
+   - Na otevření: `await import('@sazinka/countries')` pro initial render, poté fetch z NATS pro aktuální `is_supported` filtr
+   - Search input v dropdownu
+   - Zobrazuje vlajku (emoji), lokalizovaný název, kód
+   - `onChange(code: string)` callback
+5. **IMPL**: Integrace do Settings → sekce "Firemné údaje" (business tab)
+
+### Fáze 7 — Site contact form: country dropdown
+
+**Odhadovaný čas: 1 hod**
+
+Soubory:
+- `apps/site/src/components/react/ContactForm.tsx`
+- `apps/site/src/components/react/ContactForm.module.css`
+- `apps/site/src/components/react/__tests__/ContactForm.test.tsx`
+- `apps/site/functions/api/contact.ts`
+- `apps/site/src/lib/validation.ts`
+
+Postup:
+1. **TEST**: ContactForm renderuje country dropdown
+2. **TEST**: Dropdown se lazy-loadne při otevření
+3. **TEST**: Search filtruje země
+4. **TEST**: Submit odesílá `countryCode`
+5. **IMPL**: Přidat `CountrySelect` do ContactForm (inline nebo import z `@sazinka/countries`)
+6. **IMPL**: Přidat `country_code TEXT` do D1 contacts tabulky
+7. **IMPL**: Aktualizovat validaci (`validation.ts`) — `countryCode` optional
+8. **IMPL**: Aktualizovat `contact.ts` edge function — ukládat `country_code`
+
+### Fáze 8 — Dokumentace a commit
+
+**Odhadovaný čas: 0.5 hod**
+
+- Aktualizovat tento dokument s výsledky implementace
+- Commit a push po každé fázi
+
+## 4. Rozhodnutí
+
+| # | Otázka | Rozhodnutí |
+|---|---|---|
+| 1 | Kde žijí kanonická data? | `packages/countries/countries.json` — vlastní soubor v monorepu |
+| 2 | Jak se data dostanou do PG? | Admin UI → NATS → Rust handler čte embedded JSON → UPSERT |
+| 3 | Přepisuje sync provozní sloupce? | **NE** — sync mění pouze name/alpha3, nikdy has_map_coverage aj. |
+| 4 | Kdo může spouštět sync? | Pouze admin (role check v handleru) |
+| 5 | Jak site konzumuje data? | `await import('@sazinka/countries')` — lazy JS chunk, žádná DB |
+| 6 | Jak app konzumuje data v dropdown? | NATS `sazinka.countries.list` → PG, filtrováno na `is_supported` |
+| 7 | Kde se embed JSON do Rustu? | `include_str!()` v handler modulu |
+| 8 | Admin page layout | Sidebar + content area, identický pattern jako Settings |
+| 9 | Zobrazení vlajek | Emojis (nejjednodušší; na Windows se zobrazí jako kód, což je akceptovatelné) |
+
+## 5. Pořadí implementace
+
+1. **Fáze 1** — `packages/countries` (1 hod) — základ, na kterém staví vše
+2. **Fáze 2** — DB migrace + Rust typy (1.5 hod)
+3. **Fáze 3** — Rust queries + handlers (2 hod)
+4. **Fáze 4** — Admin page redesign: sidebar (2 hod) — předpoklad pro fázi 5
+5. **Fáze 5** — Admin Countries sekce (2.5 hod)
+6. **Fáze 6** — Settings country dropdown (1.5 hod)
+7. **Fáze 7** — Site contact form dropdown (1 hod)
+8. **Fáze 8** — Dokumentace (0.5 hod)
+
+**Celkový odhad: ~12 hodin**
+
+## 6. Stav implementace
+
+| Fáze | Stav |
+|---|---|
+| 1 — packages/countries | ✅ Dokončeno |
+| 2 — DB migrace + Rust typy | ⬜ Nezapočato |
+| 3 — Rust queries + handlers | ⬜ Nezapočato |
+| 4 — Admin page redesign | ⬜ Nezapočato |
+| 5 — Admin Countries sekce | ⬜ Nezapočato |
+| 6 — Settings country dropdown | ⬜ Nezapočato |
+| 7 — Site contact form | ⬜ Nezapočato |
+| 8 — Dokumentace | ⬜ Nezapočato |
