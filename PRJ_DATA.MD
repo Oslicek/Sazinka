@@ -233,7 +233,7 @@ Postup:
    - `onChange(code: string)` callback
 5. **IMPL**: Integrace do Settings → sekce "Firemné údaje" (business tab)
 
-### Fáze 7 — Site contact form: country dropdown
+### Fáze 7 — Site contact form: country dropdown ✅ Dokončeno
 
 **Odhadovaný čas: 1 hod**
 
@@ -254,7 +254,7 @@ Postup:
 7. **IMPL**: Aktualizovat validaci (`validation.ts`) — `countryCode` optional
 8. **IMPL**: Aktualizovat `contact.ts` edge function — ukládat `country_code`
 
-### Fáze 8 — Dokumentace a commit
+### Fáze 8 — Dokumentace a commit ✅ Dokončeno
 
 **Odhadovaný čas: 0.5 hod**
 

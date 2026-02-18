@@ -7,6 +7,7 @@ export const contactSchema = z.object({
   message: z.string().min(1).max(5000),
   source: z.string().max(128).optional(),
   locale: z.enum(['en', 'cs', 'sk']).optional(),
+  countryCode: z.string().length(2).toUpperCase().optional(),
   website: websiteField,
 });
 

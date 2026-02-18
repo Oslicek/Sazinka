@@ -2,6 +2,7 @@ export async function submitContact(data: {
   email: string;
   message: string;
   locale: string;
+  countryCode?: string | null;
   website?: string;
 }): Promise<{ success: boolean; ticketId?: string }> {
   const response = await fetch('/api/contact', {

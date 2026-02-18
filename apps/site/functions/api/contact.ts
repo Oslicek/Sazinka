@@ -49,14 +49,15 @@ export async function onRequestPost(context: ContactContext): Promise<Response> 
   if (context.env?.DB) {
     await context.env.DB
       .prepare(
-        `INSERT INTO contacts (email, message, source, locale, ticket_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO contacts (email, message, source, locale, country_code, ticket_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         parsed.data.email,
         parsed.data.message,
         parsed.data.source ?? null,
         parsed.data.locale ?? 'en',
+        parsed.data.countryCode ?? null,
         ticketId,
         new Date().toISOString(),
       )

@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { countries } from '@sazinka/countries';
 import styles from './ContactForm.module.css';
 import { submitContact } from '../../lib/api';
 
@@ -7,6 +8,7 @@ type SubmitResult = { success: boolean; ticketId?: string };
 interface ContactFormLabels {
   email: string;
   message: string;
+  country: string;
   submit: string;
   sending: string;
   success: string;
@@ -17,6 +19,7 @@ interface ContactFormSubmitInput {
   email: string;
   message: string;
   locale: string;
+  countryCode?: string | null;
   website?: string;
 }
 
@@ -31,10 +34,18 @@ const defaultSubmit = (data: ContactFormSubmitInput) => submitContact(data);
 export default function ContactForm({ labels, locale, onSubmit = defaultSubmit }: ContactFormProps) {
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState('');
+  const [countryCode, setCountryCode] = useState<string>('');
   const [website, setWebsite] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; message?: string }>({});
   const [result, setResult] = useState<SubmitResult | null>(null);
+
+  // Resolve locale for country names
+  const lang = locale.split('-')[0];
+  const countryOptions = countries.map((c) => ({
+    code: c.code,
+    label: c.name[lang] ?? c.name['en'] ?? c.code,
+  })).sort((a, b) => a.label.localeCompare(b.label));
 
   const validate = () => {
     const nextErrors: { email?: string; message?: string } = {};
@@ -59,11 +70,12 @@ export default function ContactForm({ labels, locale, onSubmit = defaultSubmit }
 
     setSubmitting(true);
     try {
-      const submitResult = await onSubmit({ email, message, locale, website });
+      const submitResult = await onSubmit({ email, message, locale, countryCode: countryCode || null, website });
       setResult(submitResult);
       if (submitResult.success) {
         setEmail('');
         setMessage('');
+        setCountryCode('');
         setWebsite('');
       }
     } catch {
@@ -97,6 +109,21 @@ export default function ContactForm({ labels, locale, onSubmit = defaultSubmit }
           aria-invalid={errors.message ? 'true' : 'false'}
         />
         {errors.message && <p className={styles.error}>{errors.message}</p>}
+      </div>
+
+      <div className={styles.field}>
+        <label htmlFor="contact-country">{labels.country}</label>
+        <select
+          id="contact-country"
+          value={countryCode}
+          onChange={(event) => setCountryCode(event.target.value)}
+          className={styles.select}
+        >
+          <option value=""></option>
+          {countryOptions.map((opt) => (
+            <option key={opt.code} value={opt.code}>{opt.label}</option>
+          ))}
+        </select>
       </div>
 
       <div className={styles.honeypotWrap}>

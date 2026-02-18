@@ -32,6 +32,9 @@ importers:
       '@fontsource-variable/montserrat':
         specifier: ^5.1.0
         version: 5.2.8
+      '@sazinka/countries':
+        specifier: workspace:^
+        version: link:../../packages/countries
       astro:
         specifier: ^5.3.0
         version: 5.17.2(@types/node@25.0.10)(rollup@4.56.0)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
