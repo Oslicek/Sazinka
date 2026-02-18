@@ -1,9 +1,15 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { Device, CreateDeviceRequest, DeviceType } from '@shared/device';
+import type { Device, CreateDeviceRequest } from '@shared/device';
+import type { DeviceTypeConfig, DeviceTypeField } from '@shared/deviceTypeConfig';
 import { DEVICE_TYPE_KEYS } from '@shared/device';
 import { createDevice, updateDevice, type UpdateDeviceRequest } from '../../services/deviceService';
+import {
+  listDeviceTypeConfigs,
+  getDeviceTypeConfig,
+} from '../../services/deviceTypeConfigService';
 import { useNatsStore } from '../../stores/natsStore';
+import { DynamicFieldRenderer, decodeValueJson, encodeValueJson } from './DynamicFieldRenderer';
 import styles from './DeviceForm.module.css';
 
 interface DeviceFormProps {
@@ -14,7 +20,7 @@ interface DeviceFormProps {
 }
 
 interface FormData {
-  deviceType: DeviceType;
+  deviceTypeConfigId: string;
   manufacturer: string;
   model: string;
   serialNumber: string;
@@ -23,17 +29,8 @@ interface FormData {
   notes: string;
 }
 
-const DEVICE_TYPES: DeviceType[] = [
-  'gas_boiler',
-  'gas_water_heater',
-  'chimney',
-  'fireplace',
-  'gas_stove',
-  'other',
-];
-
 const createInitialFormData = (device?: Device): FormData => ({
-  deviceType: (device?.deviceType as DeviceType) ?? 'gas_boiler',
+  deviceTypeConfigId: device?.deviceTypeConfigId ?? '',
   manufacturer: device?.manufacturer ?? '',
   model: device?.model ?? '',
   serialNumber: device?.serialNumber ?? '',
@@ -46,28 +43,121 @@ export function DeviceForm({ customerId, device, onSuccess, onCancel }: DeviceFo
   const { t } = useTranslation('common');
   const isEditMode = !!device;
   const [formData, setFormData] = useState<FormData>(() => createInitialFormData(device));
+
+  // configs for the type selector (create mode)
+  const [configs, setConfigs] = useState<DeviceTypeConfig[]>([]);
+  const [configsLoading, setConfigsLoading] = useState(!isEditMode);
+
+  // selected config and its fields
+  const [selectedConfig, setSelectedConfig] = useState<DeviceTypeConfig | null>(null);
+  const [fields, setFields] = useState<DeviceTypeField[]>([]);
+  // custom field values: fieldId → display string
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>(() => {
+    if (!device?.customFields) return {};
+    return Object.fromEntries(
+      (device.customFields ?? []).map((cfv) => [
+        cfv.fieldId,
+        decodeValueJson(cfv.valueJson, cfv.field?.fieldType ?? 'text'),
+      ])
+    );
+  });
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
   const isConnected = useNatsStore((s) => s.isConnected);
+
+  // ── load configs for create mode ──────────────────────────────────────────
+  useEffect(() => {
+    if (isEditMode) return;
+    let cancelled = false;
+    setConfigsLoading(true);
+    listDeviceTypeConfigs({ includeInactive: false }).then((list) => {
+      if (cancelled) return;
+      setConfigs(list);
+      if (list.length > 0 && !formData.deviceTypeConfigId) {
+        const first = list[0];
+        setFormData((prev) => ({
+          ...prev,
+          deviceTypeConfigId: first.id,
+          revisionIntervalMonths: first.defaultRevisionIntervalMonths,
+        }));
+        setSelectedConfig(first);
+        setFields(first.fields ?? []);
+      }
+    }).catch(() => {
+      // non-fatal: fall back gracefully
+    }).finally(() => {
+      if (!cancelled) setConfigsLoading(false);
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditMode]);
+
+  // ── load fields for edit mode ──────────────────────────────────────────────
+  const loadedConfigRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isEditMode) return;
+    const cfgId = device?.deviceTypeConfigId;
+    if (!cfgId || loadedConfigRef.current === cfgId) return;
+    loadedConfigRef.current = cfgId;
+    getDeviceTypeConfig(cfgId).then((cfg) => {
+      setSelectedConfig(cfg);
+      setFields((cfg.fields ?? []).filter((f) => f.isActive || device?.customFields?.some((v) => v.fieldId === f.id)));
+    }).catch(() => {});
+  }, [isEditMode, device]);
+
+  // ── handle config change in create mode ───────────────────────────────────
+  const handleConfigChange = useCallback((configId: string) => {
+    const cfg = configs.find((c) => c.id === configId) ?? null;
+    setFormData((prev) => ({
+      ...prev,
+      deviceTypeConfigId: configId,
+      revisionIntervalMonths: cfg?.defaultRevisionIntervalMonths ?? prev.revisionIntervalMonths,
+    }));
+    setSelectedConfig(cfg);
+    setFields(cfg?.fields ?? []);
+    setFieldValues({}); // reset custom values on type change
+  }, [configs]);
 
   const handleChange = useCallback((field: keyof FormData, value: string | number) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   }, []);
 
+  const handleFieldValueChange = useCallback((fieldId: string, displayValue: string) => {
+    setFieldValues((prev) => ({ ...prev, [fieldId]: displayValue }));
+  }, []);
+
+  // ── submit ─────────────────────────────────────────────────────────────────
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!isConnected) {
       setError(t('errors.not_connected'));
       return;
     }
 
-    // Validate required fields
-    if (!formData.deviceType) {
+    if (!formData.deviceTypeConfigId) {
       setError(t('device_form_select_type'));
       return;
     }
+
+    // Validate required custom fields
+    for (const f of fields.filter((f) => f.isRequired && f.isActive)) {
+      const val = fieldValues[f.id] ?? '';
+      if (val.trim() === '' || val === 'false') {
+        setError(t('device_form_required_field', { label: f.label }));
+        return;
+      }
+    }
+
+    // Build custom fields payload
+    const customFields = fields
+      .filter((f) => f.isActive && fieldValues[f.id] != null && fieldValues[f.id] !== '')
+      .map((f) => ({
+        fieldId: f.id,
+        valueJson: encodeValueJson(fieldValues[f.id], f.fieldType) ?? '',
+      }))
+      .filter((cfv) => cfv.valueJson !== '' && cfv.valueJson !== null);
 
     try {
       setIsSubmitting(true);
@@ -76,9 +166,8 @@ export function DeviceForm({ customerId, device, onSuccess, onCancel }: DeviceFo
       if (isEditMode && device) {
         const updateData: UpdateDeviceRequest = {
           id: device.id,
-          deviceType: formData.deviceType !== device.deviceType ? formData.deviceType : undefined,
-          manufacturer: formData.manufacturer.trim() !== (device.manufacturer ?? '') 
-            ? formData.manufacturer.trim() || undefined 
+          manufacturer: formData.manufacturer.trim() !== (device.manufacturer ?? '')
+            ? formData.manufacturer.trim() || undefined
             : undefined,
           model: formData.model.trim() !== (device.model ?? '')
             ? formData.model.trim() || undefined
@@ -95,21 +184,22 @@ export function DeviceForm({ customerId, device, onSuccess, onCancel }: DeviceFo
           notes: formData.notes.trim() !== (device.notes ?? '')
             ? formData.notes.trim() || undefined
             : undefined,
+          customFields: customFields.length > 0 ? customFields : undefined,
         };
-        
         await updateDevice(customerId, updateData);
       } else {
         const createData: CreateDeviceRequest = {
           customerId,
-          deviceType: formData.deviceType,
+          deviceType: selectedConfig?.deviceTypeKey ?? 'other',
+          deviceTypeConfigId: formData.deviceTypeConfigId,
           manufacturer: formData.manufacturer.trim() || undefined,
           model: formData.model.trim() || undefined,
           serialNumber: formData.serialNumber.trim() || undefined,
           installationDate: formData.installationDate || undefined,
           revisionIntervalMonths: formData.revisionIntervalMonths,
           notes: formData.notes.trim() || undefined,
+          customFields: customFields.length > 0 ? customFields : undefined,
         };
-        
         await createDevice(createData);
       }
 
@@ -120,7 +210,10 @@ export function DeviceForm({ customerId, device, onSuccess, onCancel }: DeviceFo
     } finally {
       setIsSubmitting(false);
     }
-  }, [isConnected, formData, isEditMode, device, customerId, onSuccess]);
+  }, [isConnected, formData, isEditMode, device, customerId, onSuccess, fields, fieldValues, selectedConfig, t]);
+
+  const activeFields = fields.filter((f) => f.isActive);
+  const isArchivedType = isEditMode && selectedConfig != null && !selectedConfig.isActive;
 
   return (
     <form className={styles.form} onSubmit={handleSubmit}>
@@ -130,23 +223,55 @@ export function DeviceForm({ customerId, device, onSuccess, onCancel }: DeviceFo
 
       {error && <div className={styles.error}>{error}</div>}
 
+      {isArchivedType && (
+        <div className={styles.archivedWarning}>
+          {t('device_archived_type_warning')}
+        </div>
+      )}
+
+      {/* Device type selector (create mode) or label (edit mode) */}
       <div className={styles.field}>
-        <label htmlFor="deviceType" className={styles.label}>
+        <label className={styles.label}>
           {t('device_form_type')} <span className={styles.required}>*</span>
         </label>
-        <select
-          id="deviceType"
-          value={formData.deviceType}
-          onChange={(e) => handleChange('deviceType', e.target.value)}
-          className={styles.select}
-          disabled={isSubmitting}
-        >
-          {DEVICE_TYPES.map((type) => (
-            <option key={type} value={type}>
-              {t(DEVICE_TYPE_KEYS[type])}
-            </option>
-          ))}
-        </select>
+        {isEditMode ? (
+          <div className={styles.typeDisplay}>
+            {selectedConfig ? selectedConfig.label : (
+              device?.deviceType
+                ? t(DEVICE_TYPE_KEYS[device.deviceType as keyof typeof DEVICE_TYPE_KEYS] ?? device.deviceType)
+                : '—'
+            )}
+          </div>
+        ) : configsLoading ? (
+          <div className={styles.typeDisplay}>{t('loading')}</div>
+        ) : configs.length > 0 ? (
+          <select
+            value={formData.deviceTypeConfigId}
+            onChange={(e) => handleConfigChange(e.target.value)}
+            className={styles.select}
+            disabled={isSubmitting}
+          >
+            <option value="">—</option>
+            {configs.map((cfg) => (
+              <option key={cfg.id} value={cfg.id}>
+                {cfg.label}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <select
+            value={formData.deviceTypeConfigId}
+            onChange={(e) => handleChange('deviceTypeConfigId', e.target.value)}
+            className={styles.select}
+            disabled={isSubmitting}
+          >
+            {Object.entries(DEVICE_TYPE_KEYS).map(([type, key]) => (
+              <option key={type} value={type}>
+                {t(key)}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       <div className={styles.row}>
@@ -233,6 +358,22 @@ export function DeviceForm({ customerId, device, onSuccess, onCancel }: DeviceFo
         />
       </div>
 
+      {/* Custom fields */}
+      {activeFields.length > 0 && (
+        <div className={styles.customFieldsSection}>
+          <p className={styles.customFieldsTitle}>{t('device_form_custom_fields')}</p>
+          {activeFields.map((f) => (
+            <DynamicFieldRenderer
+              key={f.id}
+              field={f}
+              value={fieldValues[f.id] ?? ''}
+              onChange={(val) => handleFieldValueChange(f.id, val)}
+              disabled={isSubmitting}
+            />
+          ))}
+        </div>
+      )}
+
       <div className={styles.actions}>
         <button
           type="button"
@@ -245,7 +386,7 @@ export function DeviceForm({ customerId, device, onSuccess, onCancel }: DeviceFo
         <button
           type="submit"
           className={styles.submitButton}
-          disabled={isSubmitting || !isConnected}
+          disabled={isSubmitting || !isConnected || (!isEditMode && !formData.deviceTypeConfigId)}
         >
           {isSubmitting ? t('saving') : (isEditMode ? t('device_form_save_changes') : t('device_add'))}
         </button>

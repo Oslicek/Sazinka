@@ -561,9 +561,21 @@ Poslední aktualizace: 2026-02-17
 - `packages/shared-types/src/auth.ts` — nové oprávnění `settings:devices`
 - `apps/web/public/locales/{cs,en,sk}/settings.json` — překlady tab + všechny `dt_*` klíče
 
-### Fáze 5 — Nezapočato
+### Fáze 5 ✅
 
-DeviceForm + DeviceList (dynamic fields).
+- `apps/web/src/components/devices/DynamicFieldRenderer.tsx` — renderer custom polí dle `fieldType`:
+  - text, number (s unit suffix), date, boolean (checkbox), select (deprecated options s označením)
+  - `decodeValueJson` / `encodeValueJson` helper functions
+- `apps/web/src/components/devices/DynamicFieldRenderer.test.tsx` — **36/36 testů prošlo**
+- `apps/web/src/components/devices/DeviceForm.tsx`:
+  - Přepnutí z hardcoded `DeviceType` enum na `deviceTypeConfigId` picker (z NATS)
+  - Validace required custom polí před odesláním
+  - Výchozí `revisionIntervalMonths` z vybraného config
+  - Warning pro archivní typ (edit mode)
+  - `customFields` odesílány v create i update
+- `apps/web/src/services/deviceService.ts` — `UpdateDeviceRequest` rozšíren o `customFields`
+- `apps/web/src/components/devices/DeviceList.tsx` — zobrazení custom field values v expanded view
+- Překlady cs/en/sk: `device_form_custom_fields`, `device_archived_type_warning`, `device_field_*`, `device_custom_fields`
 
 ### Fáze 6 — Nezapočato
 

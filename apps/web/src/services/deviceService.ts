@@ -44,6 +44,7 @@ export interface UpdateDeviceRequest {
   installationDate?: string;
   revisionIntervalMonths?: number;
   notes?: string;
+  customFields?: { fieldId: string; valueJson: string }[];
 }
 
 /**

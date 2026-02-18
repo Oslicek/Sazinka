@@ -185,6 +185,12 @@
   "device_form_notes": "Notes",
   "device_form_notes_placeholder": "Additional information about the device...",
   "device_form_save_changes": "Save changes",
+  "device_form_custom_fields": "Custom fields",
+  "device_form_required_field": "Field \"{{label}}\" is required",
+  "device_archived_type_warning": "Warning: This device type is archived. Editing is allowed but this type cannot be assigned to new devices.",
+  "device_field_select_empty": "Not selected",
+  "device_field_deprecated": "deprecated",
+  "device_custom_fields": "Custom information",
 
   "revision_list_title": "Revisions",
   "revision_list_filter_all": "All statuses",

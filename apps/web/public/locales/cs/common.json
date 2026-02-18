@@ -191,6 +191,12 @@
   "device_form_notes": "Poznámky",
   "device_form_notes_placeholder": "Další informace o zařízení...",
   "device_form_save_changes": "Uložit změny",
+  "device_form_custom_fields": "Vlastní pole",
+  "device_form_required_field": "Pole \"{{label}}\" je povinné",
+  "device_archived_type_warning": "Upozornění: Tento typ zařízení je archivní. Editace je povolena, ale typ nelze přiřadit novým zařízením.",
+  "device_field_select_empty": "Nevybráno",
+  "device_field_deprecated": "zastaralé",
+  "device_custom_fields": "Vlastní informace",
 
   "revision_list_title": "Revize",
   "revision_list_filter_all": "Všechny stavy",

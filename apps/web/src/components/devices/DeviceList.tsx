@@ -4,6 +4,7 @@ import { Link } from '@tanstack/react-router';
 import type { Device } from '@shared/device';
 import type { Revision } from '@shared/revision';
 import { DEVICE_TYPE_KEYS } from '@shared/device';
+import { decodeValueJson } from './DynamicFieldRenderer';
 import { REVISION_STATUS_KEYS, REVISION_RESULT_KEYS } from '@shared/revision';
 import { listDevices, deleteDevice } from '../../services/deviceService';
 import { formatDate } from '../../i18n/formatters';
@@ -287,6 +288,30 @@ export function DeviceList({ customerId, onDeviceSelect }: DeviceListProps) {
                       </button>
                     </div>
                     
+                    {device.customFields && device.customFields.length > 0 && (
+                      <div className={styles.customFieldsList}>
+                        <h4 className={styles.customFieldsTitle}>{t('device_custom_fields')}</h4>
+                        <div className={styles.customFieldsGrid}>
+                          {device.customFields.map((cfv) => {
+                            if (!cfv.field) return null;
+                            const displayValue = decodeValueJson(cfv.valueJson, cfv.field.fieldType);
+                            if (!displayValue) return null;
+                            const rendered = cfv.field.fieldType === 'boolean'
+                              ? (displayValue === 'true' ? t('yes') : t('no'))
+                              : cfv.field.unit
+                              ? `${displayValue} ${cfv.field.unit}`
+                              : displayValue;
+                            return (
+                              <div key={cfv.id} className={styles.customFieldRow}>
+                                <span className={styles.customFieldLabel}>{cfv.field.label}:</span>
+                                <span className={styles.customFieldValue}>{rendered}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     <div className={styles.revisionsList}>
                       <h4 className={styles.revisionsTitle}>{t('device_revision_history')}</h4>
                       {revisions.length === 0 ? (
