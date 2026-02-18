@@ -19,18 +19,64 @@ pub async fn create_pool(database_url: &str) -> Result<PgPool> {
 
 /// Run database migrations.
 ///
-/// Before running, fixes stored checksum mismatches caused by CRLF/LF
-/// line-ending differences (Windows git autocrlf). Without this,
-/// `sqlx::migrate!` refuses to run if the file was checked out with
-/// different line endings than when the migration was first applied.
+/// Before running, fixes two common issues:
+/// 1. Checksum mismatches caused by CRLF/LF line-ending differences
+///    (Windows git autocrlf).
+/// 2. Orphaned migration records — rows in `_sqlx_migrations` for files
+///    that were deleted/merged and no longer exist on disk. Without
+///    cleanup, `sqlx::migrate!` refuses to run with "migration N was
+///    previously applied but is missing in the resolved migrations".
 pub async fn run_migrations(pool: &PgPool) -> Result<()> {
     info!("Running database migrations...");
 
     let migrator = sqlx::migrate!("./migrations");
+    remove_orphaned_migrations(pool, &migrator).await?;
     fix_migration_checksums(pool, &migrator).await?;
     migrator.run(pool).await?;
 
     info!("Database migrations complete");
+    Ok(())
+}
+
+/// Remove rows from `_sqlx_migrations` that reference migration versions
+/// no longer present in the compiled migrator. This happens when migration
+/// files are deleted or merged into the initial schema.
+async fn remove_orphaned_migrations(pool: &PgPool, migrator: &sqlx::migrate::Migrator) -> Result<()> {
+    let table_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '_sqlx_migrations')"
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if !table_exists {
+        return Ok(());
+    }
+
+    let known_versions: Vec<i64> = migrator
+        .iter()
+        .filter(|m| !m.migration_type.is_down_migration())
+        .map(|m| m.version)
+        .collect();
+
+    let applied: Vec<(i64,)> = sqlx::query_as(
+        "SELECT version FROM _sqlx_migrations"
+    )
+    .fetch_all(pool)
+    .await?;
+
+    for (version,) in applied {
+        if !known_versions.contains(&version) {
+            warn!(
+                "Removing orphaned migration record: version {} (file no longer exists)",
+                version
+            );
+            sqlx::query("DELETE FROM _sqlx_migrations WHERE version = $1")
+                .bind(version)
+                .execute(pool)
+                .await?;
+        }
+    }
+
     Ok(())
 }
 
