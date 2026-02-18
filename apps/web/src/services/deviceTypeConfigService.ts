@@ -3,6 +3,7 @@ import type {
   DeviceTypeConfigListResponse,
   ListDeviceTypeConfigsRequest,
   GetDeviceTypeConfigRequest,
+  CreateDeviceTypeConfigRequest,
   UpdateDeviceTypeConfigRequest,
   CreateDeviceTypeFieldRequest,
   UpdateDeviceTypeFieldRequest,
@@ -66,6 +67,25 @@ export async function getDeviceTypeConfig(
 
   const response = await deps.request<typeof req, NatsResponse<DeviceTypeConfigWithFields>>(
     'sazinka.device_type_config.get',
+    req
+  );
+
+  if (isErrorResponse(response)) throw new Error(response.error.message);
+  return response.payload;
+}
+
+/**
+ * Create a new custom (non-builtin) device type config.
+ * Returns the newly created config with an empty fields array.
+ */
+export async function createDeviceTypeConfig(
+  payload: CreateDeviceTypeConfigRequest,
+  deps: DeviceTypeConfigServiceDeps = getDefaultDeps()
+): Promise<DeviceTypeConfigWithFields> {
+  const req = createRequest(getToken(), payload);
+
+  const response = await deps.request<typeof req, NatsResponse<DeviceTypeConfigWithFields>>(
+    'sazinka.device_type_config.create',
     req
   );
 

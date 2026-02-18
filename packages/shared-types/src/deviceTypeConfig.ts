@@ -89,6 +89,14 @@ export interface GetDeviceTypeConfigRequest {
   id: string;
 }
 
+export interface CreateDeviceTypeConfigRequest {
+  label: string;
+  /** Optional — backend generates a slug from label if omitted. */
+  deviceTypeKey?: string;
+  defaultRevisionDurationMinutes?: number;
+  defaultRevisionIntervalMonths?: number;
+}
+
 export interface UpdateDeviceTypeConfigRequest {
   id: string;
   label?: string;

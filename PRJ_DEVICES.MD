@@ -14,7 +14,7 @@ Tento dokument popisuje zavedení konfigurovatelných typů zařízení (device 
 4. Archivní záznamy (zařízení s neaktivním typem) jsou **editovatelné s warningem**.
 5. Jeden tenant (firma) může mít **více účtů** — konfigurace typů je tenant-level, ne user-level.
 6. Typická doba revize podle typu zařízení se použije i v planneru, i v logice tvorby/počítání revizí.
-7. v1 nepovoluje vytváření nových typů zařízení; pouze úpravy předdefinovaných šablon.
+7. ~~v1 nepovoluje vytváření nových typů zařízení~~ **Aktualizováno (v1.1)** — uživatel může vytvářet vlastní typy zařízení. Předdefinované builtin šablony zůstávají a po deaktivaci je lze znovu aktivovat.
 8. **tenant_id nesmí být user_id** — tenant model musí být explicitní (tabulka `tenants` + vazby). Mapování `tenant_id = user_id` se nepoužívá ani přechodně.
 
 ---
@@ -46,7 +46,7 @@ Cílový stav:
 - Použití per-type servisní doby v planneru a v revizní logice.
 
 ### 2.2 Mimo scope (v1)
-- Vytváření zcela nových typů zařízení.
+- ~~Vytváření zcela nových typů zařízení.~~ **Přesunuto do v1.1 scope (Fáze 8).**
 - Marketplace/sdílení šablon mezi tenanty.
 - Kompletní redesign importu CSV (plná podpora v navazující fázi).
 
@@ -228,15 +228,17 @@ U select polí: sloupec „options“ uvádí dvojice `key` (technický klíč E
 
 ## 5. API (NATS) -- v1
 
-### 5.1 Device type configs (bez create nového typu)
+### 5.1 Device type configs
 
 | Subject | Popis |
 |---|---|
 | `sazinka.device_type_config.list` | seznam typů pro tenant |
 | `sazinka.device_type_config.get` | detail typu + fields |
+| `sazinka.device_type_config.create` | **(v1.1)** vytvoření nového custom typu; `isBuiltin = false` |
 | `sazinka.device_type_config.update` | update label/isActive/default durations/sortOrder |
 
 `deviceTypeKey` je immutable a není součást update payloadu.
+`create` vyžaduje unikátní `deviceTypeKey` v rámci tenantu; backend generuje `deviceTypeKey` z `label` (slug) nebo jej přijme v payloadu.
 
 ### 5.2 Device type fields
 
@@ -603,3 +605,109 @@ Planner/Inbox + revizní logika:
   - Nové testy: `device_type_default_beats_global_default_when_no_explicit_stop_duration`,
     `explicit_stop_duration_beats_device_type_default`
 - `worker/src/handlers/route.rs` — `RecalcStopInput` a mapování na `SeqScheduleStop` rozšířeny
+
+### Fáze 7 — Nezapočato
+
+E2E a rollout (viz plán výše).
+
+---
+
+### Fáze 8 — Bugfix + vlastní typy zařízení (DOKONČENO)
+
+Tato fáze řeší dva nalezené bugy a přidává možnost vytvářet vlastní typy zařízení.
+
+#### 8A — Bugfix: update handler nevrací fields
+
+**Problém:** Backend handler `device_type_config.update` volá DB query `update_device_type_config`, která vrací `DeviceTypeConfig` (bez polí). Frontend po updatu zavolá `setFields(updated.fields)`, ale `fields` v odpovědi chybí → pole zmizí z UI.
+
+**Řešení:**
+- `worker/src/db/queries/device_type_config.rs`: Změnit `update_device_type_config` tak, aby po UPDATE SELECT natáhl i `fields` (nebo vytvořit wrapper, který po update zavolá `get_device_type_config`).
+- `worker/src/handlers/device_type_config.rs`: Handler `handle_update` vrátí `DeviceTypeConfigWithFields` místo holého `DeviceTypeConfig`.
+- Totéž ověřit pro všechny operace, které vracejí config (update, toggle active) — vždy vracet s fields.
+
+Testy:
+- Rust unit test: po update ověřit, že response JSON obsahuje `fields` pole.
+- Frontend test: po deaktivaci ověřit, že fields v komponentě zůstávají.
+
+#### 8B — UX: neaktivní typy v nastavení
+
+**Problém:** Po deaktivaci typu se typ schová (protože `showInactive` defaultuje na `false`). Uživatel nemá zřejmou cestu zpět.
+
+**Řešení:**
+- V Settings UI **vždy zobrazovat všechny typy** (aktivní i neaktivní), neaktivní vizuálně odlišit (šedý, ikona „archivní").
+- Odstranit toggle „Zobrazit neaktivní" — místo toho neaktivní typy zobrazovat ve spodní sekci „Neaktivní typy" se separátorem.
+- Tlačítko u neaktivního typu: **„Aktivovat"** místo „Upravit" + „Deaktivovat".
+- Builtin typy (`isBuiltin: true`) nelze smazat, vždy zůstanou v seznamu — lze je pouze aktivovat/deaktivovat.
+
+Dotčené soubory:
+- `apps/web/src/components/settings/DeviceTypeConfigManager.tsx` — layout změna: dvě sekce (aktivní / neaktivní).
+- `apps/web/src/components/settings/DeviceTypeConfigManager.module.css` — styly pro neaktivní sekci.
+- `apps/web/public/locales/{cs,en,sk}/settings.json` — nové překlady (section headers, tlačítko „Aktivovat").
+
+Testy:
+- Komponentový test: po renderingu obsahuje sekci neaktivních typů s deaktivovaným configem.
+- Test: kliknutí na „Aktivovat" zavolá update s `isActive: true`.
+
+#### 8C — Feature: vytváření vlastních typů zařízení
+
+**Problém:** Uživatel nemůže vytvořit nový typ zařízení — k dispozici má pouze 6 předdefinovaných šablon.
+
+**Řešení:**
+
+**Backend:**
+- `worker/src/types/device_type_config.rs`: Nový request type `CreateDeviceTypeConfigRequest { label, deviceTypeKey?, defaultRevisionDurationMinutes?, defaultRevisionIntervalMonths? }`.
+- `worker/src/db/queries/device_type_config.rs`: Nová funkce `create_device_type_config` — INSERT s `is_builtin = false`, `is_active = true`. Pokud `deviceTypeKey` není zadán, vygenerovat slug z `label` (lowercase, diakritika → ASCII, mezery → `_`). Validace: UNIQUE(tenant_id, device_type_key).
+- `worker/src/handlers/device_type_config.rs`: Nový handler `handle_create` pro NATS subject `sazinka.device_type_config.create`. Vrací `DeviceTypeConfigWithFields` (fields bude `[]` pro nový typ).
+- `worker/src/handlers/mod.rs`: Registrace nového NATS subscription + tokio::spawn.
+
+**Shared types:**
+- `packages/shared-types/src/deviceTypeConfig.ts`: Nový interface `CreateDeviceTypeConfigRequest { label: string; deviceTypeKey?: string; defaultRevisionDurationMinutes?: number; defaultRevisionIntervalMonths?: number; }`.
+
+**Frontend service:**
+- `apps/web/src/services/deviceTypeConfigService.ts`: Nová funkce `createDeviceTypeConfig(payload)`.
+
+**Frontend UI:**
+- `apps/web/src/components/settings/DeviceTypeConfigManager.tsx`:
+  - Tlačítko „+ Nový typ zařízení" v hlavičce sekce.
+  - Inline formulář (podobný `AddFieldForm`): povinný `label`, volitelné `defaultRevisionDurationMinutes` (default: 60) a `defaultRevisionIntervalMonths` (default: 12).
+  - Po vytvoření se nový typ přidá do seznamu aktivních.
+  - Custom typy (`isBuiltin: false`) mohou být deaktivovány (a později znovu aktivovány) stejně jako builtin.
+
+**Pravidla:**
+- Custom typ (`isBuiltin: false`) se chová stejně jako builtin — podporuje custom fields, deaktivaci/reaktivaci, editaci labelu a parametrů.
+- `deviceTypeKey` je immutable i u custom typů (vygeneruje se při create).
+- Custom typy se **nemažou** — pouze deaktivují (shodně s rozhodnutím #1).
+- Custom typ bez polí se může rovnou použít pro nová zařízení (pole jsou volitelná).
+
+Testy:
+- Rust unit test: create → ověřit `is_builtin = false`, vygenerovaný `deviceTypeKey`.
+- Rust unit test: pokus o duplicitní `deviceTypeKey` → chyba.
+- Frontend unit test: render formuláře, submit, ověřit volání service.
+- Frontend unit test: nový typ se objeví v seznamu po vytvoření.
+
+#### Pořadí implementace Fáze 8
+
+1. **8A** — bugfix update handler (30 min) — nutný předpoklad pro fungování 8B. ✅
+2. **8B** — UX layout neaktivních typů (1 hod) — zlepší stávající stav. ✅
+3. **8C** — create custom type: backend (1 hod), shared types (15 min), frontend service (15 min), UI (1.5 hod). ✅
+
+#### Implementované změny (Fáze 8)
+
+**8A — Bugfix:**
+- `worker/src/db/queries/device_type_config.rs`: `update_device_type_config` nyní vrací `Option<DeviceTypeConfigWithFields>` — po UPDATE natáhne i fields.
+- `worker/src/handlers/device_type_config.rs`: `handle_update` vrací `DeviceTypeConfigWithFields`.
+
+**8B — UX:**
+- `apps/web/src/components/settings/DeviceTypeConfigManager.tsx`: Aktivní typy vždy viditelné; neaktivní typy ve spodní sekci s collapsible togglem (zobrazuje počet). Odstraněn checkbox „Zobrazit neaktivní".
+- `apps/web/src/components/settings/DeviceTypeConfigManager.module.css`: Nové styly `.inactiveSection`, `.toggleInactiveBtn`, `.createBtn`, `.createForm`.
+- `apps/web/public/locales/{cs,en,sk}/settings.json`: Nové klíče `dt_show_inactive_count`, `dt_hide_inactive`, `dt_empty_active`.
+
+**8C — Feature:**
+- `worker/src/types/device_type_config.rs`: Nový request type `CreateDeviceTypeConfigRequest`.
+- `worker/src/db/queries/device_type_config.rs`: Nová funkce `create_device_type_config` — INSERT s `is_builtin = false`, slug generování z labelu (diakritika → ASCII, mezery → `_`), UNIQUE kontrola.
+- `worker/src/handlers/device_type_config.rs`: Nový handler `handle_create` pro NATS subject `sazinka.device_type_config.create`.
+- `worker/src/handlers/mod.rs`: Registrace nového NATS subscription + tokio::spawn.
+- `packages/shared-types/src/deviceTypeConfig.ts`: Nový interface `CreateDeviceTypeConfigRequest`.
+- `apps/web/src/services/deviceTypeConfigService.ts`: Nová funkce `createDeviceTypeConfig(payload)`.
+- `apps/web/src/components/settings/DeviceTypeConfigManager.tsx`: Inline formulář „+ Nový typ zařízení" v hlavičce sekce.
+- `apps/web/public/locales/{cs,en,sk}/settings.json`: Nové klíče `dt_create_new`, `dt_create_title`, `dt_create_submit`, `dt_label_placeholder`, `dt_error_label_required`, `dt_error_key_conflict`, `dt_error_create`.

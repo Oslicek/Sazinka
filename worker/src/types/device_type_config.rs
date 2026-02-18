@@ -81,6 +81,22 @@ pub struct DeviceFieldValueDto {
 // Request types
 // =============================================================================
 
+/// Request to create a new custom (non-builtin) device type config for the tenant.
+/// `device_type_key` is optional — if omitted the backend generates a slug from `label`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateDeviceTypeConfigRequest {
+    pub label: String,
+    pub device_type_key: Option<String>,
+    #[serde(default = "default_duration")]
+    pub default_revision_duration_minutes: i32,
+    #[serde(default = "default_interval")]
+    pub default_revision_interval_months: i32,
+}
+
+fn default_duration() -> i32 { 60 }
+fn default_interval() -> i32 { 12 }
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListDeviceTypeConfigsRequest {

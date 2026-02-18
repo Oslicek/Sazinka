@@ -7,6 +7,7 @@ import type {
   CreateDeviceTypeFieldRequest,
   SelectOption,
 } from '@shared/deviceTypeConfig';
+import type { CreateDeviceTypeConfigRequest } from '@shared/deviceTypeConfig';
 import styles from './DeviceTypeConfigManager.module.css';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -587,6 +588,92 @@ function DeviceTypeCard({ config, onUpdated }: DeviceTypeCardProps) {
   );
 }
 
+// ── CreateDeviceTypeForm ──────────────────────────────────────────────────────
+
+interface CreateDeviceTypeFormProps {
+  onCreated: (config: DeviceTypeConfig) => void;
+  onCancel: () => void;
+}
+
+function CreateDeviceTypeForm({ onCreated, onCancel }: CreateDeviceTypeFormProps) {
+  const { t } = useTranslation('settings');
+  const [label, setLabel] = useState('');
+  const [duration, setDuration] = useState(60);
+  const [interval, setInterval] = useState(12);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async () => {
+    if (!label.trim()) {
+      setError(t('dt_error_label_required'));
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const payload: CreateDeviceTypeConfigRequest = {
+        label: label.trim(),
+        defaultRevisionDurationMinutes: duration,
+        defaultRevisionIntervalMonths: interval,
+      };
+      const created = await deviceTypeConfigService.createDeviceTypeConfig(payload);
+      onCreated(created);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg.includes('CONFLICT') ? t('dt_error_key_conflict') : t('dt_error_create'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className={styles.createForm}>
+      <h3 className={styles.createFormTitle}>{t('dt_create_title')}</h3>
+      {error && <div className={styles.error}>{error}</div>}
+      <div className={styles.formRow}>
+        <label className={styles.label}>{t('dt_label')}</label>
+        <input
+          className={styles.input}
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder={t('dt_label_placeholder')}
+          autoFocus
+        />
+      </div>
+      <div className={styles.formRow}>
+        <label className={styles.label}>{t('dt_default_duration')}</label>
+        <input
+          className={styles.inputNumber}
+          type="number"
+          min={1}
+          value={duration}
+          onChange={(e) => setDuration(Number(e.target.value))}
+        />
+        <span className={styles.unitSuffix}>{t('dt_min')}</span>
+      </div>
+      <div className={styles.formRow}>
+        <label className={styles.label}>{t('dt_default_interval')}</label>
+        <input
+          className={styles.inputNumber}
+          type="number"
+          min={1}
+          value={interval}
+          onChange={(e) => setInterval(Number(e.target.value))}
+        />
+        <span className={styles.unitSuffix}>{t('dt_months')}</span>
+      </div>
+      <div className={styles.editActions}>
+        <button className="btn-primary" onClick={handleSubmit} disabled={saving || !label.trim()}>
+          {saving ? t('saving') : t('dt_create_submit')}
+        </button>
+        <button className={styles.cancelBtn} onClick={onCancel} disabled={saving}>
+          {t('common:cancel')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 interface DeviceTypeConfigManagerProps {
@@ -599,6 +686,7 @@ export function DeviceTypeConfigManager({ onUpdate }: DeviceTypeConfigManagerPro
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showInactive, setShowInactive] = useState(false);
+  const [showCreateForm, setShowCreateForm] = useState(false);
 
   const loadConfigs = useCallback(async () => {
     setLoading(true);
@@ -626,30 +714,40 @@ export function DeviceTypeConfigManager({ onUpdate }: DeviceTypeConfigManagerPro
     onUpdate?.();
   };
 
-  const visibleConfigs = showInactive
-    ? configs
-    : configs.filter((c) => c.isActive);
+  const handleCreated = (created: DeviceTypeConfig) => {
+    setConfigs((prev) => [...prev, created]);
+    setShowCreateForm(false);
+    onUpdate?.();
+  };
+
+  const activeConfigs = configs.filter((c) => c.isActive);
+  const inactiveConfigs = configs.filter((c) => !c.isActive);
 
   return (
     <div className={styles.manager}>
       <div className={styles.sectionHeader}>
         <h2 className={styles.sectionTitle}>{t('dt_title')}</h2>
-        <label className={styles.toggleInactive}>
-          <input
-            type="checkbox"
-            checked={showInactive}
-            onChange={(e) => setShowInactive(e.target.checked)}
-          />
-          {t('dt_show_inactive')}
-        </label>
+        <button
+          className={styles.createBtn}
+          onClick={() => setShowCreateForm((v) => !v)}
+        >
+          {showCreateForm ? t('common:cancel') : t('dt_create_new')}
+        </button>
       </div>
 
       <p className={styles.sectionDescription}>{t('dt_description')}</p>
 
+      {showCreateForm && (
+        <CreateDeviceTypeForm
+          onCreated={handleCreated}
+          onCancel={() => setShowCreateForm(false)}
+        />
+      )}
+
       {loading && <div className={styles.loading}>{t('loading')}</div>}
       {error && (
         <div className={styles.error}>
-          {error}
+          {t(error)}
           <button className={styles.retryBtn} onClick={loadConfigs}>
             {t('retry')}
           </button>
@@ -657,15 +755,37 @@ export function DeviceTypeConfigManager({ onUpdate }: DeviceTypeConfigManagerPro
       )}
 
       {!loading && !error && (
-        <div className={styles.configList}>
-          {visibleConfigs.length === 0 ? (
-            <p className={styles.emptyState}>{t('dt_empty')}</p>
-          ) : (
-            visibleConfigs.map((config) => (
-              <DeviceTypeCard key={config.id} config={config} onUpdated={handleUpdated} />
-            ))
+        <>
+          <div className={styles.configList}>
+            {activeConfigs.length === 0 ? (
+              <p className={styles.emptyState}>{t('dt_empty_active')}</p>
+            ) : (
+              activeConfigs.map((config) => (
+                <DeviceTypeCard key={config.id} config={config} onUpdated={handleUpdated} />
+              ))
+            )}
+          </div>
+
+          {inactiveConfigs.length > 0 && (
+            <div className={styles.inactiveSection}>
+              <button
+                className={styles.toggleInactiveBtn}
+                onClick={() => setShowInactive((v) => !v)}
+              >
+                {showInactive
+                  ? t('dt_hide_inactive')
+                  : t('dt_show_inactive_count', { count: inactiveConfigs.length })}
+              </button>
+              {showInactive && (
+                <div className={styles.configList}>
+                  {inactiveConfigs.map((config) => (
+                    <DeviceTypeCard key={config.id} config={config} onUpdated={handleUpdated} />
+                  ))}
+                </div>
+              )}
+            </div>
           )}
-        </div>
+        </>
       )}
     </div>
   );

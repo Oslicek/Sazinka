@@ -22,9 +22,9 @@ use crate::auth;
 use crate::db::queries;
 use crate::types::{ErrorResponse, Request, SuccessResponse};
 use crate::types::device_type_config::{
-    CreateDeviceTypeFieldRequest, GetDeviceTypeConfigRequest, ListDeviceTypeConfigsRequest,
-    ReorderFieldsRequest, SetFieldActiveRequest, UpdateDeviceTypeConfigRequest,
-    UpdateDeviceTypeFieldRequest, DeviceTypeConfigListResponse,
+    CreateDeviceTypeConfigRequest, CreateDeviceTypeFieldRequest, GetDeviceTypeConfigRequest,
+    ListDeviceTypeConfigsRequest, ReorderFieldsRequest, SetFieldActiveRequest,
+    UpdateDeviceTypeConfigRequest, UpdateDeviceTypeFieldRequest, DeviceTypeConfigListResponse,
 };
 
 // ---------------------------------------------------------------------------
@@ -197,8 +197,8 @@ pub async fn handle_update(
         let tenant_id = require_tenant!(&pool, user_id, client, reply, request.id);
 
         match queries::device_type_config::update_device_type_config(&pool, tenant_id, &request.payload).await {
-            Ok(Some(cfg)) => {
-                let resp = SuccessResponse::new(request.id, cfg);
+            Ok(Some(cfg_with_fields)) => {
+                let resp = SuccessResponse::new(request.id, cfg_with_fields);
                 let _ = client.publish(reply, serde_json::to_vec(&resp)?.into()).await;
             }
             Ok(None) => {
@@ -207,6 +207,68 @@ pub async fn handle_update(
             }
             Err(e) => {
                 error!("update_device_type_config: {}", e);
+                let err = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+            }
+        }
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// sazinka.device_type_config.create
+// ---------------------------------------------------------------------------
+pub async fn handle_create(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+    jwt_secret: Arc<String>,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received device_type_config.create");
+        let reply = match msg.reply {
+            Some(ref r) => r.clone(),
+            None => { warn!("no reply subject"); continue; }
+        };
+
+        let request: Request<CreateDeviceTypeConfigRequest> =
+            match serde_json::from_slice(&msg.payload) {
+                Ok(r) => r,
+                Err(e) => {
+                    let err = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                    let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+                    continue;
+                }
+            };
+
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let err = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+                continue;
+            }
+        };
+
+        if request.payload.label.trim().is_empty() {
+            let err = ErrorResponse::new(request.id, "INVALID_REQUEST", "label is required");
+            let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+            continue;
+        }
+
+        let tenant_id = require_tenant!(&pool, user_id, client, reply, request.id);
+
+        match queries::device_type_config::create_device_type_config(&pool, tenant_id, &request.payload).await {
+            Ok(Some(cfg)) => {
+                let resp = SuccessResponse::new(request.id, cfg);
+                let _ = client.publish(reply, serde_json::to_vec(&resp)?.into()).await;
+            }
+            Ok(None) => {
+                let err = ErrorResponse::new(request.id, "CONFLICT", "A device type with this key already exists for your tenant");
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+            }
+            Err(e) => {
+                error!("create_device_type_config: {}", e);
                 let err = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
                 let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
             }

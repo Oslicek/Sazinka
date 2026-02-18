@@ -5,9 +5,9 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::types::device_type_config::{
-    CreateDeviceTypeFieldRequest, DeviceFieldValue, DeviceFieldValueDto, DeviceTypeConfig,
-    DeviceTypeConfigWithFields, DeviceTypeField, UpdateDeviceTypeConfigRequest,
-    UpdateDeviceTypeFieldRequest,
+    CreateDeviceTypeConfigRequest, CreateDeviceTypeFieldRequest, DeviceFieldValue,
+    DeviceFieldValueDto, DeviceTypeConfig, DeviceTypeConfigWithFields, DeviceTypeField,
+    UpdateDeviceTypeConfigRequest, UpdateDeviceTypeFieldRequest,
 };
 
 // =============================================================================
@@ -111,11 +111,12 @@ pub async fn get_device_type_config(
 }
 
 /// Update label, isActive, default durations, sortOrder for a device type config.
+/// Returns the updated config with its fields (same shape as get_device_type_config).
 pub async fn update_device_type_config(
     pool: &PgPool,
     tenant_id: Uuid,
     req: &UpdateDeviceTypeConfigRequest,
-) -> Result<Option<DeviceTypeConfig>> {
+) -> Result<Option<DeviceTypeConfigWithFields>> {
     let config = sqlx::query_as::<_, DeviceTypeConfig>(
         r#"UPDATE device_type_configs SET
             label                             = COALESCE($3, label),
@@ -135,7 +136,103 @@ pub async fn update_device_type_config(
     .bind(req.sort_order)
     .fetch_optional(pool)
     .await?;
-    Ok(config)
+
+    let Some(config) = config else {
+        return Ok(None);
+    };
+
+    let fields = sqlx::query_as::<_, DeviceTypeField>(
+        r#"SELECT * FROM device_type_fields WHERE device_type_config_id = $1 ORDER BY sort_order"#,
+    )
+    .bind(config.id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(Some(DeviceTypeConfigWithFields { config, fields }))
+}
+
+/// Create a new custom (non-builtin) device type config for the tenant.
+/// If `device_type_key` is not provided, a slug is generated from `label`.
+/// Returns None if the generated/provided key already exists for this tenant.
+pub async fn create_device_type_config(
+    pool: &PgPool,
+    tenant_id: Uuid,
+    req: &CreateDeviceTypeConfigRequest,
+) -> Result<Option<DeviceTypeConfigWithFields>> {
+    // Generate device_type_key from label if not provided
+    let key = match &req.device_type_key {
+        Some(k) if !k.trim().is_empty() => slugify(k),
+        _ => slugify(&req.label),
+    };
+
+    // Check uniqueness
+    let exists: bool = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM device_type_configs WHERE tenant_id = $1 AND device_type_key = $2)",
+    )
+    .bind(tenant_id)
+    .bind(&key)
+    .fetch_one(pool)
+    .await?;
+
+    if exists {
+        return Ok(None);
+    }
+
+    let next_sort_order: i64 = sqlx::query_scalar::<_, i64>(
+        "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM device_type_configs WHERE tenant_id = $1",
+    )
+    .bind(tenant_id)
+    .fetch_one(pool)
+    .await?;
+
+    let config = sqlx::query_as::<_, DeviceTypeConfig>(
+        r#"INSERT INTO device_type_configs
+            (id, tenant_id, device_type_key, label, is_active, is_builtin,
+             default_revision_duration_minutes, default_revision_interval_months, sort_order)
+        VALUES (uuid_generate_v4(), $1, $2, $3, true, false, $4, $5, $6)
+        RETURNING *"#,
+    )
+    .bind(tenant_id)
+    .bind(&key)
+    .bind(&req.label)
+    .bind(req.default_revision_duration_minutes)
+    .bind(req.default_revision_interval_months)
+    .bind(next_sort_order as i32)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(Some(DeviceTypeConfigWithFields { config, fields: vec![] }))
+}
+
+/// Convert a string to a lowercase ASCII slug (spaces → `_`, strip non-alphanumeric except `_`).
+fn slugify(s: &str) -> String {
+    // Basic ASCII transliteration for common Czech/Slovak characters
+    let transliterated: String = s.chars().map(|c| match c {
+        'á' | 'à' | 'ä' | 'â' => 'a',
+        'č' => 'c',
+        'ď' => 'd',
+        'é' | 'ě' | 'è' | 'ê' | 'ë' => 'e',
+        'í' | 'ì' | 'î' | 'ï' => 'i',
+        'ľ' | 'ĺ' => 'l',
+        'ň' => 'n',
+        'ó' | 'ô' | 'ö' | 'ò' => 'o',
+        'ř' => 'r',
+        'š' => 's',
+        'ť' => 't',
+        'ú' | 'ů' | 'ü' | 'ù' | 'û' => 'u',
+        'ý' => 'y',
+        'ž' => 'z',
+        ' ' | '-' | '/' => '_',
+        other => other,
+    }).collect();
+
+    transliterated
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .collect::<String>()
+        .trim_matches('_')
+        .to_string()
 }
 
 // =============================================================================
