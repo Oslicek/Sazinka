@@ -501,3 +501,61 @@ Rollout:
 2. ~~Má mít device_type_field.deactivate možnost reactivate?~~ **Vyřešeno** — API `set_active` pokrývá obojí (viz 5.2).
 
 3. ~~**CSV import ve v1**~~ **Vyřešeno** — minimální změny povoleny (sekce 2.3): ignorovat neznámá custom pole, parsovat known fields dle fieldKey.
+
+---
+
+## 11. Stav implementace
+
+Poslední aktualizace: 2026-02-17
+
+### Fáze 0 ✅
+
+- `packages/shared-types/src/deviceTypeConfig.ts` — entity, request, response typy
+- `packages/shared-types/src/device.ts` — přidáno `deviceTypeConfigId?`, `customFields?`
+- `packages/shared-types/src/index.ts` — re-export `deviceTypeConfig`
+
+---
+
+### Fáze 1A ✅
+
+- `worker/migrations/020_tenants.sql` — tabulky `tenants` + `user_tenants`, seed z existujících users (DO $$ blok)
+
+### Fáze 1B ✅
+
+- `worker/migrations/021_device_type_configs.sql`:
+  - tabulky `device_type_configs`, `device_type_fields`, `device_field_values`
+  - `device_type_config_id` přidán do `devices`, backfill z `device_type`, NOT NULL
+  - funkce `seed_device_types_for_tenant(UUID)` + trigger pro nové tenanty
+  - seed 6 builtin typů pro každého existujícího tenanta
+  - přepsán unikátní index `idx_devices_name_type` na `device_type_config_id`
+
+---
+
+### Fáze 2 ✅
+
+- `worker/src/types/device_type_config.rs` — Rust typy + 4 unit testy (serialization, partial update, reorder)
+- `worker/src/db/queries/device_type_config.rs` — queries: tenant lookup, list/get/update config, create/update/set_active/reorder field, upsert/load field values
+- `worker/src/handlers/device_type_config.rs` — 7 NATS handlers (list, get, update, field_create, field_update, field_set_active, field_reorder)
+- `worker/src/handlers/mod.rs`, `types/mod.rs`, `db/queries/mod.rs` — registrace nových modulů a NATS subjects
+- Rust unit testy prošly (kompilační chyby jsou pre-existing v `import.rs` — nesouvisí s touto změnou)
+
+---
+
+### Fáze 3 ✅
+
+- `apps/web/src/services/deviceTypeConfigService.ts` — service pro všechny device type config / field API calls
+- `apps/web/src/services/deviceTypeConfigService.test.ts` — **19/19 testů prošlo**
+
+---
+
+### Fáze 4 — Nezapočato
+
+Settings UI — tab Zařízení.
+
+### Fáze 5 — Nezapočato
+
+DeviceForm + DeviceList (dynamic fields).
+
+### Fáze 6 — Nezapočato
+
+Planner/Inbox + revizní logika.

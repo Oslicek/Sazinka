@@ -1,10 +1,14 @@
 // Device types
 
+import type { DeviceFieldValue } from './deviceTypeConfig';
+
 export interface Device {
   id: string;
   customerId: string;
   userId: string;
   deviceType: DeviceType;
+  /** FK to device_type_configs; present after PRJ_DEVICES migration */
+  deviceTypeConfigId?: string | null;
   deviceName?: string | null;
   manufacturer?: string | null;
   model?: string | null;
@@ -13,6 +17,8 @@ export interface Device {
   revisionIntervalMonths: number;
   nextDueDate?: string | null;
   notes?: string | null;
+  /** Custom field values for this device's type */
+  customFields?: DeviceFieldValue[];
   createdAt: string;
   updatedAt: string;
 }
@@ -38,6 +44,8 @@ export const DEVICE_TYPE_KEYS: Record<DeviceType, string> = {
 export interface CreateDeviceRequest {
   customerId: string;
   deviceType: string;
+  /** New: FK to device_type_configs (required after PRJ_DEVICES migration) */
+  deviceTypeConfigId?: string;
   deviceName?: string;
   manufacturer?: string;
   model?: string;
@@ -45,4 +53,6 @@ export interface CreateDeviceRequest {
   installationDate?: string;
   revisionIntervalMonths: number;
   notes?: string;
+  /** Custom field values keyed by fieldId */
+  customFields?: DeviceFieldValue[];
 }

@@ -3,6 +3,7 @@
 pub mod communication;
 pub mod customer;
 pub mod device;
+pub mod device_type_config;
 pub mod import;
 pub mod import_export_job;
 pub mod job;

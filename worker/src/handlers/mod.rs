@@ -5,6 +5,7 @@ pub mod auth;
 pub mod communication;
 pub mod customer;
 pub mod device;
+pub mod device_type_config;
 pub mod export;
 pub mod geocode;
 pub mod import;
@@ -195,6 +196,15 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let device_get_sub = client.subscribe("sazinka.device.get").await?;
     let device_update_sub = client.subscribe("sazinka.device.update").await?;
     let device_delete_sub = client.subscribe("sazinka.device.delete").await?;
+
+    // Device type config subjects
+    let dtc_list_sub        = client.subscribe("sazinka.device_type_config.list").await?;
+    let dtc_get_sub         = client.subscribe("sazinka.device_type_config.get").await?;
+    let dtc_update_sub      = client.subscribe("sazinka.device_type_config.update").await?;
+    let dtf_create_sub      = client.subscribe("sazinka.device_type_field.create").await?;
+    let dtf_update_sub      = client.subscribe("sazinka.device_type_field.update").await?;
+    let dtf_set_active_sub  = client.subscribe("sazinka.device_type_field.set_active").await?;
+    let dtf_reorder_sub     = client.subscribe("sazinka.device_type_field.reorder").await?;
     
     // Revision subjects
     let revision_create_sub = client.subscribe("sazinka.revision.create").await?;
@@ -466,6 +476,22 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let jwt_secret_device_get = Arc::clone(&jwt_secret);
     let jwt_secret_device_update = Arc::clone(&jwt_secret);
     let jwt_secret_device_delete = Arc::clone(&jwt_secret);
+
+    // Pool + JWT clones for device_type_config handlers
+    let pool_dtc_list       = pool.clone(); let jwt_dtc_list       = Arc::clone(&jwt_secret);
+    let pool_dtc_get        = pool.clone(); let jwt_dtc_get        = Arc::clone(&jwt_secret);
+    let pool_dtc_update     = pool.clone(); let jwt_dtc_update     = Arc::clone(&jwt_secret);
+    let pool_dtf_create     = pool.clone(); let jwt_dtf_create     = Arc::clone(&jwt_secret);
+    let pool_dtf_update     = pool.clone(); let jwt_dtf_update     = Arc::clone(&jwt_secret);
+    let pool_dtf_set_active = pool.clone(); let jwt_dtf_set_active = Arc::clone(&jwt_secret);
+    let pool_dtf_reorder    = pool.clone(); let jwt_dtf_reorder    = Arc::clone(&jwt_secret);
+    let client_dtc_list       = client.clone();
+    let client_dtc_get        = client.clone();
+    let client_dtc_update     = client.clone();
+    let client_dtf_create     = client.clone();
+    let client_dtf_update     = client.clone();
+    let client_dtf_set_active = client.clone();
+    let client_dtf_reorder    = client.clone();
     
     // JWT secret clones for revision handlers
     let jwt_secret_revision_create = Arc::clone(&jwt_secret);
@@ -709,7 +735,30 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let device_delete_handle = tokio::spawn(async move {
         device::handle_delete(client_device_delete, device_delete_sub, pool_device_delete, jwt_secret_device_delete).await
     });
-    
+
+    // Device type config handlers
+    let dtc_list_handle = tokio::spawn(async move {
+        device_type_config::handle_list(client_dtc_list, dtc_list_sub, pool_dtc_list, jwt_dtc_list).await
+    });
+    let dtc_get_handle = tokio::spawn(async move {
+        device_type_config::handle_get(client_dtc_get, dtc_get_sub, pool_dtc_get, jwt_dtc_get).await
+    });
+    let dtc_update_handle = tokio::spawn(async move {
+        device_type_config::handle_update(client_dtc_update, dtc_update_sub, pool_dtc_update, jwt_dtc_update).await
+    });
+    let dtf_create_handle = tokio::spawn(async move {
+        device_type_config::handle_field_create(client_dtf_create, dtf_create_sub, pool_dtf_create, jwt_dtf_create).await
+    });
+    let dtf_update_handle = tokio::spawn(async move {
+        device_type_config::handle_field_update(client_dtf_update, dtf_update_sub, pool_dtf_update, jwt_dtf_update).await
+    });
+    let dtf_set_active_handle = tokio::spawn(async move {
+        device_type_config::handle_field_set_active(client_dtf_set_active, dtf_set_active_sub, pool_dtf_set_active, jwt_dtf_set_active).await
+    });
+    let dtf_reorder_handle = tokio::spawn(async move {
+        device_type_config::handle_field_reorder(client_dtf_reorder, dtf_reorder_sub, pool_dtf_reorder, jwt_dtf_reorder).await
+    });
+
     // Revision handlers
     let revision_create_handle = tokio::spawn(async move {
         revision::handle_create(client_revision_create, revision_create_sub, pool_revision_create, jwt_secret_revision_create).await
@@ -1562,6 +1611,13 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         job_history_handle.boxed(),
         job_cancel_handle.boxed(),
         job_retry_handle.boxed(),
+        dtc_list_handle.boxed(),
+        dtc_get_handle.boxed(),
+        dtc_update_handle.boxed(),
+        dtf_create_handle.boxed(),
+        dtf_update_handle.boxed(),
+        dtf_set_active_handle.boxed(),
+        dtf_reorder_handle.boxed(),
     ];
 
     let (result, _index, _remaining) = futures::future::select_all(handles).await;
