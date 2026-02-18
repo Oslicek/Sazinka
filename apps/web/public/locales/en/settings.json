@@ -62,6 +62,7 @@
   "business_street": "Street and No.",
   "business_city": "City",
   "business_postal_code": "Postal Code",
+  "business_country": "Country",
   "business_language": "Company Language",
   "business_language_hint": "Language used for emails and external communication with customers.",
   "business_language_en": "English",

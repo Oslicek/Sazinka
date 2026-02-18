@@ -9,6 +9,7 @@ export default defineConfig({
     alias: {
       '@': resolve(__dirname, './src'),
       '@shared': resolve(__dirname, '../../packages/shared-types/src'),
+      '@sazinka/countries': resolve(__dirname, '../../packages/countries/src/index.ts'),
     },
   },
   server: {

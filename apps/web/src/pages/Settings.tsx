@@ -27,6 +27,7 @@ import { RolesManager } from '../components/settings/RolesManager';
 import { DangerZoneSection } from '../components/settings/DeleteAccountDialog';
 import { DeviceTypeConfigManager } from '../components/settings/DeviceTypeConfigManager';
 import { TimeInput } from '../components/common';
+import { CountrySelect } from '../components/common/CountrySelect';
 import styles from './Settings.module.css';
 
 type SettingsTab = 'preferences' | 'work' | 'business' | 'email' | 'breaks' | 'depots' | 'crews' | 'workers' | 'import-export' | 'roles' | 'devices';
@@ -785,6 +786,7 @@ function BusinessInfoForm({ data, saving, onSave }: BusinessInfoFormProps) {
     street: data.street || '',
     city: data.city || '',
     postalCode: data.postalCode || '',
+    country: data.country || null as string | null,
     companyLocale: data.companyLocale || 'cs',
   });
 
@@ -911,6 +913,15 @@ function BusinessInfoForm({ data, saving, onSave }: BusinessInfoFormProps) {
               onChange={(e) => setFormData({ ...formData, postalCode: e.target.value })}
             />
           </div>
+        </div>
+
+        <div className={styles.formGroup}>
+          <label>{t('business_country')}</label>
+          <CountrySelect
+            value={formData.country}
+            onChange={(code) => setFormData({ ...formData, country: code })}
+            clearable
+          />
         </div>
       </div>
 

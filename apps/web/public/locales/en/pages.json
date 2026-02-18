@@ -197,6 +197,10 @@
   "callqueue_geocode_warning_short": "⚠️ Address cannot be geolocated",
 
   "admin_title": "System Administration",
+  "country_select_placeholder": "Select country...",
+  "country_select_search": "Search country...",
+  "country_select_clear": "Clear selection",
+  "country_select_empty": "No results",
   "countries_title": "Countries Management",
   "countries_load_btn": "Load Countries",
   "countries_loading": "Loading...",

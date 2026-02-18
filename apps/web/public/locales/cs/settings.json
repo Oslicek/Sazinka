@@ -62,6 +62,7 @@
   "business_street": "Ulice a č.p.",
   "business_city": "Město",
   "business_postal_code": "PSČ",
+  "business_country": "Země",
   "business_language": "Jazyk firmy",
   "business_language_hint": "Jazyk používaný pro e-maily a externí komunikaci se zákazníky.",
   "business_language_en": "Angličtina",

@@ -105,6 +105,9 @@ importers:
       '@dnd-kit/utilities':
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.3)
+      '@sazinka/countries':
+        specifier: workspace:^
+        version: link:../../packages/countries
       '@tanstack/react-query':
         specifier: ^5.62.0
         version: 5.90.20(react@19.2.3)

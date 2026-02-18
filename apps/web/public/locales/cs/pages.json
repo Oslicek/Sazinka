@@ -197,6 +197,10 @@
   "callqueue_geocode_warning_short": "⚠️ Adresu nelze geolokovat",
 
   "admin_title": "Administrace systému",
+  "country_select_placeholder": "Vyberte zemi...",
+  "country_select_search": "Hledat zemi...",
+  "country_select_clear": "Vymazat výběr",
+  "country_select_empty": "Žádné výsledky",
   "countries_title": "Správa zemí",
   "countries_load_btn": "Načíst země",
   "countries_loading": "Načítám...",

@@ -212,7 +212,7 @@ Postup:
 8. **IMPL**: Výsledek syncu (success banner s počty)
 9. **IMPL**: Search input nad tabulkou (filtruje client-side)
 
-### Fáze 6 — Settings dropdown: výběr země tenantu
+### Fáze 6 — Settings dropdown: výběr země tenantu ✅ Dokončeno
 
 **Odhadovaný čas: 1.5 hod**
 
