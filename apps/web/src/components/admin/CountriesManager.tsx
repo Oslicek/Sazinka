@@ -190,14 +190,12 @@ export function CountriesManager() {
                       <input
                         type="text"
                         className={styles.regionInput}
-                        value={c.valhallaRegion ?? ''}
+                        defaultValue={c.valhallaRegion ?? ''}
                         placeholder="e.g. europe"
                         onBlur={(e) => {
                           const val = e.target.value.trim() || null;
                           if (val !== c.valhallaRegion) handleUpdateCountry(c.code, { valhallaRegion: val });
                         }}
-                        onChange={() => {}}
-                        defaultValue={c.valhallaRegion ?? ''}
                       />
                     </td>
                     <td>

@@ -181,7 +181,7 @@ Postup:
 5. **IMPL**: Styly — převzít z `Settings.module.css` pattern (`.sidebar`, `.sidebarItem`, `.sidebarItemActive`, `.contentArea`)
 6. **IMPL**: Překlady — `admin_tab_services`, `admin_tab_database`, `admin_tab_countries`, `admin_tab_export`, `admin_tab_import`, `admin_tab_logs`
 
-### Fáze 5 — Admin Countries sekce (UI)
+### Fáze 5 — Admin Countries sekce (UI) ✅ Dokončeno
 
 **Odhadovaný čas: 2.5 hod**
 
