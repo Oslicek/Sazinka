@@ -16,7 +16,11 @@ use sqlx::PgPool;
 use tracing::{info, error, warn};
 
 use crate::auth;
-use crate::types::{Request, SuccessResponse, ErrorResponse};
+use crate::db::queries::country as country_queries;
+use crate::types::{
+    Request, SuccessResponse, ErrorResponse,
+    CountryListResponse, UpdateCountryRequest, CountryJsonEntry,
+};
 
 // ==========================================================================
 // Request/Response Types
@@ -214,6 +218,43 @@ pub async fn start_admin_handlers(
     tokio::spawn(async move {
         if let Err(e) = handle_geocode_status(client7, pool3, jwt_secret7).await {
             error!("Geocode status handler error: {}", e);
+        }
+    });
+
+    // Country handlers
+    let client_countries_list = client.clone();
+    let pool_countries_list = pool.clone();
+    let jwt_countries_list = Arc::clone(&jwt_secret);
+    tokio::spawn(async move {
+        if let Err(e) = handle_admin_countries_list(client_countries_list, pool_countries_list, jwt_countries_list).await {
+            error!("Admin countries list handler error: {}", e);
+        }
+    });
+
+    let client_countries_sync = client.clone();
+    let pool_countries_sync = pool.clone();
+    let jwt_countries_sync = Arc::clone(&jwt_secret);
+    tokio::spawn(async move {
+        if let Err(e) = handle_admin_countries_sync(client_countries_sync, pool_countries_sync, jwt_countries_sync).await {
+            error!("Admin countries sync handler error: {}", e);
+        }
+    });
+
+    let client_countries_update = client.clone();
+    let pool_countries_update = pool.clone();
+    let jwt_countries_update = Arc::clone(&jwt_secret);
+    tokio::spawn(async move {
+        if let Err(e) = handle_admin_countries_update(client_countries_update, pool_countries_update, jwt_countries_update).await {
+            error!("Admin countries update handler error: {}", e);
+        }
+    });
+
+    let client_countries_public = client.clone();
+    let pool_countries_public = pool.clone();
+    let jwt_countries_public = Arc::clone(&jwt_secret);
+    tokio::spawn(async move {
+        if let Err(e) = handle_countries_list(client_countries_public, pool_countries_public, jwt_countries_public).await {
+            error!("Countries list handler error: {}", e);
         }
     });
 
@@ -985,4 +1026,239 @@ fn extract_request_id(payload: &[u8]) -> uuid::Uuid {
         }
     }
     uuid::Uuid::new_v4()
+}
+
+// ==========================================================================
+// Country handlers
+// ==========================================================================
+
+/// Embedded canonical country list from packages/countries/countries.json.
+/// Compiled into the binary — no file I/O at runtime.
+const COUNTRIES_JSON: &str = include_str!("../../../packages/countries/countries.json");
+
+/// `sazinka.admin.countries.list` — admin only, returns all countries
+async fn handle_admin_countries_list(
+    client: Client,
+    pool: PgPool,
+    jwt_secret: Arc<String>,
+) -> Result<()> {
+    let mut sub = client.subscribe("sazinka.admin.countries.list").await?;
+
+    while let Some(msg) = sub.next().await {
+        let reply = match msg.reply {
+            Some(r) => r,
+            None => continue,
+        };
+
+        let request: Request<serde_json::Value> = match serde_json::from_slice(&msg.payload) {
+            Ok(r) => r,
+            Err(e) => {
+                let id = extract_request_id(&msg.payload);
+                let err = ErrorResponse::new(id, "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+                continue;
+            }
+        };
+
+        let auth_info = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info,
+            Err(_) => {
+                let err = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+                continue;
+            }
+        };
+
+        if auth_info.role != "admin" {
+            let err = ErrorResponse::new(request.id, "FORBIDDEN", "Admin access required");
+            let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+            continue;
+        }
+
+        match country_queries::list_countries(&pool, true).await {
+            Ok(items) => {
+                let resp = SuccessResponse::new(request.id, CountryListResponse { items });
+                let _ = client.publish(reply, serde_json::to_vec(&resp)?.into()).await;
+            }
+            Err(e) => {
+                error!("Failed to list countries (admin): {}", e);
+                let err = ErrorResponse::new(request.id, "DB_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// `sazinka.admin.countries.sync` — admin only, UPSERT from embedded JSON
+async fn handle_admin_countries_sync(
+    client: Client,
+    pool: PgPool,
+    jwt_secret: Arc<String>,
+) -> Result<()> {
+    let mut sub = client.subscribe("sazinka.admin.countries.sync").await?;
+
+    while let Some(msg) = sub.next().await {
+        let reply = match msg.reply {
+            Some(r) => r,
+            None => continue,
+        };
+
+        let request: Request<serde_json::Value> = match serde_json::from_slice(&msg.payload) {
+            Ok(r) => r,
+            Err(e) => {
+                let id = extract_request_id(&msg.payload);
+                let err = ErrorResponse::new(id, "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+                continue;
+            }
+        };
+
+        let auth_info = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info,
+            Err(_) => {
+                let err = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+                continue;
+            }
+        };
+
+        if auth_info.role != "admin" {
+            let err = ErrorResponse::new(request.id, "FORBIDDEN", "Admin access required");
+            let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+            continue;
+        }
+
+        // Parse embedded JSON at request time (not at startup)
+        let entries: Vec<CountryJsonEntry> = match serde_json::from_str(COUNTRIES_JSON) {
+            Ok(e) => e,
+            Err(e) => {
+                error!("Failed to parse embedded countries.json: {}", e);
+                let err = ErrorResponse::new(request.id, "INTERNAL_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+                continue;
+            }
+        };
+
+        match country_queries::sync_countries(&pool, &entries).await {
+            Ok(result) => {
+                info!("Countries sync: synced={}, added={}, updated={}", result.synced, result.added, result.updated);
+                let resp = SuccessResponse::new(request.id, result);
+                let _ = client.publish(reply, serde_json::to_vec(&resp)?.into()).await;
+            }
+            Err(e) => {
+                error!("Failed to sync countries: {}", e);
+                let err = ErrorResponse::new(request.id, "DB_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// `sazinka.admin.countries.update` — admin only, update operational columns
+async fn handle_admin_countries_update(
+    client: Client,
+    pool: PgPool,
+    jwt_secret: Arc<String>,
+) -> Result<()> {
+    let mut sub = client.subscribe("sazinka.admin.countries.update").await?;
+
+    while let Some(msg) = sub.next().await {
+        let reply = match msg.reply {
+            Some(r) => r,
+            None => continue,
+        };
+
+        let request: Request<UpdateCountryRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(r) => r,
+            Err(e) => {
+                let id = extract_request_id(&msg.payload);
+                let err = ErrorResponse::new(id, "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+                continue;
+            }
+        };
+
+        let auth_info = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info,
+            Err(_) => {
+                let err = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+                continue;
+            }
+        };
+
+        if auth_info.role != "admin" {
+            let err = ErrorResponse::new(request.id, "FORBIDDEN", "Admin access required");
+            let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+            continue;
+        }
+
+        match country_queries::update_country(&pool, &request.payload).await {
+            Ok(Some(country)) => {
+                let resp = SuccessResponse::new(request.id, country);
+                let _ = client.publish(reply, serde_json::to_vec(&resp)?.into()).await;
+            }
+            Ok(None) => {
+                let err = ErrorResponse::new(request.id, "NOT_FOUND", "Country not found");
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+            }
+            Err(e) => {
+                error!("Failed to update country: {}", e);
+                let err = ErrorResponse::new(request.id, "DB_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// `sazinka.countries.list` — authenticated users, returns only `is_supported = true` countries
+async fn handle_countries_list(
+    client: Client,
+    pool: PgPool,
+    jwt_secret: Arc<String>,
+) -> Result<()> {
+    let mut sub = client.subscribe("sazinka.countries.list").await?;
+
+    while let Some(msg) = sub.next().await {
+        let reply = match msg.reply {
+            Some(r) => r,
+            None => continue,
+        };
+
+        let request: Request<serde_json::Value> = match serde_json::from_slice(&msg.payload) {
+            Ok(r) => r,
+            Err(e) => {
+                let id = extract_request_id(&msg.payload);
+                let err = ErrorResponse::new(id, "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+                continue;
+            }
+        };
+
+        if let Err(_) = auth::extract_auth(&request, &jwt_secret) {
+            let err = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+            let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+            continue;
+        }
+
+        match country_queries::list_countries(&pool, false).await {
+            Ok(items) => {
+                let resp = SuccessResponse::new(request.id, CountryListResponse { items });
+                let _ = client.publish(reply, serde_json::to_vec(&resp)?.into()).await;
+            }
+            Err(e) => {
+                error!("Failed to list supported countries: {}", e);
+                let err = ErrorResponse::new(request.id, "DB_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+            }
+        }
+    }
+
+    Ok(())
 }

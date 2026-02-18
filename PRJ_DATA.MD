@@ -294,7 +294,7 @@ Postup:
 |---|---|
 | 1 — packages/countries | ✅ Dokončeno |
 | 2 — DB migrace + Rust typy | ✅ Dokončeno |
-| 3 — Rust queries + handlers | ⬜ Nezapočato |
+| 3 — Rust queries + handlers | ✅ Dokončeno |
 | 4 — Admin page redesign | ⬜ Nezapočato |
 | 5 — Admin Countries sekce | ⬜ Nezapočato |
 | 6 — Settings country dropdown | ⬜ Nezapočato |

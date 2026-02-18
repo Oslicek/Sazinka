@@ -1,6 +1,7 @@
 //! Database queries
 
 pub mod communication;
+pub mod country;
 pub mod customer;
 pub mod device;
 pub mod device_type_config;
