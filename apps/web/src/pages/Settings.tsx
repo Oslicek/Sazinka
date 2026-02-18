@@ -25,10 +25,11 @@ import { ImportCustomersModal } from '../components/customers/ImportCustomersMod
 import { ExportPlusPanel } from '../components/shared/ExportPlusPanel';
 import { RolesManager } from '../components/settings/RolesManager';
 import { DangerZoneSection } from '../components/settings/DeleteAccountDialog';
+import { DeviceTypeConfigManager } from '../components/settings/DeviceTypeConfigManager';
 import { TimeInput } from '../components/common';
 import styles from './Settings.module.css';
 
-type SettingsTab = 'preferences' | 'work' | 'business' | 'email' | 'breaks' | 'depots' | 'crews' | 'workers' | 'import-export' | 'roles';
+type SettingsTab = 'preferences' | 'work' | 'business' | 'email' | 'breaks' | 'depots' | 'crews' | 'workers' | 'import-export' | 'roles' | 'devices';
 
 const DEFAULT_BREAK_SETTINGS: BreakSettings = {
   breakEnabled: true,
@@ -146,6 +147,7 @@ export function Settings() {
     { id: 'depots', label: t('tab_depots'), permission: 'settings:depots' },
     { id: 'email', label: t('tab_email'), permission: 'settings:email' },
     { id: 'business', label: t('tab_business'), permission: 'settings:business' },
+    { id: 'devices', label: t('tab_devices'), permission: 'settings:devices' },
     { id: 'import-export', label: t('tab_import_export'), permission: 'settings:import-export' },
   ];
 
@@ -376,6 +378,10 @@ export function Settings() {
               await loadSettings();
             }}
           />
+        )}
+
+        {activeTab === 'devices' && (
+          <DeviceTypeConfigManager />
         )}
 
         {activeTab === 'import-export' && (

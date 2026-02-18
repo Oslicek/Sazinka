@@ -1,0 +1,510 @@
+.manager {
+  /* inherits from Settings contentArea */
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.sectionTitle {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.sectionDescription {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  margin-bottom: 1.5rem;
+}
+
+.toggleInactive {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.loading {
+  padding: 2rem;
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.error {
+  padding: 0.75rem 1rem;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid var(--color-danger, #ef4444);
+  border-radius: var(--radius-md);
+  color: var(--color-danger, #ef4444);
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.retryBtn {
+  background: none;
+  border: none;
+  color: var(--color-danger, #ef4444);
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 0.875rem;
+  padding: 0;
+}
+
+.configList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* ── Card ── */
+
+.card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.cardInactive {
+  opacity: 0.65;
+  border-color: var(--color-border);
+}
+
+.cardHeader {
+  padding: 0.875rem 1rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.cardTitleRow {
+  flex: 1;
+  min-width: 0;
+}
+
+.expandBtn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+  width: 100%;
+}
+
+.expandArrow {
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  width: 1rem;
+  flex-shrink: 0;
+}
+
+.configLabel {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--color-text);
+}
+
+.configKey {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  font-family: monospace;
+  background: var(--color-bg-secondary, rgba(0, 0, 0, 0.04));
+  padding: 0.1rem 0.35rem;
+  border-radius: var(--radius-sm);
+}
+
+.inactiveBadge,
+.fieldInactiveBadge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-secondary, rgba(0, 0, 0, 0.07));
+  padding: 0.15rem 0.4rem;
+  border-radius: var(--radius-sm);
+}
+
+.cardMeta {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding-top: 0.15rem;
+}
+
+.metaItem {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+.cardActions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  flex-shrink: 0;
+}
+
+/* ── Buttons ── */
+
+.editMetaBtn,
+.editFieldBtn {
+  padding: 0.3rem 0.65rem;
+  font-size: 0.8rem;
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  transition: all 0.15s;
+}
+
+.editMetaBtn:hover,
+.editFieldBtn:hover {
+  background: var(--color-bg-secondary, rgba(0, 0, 0, 0.05));
+  color: var(--color-text);
+}
+
+.deactivateBtn {
+  padding: 0.3rem 0.65rem;
+  font-size: 0.8rem;
+  background: none;
+  border: 1px solid var(--color-danger, #ef4444);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--color-danger, #ef4444);
+  transition: all 0.15s;
+}
+
+.deactivateBtn:hover {
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.activateBtn {
+  padding: 0.3rem 0.65rem;
+  font-size: 0.8rem;
+  background: none;
+  border: 1px solid var(--color-success, #16a34a);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--color-success, #16a34a);
+  transition: all 0.15s;
+}
+
+.activateBtn:hover {
+  background: rgba(22, 163, 74, 0.08);
+}
+
+.cancelBtn {
+  padding: 0.45rem 1rem;
+  font-size: 0.875rem;
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  transition: all 0.15s;
+}
+
+.cancelBtn:hover {
+  background: var(--color-bg-secondary, rgba(0, 0, 0, 0.05));
+  color: var(--color-text);
+}
+
+/* ── Meta edit panel ── */
+
+.metaEditPanel {
+  padding: 1rem;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg-secondary, rgba(0, 0, 0, 0.02));
+}
+
+/* ── Fields section ── */
+
+.fieldsSection {
+  border-top: 1px solid var(--color-border);
+}
+
+.fieldsSectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: var(--color-bg-secondary, rgba(0, 0, 0, 0.02));
+}
+
+.fieldsSectionTitle {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.addFieldBtn {
+  font-size: 0.8rem;
+  padding: 0.3rem 0.7rem;
+  background: none;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--color-text-secondary);
+}
+
+.addFieldBtn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.emptyFields {
+  padding: 1rem;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+.emptyState {
+  padding: 2rem;
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+/* ── Field row ── */
+
+.fieldRow {
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.6rem 1rem;
+}
+
+.fieldRow:last-child {
+  border-bottom: none;
+}
+
+.fieldInactive {
+  opacity: 0.55;
+}
+
+.fieldHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.fieldInfo {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.fieldLabel {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.fieldMeta {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.fieldActions {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.orderBtn {
+  padding: 0.25rem 0.4rem;
+  font-size: 0.75rem;
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  line-height: 1;
+}
+
+.orderBtn:hover:not(:disabled) {
+  background: var(--color-bg-secondary, rgba(0, 0, 0, 0.05));
+}
+
+.orderBtn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* ── Field edit panel ── */
+
+.fieldEditPanel {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: var(--color-bg-secondary, rgba(0, 0, 0, 0.02));
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+/* ── Add field form ── */
+
+.addFieldForm {
+  margin: 0.75rem 1rem;
+  padding: 0.75rem;
+  background: var(--color-bg-secondary, rgba(0, 0, 0, 0.02));
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--color-border);
+}
+
+.addFieldTitle {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 0 0 0.75rem 0;
+}
+
+/* ── Form rows ── */
+
+.formRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.6rem;
+}
+
+.label {
+  min-width: 9rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.input {
+  flex: 1;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.inputNumber {
+  width: 5rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.inputSmall {
+  width: 8rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.select {
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.unitSuffix {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+.editActions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+/* ── Select options ── */
+
+.optionsSection {
+  margin-top: 0.5rem;
+}
+
+.optionsSectionLabel {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: 0.4rem;
+}
+
+.optionRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+  font-size: 0.8rem;
+}
+
+.optionKey {
+  font-family: monospace;
+  color: var(--color-text-secondary);
+  min-width: 8rem;
+}
+
+.optionLabel {
+  flex: 1;
+  color: var(--color-text);
+}
+
+.deprecated {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+.deprecateBtn {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.4rem;
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--color-text-secondary);
+}
+
+.addOptionRow {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.addOptionBtn {
+  font-size: 0.8rem;
+  padding: 0.3rem 0.6rem;
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--color-text-secondary);
+}
+
+.addOptionBtn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}

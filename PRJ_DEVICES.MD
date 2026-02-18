@@ -548,9 +548,18 @@ Poslední aktualizace: 2026-02-17
 
 ---
 
-### Fáze 4 — Nezapočato
+### Fáze 4 ✅
 
-Settings UI — tab Zařízení.
+- `apps/web/src/components/settings/DeviceTypeConfigManager.tsx` — kompletní UI manager:
+  - seznam typů s expand/collapse, toggle active/inactive, editace labelu + duration + interval
+  - správa polí: přidání, editace, deaktivace/reaktivace, přeřazení (↑↓)
+  - správa selectOptions: přidání volby, toggle deprecated
+  - `AddFieldForm` + `FieldRow` + `DeviceTypeCard` jako sub-komponenty
+- `apps/web/src/components/settings/DeviceTypeConfigManager.module.css` — styly
+- `apps/web/src/components/settings/DeviceTypeConfigManager.test.tsx` — **18/18 testů prošlo**
+- `apps/web/src/pages/Settings.tsx` — nový tab `devices` s podmíněným renderem
+- `packages/shared-types/src/auth.ts` — nové oprávnění `settings:devices`
+- `apps/web/public/locales/{cs,en,sk}/settings.json` — překlady tab + všechny `dt_*` klíče
 
 ### Fáze 5 — Nezapočato
 

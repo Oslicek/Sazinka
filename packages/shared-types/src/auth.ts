@@ -85,6 +85,7 @@ export const SETTINGS_PERMISSIONS = [
   { key: 'settings:workers', labelKey: 'settings:perm_settings_workers' },
   { key: 'settings:import-export', labelKey: 'settings:perm_settings_import_export' },
   { key: 'settings:roles', labelKey: 'settings:perm_settings_roles' },
+  { key: 'settings:devices', labelKey: 'settings:perm_settings_devices' },
 ] as const;
 
 export const ALL_PERMISSIONS = [
