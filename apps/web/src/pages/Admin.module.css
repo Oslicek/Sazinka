@@ -4,6 +4,60 @@
   margin: 0 auto;
 }
 
+/* ── Sidebar layout (mirrors Settings.module.css) ── */
+.adminLayout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  background: var(--color-bg, #fff);
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: var(--radius-lg, 10px);
+  padding: 0.5rem;
+  position: sticky;
+  top: 1rem;
+}
+
+.sidebarItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.625rem 0.875rem;
+  background: none;
+  border: none;
+  border-radius: var(--radius-md, 6px);
+  color: var(--color-text-secondary, #6b7280);
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.sidebarItem:hover {
+  background: var(--color-bg-secondary, rgba(0, 0, 0, 0.04));
+  color: var(--color-text, #111827);
+}
+
+.sidebarItemActive {
+  background: rgba(37, 99, 235, 0.08);
+  color: var(--color-primary, #2563eb);
+  font-weight: 600;
+}
+
+.sidebarItemActive:hover {
+  background: rgba(37, 99, 235, 0.12);
+}
+
+.contentArea {
+  min-width: 0;
+}
+
 .header {
   display: flex;
   justify-content: space-between;

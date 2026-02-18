@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from '@tanstack/react-router';
-import i18n from '@/i18n';
 import { useNatsStore } from '../stores/natsStore';
 import { createRequest } from '@shared/messages';
 import { getToken } from '@/utils/auth';
@@ -9,21 +8,21 @@ import { importCustomersBatch, submitGeocodeAllPending } from '../services/custo
 import { ImportModal, type ImportEntityType } from '../components/import';
 import { ImportCustomersModal } from '../components/customers/ImportCustomersModal';
 import { ExportPlusPanel } from '../components/shared/ExportPlusPanel';
+import { CountriesManager } from '../components/admin/CountriesManager';
 import { useActiveJobsStore, type ActiveJob } from '../stores/activeJobsStore';
 import { logger } from '../utils/logger';
 import { formatTime, formatNumber } from '../i18n/formatters';
 import styles from './Admin.module.css';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type AdminTab = 'services' | 'database' | 'countries' | 'export' | 'import' | 'logs';
 
 interface ServiceStatus {
   name: string;
   status: 'running' | 'stopped' | 'starting' | 'error' | 'unknown';
   details?: string;
   lastCheck?: string;
-}
-
-interface HealthCheckResult {
-  services: ServiceStatus[];
-  timestamp: string;
 }
 
 interface DatabaseInfo {
@@ -42,41 +41,24 @@ interface LogEntry {
 
 type ApiEnvelope<T> = { payload?: T };
 
-interface PingResponse {
-  timestamp?: number;
-}
-
+interface PingResponse { timestamp?: number }
 interface AdminDbStatus {
   connected: boolean;
-  sizeHuman?: string;
-  size_human?: string;
-  sizeBytes?: number;
-  size_bytes?: number;
+  sizeHuman?: string; size_human?: string;
+  sizeBytes?: number; size_bytes?: number;
   tables?: { name: string; rows: number; size: string }[];
 }
-
-interface AdminServiceAvailability {
-  available: boolean;
-  url?: string;
-  version?: string;
-}
-
+interface AdminServiceAvailability { available: boolean; url?: string; version?: string }
 interface AdminJetStreamStatus {
   available: boolean;
   streams?: { messages?: number }[];
   consumers?: { pending?: number }[];
 }
-
 interface AdminGeocodeStatus {
   available: boolean;
-  pendingCustomers?: number;
-  failedCustomers?: number;
-  streamMessages?: number;
+  pendingCustomers?: number; failedCustomers?: number; streamMessages?: number;
 }
-
-interface AdminLogsResponse {
-  logs?: LogEntry[];
-}
+interface AdminLogsResponse { logs?: LogEntry[] }
 
 const unwrapPayload = <T,>(response: ApiEnvelope<T> | T): T => {
   if (typeof response === 'object' && response !== null && 'payload' in response) {
@@ -86,10 +68,22 @@ const unwrapPayload = <T,>(response: ApiEnvelope<T> | T): T => {
   return response as T;
 };
 
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export function Admin() {
   const { t } = useTranslation('pages');
   const { t: tJobs } = useTranslation('jobs');
   const { request, isConnected: connected } = useNatsStore();
+
+  const [activeTab, setActiveTab] = useState<AdminTab>(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.replace(/^#/, '') as AdminTab;
+      const valid: AdminTab[] = ['services', 'database', 'countries', 'export', 'import', 'logs'];
+      if (valid.includes(hash)) return hash;
+    }
+    return 'services';
+  });
+
   const [services, setServices] = useState<ServiceStatus[]>([
     { name: 'NATS', status: 'unknown' },
     { name: 'PostgreSQL', status: 'unknown' },
@@ -98,7 +92,7 @@ export function Admin() {
     { name: 'JetStream', status: 'unknown' },
     { name: 'Geocoding', status: 'unknown' },
     { name: 'Worker', status: 'unknown' },
-    { name: 'Frontend', status: 'running' }, // Always running if we see this
+    { name: 'Frontend', status: 'running' },
   ]);
   const [dbInfo, setDbInfo] = useState<DatabaseInfo | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -107,13 +101,12 @@ export function Admin() {
   const [isResettingDb, setIsResettingDb] = useState(false);
   const [logFilter, setLogFilter] = useState<string>('all');
   const [autoRefresh, setAutoRefresh] = useState(false);
-  
-  // Import state
+
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importEntityType, setImportEntityType] = useState<ImportEntityType>('device');
   const [showCustomerImport, setShowCustomerImport] = useState(false);
+  const [isSubmittingGeocode, setIsSubmittingGeocode] = useState(false);
 
-  // Running import/export jobs from global store
   const allJobs = useActiveJobsStore((s) => s.jobs);
   const { runningImportJobs, runningExportJobs } = useMemo(() => {
     const imports: ActiveJob[] = [];
@@ -125,42 +118,28 @@ export function Admin() {
     }
     return { runningImportJobs: imports, runningExportJobs: exports };
   }, [allJobs]);
-  
+
+  const handleTabChange = (tab: AdminTab) => {
+    setActiveTab(tab);
+    if (typeof window !== 'undefined') window.location.hash = tab;
+  };
+
   const handleOpenImport = (entityType: ImportEntityType) => {
     setImportEntityType(entityType);
     setImportModalOpen(true);
   };
-  
-  const handleCloseImport = () => {
-    setImportModalOpen(false);
-  };
-  
-  const handleOpenCustomerImport = () => {
-    setShowCustomerImport(true);
-  };
-  
-  const handleCloseCustomerImport = () => {
-    setShowCustomerImport(false);
-  };
 
-  // Handler for customer import batch - wraps importCustomersBatch with userId
-  const handleCustomerImportBatch = useCallback(async (customers: Parameters<typeof importCustomersBatch>[0]) => {
-    return importCustomersBatch(customers);
-  }, []);
+  const handleCustomerImportBatch = useCallback(
+    async (customers: Parameters<typeof importCustomersBatch>[0]) => importCustomersBatch(customers),
+    []
+  );
 
-  // Geocoding state and handler
-  const [isSubmittingGeocode, setIsSubmittingGeocode] = useState(false);
-  
   const handleTriggerGeocode = useCallback(async () => {
     setIsSubmittingGeocode(true);
     try {
       const result = await submitGeocodeAllPending();
-      if (result) {
-        alert(t('admin_geocode_success', { jobId: result.jobId }));
-      } else {
-        alert(t('admin_geocode_none'));
-      }
-      // Refresh status after submission
+      if (result) alert(t('admin_geocode_success', { jobId: result.jobId }));
+      else alert(t('admin_geocode_none'));
       runHealthCheck();
     } catch (error) {
       alert(t('admin_geocode_error', { error: error instanceof Error ? error.message : String(error) }));
@@ -169,206 +148,85 @@ export function Admin() {
     }
   }, []);
 
-  // Health check function
   const runHealthCheck = useCallback(async () => {
     setIsChecking(true);
     const newServices = [...services];
-    
-    // Check NATS (if we can make requests, NATS is working)
+
     const natsIdx = newServices.findIndex(s => s.name === 'NATS');
     if (natsIdx >= 0) {
-      newServices[natsIdx] = {
-        ...newServices[natsIdx],
-        status: connected ? 'running' : 'error',
-        lastCheck: new Date().toISOString(),
-        details: connected ? 'WebSocket connected' : 'WebSocket disconnected'
-      };
+      newServices[natsIdx] = { ...newServices[natsIdx], status: connected ? 'running' : 'error', lastCheck: new Date().toISOString(), details: connected ? 'WebSocket connected' : 'WebSocket disconnected' };
     }
 
-    // Check Worker via ping
     try {
       const startTime = Date.now();
       await request<{ timestamp: number }, PingResponse>('sazinka.ping', { timestamp: startTime });
       const responseTime = Date.now() - startTime;
       const workerIdx = newServices.findIndex(s => s.name === 'Worker');
-      if (workerIdx >= 0) {
-        newServices[workerIdx] = {
-          ...newServices[workerIdx],
-          status: 'running',
-          lastCheck: new Date().toISOString(),
-          details: `Responded in ${responseTime}ms`
-        };
-      }
+      if (workerIdx >= 0) newServices[workerIdx] = { ...newServices[workerIdx], status: 'running', lastCheck: new Date().toISOString(), details: `Responded in ${responseTime}ms` };
     } catch (e) {
       const workerIdx = newServices.findIndex(s => s.name === 'Worker');
-      if (workerIdx >= 0) {
-        newServices[workerIdx] = {
-          ...newServices[workerIdx],
-          status: 'error',
-          lastCheck: new Date().toISOString(),
-          details: String(e)
-        };
-      }
+      if (workerIdx >= 0) newServices[workerIdx] = { ...newServices[workerIdx], status: 'error', lastCheck: new Date().toISOString(), details: String(e) };
     }
 
-    // Check PostgreSQL via admin endpoint
     try {
       const response = await request<unknown, ApiEnvelope<AdminDbStatus> | AdminDbStatus>('sazinka.admin.db.status', createRequest(getToken(), {}));
       const dbResult = unwrapPayload(response);
       const pgIdx = newServices.findIndex(s => s.name === 'PostgreSQL');
-      if (pgIdx >= 0) {
-        newServices[pgIdx] = {
-          ...newServices[pgIdx],
-          status: dbResult.connected ? 'running' : 'error',
-          lastCheck: new Date().toISOString(),
-          details: dbResult.connected ? `${dbResult.sizeHuman || dbResult.size_human}` : 'Connection failed'
-        };
-      }
-      setDbInfo({
-        size_bytes: dbResult.sizeBytes || dbResult.size_bytes || 0,
-        size_human: dbResult.sizeHuman || dbResult.size_human || 'N/A',
-        tables: dbResult.tables || [],
-        connection_status: dbResult.connected ? 'connected' : 'disconnected'
-      });
+      if (pgIdx >= 0) newServices[pgIdx] = { ...newServices[pgIdx], status: dbResult.connected ? 'running' : 'error', lastCheck: new Date().toISOString(), details: dbResult.connected ? `${dbResult.sizeHuman || dbResult.size_human}` : 'Connection failed' };
+      setDbInfo({ size_bytes: dbResult.sizeBytes || dbResult.size_bytes || 0, size_human: dbResult.sizeHuman || dbResult.size_human || 'N/A', tables: dbResult.tables || [], connection_status: dbResult.connected ? 'connected' : 'disconnected' });
     } catch (e) {
       const pgIdx = newServices.findIndex(s => s.name === 'PostgreSQL');
-      if (pgIdx >= 0) {
-        newServices[pgIdx] = {
-          ...newServices[pgIdx],
-          status: 'error',
-          lastCheck: new Date().toISOString(),
-          details: String(e)
-        };
-      }
+      if (pgIdx >= 0) newServices[pgIdx] = { ...newServices[pgIdx], status: 'error', lastCheck: new Date().toISOString(), details: String(e) };
     }
 
-    // Check Valhalla
     try {
       const response = await request<unknown, ApiEnvelope<AdminServiceAvailability> | AdminServiceAvailability>('sazinka.admin.valhalla.status', createRequest(getToken(), {}));
-      const valhallaResult = unwrapPayload(response);
-      const valhallaIdx = newServices.findIndex(s => s.name === 'Valhalla');
-      if (valhallaIdx >= 0) {
-        newServices[valhallaIdx] = {
-          ...newServices[valhallaIdx],
-          status: valhallaResult.available ? 'running' : 'stopped',
-          lastCheck: new Date().toISOString(),
-          details: valhallaResult.available ? valhallaResult.url : 'Not available'
-        };
-      }
-    } catch (e) {
-      const valhallaIdx = newServices.findIndex(s => s.name === 'Valhalla');
-      if (valhallaIdx >= 0) {
-        newServices[valhallaIdx] = {
-          ...newServices[valhallaIdx],
-          status: 'unknown',
-          lastCheck: new Date().toISOString(),
-          details: 'Could not check'
-        };
-      }
-    }
+      const r = unwrapPayload(response);
+      const idx = newServices.findIndex(s => s.name === 'Valhalla');
+      if (idx >= 0) newServices[idx] = { ...newServices[idx], status: r.available ? 'running' : 'stopped', lastCheck: new Date().toISOString(), details: r.available ? r.url : 'Not available' };
+    } catch { const idx = newServices.findIndex(s => s.name === 'Valhalla'); if (idx >= 0) newServices[idx] = { ...newServices[idx], status: 'unknown', lastCheck: new Date().toISOString(), details: 'Could not check' }; }
 
-    // Check Nominatim
     try {
       const response = await request<unknown, ApiEnvelope<AdminServiceAvailability> | AdminServiceAvailability>('sazinka.admin.nominatim.status', createRequest(getToken(), {}));
-      const nominatimResult = unwrapPayload(response);
-      const nominatimIdx = newServices.findIndex(s => s.name === 'Nominatim');
-      if (nominatimIdx >= 0) {
-        // If URL is configured but not available, it's likely importing/starting
-        const isConfigured = nominatimResult.url && nominatimResult.url !== 'Not configured';
-        const status = nominatimResult.available 
-          ? 'running' 
-          : (isConfigured ? 'starting' : 'stopped');
-        const details = nominatimResult.available 
-          ? `${nominatimResult.url}${nominatimResult.version ? ` v${nominatimResult.version}` : ''}`
-          : (isConfigured ? 'Importing data / starting up...' : 'Not configured');
-        newServices[nominatimIdx] = {
-          ...newServices[nominatimIdx],
-          status,
-          lastCheck: new Date().toISOString(),
-          details
-        };
+      const r = unwrapPayload(response);
+      const idx = newServices.findIndex(s => s.name === 'Nominatim');
+      if (idx >= 0) {
+        const isConfigured = r.url && r.url !== 'Not configured';
+        newServices[idx] = { ...newServices[idx], status: r.available ? 'running' : (isConfigured ? 'starting' : 'stopped'), lastCheck: new Date().toISOString(), details: r.available ? `${r.url}${r.version ? ` v${r.version}` : ''}` : (isConfigured ? 'Importing data / starting up...' : 'Not configured') };
       }
-    } catch (e) {
-      const nominatimIdx = newServices.findIndex(s => s.name === 'Nominatim');
-      if (nominatimIdx >= 0) {
-        newServices[nominatimIdx] = {
-          ...newServices[nominatimIdx],
-          status: 'unknown',
-          lastCheck: new Date().toISOString(),
-          details: 'Could not check'
-        };
-      }
-    }
+    } catch { const idx = newServices.findIndex(s => s.name === 'Nominatim'); if (idx >= 0) newServices[idx] = { ...newServices[idx], status: 'unknown', lastCheck: new Date().toISOString(), details: 'Could not check' }; }
 
-    // Check JetStream
     try {
       const response = await request<unknown, ApiEnvelope<AdminJetStreamStatus> | AdminJetStreamStatus>('sazinka.admin.jetstream.status', createRequest(getToken(), {}));
-      const jsResult = unwrapPayload(response);
-      const jsIdx = newServices.findIndex(s => s.name === 'JetStream');
-      if (jsIdx >= 0) {
-        const streamInfo = jsResult.streams?.[0];
-        const consumerInfo = jsResult.consumers?.[0];
-        let details = jsResult.available ? 'Enabled' : 'Disabled';
-        if (streamInfo) {
-          details = `${streamInfo.messages} msgs, ${consumerInfo?.pending || 0} pending`;
-        }
-        newServices[jsIdx] = {
-          ...newServices[jsIdx],
-          status: jsResult.available ? 'running' : 'stopped',
-          lastCheck: new Date().toISOString(),
-          details
-        };
+      const r = unwrapPayload(response);
+      const idx = newServices.findIndex(s => s.name === 'JetStream');
+      if (idx >= 0) {
+        const streamInfo = r.streams?.[0];
+        const consumerInfo = r.consumers?.[0];
+        const details = streamInfo ? `${streamInfo.messages} msgs, ${consumerInfo?.pending || 0} pending` : (r.available ? 'Enabled' : 'Disabled');
+        newServices[idx] = { ...newServices[idx], status: r.available ? 'running' : 'stopped', lastCheck: new Date().toISOString(), details };
       }
-    } catch (e) {
-      const jsIdx = newServices.findIndex(s => s.name === 'JetStream');
-      if (jsIdx >= 0) {
-        newServices[jsIdx] = {
-          ...newServices[jsIdx],
-          status: 'unknown',
-          lastCheck: new Date().toISOString(),
-          details: 'Could not check'
-        };
-      }
-    }
+    } catch { const idx = newServices.findIndex(s => s.name === 'JetStream'); if (idx >= 0) newServices[idx] = { ...newServices[idx], status: 'unknown', lastCheck: new Date().toISOString(), details: 'Could not check' }; }
 
-    // Check Geocoding status
     try {
       const response = await request<unknown, ApiEnvelope<AdminGeocodeStatus> | AdminGeocodeStatus>('sazinka.admin.geocode.status', createRequest(getToken(), {}));
-      const geocodeResult = unwrapPayload(response);
-      const geocodeIdx = newServices.findIndex(s => s.name === 'Geocoding');
-      if (geocodeIdx >= 0) {
-        const pendingCustomers = geocodeResult.pendingCustomers || 0;
-        const failedCustomers = geocodeResult.failedCustomers || 0;
-        const queuedJobs = geocodeResult.streamMessages || 0;
-        let details = `${pendingCustomers} pending`;
-        if (failedCustomers > 0) {
-          details += `, ${failedCustomers} ${t('admin_failed_count')}`;
-        }
-        details += `, ${queuedJobs} jobs queued`;
-        newServices[geocodeIdx] = {
-          ...newServices[geocodeIdx],
-          status: geocodeResult.available ? 'running' : 'stopped',
-          lastCheck: new Date().toISOString(),
-          details
-        };
+      const r = unwrapPayload(response);
+      const idx = newServices.findIndex(s => s.name === 'Geocoding');
+      if (idx >= 0) {
+        const pending = r.pendingCustomers || 0;
+        const failed = r.failedCustomers || 0;
+        const queued = r.streamMessages || 0;
+        let details = `${pending} pending`;
+        if (failed > 0) details += `, ${failed} ${t('admin_failed_count')}`;
+        details += `, ${queued} jobs queued`;
+        newServices[idx] = { ...newServices[idx], status: r.available ? 'running' : 'stopped', lastCheck: new Date().toISOString(), details };
       }
-    } catch (e) {
-      const geocodeIdx = newServices.findIndex(s => s.name === 'Geocoding');
-      if (geocodeIdx >= 0) {
-        newServices[geocodeIdx] = {
-          ...newServices[geocodeIdx],
-          status: 'unknown',
-          lastCheck: new Date().toISOString(),
-          details: 'Could not check'
-        };
-      }
-    }
+    } catch { const idx = newServices.findIndex(s => s.name === 'Geocoding'); if (idx >= 0) newServices[idx] = { ...newServices[idx], status: 'unknown', lastCheck: new Date().toISOString(), details: 'Could not check' }; }
 
     setServices(newServices);
     setIsChecking(false);
   }, [connected, request, services]);
 
-  // Load logs
   const loadLogs = useCallback(async () => {
     setIsLoadingLogs(true);
     try {
@@ -381,11 +239,8 @@ export function Admin() {
     setIsLoadingLogs(false);
   }, [request, logFilter]);
 
-  // Reset database
   const resetDatabase = async () => {
-    if (!confirm(t('admin_db_confirm_reset'))) {
-      return;
-    }
+    if (!confirm(t('admin_db_confirm_reset'))) return;
     setIsResettingDb(true);
     try {
       await request('sazinka.admin.db.reset', createRequest(getToken(), {}));
@@ -397,24 +252,27 @@ export function Admin() {
     setIsResettingDb(false);
   };
 
-  // Initial health check
   useEffect(() => {
-    if (connected) {
-      runHealthCheck();
-      loadLogs();
-    }
+    if (connected) { runHealthCheck(); loadLogs(); }
   }, [connected]);
 
-  // Auto-refresh
   useEffect(() => {
     if (autoRefresh && connected) {
-      const interval = setInterval(() => {
-        runHealthCheck();
-        loadLogs();
-      }, 5000);
+      const interval = setInterval(() => { runHealthCheck(); loadLogs(); }, 5000);
       return () => clearInterval(interval);
     }
   }, [autoRefresh, connected, runHealthCheck, loadLogs]);
+
+  // Hash sync on mount
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace(/^#/, '') as AdminTab;
+      const valid: AdminTab[] = ['services', 'database', 'countries', 'export', 'import', 'logs'];
+      if (valid.includes(hash)) setActiveTab(hash);
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
   const getStatusColor = (status: ServiceStatus['status']) => {
     switch (status) {
@@ -436,13 +294,14 @@ export function Admin() {
     }
   };
 
-  const formatBytes = (bytes: number) => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
+  const tabs: { id: AdminTab; label: string }[] = [
+    { id: 'services',  label: t('admin_tab_services') },
+    { id: 'database',  label: t('admin_tab_database') },
+    { id: 'countries', label: t('admin_tab_countries') },
+    { id: 'export',    label: t('admin_tab_export') },
+    { id: 'import',    label: t('admin_tab_import') },
+    { id: 'logs',      label: t('admin_tab_logs') },
+  ];
 
   return (
     <div className={styles.container}>
@@ -450,358 +309,237 @@ export function Admin() {
         <h1>{t('admin_title')}</h1>
         <div className={styles.headerActions}>
           <label className={styles.autoRefresh}>
-            <input
-              type="checkbox"
-              checked={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.checked)}
-            />
+            <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} />
             {t('admin_auto_refresh')}
           </label>
         </div>
       </div>
 
-      {/* Services Status Section */}
-      <section className={styles.section}>
-        <div className={styles.sectionHeader}>
-          <h2>{t('admin_services_title')}</h2>
-          <button 
-            type="button"
-            className={styles.primaryButton}
-            onClick={runHealthCheck}
-            disabled={isChecking || !connected}
-          >
-            {isChecking ? t('admin_checking') : t('admin_health_check')}
-          </button>
-        </div>
-
-        <div className={styles.servicesGrid}>
-          {services.map((service) => (
-            <div key={service.name} className={styles.serviceCard}>
-              <div className={styles.serviceHeader}>
-                <span className={`${styles.statusIndicator} ${getStatusColor(service.status)}`}>
-                  {getStatusIcon(service.status)}
-                </span>
-                <span className={styles.serviceName}>{service.name}</span>
-              </div>
-              <div className={styles.serviceDetails}>
-                <span className={styles.serviceStatus}>{service.status}</span>
-                {service.details && (
-                  <span className={styles.serviceInfo}>{service.details}</span>
-                )}
-                {service.lastCheck && (
-                  <span className={styles.lastCheck}>
-                    {t('admin_last_check')} {formatTime(service.lastCheck)}
-                  </span>
-                )}
-              </div>
-              <div className={styles.serviceActions}>
-                {service.name === 'Geocoding' ? (
-                  <button 
-                    className={styles.smallButton}
-                    onClick={handleTriggerGeocode}
-                    disabled={isSubmittingGeocode || !connected}
-                    title={t('admin_geocode_trigger')}
-                  >
-                    {isSubmittingGeocode ? t('admin_geocode_submitting') : t('admin_geocode_run')}
-                  </button>
-                ) : (
-                  <button 
-                    className={styles.smallButton}
-                    disabled={service.name === 'Frontend'}
-                    title={t('admin_restart_title')}
-                  >
-                    {t('admin_restart')}
-                  </button>
-                )}
-              </div>
-            </div>
+      <div className={styles.adminLayout}>
+        {/* Sidebar */}
+        <nav className={styles.sidebar}>
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              className={`${styles.sidebarItem} ${activeTab === tab.id ? styles.sidebarItemActive : ''}`}
+              onClick={() => handleTabChange(tab.id)}
+            >
+              {tab.label}
+            </button>
           ))}
-        </div>
-      </section>
+        </nav>
 
-      {/* Database Section */}
-      <section className={styles.section}>
-        <div className={styles.sectionHeader}>
-          <h2>{t('admin_db_title')}</h2>
-        </div>
+        {/* Content area */}
+        <div className={styles.contentArea}>
 
-        {dbInfo ? (
-          <div className={styles.dbInfo}>
-            <div className={styles.dbStats}>
-              <div className={styles.dbStat}>
-                <span className={styles.dbStatLabel}>{t('admin_db_size')}</span>
-                <span className={styles.dbStatValue}>{dbInfo.size_human}</span>
+          {/* ── Services ── */}
+          {activeTab === 'services' && (
+            <section className={styles.section}>
+              <div className={styles.sectionHeader}>
+                <h2>{t('admin_services_title')}</h2>
+                <button type="button" className={styles.primaryButton} onClick={runHealthCheck} disabled={isChecking || !connected}>
+                  {isChecking ? t('admin_checking') : t('admin_health_check')}
+                </button>
               </div>
-              <div className={styles.dbStat}>
-                <span className={styles.dbStatLabel}>{t('admin_db_status')}</span>
-                <span className={`${styles.dbStatValue} ${dbInfo.connection_status === 'connected' ? styles.textGreen : styles.textRed}`}>
-                  {dbInfo.connection_status === 'connected' ? t('admin_db_connected') : t('admin_db_disconnected')}
-                </span>
+              <div className={styles.servicesGrid}>
+                {services.map((service) => (
+                  <div key={service.name} className={styles.serviceCard}>
+                    <div className={styles.serviceHeader}>
+                      <span className={`${styles.statusIndicator} ${getStatusColor(service.status)}`}>{getStatusIcon(service.status)}</span>
+                      <span className={styles.serviceName}>{service.name}</span>
+                    </div>
+                    <div className={styles.serviceDetails}>
+                      <span className={styles.serviceStatus}>{service.status}</span>
+                      {service.details && <span className={styles.serviceInfo}>{service.details}</span>}
+                      {service.lastCheck && <span className={styles.lastCheck}>{t('admin_last_check')} {formatTime(service.lastCheck)}</span>}
+                    </div>
+                    <div className={styles.serviceActions}>
+                      {service.name === 'Geocoding' ? (
+                        <button className={styles.smallButton} onClick={handleTriggerGeocode} disabled={isSubmittingGeocode || !connected} title={t('admin_geocode_trigger')}>
+                          {isSubmittingGeocode ? t('admin_geocode_submitting') : t('admin_geocode_run')}
+                        </button>
+                      ) : (
+                        <button className={styles.smallButton} disabled={service.name === 'Frontend'} title={t('admin_restart_title')}>
+                          {t('admin_restart')}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
-
-            {dbInfo.tables && dbInfo.tables.length > 0 && (
-              <div className={styles.tablesContainer}>
-                <h3>{t('admin_db_tables')}</h3>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>{t('admin_db_col_name')}</th>
-                      <th>{t('admin_db_col_rows')}</th>
-                      <th>{t('admin_db_col_size')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dbInfo.tables.map((table) => (
-                      <tr key={table.name}>
-                        <td>{table.name}</td>
-                        <td>{formatNumber(table.rows)}</td>
-                        <td>{table.size}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            <div className={styles.dbActions}>
-              <button 
-                type="button"
-                className={styles.dangerButton}
-                onClick={resetDatabase}
-                disabled={isResettingDb}
-              >
-                {isResettingDb ? t('admin_db_resetting') : t('admin_db_reset')}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className={styles.noData}>
-            {t('admin_db_loading')}
-          </div>
-        )}
-      </section>
-
-      {/* Export Section */}
-      <section className={styles.section}>
-        <div className={styles.sectionHeader}>
-          <h2>{t('admin_export_title')}</h2>
-        </div>
-        {runningExportJobs.length > 0 && (
-          <div className={styles.runningJobNotice}>
-            {runningExportJobs.map(job => (
-              <div key={job.id} className={styles.runningJobRow}>
-                <span className={styles.runningJobPulse} />
-                <span>{tJobs('running_job_notice', { name: job.name })}</span>
-                {job.progressText && <span className={styles.runningJobProgress}>{job.progressText}</span>}
-                <Link to="/jobs" className={styles.runningJobLink}>{tJobs('go_to_jobs')} &rarr;</Link>
-              </div>
-            ))}
-          </div>
-        )}
-        <ExportPlusPanel adminMode />
-      </section>
-
-      {/* Import Section */}
-      <section className={styles.section}>
-        <div className={styles.sectionHeader}>
-          <h2>{t('admin_import_title')}</h2>
-        </div>
-        {runningImportJobs.length > 0 && (
-          <div className={styles.runningJobNotice}>
-            {runningImportJobs.map(job => (
-              <div key={job.id} className={styles.runningJobRow}>
-                <span className={styles.runningJobPulse} />
-                <span>{tJobs('running_job_notice', { name: job.name })}</span>
-                {job.progressText && <span className={styles.runningJobProgress}>{job.progressText}</span>}
-                <Link to="/jobs" className={styles.runningJobLink}>{tJobs('go_to_jobs')} &rarr;</Link>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className={styles.exportContainer}>
-          {/* Customers Import */}
-          <div className={styles.exportCard}>
-            <h3>{t('admin_import_customers_title')}</h3>
-            <p className={styles.exportDescription}>
-              {t('admin_import_customers_desc')}
-            </p>
-            <button
-              type="button"
-              className={styles.primaryButton}
-              onClick={handleOpenCustomerImport}
-              disabled={!connected}
-            >
-              {t('admin_import_customers_btn')}
-            </button>
-          </div>
-
-          {/* Devices Import */}
-          <div className={styles.exportCard}>
-            <h3>{t('admin_import_devices_title')}</h3>
-            <p className={styles.exportDescription}>
-              {t('admin_import_devices_desc')}
-            </p>
-            <button
-              type="button"
-              className={styles.primaryButton}
-              onClick={() => handleOpenImport('device')}
-              disabled={!connected}
-            >
-              {t('admin_import_devices_btn')}
-            </button>
-          </div>
-
-          {/* Revisions Import */}
-          <div className={styles.exportCard}>
-            <h3>{t('admin_import_revisions_title')}</h3>
-            <p className={styles.exportDescription}>
-              {t('admin_import_revisions_desc')}
-            </p>
-            <button
-              type="button"
-              className={styles.primaryButton}
-              onClick={() => handleOpenImport('revision')}
-              disabled={!connected}
-            >
-              {t('admin_import_revisions_btn')}
-            </button>
-          </div>
-
-          {/* Communications Import */}
-          <div className={styles.exportCard}>
-            <h3>{t('admin_import_comm_title')}</h3>
-            <p className={styles.exportDescription}>
-              {t('admin_import_comm_desc')}
-            </p>
-            <button
-              type="button"
-              className={styles.primaryButton}
-              onClick={() => handleOpenImport('communication')}
-              disabled={!connected}
-            >
-              {t('admin_import_comm_btn')}
-            </button>
-          </div>
-
-          {/* Visits Import */}
-          <div className={styles.exportCard}>
-            <h3>{t('admin_import_worklog_title')}</h3>
-            <p className={styles.exportDescription}>
-              {t('admin_import_worklog_desc')}
-            </p>
-            <button
-              type="button"
-              className={styles.primaryButton}
-              onClick={() => handleOpenImport('work_log')}
-              disabled={!connected}
-            >
-              {t('admin_import_worklog_btn')}
-            </button>
-          </div>
-
-          {/* ZIP Import */}
-          <div className={styles.exportCard}>
-            <h3>{t('admin_import_zip_title')}</h3>
-            <p className={styles.exportDescription}>
-              {t('admin_import_zip_desc')}
-            </p>
-            <button
-              type="button"
-              className={styles.primaryButton}
-              onClick={() => handleOpenImport('zip')}
-              disabled={!connected}
-            >
-              {t('admin_import_zip_btn')}
-            </button>
-          </div>
-        </div>
-
-        <div className={styles.importHint}>
-          <p>
-            📋 <a href="/PROJECT_IMPORT.MD" target="_blank" rel="noopener noreferrer">
-              {t('admin_import_docs')}
-            </a>
-          </p>
-          <p>
-            {t('admin_import_order_hint')}
-          </p>
-        </div>
-      </section>
-
-      {/* Import Modal */}
-      <ImportModal
-        isOpen={importModalOpen}
-        onClose={handleCloseImport}
-        entityType={importEntityType}
-        onComplete={() => runHealthCheck()}
-      />
-
-      {/* Customer Import Modal */}
-      <ImportCustomersModal
-        isOpen={showCustomerImport}
-        onClose={handleCloseCustomerImport}
-      />
-
-      {/* Logs Section */}
-      <section className={styles.section}>
-        <div className={styles.sectionHeader}>
-          <h2>{t('admin_logs_title')}</h2>
-          <div className={styles.logControls}>
-            <select 
-              value={logFilter} 
-              onChange={(e) => setLogFilter(e.target.value)}
-              className={styles.select}
-            >
-              <option value="all">{t('admin_logs_all')}</option>
-              <option value="error">{t('admin_logs_error')}</option>
-              <option value="warn">{t('admin_logs_warn')}</option>
-              <option value="info">{t('admin_logs_info')}</option>
-              <option value="debug">{t('admin_logs_debug')}</option>
-            </select>
-            <button 
-              type="button"
-              className={styles.secondaryButton}
-              onClick={loadLogs}
-              disabled={isLoadingLogs}
-            >
-              {isLoadingLogs ? t('admin_logs_loading') : t('admin_logs_refresh')}
-            </button>
-          </div>
-        </div>
-
-        <div className={styles.logsContainer}>
-          {logs.length > 0 ? (
-            <div className={styles.logsList}>
-              {logs.map((log, index) => (
-                <div 
-                  key={index} 
-                  className={`${styles.logEntry} ${styles[`log${log.level.charAt(0).toUpperCase() + log.level.slice(1)}`]}`}
-                >
-                  <span className={styles.logTime}>
-                    {formatTime(log.timestamp)}
-                  </span>
-                  <span className={styles.logLevel}>{log.level.toUpperCase()}</span>
-                  {log.target && <span className={styles.logTarget}>{log.target}</span>}
-                  <span className={styles.logMessage}>{log.message}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className={styles.noData}>
-              {isLoadingLogs ? t('admin_logs_loading_text') : t('admin_logs_empty')}
-            </div>
+            </section>
           )}
-        </div>
-      </section>
 
-      {/* Connection Status Banner */}
-      {!connected && (
-        <div className={styles.connectionBanner}>
-          {t('admin_not_connected')}
+          {/* ── Database ── */}
+          {activeTab === 'database' && (
+            <section className={styles.section}>
+              <div className={styles.sectionHeader}>
+                <h2>{t('admin_db_title')}</h2>
+              </div>
+              {dbInfo ? (
+                <div className={styles.dbInfo}>
+                  <div className={styles.dbStats}>
+                    <div className={styles.dbStat}>
+                      <span className={styles.dbStatLabel}>{t('admin_db_size')}</span>
+                      <span className={styles.dbStatValue}>{dbInfo.size_human}</span>
+                    </div>
+                    <div className={styles.dbStat}>
+                      <span className={styles.dbStatLabel}>{t('admin_db_status')}</span>
+                      <span className={`${styles.dbStatValue} ${dbInfo.connection_status === 'connected' ? styles.textGreen : styles.textRed}`}>
+                        {dbInfo.connection_status === 'connected' ? t('admin_db_connected') : t('admin_db_disconnected')}
+                      </span>
+                    </div>
+                  </div>
+                  {dbInfo.tables && dbInfo.tables.length > 0 && (
+                    <div className={styles.tablesContainer}>
+                      <h3>{t('admin_db_tables')}</h3>
+                      <table className={styles.table}>
+                        <thead>
+                          <tr>
+                            <th>{t('admin_db_col_name')}</th>
+                            <th>{t('admin_db_col_rows')}</th>
+                            <th>{t('admin_db_col_size')}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {dbInfo.tables.map((table) => (
+                            <tr key={table.name}>
+                              <td>{table.name}</td>
+                              <td>{formatNumber(table.rows)}</td>
+                              <td>{table.size}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  <div className={styles.dbActions}>
+                    <button type="button" className={styles.dangerButton} onClick={resetDatabase} disabled={isResettingDb}>
+                      {isResettingDb ? t('admin_db_resetting') : t('admin_db_reset')}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className={styles.noData}>{t('admin_db_loading')}</div>
+              )}
+            </section>
+          )}
+
+          {/* ── Countries ── */}
+          {activeTab === 'countries' && (
+            <CountriesManager />
+          )}
+
+          {/* ── Export ── */}
+          {activeTab === 'export' && (
+            <section className={styles.section}>
+              <div className={styles.sectionHeader}>
+                <h2>{t('admin_export_title')}</h2>
+              </div>
+              {runningExportJobs.length > 0 && (
+                <div className={styles.runningJobNotice}>
+                  {runningExportJobs.map(job => (
+                    <div key={job.id} className={styles.runningJobRow}>
+                      <span className={styles.runningJobPulse} />
+                      <span>{tJobs('running_job_notice', { name: job.name })}</span>
+                      {job.progressText && <span className={styles.runningJobProgress}>{job.progressText}</span>}
+                      <Link to="/jobs" className={styles.runningJobLink}>{tJobs('go_to_jobs')} &rarr;</Link>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <ExportPlusPanel adminMode />
+            </section>
+          )}
+
+          {/* ── Import ── */}
+          {activeTab === 'import' && (
+            <section className={styles.section}>
+              <div className={styles.sectionHeader}>
+                <h2>{t('admin_import_title')}</h2>
+              </div>
+              {runningImportJobs.length > 0 && (
+                <div className={styles.runningJobNotice}>
+                  {runningImportJobs.map(job => (
+                    <div key={job.id} className={styles.runningJobRow}>
+                      <span className={styles.runningJobPulse} />
+                      <span>{tJobs('running_job_notice', { name: job.name })}</span>
+                      {job.progressText && <span className={styles.runningJobProgress}>{job.progressText}</span>}
+                      <Link to="/jobs" className={styles.runningJobLink}>{tJobs('go_to_jobs')} &rarr;</Link>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className={styles.exportContainer}>
+                {[
+                  { key: 'customers', handler: () => setShowCustomerImport(true) },
+                  { key: 'devices',   handler: () => handleOpenImport('device') },
+                  { key: 'revisions', handler: () => handleOpenImport('revision') },
+                  { key: 'comm',      handler: () => handleOpenImport('communication') },
+                  { key: 'worklog',   handler: () => handleOpenImport('work_log') },
+                  { key: 'zip',       handler: () => handleOpenImport('zip') },
+                ].map(({ key, handler }) => (
+                  <div key={key} className={styles.exportCard}>
+                    <h3>{t(`admin_import_${key}_title`)}</h3>
+                    <p className={styles.exportDescription}>{t(`admin_import_${key}_desc`)}</p>
+                    <button type="button" className={styles.primaryButton} onClick={handler} disabled={!connected}>
+                      {t(`admin_import_${key}_btn`)}
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className={styles.importHint}>
+                <p>📋 <a href="/PROJECT_IMPORT.MD" target="_blank" rel="noopener noreferrer">{t('admin_import_docs')}</a></p>
+                <p>{t('admin_import_order_hint')}</p>
+              </div>
+            </section>
+          )}
+
+          {/* ── Logs ── */}
+          {activeTab === 'logs' && (
+            <section className={styles.section}>
+              <div className={styles.sectionHeader}>
+                <h2>{t('admin_logs_title')}</h2>
+                <div className={styles.logControls}>
+                  <select value={logFilter} onChange={(e) => setLogFilter(e.target.value)} className={styles.select}>
+                    <option value="all">{t('admin_logs_all')}</option>
+                    <option value="error">{t('admin_logs_error')}</option>
+                    <option value="warn">{t('admin_logs_warn')}</option>
+                    <option value="info">{t('admin_logs_info')}</option>
+                    <option value="debug">{t('admin_logs_debug')}</option>
+                  </select>
+                  <button type="button" className={styles.secondaryButton} onClick={loadLogs} disabled={isLoadingLogs}>
+                    {isLoadingLogs ? t('admin_logs_loading') : t('admin_logs_refresh')}
+                  </button>
+                </div>
+              </div>
+              <div className={styles.logsContainer}>
+                {logs.length > 0 ? (
+                  <div className={styles.logsList}>
+                    {logs.map((log, index) => (
+                      <div key={index} className={`${styles.logEntry} ${styles[`log${log.level.charAt(0).toUpperCase() + log.level.slice(1)}`]}`}>
+                        <span className={styles.logTime}>{formatTime(log.timestamp)}</span>
+                        <span className={styles.logLevel}>{log.level.toUpperCase()}</span>
+                        {log.target && <span className={styles.logTarget}>{log.target}</span>}
+                        <span className={styles.logMessage}>{log.message}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className={styles.noData}>{isLoadingLogs ? t('admin_logs_loading_text') : t('admin_logs_empty')}</div>
+                )}
+              </div>
+            </section>
+          )}
+
         </div>
-      )}
+      </div>
+
+      {/* Modals */}
+      <ImportModal isOpen={importModalOpen} onClose={() => setImportModalOpen(false)} entityType={importEntityType} onComplete={() => runHealthCheck()} />
+      <ImportCustomersModal isOpen={showCustomerImport} onClose={() => setShowCustomerImport(false)} />
+
+      {!connected && <div className={styles.connectionBanner}>{t('admin_not_connected')}</div>}
     </div>
   );
 }

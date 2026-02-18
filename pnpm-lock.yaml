@@ -191,6 +191,15 @@ importers:
         specifier: ^2.1.0
         version: 2.1.9(@types/node@25.0.10)(jsdom@25.0.1)
 
+  packages/countries:
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@25.0.10)(jsdom@25.0.1)(tsx@4.21.0)(yaml@2.8.2)
+
   packages/design-tokens:
     devDependencies:
       tsx:

@@ -160,7 +160,7 @@ Postup:
 - V `country.rs` handler: `const COUNTRIES_JSON: &str = include_str!("../../../packages/countries/countries.json");`
 - Parse při sync requestu, ne při startu
 
-### Fáze 4 — Admin page redesign: sidebar layout
+### Fáze 4 — Admin page redesign: sidebar layout ✅ Dokončeno
 
 **Odhadovaný čas: 2 hod**
 
