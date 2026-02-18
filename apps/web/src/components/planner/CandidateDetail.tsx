@@ -671,7 +671,13 @@ export function CandidateDetail({
         ) : (
           <div className={styles.deviceList}>
             {devices.map((dev) => (
-              <div key={dev.id} className={styles.deviceItem}>
+              <Link
+                key={dev.id}
+                to="/customers/$customerId"
+                params={{ customerId: candidate.customerId }}
+                search={{ tab: 'devices', deviceId: dev.id }}
+                className={styles.deviceItem}
+              >
                 <span className={styles.deviceType}>{t(DEVICE_TYPE_KEYS[dev.deviceType])}</span>
                 {dev.deviceName && <span className={styles.deviceName}>{dev.deviceName}</span>}
                 {dev.nextDueDate && (
@@ -683,7 +689,8 @@ export function CandidateDetail({
                     {formatDate(dev.nextDueDate)}
                   </span>
                 )}
-              </div>
+                <span className={styles.deviceArrow}>→</span>
+              </Link>
             ))}
           </div>
         )}

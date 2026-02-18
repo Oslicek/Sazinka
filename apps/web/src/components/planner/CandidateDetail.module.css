@@ -760,6 +760,22 @@
   border-radius: var(--radius-sm);
   background: var(--color-bg-secondary, #f3f4f6);
   font-size: 0.8rem;
+  text-decoration: none;
+  color: inherit;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+
+.deviceItem:hover {
+  background: var(--color-surface-hover, #e9eaec);
+  box-shadow: inset 0 0 0 1px var(--color-border);
+}
+
+.deviceArrow {
+  margin-left: auto;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  opacity: 0.6;
+  flex-shrink: 0;
 }
 
 .deviceType {
@@ -789,6 +805,9 @@
   color: var(--color-danger, #dc2626);
   white-space: nowrap;
 }
+
+/* When deviceDue/deviceDueOverdue is followed by the arrow, remove its auto-margin
+   so the arrow stays at the far right. Achieved via flex ordering — arrow is last. */
 
 /* ---------- Last visit ---------- */
 

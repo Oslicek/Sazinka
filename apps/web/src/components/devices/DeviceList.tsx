@@ -17,9 +17,11 @@ import styles from './DeviceList.module.css';
 interface DeviceListProps {
   customerId: string;
   onDeviceSelect?: (device: Device) => void;
+  /** When set, this device will be auto-expanded on mount (e.g. when navigating from planner). */
+  initialExpandedDeviceId?: string;
 }
 
-export function DeviceList({ customerId, onDeviceSelect }: DeviceListProps) {
+export function DeviceList({ customerId, onDeviceSelect, initialExpandedDeviceId }: DeviceListProps) {
   const { t } = useTranslation('common');
   const [devices, setDevices] = useState<Device[]>([]);
   const [deviceRevisions, setDeviceRevisions] = useState<Record<string, Revision[]>>({});
@@ -29,7 +31,7 @@ export function DeviceList({ customerId, onDeviceSelect }: DeviceListProps) {
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
   const [deletingDeviceId, setDeletingDeviceId] = useState<string | null>(null);
   const [addingRevisionForDevice, setAddingRevisionForDevice] = useState<Device | null>(null);
-  const [expandedDeviceId, setExpandedDeviceId] = useState<string | null>(null);
+  const [expandedDeviceId, setExpandedDeviceId] = useState<string | null>(initialExpandedDeviceId ?? null);
   
   const isConnected = useNatsStore((s) => s.isConnected);
 

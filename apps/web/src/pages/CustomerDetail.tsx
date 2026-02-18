@@ -38,6 +38,8 @@ const DEFAULT_CREWS: Crew[] = [
 interface SearchParams {
   edit?: boolean;
   tab?: TabId;
+  /** Device ID to auto-expand when navigating from planner */
+  deviceId?: string;
 }
 
 export function CustomerDetail() {
@@ -508,6 +510,7 @@ export function CustomerDetail() {
           devices: (
             <DeviceList
               customerId={customer.id}
+              initialExpandedDeviceId={searchParams?.deviceId}
             />
           ),
           revisions: (
