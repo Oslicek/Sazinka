@@ -349,10 +349,12 @@ function DeviceTypeCard({ config, onUpdated }: DeviceTypeCardProps) {
     setSaving(true);
     setError(null);
     try {
-      const updated = await deviceTypeConfigService.updateDeviceTypeConfig(config.id, {
+      const updated = await deviceTypeConfigService.updateDeviceTypeConfig({
+        id: config.id,
         isActive: !config.isActive,
       });
       onUpdated(updated);
+      setFields(updated.fields);
     } catch {
       setError('dt_error_update');
     } finally {
@@ -365,12 +367,14 @@ function DeviceTypeCard({ config, onUpdated }: DeviceTypeCardProps) {
     setSaving(true);
     setError(null);
     try {
-      const updated = await deviceTypeConfigService.updateDeviceTypeConfig(config.id, {
+      const updated = await deviceTypeConfigService.updateDeviceTypeConfig({
+        id: config.id,
         label: label.trim(),
         defaultRevisionDurationMinutes: duration,
         defaultRevisionIntervalMonths: interval,
       });
       onUpdated(updated);
+      setFields(updated.fields);
       setEditingMeta(false);
     } catch {
       setError('dt_error_update');
@@ -390,7 +394,7 @@ function DeviceTypeCard({ config, onUpdated }: DeviceTypeCardProps) {
     setSaving(true);
     setError(null);
     try {
-      const updated = await deviceTypeConfigService.updateDeviceTypeField(field.id, patch);
+      const updated = await deviceTypeConfigService.updateDeviceTypeField({ id: field.id, ...patch });
       setFields((prev) => prev.map((f) => (f.id === updated.id ? updated : f)));
     } catch {
       setError('dt_error_update');
@@ -403,8 +407,8 @@ function DeviceTypeCard({ config, onUpdated }: DeviceTypeCardProps) {
     setSaving(true);
     setError(null);
     try {
-      const updated = await deviceTypeConfigService.setFieldActive(field.id, !field.isActive);
-      setFields((prev) => prev.map((f) => (f.id === updated.id ? updated : f)));
+      await deviceTypeConfigService.setFieldActive({ id: field.id, isActive: !field.isActive });
+      setFields((prev) => prev.map((f) => (f.id === field.id ? { ...f, isActive: !f.isActive } : f)));
     } catch {
       setError('dt_error_update');
     } finally {
@@ -420,10 +424,10 @@ function DeviceTypeCard({ config, onUpdated }: DeviceTypeCardProps) {
     setSaving(true);
     setError(null);
     try {
-      await deviceTypeConfigService.reorderFields(
-        config.id,
-        newFields.map((f) => f.id)
-      );
+      await deviceTypeConfigService.reorderFields({
+        deviceTypeConfigId: config.id,
+        fieldIds: newFields.map((f) => f.id),
+      });
     } catch {
       setError('dt_error_update');
       setFields(fields);

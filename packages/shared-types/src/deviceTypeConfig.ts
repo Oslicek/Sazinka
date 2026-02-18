@@ -137,7 +137,14 @@ export interface ReorderFieldsRequest {
 // ============================================================================
 
 export interface DeviceTypeConfigListResponse {
-  items: DeviceTypeConfigSummary[];
+  /** Full config objects with fields (backend uses #[serde(flatten)] so fields are included). */
+  items: DeviceTypeConfig[];
 }
 
 export interface DeviceTypeConfigDetailResponse extends DeviceTypeConfig {}
+
+/**
+ * Alias for DeviceTypeConfig — the Rust backend serialises DeviceTypeConfigWithFields
+ * with `#[serde(flatten)]`, so the JSON is identical to a DeviceTypeConfig with fields included.
+ */
+export type DeviceTypeConfigWithFields = DeviceTypeConfig;
