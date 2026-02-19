@@ -520,9 +520,9 @@ Vytvoří testovacího admin uživatele:
 .\start.ps1                         # Spustí vše: Docker + Worker + Frontend
 ```
 
-Poznámka: `start.ps1` aktuálně spouští `target/release/sazinka-worker.exe`.
-Pokud máte jen debug build, spusťte `cargo build --release` nebo upravte skript,
-aby používal `target/debug`.
+Poznámka: `start.ps1` automaticky hledá debug i release binárku a spouští tu,
+která existuje (debug má přednost). Skript také načítá `worker/.env` a předává
+proměnné prostředí workeru v novém okně.
 
 Parametry:
 - `-NoBuild` — přeskočit kompilaci workeru
@@ -1725,7 +1725,37 @@ docker ps --filter "name=sazinka-nats"  # mělo by zobrazit (healthy)
 
 **Automatická oprava:** `start.ps1` nyní čeká na NATS healthcheck před spuštěním Workeru (podobně jako čeká na PostgreSQL).
 
-### 17.9 Worker selhává s "migration 1 was previously applied but has been modified"
+### 17.9 `start.ps1` se zasekne nebo tiše spadne
+
+**Symptom:** Skript vypíše Docker Compose výstup a pak se buď zasekne (zdánlivě
+bez aktivity), nebo se tiše vrátí na prompt bez dokončení kroků 2–4.
+
+**Příčina (opraveno 2026-02-18):** Kombinace tří bugů:
+
+1. **`$ErrorActionPreference = "Stop"` + Docker Compose v2 stderr.** Docker
+   Compose v2 zapisuje veškerý výstup (včetně varování typu
+   `"No services to build"`) na stderr. PowerShell s `ErrorActionPreference`
+   nastaveným na `Stop` konvertuje stderr na terminating error. Blok
+   `try/finally` bez `catch` error přehodí po vykonání `finally` → skript spadne.
+
+2. **ANSI escape kódy z Docker Compose** přepisují předchozí řádky terminálu,
+   takže hlášky `[1/4] Spoustim Docker services...` a `Cekam na PostgreSQL...`
+   zmizí z výstupu.
+
+3. **Worker binárka natvrdo `target\release`** — i když build produkuje `target\debug`,
+   řádek pro `Start-Process` používal hardkódovanou cestu `target\release`, takže worker
+   se nespustil. Navíc se nenačítal `worker/.env`, worker padal bez DB připojení.
+
+**Oprava:**
+- `$ErrorActionPreference` změněn na `Continue`.
+- Docker Compose se volá s `--progress plain 2>&1 | Write-Host` (potlačí ANSI kódy,
+  sloučí stderr do stdout).
+- Přidán `catch` blok.
+- Worker se spouští z `$workerPath` (dynamicky debug/release) a před spuštěním se
+  načte celý `worker/.env`.
+- Health check smyčky vypisují tečky jako indikátor průběhu.
+
+### 17.10 Worker selhává s "migration 1 was previously applied but has been modified"
 
 **Symptom:** Worker crashuje při startu s chybou:
 ```
@@ -1758,6 +1788,33 @@ pub async fn run_migrations(pool: &PgPool) -> Result<()> {
 Funkce `fix_migration_checksums()` porovná embedované checksumy (z aktuální binárky) s uloženými checksumy v DB. Pokud se liší (typicky kvůli CRLF/LF rozdílu), automaticky updatuje DB na správnou hodnotu a loguje warning.
 
 **Výsledek:** Worker se nyní spustí bez chyby, i když byla migrace původně aplikována s jinými line endings než má aktuální soubor na disku.
+
+### 17.11 Worker selhává s "migration N was previously applied but is missing in the resolved migrations"
+
+**Symptom:** Worker crashuje při startu s chybou:
+```
+Error: migration 12 was previously applied but is missing in the resolved migrations
+```
+
+**Příčina:** Tabulka `_sqlx_migrations` v PostgreSQL obsahuje záznamy o migracích,
+jejichž soubory byly mezitím smazány (sloučeny do `001_initial_schema.sql`). Macro
+`sqlx::migrate!` embeduje seznam migračních souborů do binárky za kompilace. Pokud
+se soubory na disku neshodují s tím, co je v DB, migrátor odmítne pokračovat.
+
+**Oprava (2026-02-18):**
+
+`worker/src/db/mod.rs` → `run_migrations()` před voláním `migrator.run()`:
+1. Loguje zkompilované verze a DB verze (diagnostika).
+2. `remove_orphaned_migrations()` smaže z `_sqlx_migrations` řádky, jejichž
+   version není v seznamu zkompilovaných migrací.
+3. `fix_migration_checksums()` opraví checksumové neshody (CRLF/LF).
+
+```
+Compiled migration versions: [1, 2, 3, 6, 7, 8, 9, 10, 11, 12, 13, 15, ...]
+DB applied migration versions: [1, 2, 3, 6, 7, 8, 9, 10, 11, 12, 13, 15, ...]
+```
+
+**Důležité:** Po přidání/odebrání migračních souborů je nutné udělat `cargo clean -p sazinka-worker && cargo build`, aby se `sqlx::migrate!` macro přegenerovalo. Samotný `cargo build` může použít cache a nový soubor se do binárky nedostane.
 
 ---
 

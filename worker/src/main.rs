@@ -53,6 +53,9 @@ async fn main() -> Result<()> {
     db::run_migrations(&pool).await?;
     info!("Database migrations complete");
 
+    // Populate countries table from embedded JSON (idempotent UPSERT)
+    db::ensure_countries_synced(&pool).await?;
+
     // Ensure dev admin has a valid password hash
     db::ensure_dev_admin_password(&pool).await;
 
