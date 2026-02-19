@@ -117,14 +117,13 @@
   right: 0;
   bottom: 0;
   border-radius: 4px;
-  background: repeating-linear-gradient(
-    -55deg,
-    rgba(100, 116, 139, 0.07),
-    rgba(100, 116, 139, 0.07) 4px,
-    rgba(100, 116, 139, 0.15) 4px,
-    rgba(100, 116, 139, 0.15) 8px
+  background: linear-gradient(
+    to bottom,
+    rgba(100, 116, 139, 0.06) 0%,
+    rgba(100, 116, 139, 0.03) 100%
   );
-  border: 1px solid rgba(100, 116, 139, 0.15);
+  border-top: 1px dashed rgba(100, 116, 139, 0.25);
+  border-bottom: 1px dashed rgba(100, 116, 139, 0.25);
 }
 
 .travelInfo {
@@ -241,7 +240,7 @@
   border-color: var(--color-primary);
   border-left-color: var(--color-primary);
   background: linear-gradient(135deg, #bfdbfe 0%, #dbeafe 100%);
-  box-shadow: 0 0 0 2px var(--color-primary), 0 4px 12px rgba(37, 99, 235, 0.2);
+  box-shadow: 0 0 0 1px var(--color-primary), 0 2px 8px rgba(37, 99, 235, 0.15);
 }
 
 .stopCard.dragging {
@@ -261,7 +260,6 @@
   flex-shrink: 0;
   transition: all 0.15s;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-  margin-left: 1rem;
 }
 
 .breakCard.dragging {
@@ -358,18 +356,19 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 1.25rem;
+  width: 1.5rem;
   flex-shrink: 0;
   cursor: grab;
   color: var(--color-text-secondary);
-  opacity: 0.4;
-  transition: opacity 0.15s;
+  opacity: 0.5;
+  transition: opacity 0.15s, background-color 0.15s;
   background: var(--color-bg-secondary);
   border-right: 1px solid var(--color-border);
 }
 
 .dragHandle:hover {
   opacity: 1;
+  background: rgba(37, 99, 235, 0.06);
 }
 
 .dragHandle:active {
@@ -377,9 +376,22 @@
 }
 
 .dragIcon {
-  font-size: 0.625rem;
-  letter-spacing: -1px;
-  line-height: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  padding: 2px;
+}
+
+.dragIcon::before,
+.dragIcon::after {
+  display: none;
+}
+
+.dragDot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: currentColor;
 }
 
 /* Card content */

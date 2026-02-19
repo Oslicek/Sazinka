@@ -180,7 +180,14 @@ function SortableStopCard({
         </div>
       )}
       <div className={styles.dragHandle} {...listeners}>
-        <span className={styles.dragIcon}>&#x2801;&#x2801;</span>
+        <span className={styles.dragIcon}>
+          <span className={styles.dragDot} />
+          <span className={styles.dragDot} />
+          <span className={styles.dragDot} />
+          <span className={styles.dragDot} />
+          <span className={styles.dragDot} />
+          <span className={styles.dragDot} />
+        </span>
       </div>
 
       {isBreak && <div className={styles.breakIcon}>☕</div>}
