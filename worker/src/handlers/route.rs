@@ -1929,6 +1929,7 @@ pub async fn handle_recalculate(
                     service_duration_minutes: s.service_duration_minutes,
                     device_type_default_duration_minutes: s.device_type_default_duration_minutes,
                     break_duration_minutes: s.break_duration_minutes,
+                    break_time_start: None, // Phase 2 will wire this from RecalcStopInput
                     override_service_duration_minutes: s.override_service_duration_minutes,
                     override_travel_duration_minutes: s.override_travel_duration_minutes,
                 }
