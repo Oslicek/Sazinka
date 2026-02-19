@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Valhalla routing job types for JetStream-based async processing
 //!
 //! These types support the JetStream job queue for routing operations:

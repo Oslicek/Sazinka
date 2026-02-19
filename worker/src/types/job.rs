@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Job queue types for async task processing
 //!
 //! These types support the JetStream-based job queue for long-running operations
@@ -557,18 +558,6 @@ pub enum GeocodeJobStatus {
         processed: u32,
         total: u32,
     },
-}
-
-/// Result of geocoding a single customer
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GeocodeJobResult {
-    /// Customer ID
-    pub customer_id: Uuid,
-    /// Whether geocoding succeeded
-    pub success: bool,
-    /// Error message if failed
-    pub error: Option<String>,
 }
 
 /// A geocoding job stored in JetStream

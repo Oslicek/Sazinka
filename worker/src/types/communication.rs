@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Communication types for CRM
 
 use chrono::{DateTime, NaiveDate, Utc};

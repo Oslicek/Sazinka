@@ -15,4 +15,3 @@ pub mod slot_suggester;
 pub mod sms_processor;
 pub mod valhalla_processor;
 pub mod vrp;
-pub mod vrptw;

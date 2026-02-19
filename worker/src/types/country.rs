@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Country types — DB entity and API request/response types.
 
 use chrono::{DateTime, Utc};

@@ -63,16 +63,6 @@ fn apply_arrival_buffer(
     }
 }
 
-/// Build pragmatic problem JSON with location indices.
-/// If `matrices` and `buffer_percent > 0` are provided, hard time windows
-/// are shifted earlier to create an arrival buffer.
-pub fn build_pragmatic_problem(
-    problem: &VrpProblem,
-    date: NaiveDate,
-) -> Value {
-    build_pragmatic_problem_with_buffer(problem, date, None, 0.0, 0.0)
-}
-
 /// Build pragmatic problem JSON with buffer support.
 /// `matrices`: if provided, used to estimate segment durations for buffer calculation.
 /// `buffer_percent`: percentage of segment duration to arrive early (0 = no buffer).

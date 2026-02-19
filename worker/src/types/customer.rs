@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Customer types
 
 use chrono::{DateTime, NaiveDate, Utc};

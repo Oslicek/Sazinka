@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Revision types
 
 use chrono::{DateTime, NaiveDate, NaiveTime, Utc};

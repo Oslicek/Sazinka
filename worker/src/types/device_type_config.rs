@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Device type configuration types
 
 use chrono::{DateTime, Utc};

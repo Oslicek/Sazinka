@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Visit types for CRM
 
 use chrono::{DateTime, NaiveDate, NaiveTime, Utc};

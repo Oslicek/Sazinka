@@ -15,6 +15,7 @@ pub struct Request<T> {
     pub payload: T,
 }
 
+#[cfg(test)]
 impl<T> Request<T> {
     pub fn with_token(token: String, payload: T) -> Self {
         Self {

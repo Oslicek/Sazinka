@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Visit work item types
 //!
 //! A work item represents a single task performed during a visit.

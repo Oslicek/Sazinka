@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Settings and Depot types
 
 use chrono::{DateTime, NaiveTime, Utc};

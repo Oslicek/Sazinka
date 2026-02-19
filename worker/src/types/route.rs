@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Route types
 
 use chrono::{DateTime, NaiveDate, NaiveTime, Utc};

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Import batch types for CSV import functionality
 
 use serde::{Deserialize, Serialize};

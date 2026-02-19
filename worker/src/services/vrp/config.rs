@@ -2,6 +2,7 @@
 
 /// Configuration for the VRP solver
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct SolverConfig {
     /// Maximum solving time in seconds
     pub max_time_seconds: u32,
@@ -25,6 +26,7 @@ impl Default for SolverConfig {
     }
 }
 
+#[allow(dead_code)]
 impl SolverConfig {
     /// Create config with custom values
     pub fn new(max_time_seconds: u32, max_generations: usize) -> Self {

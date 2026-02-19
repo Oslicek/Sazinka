@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Email and SMS notification job types for JetStream-based async processing
 //!
 //! These types support the JetStream job queue for:
