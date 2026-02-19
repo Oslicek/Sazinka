@@ -512,6 +512,7 @@ export function PlanningTimeline({
                   );
 
                 case 'travel':
+                  if (item.durationMinutes === 0) return null;
                   return (
                     <div
                       key={item.id}
@@ -569,7 +570,6 @@ export function PlanningTimeline({
                         }
                       }}
                     >
-                      <div className={styles.gapLine} />
                       <div className={styles.gapContent}>
                         <span className={styles.gapDuration}>
                           {formatTime(item.startTime)} – {formatTime(item.endTime)}

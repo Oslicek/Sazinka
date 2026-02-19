@@ -125,6 +125,17 @@ pub struct ConsumerInfo {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RestartStackRequest {}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestartStackResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GeocodeStatusRequest {}
 
 #[derive(Debug, Serialize)]
@@ -218,6 +229,15 @@ pub async fn start_admin_handlers(
     tokio::spawn(async move {
         if let Err(e) = handle_geocode_status(client7, pool3, jwt_secret7).await {
             error!("Geocode status handler error: {}", e);
+        }
+    });
+
+    // Restart stack handler
+    let client_restart = client.clone();
+    let jwt_restart = Arc::clone(&jwt_secret);
+    tokio::spawn(async move {
+        if let Err(e) = handle_restart_stack(client_restart, jwt_restart).await {
+            error!("Restart stack handler error: {}", e);
         }
     });
 
@@ -1015,6 +1035,97 @@ fn format_bytes(bytes: i64) -> String {
     } else {
         format!("{} B", bytes)
     }
+}
+
+/// Handle restart-all-services request.
+/// Responds immediately, then spawns `docker compose restart` in background.
+async fn handle_restart_stack(client: Client, jwt_secret: Arc<String>) -> Result<()> {
+    let mut sub = client.subscribe("sazinka.admin.restart.all").await?;
+
+    while let Some(msg) = sub.next().await {
+        let reply = match msg.reply {
+            Some(r) => r,
+            None => continue,
+        };
+
+        let request: Request<RestartStackRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(r) => r,
+            Err(e) => {
+                let request_id = extract_request_id(&msg.payload);
+                let error = ErrorResponse::new(request_id, "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        let auth_info = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info,
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        if auth_info.role != "admin" {
+            let error = ErrorResponse::new(request.id, "FORBIDDEN", "Admin access required");
+            let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            continue;
+        }
+
+        warn!("Stack restart requested by user {}", auth_info.user_id);
+
+        let response = SuccessResponse::new(request.id, RestartStackResponse {
+            success: true,
+            message: "Restart initiated — services will restart momentarily".to_string(),
+        });
+        let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+
+        // Background task: find compose file relative to the worker binary / cwd
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+            let compose_dir = std::path::PathBuf::from("../infra");
+            let compose_file = compose_dir.join("docker-compose.yml");
+
+            if !compose_file.exists() {
+                error!("Cannot restart stack: {} not found", compose_file.display());
+                return;
+            }
+
+            info!("Restarting Docker services via docker compose ...");
+
+            let result = tokio::process::Command::new("docker")
+                .args(["compose", "restart"])
+                .current_dir(&compose_dir)
+                .output()
+                .await;
+
+            match result {
+                Ok(output) if output.status.success() => {
+                    info!("Docker services restarted successfully");
+                }
+                Ok(output) => {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    // Fallback: try docker-compose (V1) if docker compose (V2) fails
+                    info!("docker compose failed ({}), trying docker-compose ...", stderr.trim());
+                    let fallback = tokio::process::Command::new("docker-compose")
+                        .args(["restart"])
+                        .current_dir(&compose_dir)
+                        .output()
+                        .await;
+                    match fallback {
+                        Ok(o) if o.status.success() => info!("Docker services restarted (V1)"),
+                        Ok(o) => error!("docker-compose restart failed: {}", String::from_utf8_lossy(&o.stderr)),
+                        Err(e) => error!("Failed to run docker-compose: {}", e),
+                    }
+                }
+                Err(e) => error!("Failed to run docker compose: {}", e),
+            }
+        });
+    }
+
+    Ok(())
 }
 
 fn extract_request_id(payload: &[u8]) -> uuid::Uuid {

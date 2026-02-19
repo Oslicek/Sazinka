@@ -1858,6 +1858,188 @@ $services = @{
 
 ---
 
+## 19. Cross-platform vývoj: Windows + Linux
+
+> **Cíl**: Vývojové prostředí funguje na Windows i Linuxu. Produkce běží výhradně
+> na Linuxu. Stávající Windows skripty a tooling zůstávají zachovány.
+
+### 19.1 Inventář Windows-specifických závislostí
+
+#### A) Skripty (PowerShell / Batch)
+
+| Soubor | Windows-specifické prvky |
+|---|---|
+| `start.ps1` | Visual Studio detekce + `vcvars64.bat`, `.exe` cesty, `Start-Process`, `Get-Process`, `$env:TEMP` |
+| `stop.ps1` | `Get-Process -Name`, `Stop-Process`, `Get-NetTCPConnection` (WMI) |
+| `start.bat` | Wrapper → `powershell -ExecutionPolicy Bypass` |
+| `stop.bat` | Wrapper → `powershell -ExecutionPolicy Bypass` |
+| `infra/manage.ps1` | `Read-Host` (interaktivní potvrzení), PowerShell `switch` |
+
+**Plán**: Vytvořit ekvivalentní Bash skripty (`start.sh`, `stop.sh`, `infra/manage.sh`)
+se stejnými parametry a chováním. PowerShell verze zůstanou pro Windows vývojáře.
+
+#### B) Rust toolchain a C linker
+
+| Aspekt | Windows (aktuální) | Linux (cíl) |
+|---|---|---|
+| Rust target | `stable-x86_64-pc-windows-msvc` | `stable-x86_64-unknown-linux-gnu` |
+| C linker | MSVC (`link.exe` z Visual Studio) | GCC (`cc`) nebo Clang |
+| C runtime | Windows CRT (MSVC) | glibc |
+| Setup | Visual Studio + "Desktop development with C++" workload | `sudo apt install build-essential` (Ubuntu/Debian) |
+| Env setup | `vcvars64.bat` — nastaví PATH, LIB, INCLUDE pro MSVC | Není potřeba — `cc` je v PATH po instalaci |
+
+**Plán**: Na Linuxu stačí `build-essential` (GCC, make, libc headers). Žádné
+`vcvars64.bat`, žádné Visual Studio. `rustup` nainstaluje správný target
+automaticky podle OS. `cargo build` funguje bez dalšího nastavení.
+
+#### C) TLS backend v reqwest
+
+| Aspekt | `native-tls` (aktuální) | `rustls` (alternativa) |
+|---|---|---|
+| Windows | Schannel (systémový) — funguje out of the box | Pure Rust — funguje |
+| Linux | OpenSSL — vyžaduje `libssl-dev` (apt) nebo `openssl-devel` (dnf) | Pure Rust — žádná systémová závislost |
+| Kompilace | Rychlá (systémová knihovna, jen FFI) | Pomalejší (kompiluje z Rust zdrojáků) |
+| Certifikáty | Systémové cert store | `webpki-roots` (bundled Mozilla CA) |
+| FIPS compliance | Ano (přes systémový backend) | Ne |
+
+**Doporučení**: Přejít na `rustls` v `Cargo.toml`. Důvody:
+- Odstraní závislost na `libssl-dev` na Linuxu (jedna systémová dependency méně).
+- Komentář v Cargo.toml říká "using native-tls to avoid ring compilation" — toto
+  již není problém, `ring` crate kompiluje na obou platformách bez potíží.
+- Zjednoduší CI pipeline (žádná systémová OpenSSL).
+- Zjednodušší Docker image pro produkci (menší base image).
+
+Změna v `worker/Cargo.toml`:
+```toml
+# BYLO:
+reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls"] }
+
+# BUDE:
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+```
+
+#### D) Tranzitivní Windows crates v Cargo.lock
+
+`Cargo.lock` obsahuje: `windows-sys`, `windows-core`, `windows-targets`,
+`find-msvc-tools`, `windows_x86_64_msvc`. Tyto crates se stahují jen jako
+podmíněné (`[target.'cfg(windows)'.dependencies]`) a na Linuxu se **nekompilují**.
+Cargo je automaticky vyřeší podle target platformy — není potřeba žádná akce.
+
+#### E) Docker Compose
+
+Docker Compose (`infra/docker-compose.yml`) je plně cross-platform:
+- Relativní cesty (`./nats-server.conf`, `../logs`) fungují na obou OS.
+- Volume mounty jsou Linux-style (`/var/lib/postgresql/data`).
+- Na Windows jde přes Docker Desktop (WSL2 backend), na Linuxu nativně.
+
+Příkaz `docker-compose` (V1, hyphen) vs `docker compose` (V2, space):
+- Windows s Docker Desktop: obě verze dostupné.
+- Linux: obvykle jen `docker compose` (V2 plugin). V1 je deprecated.
+
+**Plán**: Bash skripty budou používat `docker compose` (V2). PowerShell skripty
+zůstávají s `docker-compose` (V1) kvůli zpětné kompatibilitě, ale přidat
+fallback na `docker compose` pokud V1 není dostupný.
+
+#### F) Frontend (Node.js / pnpm)
+
+Frontend stack je plně cross-platform:
+- `pnpm`, `vite`, `vitest` — fungují identicky na Windows i Linuxu.
+- `package.json` skripty neobsahují žádné platform-specifické příkazy.
+- `rimraf` (v root `package.json`) je cross-platform alternativa k `rm -rf`.
+
+Žádná akce potřeba.
+
+#### G) `.cursorrules` — heredoc poznámka
+
+Řádek: *"Do not use heredoc syntax — this project runs on Windows/PowerShell"*
+
+**Plán**: Aktualizovat na: *"Prefer PowerShell-compatible syntax on Windows.
+On Linux, standard Bash including heredoc is fine."*
+
+### 19.2 Nové soubory k vytvoření
+
+| Soubor | Účel | Priorita |
+|---|---|---|
+| `start.sh` | Bash ekvivalent `start.ps1` | Vysoká |
+| `stop.sh` | Bash ekvivalent `stop.ps1` | Vysoká |
+| `infra/manage.sh` | Bash ekvivalent `infra/manage.ps1` | Střední |
+
+#### `start.sh` — klíčové rozdíly oproti `start.ps1`
+
+```
+start.ps1 (Windows)                    start.sh (Linux)
+─────────────────────────────────────  ─────────────────────────────────────
+Visual Studio detection + vcvars64.bat  Nepotřeba — cc/gcc je v PATH
+$env:VCINSTALLDIR / $env:VSINSTALLDIR  Nepotřeba
+cmd /c temp.bat (cargo build)           cargo build (přímo)
+Start-Process powershell (nové okno)    Nové terminálové okno nebo background &
+sazinka-worker.exe                      sazinka-worker (bez .exe)
+Get-Content .env + $env:VAR = val       source worker/.env nebo export
+docker-compose                          docker compose (V2)
+```
+
+#### `stop.sh` — klíčové rozdíly oproti `stop.ps1`
+
+```
+stop.ps1 (Windows)                     stop.sh (Linux)
+─────────────────────────────────────  ─────────────────────────────────────
+Get-Process -Name "sazinka-worker"      pkill -f sazinka-worker / killall
+Get-NetTCPConnection -LocalPort 5173    lsof -ti :5173 | xargs kill
+Stop-Process -Force                     kill -9
+docker-compose down                     docker compose down
+```
+
+### 19.3 Prerekvizity na Linuxu
+
+```bash
+# Ubuntu/Debian
+sudo apt update
+sudo apt install -y build-essential pkg-config curl git
+
+# Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source ~/.cargo/env
+# Target se nastaví automaticky: stable-x86_64-unknown-linux-gnu
+
+# Pokud zůstane native-tls (než se přejde na rustls):
+sudo apt install -y libssl-dev
+
+# Node.js + pnpm
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt install -y nodejs
+npm install -g pnpm@9.15.0
+
+# Docker
+# (viz https://docs.docker.com/engine/install/ubuntu/)
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+sudo usermod -aG docker $USER
+```
+
+### 19.4 Pořadí implementace
+
+```
+Krok  Úkon                                          Riziko     Rozsah
+─── ─────────────────────────────────────────────── ────────── ──────────────
+ 1   Cargo.toml: native-tls → rustls                Nízké      1 řádek
+ 2   Vytvořit start.sh + stop.sh                    Nízké      2 nové soubory
+ 3   Vytvořit infra/manage.sh                       Nízké      1 nový soubor
+ 4   .cursorrules: aktualizovat heredoc poznámku     Žádné      1 řádek
+ 5   PRJ_CONTEXT.MD: přidat Linux setup instrukce    Žádné      dokumentace
+ 6   Otestovat cargo build + cargo run na Linuxu     Střední    ověření
+ 7   Otestovat start.sh end-to-end na Linuxu         Střední    ověření
+```
+
+### 19.5 Co se nemění
+
+- `start.ps1`, `stop.ps1`, `start.bat`, `stop.bat` — zůstávají pro Windows.
+- `infra/manage.ps1` — zůstává pro Windows.
+- `infra/docker-compose.yml` — cross-platform, beze změn.
+- `worker/Cargo.toml` — `[dependencies]` jsou cross-platform (kromě TLS backendu).
+- Frontend stack — plně cross-platform, beze změn.
+- SQL migrace — cross-platform (`.gitattributes` zajišťuje LF).
+
+---
+
 ## 16. Deployment Ariadline Marketing Site (Cloudflare Pages)
 
 Tento dokument pokrývá nasazení Ariadline marketing webu na Cloudflare Pages.

@@ -399,7 +399,106 @@ export function CandidateDetail({
         </section>
       )}
 
-      {/* Actions — compact buttons right after scheduled appointment */}
+      {/* Revize nejpozději */}
+      <section className={styles.section}>
+        <h4 className={styles.sectionTitle}>{t('candidate_due_date')}</h4>
+        <p className={styles.dueDate}>
+          <span className={candidate.priority === 'overdue' ? styles.overdueText : ''}>
+            {dueDateFormatted}
+          </span>
+          {candidate.daysUntilDue > 0 && (
+            <span className={styles.daysRemaining}>
+              {t('candidate_days_remaining', { days: candidate.daysUntilDue })}
+            </span>
+          )}
+        </p>
+      </section>
+
+      {/* Inline scheduling form — appears right after due date */}
+      {isScheduling && (
+        <section className={styles.section}>
+          <h4 className={styles.sectionTitle}>{t('candidate_schedule_title')}</h4>
+          <div className={styles.scheduleForm}>
+            <label className={styles.scheduleLabel}>
+              {t('candidate_schedule_date')}
+              <input
+                type="date"
+                className={styles.scheduleInput}
+                value={schedDate}
+                onChange={(e) => setSchedDate(e.target.value)}
+              />
+            </label>
+            <div className={styles.scheduleRow}>
+              <label className={styles.scheduleLabel}>
+                {t('candidate_schedule_from')}
+                <input
+                  type="time"
+                  className={styles.scheduleInput}
+                  value={schedTimeStart}
+                  onChange={(e) => {
+                    const newStart = e.target.value;
+                    setSchedTimeStart(newStart);
+                    if (newStart) {
+                      setSchedTimeEnd(addMinutesToTime(newStart, defaultServiceDurationMinutes));
+                    }
+                  }}
+                />
+              </label>
+              <label className={styles.scheduleLabel}>
+                {t('candidate_schedule_to')}
+                <input
+                  type="time"
+                  className={styles.scheduleInput}
+                  value={schedTimeEnd}
+                  onChange={(e) => setSchedTimeEnd(e.target.value)}
+                />
+              </label>
+            </div>
+            <label className={styles.scheduleLabel}>
+              {t('candidate_schedule_note')}
+              <input
+                type="text"
+                className={styles.scheduleInput}
+                placeholder={t('candidate_schedule_note_placeholder')}
+                value={schedNotes}
+                onChange={(e) => setSchedNotes(e.target.value)}
+              />
+            </label>
+            <div className={styles.scheduleActions}>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={!schedDate}
+                onClick={() => {
+                  const slot: SlotSuggestion = {
+                    id: `manual-${Date.now()}`,
+                    date: schedDate,
+                    timeStart: schedTimeStart,
+                    timeEnd: schedTimeEnd,
+                    status: 'ok',
+                    deltaKm: 0,
+                    deltaMin: 0,
+                    insertAfterIndex: -1,
+                  };
+                  onSchedule?.(candidate.id, slot);
+                  setIsScheduling(false);
+                }}
+              >
+                {t('candidate_schedule_confirm')}
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setIsScheduling(false)}
+              >
+                {t('candidate_schedule_cancel')}
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Actions — compact buttons */}
       {!isScheduling && (
         <div className={styles.actionsCompact} data-testid="candidate-actions">
           <button
@@ -458,21 +557,6 @@ export function CandidateDetail({
           </div>
         </div>
       )}
-
-      {/* Revize nejpozději */}
-      <section className={styles.section}>
-        <h4 className={styles.sectionTitle}>{t('candidate_due_date')}</h4>
-        <p className={styles.dueDate}>
-          <span className={candidate.priority === 'overdue' ? styles.overdueText : ''}>
-            {dueDateFormatted}
-          </span>
-          {candidate.daysUntilDue > 0 && (
-            <span className={styles.daysRemaining}>
-              {t('candidate_days_remaining', { days: candidate.daysUntilDue })}
-            </span>
-          )}
-        </p>
-      </section>
 
       {/* Kontakt */}
       <section className={styles.section}>
@@ -720,90 +804,6 @@ export function CandidateDetail({
             slots={candidate.suggestedSlots}
             onSelect={(slot) => onSchedule?.(candidate.id, slot)}
           />
-        </section>
-      )}
-
-      {/* Inline scheduling form */}
-      {isScheduling && (
-        <section className={styles.section}>
-          <h4 className={styles.sectionTitle}>{t('candidate_schedule_title')}</h4>
-          <div className={styles.scheduleForm}>
-            <label className={styles.scheduleLabel}>
-              {t('candidate_schedule_date')}
-              <input
-                type="date"
-                className={styles.scheduleInput}
-                value={schedDate}
-                onChange={(e) => setSchedDate(e.target.value)}
-              />
-            </label>
-            <div className={styles.scheduleRow}>
-              <label className={styles.scheduleLabel}>
-                {t('candidate_schedule_from')}
-                <input
-                  type="time"
-                  className={styles.scheduleInput}
-                  value={schedTimeStart}
-                  onChange={(e) => {
-                    const newStart = e.target.value;
-                    setSchedTimeStart(newStart);
-                    if (newStart) {
-                      setSchedTimeEnd(addMinutesToTime(newStart, defaultServiceDurationMinutes));
-                    }
-                  }}
-                />
-              </label>
-              <label className={styles.scheduleLabel}>
-                {t('candidate_schedule_to')}
-                <input
-                  type="time"
-                  className={styles.scheduleInput}
-                  value={schedTimeEnd}
-                  onChange={(e) => setSchedTimeEnd(e.target.value)}
-                />
-              </label>
-            </div>
-            <label className={styles.scheduleLabel}>
-              {t('candidate_schedule_note')}
-              <input
-                type="text"
-                className={styles.scheduleInput}
-                placeholder={t('candidate_schedule_note_placeholder')}
-                value={schedNotes}
-                onChange={(e) => setSchedNotes(e.target.value)}
-              />
-            </label>
-            <div className={styles.scheduleActions}>
-              <button
-                type="button"
-                className="btn-primary"
-                disabled={!schedDate}
-                onClick={() => {
-                  const slot: SlotSuggestion = {
-                    id: `manual-${Date.now()}`,
-                    date: schedDate,
-                    timeStart: schedTimeStart,
-                    timeEnd: schedTimeEnd,
-                    status: 'ok',
-                    deltaKm: 0,
-                    deltaMin: 0,
-                    insertAfterIndex: -1,
-                  };
-                  onSchedule?.(candidate.id, slot);
-                  setIsScheduling(false);
-                }}
-              >
-                {t('candidate_schedule_confirm')}
-              </button>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setIsScheduling(false)}
-              >
-                {t('candidate_schedule_cancel')}
-              </button>
-            </div>
-          </div>
         </section>
       )}
 

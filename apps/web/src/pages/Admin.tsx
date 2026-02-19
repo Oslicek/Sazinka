@@ -106,6 +106,7 @@ export function Admin() {
   const [importEntityType, setImportEntityType] = useState<ImportEntityType>('device');
   const [showCustomerImport, setShowCustomerImport] = useState(false);
   const [isSubmittingGeocode, setIsSubmittingGeocode] = useState(false);
+  const [isRestartingStack, setIsRestartingStack] = useState(false);
 
   const allJobs = useActiveJobsStore((s) => s.jobs);
   const { runningImportJobs, runningExportJobs } = useMemo(() => {
@@ -147,6 +148,22 @@ export function Admin() {
       setIsSubmittingGeocode(false);
     }
   }, []);
+
+  const handleRestartStack = useCallback(async () => {
+    if (!confirm(t('admin_restart_stack_confirm'))) return;
+    setIsRestartingStack(true);
+    try {
+      await request<unknown, { payload?: { success: boolean; message: string } }>(
+        'sazinka.admin.restart.all',
+        createRequest(getToken(), {})
+      );
+      alert(t('admin_restart_stack_initiated'));
+    } catch (error) {
+      alert(t('admin_restart_stack_error', { error: error instanceof Error ? error.message : String(error) }));
+    } finally {
+      setIsRestartingStack(false);
+    }
+  }, [request, t]);
 
   const runHealthCheck = useCallback(async () => {
     setIsChecking(true);
@@ -337,9 +354,14 @@ export function Admin() {
             <section className={styles.section}>
               <div className={styles.sectionHeader}>
                 <h2>{t('admin_services_title')}</h2>
-                <button type="button" className={styles.primaryButton} onClick={runHealthCheck} disabled={isChecking || !connected}>
-                  {isChecking ? t('admin_checking') : t('admin_health_check')}
-                </button>
+                <div className={styles.serviceActions}>
+                  <button type="button" className={styles.dangerButton} onClick={handleRestartStack} disabled={isRestartingStack || !connected}>
+                    {isRestartingStack ? t('admin_restart_stack_busy') : t('admin_restart_stack')}
+                  </button>
+                  <button type="button" className={styles.primaryButton} onClick={runHealthCheck} disabled={isChecking || !connected}>
+                    {isChecking ? t('admin_checking') : t('admin_health_check')}
+                  </button>
+                </div>
               </div>
               <div className={styles.servicesGrid}>
                 {services.map((service) => (
