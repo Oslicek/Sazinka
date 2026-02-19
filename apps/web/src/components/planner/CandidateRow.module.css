@@ -62,6 +62,16 @@
   cursor: help;
 }
 
+.rescheduleIcon {
+  opacity: 1;
+  animation: pulse-warning 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-warning {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 /* Main content - takes remaining space on first line */
 .main {
   flex: 1 1 8rem;

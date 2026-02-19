@@ -302,6 +302,8 @@ When adding a new feature:
 
 ## 8. Files with `#![allow(dead_code)]` and why
 
+### `types/` — data model definitions
+
 | File | Reason |
 |---|---|
 | `types/notification_job.rs` | Email/SMS job queue types; processors exist but job queue not yet wired from main |
@@ -317,3 +319,39 @@ When adding a new feature:
 | `types/role.rs` | UserPermissions — planned API |
 | `types/messages.rs` | Request::with_token — test helper kept in production code |
 | `types/settings.rs` | UserWithSettings fields loaded by sqlx but not all read directly |
+| `types/job.rs` | Job queue types; some not yet wired from main |
+| `types/valhalla_job.rs` | Valhalla routing job types; not yet wired |
+| `types/country.rs`, `types/crew.rs`, `types/customer.rs`, `types/user.rs` | DB entity types with some fields not yet read by handlers |
+
+### `db/queries/` — database query functions
+
+All `db/queries/*.rs` files have `#![allow(dead_code)]` because many query functions are defined ahead of the handlers that will call them. This is intentional — the query layer is built first, handlers consume it later.
+
+### `handlers/` — NATS message handlers
+
+| File | Reason |
+|---|---|
+| `handlers/auth.rs` | `RateLimiter::cleanup` and some request struct fields not yet used |
+| `handlers/geocode.rs` | `extract_request_id` helper not yet wired |
+| `handlers/import.rs` | Many parse_* helpers and handle_*_import functions not yet wired to NATS |
+| `handlers/import_processors.rs` | CSV row struct fields not yet consumed |
+| `handlers/jobs.rs` | `QueueStats`, `handle_job_stats`, `extract_request_id` not yet wired |
+| `handlers/route.rs` | Several helpers and request fields not yet used |
+| `handlers/slots.rs` | Internal struct field not yet used |
+
+### `services/` — business logic services
+
+| File | Reason |
+|---|---|
+| `services/email_processor.rs` | Entire processor not yet wired from main (JetStream job queue) |
+| `services/sms_processor.rs` | Same — SMS processor not yet wired |
+| `services/import_processor.rs` | Import processor not yet wired from main |
+| `services/geo.rs` | Geographic utility functions not yet called from handlers |
+| `services/geocoding.rs` | `GeocodingResult.confidence` field not yet read |
+| `services/insertion.rs` | `status_from_delta` helper not yet called |
+| `services/job_history.rs` | Several query methods not yet called |
+| `services/nominatim.rs` | `NominatimResult.display_name` field not yet read |
+| `services/routing/mod.rs` | Several routing service helpers not yet called |
+| `services/slot_suggester.rs` | Several `ExistingStop` fields not yet read |
+| `services/valhalla_processor.rs` | Several methods not yet called from handlers |
+| `services/vrp/problem.rs` | VRP problem struct fields not yet read directly |

@@ -63,6 +63,8 @@ interface CandidateDetailProps {
   onRemoveFromRoute?: (candidateId: string) => void;
   /** Whether this candidate is already in the route */
   isInRoute?: boolean;
+  /** Whether this stop has a late arrival conflict requiring rescheduling */
+  needsReschedule?: boolean;
   /** Currently selected route date (for pre-filling the scheduling form) */
   routeDate?: string;
   /** Default service duration in minutes from settings (for auto-filling "Do" time) */
@@ -78,6 +80,7 @@ export function CandidateDetail({
   onAddToRoute,
   onRemoveFromRoute,
   isInRoute = false,
+  needsReschedule = false,
   routeDate,
   defaultServiceDurationMinutes = 60,
 }: CandidateDetailProps) {
@@ -344,6 +347,14 @@ export function CandidateDetail({
           <span className={styles.stateFlagValue}>{isInRoute ? t('candidate_state_yes') : t('candidate_state_no')}</span>
         </div>
       </div>
+
+      {/* Late arrival warning — needs rescheduling */}
+      {needsReschedule && (
+        <div className={styles.rescheduleWarning}>
+          <span className={styles.rescheduleWarningIcon}>⚠</span>
+          <span>{t('candidate_needs_reschedule', { defaultValue: 'Pozdní příjezd — nutné domluvit nový termín s klientem' })}</span>
+        </div>
+      )}
 
       {/* Domluvený termín — always visible when scheduled, with service duration input */}
       {candidate.isScheduled && candidate.scheduledDate && (

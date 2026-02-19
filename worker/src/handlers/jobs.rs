@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Job queue handlers for async task processing
 //!
 //! Uses NATS JetStream for persistent job queuing with:

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Route planning message handlers
 
 use std::sync::Arc;

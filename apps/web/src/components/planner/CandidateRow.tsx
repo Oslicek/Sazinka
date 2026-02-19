@@ -24,6 +24,8 @@ export interface CandidateRowData {
   isScheduled?: boolean;
   isInRoute?: boolean;
   disableCheckbox?: boolean;
+  /** Stop has late arrival — agreed time needs rescheduling */
+  needsReschedule?: boolean;
 }
 
 interface CandidateRowProps {
@@ -102,6 +104,9 @@ export function CandidateRow({
         />
       )}
       <div className={styles.stateIcons}>
+        {candidate.needsReschedule && (
+          <span className={`${styles.stateIcon} ${styles.rescheduleIcon}`} title={t('candidate_row_needs_reschedule', { defaultValue: 'Nutné domluvit nový termín' })}>⚠️</span>
+        )}
         {candidate.isScheduled && (
           <span className={styles.stateIcon} title={t('candidate_row_has_appointment')}>📅</span>
         )}

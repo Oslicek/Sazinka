@@ -14,6 +14,7 @@ export { AddFromInboxDrawer } from './AddFromInboxDrawer';
 export { RouteListPanel } from './RouteListPanel';
 export { RouteDetailTimeline } from './RouteDetailTimeline';
 export { PlanningTimeline, type CandidateForInsertion, type GapInsertionInfo } from './PlanningTimeline';
+export { buildTimelineItems } from './buildTimelineItems';
 export { TimelineViewToggle, type TimelineView } from './TimelineViewToggle';
 export { ScheduledTimeWarning } from './ScheduledTimeWarning';
 export { RouteSummaryStats, type RouteSummaryStatsProps } from './RouteSummaryStats';

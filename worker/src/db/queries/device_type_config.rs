@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Device type config database queries
 
 use anyhow::Result;

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Authentication handlers: register, login, verify
 
 use std::collections::HashMap;

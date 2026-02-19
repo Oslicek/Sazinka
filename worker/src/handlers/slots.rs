@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Slot suggestion handlers
 
 use std::collections::{HashMap, HashSet};

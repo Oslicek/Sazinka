@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! VRP Problem types
 
 use chrono::NaiveTime;

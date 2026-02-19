@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Geocoding abstraction layer
 //!
 //! This module provides geocoding implementations:

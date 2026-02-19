@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Valhalla JetStream processor
 //!
 //! Wraps Valhalla routing engine with JetStream for:

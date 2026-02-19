@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Visit database queries
 
 use anyhow::Result;

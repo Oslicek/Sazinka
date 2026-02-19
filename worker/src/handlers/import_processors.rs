@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Async import processors for all entity types
 //! Uses JetStream for reliable background job processing
 

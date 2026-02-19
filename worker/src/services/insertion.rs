@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Shared insertion heuristics for route and slot planning.
 
 use chrono::{NaiveTime, Timelike};

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Geocoding batch job handler
 //!
 //! Processes geocoding jobs from JetStream queue:

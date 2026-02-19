@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Nominatim geocoding client
 
 use anyhow::{Context, Result};

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Route database queries
 
 use sqlx::PgPool;

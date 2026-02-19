@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Customer database queries
 
 use sqlx::PgPool;

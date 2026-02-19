@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Import batch handlers for CSV import functionality
 
 use std::sync::Arc;

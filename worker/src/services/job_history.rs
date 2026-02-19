@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Job history service
 //!
 //! Stores recent job completions in memory and provides API to query them.

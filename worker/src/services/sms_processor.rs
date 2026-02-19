@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! SMS notification JetStream processor
 //!
 //! Skeleton for future SMS notification implementation using Twilio.

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Visit work item database queries
 
 use anyhow::Result;

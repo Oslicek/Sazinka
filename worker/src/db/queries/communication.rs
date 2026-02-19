@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Communication database queries
 
 use anyhow::Result;

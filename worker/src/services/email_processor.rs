@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Email notification JetStream processor
 //!
 //! Skeleton for future email notification implementation using Resend.

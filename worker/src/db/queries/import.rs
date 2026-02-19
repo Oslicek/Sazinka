@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Import-related database queries
 
 use anyhow::Result;

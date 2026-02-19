@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Smart Slot Suggester - TDD Implementation
 //! 
 //! Algorithm for finding optimal time slots for new appointments.

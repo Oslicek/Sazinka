@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Routing service for distance/time matrix calculations
 //!
 //! Uses Valhalla for production, mock for tests.

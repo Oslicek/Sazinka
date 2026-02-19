@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Device database queries
 
 use sqlx::PgPool;

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Geographic calculations
 
 use crate::types::Coordinates;

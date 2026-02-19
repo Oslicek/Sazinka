@@ -99,6 +99,27 @@
   font-weight: 500;
 }
 
+/* Reschedule warning */
+.rescheduleWarning {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  background-color: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-left: 4px solid var(--color-error, #dc2626);
+  border-radius: var(--radius-md);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-error, #dc2626);
+  line-height: 1.3;
+}
+
+.rescheduleWarningIcon {
+  font-size: 1.125rem;
+  flex-shrink: 0;
+}
+
 /* Header */
 .header {
   padding-bottom: 0.75rem;

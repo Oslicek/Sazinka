@@ -1,3 +1,4 @@
+#![allow(unused_imports)]
 //! Type definitions
 
 pub mod communication;

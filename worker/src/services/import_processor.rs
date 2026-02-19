@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Import JetStream processor
 //!
 //! Wraps CSV import operations with JetStream for:

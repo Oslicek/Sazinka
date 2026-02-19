@@ -25,6 +25,7 @@ import {
   type TimelineView,
   type CandidateForInsertion,
   type GapInsertionInfo,
+  buildTimelineItems,
   RouteSummaryStats,
   RouteSummaryActions,
   ArrivalBufferBar,
@@ -935,6 +936,26 @@ export function PlanningInbox() {
     return new Set(routeStops.map((s) => s.customerId));
   }, [routeStops]);
 
+  // Compute set of customer IDs whose stops have late arrivals (need rescheduling)
+  const needsRescheduleIds = useMemo(() => {
+    if (routeStops.length === 0) return new Set<string>();
+    const items = buildTimelineItems(
+      routeStops,
+      routeStartTime ?? '08:00',
+      routeEndTime ?? '16:00',
+      returnToDepotLeg?.distanceKm != null && returnToDepotLeg?.durationMinutes != null
+        ? { distanceKm: returnToDepotLeg.distanceKm, durationMinutes: returnToDepotLeg.durationMinutes }
+        : undefined,
+    );
+    const ids = new Set<string>();
+    for (const item of items) {
+      if (item.lateArrivalMinutes && item.lateArrivalMinutes > 0 && item.stop?.customerId) {
+        ids.add(item.stop.customerId);
+      }
+    }
+    return ids;
+  }, [routeStops, routeStartTime, routeEndTime, returnToDepotLeg]);
+
   // Sorted candidates for display (pre-ranked by insertion cost)
   // The currently selected candidate is always kept in the list even if it
   // no longer matches the active filters — it will be removed once the user
@@ -999,9 +1020,10 @@ export function PlanningInbox() {
       slotStatus: c.slotStatus,
       isScheduled: isScheduledCandidate(c),
       isInRoute: inRouteIds.has(c.customerId),
+      needsReschedule: needsRescheduleIds.has(c.customerId),
       disableCheckbox: !hasValidAddress(c),
     }));
-  }, [sortedCandidates, inRouteIds]);
+  }, [sortedCandidates, inRouteIds, needsRescheduleIds]);
 
   // Handle context changes
   const handleDateChange = (date: string) => {
@@ -2649,6 +2671,7 @@ export function PlanningInbox() {
           }
           onRemoveFromRoute={handleRemoveFromRoute}
           isInRoute={selectedCandidateId ? inRouteIds.has(selectedCandidateId) : false}
+          needsReschedule={selectedCandidateId ? needsRescheduleIds.has(selectedCandidateId) : false}
           routeDate={context?.date}
           defaultServiceDurationMinutes={defaultServiceDurationMinutes}
         />

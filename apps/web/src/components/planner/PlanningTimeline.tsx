@@ -149,17 +149,20 @@ function SortableStopCard({
     isDragging,
   } = useSortable({ id: item.id });
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    height: heightForDuration(item.durationMinutes, MIN_STOP_HEIGHT),
-    minHeight: MIN_STOP_HEIGHT,
-    opacity: isDragging ? 0.5 : 1,
-  };
-
   const stop = item.stop!;
   const isBreak = item.type === 'break';
   const hasAgreedWindowOverlay = !isBreak && item.agreedWindowStart && item.agreedWindowEnd;
+  const hasLateWarning = !isBreak && item.lateArrivalMinutes != null && item.lateArrivalMinutes > 0;
+  const proportionalHeight = heightForDuration(item.durationMinutes, MIN_STOP_HEIGHT);
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    ...(hasLateWarning
+      ? { minHeight: proportionalHeight }
+      : { height: proportionalHeight, minHeight: MIN_STOP_HEIGHT }),
+    opacity: isDragging ? 0.5 : 1,
+  };
 
   return (
     <div

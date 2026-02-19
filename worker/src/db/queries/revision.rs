@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Revision database queries
 
 use sqlx::PgPool;
