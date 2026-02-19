@@ -10,6 +10,11 @@ pub use valhalla::{ValhallaClient, ValhallaConfig};
 use async_trait::async_trait;
 use anyhow::Result;
 use crate::types::Coordinates;
+use std::collections::HashMap;
+use std::hash::Hash;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tokio::sync::Mutex;
 
 /// Distance and time matrices between locations
 #[derive(Debug, Clone)]
@@ -176,29 +181,37 @@ pub fn create_routing_service(config: Option<ValhallaConfig>) -> Box<dyn Routing
 /// 
 /// Tries to connect to Valhalla if URL is provided. Falls back to mock
 /// routing service if Valhalla is unavailable or URL is not configured.
+/// The returned service is wrapped in a distance-matrix cache (5 min TTL,
+/// up to 64 entries) to avoid redundant Valhalla calls.
 pub async fn create_routing_service_with_fallback(
     valhalla_url: Option<String>,
 ) -> Box<dyn RoutingService> {
     use tracing::{info, warn};
-    
-    if let Some(url) = valhalla_url {
+
+    let inner: Box<dyn RoutingService> = if let Some(url) = valhalla_url {
         let config = ValhallaConfig::new(&url);
         let client = ValhallaClient::new(config);
-        
-        // Test connection with a simple health check
+
         match check_valhalla_health(&url).await {
             Ok(()) => {
                 info!("Valhalla routing service available at {}", url);
-                return Box::new(client);
+                Box::new(client)
             }
             Err(e) => {
                 warn!("Valhalla not available at {}: {}. Falling back to mock routing.", url, e);
+                Box::new(MockRoutingService::new())
             }
         }
-    }
-    
-    info!("Using mock routing service (Valhalla not configured or unavailable)");
-    Box::new(MockRoutingService::new())
+    } else {
+        info!("Using mock routing service (Valhalla not configured or unavailable)");
+        Box::new(MockRoutingService::new())
+    };
+
+    Box::new(CachedRoutingService::new(
+        inner,
+        Duration::from_secs(5 * 60),
+        64,
+    ))
 }
 
 /// Check if Valhalla is healthy by making a simple status request
@@ -215,6 +228,116 @@ async fn check_valhalla_health(base_url: &str) -> Result<()> {
         Ok(())
     } else {
         anyhow::bail!("Valhalla returned status {}", response.status())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Caching wrapper
+// ---------------------------------------------------------------------------
+
+/// Deterministic cache key derived from a set of coordinates.
+/// Coordinates are quantized to ~1 m precision to avoid floating-point noise.
+#[derive(Clone, Eq, PartialEq, Hash)]
+struct MatrixCacheKey(Vec<(i64, i64)>);
+
+impl MatrixCacheKey {
+    fn from_locations(locations: &[Coordinates]) -> Self {
+        Self(
+            locations
+                .iter()
+                .map(|c| {
+                    // 5 decimal places ≈ 1.1 m precision
+                    ((c.lat * 1e5).round() as i64, (c.lng * 1e5).round() as i64)
+                })
+                .collect(),
+        )
+    }
+}
+
+struct CacheEntry {
+    matrices: DistanceTimeMatrices,
+    created_at: Instant,
+}
+
+/// Wraps any `RoutingService` with an in-memory TTL cache for distance matrices.
+pub struct CachedRoutingService {
+    inner: Box<dyn RoutingService>,
+    cache: Arc<Mutex<HashMap<MatrixCacheKey, CacheEntry>>>,
+    ttl: Duration,
+    max_entries: usize,
+}
+
+impl CachedRoutingService {
+    pub fn new(inner: Box<dyn RoutingService>, ttl: Duration, max_entries: usize) -> Self {
+        Self {
+            inner,
+            cache: Arc::new(Mutex::new(HashMap::new())),
+            ttl,
+            max_entries,
+        }
+    }
+
+    /// Evict expired entries and, if still over capacity, the oldest entry.
+    fn evict(cache: &mut HashMap<MatrixCacheKey, CacheEntry>, ttl: Duration, max_entries: usize) {
+        let now = Instant::now();
+        cache.retain(|_, v| now.duration_since(v.created_at) < ttl);
+
+        while cache.len() > max_entries {
+            if let Some(oldest_key) = cache
+                .iter()
+                .min_by_key(|(_, v)| v.created_at)
+                .map(|(k, _)| k.clone())
+            {
+                cache.remove(&oldest_key);
+            } else {
+                break;
+            }
+        }
+    }
+}
+
+#[async_trait]
+impl RoutingService for CachedRoutingService {
+    async fn get_matrices(&self, locations: &[Coordinates]) -> Result<DistanceTimeMatrices> {
+        let key = MatrixCacheKey::from_locations(locations);
+
+        {
+            let cache = self.cache.lock().await;
+            if let Some(entry) = cache.get(&key) {
+                if entry.created_at.elapsed() < self.ttl {
+                    tracing::debug!(
+                        "Matrix cache HIT for {} locations (age {:?})",
+                        locations.len(),
+                        entry.created_at.elapsed(),
+                    );
+                    return Ok(entry.matrices.clone());
+                }
+            }
+        }
+
+        let matrices = self.inner.get_matrices(locations).await?;
+
+        {
+            let mut cache = self.cache.lock().await;
+            Self::evict(&mut cache, self.ttl, self.max_entries);
+            cache.insert(
+                key,
+                CacheEntry {
+                    matrices: matrices.clone(),
+                    created_at: Instant::now(),
+                },
+            );
+        }
+
+        Ok(matrices)
+    }
+
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 

@@ -454,7 +454,16 @@ export function PlanningInbox() {
     }
   }, []);
 
-  // Trigger geometry fetch whenever route stops or depot change
+  // Stable key: only changes when stop locations change (not ETAs)
+  const geometryKey = useMemo(
+    () => routeStops
+      .filter(s => s.stopType !== 'break' && s.customerLat != null && s.customerLng != null)
+      .map(s => `${s.customerLat},${s.customerLng}`)
+      .join('|'),
+    [routeStops],
+  );
+
+  // Trigger geometry fetch whenever route stop locations or depot change
   useEffect(() => {
     if (!isConnected || routeStops.length === 0) {
       setRouteGeometry([]);
@@ -471,7 +480,7 @@ export function PlanningInbox() {
         geometryUnsubRef.current = null;
       }
     };
-  }, [isConnected, routeStops, context?.depotId, depots, fetchRouteGeometry]);
+  }, [isConnected, geometryKey, context?.depotId, depots, fetchRouteGeometry]);
 
   // Cleanup day overview geometry subscription on unmount
   useEffect(() => {
@@ -489,6 +498,16 @@ export function PlanningInbox() {
       setRouteContext(context.date, context.crewId);
     }
   }, [context?.date, context?.crewId, setRouteContext]);
+
+  // Stable key: only changes when stop IDs or locations change (not ETAs).
+  // Declared early because both single-candidate and batch insertion effects depend on it.
+  const routeShapeKey = useMemo(
+    () => routeStops
+      .filter(s => s.stopType === 'customer' && s.customerLat && s.customerLng)
+      .map(s => `${s.id}:${s.customerLat},${s.customerLng}`)
+      .join('|'),
+    [routeStops],
+  );
 
   // Calculate insertion when candidate is selected
   useEffect(() => {
@@ -610,7 +629,7 @@ export function PlanningInbox() {
     }
     
     calculateInsertion();
-  }, [isConnected, selectedCandidateId, routeStops, context, depots, getCachedInsertion, defaultServiceDurationMinutes, defaultWorkingHoursStart, defaultWorkingHoursEnd]);
+  }, [isConnected, selectedCandidateId, routeShapeKey, context, depots, getCachedInsertion, defaultServiceDurationMinutes, defaultWorkingHoursStart, defaultWorkingHoursEnd]);
 
   // Load candidates (filtering is applied client-side via advanced filters)
   const loadCandidates = useCallback(async () => {
@@ -712,24 +731,30 @@ export function PlanningInbox() {
     }
     
     loadRoute();
-    // Also reload candidates to ensure route stop data is in sync with latest candidate info
-    loadCandidates();
-  }, [isConnected, context?.date, loadCandidates]);
+  }, [isConnected, context?.date]);
+
+  // Stable key: only changes when the set of candidates needing calculation changes
+  const candidatesNeedingCalc = useMemo(
+    () => candidates.filter(c => c.customerLat != null && c.customerLng != null && c.deltaKm === undefined),
+    [candidates],
+  );
+  const candidatesNeedingCalcKey = useMemo(
+    () => candidatesNeedingCalc.map(c => c.id).join(','),
+    [candidatesNeedingCalc],
+  );
+
+  const batchInFlightRef = useRef(false);
 
   // Batch calculate insertion metrics for visible candidates
   useEffect(() => {
-    if (!isConnected || !context || candidates.length === 0) return;
+    if (!isConnected || !context || candidatesNeedingCalc.length === 0) return;
+    if (batchInFlightRef.current) return;
     
     const depot = depots.find((d) => d.id === context.depotId);
     if (!depot) return;
     
-    const validCandidates = candidates.filter(
-      (c) => c.customerLat !== null && c.customerLng !== null && c.deltaKm === undefined
-    );
-    
-    if (validCandidates.length === 0) return;
-    
     async function calculateBatch() {
+      batchInFlightRef.current = true;
       try {
         const response = await insertionService.calculateBatchInsertion({
           routeStops: routeStops
@@ -742,7 +767,7 @@ export function PlanningInbox() {
               departureTime: stop.estimatedDeparture ?? undefined,
             })),
           depot: { lat: depot!.lat, lng: depot!.lng },
-          candidates: validCandidates.map((c) => ({
+          candidates: candidatesNeedingCalc.map((c) => ({
             id: c.id,
             customerId: c.customerId,
             coordinates: { lat: c.customerLat!, lng: c.customerLng! },
@@ -783,11 +808,13 @@ export function PlanningInbox() {
         );
       } catch (err) {
         logger.error('Failed to calculate batch insertion:', err);
+      } finally {
+        batchInFlightRef.current = false;
       }
     }
     
     calculateBatch();
-  }, [isConnected, context, candidates, routeStops, depots, setCachedInsertions]);
+  }, [isConnected, context, candidatesNeedingCalcKey, routeShapeKey, depots, setCachedInsertions]);
 
   // Get current depot for map
   const currentDepot: MapDepot | null = useMemo(() => {
