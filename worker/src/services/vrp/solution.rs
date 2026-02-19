@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! VRP Solution types
 
 use chrono::NaiveTime;
@@ -49,7 +50,6 @@ pub struct PlannedStop {
 #[derive(Debug, Clone)]
 pub struct RouteWarning {
     /// Related stop ID (if applicable)
-    #[allow(dead_code)]
     pub stop_id: Option<String>,
     /// Warning type code
     pub warning_type: String,
