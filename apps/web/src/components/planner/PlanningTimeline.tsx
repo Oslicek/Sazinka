@@ -396,6 +396,25 @@ function DroppableGap({
 }
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * After a DnD reorder, clear stale timing fields on the moved stop if it's a
+ * break. Without this, buildTimelineItems would see the old breakTimeStart /
+ * estimatedArrival and either create a huge gap or misplace the break.
+ * The next recalculation will fill in correct values.
+ */
+function clearStaleBreakTimes(reordered: SavedRouteStop[], movedStop: SavedRouteStop | undefined): SavedRouteStop[] {
+  if (!movedStop || movedStop.stopType !== 'break') return reordered;
+  return reordered.map((s) =>
+    s.id === movedStop.id
+      ? { ...s, breakTimeStart: null, estimatedArrival: null, estimatedDeparture: null }
+      : s,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
 
@@ -634,12 +653,12 @@ export function PlanningTimeline({
     // #region agent log
     _logDnD('handleDragEnd reorder executing', { fromIndex, toIndex, deltaY: delta.y }, 'H_SUCCESS');
     // #endregion
-    onReorder(reorderStops(stops, fromIndex, toIndex));
+    onReorder(clearStaleBreakTimes(reorderStops(stops, fromIndex, toIndex), stops[fromIndex]));
   }
 
   function confirmReorder() {
     if (!pendingReorder || !onReorder) return;
-    onReorder(reorderStops(stops, pendingReorder.from, pendingReorder.to));
+    onReorder(clearStaleBreakTimes(reorderStops(stops, pendingReorder.from, pendingReorder.to), stops[pendingReorder.from]));
     setPendingReorder(null);
   }
 
