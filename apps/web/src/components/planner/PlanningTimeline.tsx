@@ -9,15 +9,17 @@ import { useTranslation } from 'react-i18next';
 import {
   DndContext,
   closestCenter,
+  pointerWithin,
+  rectIntersection,
   PointerSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type CollisionDetection,
 } from '@dnd-kit/core';
 import {
   SortableContext,
   useSortable,
-  verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { SavedRouteStop } from '../../services/routeService';
@@ -375,21 +377,86 @@ export function PlanningTimeline({
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   );
 
+  // Custom collision: prefer pointer-within hit, fall back to closest center.
+  // This ensures dragging an item past non-sortable elements (travel, gap) still
+  // registers a drop target correctly.
+  const collisionDetection: CollisionDetection = (args) => {
+    const pointerHits = pointerWithin(args);
+    if (pointerHits.length > 0) return pointerHits;
+    const intersections = rectIntersection(args);
+    if (intersections.length > 0) return intersections;
+    return closestCenter(args);
+  };
+
+  // #region agent log
+  const _logDnD = (msg: string, data: Record<string, unknown>, hId: string) => { fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b6a781'},body:JSON.stringify({sessionId:'b6a781',location:'PlanningTimeline.tsx',message:msg,data,timestamp:Date.now(),hypothesisId:hId})}).catch(()=>{}); };
+  // #endregion
+
   // DnD handler
   function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event;
-    if (!over || active.id === over.id || !onReorder) return;
+    const { active, over, delta } = event;
+    // #region agent log
+    _logDnD('handleDragEnd called', { activeId: active.id, overId: over?.id ?? null, deltaY: delta.y, hasOnReorder: !!onReorder, stopIds: stops.map(s => s.id), stopTypes: stops.map(s => s.stopType) }, 'H1');
+    // #endregion
+    if (!over || active.id === over.id || !onReorder) {
+      // #region agent log
+      _logDnD('handleDragEnd early return', { overNull: !over, sameId: over ? active.id === over.id : null, noOnReorder: !onReorder }, 'H2_H3');
+      // #endregion
+      return;
+    }
 
     const fromIndex = stops.findIndex((s) => s.id === active.id);
-    const toIndex = stops.findIndex((s) => s.id === over.id);
-    if (fromIndex === -1 || toIndex === -1) return;
+    const overIndex = stops.findIndex((s) => s.id === over.id);
+    // #region agent log
+    _logDnD('handleDragEnd indices', { fromIndex, overIndex, activeId: active.id, overId: over.id, deltaY: delta.y }, 'H4');
+    // #endregion
+    if (fromIndex === -1 || overIndex === -1) {
+      // #region agent log
+      _logDnD('handleDragEnd index not found', { fromIndex, overIndex }, 'H4');
+      // #endregion
+      return;
+    }
+
+    // Determine the correct target index based on drag direction.
+    // Without a sorting strategy, @dnd-kit only tells us which item the
+    // pointer is over, not whether we should insert before or after it.
+    // Use delta.y (total vertical drag distance) to infer intent:
+    //   dragged upward (delta.y < 0) → place before the over item
+    //   dragged downward (delta.y > 0) → place after the over item
+    let toIndex: number;
+    if (delta.y < 0) {
+      // Dragged upward: place before the over item
+      toIndex = fromIndex > overIndex ? overIndex : overIndex - 1;
+    } else {
+      // Dragged downward: place after the over item
+      toIndex = fromIndex < overIndex ? overIndex : overIndex + 1;
+    }
+    // Clamp to valid range
+    toIndex = Math.max(0, Math.min(toIndex, stops.length - 1));
+
+    // #region agent log
+    _logDnD('handleDragEnd resolved toIndex', { fromIndex, overIndex, toIndex, deltaY: delta.y }, 'H8_DIRECTION');
+    // #endregion
+
+    if (fromIndex === toIndex) {
+      // #region agent log
+      _logDnD('handleDragEnd no-op (same index)', { fromIndex, toIndex }, 'H8_DIRECTION');
+      // #endregion
+      return;
+    }
 
     const warningStop = needsScheduledTimeWarning(stops, fromIndex, toIndex);
+    // #region agent log
+    _logDnD('handleDragEnd warning check', { warningStopId: warningStop?.id ?? null, warningStopScheduled: warningStop?.scheduledTimeStart ?? null, fromStopType: stops[fromIndex]?.stopType, toStopType: stops[toIndex]?.stopType }, 'H5');
+    // #endregion
     if (warningStop) {
       setPendingReorder({ from: fromIndex, to: toIndex, stop: warningStop });
       return;
     }
 
+    // #region agent log
+    _logDnD('handleDragEnd reorder executing', { fromIndex, toIndex, deltaY: delta.y }, 'H_SUCCESS');
+    // #endregion
     onReorder(reorderStops(stops, fromIndex, toIndex));
   }
 
@@ -491,8 +558,8 @@ export function PlanningTimeline({
 
   return (
     <div className={styles.container}>
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+      <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragEnd={handleDragEnd} onDragStart={(e) => { _logDnD('onDragStart', { activeId: e.active.id }, 'H1'); }} onDragOver={(e) => { _logDnD('onDragOver', { activeId: e.active.id, overId: e.over?.id ?? null }, 'H2_H3'); }}>
+        <SortableContext items={sortableIds}>
           <div className={styles.timeline}>
             <div className={styles.timelineWithLabels}>
               {/* Hour labels gutter */}
@@ -532,26 +599,26 @@ export function PlanningTimeline({
                       <div className={styles.travelLine} />
                       {item.durationMinutes > 0 && (
                         <div className={styles.travelInfo}>
-                          {onUpdateTravelDuration && item.stop ? (
+                          {onUpdateTravelDuration && item.destinationStopId ? (
                             <span className={styles.inlineEditGroup}>
                               <input
                                 type="number"
                                 className={styles.inlineInput}
-                                value={item.stop.overrideTravelDurationMinutes ?? item.durationMinutes ?? 0}
+                                value={item.overrideTravelDurationMinutes ?? item.durationMinutes ?? 0}
                                 min={0}
                                 max={999}
                                 onClick={(e) => e.stopPropagation()}
                                 onChange={(e) => {
                                   const val = Math.max(0, parseInt(e.target.value || '0', 10));
-                                  onUpdateTravelDuration(item.stop!.id, val);
+                                  onUpdateTravelDuration(item.destinationStopId!, val);
                                 }}
                               />
                               <span className={styles.inlineUnit}>min</span>
-                              {item.stop.overrideTravelDurationMinutes != null && onResetTravelDuration && (
+                              {item.overrideTravelDurationMinutes != null && onResetTravelDuration && (
                                 <button
                                   type="button"
                                   className={styles.overrideReset}
-                                  onClick={(e) => { e.stopPropagation(); onResetTravelDuration(item.stop!.id); }}
+                                  onClick={(e) => { e.stopPropagation(); onResetTravelDuration(item.destinationStopId!); }}
                                   title={t('override_reset_tooltip')}
                                 >⚠️</button>
                               )}

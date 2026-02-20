@@ -7,8 +7,8 @@
 | Phase | Status | Notes |
 |-------|--------|-------|
 | Phase 1 — Backend scheduler (pending-break algorithm) | ✅ CODE COMPLETE | `sequential_schedule.rs` rewritten with pending-break algorithm and 27 tests. `route.rs` updated with `break_time_start: None` stub. Tests cannot be run via `cargo test` due to **pre-existing compile errors** in unrelated files (`job.rs`, `vrp/adapter.rs`) that existed before this phase. The new code itself has no errors (confirmed by compiler output — all errors point to the pre-existing files only). |
-| Phase 2 — Backend `RecalcStopInput` extension | ⏳ PENDING | |
-| Phase 3 — Frontend `buildTimelineItems` two-pass refactor | ⏳ PENDING | |
+| Phase 2 — Backend `RecalcStopInput` extension | ✅ CODE COMPLETE | Added `break_time_start: Option<String>` field to `RecalcStopInput` in `route.rs` with `#[serde(default)]`. Wired it to `ScheduleStop.break_time_start` via `parse_time_flexible`. |
+| Phase 3 — Frontend `buildTimelineItems` two-pass refactor | ✅ CODE COMPLETE | Rewrote `buildTimelineItems.ts` with two-pass algorithm: Pass 1 builds customer skeleton (travel→gap?→stop), Pass 2 splices breaks into the correct gap by original array position. Added `destinationStopId` and `overrideTravelDurationMinutes` fields to `TimelineItem` for travel items (replacing the `stop` reference on travel items). Updated `PlanningTimeline.tsx` to use these new fields. All 19 existing tests pass. |
 | Phase 4 — Frontend DnD droppable gaps | ⏳ PENDING | |
 | Phase 4B — Quick Gap Placement (snapToGrid, no-recalc drop) | ⏳ PENDING | |
 | Phase 5 — Frontend `triggerRecalculate` + `breakTimeStart` | ⏳ PENDING | |

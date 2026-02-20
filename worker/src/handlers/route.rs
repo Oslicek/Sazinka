@@ -1732,6 +1732,10 @@ pub struct RecalcStopInput {
     #[serde(default)]
     pub device_type_default_duration_minutes: Option<i32>,
     pub break_duration_minutes: Option<i32>,
+    /// Explicit break start time (HH:MM). When set, the break is pinned to this
+    /// time within the gap after travel. Clamped to travel end if it falls earlier.
+    #[serde(default)]
+    pub break_time_start: Option<String>,
     #[serde(default)]
     pub override_service_duration_minutes: Option<i32>,
     #[serde(default)]
@@ -1929,7 +1933,9 @@ pub async fn handle_recalculate(
                     service_duration_minutes: s.service_duration_minutes,
                     device_type_default_duration_minutes: s.device_type_default_duration_minutes,
                     break_duration_minutes: s.break_duration_minutes,
-                    break_time_start: None, // Phase 2 will wire this from RecalcStopInput
+                    break_time_start: s.break_time_start
+                        .as_deref()
+                        .and_then(parse_time_flexible),
                     override_service_duration_minutes: s.override_service_duration_minutes,
                     override_travel_duration_minutes: s.override_travel_duration_minutes,
                 }
