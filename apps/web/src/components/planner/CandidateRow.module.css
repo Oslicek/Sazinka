@@ -241,9 +241,21 @@
   font-weight: 700;
   font-size: 1rem;
   position: relative;
-  text-decoration: line-through;
-  text-decoration-color: var(--color-error, #ef4444);
-  text-decoration-thickness: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.warning.noGeo::after {
+  content: '';
+  position: absolute;
+  width: 120%;
+  height: 2px;
+  background: var(--color-error, #ef4444);
+  border-radius: 999px;
+  transform: rotate(-35deg);
+  transform-origin: center;
+  pointer-events: none;
 }
 
 /* Keyboard focus */
