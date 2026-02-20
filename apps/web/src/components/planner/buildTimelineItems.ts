@@ -169,30 +169,39 @@ export function buildTimelineItems(
     }
 
     // --- Gap before this stop ---
-    if (arrivalMin != null && cursor < arrivalMin - GAP_THRESHOLD_MINUTES) {
-      const gapDuration = arrivalMin - cursor;
-      // Only assign insertAfterIndex to gaps before customer stops
+    // For breaks: only use estimatedArrival for gap if it's ahead of the cursor.
+    // Stale break times (before cursor) should not create gaps.
+    const effectiveArrival = isBreak
+      ? (arrivalMin != null && arrivalMin > cursor ? arrivalMin : null)
+      : arrivalMin;
+
+    if (effectiveArrival != null && cursor < effectiveArrival - GAP_THRESHOLD_MINUTES) {
+      const gapDuration = effectiveArrival - cursor;
       const isBeforeCustomerStop = !isBreak;
       items.push({
         type: 'gap',
         id: `gap-${i}`,
         startTime: minutesToHm(cursor),
-        endTime: minutesToHm(arrivalMin),
+        endTime: minutesToHm(effectiveArrival),
         durationMinutes: gapDuration,
         insertAfterIndex: isBeforeCustomerStop ? customerStopCount - 1 : undefined,
       });
-      cursor = arrivalMin;
+      cursor = effectiveArrival;
     }
 
     // --- The stop or break itself ---
     if (isBreak) {
-      const breakTimeStartMin = stop.breakTimeStart
+      // For break start: prefer breakTimeStart or estimatedArrival, but never
+      // go backwards before the cursor (stale times from before a reorder).
+      const rawBreakStart = stop.breakTimeStart
         ? parseHm(stop.breakTimeStart)
-        : null;
-      const breakStart = breakTimeStartMin ?? arrivalMin ?? cursor;
+        : arrivalMin;
+      const breakStart = rawBreakStart != null && rawBreakStart >= cursor
+        ? rawBreakStart
+        : cursor;
       const breakDur = stop.breakDurationMinutes
         ?? (departureMin != null && arrivalMin != null ? Math.max(0, departureMin - arrivalMin) : 30);
-      const breakEnd = departureMin ?? (breakStart + breakDur);
+      const breakEnd = breakStart + breakDur;
       const breakDuration = Math.max(0, breakEnd - breakStart);
 
       items.push({

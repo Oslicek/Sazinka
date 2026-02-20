@@ -529,6 +529,76 @@ describe('buildTimelineItems', () => {
     expect(legacy.agreedWindowEnd).toBeUndefined();
   });
 
+  // ── Break with stale times after reorder ──
+
+  it('places a break at cursor when its breakTimeStart is stale (before cursor)', () => {
+    // After a reorder, the break ends up last in the array but its breakTimeStart
+    // is from before the reorder (07:45). The cursor after KominServis is 11:00.
+    // The break should start at 11:00, not 07:45, and no huge gap should appear.
+    const stops: SavedRouteStop[] = [
+      makeStop({
+        id: 'c1', stopOrder: 1,
+        estimatedArrival: '08:00', estimatedDeparture: '09:00',
+        distanceFromPreviousKm: 64, durationFromPreviousMinutes: 45,
+      }),
+      makeStop({
+        id: 'c2', stopOrder: 2,
+        estimatedArrival: '09:30', estimatedDeparture: '10:00',
+        distanceFromPreviousKm: 24, durationFromPreviousMinutes: 20,
+      }),
+      makeStop({
+        id: 'c3', stopOrder: 3,
+        estimatedArrival: '10:15', estimatedDeparture: '11:00',
+        distanceFromPreviousKm: 10, durationFromPreviousMinutes: 10,
+      }),
+      makeStop({
+        id: 'brk', stopOrder: 4, stopType: 'break',
+        breakTimeStart: '07:45', breakDurationMinutes: 45,
+        estimatedArrival: '07:45', estimatedDeparture: '08:30',
+      }),
+    ];
+    const items = buildTimelineItems(stops, '07:00', '16:00');
+
+    const breakItem = items.find((i) => i.type === 'break')!;
+    expect(breakItem).toBeDefined();
+    // Break should start at cursor (11:00), not stale 07:45
+    expect(breakItem.startTime).toBe('11:00');
+    expect(breakItem.endTime).toBe('11:45');
+    expect(breakItem.durationMinutes).toBe(45);
+
+    // There should be no gap > 1h in the timeline (the stale time would create a 3h+ gap)
+    const gaps = items.filter((i) => i.type === 'gap');
+    for (const gap of gaps) {
+      expect(gap.durationMinutes).toBeLessThan(60);
+    }
+  });
+
+  it('places a break in a gap when its breakTimeStart is valid and ahead of cursor', () => {
+    const stops: SavedRouteStop[] = [
+      makeStop({
+        id: 'c1', stopOrder: 1,
+        estimatedArrival: '08:00', estimatedDeparture: '09:00',
+        distanceFromPreviousKm: 64, durationFromPreviousMinutes: 45,
+      }),
+      makeStop({
+        id: 'brk', stopOrder: 2, stopType: 'break',
+        breakTimeStart: '10:00', breakDurationMinutes: 45,
+        estimatedArrival: '10:00', estimatedDeparture: '10:45',
+      }),
+      makeStop({
+        id: 'c2', stopOrder: 3,
+        estimatedArrival: '11:30', estimatedDeparture: '12:00',
+        distanceFromPreviousKm: 24, durationFromPreviousMinutes: 20,
+      }),
+    ];
+    const items = buildTimelineItems(stops, '07:00', '16:00');
+
+    const breakItem = items.find((i) => i.type === 'break')!;
+    expect(breakItem).toBeDefined();
+    expect(breakItem.startTime).toBe('10:00');
+    expect(breakItem.endTime).toBe('10:45');
+  });
+
   // ── Unique IDs ──
 
   it('assigns unique IDs to every item', () => {
