@@ -327,6 +327,11 @@ export interface RecalcStopInput {
   /** Default service duration from the device type config (minutes). Fallback between per-stop and global default. */
   deviceTypeDefaultDurationMinutes?: number | null;
   breakDurationMinutes?: number | null;
+  /**
+   * Explicit break start time (HH:MM). When set, the backend pins the break
+   * to this time within the gap after travel to the next customer.
+   */
+  breakTimeStart?: string | null;
   /** Manual override for service duration */
   overrideServiceDurationMinutes?: number | null;
   /** Manual override for travel duration */

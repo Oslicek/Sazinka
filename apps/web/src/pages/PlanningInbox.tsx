@@ -1197,6 +1197,7 @@ export function PlanningInbox() {
       scheduledTimeEnd: s.scheduledTimeEnd ?? undefined,
       serviceDurationMinutes: s.serviceDurationMinutes ?? undefined,
       breakDurationMinutes: s.breakDurationMinutes ?? undefined,
+      breakTimeStart: s.stopType === 'break' ? (s.breakTimeStart ?? undefined) : undefined,
       overrideServiceDurationMinutes: s.overrideServiceDurationMinutes ?? undefined,
       overrideTravelDurationMinutes: s.overrideTravelDurationMinutes ?? undefined,
       id: s.id,
@@ -1224,6 +1225,7 @@ export function PlanningInbox() {
         const updated = prev.map((stop) => {
           const recalced = resultMap.get(stop.id);
           if (!recalced) return stop;
+          // Clear needsReschedule once we have real recalculated times
           return {
             ...stop,
             estimatedArrival: recalced.estimatedArrival,
@@ -1231,6 +1233,7 @@ export function PlanningInbox() {
             distanceFromPreviousKm: recalced.distanceFromPreviousKm,
             durationFromPreviousMinutes: recalced.durationFromPreviousMinutes,
             serviceDurationMinutes: recalced.serviceDurationMinutes,
+            needsReschedule: false,
           };
         });
         // #region agent log
@@ -1963,8 +1966,8 @@ export function PlanningInbox() {
   // Route building: update break start time or duration
   const handleUpdateBreak = useCallback((stopId: string, patch: { breakTimeStart?: string; breakDurationMinutes?: number }) => {
     setIsBreakManuallyAdjusted(true);
-    setRouteStops((prev) =>
-      prev.map((s) => {
+    setRouteStops((prev) => {
+      const updated = prev.map((s) => {
         if (s.id !== stopId || s.stopType !== 'break') return s;
         const breakTimeStart = patch.breakTimeStart ?? s.breakTimeStart ?? '12:00';
         const breakDurationMinutes = patch.breakDurationMinutes ?? s.breakDurationMinutes ?? 30;
@@ -1980,11 +1983,14 @@ export function PlanningInbox() {
           estimatedArrival: breakTimeStart,
           estimatedDeparture,
         };
-      })
-    );
+      });
+      // Trigger recalculation with the updated stops (including new breakTimeStart)
+      triggerRecalculate(updated);
+      return updated;
+    });
     setHasChanges(true);
     incrementRouteVersion();
-  }, [incrementRouteVersion]);
+  }, [incrementRouteVersion, triggerRecalculate]);
 
   // Override: update travel duration for a stop
   const handleUpdateTravelDuration = useCallback((stopId: string, minutes: number) => {
