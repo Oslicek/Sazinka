@@ -179,6 +179,16 @@
   background: rgba(37, 99, 235, 0.14);
 }
 
+/* Gap highlighted as a drop target when a break is being dragged over it */
+.gapZoneDropTarget {
+  background: rgba(22, 163, 74, 0.18);
+  border-color: rgba(22, 163, 74, 0.8);
+  border-left-color: #16a34a;
+  border-style: solid;
+  outline: 2px solid rgba(22, 163, 74, 0.4);
+  outline-offset: 1px;
+}
+
 .gapCandidate {
   display: flex;
   flex-direction: column;

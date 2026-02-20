@@ -14,7 +14,9 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  useDroppable,
   type DragEndEvent,
+  type DragStartEvent,
   type CollisionDetection,
 } from '@dnd-kit/core';
 import {
@@ -316,6 +318,71 @@ function SortableStopCard({
 }
 
 // ---------------------------------------------------------------------------
+// DroppableGap — gap zone that accepts break drops
+// ---------------------------------------------------------------------------
+
+function DroppableGap({
+  item,
+  gapInfo,
+  isDraggingBreak,
+  candidateForInsertion,
+  onInsertCandidate,
+  formatTime,
+  formatDurationHm,
+  formatDelta,
+  styles: s,
+}: {
+  item: TimelineItem;
+  gapInfo: GapInsertionInfo | undefined;
+  isDraggingBreak: boolean;
+  candidateForInsertion?: CandidateForInsertion | null;
+  onInsertCandidate?: (insertAfterIndex: number) => void;
+  formatTime: (t: string | null) => string;
+  formatDurationHm: (m: number) => string;
+  formatDelta: (v: number, u: string) => string;
+  styles: Record<string, string>;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: item.id });
+  const highlight = isDraggingBreak && isOver;
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`${s.gapZone} ${gapInfo ? s.gapZoneActive : ''} ${highlight ? s.gapZoneDropTarget : ''}`}
+      style={{ height: Math.max(24, Math.round(item.durationMinutes * 1.25)) }}
+      onClick={() => {
+        if (gapInfo && onInsertCandidate) {
+          onInsertCandidate(item.insertAfterIndex!);
+        }
+      }}
+    >
+      <div className={s.gapContent}>
+        <span className={s.gapDuration}>
+          {formatTime(item.startTime)} – {formatTime(item.endTime)}
+          {' '}({formatDurationHm(item.durationMinutes)})
+        </span>
+        {gapInfo && (
+          <div className={s.gapCandidate}>
+            <span className={s.gapCandidateName}>
+              + {candidateForInsertion!.candidateName}
+            </span>
+            {gapInfo.estimatedArrival && (
+              <span className={s.gapCandidateTime}>
+                ETA {gapInfo.estimatedArrival}
+                {gapInfo.estimatedDeparture && ` – ${gapInfo.estimatedDeparture}`}
+              </span>
+            )}
+            <span className={`${s.gapCandidateDelta} ${s[`status_${gapInfo.status}`]}`}>
+              {formatDelta(gapInfo.deltaMin, ' min')} / {formatDelta(gapInfo.deltaKm, ' km')}
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
 
@@ -351,6 +418,9 @@ export function PlanningTimeline({
     to: number;
     stop: SavedRouteStop;
   } | null>(null);
+
+  // Track whether a break is currently being dragged (to highlight gap drop zones)
+  const [isDraggingBreak, setIsDraggingBreak] = useState(false);
 
   // Build timeline items
   const timelineItems = useMemo(
@@ -392,8 +462,14 @@ export function PlanningTimeline({
   const _logDnD = (msg: string, data: Record<string, unknown>, hId: string) => { fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b6a781'},body:JSON.stringify({sessionId:'b6a781',location:'PlanningTimeline.tsx',message:msg,data,timestamp:Date.now(),hypothesisId:hId})}).catch(()=>{}); };
   // #endregion
 
+  function handleDragStart(event: DragStartEvent) {
+    const dragged = stops.find((s) => s.id === event.active.id);
+    setIsDraggingBreak(dragged?.stopType === 'break');
+  }
+
   // DnD handler
   function handleDragEnd(event: DragEndEvent) {
+    setIsDraggingBreak(false);
     const { active, over, delta } = event;
     // #region agent log
     _logDnD('handleDragEnd called', { activeId: active.id, overId: over?.id ?? null, deltaY: delta.y, hasOnReorder: !!onReorder, stopIds: stops.map(s => s.id), stopTypes: stops.map(s => s.stopType) }, 'H1');
@@ -402,6 +478,59 @@ export function PlanningTimeline({
       // #region agent log
       _logDnD('handleDragEnd early return', { overNull: !over, sameId: over ? active.id === over.id : null, noOnReorder: !onReorder }, 'H2_H3');
       // #endregion
+      return;
+    }
+
+    // --- Drop on a gap: move break to just before the gap's next customer stop ---
+    const overId = String(over.id);
+    if (overId.startsWith('gap-') || overId.startsWith('gap-before-') || overId.startsWith('gap-after-')) {
+      const droppedStop = stops.find((s) => s.id === active.id);
+      if (!droppedStop || droppedStop.stopType !== 'break') return;
+
+      // Find the gap item in the timeline to get its time bounds
+      const gapItem = timelineItems.find((it) => it.id === overId);
+      if (!gapItem || !gapItem.startTime || !gapItem.endTime) return;
+
+      const gapStartMin = parseHm(gapItem.startTime);
+      const gapEndMin = parseHm(gapItem.endTime);
+      const breakDuration = droppedStop.breakDurationMinutes ?? 30;
+
+      // Compute break start from drop position within the gap.
+      // delta.y is total drag distance; use it as a proxy for position within gap.
+      // The gap height in pixels = max(24, gapDurationMin * PIXELS_PER_MINUTE).
+      const gapHeightPx = Math.max(24, Math.round((gapEndMin - gapStartMin) * PIXELS_PER_MINUTE));
+      const clampedDeltaY = Math.max(0, Math.min(delta.y, gapHeightPx));
+      const fractionInGap = gapHeightPx > 0 ? clampedDeltaY / gapHeightPx : 0;
+      const rawBreakStartMin = gapStartMin + Math.round(fractionInGap * (gapEndMin - gapStartMin));
+
+      // Snap to 15-minute grid, clamped within the gap
+      const snappedMin = Math.round(rawBreakStartMin / 15) * 15;
+      const earliestStart = Math.ceil(gapStartMin / 15) * 15;
+      const latestStart = Math.floor((gapEndMin - breakDuration) / 15) * 15;
+      const breakStartMin = Math.max(earliestStart, Math.min(latestStart, snappedMin));
+
+      const h = Math.floor(breakStartMin / 60);
+      const m = breakStartMin % 60;
+      const breakTimeStart = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+
+      // Find the customer stop that follows this gap.
+      // The gap item has insertAfterIndex (customer-only index). The next customer
+      // is at insertAfterIndex + 1 in customer-only space.
+      const insertAfterCustomerIdx = gapItem.insertAfterIndex ?? -1;
+      const customerStops = stops.filter((s) => s.stopType === 'customer');
+      const nextCustomer = customerStops[insertAfterCustomerIdx + 1];
+
+      // Move the break to just before the next customer in the full stops array.
+      const newStops = stops.filter((s) => s.id !== droppedStop.id);
+      const insertionPoint = nextCustomer
+        ? newStops.findIndex((s) => s.id === nextCustomer.id)
+        : newStops.length; // trailing break: append at end
+
+      const updatedBreak: SavedRouteStop = { ...droppedStop, breakTimeStart };
+      newStops.splice(insertionPoint, 0, updatedBreak);
+      const reindexed = newStops.map((s, i) => ({ ...s, stopOrder: i + 1 }));
+
+      onReorder(reindexed);
       return;
     }
 
@@ -558,7 +687,7 @@ export function PlanningTimeline({
 
   return (
     <div className={styles.container}>
-      <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragEnd={handleDragEnd} onDragStart={(e) => { _logDnD('onDragStart', { activeId: e.active.id }, 'H1'); }} onDragOver={(e) => { _logDnD('onDragOver', { activeId: e.active.id, overId: e.over?.id ?? null }, 'H2_H3'); }}>
+      <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragEnd={handleDragEnd} onDragStart={(e: DragStartEvent) => { handleDragStart(e); _logDnD('onDragStart', { activeId: e.active.id }, 'H1'); }} onDragOver={(e) => { _logDnD('onDragOver', { activeId: e.active.id, overId: e.over?.id ?? null }, 'H2_H3'); }}>
         <SortableContext items={sortableIds}>
           <div className={styles.timeline}>
             <div className={styles.timelineWithLabels}>
@@ -637,39 +766,18 @@ export function PlanningTimeline({
                 case 'gap': {
                   const gapInfo = gapInsertionMap.get(item.insertAfterIndex!);
                   return (
-                    <div
+                    <DroppableGap
                       key={item.id}
-                      className={`${styles.gapZone} ${gapInfo ? styles.gapZoneActive : ''}`}
-                      style={{ height: heightForDuration(item.durationMinutes, MIN_GAP_HEIGHT) }}
-                      onClick={() => {
-                        if (gapInfo && onInsertCandidate) {
-                          onInsertCandidate(item.insertAfterIndex!);
-                        }
-                      }}
-                    >
-                      <div className={styles.gapContent}>
-                        <span className={styles.gapDuration}>
-                          {formatTime(item.startTime)} – {formatTime(item.endTime)}
-                          {' '}({formatDurationHm(item.durationMinutes)})
-                        </span>
-                        {gapInfo && (
-                          <div className={styles.gapCandidate}>
-                            <span className={styles.gapCandidateName}>
-                              + {candidateForInsertion!.candidateName}
-                            </span>
-                            {gapInfo.estimatedArrival && (
-                              <span className={styles.gapCandidateTime}>
-                                ETA {gapInfo.estimatedArrival}
-                                {gapInfo.estimatedDeparture && ` – ${gapInfo.estimatedDeparture}`}
-                              </span>
-                            )}
-                            <span className={`${styles.gapCandidateDelta} ${styles[`status_${gapInfo.status}`]}`}>
-                              {formatDelta(gapInfo.deltaMin, ' min')} / {formatDelta(gapInfo.deltaKm, ' km')}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                      item={item}
+                      gapInfo={gapInfo}
+                      isDraggingBreak={isDraggingBreak}
+                      candidateForInsertion={candidateForInsertion}
+                      onInsertCandidate={onInsertCandidate}
+                      formatTime={formatTime}
+                      formatDurationHm={formatDurationHm}
+                      formatDelta={formatDelta}
+                      styles={styles as unknown as Record<string, string>}
+                    />
                   );
                 }
 
