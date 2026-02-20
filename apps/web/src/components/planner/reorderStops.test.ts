@@ -133,4 +133,13 @@ describe('needsScheduledTimeWarning', () => {
     ];
     expect(needsScheduledTimeWarning(stops, 0, 1)).toBeNull();
   });
+
+  it('returns null when a break with scheduledTimeStart is moved (breaks have no customer appointment)', () => {
+    const stops = [
+      makeStop({ id: 'c1', stopOrder: 1, scheduledTimeStart: '09:00', scheduledTimeEnd: '10:00' }),
+      makeStop({ id: 'brk', stopOrder: 2, stopType: 'break', scheduledTimeStart: '12:30', scheduledTimeEnd: '13:15', breakDurationMinutes: 45 }),
+      makeStop({ id: 'c2', stopOrder: 3, scheduledTimeStart: '14:00', scheduledTimeEnd: '15:00' }),
+    ];
+    expect(needsScheduledTimeWarning(stops, 1, 0)).toBeNull();
+  });
 });

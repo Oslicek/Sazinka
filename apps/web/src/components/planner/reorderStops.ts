@@ -34,6 +34,7 @@ export function needsScheduledTimeWarning(
   if (fromIndex === toIndex) return null;
   const stop = stops[fromIndex];
   if (!stop) return null;
-  if (stop.scheduledTimeStart) return stop;
+  // Only warn for customer stops — breaks have no customer appointment to renegotiate
+  if (stop.stopType === 'customer' && stop.scheduledTimeStart) return stop;
   return null;
 }
