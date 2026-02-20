@@ -61,6 +61,11 @@ export interface TimelineItem {
   agreedWindowEnd?: string;
   /** Full agreed window duration in minutes for flexible stops. */
   agreedWindowDurationMinutes?: number;
+  /**
+   * True when a customer stop was placed via Quick Gap Placement (no recalc).
+   * The scheduled times are provisional — the customer needs to be re-contacted.
+   */
+  needsReschedule?: boolean;
 }
 
 export interface ReturnToDepotInfo {
@@ -226,6 +231,7 @@ export function buildTimelineItems(
       agreedWindowStart: isFlexibleWindow ? normalise(stop.scheduledTimeStart) ?? undefined : undefined,
       agreedWindowEnd: isFlexibleWindow ? normalise(stop.scheduledTimeEnd) ?? undefined : undefined,
       agreedWindowDurationMinutes: isFlexibleWindow ? windowDuration ?? undefined : undefined,
+      needsReschedule: stop.needsReschedule ?? undefined,
     });
 
     cursor = stopEnd;

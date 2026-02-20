@@ -27,6 +27,7 @@ import { CSS } from '@dnd-kit/utilities';
 import type { SavedRouteStop } from '../../services/routeService';
 import type { RouteWarning } from '@shared/route';
 import { buildTimelineItems, type TimelineItem } from './buildTimelineItems';
+import { snapToGrid, minutesToHm as snapMinutesToHm } from './snapToGrid';
 import { reorderStops, needsScheduledTimeWarning } from './reorderStops';
 import { ScheduledTimeWarning } from './ScheduledTimeWarning';
 import styles from './PlanningTimeline.module.css';
@@ -80,6 +81,12 @@ interface PlanningTimelineProps {
   // Candidate insertion
   candidateForInsertion?: CandidateForInsertion | null;
   onInsertCandidate?: (insertAfterIndex: number) => void;
+  /**
+   * Quick Gap Placement: called when a stop or break is dropped into a gap
+   * WITHOUT triggering a full route recalculation. The callback receives the
+   * updated stops array with provisional times already set.
+   */
+  onQuickPlaceInGap?: (newStops: SavedRouteStop[]) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -298,6 +305,12 @@ function SortableStopCard({
             })}
           </div>
         )}
+        {item.needsReschedule && (
+          <div className={styles.needsRescheduleWarning}>
+            <span className={styles.lateWarningIcon}>&#x26A0;</span>
+            {t('needs_reschedule')}
+          </div>
+        )}
       </div>
 
       {onRemoveStop && (
@@ -406,6 +419,7 @@ export function PlanningTimeline({
   returnToDepotDurationMinutes,
   candidateForInsertion,
   onInsertCandidate,
+  onQuickPlaceInGap,
 }: PlanningTimelineProps) {
   const { t } = useTranslation('planner');
   const depotName = depot?.name ?? 'Depo';
@@ -481,11 +495,11 @@ export function PlanningTimeline({
       return;
     }
 
-    // --- Drop on a gap: move break to just before the gap's next customer stop ---
+    // --- Drop on a gap: Quick Gap Placement (no recalculation) ---
     const overId = String(over.id);
     if (overId.startsWith('gap-') || overId.startsWith('gap-before-') || overId.startsWith('gap-after-')) {
       const droppedStop = stops.find((s) => s.id === active.id);
-      if (!droppedStop || droppedStop.stopType !== 'break') return;
+      if (!droppedStop) return;
 
       // Find the gap item in the timeline to get its time bounds
       const gapItem = timelineItems.find((it) => it.id === overId);
@@ -493,44 +507,78 @@ export function PlanningTimeline({
 
       const gapStartMin = parseHm(gapItem.startTime);
       const gapEndMin = parseHm(gapItem.endTime);
-      const breakDuration = droppedStop.breakDurationMinutes ?? 30;
 
-      // Compute break start from drop position within the gap.
+      // Determine item duration
+      const itemDuration = droppedStop.stopType === 'break'
+        ? (droppedStop.breakDurationMinutes ?? 30)
+        : (droppedStop.serviceDurationMinutes ?? droppedStop.overrideServiceDurationMinutes ?? 30);
+
+      // Compute raw drop position within the gap from delta.y.
       // delta.y is total drag distance; use it as a proxy for position within gap.
-      // The gap height in pixels = max(24, gapDurationMin * PIXELS_PER_MINUTE).
       const gapHeightPx = Math.max(24, Math.round((gapEndMin - gapStartMin) * PIXELS_PER_MINUTE));
       const clampedDeltaY = Math.max(0, Math.min(delta.y, gapHeightPx));
       const fractionInGap = gapHeightPx > 0 ? clampedDeltaY / gapHeightPx : 0;
-      const rawBreakStartMin = gapStartMin + Math.round(fractionInGap * (gapEndMin - gapStartMin));
+      const rawStartMin = gapStartMin + Math.round(fractionInGap * (gapEndMin - gapStartMin));
 
-      // Snap to 15-minute grid, clamped within the gap
-      const snappedMin = Math.round(rawBreakStartMin / 15) * 15;
-      const earliestStart = Math.ceil(gapStartMin / 15) * 15;
-      const latestStart = Math.floor((gapEndMin - breakDuration) / 15) * 15;
-      const breakStartMin = Math.max(earliestStart, Math.min(latestStart, snappedMin));
+      // Snap to 15-minute grid
+      const snappedStartMin = snapToGrid(rawStartMin, itemDuration, gapStartMin, gapEndMin);
+      if (snappedStartMin === null) {
+        // Gap too small — reject the drop silently
+        return;
+      }
 
-      const h = Math.floor(breakStartMin / 60);
-      const m = breakStartMin % 60;
-      const breakTimeStart = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+      const snappedEndMin = snappedStartMin + itemDuration;
+      const startHm = snapMinutesToHm(snappedStartMin);
+      const endHm = snapMinutesToHm(snappedEndMin);
 
       // Find the customer stop that follows this gap.
-      // The gap item has insertAfterIndex (customer-only index). The next customer
-      // is at insertAfterIndex + 1 in customer-only space.
       const insertAfterCustomerIdx = gapItem.insertAfterIndex ?? -1;
       const customerStops = stops.filter((s) => s.stopType === 'customer');
       const nextCustomer = customerStops[insertAfterCustomerIdx + 1];
 
-      // Move the break to just before the next customer in the full stops array.
+      // Remove the dragged stop from its current position
       const newStops = stops.filter((s) => s.id !== droppedStop.id);
+
+      // Insert at the correct position (just before the next customer)
       const insertionPoint = nextCustomer
         ? newStops.findIndex((s) => s.id === nextCustomer.id)
-        : newStops.length; // trailing break: append at end
+        : newStops.length;
 
-      const updatedBreak: SavedRouteStop = { ...droppedStop, breakTimeStart };
-      newStops.splice(insertionPoint, 0, updatedBreak);
+      let updatedStop: SavedRouteStop;
+      if (droppedStop.stopType === 'break') {
+        updatedStop = {
+          ...droppedStop,
+          breakTimeStart: startHm,
+          estimatedArrival: startHm,
+          estimatedDeparture: endHm,
+          // Clear travel metrics — they'll be recalculated on next recalc
+          durationFromPreviousMinutes: null,
+          distanceFromPreviousKm: null,
+        };
+      } else {
+        // Customer stop: set provisional times and flag for renegotiation
+        updatedStop = {
+          ...droppedStop,
+          estimatedArrival: startHm,
+          estimatedDeparture: endHm,
+          scheduledTimeStart: startHm,
+          scheduledTimeEnd: endHm,
+          needsReschedule: true,
+          // Clear travel metrics
+          durationFromPreviousMinutes: null,
+          distanceFromPreviousKm: null,
+        };
+      }
+
+      newStops.splice(insertionPoint, 0, updatedStop);
       const reindexed = newStops.map((s, i) => ({ ...s, stopOrder: i + 1 }));
 
-      onReorder(reindexed);
+      // Use onQuickPlaceInGap if available (no recalc), otherwise fall back to onReorder
+      if (onQuickPlaceInGap) {
+        onQuickPlaceInGap(reindexed);
+      } else if (onReorder) {
+        onReorder(reindexed);
+      }
       return;
     }
 

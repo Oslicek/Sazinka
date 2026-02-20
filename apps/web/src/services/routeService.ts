@@ -114,6 +114,12 @@ export interface SavedRouteStop {
   overrideServiceDurationMinutes?: number | null;
   /** Manual override for travel duration */
   overrideTravelDurationMinutes?: number | null;
+  /**
+   * True when a customer stop was placed into a gap via Quick Gap Placement
+   * (no recalculation). The scheduled times are provisional and the customer
+   * must be re-contacted to confirm the new time slot.
+   */
+  needsReschedule?: boolean;
 }
 
 export interface GetRouteResponse {
