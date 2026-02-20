@@ -98,6 +98,7 @@ const PIXELS_PER_MINUTE = 1.25;
 const MIN_ITEM_HEIGHT = 20;
 const MIN_STOP_HEIGHT = 56;
 const MIN_GAP_HEIGHT = 24;
+const DEPOT_CARD_HEIGHT = 32;
 
 function heightForDuration(minutes: number, minH = MIN_ITEM_HEIGHT): number {
   return Math.max(minH, Math.round(minutes * PIXELS_PER_MINUTE));
@@ -668,7 +669,8 @@ export function PlanningTimeline({
     return labels;
   }, [workdayStart, workdayEnd]);
 
-  // Compute cumulative pixel offsets for each timeline item to position hour labels
+  // Compute cumulative pixel offsets for each timeline item to position hour labels.
+  // Heights must match the actual rendered heights exactly.
   const itemOffsets = useMemo(() => {
     const offsets: { startPx: number; endPx: number; startMin: number; endMin: number }[] = [];
     let px = 0;
@@ -677,11 +679,12 @@ export function PlanningTimeline({
       const eMin = item.endTime ? parseHm(item.endTime) : sMin;
       let h: number;
       if (item.type === 'depot') {
-        h = 0;
+        h = DEPOT_CARD_HEIGHT;
       } else if (item.type === 'gap') {
-        h = heightForDuration(item.durationMinutes, MIN_GAP_HEIGHT);
+        h = Math.max(MIN_GAP_HEIGHT, Math.round(item.durationMinutes * PIXELS_PER_MINUTE));
       } else if (item.type === 'travel') {
-        h = heightForDuration(item.durationMinutes, 8);
+        // 0-duration travel items are not rendered (return null)
+        h = item.durationMinutes === 0 ? 0 : heightForDuration(item.durationMinutes, 8);
       } else {
         h = heightForDuration(item.durationMinutes, MIN_STOP_HEIGHT);
       }
