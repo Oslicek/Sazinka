@@ -1236,9 +1236,6 @@ export function PlanningInbox() {
             needsReschedule: false,
           };
         });
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b6a781'},body:JSON.stringify({sessionId:'b6a781',location:'PlanningInbox.tsx:triggerRecalculate',message:'recalc setRouteStops',data:{prevOrder: prev.map(s => ({id: s.id.slice(0,8), type: s.stopType})), updatedOrder: updated.map(s => ({id: s.id.slice(0,8), type: s.stopType})), resultStopOrder: result.stops.map(s => ({id: s.id.slice(0,8)}))},timestamp:Date.now(),hypothesisId:'H7'})}).catch(()=>{});
-        // #endregion
         return updated;
       });
 
@@ -1686,9 +1683,6 @@ export function PlanningInbox() {
 
   // Route building: reorder stops via drag-and-drop
   const handleReorder = useCallback((newStops: SavedRouteStop[]) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b6a781'},body:JSON.stringify({sessionId:'b6a781',location:'PlanningInbox.tsx:handleReorder',message:'handleReorder called',data:{newStopOrder: newStops.map(s => ({id: s.id.slice(0,8), type: s.stopType, name: s.customerName, order: s.stopOrder}))},timestamp:Date.now(),hypothesisId:'H6'})}).catch(()=>{});
-    // #endregion
     setRouteStops(newStops);
     setHasChanges(true);
     incrementRouteVersion();

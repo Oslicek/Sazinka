@@ -8,6 +8,7 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   DndContext,
+  DragOverlay,
   closestCenter,
   pointerWithin,
   rectIntersection,
@@ -172,7 +173,7 @@ function SortableStopCard({
     ...(hasLateWarning
       ? { minHeight: proportionalHeight }
       : { height: proportionalHeight, minHeight: MIN_STOP_HEIGHT }),
-    opacity: isDragging ? 0.5 : 1,
+    opacity: isDragging ? 0.3 : 1,
   };
 
   return (
@@ -337,7 +338,7 @@ function SortableStopCard({
 function DroppableGap({
   item,
   gapInfo,
-  isDraggingBreak,
+  isDraggingAny,
   candidateForInsertion,
   onInsertCandidate,
   formatTime,
@@ -347,7 +348,7 @@ function DroppableGap({
 }: {
   item: TimelineItem;
   gapInfo: GapInsertionInfo | undefined;
-  isDraggingBreak: boolean;
+  isDraggingAny: boolean;
   candidateForInsertion?: CandidateForInsertion | null;
   onInsertCandidate?: (insertAfterIndex: number) => void;
   formatTime: (t: string | null) => string;
@@ -356,12 +357,12 @@ function DroppableGap({
   styles: Record<string, string>;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: item.id });
-  const highlight = isDraggingBreak && isOver;
+  const highlight = isDraggingAny && isOver;
 
   return (
     <div
       ref={setNodeRef}
-      className={`${s.gapZone} ${gapInfo ? s.gapZoneActive : ''} ${highlight ? s.gapZoneDropTarget : ''}`}
+      className={`${s.gapZone} ${gapInfo ? s.gapZoneActive : ''} ${isDraggingAny ? s.gapZoneReady : ''} ${highlight ? s.gapZoneDropTarget : ''}`}
       style={{ height: Math.max(24, Math.round(item.durationMinutes * 1.25)) }}
       onClick={() => {
         if (gapInfo && onInsertCandidate) {
@@ -452,8 +453,9 @@ export function PlanningTimeline({
     stop: SavedRouteStop;
   } | null>(null);
 
-  // Track whether a break is currently being dragged (to highlight gap drop zones)
-  const [isDraggingBreak, setIsDraggingBreak] = useState(false);
+  // Track the actively dragged stop (for DragOverlay and gap zone highlighting)
+  const [activeDragStop, setActiveDragStop] = useState<SavedRouteStop | null>(null);
+  const isDraggingAny = activeDragStop != null;
 
   // Build timeline items
   const timelineItems = useMemo(
@@ -468,6 +470,11 @@ export function PlanningTimeline({
       ),
     [stops, workdayStart, workdayEnd, returnToDepotDistanceKm, returnToDepotDurationMinutes],
   );
+
+  // The timeline item for the active drag (for DragOverlay rendering)
+  const activeDragItem = activeDragStop
+    ? timelineItems.find((it) => it.id === activeDragStop.id) ?? null
+    : null;
 
   // Sortable IDs = only stops and breaks
   const sortableIds = useMemo(
@@ -491,28 +498,16 @@ export function PlanningTimeline({
     return closestCenter(args);
   };
 
-  // #region agent log
-  const _logDnD = (msg: string, data: Record<string, unknown>, hId: string) => { fetch('http://127.0.0.1:7242/ingest/9aaba2f3-fc9a-42ee-ad9d-d660c5a30902',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'b6a781'},body:JSON.stringify({sessionId:'b6a781',location:'PlanningTimeline.tsx',message:msg,data,timestamp:Date.now(),hypothesisId:hId})}).catch(()=>{}); };
-  // #endregion
-
   function handleDragStart(event: DragStartEvent) {
-    const dragged = stops.find((s) => s.id === event.active.id);
-    setIsDraggingBreak(dragged?.stopType === 'break');
+    const dragged = stops.find((s) => s.id === event.active.id) ?? null;
+    setActiveDragStop(dragged);
   }
 
   // DnD handler
   function handleDragEnd(event: DragEndEvent) {
-    setIsDraggingBreak(false);
+    setActiveDragStop(null);
     const { active, over, delta } = event;
-    // #region agent log
-    _logDnD('handleDragEnd called', { activeId: active.id, overId: over?.id ?? null, deltaY: delta.y, hasOnReorder: !!onReorder, stopIds: stops.map(s => s.id), stopTypes: stops.map(s => s.stopType) }, 'H1');
-    // #endregion
-    if (!over || active.id === over.id || !onReorder) {
-      // #region agent log
-      _logDnD('handleDragEnd early return', { overNull: !over, sameId: over ? active.id === over.id : null, noOnReorder: !onReorder }, 'H2_H3');
-      // #endregion
-      return;
-    }
+    if (!over || active.id === over.id || !onReorder) return;
 
     // --- Drop on a gap: Quick Gap Placement (no recalculation) ---
     const overId = String(over.id);
@@ -532,35 +527,42 @@ export function PlanningTimeline({
         ? (droppedStop.breakDurationMinutes ?? 30)
         : (droppedStop.serviceDurationMinutes ?? droppedStop.overrideServiceDurationMinutes ?? 30);
 
-      // Compute raw drop position within the gap from delta.y.
-      // delta.y is total drag distance; use it as a proxy for position within gap.
-      const gapHeightPx = Math.max(24, Math.round((gapEndMin - gapStartMin) * PIXELS_PER_MINUTE));
-      const clampedDeltaY = Math.max(0, Math.min(delta.y, gapHeightPx));
-      const fractionInGap = gapHeightPx > 0 ? clampedDeltaY / gapHeightPx : 0;
+      // Compute where the pointer is within the gap's bounding rect.
+      const pointerY = (event.activatorEvent as PointerEvent).clientY + delta.y;
+      const gapRect = over.rect;
+      const fractionInGap = gapRect.height > 0
+        ? Math.max(0, Math.min(1, (pointerY - gapRect.top) / gapRect.height))
+        : 0.5;
       const rawStartMin = gapStartMin + Math.round(fractionInGap * (gapEndMin - gapStartMin));
 
       // Snap to 15-minute grid
       const snappedStartMin = snapToGrid(rawStartMin, itemDuration, gapStartMin, gapEndMin);
-      if (snappedStartMin === null) {
-        // Gap too small — reject the drop silently
-        return;
-      }
+      if (snappedStartMin === null) return;
 
       const snappedEndMin = snappedStartMin + itemDuration;
       const startHm = snapMinutesToHm(snappedStartMin);
       const endHm = snapMinutesToHm(snappedEndMin);
 
-      // Find the customer stop that follows this gap.
-      const insertAfterCustomerIdx = gapItem.insertAfterIndex ?? -1;
-      const customerStops = stops.filter((s) => s.stopType === 'customer');
-      const nextCustomer = customerStops[insertAfterCustomerIdx + 1];
+      // The gap ID is `gap-{i}` where i is the stops-array index of the
+      // stop this gap appears before. Use that stop as the insertion anchor.
+      // If stops[i] is the dragged item itself, skip it and use the next stop.
+      const gapStopIdx = parseInt(overId.replace(/^gap-/, ''), 10);
+      let anchorStop: SavedRouteStop | undefined;
+      if (Number.isFinite(gapStopIdx)) {
+        for (let k = gapStopIdx; k < stops.length; k++) {
+          if (stops[k].id !== droppedStop.id) {
+            anchorStop = stops[k];
+            break;
+          }
+        }
+      }
 
       // Remove the dragged stop from its current position
       const newStops = stops.filter((s) => s.id !== droppedStop.id);
 
-      // Insert at the correct position (just before the next customer)
-      const insertionPoint = nextCustomer
-        ? newStops.findIndex((s) => s.id === nextCustomer.id)
+      // Insert just before the anchor stop (the stop after the gap)
+      const insertionPoint = anchorStop
+        ? newStops.findIndex((s) => s.id === anchorStop.id)
         : newStops.length;
 
       let updatedStop: SavedRouteStop;
@@ -603,15 +605,7 @@ export function PlanningTimeline({
 
     const fromIndex = stops.findIndex((s) => s.id === active.id);
     const overIndex = stops.findIndex((s) => s.id === over.id);
-    // #region agent log
-    _logDnD('handleDragEnd indices', { fromIndex, overIndex, activeId: active.id, overId: over.id, deltaY: delta.y }, 'H4');
-    // #endregion
-    if (fromIndex === -1 || overIndex === -1) {
-      // #region agent log
-      _logDnD('handleDragEnd index not found', { fromIndex, overIndex }, 'H4');
-      // #endregion
-      return;
-    }
+    if (fromIndex === -1 || overIndex === -1) return;
 
     // Determine the correct target index based on drag direction.
     // Without a sorting strategy, @dnd-kit only tells us which item the
@@ -630,29 +624,14 @@ export function PlanningTimeline({
     // Clamp to valid range
     toIndex = Math.max(0, Math.min(toIndex, stops.length - 1));
 
-    // #region agent log
-    _logDnD('handleDragEnd resolved toIndex', { fromIndex, overIndex, toIndex, deltaY: delta.y }, 'H8_DIRECTION');
-    // #endregion
-
-    if (fromIndex === toIndex) {
-      // #region agent log
-      _logDnD('handleDragEnd no-op (same index)', { fromIndex, toIndex }, 'H8_DIRECTION');
-      // #endregion
-      return;
-    }
+    if (fromIndex === toIndex) return;
 
     const warningStop = needsScheduledTimeWarning(stops, fromIndex, toIndex);
-    // #region agent log
-    _logDnD('handleDragEnd warning check', { warningStopId: warningStop?.id ?? null, warningStopScheduled: warningStop?.scheduledTimeStart ?? null, fromStopType: stops[fromIndex]?.stopType, toStopType: stops[toIndex]?.stopType }, 'H5');
-    // #endregion
     if (warningStop) {
       setPendingReorder({ from: fromIndex, to: toIndex, stop: warningStop });
       return;
     }
 
-    // #region agent log
-    _logDnD('handleDragEnd reorder executing', { fromIndex, toIndex, deltaY: delta.y }, 'H_SUCCESS');
-    // #endregion
     onReorder(clearStaleBreakTimes(reorderStops(stops, fromIndex, toIndex), stops[fromIndex]));
   }
 
@@ -754,7 +733,7 @@ export function PlanningTimeline({
 
   return (
     <div className={styles.container}>
-      <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragEnd={handleDragEnd} onDragStart={(e: DragStartEvent) => { handleDragStart(e); _logDnD('onDragStart', { activeId: e.active.id }, 'H1'); }} onDragOver={(e) => { _logDnD('onDragOver', { activeId: e.active.id, overId: e.over?.id ?? null }, 'H2_H3'); }}>
+      <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragEnd={handleDragEnd} onDragStart={handleDragStart} onDragCancel={() => setActiveDragStop(null)}>
         <SortableContext items={sortableIds}>
           <div className={styles.timeline}>
             <div className={styles.timelineWithLabels}>
@@ -837,7 +816,7 @@ export function PlanningTimeline({
                       key={item.id}
                       item={item}
                       gapInfo={gapInfo}
-                      isDraggingBreak={isDraggingBreak}
+                      isDraggingAny={isDraggingAny}
                       candidateForInsertion={candidateForInsertion}
                       onInsertCandidate={onInsertCandidate}
                       formatTime={formatTime}
@@ -875,6 +854,30 @@ export function PlanningTimeline({
             </div>
           </div>
         </SortableContext>
+        <DragOverlay dropAnimation={null}>
+          {activeDragItem && (
+            <div className={activeDragItem.type === 'break' ? styles.dragOverlayBreak : styles.dragOverlayStop}>
+              {activeDragItem.type === 'break' ? (
+                <>
+                  <span className={styles.dragOverlayIcon}>&#x2615;</span>
+                  <span className={styles.dragOverlayLabel}>
+                    {activeDragItem.startTime ?? ''} &ndash; {activeDragItem.endTime ?? ''}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className={styles.dragOverlayOrder}>{activeDragItem.stop?.stopOrder}</span>
+                  <span className={styles.dragOverlayLabel}>
+                    {activeDragItem.stop?.customerName ?? ''}
+                  </span>
+                  <span className={styles.dragOverlayTime}>
+                    {activeDragItem.startTime ?? ''}
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+        </DragOverlay>
       </DndContext>
 
       {isSaving && <div className={styles.savingIndicator}>{t('timeline_saving')}</div>}

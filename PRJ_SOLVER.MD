@@ -14,6 +14,7 @@
 | Phase 5 — Frontend `triggerRecalculate` + `breakTimeStart` | ✅ CODE COMPLETE | Added `breakTimeStart` to `RecalcStopInput` in `routeService.ts`. Updated `triggerRecalculate` in `PlanningInbox.tsx` to include `breakTimeStart` in the recalc payload. Added `needsReschedule: false` clear on successful recalculation. |
 | Phase 6 — `handleUpdateBreak` consistency | ✅ CODE COMPLETE | Updated `handleUpdateBreak` to call `triggerRecalculate` with the updated stops immediately after state update, so the backend receives the correct `breakTimeStart` on every inline edit. |
 | Phase 7 — Integration testing & debug cleanup | ✅ CODE COMPLETE | All 51 unit tests pass (19 buildTimelineItems, 7 snapToGrid, 10 reorderStops, 15 insertStop). Backend compiles cleanly. Pre-existing debug logging retained (was present before this feature branch). Full round-trip testing deferred to manual QA. |
+| Phase 8 — DnD UX polish & bug fixes | ✅ CODE COMPLETE | See details below. |
 
 ### Phase 1 — What was changed
 
@@ -28,6 +29,35 @@
 
 **`worker/src/handlers/route.rs`** — minimal change:
 - Added `break_time_start: None` to the `SeqScheduleStop` struct initialiser (Phase 2 will wire the actual value from `RecalcStopInput`)
+
+### Phase 8 — DnD UX polish & bug fixes
+
+Three categories of improvements, all runtime-evidence-driven:
+
+**1. DragOverlay (visual feedback during drag)**
+- Added `DragOverlay` from `@dnd-kit/core` — a floating preview card follows the cursor during drag
+- Break overlay: amber card with coffee icon and time range
+- Customer stop overlay: blue card with order number, customer name, and time
+- Original item fades to 30% opacity while dragged
+- Added `onDragCancel` handler to reset state cleanly
+
+**2. Gap zone highlighting**
+- All gap zones now pulse (dashed border + animated green glow) while any item is dragged (`gapZoneReady` CSS class)
+- The gap the pointer is currently over pulses more intensely with a faster, brighter animation (`gapZoneDropTarget` CSS class)
+- Previously gaps only highlighted for breaks; now they highlight for all draggable items
+
+**3. Gap drop position & insertion fixes (3 bugs)**
+- **Position calculation:** Replaced `delta.y / gapHeightPx` with `(pointerY - gapRect.top) / gapRect.height` using `over.rect` from `@dnd-kit`. The old formula used total drag displacement (meaningless for within-gap position); the new formula uses the actual pointer position relative to the gap element
+- **Insertion anchor:** Replaced `insertAfterIndex` (customer-only index, `undefined` for gaps before breaks → defaulted to `-1` → item inserted before first customer) with parsing the gap ID (`gap-{i}`) to get the stops-array index directly. This works for gaps before both customer stops and breaks
+- **Self-anchor bug:** When the dragged item IS the stop at `gapStopIdx`, removing it makes `findIndex` return `-1`. Fixed by iterating forward from `gapStopIdx` to find the first non-dragged stop as the anchor
+
+**Files changed:**
+| File | Changes |
+|------|---------|
+| `apps/web/src/components/planner/PlanningTimeline.tsx` | `DragOverlay`, `activeDragStop` state, pointer-based position calc, anchor-skip insertion logic |
+| `apps/web/src/components/planner/PlanningTimeline.module.css` | `dragOverlay*` styles, `gapZoneReady` pulse animation, `gapZoneDropTarget` animation |
+
+---
 
 This document describes the root cause of the break (Pause) placement issue in the route planning timeline, adds the concept of **Quick Gap Placement** (dropping both stops and breaks into buffer zones without recalculation), and provides a detailed TDD implementation plan.
 
