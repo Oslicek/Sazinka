@@ -300,3 +300,210 @@ Postup:
 | 6 — Settings country dropdown | ⬜ Nezapočato |
 | 7 — Site contact form | ⬜ Nezapočato |
 | 8 — Dokumentace | ⬜ Nezapočato |
+
+---
+
+# Admin Account Security — Backdoor Removal Plan (TDD)
+
+## Problem Statement
+
+The Rust worker contains `ensure_dev_admin_password()` in `worker/src/db/mod.rs`.
+This function:
+
+1. Checks if `DEV_MODE` env var is set
+2. Looks up the hardcoded admin UUID `00000000-0000-0000-0000-000000000001`
+3. If the password hash is not a valid argon2 hash, replaces it with a hash of a
+   password read from `DEV_ADMIN_PASSWORD` env var
+
+**Current risk:** The function runs on every worker startup. If someone deploys
+with `DEV_MODE=true` and `DEV_ADMIN_PASSWORD` set, the admin password is
+silently overwritten. The hardcoded UUID is a well-known constant.
+
+**Goal:** Remove all dev-only backdoor code paths. Admin account creation and
+password management must go through the standard auth flow only.
+
+## Current State (after initial fix)
+
+- `ensure_dev_admin_password` reads password from `DEV_ADMIN_PASSWORD` env var
+  instead of hardcoding `"password123"` in the binary (fixed 2026-02-22)
+- `reset_database()` preserves the calling admin's row (including their real
+  password hash) so the session survives a DB reset (fixed 2026-02-22)
+- The hardcoded UUID `00000000-0000-0000-0000-000000000001` is still referenced
+  in `ensure_dev_admin_password` and migration fallback paths
+
+## Architecture After Removal
+
+```
+┌─────────────────────────────────────────────────────┐
+│ First-run setup (no users in DB)                    │
+│                                                     │
+│  Worker detects empty users table on startup        │
+│  → Reads ADMIN_EMAIL + ADMIN_PASSWORD from env      │
+│  → Creates admin user with hashed password           │
+│  → Creates tenant + links user                      │
+│  → Logs "Initial admin created" and continues       │
+│                                                     │
+│  Subsequent startups: users table is not empty       │
+│  → No action taken, no env vars checked             │
+└─────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────┐
+│ Password reset (forgot password)                    │
+│                                                     │
+│  Option A: CLI tool                                 │
+│    cargo run --bin reset-password -- --email X      │
+│    Prompts for new password, hashes, updates DB     │
+│                                                     │
+│  Option B: NATS admin endpoint                      │
+│    sazinka.admin.user.reset-password                │
+│    Requires existing admin JWT                      │
+│    Hashes new password, updates target user          │
+└─────────────────────────────────────────────────────┘
+```
+
+## TDD Implementation Plan
+
+### Phase 1 — First-run admin seeding (replaces ensure_dev_admin_password)
+
+**Files:**
+- `worker/src/db/mod.rs` — new `seed_initial_admin()`
+- `worker/src/db/mod.rs` — remove `ensure_dev_admin_password()`
+- `worker/src/main.rs` — call `seed_initial_admin()` instead
+
+**Tests (RED):**
+1. `test_seed_creates_admin_when_no_users` — empty users table + env vars set
+   → admin user created with correct email, valid argon2 hash, role = 'admin'
+2. `test_seed_creates_tenant_and_links` — after seeding, `user_tenants` has one
+   row linking the new admin to a tenant
+3. `test_seed_skips_when_users_exist` — users table has ≥1 row → no action,
+   env vars not even read
+4. `test_seed_fails_gracefully_without_env` — empty users table but no
+   `ADMIN_EMAIL` / `ADMIN_PASSWORD` → logs warning, does not panic
+5. `test_seed_rejects_weak_password` — password shorter than 8 chars → error
+
+**Implementation (GREEN):**
+```rust
+pub async fn seed_initial_admin(pool: &PgPool) -> Result<()> {
+    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users")
+        .fetch_one(pool).await?;
+    if count.0 > 0 {
+        return Ok(()); // Not first run
+    }
+
+    let email = std::env::var("ADMIN_EMAIL")
+        .context("ADMIN_EMAIL required for first-run setup")?;
+    let password = std::env::var("ADMIN_PASSWORD")
+        .context("ADMIN_PASSWORD required for first-run setup")?;
+
+    anyhow::ensure!(password.len() >= 8, "ADMIN_PASSWORD must be >= 8 characters");
+
+    let hash = crate::auth::hash_password(&password)?;
+    // INSERT user, INSERT tenant, INSERT user_tenants ...
+}
+```
+
+**Refactor:**
+- Remove `DEV_MODE` and `DEV_ADMIN_PASSWORD` from `.env.example`
+- Add `ADMIN_EMAIL` and `ADMIN_PASSWORD` to `.env.example` with comment:
+  "Only used on first run when users table is empty"
+
+### Phase 2 — Remove hardcoded UUID
+
+**Files:**
+- `worker/src/db/mod.rs` — `seed_initial_admin` uses `Uuid::new_v4()`
+- `worker/src/handlers/admin.rs` — `reset_database` no longer references any
+  hardcoded UUID (it receives `caller_id` from JWT)
+- `worker/migrations/002_add_auth_fields.sql` — audit; the migration references
+  the UUID but migrations are immutable, so this is acceptable
+
+**Tests (RED):**
+1. `test_seed_generates_random_uuid` — two calls to seed (on separate DBs)
+   produce different UUIDs
+2. `test_reset_preserves_any_admin_uuid` — reset with a non-well-known UUID
+   still preserves the admin row correctly
+
+**Implementation (GREEN):**
+- Replace `Uuid::parse_str("00000000-...")` with `Uuid::new_v4()` in seeding
+- `reset_database` already uses `caller_id` from JWT (done 2026-02-22)
+
+### Phase 3 — Admin password reset endpoint
+
+**Files:**
+- `worker/src/handlers/admin.rs` — new handler
+- `worker/src/handlers/mod.rs` — register subscription
+- `packages/shared-types/src/auth.ts` — request/response types
+- `apps/web/src/pages/Admin.tsx` — UI for resetting another user's password
+
+**NATS subject:** `sazinka.admin.user.reset-password`
+
+**Tests (RED):**
+1. `test_reset_password_requires_admin_role` — non-admin caller → FORBIDDEN
+2. `test_reset_password_updates_hash` — admin calls with target user_id +
+   new_password → target user's hash is updated to valid argon2
+3. `test_reset_password_rejects_weak` — password < 8 chars → error
+4. `test_reset_password_unknown_user` — target user_id not found → error
+
+**Implementation (GREEN):**
+```rust
+async fn handle_admin_reset_password(...) {
+    // auth check (admin only)
+    // validate new_password length
+    // hash_password(new_password)
+    // UPDATE users SET password_hash = $1 WHERE id = $2
+}
+```
+
+### Phase 4 — CLI password reset tool (optional)
+
+**Files:**
+- `worker/src/bin/reset_password.rs` — standalone binary
+
+**Tests (RED):**
+1. `test_cli_updates_password_by_email` — given valid email → hash updated
+2. `test_cli_fails_for_unknown_email` — unknown email → error message
+
+**Implementation (GREEN):**
+```rust
+// cargo run --bin reset-password -- --email admin@example.com
+fn main() {
+    // parse args, connect to DB, prompt for password, hash, update
+}
+```
+
+### Phase 5 — Cleanup and documentation
+
+**Tasks:**
+1. Remove `DEV_MODE` env var handling from all code paths
+2. Remove `DEV_ADMIN_PASSWORD` env var
+3. Audit `rg "00000000-0000-0000-0000-000000000001"` — remove all references
+   except immutable migration files
+4. Update `README.md` first-run instructions:
+   ```
+   # First run:
+   ADMIN_EMAIL=you@example.com ADMIN_PASSWORD=your-secure-password cargo run
+   ```
+5. Update `PRJ_CONTEXT.MD` and `PRJ_SECURITY.MD`
+
+## Implementation Order
+
+| Phase | Scope | Estimated Time |
+|-------|-------|----------------|
+| 1 — First-run seeding | Replace backdoor with clean first-run flow | 2 hrs |
+| 2 — Remove hardcoded UUID | Use random UUIDs everywhere | 1 hr |
+| 3 — Admin password reset | NATS endpoint for admin to reset passwords | 2 hrs |
+| 4 — CLI tool (optional) | Standalone binary for emergency resets | 1 hr |
+| 5 — Cleanup | Remove DEV_MODE, audit, docs | 1 hr |
+
+**Total: ~7 hours**
+
+## Security Checklist
+
+- [ ] No passwords hardcoded in source code
+- [ ] No well-known UUIDs used for authentication decisions
+- [ ] `DEV_MODE` env var removed entirely
+- [ ] First-run env vars (`ADMIN_EMAIL`, `ADMIN_PASSWORD`) only read when
+      users table is empty
+- [ ] Password reset requires valid admin JWT or direct DB access
+- [ ] All password hashing uses argon2id with current best-practice parameters
+- [ ] Audit: `rg "password123|DEV_MODE|DEV_ADMIN" worker/src/` returns zero
+      matches

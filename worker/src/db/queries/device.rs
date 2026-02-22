@@ -15,14 +15,29 @@ pub async fn create_device(
     customer_id: Uuid,
     req: &CreateDeviceRequest,
 ) -> Result<Device> {
+    let config_id: Uuid = sqlx::query_scalar(
+        r#"SELECT dtc.id FROM device_type_configs dtc
+           JOIN user_tenants ut ON ut.tenant_id = dtc.tenant_id
+           WHERE ut.user_id = $1 AND dtc.device_type_key = $2
+           LIMIT 1"#
+    )
+    .bind(user_id)
+    .bind(&req.device_type)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| anyhow::anyhow!(
+        "No device_type_config found for type '{}' — ensure tenant has been set up",
+        req.device_type
+    ))?;
+
     let device = sqlx::query_as::<_, Device>(
         r#"
         INSERT INTO devices (
-            id, customer_id, user_id, device_type, device_name,
+            id, customer_id, user_id, device_type, device_type_config_id, device_name,
             manufacturer, model, serial_number, installation_date,
             revision_interval_months, notes, created_at, updated_at
         )
-        VALUES ($1, $2, $3, $4::device_type_enum, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
+        VALUES ($1, $2, $3, $4::device_type_enum, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
         RETURNING
             id, customer_id, user_id,
             device_type::text, device_name,
@@ -35,6 +50,7 @@ pub async fn create_device(
     .bind(customer_id)
     .bind(user_id)
     .bind(&req.device_type)
+    .bind(config_id)
     .bind(&req.device_name)
     .bind(&req.manufacturer)
     .bind(&req.model)

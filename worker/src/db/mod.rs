@@ -157,13 +157,24 @@ pub async fn ensure_countries_synced(pool: &PgPool) -> Result<()> {
 }
 
 /// Ensure the dev admin user has a valid Argon2 password hash.
-/// Only runs when DEV_MODE environment variable is set.
-/// If the hash is invalid (e.g. "not_a_real_hash" or "not-set" from seed),
-/// resets it to the dev default password.
+///
+/// Requires **both** `DEV_MODE=1` and `DEV_ADMIN_PASSWORD=<some-password>` to
+/// be set. If the admin user's hash is invalid (e.g. "not-set" from a fresh
+/// seed), it is replaced with the argon2 hash of `DEV_ADMIN_PASSWORD`.
+///
+/// This avoids hardcoding any password in the binary.
 pub async fn ensure_dev_admin_password(pool: &PgPool) {
     if std::env::var("DEV_MODE").is_err() {
-        return; // Only run in development
+        return;
     }
+
+    let dev_password = match std::env::var("DEV_ADMIN_PASSWORD") {
+        Ok(p) if !p.is_empty() => p,
+        _ => {
+            warn!("DEV_MODE is active but DEV_ADMIN_PASSWORD is not set — skipping admin password fix");
+            return;
+        }
+    };
 
     warn!("DEV_MODE is active — checking dev admin password");
     use uuid::Uuid;
@@ -180,8 +191,8 @@ pub async fn ensure_dev_admin_password(pool: &PgPool) {
 
     if let Some((hash,)) = row {
         if !hash.starts_with("$argon2") {
-            warn!("Dev admin user has invalid password hash — resetting to dev default");
-            match crate::auth::hash_password("password123") {
+            warn!("Dev admin user has invalid password hash — resetting from DEV_ADMIN_PASSWORD");
+            match crate::auth::hash_password(&dev_password) {
                 Ok(new_hash) => {
                     let result = sqlx::query(
                         "UPDATE users SET password_hash = $1, role = 'admin' WHERE id = $2"

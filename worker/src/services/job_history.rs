@@ -1,18 +1,20 @@
 #![allow(dead_code)]
 //! Job history service
 //!
-//! Stores recent job completions in memory and provides API to query them.
-//! This enables the Jobs Dashboard to show historical data.
+//! Stores recent job completions in memory with file-backed persistence
+//! so history survives worker restarts.
 
 use std::collections::VecDeque;
+use std::path::Path;
 use std::sync::Arc;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use tracing::{info, warn};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 
-/// Maximum number of jobs to keep in history
 const MAX_HISTORY_SIZE: usize = 100;
+const HISTORY_FILE: &str = "logs/job-history.json";
 
 /// Job entry in history
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,15 +39,22 @@ pub struct JobHistoryResponse {
     pub total: usize,
 }
 
-/// In-memory job history storage
+/// Job history storage backed by an in-memory deque + JSON file on disk.
 pub struct JobHistoryService {
     history: Arc<RwLock<VecDeque<JobHistoryEntry>>>,
 }
 
 impl JobHistoryService {
     pub fn new() -> Self {
+        let mut deque = VecDeque::with_capacity(MAX_HISTORY_SIZE);
+        if let Some(loaded) = Self::load_from_disk() {
+            for entry in loaded {
+                deque.push_back(entry);
+            }
+            info!("Loaded {} job history entries from disk", deque.len());
+        }
         Self {
-            history: Arc::new(RwLock::new(VecDeque::with_capacity(MAX_HISTORY_SIZE))),
+            history: Arc::new(RwLock::new(deque)),
         }
     }
     
@@ -132,13 +141,13 @@ impl JobHistoryService {
     fn add_entry(&self, entry: JobHistoryEntry) {
         let mut history = self.history.write();
         
-        // Remove oldest if at capacity
         if history.len() >= MAX_HISTORY_SIZE {
             history.pop_back();
         }
         
-        // Add new entry at front (most recent first)
         history.push_front(entry);
+        
+        Self::save_to_disk(&history);
     }
     
     /// Get recent job history (all users — for admin use only)
@@ -195,6 +204,45 @@ impl JobHistoryService {
         
         JobHistoryResponse { jobs, total }
     }
+    
+    fn load_from_disk() -> Option<Vec<JobHistoryEntry>> {
+        let path = Path::new(HISTORY_FILE);
+        if !path.exists() {
+            return None;
+        }
+        match std::fs::read_to_string(path) {
+            Ok(content) => match serde_json::from_str::<Vec<JobHistoryEntry>>(&content) {
+                Ok(entries) => Some(entries),
+                Err(e) => {
+                    warn!("Failed to parse job history file: {}", e);
+                    None
+                }
+            },
+            Err(e) => {
+                warn!("Failed to read job history file: {}", e);
+                None
+            }
+        }
+    }
+    
+    fn save_to_disk(history: &VecDeque<JobHistoryEntry>) {
+        let path = Path::new(HISTORY_FILE);
+        if let Some(dir) = path.parent() {
+            if let Err(e) = std::fs::create_dir_all(dir) {
+                warn!("Failed to create job history directory: {}", e);
+                return;
+            }
+        }
+        let entries: Vec<&JobHistoryEntry> = history.iter().collect();
+        match serde_json::to_string_pretty(&entries) {
+            Ok(json) => {
+                if let Err(e) = std::fs::write(path, json) {
+                    warn!("Failed to write job history file: {}", e);
+                }
+            }
+            Err(e) => warn!("Failed to serialize job history: {}", e),
+        }
+    }
 }
 
 impl Default for JobHistoryService {
@@ -211,10 +259,20 @@ lazy_static::lazy_static! {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    static TEST_COUNTER: AtomicU32 = AtomicU32::new(0);
+
+    fn fresh_service() -> JobHistoryService {
+        TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
+        JobHistoryService {
+            history: Arc::new(RwLock::new(VecDeque::with_capacity(MAX_HISTORY_SIZE))),
+        }
+    }
 
     #[test]
     fn test_record_completed_job() {
-        let service = JobHistoryService::new();
+        let service = fresh_service();
         let id = Uuid::new_v4();
         let user_id = Uuid::new_v4();
         let started_at = Utc::now() - chrono::Duration::seconds(5);
@@ -230,7 +288,7 @@ mod tests {
 
     #[test]
     fn test_record_failed_job() {
-        let service = JobHistoryService::new();
+        let service = fresh_service();
         let id = Uuid::new_v4();
         let user_id = Uuid::new_v4();
         let started_at = Utc::now();
@@ -245,10 +303,9 @@ mod tests {
 
     #[test]
     fn test_history_limit() {
-        let service = JobHistoryService::new();
+        let service = fresh_service();
         let user_id = Uuid::new_v4();
         
-        // Add more than MAX_HISTORY_SIZE jobs
         for i in 0..150 {
             let id = Uuid::new_v4();
             service.record_completed(id, "test", user_id, Utc::now(), Some(format!("Job {}", i)));
@@ -260,7 +317,7 @@ mod tests {
 
     #[test]
     fn test_get_by_type() {
-        let service = JobHistoryService::new();
+        let service = fresh_service();
         let user_id = Uuid::new_v4();
         
         service.record_completed(Uuid::new_v4(), "geocode", user_id, Utc::now(), None);
@@ -271,10 +328,9 @@ mod tests {
         assert_eq!(geocode_jobs.jobs.len(), 2);
     }
 
-    // ── 2.1 ──────────────────────────────────────────────────────────────
     #[test]
     fn test_record_cancelled_appears_in_history() {
-        let service = JobHistoryService::new();
+        let service = fresh_service();
         let id = Uuid::new_v4();
         let user_id = Uuid::new_v4();
         let started_at = Utc::now() - chrono::Duration::seconds(3);
@@ -290,10 +346,9 @@ mod tests {
         assert!(history.jobs[0].error.is_none());
     }
 
-    // ── 2.2 ──────────────────────────────────────────────────────────────
     #[test]
     fn test_get_recent_for_user_isolates_users() {
-        let service = JobHistoryService::new();
+        let service = fresh_service();
         let user_a = Uuid::new_v4();
         let user_b = Uuid::new_v4();
 
@@ -311,10 +366,9 @@ mod tests {
         assert!(history_b.jobs.iter().all(|j| j.user_id == user_b));
     }
 
-    // ── 2.3 ──────────────────────────────────────────────────────────────
     #[test]
     fn test_record_completed_with_user_id() {
-        let service = JobHistoryService::new();
+        let service = fresh_service();
         let id = Uuid::new_v4();
         let user_id = Uuid::new_v4();
         let started_at = Utc::now();

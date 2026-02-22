@@ -436,7 +436,7 @@ async fn handle_db_reset(client: Client, pool: PgPool, jwt_secret: Arc<String>) 
 
         warn!("Database reset requested by user {}", auth_info.user_id);
 
-        let response = match reset_database(&pool).await {
+        let response = match reset_database(&pool, auth_info.user_id).await {
             Ok(_) => {
                 info!("Database reset completed successfully");
                 SuccessResponse::new(request.id, DbResetResponse {
@@ -458,39 +458,112 @@ async fn handle_db_reset(client: Client, pool: PgPool, jwt_secret: Arc<String>) 
     Ok(())
 }
 
-/// Reset database - truncate all user tables and create default user
-async fn reset_database(pool: &PgPool) -> Result<()> {
-    // Get list of user tables
+/// Reset database — truncate all data tables while preserving the calling
+/// admin's account so their session continues without interruption.
+async fn reset_database(pool: &PgPool, caller_id: uuid::Uuid) -> Result<()> {
+    // 1. Snapshot the caller's user row (all columns)
+    let admin_row: Option<AdminSnapshot> = sqlx::query_as(
+        "SELECT id, email, password_hash, name, role, phone, business_name, \
+         street, city, postal_code, country, lat, lng, ico, dic, locale, company_locale \
+         FROM users WHERE id = $1"
+    )
+    .bind(caller_id)
+    .fetch_optional(pool)
+    .await?;
+
+    let admin = admin_row.ok_or_else(|| anyhow::anyhow!("Caller user not found"))?;
+
+    // 2. Snapshot the caller's tenant link
+    let tenant_link: Option<(uuid::Uuid, String)> = sqlx::query_as(
+        "SELECT t.id, t.name FROM tenants t \
+         JOIN user_tenants ut ON ut.tenant_id = t.id \
+         WHERE ut.user_id = $1 LIMIT 1"
+    )
+    .bind(caller_id)
+    .fetch_optional(pool)
+    .await?;
+
+    // 3. Truncate all data tables
     let tables: Vec<(String,)> = sqlx::query_as(
-        "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename != '_sqlx_migrations'"
+        "SELECT tablename FROM pg_tables \
+         WHERE schemaname = 'public' AND tablename != '_sqlx_migrations'"
     )
     .fetch_all(pool)
     .await?;
 
-    // Truncate each table
-    for (table,) in tables {
+    for (table,) in &tables {
         sqlx::query(&format!("TRUNCATE TABLE {} CASCADE", table))
             .execute(pool)
             .await?;
-        info!("Truncated table: {}", table);
     }
+    info!("Truncated {} tables", tables.len());
 
-    // Create a default user so that customers can be imported
-    let default_user_id = uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap();
+    // 4. Re-insert the admin with their real password hash and role
     sqlx::query(
-        r#"
-        INSERT INTO users (id, email, password_hash, name, phone, business_name, street, city, postal_code, lat, lng)
-        VALUES ($1, 'admin@ariadline.cz', 'not-set', 'Výchozí uživatel', '+420000000000', 'Ariadline s.r.o.', 
-                'Václavské náměstí 1', 'Praha', '11000', 50.0755, 14.4378)
-        ON CONFLICT (id) DO NOTHING
-        "#
+        r#"INSERT INTO users
+            (id, email, password_hash, name, role, phone, business_name,
+             street, city, postal_code, country, lat, lng, ico, dic, locale, company_locale)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)"#
     )
-    .bind(default_user_id)
+    .bind(admin.id).bind(&admin.email).bind(&admin.password_hash)
+    .bind(&admin.name).bind(&admin.role).bind(&admin.phone)
+    .bind(&admin.business_name).bind(&admin.street).bind(&admin.city)
+    .bind(&admin.postal_code).bind(&admin.country)
+    .bind(admin.lat).bind(admin.lng)
+    .bind(&admin.ico).bind(&admin.dic)
+    .bind(&admin.locale).bind(&admin.company_locale)
     .execute(pool)
     .await?;
-    info!("Created default user with id: {}", default_user_id);
+    info!("Restored admin user {}", admin.id);
+
+    // 5. Re-create tenant (or create a default one) — triggers device_type_config seeding
+    let tenant_id = if let Some((tid, tname)) = tenant_link {
+        sqlx::query("INSERT INTO tenants (id, name) VALUES ($1, $2)")
+            .bind(tid).bind(&tname)
+            .execute(pool)
+            .await?;
+        tid
+    } else {
+        let tid = uuid::Uuid::new_v4();
+        let tname = admin.business_name.as_deref().unwrap_or("Default Tenant");
+        sqlx::query("INSERT INTO tenants (id, name) VALUES ($1, $2)")
+            .bind(tid).bind(tname)
+            .execute(pool)
+            .await?;
+        tid
+    };
+
+    sqlx::query(
+        "INSERT INTO user_tenants (user_id, tenant_id, role) VALUES ($1, $2, 'owner')"
+    )
+    .bind(admin.id)
+    .bind(tenant_id)
+    .execute(pool)
+    .await?;
+    info!("Restored tenant {} and linked to admin", tenant_id);
 
     Ok(())
+}
+
+#[derive(Debug, sqlx::FromRow)]
+struct AdminSnapshot {
+    id: uuid::Uuid,
+    email: String,
+    password_hash: String,
+    name: String,
+    role: String,
+    phone: Option<String>,
+    business_name: Option<String>,
+    street: Option<String>,
+    city: Option<String>,
+    postal_code: Option<String>,
+    country: Option<String>,
+    lat: Option<f64>,
+    lng: Option<f64>,
+    ico: Option<String>,
+    dic: Option<String>,
+    locale: String,
+    company_locale: String,
 }
 
 /// Handle Valhalla status requests

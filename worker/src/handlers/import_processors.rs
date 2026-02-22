@@ -109,13 +109,18 @@ pub fn build_import_report(
 }
 
 /// Persist the report as a JSON file in logs/import-reports/
+///
+/// Uses `{job_id}_{job_type_suffix}.json` so that ZIP imports with
+/// multiple CSV files each get their own report file instead of
+/// overwriting each other.
 pub fn persist_report(report: &ImportReport) {
     let dir = std::path::Path::new("logs/import-reports");
     if let Err(e) = std::fs::create_dir_all(dir) {
         warn!("Failed to create import reports directory: {}", e);
         return;
     }
-    let path = dir.join(format!("{}.json", report.job_id));
+    let type_suffix = report.job_type.replace('.', "_");
+    let path = dir.join(format!("{}_{}.json", report.job_id, type_suffix));
     match serde_json::to_string_pretty(report) {
         Ok(json) => {
             if let Err(e) = std::fs::write(&path, json) {
@@ -2286,6 +2291,13 @@ impl ZipImportProcessor {
         let customer_id = resolve_customer_ref(&self.pool, user_id, customer_ref).await?
             .ok_or_else(|| anyhow::anyhow!("import:customer_not_found_simple"))?;
         
+        let device_id = match row.device_ref.as_ref() {
+            Some(dref) if !dref.trim().is_empty() => {
+                resolve_device_ref(&self.pool, user_id, customer_id, dref).await?.map(Some).unwrap_or(None)
+            }
+            _ => None,
+        };
+        
         let scheduled_date_str = row.scheduled_date.as_ref()
             .ok_or_else(|| anyhow::anyhow!("import:missing_date"))?;
         let scheduled_date = NaiveDate::parse_from_str(scheduled_date_str, "%Y-%m-%d")
@@ -2307,7 +2319,7 @@ impl ZipImportProcessor {
             user_id,
             customer_id,
             None, // crew_id
-            None, // device_id
+            device_id,
             scheduled_date,
             scheduled_time_start,
             scheduled_time_end,
