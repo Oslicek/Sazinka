@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from '@tanstack/react-router';
+import { AlertTriangle, Ban, Loader2, Check, X as XIcon, Download } from 'lucide-react';
 import { deleteCompanyData, deleteAccount } from '@/services/settingsService';
 import { submitExportJob, subscribeExportJob, downloadExportJob } from '@/services/exportPlusService';
 import { useAuthStore } from '@/stores/authStore';
@@ -20,7 +21,7 @@ export function DangerZoneSection() {
     <>
       <section className={styles.dangerZone}>
         <h3 className={styles.dangerZoneTitle}>
-          ⚠️ {t('danger_zone')}
+          <AlertTriangle size={16} /> {t('danger_zone')}
         </h3>
 
         {/* Level 1: Delete data, keep account */}
@@ -34,7 +35,7 @@ export function DangerZoneSection() {
             className={styles.deleteButton}
             onClick={() => setDialogLevel(1)}
           >
-            ⛔ {t('delete_data_button')}
+            <Ban size={14} /> {t('delete_data_button')}
           </button>
         </div>
 
@@ -49,7 +50,7 @@ export function DangerZoneSection() {
             className={styles.deleteButton}
             onClick={() => setDialogLevel(2)}
           >
-            ⛔ {t('delete_all_button')}
+            <Ban size={14} /> {t('delete_all_button')}
           </button>
         </div>
       </section>
@@ -228,7 +229,7 @@ function WarningStep({ t, level, downloadState, onClose, onContinue, onDownload 
   return (
     <>
       <div className={styles.dialogHeader}>
-        ⛔ {title}
+        <Ban size={16} /> {title}
       </div>
       <div className={styles.dialogBody}>
         <p className={styles.warningText}>{t('delete_dialog_warning')}</p>
@@ -242,7 +243,7 @@ function WarningStep({ t, level, downloadState, onClose, onContinue, onDownload 
         </ul>
 
         <div className={styles.irreversibleBox}>
-          <p>⛔ {t('delete_dialog_irreversible')}</p>
+          <p><Ban size={14} /> {t('delete_dialog_irreversible')}</p>
           {level === 1 && <p>{t('delete_account_preserved')}</p>}
         </div>
 
@@ -253,10 +254,10 @@ function WarningStep({ t, level, downloadState, onClose, onContinue, onDownload 
           onClick={onDownload}
           disabled={downloadState === 'exporting'}
         >
-          {downloadState === 'exporting' && '⏳ '}
-          {downloadState === 'done' && '✅ '}
-          {downloadState === 'error' && '❌ '}
-          {downloadState === 'idle' && '📥 '}
+          {downloadState === 'exporting' && <><Loader2 size={14} />{' '}</>}
+          {downloadState === 'done' && <><Check size={14} />{' '}</>}
+          {downloadState === 'error' && <><XIcon size={14} />{' '}</>}
+          {downloadState === 'idle' && <><Download size={14} />{' '}</>}
           {downloadState === 'exporting'
             ? t('delete_dialog_download_exporting')
             : downloadState === 'done'
@@ -302,7 +303,7 @@ function PinStep({ t, level, pin, pinInput, onPinChange, pinMatches, error, onCl
   return (
     <>
       <div className={styles.dialogHeader}>
-        ⛔ {t('delete_confirm_title')}
+        <Ban size={16} /> {t('delete_confirm_title')}
       </div>
       <div className={styles.dialogBody}>
         <p className={styles.pinInstruction}>{t('delete_confirm_instruction')}</p>
@@ -339,7 +340,7 @@ function PinStep({ t, level, pin, pinInput, onPinChange, pinMatches, error, onCl
           onClick={onConfirm}
           disabled={!pinMatches}
         >
-          ⛔ {confirmButton}
+          <Ban size={14} /> {confirmButton}
         </button>
       </div>
     </>
@@ -361,7 +362,7 @@ function DeletingStep({ t, level }: DeletingStepProps) {
   return (
     <>
       <div className={styles.dialogHeader}>
-        ⏳ {title}
+        <Loader2 size={16} /> {title}
       </div>
       <div className={styles.dialogBody}>
         <div className={styles.deleting}>

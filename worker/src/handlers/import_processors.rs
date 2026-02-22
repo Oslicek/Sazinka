@@ -432,12 +432,13 @@ impl DeviceImportProcessor {
             report: report.clone(),
         }).await?;
         
-        JOB_HISTORY.record_completed(
+        JOB_HISTORY.record_completed_with_report(
             job_id,
             "import.device",
             user_id,
             started_at,
             Some(json!({"key": "import:completed_summary", "params": {"succeeded": succeeded, "total": total}}).to_string()),
+            serde_json::to_value(&report).ok(),
         );
         
         info!("Device import job {} completed: {}/{} succeeded", job_id, succeeded, total);
@@ -747,12 +748,13 @@ impl RevisionImportProcessor {
             report: report.clone(),
         }).await?;
         
-        JOB_HISTORY.record_completed(
+        JOB_HISTORY.record_completed_with_report(
             job_id,
             "import.revision",
             user_id,
             started_at,
             Some(json!({"key": "import:completed_summary", "params": {"succeeded": succeeded, "total": total}}).to_string()),
+            serde_json::to_value(&report).ok(),
         );
         
         info!("Revision import job {} completed: {}/{} succeeded", job_id, succeeded, total);
@@ -1106,12 +1108,13 @@ impl CommunicationImportProcessor {
             report: report.clone(),
         }).await?;
         
-        JOB_HISTORY.record_completed(
+        JOB_HISTORY.record_completed_with_report(
             job_id,
             "import.communication",
             user_id,
             started_at,
             Some(json!({"key": "import:completed_summary", "params": {"succeeded": succeeded, "total": total}}).to_string()),
+            serde_json::to_value(&report).ok(),
         );
         
         info!("Communication import job {} completed: {}/{} succeeded", job_id, succeeded, total);
@@ -1414,12 +1417,13 @@ impl WorkLogImportProcessor {
             report: report.clone(),
         }).await?;
         
-        JOB_HISTORY.record_completed(
+        JOB_HISTORY.record_completed_with_report(
             job_id,
             "import.visit",
             user_id,
             started_at,
             Some(json!({"key": "import:completed_summary", "params": {"succeeded": succeeded, "total": total}}).to_string()),
+            serde_json::to_value(&report).ok(),
         );
         
         info!("Visit import job {} completed: {}/{} succeeded", job_id, succeeded, total);
@@ -1852,12 +1856,18 @@ impl ZipImportProcessor {
             }
         }
         
-        JOB_HISTORY.record_completed(
+        let combined_report = results.iter()
+            .find(|r| r.file_type == ZipImportFileType::Customers)
+            .or_else(|| results.first())
+            .map(|r| serde_json::to_value(&r.report).unwrap_or_default());
+
+        JOB_HISTORY.record_completed_with_report(
             job_id,
             "import.zip",
             user_id,
             started_at,
             Some(json!({"key": "import:zip_completed_summary", "params": {"files": total_files, "succeeded": total_succeeded, "failed": total_failed}}).to_string()),
+            combined_report,
         );
         
         info!("ZIP import job {} completed: {} files, {} succeeded, {} failed", 

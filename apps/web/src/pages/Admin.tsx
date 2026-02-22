@@ -12,6 +12,7 @@ import { CountriesManager } from '../components/admin/CountriesManager';
 import { useActiveJobsStore, type ActiveJob } from '../stores/activeJobsStore';
 import { logger } from '../utils/logger';
 import { formatTime, formatNumber } from '../i18n/formatters';
+import { ClipboardList } from 'lucide-react';
 import styles from './Admin.module.css';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -511,7 +512,7 @@ export function Admin() {
                 ))}
               </div>
               <div className={styles.importHint}>
-                <p>📋 <a href="/PROJECT_IMPORT.MD" target="_blank" rel="noopener noreferrer">{t('admin_import_docs')}</a></p>
+                <p><ClipboardList size={14} /> <a href="/PROJECT_IMPORT.MD" target="_blank" rel="noopener noreferrer">{t('admin_import_docs')}</a></p>
                 <p>{t('admin_import_order_hint')}</p>
               </div>
             </section>

@@ -299,6 +299,12 @@
     "conflicts_with_break": "Slot zasahuje do preferovaného okna pauzy."
   },
 
+  "candidate_needs_reschedule": "Neskorý príchod — treba dohodnúť nový termín s klientom",
+  "candidate_row_needs_reschedule": "Treba dohodnúť nový termín",
+  "candidate_visit_note": "Poznámka z poslednej návštevy",
+  "candidate_devices": "Zariadenia",
+  "candidate_no_devices": "Žiadne zariadenia",
+
   "service_duration_label": "Servis:",
   "override_reset_tooltip": "Kliknutím vrátite pôvodnú vypočítanú hodnotu",
 

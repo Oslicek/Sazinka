@@ -17,6 +17,7 @@ import type { Visit, VisitResult } from '@shared/visit';
 import { PlannerFilters } from '../components/shared/PlannerFilters';
 import { QuickVisitDialog } from '../components/worklog';
 import { formatDate } from '../i18n/formatters';
+import { ClipboardList } from 'lucide-react';
 import styles from './WorkLog.module.css';
 
 interface WorkLogSearchParams {
@@ -328,7 +329,7 @@ export function WorkLog() {
         </div>
       ) : filteredVisits.length === 0 ? (
         <div className={styles.empty}>
-          <span className={styles.emptyIcon}>📋</span>
+          <ClipboardList size={16} className={styles.emptyIcon} />
           <p>{t('worklog_empty')}</p>
           <p className={styles.emptyHint}>{t('worklog_empty_hint')}</p>
         </div>

@@ -5,8 +5,10 @@
  * Clicking a stop or segment highlights it on the map.
  */
 
+import type { ReactNode } from 'react';
 import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { MapPin, AlertTriangle } from 'lucide-react';
 import {
   DndContext,
   closestCenter,
@@ -124,14 +126,14 @@ function getWarningLabel(warningType: string, t: (key: string) => string): strin
   }
 }
 
-function getWarningIcon(warningType: string): string {
+function getWarningIcon(warningType: string): ReactNode {
   switch (warningType) {
     case 'LATE_ARRIVAL':
-      return '🔴';
+      return <AlertTriangle size={14} />;
     case 'INSUFFICIENT_BUFFER':
-      return '🟡';
+      return <AlertTriangle size={14} />;
     default:
-      return '⚠️';
+      return <AlertTriangle size={14} />;
   }
 }
 
@@ -223,7 +225,7 @@ export function RouteDetailTimeline({
     <div className={styles.container}>
       {/* Start depot */}
       <div className={styles.depotCard}>
-        <span className={styles.depotIcon}>&#x1F4CD;</span>
+        <MapPin size={16} className={styles.depotIcon} />
         <span className={styles.depotName}>{depotName}</span>
       </div>
 
@@ -316,7 +318,7 @@ export function RouteDetailTimeline({
                         className={styles.overrideReset}
                         onClick={(e) => { e.stopPropagation(); onResetTravelDuration(stop.id); }}
                         title={t('override_reset_tooltip')}
-                      >⚠️</button>
+                      ><AlertTriangle size={14} /></button>
                     )}
                   </span>
                 ) : (
@@ -419,7 +421,7 @@ export function RouteDetailTimeline({
                         <span className={styles.timeSeparator}>–</span>
                         <span>{formatTime(stop.scheduledTimeEnd)}</span>
                       </div>
-                      {hasSignificantDiff && <span className={styles.warningIcon} title={t('timeline_time_diff_warning')}>⚠️</span>}
+                      {hasSignificantDiff && <span title={t('timeline_time_diff_warning')}><AlertTriangle size={14} className={styles.warningIcon} /></span>}
                     </div>
                     {(stop.estimatedArrival || stop.estimatedDeparture) && (
                       <div className={styles.timeRow}>
@@ -470,7 +472,7 @@ export function RouteDetailTimeline({
                             className={styles.overrideReset}
                             onClick={(e) => { e.stopPropagation(); onResetServiceDuration(stop.id); }}
                             title={t('override_reset_tooltip')}
-                          >⚠️</button>
+                          ><AlertTriangle size={14} /></button>
                         )}
                       </span>
                     ) : (
@@ -571,7 +573,7 @@ export function RouteDetailTimeline({
 
       {/* End depot */}
       <div className={styles.depotCard}>
-        <span className={styles.depotIcon}>&#x1F4CD;</span>
+        <MapPin size={16} className={styles.depotIcon} />
         <span className={styles.depotName}>{depotName}</span>
       </div>
 

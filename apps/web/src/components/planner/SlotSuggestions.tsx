@@ -1,4 +1,6 @@
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Check, AlertTriangle, X as XIcon } from 'lucide-react';
 import { getWeekdayNames } from '@/i18n/formatters';
 import styles from './SlotSuggestions.module.css';
 
@@ -31,11 +33,11 @@ function formatDate(dateStr: string, weekdayNames: string[]): string {
   return `${day} ${date.getDate()}.${date.getMonth() + 1}`;
 }
 
-function getStatusIcon(status: SlotStatus): string {
+function getStatusIcon(status: SlotStatus): ReactNode {
   switch (status) {
-    case 'ok': return '✅';
-    case 'tight': return '⚠️';
-    case 'conflict': return '❌';
+    case 'ok': return <Check size={14} />;
+    case 'tight': return <AlertTriangle size={14} />;
+    case 'conflict': return <XIcon size={14} />;
   }
 }
 

@@ -4,6 +4,7 @@
 
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { AlertTriangle } from 'lucide-react';
 import styles from './DeleteConfirmDialog.module.css';
 
 interface DeleteConfirmDialogProps {
@@ -34,7 +35,7 @@ export function DeleteConfirmDialog({
   return (
     <div className={styles.overlay} onClick={handleOverlayClick}>
       <div className={styles.dialog}>
-        <div className={styles.icon}>⚠️</div>
+        <div className={styles.icon}><AlertTriangle size={24} /></div>
         
         <h2 className={styles.title}>{t('delete_title')}</h2>
         

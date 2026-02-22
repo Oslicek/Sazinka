@@ -5,6 +5,7 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { X as XIcon } from 'lucide-react';
 import { submitCustomerImportJob } from '../../services/importJobService';
 import { useActiveJobsStore } from '../../stores/activeJobsStore';
 import { getToken } from '@/utils/auth';
@@ -316,7 +317,7 @@ export function ImportCustomersModal({
           {/* Error state */}
           {state === 'error' && (
             <div className={styles.error}>
-              <div className={styles.errorIcon}>❌</div>
+              <div className={styles.errorIcon}><XIcon size={24} /></div>
               <p className={styles.errorText}>{error}</p>
               <button className={styles.retryButton} onClick={handleReset}>
                 {t('customer_retry')}

@@ -8,6 +8,7 @@
 
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { User, Phone, ClipboardCopy, Mail, AlertTriangle, Map, Wrench, MessageSquare } from 'lucide-react';
 import type { Customer } from '@shared/customer';
 import { AddressMap } from './AddressMap';
 import { AddressStatusChip } from './AddressStatusChip';
@@ -64,14 +65,14 @@ export function CustomerWorkspace({
           
           {isCompany && customer.contactPerson && (
             <div className={styles.contactItem}>
-              <span className={styles.contactIcon}>👤</span>
+              <User size={14} className={styles.contactIcon} />
               <span className={styles.contactText}>{customer.contactPerson}</span>
             </div>
           )}
           
           {customer.phone && (
             <div className={styles.contactItem}>
-              <span className={styles.contactIcon}>📞</span>
+              <Phone size={14} className={styles.contactIcon} />
               <a href={`tel:${customer.phone}`} className={styles.contactLink}>
                 {customer.phone}
               </a>
@@ -81,14 +82,14 @@ export function CustomerWorkspace({
                 onClick={() => navigator.clipboard.writeText(customer.phone!)}
                 title={t('preview_copy')}
               >
-                📋
+                <ClipboardCopy size={14} />
               </button>
             </div>
           )}
           
           {customer.email && (
             <div className={styles.contactItem}>
-              <span className={styles.contactIcon}>✉️</span>
+              <Mail size={14} className={styles.contactIcon} />
               <a href={`mailto:${customer.email}`} className={styles.contactLink}>
                 {customer.email}
               </a>
@@ -98,7 +99,7 @@ export function CustomerWorkspace({
                 onClick={() => navigator.clipboard.writeText(customer.email!)}
                 title={t('preview_copy')}
               >
-                📋
+                <ClipboardCopy size={14} />
               </button>
             </div>
           )}
@@ -128,9 +129,9 @@ export function CustomerWorkspace({
           {!hasCoordinates && (
             <div className={styles.noMap}>
               {customer.geocodeStatus === 'failed' ? (
-                <span>⚠️ {t('preview_address_cannot_locate')}</span>
+                <span><AlertTriangle size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> {t('preview_address_cannot_locate')}</span>
               ) : (
-                <span>🗺️ {t('preview_map_unavailable')}</span>
+                <span><Map size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> {t('preview_map_unavailable')}</span>
               )}
             </div>
           )}
@@ -192,14 +193,14 @@ export function CustomerWorkspace({
             className={`${styles.tab} ${activeTab === 'devices' ? styles.tabActive : ''}`}
             onClick={() => handleTabChange('devices')}
           >
-            🔧 {t('preview_devices_tab')}
+            <Wrench size={14} /> {t('preview_devices_tab')}
           </button>
           <button
             type="button"
             className={`${styles.tab} ${activeTab === 'revisions' ? styles.tabActive : ''}`}
             onClick={() => handleTabChange('revisions')}
           >
-            📋 {t('preview_history_tab')}
+            <ClipboardCopy size={14} /> {t('preview_history_tab')}
           </button>
           {tabs.communication && (
             <button
@@ -207,7 +208,7 @@ export function CustomerWorkspace({
               className={`${styles.tab} ${activeTab === 'communication' ? styles.tabActive : ''}`}
               onClick={() => handleTabChange('communication')}
             >
-              💬 {t('preview_communication_tab')}
+              <MessageSquare size={14} /> {t('preview_communication_tab')}
             </button>
           )}
         </nav>

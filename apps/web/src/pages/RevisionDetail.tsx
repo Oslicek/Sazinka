@@ -13,6 +13,7 @@ import { RevisionWorkspace, type RevisionTabId } from '../components/revisions/R
 import { CompleteRevisionDialog } from '../components/revisions/CompleteRevisionDialog';
 import { useNatsStore } from '../stores/natsStore';
 import { formatDate } from '../i18n/formatters';
+import { AlertTriangle, Search, Calendar, Clock } from 'lucide-react';
 import styles from './RevisionDetail.module.css';
 
 interface SearchParams {
@@ -170,7 +171,7 @@ export function RevisionDetail() {
     return (
       <div className={styles.container}>
         <div className={styles.errorState}>
-          <span className={styles.errorIcon}>⚠️</span>
+          <AlertTriangle size={16} className={styles.errorIcon} />
           <h2>{t('revision_error')}</h2>
           <p>{error}</p>
           <Link to="/inbox" className={styles.backButton}>{t('revision_back_queue')}</Link>
@@ -183,7 +184,7 @@ export function RevisionDetail() {
     return (
       <div className={styles.container}>
         <div className={styles.errorState}>
-          <span className={styles.errorIcon}>🔍</span>
+          <Search size={16} className={styles.errorIcon} />
           <h2>{t('revision_not_found')}</h2>
           <p>{t('revision_not_found_desc')}</p>
           <Link to="/inbox" className={styles.backButton}>{t('revision_back_queue')}</Link>
@@ -213,12 +214,12 @@ export function RevisionDetail() {
           <div className={styles.headerMeta}>
             {revision.scheduledDate && (
               <span className={styles.metaItem}>
-                📅 {formatDate(revision.scheduledDate)}
+                <Calendar size={14} /> {formatDate(revision.scheduledDate)}
               </span>
             )}
             {revision.scheduledTimeStart && revision.scheduledTimeEnd && (
               <span className={styles.metaItem}>
-                🕐 {revision.scheduledTimeStart.substring(0, 5)} - {revision.scheduledTimeEnd.substring(0, 5)}
+                <Clock size={14} /> {revision.scheduledTimeStart.substring(0, 5)} - {revision.scheduledTimeEnd.substring(0, 5)}
               </span>
             )}
           </div>
@@ -228,7 +229,7 @@ export function RevisionDetail() {
       {/* Error banner */}
       {error && (
         <div className={styles.errorBanner}>
-          <span>⚠️</span>
+          <AlertTriangle size={14} />
           <span>{error}</span>
           <button onClick={() => setError(null)}>✕</button>
         </div>

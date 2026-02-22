@@ -1,4 +1,6 @@
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Check, AlertTriangle, X as XIcon } from 'lucide-react';
 import styles from './CapacityMetrics.module.css';
 
 export interface RouteMetrics {
@@ -43,11 +45,11 @@ function formatDuration(minutes: number): string {
   return `${hours}h${mins.toString().padStart(2, '0')}`;
 }
 
-function getStatusIcon(status: CapacityStatus): string {
+function getStatusIcon(status: CapacityStatus): ReactNode {
   switch (status) {
-    case 'ok': return '✅';
-    case 'tight': return '⚠️';
-    case 'overloaded': return '❌';
+    case 'ok': return <Check size={14} />;
+    case 'tight': return <AlertTriangle size={14} />;
+    case 'overloaded': return <XIcon size={14} />;
   }
 }
 

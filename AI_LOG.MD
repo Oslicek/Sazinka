@@ -846,3 +846,24 @@ Přidán **dropdown time picker** do `TimeInput` komponenty:
 **Status**: ✅ IMPLEMENTOVÁNO
 
 **Zpětná kompatibilita**: Zachována - všechna existující použití `TimeInput` fungují beze změn.
+
+---
+
+## 2026-02-22 – Cursor Agent
+
+### Fix: Import reports not available for download + Replace emoji icons with lucide-react
+
+**Problem 1**: Import reports were only visible during import (via real-time NATS status updates) but disappeared after 5 seconds when `activeJobsStore` removed completed jobs. After page refresh, the Jobs page fetched history from the backend `JobHistoryEntry` which didn't include reports.
+
+**Fix 1**: Added `report: Option<serde_json::Value>` field to `JobHistoryEntry` in `worker/src/services/job_history.rs`. Updated all import processors to call `record_completed_with_report()` passing the serialized `ImportReport`. Frontend `JobHistoryEntry` interface and `Jobs.tsx` mapping updated to carry `report` through to the ACTIONS column.
+
+**Problem 2**: Emoji characters used as icons (📞, ✉️, 👤, 📍, etc.) didn't render on the Linux server environment due to missing emoji font support.
+
+**Fix 2**: Installed `lucide-react` icon library and replaced all emoji icons across ~35 component files with proper SVG icon components. Icons now render consistently regardless of system font support.
+
+**Files changed**:
+- `worker/src/services/job_history.rs` – added `report` field and `record_completed_with_report()`
+- `worker/src/handlers/import_processors.rs` – pass reports to history service
+- `apps/web/src/services/jobService.ts` – added `report` to `JobHistoryEntry`
+- `apps/web/src/pages/Jobs.tsx` – use report from history, added `report` to `CompletedJob`
+- ~35 component/page files – emoji → lucide-react icon replacements

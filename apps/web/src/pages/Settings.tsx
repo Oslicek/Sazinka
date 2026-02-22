@@ -28,6 +28,7 @@ import { DangerZoneSection } from '../components/settings/DeleteAccountDialog';
 import { DeviceTypeConfigManager } from '../components/settings/DeviceTypeConfigManager';
 import { TimeInput } from '../components/common';
 import { CountrySelect } from '../components/common/CountrySelect';
+import { ClipboardList, Star, Pencil, Trash2, KeyRound } from 'lucide-react';
 import styles from './Settings.module.css';
 
 type SettingsTab = 'preferences' | 'work' | 'business' | 'email' | 'breaks' | 'depots' | 'crews' | 'workers' | 'import-export' | 'roles' | 'devices';
@@ -524,7 +525,7 @@ export function Settings() {
 
               <div className={styles.importHint}>
                 <p>
-                  📋 <a href="/PROJECT_IMPORT.MD" target="_blank" rel="noopener noreferrer">
+                  <ClipboardList size={14} /> <a href="/PROJECT_IMPORT.MD" target="_blank" rel="noopener noreferrer">
                     {t('import_docs_link')}
                   </a>
                 </p>
@@ -1402,7 +1403,7 @@ function DepotsManager({ depots, onUpdate }: DepotsManagerProps) {
                     onClick={() => handleSetPrimary(depot)}
                     title={t('depot_set_primary')}
                   >
-                    ⭐
+                    <Star size={14} />
                   </button>
                 )}
                 <button
@@ -1411,7 +1412,7 @@ function DepotsManager({ depots, onUpdate }: DepotsManagerProps) {
                   onClick={() => setEditingDepot(depot)}
                   title={t('edit')}
                 >
-                  ✏️
+                  <Pencil size={14} />
                 </button>
                 <button
                   type="button"
@@ -1419,7 +1420,7 @@ function DepotsManager({ depots, onUpdate }: DepotsManagerProps) {
                   onClick={() => handleDelete(depot.id)}
                   title={t('delete_action')}
                 >
-                  🗑️
+                  <Trash2 size={14} />
                 </button>
               </div>
             </div>
@@ -1654,7 +1655,7 @@ function CrewsManager({ crews, onUpdate }: CrewsManagerProps) {
                   onClick={() => setEditingCrew(crew)}
                   title={t('edit')}
                 >
-                  ✏️
+                  <Pencil size={14} />
                 </button>
                 <button
                   type="button"
@@ -1662,7 +1663,7 @@ function CrewsManager({ crews, onUpdate }: CrewsManagerProps) {
                   onClick={() => handleDelete(crew.id)}
                   title={t('delete_action')}
                 >
-                  🗑️
+                  <Trash2 size={14} />
                 </button>
               </div>
             </div>
@@ -2041,7 +2042,7 @@ function WorkersManager({ workers, onUpdate }: WorkersManagerProps) {
                     onClick={() => handleEditRoles(worker.id)}
                     title={t('worker_edit_roles')}
                   >
-                    🔑
+                    <KeyRound size={14} />
                   </button>
                 )}
                 <button
@@ -2049,7 +2050,7 @@ function WorkersManager({ workers, onUpdate }: WorkersManagerProps) {
                   onClick={() => handleDelete(worker.id, worker.name)}
                   title={t('worker_delete')}
                 >
-                  🗑️
+                  <Trash2 size={14} />
                 </button>
               </div>
             </div>

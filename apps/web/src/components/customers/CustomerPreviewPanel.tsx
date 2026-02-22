@@ -11,9 +11,10 @@
  * - Actions: Edit, Add to plan, open full page (small icon)
  */
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
+import { User, Phone, ClipboardCopy, Mail, Check, AlertTriangle, Wrench, Pencil, Plus } from 'lucide-react';
 import type { Customer, CustomerListItem } from '@shared/customer';
 import { AddressMap } from './AddressMap';
 import { AddressStatusChip } from './AddressStatusChip';
@@ -42,10 +43,10 @@ function copyToClipboard(text: string) {
 
 // Address status component (fallback when AddressStatusChip not suitable)
 function AddressStatus({ status, t }: { status: string; t: (key: string) => string }) {
-  const config: Record<string, { icon: string; labelKey: string; className: string }> = {
-    success: { icon: '✅', labelKey: 'address_status_verified', className: styles.statusSuccess },
+  const config: Record<string, { icon: ReactNode; labelKey: string; className: string }> = {
+    success: { icon: <Check size={14} />, labelKey: 'address_status_verified', className: styles.statusSuccess },
     pending: { icon: '⏳', labelKey: 'address_status_pending', className: styles.statusPending },
-    failed: { icon: '⚠', labelKey: 'address_status_failed', className: styles.statusFailed },
+    failed: { icon: <AlertTriangle size={14} />, labelKey: 'address_status_failed', className: styles.statusFailed },
   };
 
   const { icon, labelKey, className } = config[status] || {
@@ -141,7 +142,7 @@ export function CustomerPreviewPanel({
 
           {isCompany && contactPerson && (
             <div className={styles.contactItem}>
-              <span className={styles.contactIcon}>👤</span>
+              <User size={14} className={styles.contactIcon} />
               <span className={styles.contactText}>{contactPerson}</span>
             </div>
           )}
@@ -149,7 +150,7 @@ export function CustomerPreviewPanel({
           {c.phone ? (
             <div className={styles.contactItem}>
               <a href={`tel:${c.phone}`} className={styles.contactLink}>
-                📞 {c.phone}
+                <Phone size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> {c.phone}
               </a>
               <button
                 type="button"
@@ -157,7 +158,7 @@ export function CustomerPreviewPanel({
                 onClick={() => copyToClipboard(c.phone!)}
                 title={t('preview_copy')}
               >
-                📋
+                <ClipboardCopy size={14} />
               </button>
             </div>
           ) : (
@@ -167,7 +168,7 @@ export function CustomerPreviewPanel({
           {c.email && (
             <div className={styles.contactItem}>
               <a href={`mailto:${c.email}`} className={styles.contactLink}>
-                ✉️ {c.email}
+                <Mail size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> {c.email}
               </a>
               <button
                 type="button"
@@ -175,7 +176,7 @@ export function CustomerPreviewPanel({
                 onClick={() => copyToClipboard(c.email!)}
                 title={t('preview_copy')}
               >
-                📋
+                <ClipboardCopy size={14} />
               </button>
             </div>
           )}
@@ -286,14 +287,14 @@ export function CustomerPreviewPanel({
                 className={`${styles.tab} ${activeTab === 'devices' ? styles.tabActive : ''}`}
                 onClick={() => setActiveTab('devices')}
               >
-                🔧 {t('preview_devices_tab')}
+                <Wrench size={14} /> {t('preview_devices_tab')}
               </button>
               <button
                 type="button"
                 className={`${styles.tab} ${activeTab === 'revisions' ? styles.tabActive : ''}`}
                 onClick={() => setActiveTab('revisions')}
               >
-                📋 {t('preview_history_tab')}
+                <ClipboardCopy size={14} /> {t('preview_history_tab')}
               </button>
             </nav>
             <div className={styles.tabContent}>
@@ -325,7 +326,7 @@ export function CustomerPreviewPanel({
           className={styles.actionButton}
           onClick={() => onEdit(customer)}
         >
-          ✎ {t('preview_edit')}
+          <Pencil size={14} /> {t('preview_edit')}
         </button>
         {onAddToPlan && hasCoordinates && (
           <button
@@ -333,7 +334,7 @@ export function CustomerPreviewPanel({
             className={styles.actionButton}
             onClick={() => onAddToPlan(customer)}
           >
-            ➕ {t('preview_add_to_plan')}
+            <Plus size={14} /> {t('preview_add_to_plan')}
           </button>
         )}
       </div>

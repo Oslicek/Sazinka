@@ -5,6 +5,7 @@ import type { CalendarItem } from '@shared/calendar';
 import { useNatsStore } from '@/stores/natsStore';
 import { getRevisionStats, type RevisionStats } from '../services/revisionService';
 import { listCalendarItems } from '../services/calendarService';
+import { Phone } from 'lucide-react';
 import styles from './Dashboard.module.css';
 
 function getStatusLabel(status: CalendarItem['status'], t: (key: string) => string): string {
@@ -139,7 +140,7 @@ export function Dashboard() {
       {totalToCall > 0 && (
         <Link to="/queue" className={styles.callQueueBanner}>
           <div className={styles.bannerContent}>
-            <span className={styles.bannerIcon}>📞</span>
+            <Phone size={16} className={styles.bannerIcon} />
             <div className={styles.bannerText}>
               <strong>{t('call_queue_count', { count: totalToCall })}</strong>
               <span>{t('call_queue_start')}</span>

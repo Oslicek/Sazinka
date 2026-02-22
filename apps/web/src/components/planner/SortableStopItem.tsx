@@ -2,6 +2,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
+import { Compass, Phone, Check, Lock, Unlock } from 'lucide-react';
 import type { PlannedRouteStop } from '@shared/route';
 import styles from './SortableStopItem.module.css';
 
@@ -76,7 +77,7 @@ export function SortableStopItem({
             onClick={onNavigate}
             title={t('sortable_navigate')}
           >
-            🧭
+            <Compass size={16} />
           </button>
         )}
         
@@ -87,7 +88,7 @@ export function SortableStopItem({
             onClick={onCall}
             title={t('sortable_call')}
           >
-            📞
+            <Phone size={16} />
           </button>
         )}
         
@@ -98,7 +99,7 @@ export function SortableStopItem({
             onClick={onMarkDone}
             title={t('sortable_done')}
           >
-            ✅
+            <Check size={16} />
           </button>
         )}
         
@@ -109,7 +110,7 @@ export function SortableStopItem({
             onClick={() => onLockToggle(stop.customerId)}
             title={isLocked ? t('sortable_unlock') : t('sortable_lock')}
           >
-            {isLocked ? '🔒' : '🔓'}
+            {isLocked ? <Lock size={16} /> : <Unlock size={16} />}
           </button>
         )}
       </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
+import { AlertTriangle, Calendar, Clock, Pencil, Phone, Mail, ClipboardCopy, Check, FileText, Plus } from 'lucide-react';
 import { formatDate } from '@/i18n/formatters';
 import { listDevices } from '@/services/deviceService';
 import { listVisits, getVisit, getVisitStatusLabel, getVisitResultLabel } from '@/services/visitService';
@@ -351,8 +352,8 @@ export function CandidateDetail({
       {/* Late arrival warning — needs rescheduling */}
       {needsReschedule && (
         <div className={styles.rescheduleWarning}>
-          <span className={styles.rescheduleWarningIcon}>⚠</span>
-          <span>{t('candidate_needs_reschedule', { defaultValue: 'Pozdní příjezd — nutné domluvit nový termín s klientem' })}</span>
+          <AlertTriangle size={14} className={styles.rescheduleWarningIcon} />
+          <span>{t('candidate_needs_reschedule', { defaultValue: 'Late arrival — need to arrange new time with client' })}</span>
         </div>
       )}
 
@@ -368,10 +369,10 @@ export function CandidateDetail({
                 onClick={() => setIsScheduling(true)}
                 title={t('candidate_click_to_change')}
               >
-                📅 {formatDate(candidate.scheduledDate)}
+                <Calendar size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> {formatDate(candidate.scheduledDate)}
                 {candidate.scheduledTimeStart && candidate.scheduledTimeEnd && (
                   <span className={styles.scheduledTime}>
-                    {' '}🕐 {candidate.scheduledTimeStart.substring(0, 5)} – {candidate.scheduledTimeEnd.substring(0, 5)}
+                    {' '}<Clock size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> {candidate.scheduledTimeStart.substring(0, 5)} – {candidate.scheduledTimeEnd.substring(0, 5)}
                   </span>
                 )}
               </button>
@@ -517,7 +518,7 @@ export function CandidateDetail({
             className={styles.actionButtonCompact}
             onClick={() => setIsScheduling(true)}
           >
-            📅 {candidate.isScheduled ? t('candidate_change_appointment') : t('candidate_make_appointment')}
+            <Calendar size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> {candidate.isScheduled ? t('candidate_change_appointment') : t('candidate_make_appointment')}
           </button>
           {isInRoute ? (
             <button
@@ -525,7 +526,7 @@ export function CandidateDetail({
               className={styles.actionButtonCompact}
               onClick={() => onRemoveFromRoute?.(candidate.customerId)}
             >
-              ✕ {t('candidate_remove_from_route')}
+              &times; {t('candidate_remove_from_route')}
             </button>
           ) : (
             <button
@@ -535,7 +536,7 @@ export function CandidateDetail({
               disabled={candidate.hasCoordinates === false}
               title={candidate.hasCoordinates === false ? t('candidate_fix_address_first') : undefined}
             >
-              ➕ {t('candidate_add_to_route')}
+              <Plus size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> {t('candidate_add_to_route')}
             </button>
           )}
           <div className={styles.snoozeButtonWrapper}>
@@ -545,7 +546,7 @@ export function CandidateDetail({
               onClick={() => handleSnoozeSelect(defaultSnoozeDays)}
               title={t('candidate_snooze', { duration: getSnoozeDurationLabel(defaultSnoozeDays) })}
             >
-              ⏰ {t('candidate_snooze', { duration: getSnoozeDurationLabel(defaultSnoozeDays) })}
+              <Clock size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> {t('candidate_snooze', { duration: getSnoozeDurationLabel(defaultSnoozeDays) })}
             </button>
             <button
               type="button"
@@ -581,14 +582,14 @@ export function CandidateDetail({
               title={t('candidate_edit_contact')}
               aria-label={t('candidate_edit_contact')}
             >
-              ✏️
+              <Pencil size={14} />
             </button>
           )}
         </div>
         {editingContact ? (
           <div className={styles.inlineEditForm}>
             <label className={styles.inlineEditLabel}>
-              📞 {t('candidate_phone')}
+              <Phone size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> {t('candidate_phone')}
               <input
                 type="tel"
                 className={styles.inlineEditInput}
@@ -598,7 +599,7 @@ export function CandidateDetail({
               />
             </label>
             <label className={styles.inlineEditLabel}>
-              ✉️ {t('candidate_email')}
+              <Mail size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> {t('candidate_email')}
               <input
                 type="email"
                 className={styles.inlineEditInput}
@@ -620,7 +621,7 @@ export function CandidateDetail({
             {candidate.phone ? (
               <div className={styles.contactItem}>
                 <a href={`tel:${candidate.phone}`} className={styles.phoneLink}>
-                  📞 {formatPhoneDisplay(candidate.phone)}
+                  <Phone size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> {formatPhoneDisplay(candidate.phone)}
                 </a>
                 <button
                   type="button"
@@ -628,16 +629,16 @@ export function CandidateDetail({
                   onClick={() => navigator.clipboard.writeText(formatPhoneDisplay(candidate.phone!)).catch(console.error)}
                   title={t('candidate_copy')}
                 >
-                  📋
+                  <ClipboardCopy size={14} />
                 </button>
               </div>
             ) : (
-              <span className={styles.missingInfo}>📵 {t('candidate_missing_phone')}</span>
+              <span className={styles.missingInfo}><Phone size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> {t('candidate_missing_phone')}</span>
             )}
             {candidate.email ? (
               <div className={styles.contactItem}>
                 <a href={`mailto:${candidate.email}`} className={styles.emailLink}>
-                  ✉️ {candidate.email}
+                  <Mail size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> {candidate.email}
                 </a>
                 <button
                   type="button"
@@ -645,11 +646,11 @@ export function CandidateDetail({
                   onClick={() => navigator.clipboard.writeText(candidate.email!).catch(console.error)}
                   title={t('candidate_copy')}
                 >
-                  📋
+                  <ClipboardCopy size={14} />
                 </button>
               </div>
             ) : (
-              <span className={styles.missingInfo}>✉️ {t('candidate_missing_email')}</span>
+              <span className={styles.missingInfo}><Mail size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> {t('candidate_missing_email')}</span>
             )}
           </>
         )}
@@ -667,7 +668,7 @@ export function CandidateDetail({
               title={t('candidate_edit_address')}
               aria-label={t('candidate_edit_address')}
             >
-              ✏️
+              <Pencil size={14} />
             </button>
           )}
         </div>
@@ -718,9 +719,9 @@ export function CandidateDetail({
               <p className={styles.address}>{candidate.postalCode ? candidate.postalCode.replace(/\s/g, '').replace(/^(\d{3})(\d+)$/, '$1 $2') : ''}</p>
             </div>
             {candidate.hasCoordinates === false ? (
-              <span className={styles.addressNotLocated}>⚠ {t('candidate_geocode_error')}</span>
+              <span className={styles.addressNotLocated}><AlertTriangle size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> {t('candidate_geocode_error')}</span>
             ) : candidate.hasCoordinates && (
-              <span className={styles.addressLocated}>✅ {t('candidate_address_located')}</span>
+              <span className={styles.addressLocated}><Check size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> {t('candidate_address_located')}</span>
             )}
           </div>
         )}
@@ -730,8 +731,8 @@ export function CandidateDetail({
       {lastVisitNotes && (
         <div className={styles.lastVisitBanner}>
           <div className={styles.lastVisitBannerHeader}>
-            <span className={styles.lastVisitBannerIcon}>📝</span>
-            <span className={styles.lastVisitBannerTitle}>{t('candidate_visit_note', { defaultValue: 'Poznámka z poslední návštěvy' })}</span>
+            <FileText size={16} className={styles.lastVisitBannerIcon} />
+            <span className={styles.lastVisitBannerTitle}>{t('candidate_visit_note', { defaultValue: 'Note from last visit' })}</span>
             {lastVisit && (
               <span className={styles.lastVisitBannerMeta}>
                 {formatDate(lastVisit.scheduledDate)}
@@ -741,7 +742,7 @@ export function CandidateDetail({
           <p className={styles.lastVisitBannerNotes}>{lastVisitNotes}</p>
           {lastVisit?.requiresFollowUp && lastVisit.followUpReason && (
             <div className={styles.lastVisitFollowUp}>
-              <span className={styles.followUpIcon}>⚠</span>
+              <AlertTriangle size={14} className={styles.followUpIcon} />
               <span>{lastVisit.followUpReason}</span>
             </div>
           )}
@@ -758,11 +759,11 @@ export function CandidateDetail({
 
       {/* Devices */}
       <section className={styles.section}>
-        <h4 className={styles.sectionTitle}>{t('candidate_devices', { defaultValue: 'Zařízení' })} ({devices.length})</h4>
+        <h4 className={styles.sectionTitle}>{t('candidate_devices', { defaultValue: 'Devices' })} ({devices.length})</h4>
         {isLoadingExtra ? (
           <span className={styles.loadingText}>{t('candidate_loading')}</span>
         ) : devices.length === 0 ? (
-          <span className={styles.missingInfo}>{t('candidate_no_devices', { defaultValue: 'Žádná zařízení' })}</span>
+          <span className={styles.missingInfo}>{t('candidate_no_devices', { defaultValue: 'No devices' })}</span>
         ) : (
           <div className={styles.deviceList}>
             {devices.map((dev) => (

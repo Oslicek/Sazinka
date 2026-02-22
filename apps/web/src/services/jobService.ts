@@ -34,6 +34,7 @@ export interface JobHistoryEntry {
   durationMs: number;
   error: string | null;
   details: string | null;
+  report?: import('@shared/import').ImportReport;
 }
 
 /** Response from jobs.history endpoint */

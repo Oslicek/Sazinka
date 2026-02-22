@@ -10,6 +10,7 @@
 
 import { Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
+import { Phone, Map, Plus, Pencil, Trash2 } from 'lucide-react';
 import type { Customer } from '@shared/customer';
 import styles from './CustomerHeader.module.css';
 
@@ -57,7 +58,7 @@ export function CustomerHeader({
           {/* Call button */}
           {customer.phone && (
             <a href={`tel:${customer.phone}`} className={`${styles.actionButton} ${styles.primary}`}>
-              📞 {t('header_call')}
+              <Phone size={14} /> {t('header_call')}
             </a>
           )}
           
@@ -68,7 +69,7 @@ export function CustomerHeader({
             rel="noopener noreferrer"
             className={styles.actionButton}
           >
-            🗺️ {t('header_navigate')}
+            <Map size={14} /> {t('header_navigate')}
           </a>
           
           {/* Add to plan button */}
@@ -78,7 +79,7 @@ export function CustomerHeader({
               className={styles.actionButton}
               onClick={onAddToPlan}
             >
-              ➕ {t('header_add_to_plan')}
+              <Plus size={14} /> {t('header_add_to_plan')}
             </button>
           )}
           
@@ -88,7 +89,7 @@ export function CustomerHeader({
             className={styles.actionButton}
             onClick={onEdit}
           >
-            ✎ {t('header_edit')}
+            <Pencil size={14} /> {t('header_edit')}
           </button>
           
           {/* Delete button */}
@@ -100,7 +101,7 @@ export function CustomerHeader({
               title={t('header_delete_title')}
               aria-label={t('header_delete_title')}
             >
-              🗑️
+              <Trash2 size={16} />
             </button>
           )}
         </div>

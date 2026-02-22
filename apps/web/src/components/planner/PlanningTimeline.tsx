@@ -6,6 +6,7 @@
 
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { MapPin, AlertTriangle } from 'lucide-react';
 import {
   DndContext,
   DragOverlay,
@@ -290,7 +291,7 @@ function SortableStopCard({
                     className={styles.overrideReset}
                     onClick={(e) => { e.stopPropagation(); onResetServiceDuration(stop.id); }}
                     title={t('override_reset_tooltip')}
-                  >⚠️</button>
+                  ><AlertTriangle size={14} /></button>
                 )}
               </span>
             ) : (
@@ -300,7 +301,7 @@ function SortableStopCard({
         )}
         {item.lateArrivalMinutes != null && item.lateArrivalMinutes > 0 && (
           <div className={styles.lateWarning}>
-            <span className={styles.lateWarningIcon}>&#x26A0;</span>
+            <AlertTriangle size={14} className={styles.lateWarningIcon} />
             {t('planning_timeline_late_arrival', {
               time: formatTime(item.actualArrivalTime ?? null),
               delay: formatDurationHm(item.lateArrivalMinutes),
@@ -309,7 +310,7 @@ function SortableStopCard({
         )}
         {item.needsReschedule && (
           <div className={styles.needsRescheduleWarning}>
-            <span className={styles.lateWarningIcon}>&#x26A0;</span>
+            <AlertTriangle size={14} className={styles.lateWarningIcon} />
             {t('needs_reschedule')}
           </div>
         )}
@@ -760,7 +761,7 @@ export function PlanningTimeline({
                 case 'depot':
                   return (
                     <div key={item.id} className={styles.depotCard}>
-                      <span className={styles.depotIcon}>&#x1F4CD;</span>
+                      <MapPin size={16} className={styles.depotIcon} />
                       <span className={styles.depotName}>{depotName}</span>
                       <span className={styles.depotTime}>{formatTime(item.startTime)}</span>
                     </div>
@@ -798,7 +799,7 @@ export function PlanningTimeline({
                                   className={styles.overrideReset}
                                   onClick={(e) => { e.stopPropagation(); onResetTravelDuration(item.destinationStopId!); }}
                                   title={t('override_reset_tooltip')}
-                                >⚠️</button>
+                                ><AlertTriangle size={14} /></button>
                               )}
                             </span>
                           ) : (

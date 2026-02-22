@@ -25,6 +25,7 @@
     "i18next-http-backend": "^3.0.2",
     "jszip": "^3.10.1",
     "libphonenumber-js": "^1.12.35",
+    "lucide-react": "^0.575.0",
     "maplibre-gl": "^4.7.0",
     "nats.ws": "^1.29.0",
     "papaparse": "^5.5.3",

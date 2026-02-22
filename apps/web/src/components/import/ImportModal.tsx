@@ -8,6 +8,7 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Package, FileText, X as XIcon } from 'lucide-react';
 import {
   submitDeviceImportJob,
   submitRevisionImportJob,
@@ -350,7 +351,7 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
               onDragLeave={handleDragLeave}
               onClick={() => fileInputRef.current?.click()}
             >
-              <div className={styles.dropIcon}>{entityType === 'zip' ? '📦' : '📄'}</div>
+              <div className={styles.dropIcon}>{entityType === 'zip' ? <Package size={32} /> : <FileText size={32} />}</div>
               <p className={styles.dropText}>
                 {entityType === 'zip' ? t('modal_drop_text_zip') : t('modal_drop_text_csv')}
               </p>
@@ -472,7 +473,7 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
           {/* Error state */}
           {state === 'error' && (
             <div className={styles.error}>
-              <div className={styles.errorIcon}>❌</div>
+              <div className={styles.errorIcon}><XIcon size={24} /></div>
               <p className={styles.errorText}>{error}</p>
               <button className={styles.retryButton} onClick={handleReset}>
                 {t('customer_retry')}

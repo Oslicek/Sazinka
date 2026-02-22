@@ -9,6 +9,7 @@
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from '@tanstack/react-router';
+import { Phone, User, Compass, Wrench, ClipboardCopy, MessageSquare, History } from 'lucide-react';
 import type { Revision } from '@shared/revision';
 import { REVISION_STATUS_KEYS, REVISION_RESULT_KEYS } from '@shared/revision';
 
@@ -78,7 +79,7 @@ export function RevisionWorkspace({
           {revision.customerPhone && (
             <div className={styles.contactItem}>
               <a href={`tel:${revision.customerPhone}`} className={styles.contactLink}>
-                📞 {revision.customerPhone}
+                <Phone size={14} /> {revision.customerPhone}
               </a>
             </div>
           )}
@@ -91,7 +92,7 @@ export function RevisionWorkspace({
               params={{ customerId: revision.customerId }}
               className={styles.cardAction}
             >
-              👤 {t('revision_ws_customer_detail')}
+              <User size={14} /> {t('revision_ws_customer_detail')}
             </Link>
           </div>
         </section>
@@ -109,7 +110,7 @@ export function RevisionWorkspace({
               rel="noopener noreferrer"
               className={styles.cardAction}
             >
-              🧭 {t('revision_ws_navigate')}
+              <Compass size={14} /> {t('revision_ws_navigate')}
             </a>
           )}
         </section>
@@ -128,7 +129,7 @@ export function RevisionWorkspace({
               search={{ tab: 'devices' }}
               className={styles.cardAction}
             >
-              🔧 {t('revision_ws_device_detail')}
+              <Wrench size={14} /> {t('revision_ws_device_detail')}
             </Link>
           </div>
         </section>
@@ -219,7 +220,7 @@ export function RevisionWorkspace({
                   className={`${styles.tab} ${activeTab === 'progress' ? styles.tabActive : ''}`}
                   onClick={() => handleTabChange('progress')}
                 >
-                  📋 {t('revision_ws_tab_progress')}
+                  <ClipboardCopy size={14} /> {t('revision_ws_tab_progress')}
                 </button>
               )}
               {tabs.communication && (
@@ -228,7 +229,7 @@ export function RevisionWorkspace({
                   className={`${styles.tab} ${activeTab === 'communication' ? styles.tabActive : ''}`}
                   onClick={() => handleTabChange('communication')}
                 >
-                  💬 {t('revision_ws_tab_communication')}
+                  <MessageSquare size={14} /> {t('revision_ws_tab_communication')}
                 </button>
               )}
               {tabs.history && (
@@ -237,7 +238,7 @@ export function RevisionWorkspace({
                   className={`${styles.tab} ${activeTab === 'history' ? styles.tabActive : ''}`}
                   onClick={() => handleTabChange('history')}
                 >
-                  📜 {t('revision_ws_tab_history')}
+                  <History size={14} /> {t('revision_ws_tab_history')}
                 </button>
               )}
             </nav>

@@ -16,6 +16,7 @@ import type { Depot } from '@shared/settings';
 import type { SavedRoute } from '../services/routeService';
 import { PlannerFilters } from '../components/shared/PlannerFilters';
 import { getWeekdayNames } from '@/i18n/formatters';
+import { Map, ClipboardList, Trash2 } from 'lucide-react';
 import styles from './Routes.module.css';
 
 interface RoutesSearchParams {
@@ -263,7 +264,7 @@ export function Routes() {
         </div>
       ) : routes.length === 0 ? (
         <div className={styles.empty}>
-          <div className={styles.emptyIcon}>🗺️</div>
+          <div className={styles.emptyIcon}><Map size={16} /></div>
           <p>{t('routes_empty')}</p>
           <p className={styles.emptyHint}>{t('routes_empty_hint')}</p>
         </div>
@@ -321,7 +322,7 @@ export function Routes() {
                         className={styles.actionLink}
                         title={t('routes_view_plan')}
                       >
-                        📋
+                        <ClipboardList size={14} />
                       </Link>
                       <button
                         type="button"
@@ -333,7 +334,7 @@ export function Routes() {
                         disabled={isDeleting}
                         title={t('routes_delete')}
                       >
-                        {isDeleting ? '...' : '🗑️'}
+                        {isDeleting ? '...' : <Trash2 size={14} />}
                       </button>
                     </td>
                   </tr>

@@ -26,6 +26,7 @@ import { getToken } from '@/utils/auth';
 import { DEVICE_TYPE_KEYS } from '@shared/device';
 import { resolveBackendMessage } from '@/i18n/resolveBackendMessage';
 import { formatDate } from '../i18n/formatters';
+import { Phone, Mail, XIcon, AlertTriangle } from 'lucide-react';
 import styles from './CallQueue.module.css';
 
 // Priority colors (labels resolved via i18n)
@@ -375,7 +376,7 @@ export function CallQueue() {
                   disabled={!item.customerPhone}
                   title={item.customerPhone ? formatPhone(item.customerPhone) : t('callqueue_phone_unavailable')}
                 >
-                  📞 {formatPhone(item.customerPhone)}
+                  <Phone size={14} /> {formatPhone(item.customerPhone)}
                 </button>
                 {item.customerEmail && (
                   <button
@@ -383,7 +384,7 @@ export function CallQueue() {
                     onClick={() => openEmailClient(item.customerEmail, item.customerName)}
                     title={item.customerEmail}
                   >
-                    ✉️ Email
+                    <Mail size={14} /> Email
                   </button>
                 )}
               </div>
@@ -586,7 +587,7 @@ export function CallQueue() {
                   <div className={styles.slotWarnings}>
                     {v2Response.warnings.map((w, i) => (
                       <div key={i} className={`${styles.warningItem} ${w.severity === 'error' ? styles.warningError : styles.warningWarn}`}>
-                        {w.severity === 'error' ? '❌' : '⚠️'} {resolveBackendMessage(w.message)}
+                        {w.severity === 'error' ? <XIcon size={14} /> : <AlertTriangle size={14} />} {resolveBackendMessage(w.message)}
                       </div>
                     ))}
                   </div>
@@ -629,7 +630,7 @@ export function CallQueue() {
               <div className={styles.validationWarnings}>
                 {validation.warnings.map((w, i) => (
                   <div key={i} className={`${styles.warningItem} ${w.severity === 'error' ? styles.warningError : styles.warningWarn}`}>
-                    {w.severity === 'error' ? '❌' : '⚠️'} {resolveBackendMessage(w.message)}
+                    {w.severity === 'error' ? <XIcon size={14} /> : <AlertTriangle size={14} />} {resolveBackendMessage(w.message)}
                     {w.conflictingCustomer && <span className={styles.conflictName}> ({w.conflictingCustomer})</span>}
                   </div>
                 ))}

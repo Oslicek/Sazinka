@@ -8,8 +8,9 @@
  * - Firmy (type: company)
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ClipboardCopy, Users, AlertTriangle, Building2 } from 'lucide-react';
 import styles from './SavedViewsSelector.module.css';
 
 export interface SavedView {
@@ -112,7 +113,7 @@ export function SavedViewsSelector({
         aria-expanded={isOpen}
         aria-haspopup="listbox"
       >
-        <span className={styles.icon}>📋</span>
+        <ClipboardCopy size={14} className={styles.icon} />
         <span className={styles.label}>{t(currentView.nameKey)}</span>
         <span className={`${styles.arrow} ${isOpen ? styles.arrowOpen : ''}`}>▾</span>
       </button>
@@ -147,14 +148,14 @@ export function SavedViewsSelector({
   );
 }
 
-function getViewIcon(viewId: string): string {
+function getViewIcon(viewId: string): ReactNode {
   switch (viewId) {
-    case 'all': return '👥';
-    case 'no-address': return '⚠';
+    case 'all': return <Users size={14} />;
+    case 'no-address': return <AlertTriangle size={14} />;
     case 'pending-geocode': return '⏳';
     case 'overdue': return '🔴';
     case 'due-week': return '🟡';
-    case 'companies': return '🏢';
-    default: return '📋';
+    case 'companies': return <Building2 size={14} />;
+    default: return <ClipboardCopy size={14} />;
   }
 }

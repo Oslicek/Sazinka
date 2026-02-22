@@ -1,4 +1,6 @@
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { AlertTriangle, PhoneOff, Home, MapPin, Map, Phone, Pencil } from 'lucide-react';
 import { CollapseButton } from '../common';
 import styles from './ProblemsSegment.module.css';
 
@@ -20,11 +22,11 @@ interface ProblemsSegmentProps {
   onToggleCollapse?: () => void;
 }
 
-const problemLabelKeys: Record<ProblemType, { icon: string; key: string }> = {
-  no_phone: { icon: '📵', key: 'problems_no_phone' },
-  no_address: { icon: '🏠', key: 'problems_no_address' },
-  geocode_failed: { icon: '📍', key: 'problems_geocode_failed' },
-  no_coordinates: { icon: '🗺️', key: 'problems_no_coordinates' },
+const problemLabelKeys: Record<ProblemType, { icon: ReactNode; key: string }> = {
+  no_phone: { icon: <PhoneOff size={14} />, key: 'problems_no_phone' },
+  no_address: { icon: <Home size={14} />, key: 'problems_no_address' },
+  geocode_failed: { icon: <MapPin size={14} />, key: 'problems_geocode_failed' },
+  no_coordinates: { icon: <Map size={14} />, key: 'problems_no_coordinates' },
 };
 
 export function ProblemsSegment({
@@ -48,7 +50,7 @@ export function ProblemsSegment({
         onClick={onToggleCollapse}
         aria-expanded={!isCollapsed}
       >
-        <span className={styles.headerIcon}>⚠️</span>
+        <AlertTriangle size={16} className={styles.headerIcon} />
         <span className={styles.headerTitle}>
           {t('problems_title', { count: candidates.length })}
         </span>
@@ -90,7 +92,7 @@ export function ProblemsSegment({
                     onClick={() => onAddPhone(candidate.id)}
                     title={t('problems_add_phone')}
                   >
-                    📞+
+                    <Phone size={14} />+
                   </button>
                 )}
                 {(candidate.problems.includes('geocode_failed') ||
@@ -103,7 +105,7 @@ export function ProblemsSegment({
                       onClick={() => onFixAddress(candidate.id)}
                       title={t('problems_fix_address')}
                     >
-                      📍✎
+                      <MapPin size={14} /><Pencil size={14} />
                     </button>
                   )}
                 {onViewCustomer && (

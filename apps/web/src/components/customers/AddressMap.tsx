@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { MapPin } from 'lucide-react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import styles from './AddressMap.module.css';
@@ -205,7 +206,7 @@ export function AddressMap({
       
       {!isGeocoding && lat === undefined && lng === undefined && resolvedEmptyMessage && (
         <div className={styles.placeholder}>
-          <span className={styles.placeholderIcon}>📍</span>
+          <MapPin size={16} className={styles.placeholderIcon} />
           <p>{resolvedEmptyMessage}</p>
         </div>
       )}

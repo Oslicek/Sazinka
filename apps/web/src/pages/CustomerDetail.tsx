@@ -27,6 +27,7 @@ import { CustomerTimeline } from '../components/timeline';
 import { useNatsStore } from '../stores/natsStore';
 import { useTranslation } from 'react-i18next';
 import { formatDate } from '../i18n/formatters';
+import { AlertTriangle, Search, FileText } from 'lucide-react';
 import styles from './CustomerDetail.module.css';
 
 // Default mock crews (fallback when none in database)
@@ -402,7 +403,7 @@ export function CustomerDetail() {
     return (
       <div className={styles.container}>
         <div className={styles.errorState}>
-          <span className={styles.errorIcon}>⚠️</span>
+          <AlertTriangle size={16} className={styles.errorIcon} />
           <h2>{t('customer_error_title')}</h2>
           <p>{error}</p>
           <button onClick={() => navigate({ to: '/customers' })} className={styles.backButton}>
@@ -417,7 +418,7 @@ export function CustomerDetail() {
     return (
       <div className={styles.container}>
         <div className={styles.errorState}>
-          <span className={styles.errorIcon}>🔍</span>
+          <Search size={16} className={styles.errorIcon} />
           <h2>{t('customer_not_found')}</h2>
           <p>{t('customer_not_found_desc')}</p>
           <button onClick={() => navigate({ to: '/customers' })} className={styles.backButton}>
@@ -441,7 +442,7 @@ export function CustomerDetail() {
       {/* Error banner */}
       {error && (
         <div className={styles.errorBanner}>
-          <span>⚠️</span>
+          <AlertTriangle size={14} />
           <span>{error}</span>
           <button onClick={() => setError(null)}>✕</button>
         </div>
@@ -463,7 +464,7 @@ export function CustomerDetail() {
       {/* Address warning */}
       {customer.geocodeStatus === 'failed' && (
         <div className={styles.warningBanner}>
-          <span>⚠️</span>
+          <AlertTriangle size={14} />
           <span>{t('customer_geocode_warning')}</span>
           <button onClick={handleOpenEditDrawer}>{t('customer_fix_address')}</button>
         </div>
@@ -473,7 +474,7 @@ export function CustomerDetail() {
       {lastVisit && (lastVisitNotes || (lastVisit.requiresFollowUp && lastVisit.followUpReason)) && (
         <div className={styles.lastVisitBanner}>
           <div className={styles.lastVisitBannerHeader}>
-            <span className={styles.lastVisitBannerIcon}>📝</span>
+            <FileText size={14} className={styles.lastVisitBannerIcon} />
             <span className={styles.lastVisitBannerTitle}>{t('customer_last_visit_note')}</span>
             <span className={styles.lastVisitBannerMeta}>
               {formatDate(lastVisit.scheduledDate)}
@@ -494,7 +495,7 @@ export function CustomerDetail() {
           )}
           {lastVisit.requiresFollowUp && lastVisit.followUpReason && (
             <div className={styles.lastVisitBannerFollowUp}>
-              <span>⚠</span>
+              <AlertTriangle size={14} />
               <span>{lastVisit.followUpReason}</span>
             </div>
           )}

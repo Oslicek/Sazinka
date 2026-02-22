@@ -10,6 +10,7 @@
 
 import { useTranslation } from 'react-i18next';
 import { Link } from '@tanstack/react-router';
+import { Calendar, Clock, CalendarDays, RotateCw, X as XIcon, MapPin, Check, Phone } from 'lucide-react';
 import type { Revision } from '@shared/revision';
 import styles from './RevisionStatusActions.module.css';
 
@@ -65,7 +66,7 @@ export function RevisionStatusActions({
           onClick={onSchedule}
           disabled={isDisabled}
         >
-          📅 {t('revision_action_schedule')}
+          <Calendar size={14} /> {t('revision_action_schedule')}
         </button>
         <button
           type="button"
@@ -73,7 +74,7 @@ export function RevisionStatusActions({
           onClick={onSnooze}
           disabled={isDisabled}
         >
-          ⏰ {t('revision_action_snooze')}
+          <Clock size={14} /> {t('revision_action_snooze')}
         </button>
       </>
     ),
@@ -84,7 +85,7 @@ export function RevisionStatusActions({
           search={{ date: revision.scheduledDate }}
           className={`${styles.action} ${styles.primary}`}
         >
-          🗓️ {t('revision_action_open_plan')}
+          <CalendarDays size={14} /> {t('revision_action_open_plan')}
         </Link>
         <button
           type="button"
@@ -92,7 +93,7 @@ export function RevisionStatusActions({
           onClick={onReschedule}
           disabled={isDisabled}
         >
-          🔄 {t('revision_action_reschedule')}
+          <RotateCw size={14} /> {t('revision_action_reschedule')}
         </button>
         <button
           type="button"
@@ -100,7 +101,7 @@ export function RevisionStatusActions({
           onClick={onSnooze}
           disabled={isDisabled}
         >
-          ⏰ {t('revision_action_snooze')}
+          <Clock size={14} /> {t('revision_action_snooze')}
         </button>
         <button
           type="button"
@@ -108,7 +109,7 @@ export function RevisionStatusActions({
           onClick={onCancel}
           disabled={isDisabled}
         >
-          ❌ {t('revision_action_cancel')}
+          <XIcon size={14} /> {t('revision_action_cancel')}
         </button>
       </>
     ),
@@ -121,7 +122,7 @@ export function RevisionStatusActions({
             onClick={onArrived}
             disabled={isDisabled}
           >
-            📍 {t('revision_action_arrived')}
+            <MapPin size={14} /> {t('revision_action_arrived')}
           </button>
         )}
         <button
@@ -130,13 +131,13 @@ export function RevisionStatusActions({
           onClick={onComplete}
           disabled={isDisabled}
         >
-          ✅ {t('revision_action_done')}
+          <Check size={14} /> {t('revision_action_done')}
         </button>
       </>
     ),
     completed: (
       <div className={styles.completedInfo}>
-        <span className={styles.completedIcon}>✅</span>
+        <span className={styles.completedIcon}><Check size={16} /></span>
         <span>{t('revision_action_completed')}</span>
         {revision.result && (
           <span className={`${styles.resultBadge} ${styles[`result-${revision.result}`]}`}>
@@ -147,7 +148,7 @@ export function RevisionStatusActions({
     ),
     cancelled: (
       <div className={styles.cancelledInfo}>
-        <span className={styles.cancelledIcon}>❌</span>
+        <span className={styles.cancelledIcon}><XIcon size={16} /></span>
         <span>{t('revision_action_cancelled')}</span>
       </div>
     ),
@@ -159,7 +160,7 @@ export function RevisionStatusActions({
       href={`tel:${revision.customerPhone}`}
       className={styles.action}
     >
-      📞 {t('revision_action_call')}
+      <Phone size={14} /> {t('revision_action_call')}
     </a>
   );
 

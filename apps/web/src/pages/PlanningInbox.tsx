@@ -73,6 +73,7 @@ import {
 import { getMonthNames, getWeekdayNames } from '@/i18n/formatters';
 import { updateCustomer } from '../services/customerService';
 import type { CustomerUpdateFields } from '../components/planner/CandidateDetail';
+import { Plus, AlertTriangle } from 'lucide-react';
 import styles from './PlanningInbox.module.css';
 
 /** Parse "HH:MM" or "HH:MM:SS" to total minutes from midnight. */
@@ -2387,7 +2388,7 @@ export function PlanningInbox() {
             className={styles.addSelectedButton}
             onClick={handleAddSelectedToRoute}
           >
-            ➕ {t('add_to_route')}
+            <Plus size={14} /> {t('add_to_route')}
           </button>
           <button
             type="button"
@@ -2796,7 +2797,7 @@ export function PlanningInbox() {
         <div className={styles.breakWarnings}>
           {breakWarnings.map((warning, index) => (
             <div key={`${warning}-${index}`} className={styles.breakWarningItem}>
-              ⚠️ {warning}
+              <AlertTriangle size={14} /> {warning}
             </div>
           ))}
         </div>

@@ -21,6 +21,7 @@ import {
 import { getWorkTypeLabel, getWorkTypeIcon } from '../services/workItemService';
 import { useNatsStore } from '../stores/natsStore';
 import { formatDate } from '../i18n/formatters';
+import { AlertTriangle, Search, Calendar, Clock, Phone } from 'lucide-react';
 import styles from './VisitDetail.module.css';
 
 interface VisitData {
@@ -256,7 +257,7 @@ export function VisitDetail() {
     return (
       <div className={styles.container}>
         <div className={styles.errorState}>
-          <span className={styles.errorIcon}>⚠️</span>
+          <AlertTriangle size={16} className={styles.errorIcon} />
           <h2>{t('visit_error')}</h2>
           <p>{error}</p>
           <Link to="/worklog" className={styles.backButton}>{t('visit_back_worklog')}</Link>
@@ -269,7 +270,7 @@ export function VisitDetail() {
     return (
       <div className={styles.container}>
         <div className={styles.errorState}>
-          <span className={styles.errorIcon}>🔍</span>
+          <Search size={16} className={styles.errorIcon} />
           <h2>{t('visit_not_found')}</h2>
           <p>{t('visit_not_found_desc')}</p>
           <Link to="/worklog" className={styles.backButton}>{t('visit_back_worklog')}</Link>
@@ -314,16 +315,16 @@ export function VisitDetail() {
 
           <div className={styles.headerMeta}>
             <span className={styles.metaItem}>
-              📅 {formatDateLocal(visit.scheduledDate)}
+              <Calendar size={14} /> {formatDateLocal(visit.scheduledDate)}
             </span>
             {visit.scheduledTimeStart && visit.scheduledTimeEnd && (
               <span className={styles.metaItem}>
-                🕐 {formatTime(visit.scheduledTimeStart)} – {formatTime(visit.scheduledTimeEnd)}
+                <Clock size={14} /> {formatTime(visit.scheduledTimeStart)} – {formatTime(visit.scheduledTimeEnd)}
               </span>
             )}
             {scheduledDuration && (
               <span className={styles.metaItem}>
-                ⏱️ {scheduledDuration}
+                <Clock size={14} /> {scheduledDuration}
               </span>
             )}
           </div>
@@ -333,7 +334,7 @@ export function VisitDetail() {
       {/* Error banner */}
       {error && (
         <div className={styles.errorBanner}>
-          <span>⚠️</span>
+          <AlertTriangle size={14} />
           <span>{error}</span>
           <button onClick={() => setError(null)}>✕</button>
         </div>
@@ -396,7 +397,7 @@ export function VisitDetail() {
                 <div className={styles.detailItem}>
                   <span className={styles.detailLabel}>{t('visit_phone')}</span>
                   <a href={`tel:${data.customerPhone}`} className={styles.phoneLink}>
-                    📞 {data.customerPhone}
+                    <Phone size={14} /> {data.customerPhone}
                   </a>
                 </div>
               )}
@@ -474,7 +475,7 @@ export function VisitDetail() {
                       )}
                     </div>
                     {item.durationMinutes && (
-                      <span className={styles.workItemDuration}>⏱️ {item.durationMinutes} min</span>
+                      <span className={styles.workItemDuration}><Clock size={14} /> {item.durationMinutes} min</span>
                     )}
                     {item.resultNotes && (
                       <p className={styles.workItemNotes}>{item.resultNotes}</p>

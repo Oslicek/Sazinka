@@ -28,6 +28,7 @@ import { SavedViewsSelector, type SavedView } from '../components/customers/Save
 import { SplitView } from '../components/common/SplitView';
 import { useNatsStore } from '../stores/natsStore';
 import { updateCustomer } from '../services/customerService';
+import { AlertTriangle } from 'lucide-react';
 import styles from './Customers.module.css';
 
 /** Page size for infinite scroll */
@@ -589,9 +590,7 @@ export function Customers() {
                           </span>
                         </h3>
                         {customer.geocodeStatus === 'failed' && (
-                          <span className={styles.geocodeWarning} title={t('filter_address_failed')}>
-                            ⚠️
-                          </span>
+                          <span title={t('filter_address_failed')}><AlertTriangle size={14} className={styles.geocodeWarning} /></span>
                         )}
                       </div>
                       <p className={styles.customerAddress}>

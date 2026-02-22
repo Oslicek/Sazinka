@@ -32,6 +32,7 @@ interface ActiveJob {
 interface CompletedJob extends ActiveJob {
   completedAt: Date;
   duration: number; // ms
+  report?: ImportReport;
 }
 
 /** All job streams to monitor */
@@ -105,6 +106,7 @@ export function Jobs() {
           lastUpdate: new Date(entry.completedAt),
           completedAt: new Date(entry.completedAt),
           duration: entry.durationMs,
+          report: entry.report,
         }));
         
         // Merge with any jobs already added via real-time updates, dedup by ID
@@ -505,9 +507,8 @@ export function Jobs() {
                     <td>{formatTimeAgo(job.completedAt)}</td>
                     <td>
                       {(() => {
-                        // Check if this job has a report in the global store
                         const globalJob = globalActiveJobs.get(job.id);
-                        const jobReport = globalJob?.report;
+                        const jobReport = globalJob?.report ?? job.report;
                         return (
                           <>
                             {jobReport && (

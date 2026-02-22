@@ -29,6 +29,8 @@ pub struct JobHistoryEntry {
     pub duration_ms: u64,
     pub error: Option<String>,
     pub details: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub report: Option<serde_json::Value>,
 }
 
 /// Response for listing job history
@@ -58,7 +60,7 @@ impl JobHistoryService {
         }
     }
     
-    /// Record a completed job
+    /// Record a completed job (without report)
     pub fn record_completed(
         &self,
         id: Uuid,
@@ -66,6 +68,19 @@ impl JobHistoryService {
         user_id: Uuid,
         started_at: DateTime<Utc>,
         details: Option<String>,
+    ) {
+        self.record_completed_with_report(id, job_type, user_id, started_at, details, None);
+    }
+
+    /// Record a completed job with an optional import report
+    pub fn record_completed_with_report(
+        &self,
+        id: Uuid,
+        job_type: &str,
+        user_id: Uuid,
+        started_at: DateTime<Utc>,
+        details: Option<String>,
+        report: Option<serde_json::Value>,
     ) {
         let completed_at = Utc::now();
         let duration_ms = (completed_at - started_at).num_milliseconds() as u64;
@@ -80,6 +95,7 @@ impl JobHistoryService {
             duration_ms,
             error: None,
             details,
+            report,
         };
         
         self.add_entry(entry);
@@ -107,6 +123,7 @@ impl JobHistoryService {
             duration_ms,
             error: Some(error),
             details: None,
+            report: None,
         };
         
         self.add_entry(entry);
@@ -129,6 +146,7 @@ impl JobHistoryService {
             job_type: job_type.to_string(),
             status: "cancelled".to_string(),
             started_at,
+            report: None,
             completed_at,
             duration_ms,
             error: None,

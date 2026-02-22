@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { AlertTriangle } from 'lucide-react';
 import { formatTime } from '../../i18n/formatters';
 import styles from './DraftModeBar.module.css';
 
@@ -37,7 +38,7 @@ export function DraftModeBar({
   if (saveError) {
     return (
       <div className={`${styles.container} ${styles.hasError}`}>
-        <span className={styles.icon}>⚠️</span>
+        <AlertTriangle size={16} className={styles.icon} />
         <span className={styles.errorMessage}>{t('draft_save_error')}</span>
         {onRetry && (
           <button

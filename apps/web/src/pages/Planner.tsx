@@ -20,6 +20,7 @@ import { validateBreak } from '../utils/breakUtils';
 import { logger } from '../utils/logger';
 import { RouteListPanel, RouteDetailTimeline, RouteMapPanel, type RouteMetrics, PlanningTimeline, TimelineViewToggle, type TimelineView, RouteSummaryStats, RouteSummaryActions, ArrivalBufferBar } from '../components/planner';
 import { PlannerFilters } from '../components/shared/PlannerFilters';
+import { AlertTriangle } from 'lucide-react';
 import styles from './Planner.module.css';
 
 // Default depot location (Prague center) - fallback
@@ -894,7 +895,7 @@ export function Planner() {
         {breakWarnings.length > 0 && (
           <div className={styles.warningBox}>
             {breakWarnings.map((w, i) => (
-              <div key={`${w}-${i}`}>⚠️ {w}</div>
+              <div key={`${w}-${i}`}><AlertTriangle size={14} /> {w}</div>
             ))}
           </div>
         )}

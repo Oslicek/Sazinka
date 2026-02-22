@@ -10,8 +10,9 @@
  * - Infinite scroll (endReached callback)
  */
 
-import { useMemo, useCallback, useState } from 'react';
+import { useMemo, useCallback, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Check, AlertTriangle, ClipboardCopy, ArrowUp, ArrowDown } from 'lucide-react';
 import {
   createColumnHelper,
   flexRender,
@@ -103,10 +104,10 @@ function formatRevisionStatus(
 
 // Address status badge
 function AddressStatusBadge({ status, t }: { status: string; t: (key: string) => string }) {
-  const config: Record<string, { icon: string; labelKey: string; className: string }> = {
-    success: { icon: '✅', labelKey: 'address_status_verified', className: styles.statusSuccess },
+  const config: Record<string, { icon: ReactNode; labelKey: string; className: string }> = {
+    success: { icon: <Check size={14} />, labelKey: 'address_status_verified', className: styles.statusSuccess },
     pending: { icon: '⏳', labelKey: 'address_status_pending_short', className: styles.statusPending },
-    failed: { icon: '⚠', labelKey: 'address_status_failed_short', className: styles.statusFailed },
+    failed: { icon: <AlertTriangle size={14} />, labelKey: 'address_status_failed_short', className: styles.statusFailed },
   };
   
   const { icon, labelKey, className } = config[status] || { icon: '⛔', labelKey: 'address_status_missing_short', className: styles.statusMissing };
@@ -265,7 +266,7 @@ export function CustomerTable({
   if (customers.length === 0) {
     return (
       <div className={styles.empty}>
-        <span className={styles.emptyIcon}>📋</span>
+        <ClipboardCopy size={16} className={styles.emptyIcon} />
         <p>{t('no_customers_match')}</p>
       </div>
     );
@@ -295,7 +296,7 @@ export function CustomerTable({
                   {flexRender(header.column.columnDef.header, header.getContext())}
                   {header.column.getIsSorted() && (
                     <span className={styles.sortIndicator}>
-                      {header.column.getIsSorted() === 'asc' ? ' ↑' : ' ↓'}
+                      {header.column.getIsSorted() === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />}
                     </span>
                   )}
                 </th>

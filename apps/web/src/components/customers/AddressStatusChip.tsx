@@ -8,7 +8,9 @@
  * - missing - gray
  */
 
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Check, AlertTriangle } from 'lucide-react';
 import styles from './AddressStatusChip.module.css';
 
 type GeoStatus = 'success' | 'pending' | 'failed' | 'missing' | string;
@@ -18,10 +20,10 @@ interface AddressStatusChipProps {
   showLabel?: boolean;
 }
 
-const STATUS_CONFIG: Record<string, { icon: string; labelKey: string; className: string }> = {
-  success: { icon: '✅', labelKey: 'address_status_verified', className: styles.success },
+const STATUS_CONFIG: Record<string, { icon: ReactNode; labelKey: string; className: string }> = {
+  success: { icon: <Check size={14} />, labelKey: 'address_status_verified', className: styles.success },
   pending: { icon: '⏳', labelKey: 'address_status_pending', className: styles.pending },
-  failed: { icon: '⚠', labelKey: 'address_status_failed', className: styles.failed },
+  failed: { icon: <AlertTriangle size={14} />, labelKey: 'address_status_failed', className: styles.failed },
   missing: { icon: '⛔', labelKey: 'address_status_missing', className: styles.missing },
 };
 

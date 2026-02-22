@@ -16,6 +16,7 @@ import {
   getWorkResultLabel,
 } from '../services/workItemService';
 import { useNatsStore } from '../stores/natsStore';
+import { AlertTriangle, Search, Clock, Bell, Check, ClipboardList } from 'lucide-react';
 import styles from './WorkItemDetail.module.css';
 
 export function WorkItemDetail() {
@@ -106,7 +107,7 @@ export function WorkItemDetail() {
     return (
       <div className={styles.container}>
         <div className={styles.errorState}>
-          <span className={styles.errorIcon}>⚠️</span>
+          <AlertTriangle size={16} className={styles.errorIcon} />
           <h2>{t('workitem_error_title')}</h2>
           <p>{error}</p>
           <Link to="/worklog" className={styles.backButton}>{t('workitem_back_worklog')}</Link>
@@ -119,7 +120,7 @@ export function WorkItemDetail() {
     return (
       <div className={styles.container}>
         <div className={styles.errorState}>
-          <span className={styles.errorIcon}>🔍</span>
+          <Search size={16} className={styles.errorIcon} />
           <h2>{t('workitem_not_found')}</h2>
           <p>{t('workitem_not_found_desc')}</p>
           <Link to="/worklog" className={styles.backButton}>{t('workitem_back_worklog')}</Link>
@@ -160,7 +161,7 @@ export function WorkItemDetail() {
           <div className={styles.headerMeta}>
             {workItem.durationMinutes && (
               <span className={styles.metaItem}>
-                ⏱️ {workItem.durationMinutes} min
+                <Clock size={14} /> {workItem.durationMinutes} min
               </span>
             )}
           </div>
@@ -170,7 +171,7 @@ export function WorkItemDetail() {
       {/* Error banner */}
       {error && (
         <div className={styles.errorBanner}>
-          <span>⚠️</span>
+          <AlertTriangle size={14} />
           <span>{error}</span>
           <button onClick={() => setError(null)}>✕</button>
         </div>
@@ -231,7 +232,7 @@ export function WorkItemDetail() {
 
             {workItem.requiresFollowUp && (
               <div className={styles.followUpSection}>
-                <span className={styles.followUpBadge}>🔔 {t('workitem_requires_follow_up')}</span>
+                <span className={styles.followUpBadge}><Bell size={14} /> {t('workitem_requires_follow_up')}</span>
                 {workItem.followUpReason && (
                   <p className={styles.followUpReason}>{workItem.followUpReason}</p>
                 )}
@@ -248,7 +249,7 @@ export function WorkItemDetail() {
                 params={{ revisionId: workItem.revisionId }}
                 className={styles.revisionLink}
               >
-                <span>🔍</span>
+                <Search size={14} />
                 <span>{t('workitem_view_revision')}</span>
                 <span className={styles.arrow}>→</span>
               </Link>
@@ -275,7 +276,7 @@ export function WorkItemDetail() {
                 onClick={() => setShowCompleteDialog(true)}
                 disabled={isSubmitting}
               >
-                ✅ {t('workitem_complete')}
+                <Check size={14} /> {t('workitem_complete')}
               </button>
             )}
             <Link 
@@ -283,7 +284,7 @@ export function WorkItemDetail() {
               params={{ visitId: workItem.visitId }}
               className={styles.actionButton}
             >
-              📋 {t('workitem_view_visit')}
+              <ClipboardList size={14} /> {t('workitem_view_visit')}
             </Link>
           </div>
         </div>
