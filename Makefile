@@ -7,6 +7,9 @@
 #   make up ENV=dev                Decrypt + start Docker stack
 #   make down                      Stop Docker stack
 #   make secrets-clean             Remove all decrypted files + generated .env
+#   make cf-secrets-push           Push Cloudflare secrets from SOPS to Wrangler
+#   make cf-secrets-edit           Edit Cloudflare secrets in $EDITOR
+#   make cf-secrets-list           List currently set Wrangler secrets
 #
 # Prerequisites: sops, age (install via: apt install age; see PRJ_DEVOPS.MD for sops)
 
@@ -16,8 +19,13 @@ ENC_FILE := $(SECRETS_DIR)/.env.$(ENV).enc
 DEC_FILE := $(SECRETS_DIR)/.env.$(ENV).dec
 COMPOSE_BASE := -f infra/docker-compose.yml
 
+CF_ENC_FILE := $(SECRETS_DIR)/.env.cloudflare.enc
+CF_DEC_FILE := $(SECRETS_DIR)/.env.cloudflare.dec
+CF_PROJECT := apps/site
+
 .PHONY: secrets secrets-edit secrets-clean secrets-rotate \
-        worker-env web-env up down logs status dev help
+        worker-env web-env up down logs status dev \
+        cf-secrets-push cf-secrets-edit cf-secrets-list help
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -49,7 +57,7 @@ secrets-rotate: ## Re-encrypt after .sops.yaml key changes
 secrets-clean: ## Remove all decrypted + generated secret files
 	@rm -f $(SECRETS_DIR)/*.dec $(SECRETS_DIR)/*.plain
 	@rm -f worker/.env apps/web/.env
-	@echo "Cleaned decrypted and generated files"
+	@echo "Cleaned all decrypted and generated files"
 
 # ---------------------------------------------------------------------------
 # Generate component .env files from the decrypted SOPS source
@@ -107,3 +115,29 @@ dev: worker-env web-env up ## Decrypt + generate envs + start Docker (then run w
 	@echo "Infrastructure ready. Start the app:"
 	@echo "  cd worker && cargo run"
 	@echo "  cd apps/web && pnpm dev"
+
+# ---------------------------------------------------------------------------
+# Cloudflare Workers secrets (apps/site)
+# ---------------------------------------------------------------------------
+
+cf-secrets-push: ## Push Cloudflare secrets from SOPS → Wrangler
+	@if [ ! -f "$(CF_ENC_FILE)" ]; then \
+		echo "Error: $(CF_ENC_FILE) not found"; exit 1; \
+	fi
+	@sops decrypt --input-type dotenv --output-type dotenv "$(CF_ENC_FILE)" > "$(CF_DEC_FILE)"
+	@echo "Pushing secrets to Cloudflare Workers..."
+	@grep -v '^\s*#' "$(CF_DEC_FILE)" | grep -v '^\s*$$' | while IFS='=' read -r key value; do \
+		printf '%s' "$$value" | npx --yes wrangler secret put "$$key" --config "$(CF_PROJECT)/wrangler.toml" 2>&1 && \
+		echo "  ✓ $$key"; \
+	done
+	@rm -f "$(CF_DEC_FILE)"
+	@echo "Done. Decrypted file removed."
+
+cf-secrets-edit: ## Edit Cloudflare secrets in $$EDITOR (re-encrypts on save)
+	@if [ ! -f "$(CF_ENC_FILE)" ]; then \
+		echo "Error: $(CF_ENC_FILE) not found"; exit 1; \
+	fi
+	sops edit --input-type dotenv --output-type dotenv "$(CF_ENC_FILE)"
+
+cf-secrets-list: ## List Wrangler secrets currently set
+	npx --yes wrangler secret list --config "$(CF_PROJECT)/wrangler.toml"

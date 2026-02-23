@@ -2099,3 +2099,134 @@ make down && make up ENV=production               # restart with new secrets
 3. Clone the repo
 4. Run `make up ENV=production`
 5. Run `cargo run -- create-admin --email admin@company.com`
+
+---
+---
+
+## Cloudflare Workers Secrets — Implementation Record
+
+> **Date:** 2026-02-23
+> **Scope:** `apps/site` — Astro frontend with Cloudflare Pages Functions (D1 database)
+
+### Threat Model
+
+The `apps/site` application runs entirely on Cloudflare infrastructure:
+
+- **Cloudflare Pages** serves the static Astro site
+- **Pages Functions** (Workers) handle API endpoints (`/api/contact`, `/api/newsletter`, `/api/newsletter-confirm`)
+- **Cloudflare D1** stores contact form submissions and newsletter subscribers
+
+**D1 database security:** D1 has no public endpoint, no connection string, and no port.
+It is only accessible through Workers that have the binding configured in `wrangler.toml`,
+the Wrangler CLI (authenticated), or the Cloudflare Dashboard (authenticated). There is no
+risk of external actors connecting directly to D1 — the attack surface is limited to the
+Workers API functions, which use parameterized queries (`?` placeholders with `.bind()`)
+and Zod input validation.
+
+**Data classification:** Contact form data (emails, messages) and newsletter subscriptions
+(emails, locale) are PII under GDPR. While the database is well-protected, the data
+deserves appropriate handling.
+
+**No admin account needed:** The `apps/site` functions only INSERT and UPDATE. There is
+no read/list endpoint, no authentication system, and no admin interface. Data is managed
+via the Cloudflare Dashboard or Wrangler CLI.
+
+### Secrets Inventory
+
+| Secret | Purpose | Status |
+|--------|---------|--------|
+| `RESEND_API_KEY` | Transactional emails (newsletter confirmation, contact auto-reply) | Placeholder — set when Resend is configured |
+| `TURNSTILE_SECRET_KEY` | Cloudflare Turnstile anti-spam verification for forms | Placeholder — set when Turnstile is configured |
+
+The D1 `database_id` in `wrangler.toml` is a resource identifier, not a secret — it cannot
+be used to access data without Cloudflare account authentication.
+
+### Architecture
+
+Cloudflare Workers cannot read `.env` files — secrets must be pushed via `wrangler secret put`.
+To maintain a single source of truth (SOPS), secrets are stored encrypted in Git and deployed
+to Cloudflare via a Makefile target:
+
+```
+Git Repository (encrypted)                    Cloudflare (runtime)
+┌────────────────────────────┐                ┌──────────────────────┐
+│ infra/secrets/             │  make           │ Workers Environment  │
+│   .env.cloudflare.enc ─────┼──cf-secrets──→ │   RESEND_API_KEY     │
+│                            │   push          │   TURNSTILE_SECRET   │
+└────────────────────────────┘                └──────────────────────┘
+        ▲                                              │
+    SOPS + age                                   context.env.*
+    (encrypted in git)                        (available in Workers)
+```
+
+### What Was Changed
+
+#### 1. SOPS configuration — Cloudflare creation rule
+
+**File:** `.sops.yaml`
+
+Added a new creation rule for Cloudflare secrets:
+
+```yaml
+- path_regex: \.cloudflare\.enc$
+  age: >-
+    age1rwh9zzpd9spvypmej579qsfp3psm73tnaectqlvg8676ene8a5vquw0puf
+```
+
+#### 2. Encrypted secrets file
+
+**File:** `infra/secrets/.env.cloudflare.enc`
+
+Created with SOPS encryption. Contains placeholder values for `RESEND_API_KEY` and
+`TURNSTILE_SECRET_KEY`. Edit with `make cf-secrets-edit` when real values are obtained.
+
+#### 3. Makefile targets
+
+**File:** `Makefile`
+
+Three new targets for Cloudflare secrets management:
+
+| Target | Description |
+|--------|-------------|
+| `make cf-secrets-push` | Decrypt SOPS → push each key/value to Wrangler via `wrangler secret put` → delete decrypted file |
+| `make cf-secrets-edit` | Open SOPS file in `$EDITOR` (re-encrypts on save) |
+| `make cf-secrets-list` | List secrets currently configured in Cloudflare |
+
+The `cf-secrets-push` target:
+1. Decrypts `.env.cloudflare.enc` to a temporary `.dec` file
+2. Parses each `KEY=VALUE` line (skipping comments and blank lines)
+3. Pipes each value to `wrangler secret put` via stdin
+4. Removes the decrypted file immediately after
+
+### Operational Procedures
+
+**Setting real Cloudflare secrets for the first time:**
+
+```bash
+make cf-secrets-edit                          # Opens in $EDITOR
+# Replace placeholder values with real keys from Resend/Cloudflare dashboards
+# Save and exit — SOPS re-encrypts automatically
+make cf-secrets-push                          # Push to Cloudflare Workers
+```
+
+**Rotating a Cloudflare secret:**
+
+```bash
+make cf-secrets-edit                          # Update the value
+make cf-secrets-push                          # Push new value to Cloudflare
+```
+
+**Verifying what's deployed:**
+
+```bash
+make cf-secrets-list                          # Shows secret names (not values)
+```
+
+### Remaining Hardening Tasks
+
+| Task | Priority | Status |
+|------|----------|--------|
+| Add Cloudflare rate limiting rules for `/api/contact` and `/api/newsletter` | HIGH | Pending — configure in Cloudflare Dashboard |
+| Configure Turnstile on contact/newsletter forms | MEDIUM | Pending — requires frontend integration |
+| Set real `RESEND_API_KEY` when email sending is implemented | MEDIUM | Placeholder in SOPS |
+| Update `wrangler.toml` with real D1 `database_id` after `wrangler d1 create` | HIGH | Placeholder `000...` |
