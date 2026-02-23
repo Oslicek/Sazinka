@@ -127,12 +127,6 @@ export function CandidateRow({
         </div>
         <div className={styles.meta}>
           <span className={styles.city}>{candidate.city}</span>
-          {candidate.deviceType && (
-            <>
-              <span className={styles.separator}>•</span>
-              <span className={styles.device}>{candidate.deviceType}</span>
-            </>
-          )}
         </div>
       </div>
 

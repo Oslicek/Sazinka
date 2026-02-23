@@ -331,7 +331,6 @@ export function CandidateDetail({
       <div className={styles.header} data-testid="candidate-header">
         <h3 className={styles.name}>{candidate.customerName}</h3>
         <div className={styles.badges}>
-          <span className={styles.deviceBadge}>{candidate.deviceType}</span>
           {candidate.priority === 'overdue' && (
             <span className={styles.overdueBadge}>{t('candidate_overdue_badge', { days: daysOverdue })}</span>
           )}
