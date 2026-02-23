@@ -696,20 +696,18 @@ function WorkConstraintsForm({ data, saving, onSave }: WorkConstraintsFormProps)
         <div className={styles.formRow}>
           <div className={styles.formGroup}>
             <label htmlFor="workStart">{t('work_start')}</label>
-            <input
-              type="time"
+            <TimeInput
               id="workStart"
               value={formData.workingHoursStart}
-              onChange={(e) => setFormData({ ...formData, workingHoursStart: e.target.value })}
+              onChange={(v) => setFormData({ ...formData, workingHoursStart: v })}
             />
           </div>
           <div className={styles.formGroup}>
             <label htmlFor="workEnd">{t('work_end')}</label>
-            <input
-              type="time"
+            <TimeInput
               id="workEnd"
               value={formData.workingHoursEnd}
-              onChange={(e) => setFormData({ ...formData, workingHoursEnd: e.target.value })}
+              onChange={(v) => setFormData({ ...formData, workingHoursEnd: v })}
             />
           </div>
         </div>
@@ -1056,11 +1054,10 @@ function EmailTemplatesForm({ data, companyLocale, saving, onSave }: EmailTempla
         <div className={styles.formRow}>
           <div className={styles.formGroup}>
             <label htmlFor="reminderSendTime">{t('email_reminder_send_time')}</label>
-            <input
-              type="time"
+            <TimeInput
               id="reminderSendTime"
               value={formData.reminderSendTime}
-              onChange={(e) => setFormData({ ...formData, reminderSendTime: e.target.value })}
+              onChange={(v) => setFormData({ ...formData, reminderSendTime: v })}
             />
           </div>
         </div>
@@ -1193,21 +1190,19 @@ function BreakSettingsForm({ data, saving, onSave }: BreakSettingsFormProps) {
         <div className={styles.formRow}>
           <div className={styles.formGroup}>
             <label htmlFor="earliestTime">{t('break_time_from')}</label>
-            <input
-              type="time"
+            <TimeInput
               id="earliestTime"
               value={formData.breakEarliestTime}
-              onChange={(e) => setFormData({ ...formData, breakEarliestTime: e.target.value })}
+              onChange={(v) => setFormData({ ...formData, breakEarliestTime: v })}
               disabled={!formData.breakEnabled}
             />
           </div>
           <div className={styles.formGroup}>
             <label htmlFor="latestTime">{t('break_time_to')}</label>
-            <input
-              type="time"
+            <TimeInput
               id="latestTime"
               value={formData.breakLatestTime}
-              onChange={(e) => setFormData({ ...formData, breakLatestTime: e.target.value })}
+              onChange={(v) => setFormData({ ...formData, breakLatestTime: v })}
               disabled={!formData.breakEnabled}
             />
           </div>

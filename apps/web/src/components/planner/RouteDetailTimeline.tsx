@@ -26,6 +26,7 @@ import type { RouteWarning } from '@shared/route';
 import { reorderStops, needsScheduledTimeWarning } from './reorderStops';
 import { ScheduledTimeWarning } from './ScheduledTimeWarning';
 import { resolveBackendMessage } from '@/i18n/resolveBackendMessage';
+import { TimeInput } from '../common/TimeInput';
 import styles from './RouteDetailTimeline.module.css';
 
 interface RouteDetailTimelineProps {
@@ -341,11 +342,9 @@ export function RouteDetailTimeline({
                       <span className={styles.breakFieldLabel}>{t('timeline_break_start')}</span>
                       <div className={styles.stopTime}>
                         {onUpdateBreak ? (
-                          <input
-                            type="time"
-                            className={styles.breakInput}
+                          <TimeInput
                             value={stop.breakTimeStart?.substring(0, 5) || '12:00'}
-                            onChange={(e) => onUpdateBreak(stop.id, { breakTimeStart: e.target.value })}
+                            onChange={(v) => onUpdateBreak(stop.id, { breakTimeStart: v })}
                           />
                         ) : (
                           <span>{formatTime(stop.breakTimeStart || null)}</span>

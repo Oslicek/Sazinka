@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { Customer } from '@shared/customer';
 import { listCustomers } from '@/services/customerService';
 import { createVisit } from '@/services/visitService';
+import { TimeInput } from '@/components/common/TimeInput';
 import styles from './QuickVisitDialog.module.css';
 
 interface QuickVisitDialogProps {
@@ -149,10 +150,9 @@ export function QuickVisitDialog({ open, onClose, onCreated }: QuickVisitDialogP
             </label>
             <label className={styles.field}>
               <span>{t('quick_visit_time')}</span>
-              <input
-                type="time"
+              <TimeInput
                 value={scheduledTimeStart}
-                onChange={(e) => setScheduledTimeStart(e.target.value)}
+                onChange={setScheduledTimeStart}
                 disabled={isSubmitting}
               />
             </label>

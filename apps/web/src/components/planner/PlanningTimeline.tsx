@@ -32,6 +32,7 @@ import { buildTimelineItems, type TimelineItem } from './buildTimelineItems';
 import { snapToGrid, minutesToHm as snapMinutesToHm } from './snapToGrid';
 import { reorderStops, needsScheduledTimeWarning } from './reorderStops';
 import { ScheduledTimeWarning } from './ScheduledTimeWarning';
+import { TimeInput } from '../common/TimeInput';
 import styles from './PlanningTimeline.module.css';
 
 // ---------------------------------------------------------------------------
@@ -233,11 +234,9 @@ function SortableStopCard({
               <span className={styles.breakFieldLabel}>{t('timeline_break_start')}</span>
               <div>
                 {onUpdateBreak ? (
-                  <input
-                    type="time"
-                    className={styles.breakInput}
+                  <TimeInput
                     value={stop.breakTimeStart?.substring(0, 5) || '12:00'}
-                    onChange={(e) => onUpdateBreak(stop.id, { breakTimeStart: e.target.value })}
+                    onChange={(v) => onUpdateBreak(stop.id, { breakTimeStart: v })}
                   />
                 ) : (
                   <span className={styles.breakFieldValue}>{formatTime(stop.breakTimeStart || null)}</span>

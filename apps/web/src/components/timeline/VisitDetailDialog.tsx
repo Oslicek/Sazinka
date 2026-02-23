@@ -9,6 +9,7 @@ import {
   getVisitResultLabel,
 } from '../../services/visitService';
 import { useNatsStore } from '../../stores/natsStore';
+import { TimeInput } from '../common/TimeInput';
 import styles from './VisitDetailDialog.module.css';
 
 interface VisitDetailDialogProps {
@@ -174,19 +175,17 @@ export function VisitDetailDialog({
           <div className={styles.row}>
             <div className={styles.field}>
               <label>{t('visit_time_from')}</label>
-              <input
-                type="time"
+              <TimeInput
                 value={formData.scheduledTimeStart}
-                onChange={(e) => handleChange('scheduledTimeStart', e.target.value)}
+                onChange={(v) => handleChange('scheduledTimeStart', v)}
                 disabled={isSubmitting || isCompleted}
               />
             </div>
             <div className={styles.field}>
               <label>{t('visit_time_to')}</label>
-              <input
-                type="time"
+              <TimeInput
                 value={formData.scheduledTimeEnd}
-                onChange={(e) => handleChange('scheduledTimeEnd', e.target.value)}
+                onChange={(v) => handleChange('scheduledTimeEnd', v)}
                 disabled={isSubmitting || isCompleted}
               />
             </div>

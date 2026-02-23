@@ -22,6 +22,7 @@ import { getWorkTypeLabel, type WorkType } from '../services/workItemService';
 import { useNatsStore } from '../stores/natsStore';
 import { formatDate } from '../i18n/formatters';
 import { AlertTriangle, Search, Calendar, Clock, Phone, Wrench, Settings, MessageSquare, RefreshCcw, ClipboardList } from 'lucide-react';
+import { TimeInput } from '../components/common/TimeInput';
 
 function WorkTypeIcon({ type }: { type: WorkType }) {
   switch (type) {
@@ -550,18 +551,16 @@ export function VisitDetail() {
             <div className={styles.dialogRow}>
               <div className={styles.dialogField}>
                 <label>{t('visit_time_from')}</label>
-                <input 
-                  type="time" 
-                  value={editTimeStart} 
-                  onChange={e => setEditTimeStart(e.target.value)}
+                <TimeInput
+                  value={editTimeStart}
+                  onChange={setEditTimeStart}
                 />
               </div>
               <div className={styles.dialogField}>
                 <label>{t('visit_time_to')}</label>
-                <input 
-                  type="time" 
-                  value={editTimeEnd} 
-                  onChange={e => setEditTimeEnd(e.target.value)}
+                <TimeInput
+                  value={editTimeEnd}
+                  onChange={setEditTimeEnd}
                 />
               </div>
             </div>

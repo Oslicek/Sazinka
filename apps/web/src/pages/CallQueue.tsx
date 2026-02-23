@@ -27,6 +27,7 @@ import { DEVICE_TYPE_KEYS } from '@shared/device';
 import { resolveBackendMessage } from '@/i18n/resolveBackendMessage';
 import { formatDate } from '../i18n/formatters';
 import { Phone, Mail, XIcon, AlertTriangle } from 'lucide-react';
+import { TimeInput } from '../components/common/TimeInput';
 import styles from './CallQueue.module.css';
 
 // Priority colors (labels resolved via i18n)
@@ -598,27 +599,23 @@ export function CallQueue() {
             <div className={styles.formRow}>
               <div className={styles.formGroup}>
                 <label>{t('callqueue_time_from')}</label>
-                <input
-                  type="time"
+                <TimeInput
                   value={scheduleTimeStart}
-                  className={validation && !validation.feasible ? styles.inputError : ''}
-                  onChange={(e) => {
-                    setScheduleTimeStart(e.target.value);
+                  onChange={(v) => {
+                    setScheduleTimeStart(v);
                     setShowWarningConfirm(false);
-                    triggerValidation(selectedCrewId, e.target.value, scheduleTimeEnd);
+                    triggerValidation(selectedCrewId, v, scheduleTimeEnd);
                   }}
                 />
               </div>
               <div className={styles.formGroup}>
                 <label>{t('callqueue_time_to')}</label>
-                <input
-                  type="time"
+                <TimeInput
                   value={scheduleTimeEnd}
-                  className={validation && !validation.feasible ? styles.inputError : ''}
-                  onChange={(e) => {
-                    setScheduleTimeEnd(e.target.value);
+                  onChange={(v) => {
+                    setScheduleTimeEnd(v);
                     setShowWarningConfirm(false);
-                    triggerValidation(selectedCrewId, scheduleTimeStart, e.target.value);
+                    triggerValidation(selectedCrewId, scheduleTimeStart, v);
                   }}
                 />
               </div>

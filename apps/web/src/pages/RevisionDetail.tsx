@@ -14,6 +14,7 @@ import { CompleteRevisionDialog } from '../components/revisions/CompleteRevision
 import { useNatsStore } from '../stores/natsStore';
 import { formatDate } from '../i18n/formatters';
 import { AlertTriangle, Search, Calendar, Clock } from 'lucide-react';
+import { TimeInput } from '../components/common/TimeInput';
 import styles from './RevisionDetail.module.css';
 
 interface SearchParams {
@@ -276,18 +277,16 @@ export function RevisionDetail() {
             <div className={styles.dialogRow}>
               <div className={styles.dialogField}>
                 <label>{t('revision_schedule_time_from')}</label>
-                <input 
-                  type="time" 
-                  value={scheduleTimeStart} 
-                  onChange={e => setScheduleTimeStart(e.target.value)}
+                <TimeInput
+                  value={scheduleTimeStart}
+                  onChange={setScheduleTimeStart}
                 />
               </div>
               <div className={styles.dialogField}>
                 <label>{t('revision_schedule_time_to')}</label>
-                <input 
-                  type="time" 
-                  value={scheduleTimeEnd} 
-                  onChange={e => setScheduleTimeEnd(e.target.value)}
+                <TimeInput
+                  value={scheduleTimeEnd}
+                  onChange={setScheduleTimeEnd}
                 />
               </div>
             </div>

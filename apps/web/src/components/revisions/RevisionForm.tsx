@@ -8,6 +8,7 @@ import {
   type UpdateRevisionRequest 
 } from '../../services/revisionService';
 import { useNatsStore } from '../../stores/natsStore';
+import { TimeInput } from '../common/TimeInput';
 import styles from './RevisionForm.module.css';
 
 interface RevisionFormProps {
@@ -171,24 +172,20 @@ export function RevisionForm({ customerId, deviceId, revision, onSuccess, onCanc
         <div className={styles.row}>
           <div className={styles.field}>
             <label htmlFor="scheduledTimeStart" className={styles.label}>{t('revision_form_time_from')}</label>
-            <input
-              type="time"
+            <TimeInput
               id="scheduledTimeStart"
               value={formData.scheduledTimeStart}
-              onChange={(e) => handleChange('scheduledTimeStart', e.target.value)}
-              className={styles.input}
+              onChange={(v) => handleChange('scheduledTimeStart', v)}
               disabled={isSubmitting}
             />
           </div>
 
           <div className={styles.field}>
             <label htmlFor="scheduledTimeEnd" className={styles.label}>{t('revision_form_time_to')}</label>
-            <input
-              type="time"
+            <TimeInput
               id="scheduledTimeEnd"
               value={formData.scheduledTimeEnd}
-              onChange={(e) => handleChange('scheduledTimeEnd', e.target.value)}
-              className={styles.input}
+              onChange={(v) => handleChange('scheduledTimeEnd', v)}
               disabled={isSubmitting}
             />
           </div>

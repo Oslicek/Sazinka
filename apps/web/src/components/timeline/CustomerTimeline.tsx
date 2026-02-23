@@ -7,6 +7,7 @@ import type { Communication } from '@shared/communication';
 import type { Visit } from '@shared/visit';
 import { formatDate } from '../../i18n/formatters';
 import { Mail, Phone, FileText, MessageSquare, Upload, Download, Calendar, RefreshCw, CheckCircle2, XCircle, RotateCcw } from 'lucide-react';
+import { TimeInput } from '../common/TimeInput';
 import { VisitDetailDialog } from './VisitDetailDialog';
 import styles from './CustomerTimeline.module.css';
 
@@ -432,10 +433,9 @@ function AddVisitForm({
         </div>
         <div className={styles.formGroup}>
           <label>{t('timeline_visit_time')}</label>
-          <input
-            type="time"
+          <TimeInput
             value={formData.scheduledTimeStart}
-            onChange={(e) => setFormData({ ...formData, scheduledTimeStart: e.target.value })}
+            onChange={(v) => setFormData({ ...formData, scheduledTimeStart: v })}
           />
         </div>
       </div>
