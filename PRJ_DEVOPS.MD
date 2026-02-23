@@ -1300,49 +1300,95 @@ accounts {
 bloku zabrání připojení z cizích domén (ochrana proti CSRF/cross-site útokům).
 Povolte pouze domény vašeho frontendu.
 
-### 16.7 Secrets management
+### 16.7 Secrets management — SOPS + age
 
-**Zásada**: Žádná hesla ani secret hodnoty nesmí být v Git repozitáři.
+**Zásada**: Všechny secrets jsou šifrovány pomocí SOPS + age a uloženy v Gitu.
+Žádná hesla se v plaintextu v repozitáři nenacházejí.
 
+**Nástroje**:
+- [SOPS](https://github.com/getsops/sops) — šifruje/dešifruje `.env` soubory
+- [age](https://github.com/FiloSottile/age) — kryptografické klíče (místo GPG)
+
+**Struktura**:
+```
+infra/secrets/
+├── .gitignore              # *.dec nikdy do gitu
+├── .env.dev.enc            # šifrované dev secrets (v gitu)
+├── .env.staging.enc        # šifrované staging secrets (v gitu)
+└── .env.production.enc     # šifrované production secrets (v gitu)
+
+~/.config/sops/age/keys.txt # privátní klíč (NIKDY v gitu)
+.sops.yaml                  # konfigurace — kdo smí co dešifrovat
+```
+
+**Denní workflow**:
 ```bash
-# Na serveru vytvořit .env.prod (NENÍ v Gitu):
-cat > /opt/sazinka/infra/.env.prod << 'EOF'
-POSTGRES_PASSWORD=$(openssl rand -hex 24)
-JWT_SECRET=$(openssl rand -hex 32)
-NOMINATIM_PASSWORD=$(openssl rand -hex 16)
-WORKER_NATS_PASSWORD=$(openssl rand -hex 16)
-BROWSER_NATS_PASSWORD=$(openssl rand -hex 16)
-EOF
+# Dešifrovat secrets a spustit stack
+make up ENV=dev
 
-# Omezit přístupová práva:
-chmod 600 /opt/sazinka/infra/.env.prod
-chown sazinka:sazinka /opt/sazinka/infra/.env.prod
+# Editovat secrets (otevře v $EDITOR, zašifruje při uložení)
+make secrets-edit ENV=staging
+
+# Po editaci commitnout šifrovaný soubor
+git add infra/secrets/.env.staging.enc
+git commit -m "rotate staging JWT_SECRET"
+
+# Pouze dešifrovat (bez startu)
+make secrets ENV=production
+
+# Vyčistit dešifrované soubory
+make secrets-clean
 ```
 
-Spuštění Docker Compose s `.env.prod`:
-
+**Setup nového vývojáře**:
 ```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
+# 1. Nainstalovat nástroje
+# Ubuntu: apt install age; stáhnout sops z GitHub releases
+# macOS: brew install sops age
+
+# 2. Vygenerovat klíčový pár
+age-keygen -o ~/.config/sops/age/keys.txt
+# Zaslat VEŘEJNÝ klíč (age1xxx...) vedoucímu projektu
+
+# 3. Vedoucí přidá klíč do .sops.yaml a re-šifruje
+sops updatekeys infra/secrets/.env.dev.enc
 ```
 
-Worker `.env` na serveru:
+**Setup serveru (staging/production)**:
+```bash
+# 1. Nainstalovat age + sops na server
+# 2. Vygenerovat klíč serveru
+age-keygen -o /etc/sazinka/age-key.txt
+chmod 400 /etc/sazinka/age-key.txt
 
-```env
-NATS_URL=nats://worker:${WORKER_NATS_PASSWORD}@nats:4222
-DATABASE_URL=postgres://sazinka:${POSTGRES_PASSWORD}@postgres:5432/sazinka
-JWT_SECRET=${JWT_SECRET}
-GEOCODER_BACKEND=nominatim
-NOMINATIM_URL=http://nominatim:8080
-VALHALLA_URL=http://valhalla:8002
-LOGS_DIR=/opt/sazinka/logs
-RUST_LOG=info,sazinka_worker=info
+# 3. Přidat veřejný klíč serveru do .sops.yaml (v repo)
+# 4. Re-šifrovat: sops updatekeys infra/secrets/.env.production.enc
+
+# 5. Na serveru při deploymentu:
+export SOPS_AGE_KEY_FILE=/etc/sazinka/age-key.txt
+make up ENV=production
 ```
 
-**Rotace JWT secret**:
-1. Vygenerovat nový secret
-2. Aktualizovat `.env.prod` a worker `.env`
-3. Restartovat worker (`systemctl restart sazinka-worker`)
-4. Všechny stávající JWT tokeny se invalidují → uživatelé se musí přihlásit znovu
+**Rotace secrets**:
+```bash
+# 1. Editovat šifrovaný soubor
+make secrets-edit ENV=production
+
+# 2. Commitnout + pushnout
+git add infra/secrets/.env.production.enc
+git commit -m "security: rotate production secrets"
+git push
+
+# 3. Na serveru
+git pull && make up ENV=production
+# Worker se restartuje s novými secrets
+```
+
+**Odebírání přístupu**:
+1. Odstranit veřejný klíč z `.sops.yaml`
+2. `sops updatekeys` na všechny dotčené soubory
+3. **Rotovat všechny secrets** ke kterým měl přístup
+4. Commitnout + nasadit
 
 ### 16.8 Rate limiting a ochrana proti floodu
 

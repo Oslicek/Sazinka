@@ -1,0 +1,26 @@
+# SOPS configuration for Sazinka secrets management.
+#
+# Each creation_rule defines which age public keys can encrypt/decrypt
+# files matching the path_regex. Add new team members by appending their
+# age public key and running: sops updatekeys <file>
+#
+# Key inventory (update when adding/removing people):
+#   Lead dev (NetDonkey): age1rwh9zzpd9spvypmej579qsfp3psm73tnaectqlvg8676ene8a5vquw0puf
+#   Staging server:       <generate on server, paste here>
+#   Production server:    <generate on server, paste here>
+
+creation_rules:
+  # Production — only lead dev + production server
+  - path_regex: \.production\.enc$
+    age: >-
+      age1rwh9zzpd9spvypmej579qsfp3psm73tnaectqlvg8676ene8a5vquw0puf
+
+  # Staging — lead dev + staging server
+  - path_regex: \.staging\.enc$
+    age: >-
+      age1rwh9zzpd9spvypmej579qsfp3psm73tnaectqlvg8676ene8a5vquw0puf
+
+  # Dev — all developers
+  - path_regex: \.dev\.enc$
+    age: >-
+      age1rwh9zzpd9spvypmej579qsfp3psm73tnaectqlvg8676ene8a5vquw0puf

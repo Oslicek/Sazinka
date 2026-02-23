@@ -6,8 +6,8 @@ services:
       - "127.0.0.1:4222:4222"   # Client connections (local only)
       - "8222:8222"              # WebSocket (browser-facing — proxy with TLS in prod)
     environment:
-      NATS_WORKER_PASSWORD: ${NATS_WORKER_PASSWORD:-workerpass}
-      NATS_BROWSER_PASSWORD: ${NATS_BROWSER_PASSWORD:-browserpass}
+      NATS_WORKER_PASSWORD: ${NATS_WORKER_PASSWORD:?Set NATS_WORKER_PASSWORD or use: make up ENV=dev}
+      NATS_BROWSER_PASSWORD: ${NATS_BROWSER_PASSWORD:?Set NATS_BROWSER_PASSWORD or use: make up ENV=dev}
     command: ["--config", "/etc/nats/nats-server.conf", "--jetstream", "--log", "/logs/nats.log"]
     volumes:
       - ./nats-server.conf:/etc/nats/nats-server.conf:ro
@@ -27,9 +27,9 @@ services:
       - "127.0.0.1:5432:5432"   # Local only
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-sazinka}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sazinka_dev}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD or use: make up ENV=dev}
       POSTGRES_DB: ${POSTGRES_DB:-sazinka}
-      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production-min-32-bytes!!}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET or use: make up ENV=dev}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
@@ -75,7 +75,7 @@ services:
       PBF_URL: https://download.geofabrik.de/europe/czech-republic-latest.osm.pbf
       # NO REPLICATION_URL - we do NOT want automatic updates!
       # Updates would be triggered only by explicit re-import request.
-      NOMINATIM_PASSWORD: nominatim_dev
+      NOMINATIM_PASSWORD: ${NOMINATIM_PASSWORD:?Set NOMINATIM_PASSWORD or use: make up ENV=dev}
       # Disable update checks
       FREEZE: "true"
     volumes:

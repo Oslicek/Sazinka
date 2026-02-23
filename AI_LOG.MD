@@ -867,3 +867,36 @@ Přidán **dropdown time picker** do `TimeInput` komponenty:
 - `apps/web/src/services/jobService.ts` – added `report` to `JobHistoryEntry`
 - `apps/web/src/pages/Jobs.tsx` – use report from history, added `report` to `CompletedJob`
 - ~35 component/page files – emoji → lucide-react icon replacements
+
+---
+
+## 2026-02-22 – Cursor Agent
+
+### Feature: SOPS + age secrets management
+
+Implemented a complete secrets management solution using SOPS (encrypted secrets in git) + age (modern cryptographic keys).
+
+**What was done:**
+- Installed `sops` v3.9.4 and `age` v1.2.0 to `~/bin`
+- Generated age key pair for the dev machine
+- Created `.sops.yaml` at repo root with per-environment key policies
+- Created `infra/secrets/` with encrypted `.env.{dev,staging,production}.enc` files containing real random secrets for staging/production
+- Created `Makefile` with `secrets`, `secrets-edit`, `secrets-rotate`, `up`, `down`, `logs`, `status` targets
+- Removed hardcoded sensitive defaults from `docker-compose.yml` (now requires `--env-file`)
+- Updated `.gitignore` for `*.dec`, `*.plain`, `.env.production`, `.env.staging`
+- Updated `PRJ_DEVOPS.MD` section 16.7 with new SOPS workflow documentation
+- Added implementation plan to `PRJ_DATA.MD`
+
+**Files created:**
+- `.sops.yaml` – SOPS configuration
+- `infra/secrets/.gitignore` – prevent decrypted files from entering git
+- `infra/secrets/.env.dev.enc` – encrypted dev environment
+- `infra/secrets/.env.staging.enc` – encrypted staging environment
+- `infra/secrets/.env.production.enc` – encrypted production environment
+- `Makefile` – development & deployment automation
+
+**Files modified:**
+- `infra/docker-compose.yml` – removed hardcoded sensitive defaults
+- `.gitignore` – added SOPS-related patterns
+- `PRJ_DEVOPS.MD` – updated secrets management section
+- `PRJ_DATA.MD` – added SOPS implementation plan

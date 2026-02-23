@@ -11,6 +11,14 @@ target/
 .env
 .env.local
 .env.*.local
+.env.production
+.env.staging
+
+# Decrypted secrets (SOPS)
+*.dec
+*.plain
+infra/secrets/*.dec
+infra/secrets/*.plain
 
 # IDE
 .vscode/

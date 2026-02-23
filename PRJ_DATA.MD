@@ -507,3 +507,120 @@ fn main() {
 - [ ] All password hashing uses argon2id with current best-practice parameters
 - [ ] Audit: `rg "password123|DEV_MODE|DEV_ADMIN" worker/src/` returns zero
       matches
+
+---
+
+## Secrets Management — SOPS + age
+
+### Overview
+
+All secrets (database passwords, JWT keys, NATS credentials) are encrypted with
+[SOPS](https://github.com/getsops/sops) + [age](https://github.com/FiloSottile/age)
+and stored in git. No plaintext secrets ever enter the repository. The same
+toolchain works identically in local development, staging, and production.
+
+### Architecture
+
+```
+  Git Repository
+  ├── .sops.yaml                       ← which keys can decrypt which files
+  └── infra/secrets/
+      ├── .gitignore                   ← *.dec never enters git
+      ├── .env.dev.enc                 ← encrypted dev secrets
+      ├── .env.staging.enc             ← encrypted staging secrets
+      └── .env.production.enc          ← encrypted production secrets
+
+  Developer machine / Server
+  └── ~/.config/sops/age/keys.txt      ← private key (NEVER in git)
+
+  Workflow
+  ┌───────────────────┐     sops decrypt     ┌──────────────────────┐
+  │ .env.staging.enc  │ ──────────────────► │ .env.staging.dec     │
+  │ (in git, safe)    │                      │ (gitignored, tmpfs)  │
+  └───────────────────┘                      └──────────┬───────────┘
+                                                        │
+                                        docker compose --env-file
+                                                        │
+                                                        ▼
+                                              ┌──────────────────┐
+                                              │ Running services │
+                                              └──────────────────┘
+```
+
+### Key Management
+
+| Entity | Has private key | Can decrypt |
+|--------|----------------|-------------|
+| Lead developer | Yes | dev, staging, production |
+| Developer | Yes | dev, staging |
+| CI server | Yes | staging (for deploy) |
+| Staging server | Yes | staging |
+| Production server | Yes | production |
+
+Adding a team member:
+1. They run `age-keygen` and share their **public** key
+2. Team lead adds the public key to `.sops.yaml`
+3. Run `sops updatekeys` on affected files
+4. Commit
+
+Removing a team member:
+1. Remove their public key from `.sops.yaml`
+2. Run `sops updatekeys` on affected files
+3. **Rotate all secrets** they had access to
+4. Commit + deploy
+
+### Environments
+
+| Environment | Docker Compose file | Secrets file | Notes |
+|-------------|-------------------|--------------|-------|
+| dev | `docker-compose.yml` | `.env.dev.enc` | Hardcoded defaults still work without decryption for quick start |
+| staging | `docker-compose.yml` + `docker-compose.staging.yml` | `.env.staging.enc` | Real passwords, no TLS (Caddy handles TLS) |
+| production | `docker-compose.yml` + `docker-compose.production.yml` | `.env.production.enc` | Real passwords, hardened config |
+
+### Daily Commands
+
+```bash
+# Decrypt secrets for an environment
+make secrets ENV=dev
+
+# Start stack with decrypted secrets
+make up ENV=staging
+
+# Edit secrets (opens in $EDITOR, re-encrypts on save)
+make secrets-edit ENV=production
+
+# Rotate a secret
+make secrets-edit ENV=production    # change the value
+git add infra/secrets/.env.production.enc
+git commit -m "security: rotate production JWT_SECRET"
+
+# Tear down
+make down
+
+# Clean up decrypted files
+make secrets-clean
+```
+
+### Kubernetes Migration Path
+
+When migrating to K8s, the same encrypted files work via:
+- **kustomize + SOPS plugin**: generates K8s Secret resources at deploy time
+- **SOPS Secrets Operator**: CRD-based, auto-decrypts in-cluster
+
+No changes to the encrypted files or key management required.
+
+### Implementation Checklist
+
+- [x] Install sops + age on dev machine
+- [x] Generate age key pair for dev machine
+- [x] Create `.sops.yaml` at repo root
+- [x] Create `infra/secrets/` with `.gitignore`
+- [x] Create and encrypt `.env.dev.enc`, `.env.staging.enc`, `.env.production.enc`
+- [x] Create `Makefile` with secrets/up/down/edit targets
+- [x] Update `docker-compose.yml` to use `${VAR}` everywhere (no hardcoded sensitive defaults)
+- [x] Update `.gitignore` for `*.dec`, `*.enc.bak`
+- [x] Update `PRJ_DEVOPS.MD` with secrets workflow
+- [ ] Provision age key on staging server (manual)
+- [ ] Provision age key on production server (manual)
+- [ ] Set `SOPS_AGE_KEY_FILE` in deploy scripts (manual)
+- [ ] Set frontend env vars in Cloudflare Pages dashboard (manual)
