@@ -526,10 +526,3 @@ sazinka/
 - [ ] NATS message schemas documented
 
 ---
-
-## AI Logging
-
-- After each agent answer, append to `AI_LOG.MD`.
-- Add agent name.
-- Add timestamp.
-- Add the text of the answer.
