@@ -991,19 +991,15 @@ export function PlanningInbox() {
   const sortedCandidates = useMemo(() => {
     const filtered = applyInboxFilters(candidates, filters, inRouteIds) as InboxCandidate[];
     
-    // Ensure the currently selected candidate stays in the list
+    // Ensure the currently selected candidate stays in the list even if filtered out
     if (selectedCandidateId && !filtered.some((c) => c.customerId === selectedCandidateId)) {
       const selected = candidates.find((c) => c.customerId === selectedCandidateId);
       if (selected) {
-        filtered.unshift(selected);
+        filtered.push(selected);
       }
     }
     
     return filtered.sort((a, b) => {
-      // Pin selected candidate at top
-      if (a.customerId === selectedCandidateId) return -1;
-      if (b.customerId === selectedCandidateId) return 1;
-      
       const aValid = hasValidAddress(a);
       const bValid = hasValidAddress(b);
       if (aValid !== bValid) return aValid ? -1 : 1;
@@ -1027,7 +1023,7 @@ export function PlanningInbox() {
       if (aOverdue !== bOverdue) return bOverdue - aOverdue;
       return a.daysUntilDue - b.daysUntilDue;
     });
-  }, [candidates, filters, inRouteIds, selectedCandidateId]);
+  }, [candidates, filters, inRouteIds]);
 
   // Keep ref in sync for use in callbacks
   sortedCandidatesRef.current = sortedCandidates;
