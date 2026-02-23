@@ -221,7 +221,9 @@ function SortableStopCard({
           )}
           {!isBreak && (
             <span className={`${styles.cardTime} ${item.lateArrivalMinutes ? styles.cardTimeLate : ''}`}>
-              {formatTime(item.startTime)} – {formatTime(item.endTime)}
+              {hasAgreedWindowOverlay
+                ? `${formatTime(item.agreedWindowStart!)} – ${formatTime(item.agreedWindowEnd!)}`
+                : `${formatTime(item.startTime)} – ${formatTime(item.endTime)}`}
             </span>
           )}
         </div>
