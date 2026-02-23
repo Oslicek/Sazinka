@@ -223,7 +223,9 @@ export function buildTimelineItems(
         scheduledStartMin != null && scheduledEndMin != null
           ? scheduledEndMin - scheduledStartMin
           : null;
+      const hasAgreedWindow = scheduledStartMin != null && scheduledEndMin != null;
       const isFlexibleWindow =
+        hasAgreedWindow &&
         stop.serviceDurationMinutes != null &&
         stop.serviceDurationMinutes > 0 &&
         windowDuration != null &&
@@ -239,8 +241,8 @@ export function buildTimelineItems(
         stop,
         lateArrivalMinutes,
         actualArrivalTime,
-        agreedWindowStart: isFlexibleWindow ? normalise(stop.scheduledTimeStart) ?? undefined : undefined,
-        agreedWindowEnd: isFlexibleWindow ? normalise(stop.scheduledTimeEnd) ?? undefined : undefined,
+        agreedWindowStart: hasAgreedWindow ? normalise(stop.scheduledTimeStart) ?? undefined : undefined,
+        agreedWindowEnd: hasAgreedWindow ? normalise(stop.scheduledTimeEnd) ?? undefined : undefined,
         agreedWindowDurationMinutes: isFlexibleWindow ? windowDuration ?? undefined : undefined,
         needsReschedule: stop.needsReschedule ?? undefined,
       });
