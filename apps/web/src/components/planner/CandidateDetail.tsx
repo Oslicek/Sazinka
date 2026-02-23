@@ -11,6 +11,7 @@ import { useNatsStore } from '@/stores/natsStore';
 import { resolveRevisionDuration } from '@/utils/resolveRevisionDuration';
 import { CustomerTimeline } from '../timeline';
 import { SlotSuggestions, type SlotSuggestion } from './SlotSuggestions';
+import { TimeInput } from '@/components/common/TimeInput';
 import styles from './CandidateDetail.module.css';
 
 export interface CandidateDetailData {
@@ -443,12 +444,9 @@ export function CandidateDetail({
             <div className={styles.scheduleRow}>
               <label className={styles.scheduleLabel}>
                 {t('candidate_schedule_from')}
-                <input
-                  type="time"
-                  className={styles.scheduleInput}
+                <TimeInput
                   value={schedTimeStart}
-                  onChange={(e) => {
-                    const newStart = e.target.value;
+                  onChange={(newStart) => {
                     setSchedTimeStart(newStart);
                     if (newStart) {
                       setSchedTimeEnd(addMinutesToTime(newStart, defaultServiceDurationMinutes));
@@ -458,11 +456,9 @@ export function CandidateDetail({
               </label>
               <label className={styles.scheduleLabel}>
                 {t('candidate_schedule_to')}
-                <input
-                  type="time"
-                  className={styles.scheduleInput}
+                <TimeInput
                   value={schedTimeEnd}
-                  onChange={(e) => setSchedTimeEnd(e.target.value)}
+                  onChange={setSchedTimeEnd}
                 />
               </label>
             </div>

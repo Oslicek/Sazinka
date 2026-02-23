@@ -12,11 +12,22 @@ import {
   getWorkItem,
   completeWorkItem,
   getWorkTypeLabel,
-  getWorkTypeIcon,
   getWorkResultLabel,
+  type WorkType,
 } from '../services/workItemService';
 import { useNatsStore } from '../stores/natsStore';
-import { AlertTriangle, Search, Clock, Bell, Check, ClipboardList } from 'lucide-react';
+import { AlertTriangle, Search, Clock, Bell, Check, ClipboardList, Wrench, Settings, MessageSquare, RefreshCcw } from 'lucide-react';
+
+function WorkTypeIcon({ type }: { type: WorkType }) {
+  switch (type) {
+    case 'revision': return <Search size={14} />;
+    case 'repair': return <Wrench size={14} />;
+    case 'installation': return <Settings size={14} />;
+    case 'consultation': return <MessageSquare size={14} />;
+    case 'follow_up': return <RefreshCcw size={14} />;
+    default: return <ClipboardList size={14} />;
+  }
+}
 import styles from './WorkItemDetail.module.css';
 
 export function WorkItemDetail() {
@@ -147,7 +158,7 @@ export function WorkItemDetail() {
 
         <div className={styles.titleRow}>
           <div className={styles.titleSection}>
-            <span className={styles.icon}>{getWorkTypeIcon(workItem.workType)}</span>
+            <span className={styles.icon}><WorkTypeIcon type={workItem.workType} /></span>
             <h1 className={styles.title}>
               {getWorkTypeLabel(workItem.workType)}
             </h1>
@@ -188,7 +199,7 @@ export function WorkItemDetail() {
               <div className={styles.detailItem}>
                 <span className={styles.detailLabel}>{t('workitem_type')}</span>
                 <span className={styles.detailValue}>
-                  {getWorkTypeIcon(workItem.workType)} {getWorkTypeLabel(workItem.workType)}
+                  <WorkTypeIcon type={workItem.workType} /> {getWorkTypeLabel(workItem.workType)}
                 </span>
               </div>
               

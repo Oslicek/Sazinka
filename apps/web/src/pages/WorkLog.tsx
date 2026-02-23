@@ -17,7 +17,7 @@ import type { Visit, VisitResult } from '@shared/visit';
 import { PlannerFilters } from '../components/shared/PlannerFilters';
 import { QuickVisitDialog } from '../components/worklog';
 import { formatDate } from '../i18n/formatters';
-import { ClipboardList } from 'lucide-react';
+import { ClipboardList, Calendar, RefreshCw, CheckCircle2, XCircle, RotateCcw } from 'lucide-react';
 import styles from './WorkLog.module.css';
 
 interface WorkLogSearchParams {
@@ -218,6 +218,17 @@ export function WorkLog() {
     }
   };
 
+  const getVisitStatusIcon = (status: string) => {
+    switch (status) {
+      case 'planned': return <Calendar size={13} />;
+      case 'in_progress': return <RefreshCw size={13} />;
+      case 'completed': return <CheckCircle2 size={13} />;
+      case 'cancelled': return <XCircle size={13} />;
+      case 'rescheduled': return <RotateCcw size={13} />;
+      default: return null;
+    }
+  };
+
   const canQuickComplete = (visit: Visit) => visit.status === 'planned' || visit.status === 'in_progress';
 
   const openCompleteDialog = (visit: Visit) => {
@@ -415,7 +426,7 @@ export function WorkLog() {
                           className={styles.cellLink}
                         >
                           <span className={`${styles.badge} ${getStatusBadgeClass(visit.status)}`}>
-                            {visitService.getVisitStatusIcon(visit.status)} {visitService.getVisitStatusLabel(visit.status)}
+                            {getVisitStatusIcon(visit.status)}{visitService.getVisitStatusLabel(visit.status)}
                           </span>
                         </Link>
                       </td>

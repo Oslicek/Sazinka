@@ -167,16 +167,6 @@ export function formatInsertionDelta(deltaMin: number, deltaKm: number): string 
   return `${minSign}${Math.round(deltaMin)}min / ${kmSign}${deltaKm.toFixed(1)}km`;
 }
 
-/**
- * Get status icon for insertion status
- */
-export function getInsertionStatusIcon(status: 'ok' | 'tight' | 'conflict'): string {
-  switch (status) {
-    case 'ok': return '✅';
-    case 'tight': return '⚠️';
-    case 'conflict': return '❌';
-  }
-}
 
 /**
  * Sort batch results by best insertion cost

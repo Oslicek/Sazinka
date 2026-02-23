@@ -125,20 +125,6 @@ export function getJobTypeName(jobType: JobType): string {
   return i18n.t(JOB_TYPE_NAME_KEYS[jobType]) || jobType;
 }
 
-/** Get icon for job type */
-export function getJobTypeIcon(jobType: JobType): string {
-  const icons: Record<JobType, string> = {
-    'geocode': '📍',
-    'route': '🗺️',
-    'import': '📥',
-    'export': '📤',
-    'valhalla.matrix': '📊',
-    'valhalla.geometry': '📐',
-    'email': '📧',
-    'sms': '📱',
-  };
-  return icons[jobType] || '⚙️';
-}
 
 /** Type guard for JobStatusQueued */
 export function isQueued(status: JobStatus | null): status is JobStatusQueued {

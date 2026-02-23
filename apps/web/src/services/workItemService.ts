@@ -115,16 +115,3 @@ export function getWorkResultLabel(result: WorkResult): string {
   return translated !== key ? translated : result;
 }
 
-/**
- * Get work type icon
- */
-export function getWorkTypeIcon(type: WorkType): string {
-  const icons: Record<WorkType, string> = {
-    revision: '🔍',
-    repair: '🔧',
-    installation: '⚙️',
-    consultation: '💬',
-    follow_up: '📋',
-  };
-  return icons[type] || '📝';
-}

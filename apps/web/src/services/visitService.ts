@@ -178,16 +178,3 @@ export function getVisitResultLabel(result: string): string {
   return translated !== key ? translated : result;
 }
 
-/**
- * Get visit status icon
- */
-export function getVisitStatusIcon(status: string): string {
-  const icons: Record<string, string> = {
-    planned: '📅',
-    in_progress: '🔄',
-    completed: '✅',
-    cancelled: '❌',
-    rescheduled: '🔁',
-  };
-  return icons[status] || '📋';
-}

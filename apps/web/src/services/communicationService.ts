@@ -108,13 +108,3 @@ export function getCommunicationTypeLabel(type: string): string {
 /**
  * Get communication type icon
  */
-export function getCommunicationTypeIcon(type: string): string {
-  const icons: Record<string, string> = {
-    email_sent: '📤',
-    email_received: '📥',
-    call: '📞',
-    note: '📝',
-    sms: '💬',
-  };
-  return icons[type] || '📄';
-}

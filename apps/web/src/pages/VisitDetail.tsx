@@ -18,10 +18,21 @@ import {
   getVisitTypeLabel,
   getVisitResultLabel,
 } from '../services/visitService';
-import { getWorkTypeLabel, getWorkTypeIcon } from '../services/workItemService';
+import { getWorkTypeLabel, type WorkType } from '../services/workItemService';
 import { useNatsStore } from '../stores/natsStore';
 import { formatDate } from '../i18n/formatters';
-import { AlertTriangle, Search, Calendar, Clock, Phone } from 'lucide-react';
+import { AlertTriangle, Search, Calendar, Clock, Phone, Wrench, Settings, MessageSquare, RefreshCcw, ClipboardList } from 'lucide-react';
+
+function WorkTypeIcon({ type }: { type: WorkType }) {
+  switch (type) {
+    case 'revision': return <Search size={13} />;
+    case 'repair': return <Wrench size={13} />;
+    case 'installation': return <Settings size={13} />;
+    case 'consultation': return <MessageSquare size={13} />;
+    case 'follow_up': return <RefreshCcw size={13} />;
+    default: return <ClipboardList size={13} />;
+  }
+}
 import styles from './VisitDetail.module.css';
 
 interface VisitData {
@@ -466,7 +477,7 @@ export function VisitDetail() {
                     className={styles.workItemCard}
                   >
                     <div className={styles.workItemHeader}>
-                      <span className={styles.workItemIcon}>{getWorkTypeIcon(item.workType)}</span>
+                      <span className={styles.workItemIcon}><WorkTypeIcon type={item.workType} /></span>
                       <span className={styles.workItemType}>{getWorkTypeLabel(item.workType)}</span>
                       {item.result && (
                         <span className={`${styles.workItemBadge} ${styles[`result-${item.result}`]}`}>

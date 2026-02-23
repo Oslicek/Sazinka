@@ -9,7 +9,6 @@ import {
   type JobStatus, 
   type JobStatusUpdate,
   getJobTypeName, 
-  getJobTypeIcon,
   isActive,
   isTerminal,
 } from '../types/jobStatus';
@@ -17,7 +16,22 @@ import { cancelJob, retryJob, listJobHistory, type JobHistoryEntry } from '../se
 import { downloadExportJob } from '@/services/exportPlusService';
 import type { CustomerImportJobStatusUpdate, ImportReport } from '@shared/import';
 import { formatDate } from '../i18n/formatters';
+import { MapPin, Map, Upload, Download, BarChart2, GitBranch, Mail, MessageSquare, Settings } from 'lucide-react';
 import styles from './Jobs.module.css';
+
+function JobTypeIcon({ type }: { type: JobType }) {
+  switch (type) {
+    case 'geocode': return <MapPin size={14} />;
+    case 'route': return <Map size={14} />;
+    case 'import': return <Download size={14} />;
+    case 'export': return <Upload size={14} />;
+    case 'valhalla.matrix': return <BarChart2 size={14} />;
+    case 'valhalla.geometry': return <GitBranch size={14} />;
+    case 'email': return <Mail size={14} />;
+    case 'sms': return <MessageSquare size={14} />;
+    default: return <Settings size={14} />;
+  }
+}
 
 /** Active job entry in the dashboard */
 interface ActiveJob {
@@ -382,7 +396,7 @@ export function Jobs() {
             {displayedActiveJobs.map(job => (
               <div key={job.id} className={styles.jobCard}>
                 <div className={styles.jobHeader}>
-                  <span className={styles.jobIcon}>{getJobTypeIcon(job.type)}</span>
+                  <span className={styles.jobIcon}><JobTypeIcon type={job.type} /></span>
                   <span className={styles.jobType}>{getJobTypeName(job.type)}</span>
                   <span className={styles.jobId}>#{job.id.slice(0, 8)}</span>
 
@@ -494,7 +508,7 @@ export function Jobs() {
                 {displayedRecentJobs.map(job => (
                   <tr key={job.id} className={job.status.type === 'failed' ? styles.failedRow : job.status.type === 'cancelled' ? styles.cancelledRow : ''}>
                     <td>
-                      <span className={styles.tableIcon}>{getJobTypeIcon(job.type)}</span>
+                      <span className={styles.tableIcon}><JobTypeIcon type={job.type} /></span>
                       {getJobTypeName(job.type)}
                     </td>
                     <td className={styles.mono}>#{job.id.slice(0, 8)}</td>

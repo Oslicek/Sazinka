@@ -6,6 +6,7 @@ import * as visitService from '../../services/visitService';
 import type { Communication } from '@shared/communication';
 import type { Visit } from '@shared/visit';
 import { formatDate } from '../../i18n/formatters';
+import { Mail, Phone, FileText, MessageSquare, Upload, Download, Calendar, RefreshCw, CheckCircle2, XCircle, RotateCcw } from 'lucide-react';
 import { VisitDetailDialog } from './VisitDetailDialog';
 import styles from './CustomerTimeline.module.css';
 
@@ -214,6 +215,28 @@ export function CustomerTimeline({ customerId }: CustomerTimelineProps) {
   );
 }
 
+function getCommunicationIcon(type: string) {
+  switch (type) {
+    case 'email_sent': return <Upload size={14} />;
+    case 'email_received': return <Download size={14} />;
+    case 'call': return <Phone size={14} />;
+    case 'note': return <FileText size={14} />;
+    case 'sms': return <MessageSquare size={14} />;
+    default: return <Mail size={14} />;
+  }
+}
+
+function getVisitIcon(status: string) {
+  switch (status) {
+    case 'planned': return <Calendar size={14} />;
+    case 'in_progress': return <RefreshCw size={14} />;
+    case 'completed': return <CheckCircle2 size={14} />;
+    case 'cancelled': return <XCircle size={14} />;
+    case 'rescheduled': return <RotateCcw size={14} />;
+    default: return <Calendar size={14} />;
+  }
+}
+
 // Timeline Item Card
 function TimelineItemCard({ 
   item, 
@@ -229,7 +252,7 @@ function TimelineItemCard({
     return (
       <div className={`${styles.item} ${styles.communication}`}>
         <div className={styles.itemIcon}>
-          {communicationService.getCommunicationTypeIcon(comm.commType)}
+          {getCommunicationIcon(comm.commType)}
         </div>
         <div className={styles.itemContent}>
           <div className={styles.itemHeader}>
@@ -259,7 +282,7 @@ function TimelineItemCard({
       tabIndex={0}
     >
       <div className={styles.itemIcon}>
-        {visitService.getVisitStatusIcon(visit.status)}
+        {getVisitIcon(visit.status)}
       </div>
       <div className={styles.itemContent}>
         <div className={styles.itemHeader}>
