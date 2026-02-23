@@ -16,13 +16,13 @@ import { cancelJob, retryJob, listJobHistory, type JobHistoryEntry } from '../se
 import { downloadExportJob } from '@/services/exportPlusService';
 import type { CustomerImportJobStatusUpdate, ImportReport } from '@shared/import';
 import { formatDate } from '../i18n/formatters';
-import { MapPin, Map, Upload, Download, BarChart2, GitBranch, Mail, MessageSquare, Settings } from 'lucide-react';
+import { MapPin, Map as MapIcon, Upload, Download, BarChart2, GitBranch, Mail, MessageSquare, Settings } from 'lucide-react';
 import styles from './Jobs.module.css';
 
 function JobTypeIcon({ type }: { type: JobType }) {
   switch (type) {
     case 'geocode': return <MapPin size={14} />;
-    case 'route': return <Map size={14} />;
+    case 'route': return <MapIcon size={14} />;
     case 'import': return <Download size={14} />;
     case 'export': return <Upload size={14} />;
     case 'valhalla.matrix': return <BarChart2 size={14} />;
