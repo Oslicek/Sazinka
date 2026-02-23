@@ -1,11 +1,7 @@
 -- Development seed data for Sazinka
 -- Run after migrations: docker exec -i sazinka-postgres psql -U sazinka -d sazinka < infra/seed-dev.sql
+-- To set the admin password use: cargo run -- create-admin --email test@example.com
 
--- Test admin user for development
--- Password: password123 (dev only -- never use in production!)
--- Note: password_hash is set to a placeholder here. The worker automatically
--- detects invalid hashes on startup and replaces them with a proper Argon2
--- hash of 'password123'. See db::ensure_dev_admin_password().
 INSERT INTO users (
     id, 
     email, 

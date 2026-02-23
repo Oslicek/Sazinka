@@ -46,6 +46,10 @@ tracing-appender = "0.2"
 # Configuration
 dotenvy = "0.15"
 
+# CLI
+clap = { version = "4", features = ["derive"] }
+rpassword = "7"
+
 # HTTP client (for Nominatim/Valhalla) - using native-tls to avoid ring compilation
 reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls"] }
 urlencoding = "2.1"

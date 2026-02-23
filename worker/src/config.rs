@@ -22,11 +22,9 @@ pub struct Config {
 }
 
 impl Config {
-    /// Load configuration from environment variables
+    /// Load configuration from environment variables.
+    /// Expects `dotenvy::dotenv()` to have been called already.
     pub fn from_env() -> Result<Self> {
-        // Load .env file if present
-        dotenvy::dotenv().ok();
-
         let nats_url = std::env::var("NATS_URL")
             .unwrap_or_else(|_| "nats://localhost:4222".to_string());
 

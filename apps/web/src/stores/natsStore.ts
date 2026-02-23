@@ -33,8 +33,8 @@ export const useNatsStore = create<NatsState>((set, get) => ({
     try {
       const nc = await connect({
         servers: url,
-        user: import.meta.env.VITE_NATS_USER || 'browser',
-        pass: import.meta.env.VITE_NATS_PASS || 'browserpass',
+        user: import.meta.env.VITE_NATS_USER,
+        pass: import.meta.env.VITE_NATS_PASS,
         reconnect: true,
         maxReconnectAttempts: -1, // Unlimited
         reconnectTimeWait: 2000,
@@ -143,6 +143,6 @@ export const useNatsStore = create<NatsState>((set, get) => ({
 
 // Auto-connect on module load (in development)
 if (typeof window !== 'undefined') {
-  const wsUrl = import.meta.env.VITE_NATS_WS_URL || 'ws://localhost:8222';
+  const wsUrl = import.meta.env.VITE_NATS_WS_URL;
   useNatsStore.getState().connect(wsUrl);
 }
