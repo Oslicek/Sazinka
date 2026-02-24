@@ -65,7 +65,7 @@ export function VerifyEmailCallback() {
     <div className={styles.container}>
       <div className={styles.card}>
         <div className={styles.header}>
-          <h1 className={styles.title}>Sazinka</h1>
+          <h1 className={styles.title}>Ariadline</h1>
         </div>
 
         {status === 'verifying' && (

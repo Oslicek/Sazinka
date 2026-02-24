@@ -37,7 +37,7 @@ export function Landing() {
     <div className={styles.page}>
       <div className={styles.card}>
         <div className={styles.header}>
-          <h1 className={styles.logo}>Sazinka</h1>
+          <h1 className={styles.logo}>Ariadline</h1>
           <p className={styles.tagline}>{t('landing.headline')}</p>
         </div>
 

@@ -1,5 +1,5 @@
 {
-  "page_title": "Registrace – Sazinka",
+  "page_title": "Registrace – Ariadline",
 
   "landing": {
     "headline": "Plánujte trasy, spravujte revize, šetřete čas.",
@@ -144,7 +144,7 @@
     "account_done": "Účet vytvořen",
     "devices_done": "{{count}} typ zařízení nakonfigurován",
     "devices_done_plural": "{{count}} typy zařízení nakonfigurovány",
-    "depot_done": "Depo „{{name}}" uloženo",
+    "depot_done": "Depo \u201E{{name}}\u201C uloženo",
     "crew_done": "Tým vytvořen",
     "trial": "Váš 30denní bezplatný zkušební provoz začíná dnes.",
     "trial_hint": "Připomeneme vám ho před koncem — žádná překvapení.",

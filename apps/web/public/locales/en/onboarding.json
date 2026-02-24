@@ -1,5 +1,5 @@
 {
-  "page_title": "Register – Sazinka",
+  "page_title": "Register – Ariadline",
 
   "landing": {
     "headline": "Plan routes, manage revisions, save time.",
@@ -18,7 +18,7 @@
   },
 
   "waitlist": {
-    "title": "Notify me when Sazinka launches",
+    "title": "Notify me when Ariadline launches",
     "email_label": "Email address",
     "email_placeholder": "you@example.com",
     "country_label": "Your country",
@@ -144,7 +144,7 @@
     "account_done": "Account created",
     "devices_done": "{{count}} device type configured",
     "devices_done_plural": "{{count}} device types configured",
-    "depot_done": "Depot "{{name}}" saved",
+    "depot_done": "Depot '{{name}}' saved",
     "crew_done": "Crew created",
     "trial": "Your 30-day free trial starts today.",
     "trial_hint": "We'll remind you before it ends — no surprises.",
