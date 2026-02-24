@@ -15,6 +15,8 @@ const USER_COLUMNS: &str = r#"
     working_hours_start, working_hours_end,
     max_revisions_per_day,
     role, owner_id,
+    email_verified, verification_token_hash, verification_expires, tos_accepted_at,
+    onboarding_completed_at, onboarding_step,
     locale,
     created_at, updated_at
 "#;

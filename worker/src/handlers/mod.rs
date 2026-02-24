@@ -3,6 +3,7 @@
 pub mod admin;
 pub mod auth;
 pub mod communication;
+pub mod crew;
 pub mod customer;
 pub mod device;
 pub mod device_type_config;
@@ -11,13 +12,13 @@ pub mod geocode;
 pub mod import;
 pub mod import_processors;
 pub mod jobs;
+pub mod onboarding;
 pub mod ping;
 pub mod revision;
 pub mod role;
 pub mod route;
 pub mod settings;
 pub mod slots;
-pub mod crew;
 pub mod visit;
 pub mod work_item;
 
@@ -25,12 +26,14 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_nats::Client;
 use sqlx::PgPool;
-use tracing::{info, error};
+use tracing::{error, info, warn};
 use futures::StreamExt;
 use uuid::Uuid;
 
 use crate::config::Config;
+use crate::services::email_sender::{EmailSender, LogEmailSender, ResendEmailSender};
 use crate::services::geocoding::{create_geocoder, Geocoder};
+use crate::services::rate_limiter::{MultiRateLimiter, RateLimiterConfig};
 use crate::services::routing::{RoutingService, create_routing_service_with_fallback};
 use crate::services::valhalla_processor::ValhallaProcessor;
 use crate::types::{
@@ -159,6 +162,30 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
 
     // Rate limiter for login attempts (5 attempts per 5 minutes)
     let rate_limiter = Arc::new(auth::RateLimiter::new(5, 300));
+
+    // Multi-rate-limiter for onboarding endpoints
+    let onboarding_rate_limiter = Arc::new(MultiRateLimiter::new(vec![
+        ("register.start", RateLimiterConfig { max_attempts: 3,  window_secs: 600 }),
+        ("email.verify",   RateLimiterConfig { max_attempts: 10, window_secs: 300 }),
+        ("email.resend",   RateLimiterConfig { max_attempts: 3,  window_secs: 600 }),
+        ("waitlist.join",  RateLimiterConfig { max_attempts: 5,  window_secs: 300 }),
+    ]));
+
+    // Email sender: use Resend in production, LogEmailSender otherwise
+    let email_sender: Arc<dyn EmailSender> = if let Some(sender) = ResendEmailSender::from_env() {
+        Arc::new(sender)
+    } else {
+        warn!("RESEND_API_KEY not set — using LogEmailSender (emails will not be sent)");
+        Arc::new(LogEmailSender)
+    };
+
+    let app_base_url = Arc::new(config.app_base_url.clone());
+
+    // Onboarding subscriptions
+    let register_start_sub = client.subscribe("sazinka.auth.register.start").await?;
+    let verify_email_sub   = client.subscribe("sazinka.auth.email.verify").await?;
+    let resend_verify_sub  = client.subscribe("sazinka.auth.email.resend").await?;
+    let waitlist_join_sub  = client.subscribe("sazinka.waitlist.join").await?;
 
     // Auth subscriptions
     let auth_register_sub = client.subscribe("sazinka.auth.register").await?;
@@ -623,6 +650,52 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     });
 
     info!("Auth handlers started");
+
+    // Spawn onboarding handlers
+    {
+        let client_rs = client.clone();
+        let pool_rs = pool.clone();
+        let sender_rs = Arc::clone(&email_sender);
+        let rl_rs = Arc::clone(&onboarding_rate_limiter);
+        let url_rs = Arc::clone(&app_base_url);
+        tokio::spawn(async move {
+            if let Err(e) = onboarding::handle_register_start(client_rs, register_start_sub, pool_rs, sender_rs, rl_rs, url_rs).await {
+                error!("onboarding.register_start error: {}", e);
+            }
+        });
+    }
+    {
+        let client_ve = client.clone();
+        let pool_ve = pool.clone();
+        let rl_ve = Arc::clone(&onboarding_rate_limiter);
+        tokio::spawn(async move {
+            if let Err(e) = onboarding::handle_verify_email(client_ve, verify_email_sub, pool_ve, rl_ve).await {
+                error!("onboarding.verify_email error: {}", e);
+            }
+        });
+    }
+    {
+        let client_rv = client.clone();
+        let pool_rv = pool.clone();
+        let sender_rv = Arc::clone(&email_sender);
+        let rl_rv = Arc::clone(&onboarding_rate_limiter);
+        let url_rv = Arc::clone(&app_base_url);
+        tokio::spawn(async move {
+            if let Err(e) = onboarding::handle_resend_verification(client_rv, resend_verify_sub, pool_rv, sender_rv, rl_rv, url_rv).await {
+                error!("onboarding.resend_verification error: {}", e);
+            }
+        });
+    }
+    {
+        let client_wl = client.clone();
+        let pool_wl = pool.clone();
+        let rl_wl = Arc::clone(&onboarding_rate_limiter);
+        tokio::spawn(async move {
+            if let Err(e) = onboarding::handle_waitlist_join(client_wl, waitlist_join_sub, pool_wl, rl_wl).await {
+                error!("onboarding.waitlist_join error: {}", e);
+            }
+        });
+    }
 
     // Start RBAC role handlers
     let client_role = client.clone();

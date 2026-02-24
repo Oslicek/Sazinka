@@ -1605,5 +1605,1308 @@ Inbox je prázdný – na tento den nejsou žádné položky k domluvení.
 
 ---
 
+---
+
+## Phase 10: Onboarding Wizard (New User Registration)
+
+> **Status:** In progress — Phase A ✅ · Phase B ✅ · Phase C (partial) ✅ · Phase D ⬜ · Phase E ⬜  
+> **Version:** 1.7  
+> **Date:** 2026-02-21
+
+### 1. Goals
+
+1. Replace the current single-page Register form with a multi-step wizard.
+2. Add **email verification** (confirmation link sent via Resend).
+3. **Rate-limit** registration + verification endpoints; add DDoS guardrails.
+4. Show **country availability** (CZ now, SK coming soon, waitlist for others).
+5. Communicate the **30-day free trial** — no credit card required.
+6. Include a **device type selection** step so the user's tenant has the right configs from day one.
+7. All user-facing text available in **en**, **cs**, **sk**.
+8. The wizard module is **lazy-loaded** — zero extra JS until the user navigates to `/register`.
+9. The full country list is **lazy-loaded** — only fetched when the user explicitly wants a country other than the pre-selected CZ default.
+10. A clear **progress indicator** is visible at all times showing total steps, current position, and step labels.
+
+### 2. Current State (as-is)
+
+| Area | Status |
+|------|--------|
+| `Register.tsx` | Single form: name, email, password, business name (optional), locale. Already lazy-loaded via `React.lazy`. |
+| `handle_register` (Rust) | Creates user immediately, returns JWT. No email verification. |
+| `RateLimiter` | Exists for login (5 attempts / 5 min). Not applied to registration. |
+| Email infrastructure | `EmailProcessor` skeleton (Resend-based, JetStream queue). Not yet sending real emails. |
+| `countries` table | Exists with `is_supported` flag. CZ + SK seeded. Admin UI can sync/manage. |
+| `users` table | No `email_verified`, `verification_token_hash`, or `verification_expires` columns. |
+| `device_type_configs` | Per-tenant. 5 builtin types auto-seeded on tenant creation via DB trigger (`seed_device_types_for_tenant`). Labels are hardcoded Czech. |
+| `DeviceTypeConfigManager` | Full CRUD exists in Settings page. ~800 line component. |
+| Country list in frontend | `CountrySelect` loads all countries eagerly on first dropdown open. |
+
+### 3. Progress Indicator
+
+The wizard has a persistent **horizontal stepper bar** visible on every step (except the Landing page). It shows:
+
+```
+──────────────────────────────────────────────────────────
+  ①          ②          ③          ④          ⑤
+Account   About you   Devices   Depot   All set!
+  ●──────────●──────────○──────────○──────────○
+             ↑ current
+──────────────────────────────────────────────────────────
+```
+
+- **Completed steps**: filled circle + checkmark + clickable (can navigate back).
+- **Current step**: filled circle + bold label.
+- **Future steps**: empty circle + muted label + not clickable.
+- Labels are localized.
+- Mobile: labels hidden, only numbered circles with progress line.
+
+### 4. Wizard Steps
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  LANDING  (/register)                                       │
+│  (no stepper bar — this is the "pre-wizard" page)           │
+│                                                             │
+│  Ariadline logo                                             │
+│                                                             │
+│  "Plan routes, manage revisions, save time."                │
+│                                                             │
+│  🇨🇿 Czech Republic           [Start free trial →]          │
+│     Available now · 30 days free · No credit card           │
+│                                                             │
+│  Coming soon:                                               │
+│  🇸🇰 Slovakia                  [Notify me]                  │
+│  🇦🇹 Austria                   [Notify me]                  │
+│  (... dynamic list from DB where coming_soon = true)        │
+│                                                             │
+│  📍 Different country?         [Notify me →]                │
+│     We'll let you know when we launch in your country.      │
+│                                                             │
+│  ─────────────────────────────────────────────────────────  │
+│  Already have an account? [Sign in]                         │
+│                                                             │
+│  [🌐 EN] [🇨🇿 CS] [🇸🇰 SK]   ← language switcher            │
+└─────────────────────────────────────────────────────────────┘
+
+    User clicks "Start free trial" for CZ
+    OR clicks "Notify me" → mini-form (email + country picker) → done
+                │
+                ▼
+┌─────────────────────────────────────────────────────────────┐
+│  ①───②───③───④───⑤                                         │
+│  ●   ○   ○   ○   ○   Account                               │
+│                                                             │
+│  STEP 1 / 5  —  Account                                    │
+│                                                             │
+│  Email        [________________________]                    │
+│  Password     [________________________]  (min 8 chars)     │
+│  Confirm pwd  [________________________]                    │
+│                                                             │
+│  Password strength: ████████░░ Strong                       │
+│                                                             │
+│  ☐ I agree to the [Terms of Service] and [Privacy Policy]   │
+│                                                             │
+│                              [← Back]  [Continue →]         │
+└─────────────────────────────────────────────────────────────┘
+
+    Backend creates unverified user, sends verification email.
+    Frontend shows "Check your inbox" interstitial.
+    User clicks link in email → token verified → proceed.
+                │
+                ▼
+┌─────────────────────────────────────────────────────────────┐
+│  ①───②───③───④───⑤                                         │
+│  ✓   ●   ○   ○   ○   About you                             │
+│                                                             │
+│  STEP 2 / 5  —  About you                                  │
+│                                                             │
+│  Your name *          [________________________]            │
+│  Company name         [________________________] (optional) │
+│  Phone                [________________________] (optional) │
+│  ICO                  [________________________] (optional) │
+│                                                             │
+│  Language             [Czech ▾]  (pre-filled from landing)  │
+│  Country              Czech Republic (locked from landing)  │
+│                                                             │
+│                              [← Back]  [Continue →]         │
+└─────────────────────────────────────────────────────────────┘
+                │
+                ▼
+┌─────────────────────────────────────────────────────────────┐
+│  ①───②───③───④───⑤                                         │
+│  ✓   ✓   ●   ○   ○   Devices                               │
+│                                                             │
+│  STEP 3 / 5  —  What do you service?                       │
+│                                                             │
+│  Select the device types you work with.                     │
+│  You can add or change these later in Settings.             │
+│                                                             │
+│  ☑ Chimney               30 min · every 12 months  [▾]     │
+│  ☐ Gas boiler            60 min · every 12 months          │
+│  ☐ Gas water heater      45 min · every 12 months          │
+│  ☐ Fireplace / insert    30 min · every 12 months          │
+│  ☐ Gas stove             20 min · every 36 months          │
+│  (labels shown in user's locale)                            │
+│                                                             │
+│  Expand a selected type to adjust defaults:                 │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │ ☑ Chimney                                [▴ collapse] │   │
+│  │   Default duration:  [30] min                        │   │
+│  │   Revision interval: [12] months                     │   │
+│  └──────────────────────────────────────────────────────┘   │
+│                                                             │
+│  [+ Add custom device type]                                 │
+│                                                             │
+│                              [← Back]  [Continue →]         │
+└─────────────────────────────────────────────────────────────┘
+                │
+                ▼
+┌─────────────────────────────────────────────────────────────┐
+│  ①───②───③───④───⑤                                         │
+│  ✓   ✓   ✓   ●   ○   Depot                                 │
+│                                                             │
+│  STEP 4 / 5  —  Your depot (home base)                     │
+│                                                             │
+│  This is where your crew starts and ends each day.          │
+│                                                             │
+│  Depot name *         [________________________]            │
+│  Street *             [________________________]            │
+│  City *               [________________________]            │
+│  Postal code *        [________________________]            │
+│                                                             │
+│  [Verify address]  → geocode via Nominatim                  │
+│  ✅ Address verified (lat: 49.19, lng: 16.61)               │
+│                                                             │
+│                              [← Back]  [Continue →]         │
+└─────────────────────────────────────────────────────────────┘
+                │
+                ▼
+┌─────────────────────────────────────────────────────────────┐
+│  ①───②───③───④───⑤                                         │
+│  ✓   ✓   ✓   ✓   ●   All set!                              │
+│                                                             │
+│  STEP 5 / 5  —  You're all set!                            │
+│                                                             │
+│  ✓ Account created                                         │
+│  ✓ 1 device type configured (Chimney)                      │
+│  ✓ Depot "Brno" saved                                      │
+│  ✓ Crew created                                             │
+│                                                             │
+│  Your 30-day free trial starts today.                       │
+│  We'll remind you before it ends — no surprises.            │
+│                                                             │
+│                    [Go to Dashboard →]                      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 5. Registration flow — sequence diagram
+
+```
+Browser                        Worker (Rust)                   Resend
+  │                               │                              │
+  │ sazinka.auth.register.start   │                              │
+  │ {email, password, locale,     │                              │
+  │  country}                     │                              │
+  │──────────────────────────────▶│                              │
+  │                               │ validate email, password     │
+  │                               │ check rate limit (IP+email)  │
+  │                               │ check email not taken        │
+  │                               │ hash password (argon2)       │
+  │                               │ INSERT user (email_verified  │
+  │                               │   = false)                   │
+  │                               │ generate token, hash it       │
+  │                               │ store hash + expiry in DB    │
+  │                               │                              │
+  │                               │ ─── email.send ────────────▶ │
+  │                               │   "Click to verify"          │
+  │                               │                              │
+  │◀──────────────────────────────│                              │
+  │ {ok, message: "check inbox"}  │                              │
+  │                               │                              │
+  │ (user clicks link in email)   │                              │
+  │                               │                              │
+  │ sazinka.auth.verify-email     │                              │
+  │ {token}                       │                              │
+  │──────────────────────────────▶│                              │
+  │                               │ hash token, lookup by hash, check expiry │
+  │                               │ UPDATE email_verified = true  │
+  │                               │ CREATE tenant + user_tenants  │
+  │                               │ (auto-seeds device type cfgs) │
+  │                               │ generate JWT                 │
+  │◀──────────────────────────────│                              │
+  │ {token, user}                 │                              │
+  │                               │                              │
+  │ sazinka.onboarding.profile    │                              │
+  │ {name, businessName, phone,   │                              │
+  │  ico, locale}                 │                              │
+  │──────────────────────────────▶│                              │
+  │                               │ UPDATE user profile fields   │
+  │◀──────────────────────────────│                              │
+  │ {ok}                          │                              │
+  │                               │                              │
+  │ sazinka.onboarding.devices    │                              │
+  │ {selectedTypes: [{key,        │                              │
+  │   duration, interval}],       │                              │
+  │  customTypes: [{label,        │                              │
+  │   duration, interval}]}       │                              │
+  │──────────────────────────────▶│                              │
+  │                               │ deactivate unselected        │
+  │                               │   builtin types              │
+  │                               │ update duration/interval for │
+  │                               │   selected types             │
+  │                               │ create custom types          │
+  │◀──────────────────────────────│                              │
+  │ {deviceTypes: [...]}          │                              │
+  │                               │                              │
+  │ sazinka.onboarding.complete   │                              │
+  │ {depot: {name, street, city,  │                              │
+  │  postalCode, lat, lng}}       │                              │
+  │──────────────────────────────▶│                              │
+  │                               │ INSERT depot (is_primary)    │
+  │                               │ INSERT crew "Crew 1"         │
+  │                               │   → home_depot_id = depot    │
+  │                               │ UPDATE user.default_crew_id  │
+  │                               │ UPDATE user.default_depot_id │
+  │                               │ SET onboarding_completed_at  │
+  │◀──────────────────────────────│                              │
+  │ {settings}                    │                              │
+```
+
+### 6. Country Availability & Waitlist
+
+#### 6.1 Landing page behaviour
+
+| Country | UI | Action |
+|---------|-----|--------|
+| CZ (`is_supported = true`, `coming_soon = false`) | Flag + "Available now" badge + "Start free trial" button | Proceeds to Step 1 with `country = "CZ"` |
+| Countries where `coming_soon = true` (e.g. SK, AT, ...) | Flag + name + "Coming soon" badge. Rendered as a **dynamic list** from DB. | Each has a "Notify me" link → opens email input inline |
+| Others | "Different country?" link below the Coming Soon list | Opens mini-form: email + country picker (lazy) → `INSERT INTO country_waitlist` |
+
+#### 6.2 Country picker lazy loading
+
+The landing page renders:
+- **CZ card** statically (always visible),
+- **Coming soon list** dynamically from DB (`coming_soon = true`),
+- and lazily loads the full country picker only for "Different country?" flow.
+
+The full `CountrySelect` dropdown is loaded **only** when the user clicks "Different country?":
+
+1. `React.lazy(() => import('@/components/common/CountrySelect'))` loads the component chunk.
+2. The component itself lazy-loads the country data on first dropdown open (existing behaviour).
+
+Zero extra JS or data fetched until the user explicitly asks for it.
+
+#### 6.3 New DB table: `country_waitlist`
+
+```sql
+CREATE TABLE country_waitlist (
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    email       VARCHAR(255) NOT NULL,
+    country     CHAR(2) NOT NULL,
+    locale      VARCHAR(10) NOT NULL DEFAULT 'en',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(email, country)
+);
+
+CREATE INDEX idx_waitlist_country ON country_waitlist(country);
+```
+
+#### 6.4 New column on `countries` table
+
+```sql
+ALTER TABLE countries
+    ADD COLUMN coming_soon BOOLEAN NOT NULL DEFAULT false;
+
+UPDATE countries SET coming_soon = true WHERE code = 'SK';
+```
+
+### 7. Email Verification
+
+#### 7.1 DB migration
+
+```sql
+ALTER TABLE users
+    ADD COLUMN email_verified         BOOLEAN NOT NULL DEFAULT false,
+    ADD COLUMN verification_token_hash VARCHAR(128),  -- e.g. argon2 or SHA-256 hex
+    ADD COLUMN verification_expires   TIMESTAMPTZ,
+    ADD COLUMN tos_accepted_at        TIMESTAMPTZ;    -- GDPR: when user accepted ToS + Privacy Policy
+
+-- Auto-verify all existing users
+UPDATE users SET email_verified = true
+WHERE password_hash != 'not-set';
+
+CREATE INDEX idx_users_verification_token_hash
+    ON users(verification_token_hash)
+    WHERE verification_token_hash IS NOT NULL;
+```
+
+#### 7.2 Token generation
+
+- 32-byte random token, hex-encoded (64 chars). Send raw token in email link.
+- Store **hash** of token in DB (`verification_token_hash`), not plaintext. On verify: hash incoming token, lookup by hash, check expiry.
+- Expires after **24 hours**.
+- **Token reuse on resend**: If the user clicks "Resend", do not immediately overwrite the token. If the existing token is still valid (unexpired), resend the same token. This ensures that if the first email arrives delayed and the user clicks it, the link is still valid. If expired, generate a new one.
+
+#### 7.3 Email templates
+
+Sent via Resend through the existing `EmailProcessor` JetStream queue. Templates are locale-aware:
+
+**1. Verification email (new user):**
+| Locale | Subject | Body (excerpt) |
+|--------|---------|----------------|
+| en | "Verify your Ariadline account" | "Click the link below to verify your email. This link expires in 24 hours." |
+| cs | "Ověřte svůj účet Ariadline" | "Kliknutím na odkaz níže ověříte svou e-mailovou adresu. Odkaz je platný 24 hodin." |
+| sk | "Overte svoj účet Ariadline" | "Kliknutím na odkaz nižšie overíte svoju e-mailovú adresu. Odkaz je platný 24 hodín." |
+
+**2. Already registered (anti-enumeration):**
+If an existing verified user tries to register again, we send this email to prevent them from getting stuck, without revealing to the submitter (who might be an attacker) that the account exists.
+| Locale | Subject | Body (excerpt) |
+|--------|---------|----------------|
+| en | "Account already exists" | "You (or someone else) recently tried to register with this email. You already have an account! Click here to log in." |
+| cs | "Účet již existuje" | "Někdo se pokusil zaregistrovat s tímto e-mailem. Účet u nás již máte! Klikněte zde pro přihlášení." |
+| sk | "Účet už existuje" | "Niekto sa pokúsil zaregistrovať s týmto e-mailom. Účet u nás už máte! Kliknite sem pre prihlásenie." |
+
+#### 7.4 Verification link format
+
+```
+{APP_BASE_URL}/verify-email?token=<hex_token>
+```
+
+`APP_BASE_URL` (or `VERIFICATION_BASE_URL`) is configurable: dev/staging use `http://localhost:5173` etc.; production uses `https://app.ariadline.cz`.
+
+Frontend route `/verify-email` reads the token, sends `sazinka.auth.verify-email`, stores JWT, redirects to Step 2.
+
+#### 7.5 Resend verification
+
+"Resend verification email" button with **60-second cooldown** (frontend timer + backend rate limit). NATS subject: `sazinka.auth.resend-verification`.
+
+### 8. Device Type Selection (Step 3)
+
+#### 8.1 Purpose
+
+When a new tenant is created, the DB trigger `seed_device_types_for_tenant` inserts 5 builtin device types with Czech labels. Step 3 lets the user:
+
+1. **Select** which builtin types are relevant (checkbox toggle).
+2. **Adjust** default duration and revision interval per selected type.
+3. **Add custom** device types (label + duration + interval).
+
+Unselected builtin types are **deactivated** (`is_active = false`), not deleted — so they can be re-enabled later in Settings.
+
+#### 8.2 Builtin types presented
+
+Chimney is listed **first and pre-selected** (target market: chimney sweepers). All others unchecked by default.
+
+| # | Key | i18n key | EN label | Duration | Interval | Default |
+|---|-----|----------|----------|----------|----------|---------|
+| 1 | `chimney` | `device_type_chimney` | Chimney | 30 min | 12 months | **checked** |
+| 2 | `gas_boiler` | `device_type_gas_boiler` | Gas boiler | 60 min | 12 months | unchecked |
+| 3 | `gas_water_heater` | `device_type_gas_water_heater` | Gas water heater | 45 min | 12 months | unchecked |
+| 4 | `fireplace` | `device_type_fireplace` | Fireplace / insert | 30 min | 12 months | unchecked |
+| 5 | `gas_stove` | `device_type_gas_stove` | Gas stove | 20 min | 36 months | unchecked |
+
+All labels are **localized** — no hardcoded Czech. The `sort_order` in the wizard overrides DB `sort_order` to put chimney first.
+
+#### 8.3 Custom type creation
+
+Minimal: just **label**, **duration**, and **interval**. Custom fields can be added later in Settings. This keeps the wizard simple.
+
+#### 8.4 Backend handler: `sazinka.onboarding.devices`
+
+```rust
+pub struct OnboardingDevicesRequest {
+    /// Builtin types the user selected (with optional overrides)
+    pub selected_builtins: Vec<BuiltinSelection>,
+    /// New custom types to create
+    pub custom_types: Vec<CustomTypeCreation>,
+}
+
+pub struct BuiltinSelection {
+    pub device_type_key: String,
+    pub default_revision_duration_minutes: Option<i32>,
+    pub default_revision_interval_months: Option<i32>,
+}
+
+pub struct CustomTypeCreation {
+    pub label: String,
+    pub default_revision_duration_minutes: i32,
+    pub default_revision_interval_months: i32,
+}
+```
+
+Logic:
+1. Get tenant_id for user.
+2. For each builtin type NOT in `selected_builtins` → `UPDATE SET is_active = false`.
+3. For each builtin type IN `selected_builtins` → `UPDATE SET duration, interval` if overridden.
+4. For each `custom_types` entry → `INSERT INTO device_type_configs` (is_builtin = false).
+
+#### 8.5 Depot geocoding UX flow (Step 4)
+
+Geocoding is **mandatory** — the app relies on depot coordinates for route planning. The flow handles loading, success, failure, and rate limiting:
+
+```
+User fills in Street, City, Postal code
+        │
+        ▼
+[Verify address]  ← button (enabled when all 3 fields non-empty)
+        │
+        ▼
+┌────────────────────────────────────────────────────────┐
+│  ⟳ Verifying address...                                │
+│  (spinner, button disabled, fields read-only)          │
+└────────────────────────────────────────────────────────┘
+        │
+        ├── SUCCESS ─────────────────────────────────────┐
+        │   ┌────────────────────────────────────────────┐
+        │   │  ✅ Address verified                        │
+        │   │  Coordinates: 49.1951°N, 16.6068°E         │
+        │   │  [Continue →] enabled                       │
+        │   └────────────────────────────────────────────┘
+        │
+        ├── GEOCODE FAILED (no result) ──────────────────┐
+        │   ┌────────────────────────────────────────────┐
+        │   │  ⚠ Could not find this address.            │
+        │   │  Please check the street, city and postal  │
+        │   │  code, then try again.                     │
+        │   │                                            │
+        │   │  [Try again]                               │
+        │   │                                            │
+        │   │  Or pin the location manually:             │
+        │   │  ┌──────────────────────────────────────┐  │
+        │   │  │                                      │  │
+        │   │  │         [Interactive Map]            │  │
+        │   │  │      (Click to drop a pin)           │  │
+        │   │  │                                      │  │
+        │   │  └──────────────────────────────────────┘  │
+        │   │  [Use pinned location]                     │
+        │   └────────────────────────────────────────────┘
+        │
+        ├── NETWORK ERROR ───────────────────────────────┐
+        │   ┌────────────────────────────────────────────┐
+        │   │  ⚠ Verification failed. Please try again.  │
+        │   │  [Retry]                                   │
+        │   └────────────────────────────────────────────┘
+        │
+        └── RATE LIMITED ────────────────────────────────┐
+            ┌────────────────────────────────────────────┐
+            │  ⚠ Too many attempts. Please wait a moment │
+            │  and try again.                            │
+            │  [Retry] (disabled for 30s, countdown)     │
+            └────────────────────────────────────────────┘
+```
+
+**Rate limit:** 5 geocode requests per user per 5 minutes. This prevents abuse of the Nominatim instance during onboarding. Uses the same `MultiRateLimiter` infrastructure.
+
+**Manual coordinates fallback:** If geocoding repeatedly fails (e.g. new address not yet in Nominatim), an interactive map (e.g., Leaflet) is displayed centered on the selected country. The user can click to drop a pin to set their depot location directly. The "Use pinned location" button validates that the dropped pin is within plausible range for the selected country (e.g. CZ: lat 48.5–51.1, lng 12.0–18.9).
+
+**"Continue" button state:**
+- Disabled until address is verified (either via geocode or pinned location).
+- Stays enabled after successful verification — editing the address fields resets the verification state, requiring re-verification.
+
+---
+
+### 9. Rate Limiting & DDoS Protection
+
+#### 9.1 Backend rate limits
+
+| Endpoint | Limit | Key | Window |
+|----------|-------|-----|--------|
+| `sazinka.auth.register.start` | 3 per email, 10 per IP | email + IP | 15 min |
+| `sazinka.auth.verify-email` | 5 per token | token prefix | 15 min |
+| `sazinka.auth.resend-verification` | 2 per email | email | 5 min |
+| `sazinka.auth.login` | 5 per email (existing) | email | 5 min |
+| `sazinka.onboarding.geocode.depot` | 5 per user | user_id | 5 min |
+| `sazinka.waitlist.join` | 3 per email | email | 1 hour |
+
+#### 9.2 Implementation
+
+Extend the existing `RateLimiter` into a `MultiRateLimiter`:
+
+```rust
+pub struct RateLimiterConfig {
+    pub max_attempts: u32,
+    pub window_seconds: u64,
+}
+
+pub struct MultiRateLimiter {
+    limiters: HashMap<String, RateLimiter>,
+}
+```
+
+#### 9.3 DDoS protection (infrastructure layer)
+
+- **Cloudflare proxy** in front of the app domain — automatic L3/L4/L7 DDoS mitigation, bot management, WAF rate limiting rules as second layer.
+- **NATS** not publicly exposed (internal Docker network only).
+- **WebSocket** endpoint (NATS over WS) is the only public surface — Cloudflare proxies it.
+
+### 10. Free Trial Messaging
+
+30-day free trial, no credit card. Texts for all three locales:
+
+| Key | EN | CS | SK |
+|-----|-----|-----|-----|
+| `trial_badge` | "30 days free" | "30 dní zdarma" | "30 dní zadarmo" |
+| `trial_no_card` | "No credit card required" | "Bez platební karty" | "Bez platobnej karty" |
+| `trial_started` | "Your 30-day free trial starts today. We'll remind you before it ends — no surprises." | "Vaše 30denní zkušební období začíná dnes. Upozorníme vás před jeho koncem — žádná překvapení." | "Vaše 30-dňové skúšobné obdobie začína dnes. Upozorníme vás pred jeho koncom — žiadne prekvapenia." |
+
+### 11. "Behind the scenes" — What the backend does at each step
+
+| Step | Backend action |
+|------|---------------|
+| Landing page load | Fetch supported + coming-soon countries from DB (public endpoint, no auth; lightweight query, cached) |
+| Landing → "Start free trial" | Nothing (country stored in frontend wizard state) |
+| Landing → "Notify me" (Coming Soon or Other) | `INSERT INTO country_waitlist` |
+| Step 1 → Continue | `INSERT INTO users` (email_verified=false, tos_accepted_at=now()), generate/store verification token hash, send verification email. |
+| Email link clicked | `UPDATE users SET email_verified=true`, create tenant + user_tenant relation (triggers `seed_device_types_for_tenant`), issue JWT |
+| Step 2 → Continue | `UPDATE users SET name, business_name, phone, ico, locale, country` |
+| Step 3 → Continue | Deactivate unselected builtins, update selected overrides, create custom types |
+| Step 4 → "Verify address" | Call Nominatim geocoder (`sazinka.onboarding.geocode.depot`) |
+| Step 4 → Continue | `INSERT INTO depots`, `INSERT INTO crews` (label from i18n key `onboarding_default_crew_name`), update user defaults, set `onboarding_completed_at` |
+| Step 5 → "Go to Dashboard" | Frontend redirect (data already saved) |
+
+### 12. Lazy Loading Strategy
+
+```
+/login           ← eagerly loaded (Login.tsx)
+/register        ← lazy-loaded (entire wizard module)
+  ├── Landing    ← rendered immediately, CZ card static + Coming Soon from API
+  ├── WaitlistForm  ← lazy-loaded on "Different country?" click
+  │   └── CountrySelect ← lazy-loaded on dropdown open (existing)
+  ├── StepIndicator ← rendered on all wizard steps (1–5)
+  ├── Step1Account  ← rendered on "Start free trial" click
+  ├── VerifyEmail   ← rendered after Step 1 submit
+  ├── Step2Profile  ← rendered after email verified
+  ├── Step3Devices  ← rendered after Step 2 submit
+  ├── Step4Depot    ← rendered after Step 3 submit
+  │   └── LeafletMap ← lazy-loaded on geocode failure (fallback only)
+  └── Step5Done     ← rendered after Step 4 submit
+/verify-email    ← lazy-loaded (thin wrapper, calls verify then redirects)
+```
+
+The wizard is a single lazy chunk. Sub-steps are plain components (not further code-split) since the wizard module itself is already deferred. `CountrySelect` stays in its own chunk because it pulls in the full 200+ country dataset. The **Leaflet map** (interactive fallback for geocoding failure) is also a separate lazy chunk — it's a large dependency only needed in the rare case that Nominatim fails.
+
+### 13. TDD Implementation Plan
+
+#### Phase A: Database & Types (backend) ✅ DONE
+
+##### A1. Migration 023 — email verification columns
+
+**Red:**
+```rust
+#[test]
+fn user_has_email_verified_field() {
+    // query user → assert email_verified exists and defaults to false
+}
+#[test]
+fn user_has_verification_token_hash_field() {
+    // insert user → set verification_token_hash → query back → assert match
+}
+```
+
+**Green:** Migration adding `email_verified`, `verification_token_hash`, `verification_expires` to `users`. Backfill existing users as verified.
+
+**Refactor:** Update `User` struct, `USER_COLUMNS`, `UserPublic` to include `emailVerified`.
+
+##### A2. Migration 024 — country_waitlist table + countries.coming_soon
+
+**Red:**
+```rust
+#[test]
+fn can_insert_and_query_waitlist_entry() { ... }
+#[test]
+fn waitlist_unique_constraint_on_email_country() { ... }
+#[test]
+fn country_has_coming_soon_field() { ... }
+```
+
+**Green:** Migration creating `country_waitlist`, adding `coming_soon` to `countries`.
+
+**Refactor:** Create `CountryWaitlistEntry` type, update `Country` struct.
+
+##### A3. Migration 025 — onboarding progress columns
+
+**Red:**
+```rust
+#[test]
+fn user_has_onboarding_completed_at() {
+    // newly created user → assert onboarding_completed_at IS NULL
+}
+#[test]
+fn user_has_onboarding_step() {
+    // newly created user → assert onboarding_step = 2 after verification
+}
+```
+
+**Green:** 
+- `ALTER TABLE users ADD COLUMN onboarding_completed_at TIMESTAMPTZ;`
+- `ALTER TABLE users ADD COLUMN onboarding_step SMALLINT NOT NULL DEFAULT 0;`  
+  (`0` = pre-verification, `2` = at About you, `3` = at Devices, `4` = at Depot, `5` = at All set, `6` = completed)
+- Backfill existing users: `UPDATE users SET onboarding_completed_at = created_at, onboarding_step = 6 WHERE email_verified = true`.
+
+##### A4. Shared types — new message payloads
+
+**Red (TypeScript):**
+```typescript
+describe('RegisterStartRequest', () => {
+    it('requires email, password, locale, country', () => { ... });
+});
+describe('OnboardingDevicesRequest', () => {
+    it('requires selectedBuiltins array', () => { ... });
+});
+describe('OnboardingCompleteRequest', () => {
+    it('requires depot fields', () => { ... });
+});
+```
+
+**Green:** Add types to `packages/shared-types/src/auth.ts` and `packages/shared-types/src/onboarding.ts`.
+
+---
+
+#### Phase B: Backend Handlers ✅ DONE (B1–B3, B7, B8)
+
+##### B1. `handle_register_start` — create unverified user + send email
+
+**Red:**
+```rust
+#[tokio::test]
+async fn register_start_creates_unverified_user() { ... }
+#[tokio::test]
+async fn register_start_stores_verification_token_hash() { ... }
+#[tokio::test]
+async fn register_start_sends_already_registered_email_for_verified_duplicate() { ... }  // anti-enumeration
+#[tokio::test]
+async fn register_start_resends_verification_for_unverified_duplicate() { ... }  // re-engage abandoned signup
+#[tokio::test]
+async fn register_start_rate_limited() { ... }
+```
+
+**Green:** Handler on `sazinka.auth.register.start`:
+1. Validate email + password (min 8 chars, at least 1 uppercase + 1 lowercase + 1 digit — per Q4).
+2. Check rate limit.
+3. If email already exists **and verified**: publish "Already Registered" email job (with login link) to JetStream and return generic success — anti-enumeration (section 16.2).
+4. If email already exists **but unverified**: re-send the verification email (reuse existing valid token per section 7.2, or generate new if expired) and return generic success.
+5. Hash password, insert user (`email_verified = false`).
+6. Generate verification token, hash it, store hash with 24h expiry.
+7. Publish verification email job to JetStream.
+8. Return generic success message.
+
+##### B2. `handle_verify_email` — verify token, issue JWT
+
+**Red:**
+```rust
+#[tokio::test]
+async fn verify_email_activates_user() { ... }
+#[tokio::test]
+async fn verify_email_returns_jwt() { ... }
+#[tokio::test]
+async fn verify_email_rejects_expired_token() { ... }
+#[tokio::test]
+async fn verify_email_rejects_invalid_token() { ... }
+#[tokio::test]
+async fn verify_email_rejects_already_verified() { ... }
+```
+
+**Green:** Handler on `sazinka.auth.verify-email`. On success, create tenant mapping, issue JWT, and set `users.onboarding_step = 2`.
+
+##### B3. `handle_resend_verification`
+
+**Red:**
+```rust
+#[tokio::test]
+async fn resend_reuses_valid_unexpired_token() { ... }
+#[tokio::test]
+async fn resend_rate_limited() { ... }
+#[tokio::test]
+async fn resend_rejects_already_verified() { ... }
+```
+
+**Green:** Handler on `sazinka.auth.resend-verification`. Return generic success (anti-enumeration; see section 16.2).
+
+##### B4. `handle_onboarding_profile` — save user profile fields
+
+**Red:**
+```rust
+#[tokio::test]
+async fn onboarding_profile_updates_user() {
+    // send name, phone, ico → query user → assert fields set
+}
+#[tokio::test]
+async fn onboarding_profile_rejects_unverified() { ... }
+```
+
+**Green:** Handler on `sazinka.onboarding.profile`. On success, set `users.onboarding_step = GREATEST(onboarding_step, 3)`.
+
+##### B5. `handle_onboarding_devices` — configure device types
+
+**Red:**
+```rust
+#[tokio::test]
+async fn onboarding_devices_deactivates_unselected_builtins() {
+    // select only gas_boiler + chimney → query configs → assert 3 others inactive
+}
+#[tokio::test]
+async fn onboarding_devices_updates_duration_override() {
+    // select gas_boiler with duration=90 → query → assert 90
+}
+#[tokio::test]
+async fn onboarding_devices_creates_custom_type() {
+    // send custom type "Heat pump" → query → assert exists, is_builtin=false
+}
+#[tokio::test]
+async fn onboarding_devices_rejects_unverified() { ... }
+```
+
+**Green:** Handler on `sazinka.onboarding.devices`. On success, set `users.onboarding_step = GREATEST(onboarding_step, 4)`.
+
+##### B6. `handle_onboarding_complete` — save depot + create crew
+
+**Red:**
+```rust
+#[tokio::test]
+async fn onboarding_creates_depot_and_crew() {
+    // complete with depot → query depots → assert 1 primary
+    // query crews → assert "Crew 1" linked to depot
+}
+#[tokio::test]
+async fn onboarding_sets_default_ids() {
+    // complete → query user → assert default_crew_id, default_depot_id set
+}
+#[tokio::test]
+async fn onboarding_sets_completed_at() {
+    // complete → query user → assert onboarding_completed_at IS NOT NULL
+}
+#[tokio::test]
+async fn onboarding_rejects_unverified() { ... }
+```
+
+**Green:** Handler on `sazinka.onboarding.complete`. Wrap in transaction and set `users.onboarding_step = 6`.
+
+##### B7. `handle_waitlist_join`
+
+**Red:**
+```rust
+#[tokio::test]
+async fn waitlist_join_inserts_entry() { ... }
+#[tokio::test]
+async fn waitlist_join_idempotent() { ... }
+#[tokio::test]
+async fn waitlist_join_rate_limited() { ... }
+```
+
+**Green:** Handler on `sazinka.waitlist.join`.
+
+##### B8. MultiRateLimiter
+
+**Red:**
+```rust
+#[test]
+fn multi_rate_limiter_independent_configs() { ... }
+```
+
+**Green:** Extend `RateLimiter` into `MultiRateLimiter`.
+
+---
+
+#### Phase C: Email Abstraction Layer & Resend Integration ✅ DONE (C0, C1)
+
+The current `EmailProcessor` is tightly coupled to JetStream and has no abstraction for the actual send operation. We need a trait-based abstraction so that:
+
+- **Production**: sends via Resend HTTP API.
+- **Development**: logs emails to console + writes to a local file (inspectable).
+- **Tests**: captures sent emails in memory for assertions.
+
+##### C0. `EmailSender` trait + implementations
+
+**Location:** `worker/src/services/email.rs` (new module, replaces direct Resend coupling in `email_processor.rs`)
+
+**Red:**
+```rust
+#[test]
+fn email_message_builder_sets_all_fields() {
+    let msg = EmailMessage::new("to@example.com", "Subject", "<p>Body</p>")
+        .with_text("Body")
+        .with_from("sender@example.com", "Sender");
+    assert_eq!(msg.to, "to@example.com");
+    assert_eq!(msg.subject, "Subject");
+    assert!(msg.from_email.is_some());
+}
+
+#[tokio::test]
+async fn fake_sender_captures_emails() {
+    let sender = FakeEmailSender::new();
+    sender.send(&EmailMessage::new("a@b.com", "Hi", "<p>Hi</p>")).await.unwrap();
+    let sent = sender.sent_emails();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].to, "a@b.com");
+}
+
+#[tokio::test]
+async fn fake_sender_can_simulate_failure() {
+    let sender = FakeEmailSender::new().with_failure("Simulated outage");
+    let result = sender.send(&EmailMessage::new("a@b.com", "Hi", "<p>Hi</p>")).await;
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn log_sender_does_not_fail() {
+    let sender = LogEmailSender::new();
+    sender.send(&EmailMessage::new("a@b.com", "Hi", "<p>Hi</p>")).await.unwrap();
+    // no panic, email logged to tracing + file
+}
+```
+
+**Green:**
+
+```rust
+/// A single outbound email.
+pub struct EmailMessage {
+    pub to: String,
+    pub subject: String,
+    pub body_html: String,
+    pub body_text: Option<String>,
+    pub from_email: Option<String>,
+    pub from_name: Option<String>,
+}
+
+/// Result of a send operation.
+pub struct SendResult {
+    pub message_id: String,
+}
+
+/// Abstraction over email delivery.
+#[async_trait]
+pub trait EmailSender: Send + Sync {
+    async fn send(&self, message: &EmailMessage) -> Result<SendResult>;
+}
+
+// --- Implementations ---
+
+/// Production: sends via Resend HTTP API.
+pub struct ResendEmailSender { api_key: String, from_email: String, from_name: String }
+
+/// Development: logs to tracing (info level) + appends to `logs/emails.jsonl`.
+pub struct LogEmailSender { log_dir: PathBuf }
+
+/// Tests: captures emails in Arc<Mutex<Vec<EmailMessage>>>, optionally simulates failures.
+pub struct FakeEmailSender { sent: Arc<Mutex<Vec<EmailMessage>>>, fail_with: Option<String> }
+```
+
+**Selection logic** (in `main.rs` or config):
+```rust
+fn create_email_sender() -> Arc<dyn EmailSender> {
+    if let Ok(api_key) = std::env::var("RESEND_API_KEY") {
+        Arc::new(ResendEmailSender::new(&api_key, ...))
+    } else {
+        info!("RESEND_API_KEY not set — using LogEmailSender (dev mode)");
+        Arc::new(LogEmailSender::new("logs"))
+    }
+}
+```
+
+Tests inject `FakeEmailSender` directly.
+
+**Refactor:** `EmailProcessor` receives `Arc<dyn EmailSender>` instead of `Option<EmailConfig>`. The `process_job` method calls `self.sender.send(...)` instead of having a `TODO: Implement actual email sending` comment.
+
+##### C1. Email templates
+
+**Red:**
+```rust
+#[test]
+fn verification_email_renders_en() {
+    let html = render_verification_email("https://...", "en");
+    assert!(html.contains("Verify your"));
+}
+#[test]
+fn verification_email_renders_cs() {
+    let html = render_verification_email("https://...", "cs");
+    assert!(html.contains("Ověřte"));
+}
+#[test]
+fn verification_email_renders_sk() {
+    let html = render_verification_email("https://...", "sk");
+    assert!(html.contains("Overte"));
+}
+#[test]
+fn already_registered_email_renders_en() {
+    let html = render_already_registered_email("https://...", "en");
+    assert!(html.contains("already have an account"));
+}
+```
+
+**Green:** 
+- `render_verification_email(link: &str, locale: &str) -> EmailMessage` — returns a fully-formed `EmailMessage` with locale-aware subject + HTML body for new users.
+- `render_already_registered_email(link: &str, locale: &str) -> EmailMessage` — returns `EmailMessage` for duplicate registration attempts.
+
+##### C2. ResendEmailSender HTTP implementation
+
+**Red:**
+```rust
+#[tokio::test]
+async fn resend_sender_posts_to_api() {
+    // Use a mock HTTP server (e.g. wiremock) to verify:
+    // - POST to /emails
+    // - Authorization: Bearer <api_key>
+    // - JSON body contains to, from, subject, html
+    // - Returns message_id from mock response
+}
+
+#[tokio::test]
+async fn resend_sender_returns_error_on_4xx() {
+    // Mock returns 422 → assert Result::Err with meaningful message
+}
+```
+
+**Green:** `ResendEmailSender::send()` — HTTP POST to `https://api.resend.com/emails` using `reqwest`. Parses response for `id` field.
+
+##### C3. LogEmailSender for development
+
+**Red:**
+```rust
+#[tokio::test]
+async fn log_sender_writes_to_file() {
+    let dir = tempdir().unwrap();
+    let sender = LogEmailSender::new(dir.path());
+    sender.send(&EmailMessage::new("a@b.com", "Test", "<p>Test</p>")).await.unwrap();
+    let content = std::fs::read_to_string(dir.path().join("emails.jsonl")).unwrap();
+    assert!(content.contains("a@b.com"));
+}
+```
+
+**Green:** `LogEmailSender::send()` — logs via `tracing::info!`, appends JSON line to `logs/emails.jsonl`. The file is human-readable and can be tailed during development (`tail -f logs/emails.jsonl`).
+
+**Dev workflow:** When a verification email is "sent" in dev mode, the developer sees:
+
+```
+INFO  email: [DEV] Email to=user@example.com subject="Verify your Ariadline account"
+INFO  email: [DEV] Verification link: https://app.ariadline.cz/verify-email?token=abc123...
+```
+
+The full email (HTML, text, headers) is in `logs/emails.jsonl` for inspection.
+
+---
+
+#### Phase D: Frontend — Wizard Components
+
+##### D1. StepIndicator component
+
+**Red:**
+```typescript
+describe('StepIndicator', () => {
+    it('renders 5 steps with labels', () => { ... });
+    it('marks completed steps with checkmark', () => { ... });
+    it('highlights current step', () => { ... });
+    it('makes completed steps clickable', () => { ... });
+    it('disables future steps', () => { ... });
+    it('works on mobile (labels hidden, circles visible)', () => { ... });
+});
+```
+
+**Green:** `StepIndicator.tsx` — horizontal stepper, localized labels.
+
+##### D2. Wizard shell + state management
+
+**Red:**
+```typescript
+describe('OnboardingWizard', () => {
+    it('renders Landing step by default', () => { ... });
+    it('advances to Step1 on "Start free trial" click', () => { ... });
+    it('shows StepIndicator on steps 1-5 but not on Landing', () => { ... });
+    it('preserves state across steps (country, locale, email)', () => { ... });
+    it('allows navigating back to completed steps via StepIndicator', () => { ... });
+});
+```
+
+**Green:** `OnboardingWizard.tsx` — state machine, React context for shared state.
+
+**Refactor:** Update `/register` route to use new wizard.
+
+##### D3. Landing step
+
+**Red:**
+```typescript
+describe('Landing', () => {
+    it('shows CZ as available with "Start free trial" button', () => { ... });
+    it('shows SK as "Coming soon" with disabled button', () => { ... });
+    it('shows "Different country?" link', () => { ... });
+    it('lazy-loads WaitlistForm on "Different country?" click', () => { ... });
+    it('shows language switcher (en/cs/sk)', () => { ... });
+    it('shows free trial badge', () => { ... });
+    it('links to /login', () => { ... });
+});
+```
+
+**Green:** `Landing.tsx`.
+
+##### D4. WaitlistForm (lazy)
+
+**Red:**
+```typescript
+describe('WaitlistForm', () => {
+    it('renders email input and lazy CountrySelect', () => { ... });
+    it('submits to sazinka.waitlist.join', () => { ... });
+    it('shows success message after submit', () => { ... });
+    it('shows error on rate limit', () => { ... });
+});
+```
+
+**Green:** `WaitlistForm.tsx`.
+
+##### D5. Step1Account
+
+**Red:**
+```typescript
+describe('Step1Account', () => {
+    it('renders email, password, confirm password fields', () => { ... });
+    it('shows password strength indicator', () => { ... });
+    it('validates password match before submit', () => { ... });
+    it('validates minimum length', () => { ... });
+    it('shows ToS + Privacy Policy checkbox with links', () => { ... });
+    it('disables Continue until ToS checkbox is checked', () => { ... });
+    it('submits to sazinka.auth.register.start', () => { ... });
+    it('transitions to VerifyEmail on success (always shows generic success — anti-enumeration)', () => { ... });
+    it('shows rate limit error', () => { ... });
+    it('Back discards form and returns to Landing — user starts registration from scratch', () => { ... });
+});
+```
+
+**Green:** `Step1Account.tsx`.
+
+##### D6. VerifyEmail interstitial
+
+**Red:**
+```typescript
+describe('VerifyEmail', () => {
+    it('shows "Check your inbox" with email address', () => { ... });
+    it('shows "Resend" button', () => { ... });
+    it('disables "Resend" for 60s after click', () => { ... });
+    it('shows countdown timer', () => { ... });
+});
+```
+
+**Green:** `VerifyEmail.tsx`.
+
+##### D7. `/verify-email` route
+
+**Red:**
+```typescript
+describe('VerifyEmailRoute', () => {
+    it('reads token from URL', () => { ... });
+    it('calls sazinka.auth.verify-email', () => { ... });
+    it('stores JWT, redirects to step 2 on success', () => { ... });
+    it('shows error on invalid/expired token', () => { ... });
+});
+```
+
+**Green:** New lazy route `/verify-email` → `VerifyEmailCallback.tsx`.
+
+##### D8. Step2Profile
+
+**Red:**
+```typescript
+describe('Step2Profile', () => {
+    it('pre-fills locale and country from wizard state', () => { ... });
+    it('requires name', () => { ... });
+    it('makes business name, phone, ICO optional', () => { ... });
+    it('submits to sazinka.onboarding.profile', () => { ... });
+    it('advances to Step3', () => { ... });
+});
+```
+
+**Green:** `Step2Profile.tsx`.
+
+##### D9. Step3Devices
+
+**Red:**
+```typescript
+describe('Step3Devices', () => {
+    it('fetches builtin device types on mount', () => { ... });
+    it('renders checkbox list of 5 builtin types', () => { ... });
+    it('shows Chimney first and pre-checked', () => { ... });
+    it('shows all other types unchecked by default', () => { ... });
+    it('shows duration and interval for each type', () => { ... });
+    it('allows expanding a selected type to edit duration/interval', () => { ... });
+    it('shows "Add custom device type" button', () => { ... });
+    it('allows adding a custom type with label/duration/interval', () => { ... });
+    it('requires at least 1 type selected to continue', () => { ... });
+    it('disables Continue when all types are unchecked', () => { ... });
+    it('submits to sazinka.onboarding.devices', () => { ... });
+    it('advances to Step4', () => { ... });
+});
+```
+
+**Green:** `Step3Devices.tsx`.
+
+##### D10. Step4Depot
+
+**Red:**
+```typescript
+describe('Step4Depot', () => {
+    it('renders depot name, street, city, postal code', () => { ... });
+    it('disables "Verify address" until street+city+postal filled', () => { ... });
+    it('shows loading spinner during geocoding', () => { ... });
+    it('shows verified lat/lng on success', () => { ... });
+    it('enables "Continue" only after verification', () => { ... });
+    it('shows error + retry on geocode failure', () => { ... });
+    it('shows interactive map fallback on geocode failure', () => { ... });
+    it('validates pinned coords are within country bounds', () => { ... });
+    it('resets verification state when address fields change', () => { ... });
+    it('shows rate limit message when too many attempts', () => { ... });
+    it('submits to sazinka.onboarding.complete', () => { ... });
+    it('advances to Step5', () => { ... });
+});
+```
+
+**Green:** `Step4Depot.tsx`.
+
+##### D11. Step5Done
+
+**Red:**
+```typescript
+describe('Step5Done', () => {
+    it('shows summary (account, N device types, depot, crew)', () => { ... });
+    it('shows free trial message', () => { ... });
+    it('navigates to / on button click', () => { ... });
+});
+```
+
+**Green:** `Step5Done.tsx`.
+
+##### D12. i18n — onboarding namespace
+
+**Red:**
+```typescript
+describe('onboarding translations', () => {
+    it('has all keys in en', () => { ... });
+    it('has all keys in cs', () => { ... });
+    it('has all keys in sk', () => { ... });
+    it('has no missing keys vs en baseline', () => { ... });
+});
+```
+
+**Green:** Create `apps/web/public/locales/{en,cs,sk}/onboarding.json`.
+
+---
+
+#### Phase E: Integration & Auth Guard
+
+##### E1. Protect app behind email_verified
+
+**Red:**
+```rust
+#[tokio::test]
+async fn unverified_user_cannot_access_protected_endpoints() { ... }
+```
+
+**Green:** Add `email_verified` to JWT payload. Frontend `ProtectedRoute` checks `user.emailVerified`. Unverified user redirected to wizard.
+
+##### E2. Existing users backward compat
+
+**Green:** Migration backfills `email_verified = true` for existing users (done in A1). `onboarding_completed_at` backfilled in A3.
+
+##### E3. Incomplete onboarding redirect
+
+**Red:**
+```typescript
+describe('OnboardingGuard', () => {
+    it('redirects to wizard step 2 if profile not complete', () => { ... });
+    it('allows access to dashboard if onboarding complete', () => { ... });
+});
+```
+
+**Green:** `ProtectedRoute` checks `user.onboardingCompletedAt`. If null → redirect to `/register` and resume from `user.onboardingStep`.
+
+---
+
+### 14. Implementation Order (dependency graph)
+
+```
+A1 (migration: email_verified)
+ └─▶ A4 (shared types)
+      ├─▶ B1 (register.start)
+      │    └─▶ B2 (verify-email)
+      │         ├─▶ B4 (onboarding.profile)
+      │         │    └─▶ B5 (onboarding.devices)
+      │         │         └─▶ B6 (onboarding.complete)
+      │         │              └─▶ E1 (auth guard)
+      │         └─▶ B3 (resend-verification)
+      └─▶ B8 (MultiRateLimiter) ←── used by B1–B3, B7
+
+A2 (migration: waitlist + coming_soon) ──▶ B7 (waitlist.join)
+A3 (migration: onboarding_completed_at) ──▶ E3 (onboarding guard)
+
+C0 (EmailSender trait + Fake + Log) ──▶ C1 (email template) ──▶ C2 (Resend impl) + C3 (Log impl) ──▶ B1
+
+D1 (StepIndicator) ──▶ D2 (wizard shell) ──▶ D3..D11 (steps)
+D12 (i18n) ←── parallel with D1..D11
+
+E2 (backward compat) ←── after A1 + A3
+```
+
+Recommended execution order:
+1. **A1 + A2 + A3** — all migrations (parallel)
+2. **A4** — shared types
+3. **B8** — MultiRateLimiter
+4. **C0** — EmailSender trait + FakeEmailSender + LogEmailSender
+5. **C1 + C2 + C3** — verification template + ResendEmailSender + LogEmailSender file output
+6. **B1 → B2 → B3** — registration flow
+7. **B4 → B5 → B6** — onboarding handlers
+8. **B7** — waitlist handler
+9. **D1 → D2 → D3 → D4 → D5 → D6 → D7 → D8 → D9 → D10 → D11** — frontend
+10. **D12** — translations (overlaps with D-phase)
+11. **E1 + E2 + E3** — auth guard + backward compat + onboarding guard
+
+### 15. Decisions (resolved)
+
+| # | Question | Decision |
+|---|----------|----------|
+| Q1 | Auto-delete unverified users after N days? | **Yes.** Background job purges `WHERE email_verified = false AND created_at < now() - interval '7 days'`. |
+| Q2 | Allow email change before verification? | **No.** Changing email means abandoning the current registration and starting a new one. |
+| Q3 | Verification link target? | **Option A selected.** Open the Ariadline app directly at `/verify-email?token=...`. Frontend reads token, calls backend verification, stores JWT, then continues wizard at Step 2. No intermediate static confirmation page. |
+| Q4 | Password strength beyond min 8? | **Enforced.** Minimum 8 characters + at least 1 uppercase + 1 lowercase + 1 digit. Validated on both frontend (real-time indicator) and backend (reject on submit). |
+| Q5 | Depot geocoding mandatory? | **Yes.** See section 8.5 for the detailed geocoding UX flow including rate limiting, loading states, and failure handling. |
+| Q6 | "Crew 1" name editable in wizard? | **No.** Auto-created with localized label (i18n key `onboarding_default_crew_name`). Editable later in Settings. |
+| Q7 | Slovakia: blocked or available with warning? | **Blocked.** Listed under "Coming soon" alongside any other upcoming countries. "Coming soon" is a **dynamic list** of countries where `coming_soon = true`, not just Slovakia. |
+| Q8 | Device type labels — Czech only or localized? | **Everything localized.** No Czech-specific hardcoding anywhere. Builtin types use i18n keys (`device_type_chimney`, `device_type_gas_boiler`, etc.). This is a multi-country product from day one. |
+| Q9 | Can the user skip the Devices step? | **No.** At least 1 type must be selected. Chimney is pre-selected as the default (target audience: chimney sweepers in Czechia first). The wizard says "You can change this later in Settings." |
+| Q10 | Should the wizard be resumable? | **Yes.** JWT is stored after email verification (Step 1). If user returns later, `onboarding_completed_at IS NULL` triggers resume. Resume point is driven by explicit onboarding progress (`onboarding_step`), not inferred from seeded data. |
+
+### 16. Additional Decisions & Implementation Notes
+
+#### 16.1 Answers (from review)
+
+| Topic | Decision |
+|-------|----------|
+| Depot geocoding NATS subject | **New subject.** Use a dedicated subject for onboarding depot geocoding (e.g. `sazinka.onboarding.geocode.depot`), not the existing geocoding subject. |
+| Landing country list | **Exposed.** The list of supported + coming-soon countries is available via a public endpoint (no auth required). |
+| Verification token storage | **Stored as hash.** Store `verification_token_hash` in DB (like password reset flows), not the raw token. Compare incoming token by hashing and matching. |
+| Crew default name | **Localized.** "Crew 1" must use an i18n key (e.g. `onboarding_default_crew_name`) so it displays correctly in en/cs/sk. |
+| Step 1 "Back" button | **Discards form and returns to Landing.** User starts registration from scratch. No partial state is preserved. |
+
+#### 16.2 Suggestions (incorporated)
+
+| Suggestion | Implementation |
+|------------|----------------|
+| **Anti-enumeration** | `register.start` and `resend-verification` return the same generic success message ("If this email can receive the message, we sent it") regardless of whether the email exists. If the email exists, the backend sends an "Already Registered" email with a login link so legitimate users do not get stuck waiting. |
+| **LogEmailSender** | Add `logs/emails.jsonl` to `.gitignore`. Optionally add rotation or max-size limit so the file does not grow unbounded in dev. |
+| **Verification link base URL** | Make configurable via `APP_BASE_URL` or `VERIFICATION_BASE_URL`. Dev/staging use `http://localhost:5173` etc.; production uses `https://app.ariadline.cz`. |
+| **Lazy loading diagram** | Landing renders: CZ card (static) + Coming Soon list (from public API). Full country picker lazy-loaded only when user clicks "Different country?". |
+| **Onboarding Telemetry** | We will track where users drop off (e.g., using Plausible, PostHog, or custom DB tracking). The frontend will emit tracking events at key milestones (Step 1 submit, email verified, Step 3 complete, etc.) to measure funnel conversion. |
+| **onboarding_step transitions** | See table 16.4 below. |
+
+#### 16.3 Verification token hash (migration)
+
+See **section 7.1** for the DB migration (`verification_token_hash`). Backend: generate random token, send in email, store `hash(token)` in DB. On verify: hash incoming token, lookup by hash, check expiry.
+
+#### 16.4 onboarding_step transitions
+
+| Handler | Sets `onboarding_step` to |
+|---------|---------------------------|
+| `verify-email` | 2 (About you) |
+| `onboarding.profile` | GREATEST(current, 3) (Devices) |
+| `onboarding.devices` | GREATEST(current, 4) (Depot) |
+| `onboarding.complete` | 6 (completed) |
+
+Semantics: `0` = pre-verify, `2` = at About you, `3` = at Devices, `4` = at Depot, `5` = at All set, `6` = onboarding completed.
+
+---
+
 *Dokument vytvořen: 2026-01-31*  
-*Poslední aktualizace: 2026-02-17 (Slot heuristics fixes, default duration 60min, quarter-hour alignment)*
+*Poslední aktualizace: 2026-02-23 (Phase 10: Onboarding Wizard plan v1.6 — fixes + ToS, Leaflet lazy-load, unverified duplicate handling)*

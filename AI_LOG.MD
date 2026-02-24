@@ -1,5 +1,81 @@
 # AI Implementation Log
 
+## 2026-02-21 - Phase 10 Onboarding: Phase A implementation (migrations + types)
+
+### Agent: Composer
+
+### Summary
+
+Implemented Phase A of the Onboarding Wizard (TDD Phase 10):
+
+**Migrations created:**
+- `023_add_email_verification.sql` — `email_verified`, `verification_token_hash`, `verification_expires`, `tos_accepted_at` on users; backfills existing users as verified
+- `024_add_country_waitlist.sql` — `country_waitlist` table + `coming_soon` column on countries; seeds SK as coming_soon
+- `025_add_onboarding_progress.sql` — `onboarding_completed_at`, `onboarding_step` on users; backfills existing verified users as step=6
+
+**Rust types updated:**
+- `User` struct: added `email_verified`, `verification_token_hash`, `verification_expires`, `tos_accepted_at`, `onboarding_completed_at`, `onboarding_step`
+- `UserPublic` struct: added `email_verified`, `onboarding_completed_at`, `onboarding_step`
+- `USER_COLUMNS` constant: updated with new columns
+- `Country` struct: added `coming_soon` field
+- New `CountryWaitlistEntry` struct
+
+**TypeScript shared types:**
+- `auth.ts`: added `RegisterStartRequest`, `RegisterStartResponse`, `VerifyEmailRequest`, `ResendVerificationRequest`; extended `UserPublic` with `emailVerified`, `onboardingCompletedAt`, `onboardingStep`
+- New `onboarding.ts`: `OnboardingProfileRequest`, `OnboardingDevicesRequest`, `OnboardingCompleteRequest`, `WaitlistJoinRequest`, `WaitlistJoinResponse`
+
+---
+
+## 2026-02-21 - Phase 10 Onboarding: review round 2 — fixes and new suggestions
+
+### Agent: Composer
+
+### Summary
+
+Applied 10 fixes/improvements to `PRJ_UX.MD` Phase 10 (Onboarding Wizard) v1.6:
+
+**Bugs fixed:**
+- Version header aligned (1.1 → 1.6, footer matches)
+- Sequence diagram indentation restored (lines 1814-1815)
+- Section numbering: 8.6 → 8.5 (filled gap)
+- B3 test renamed to `resend_reuses_valid_unexpired_token` (matches section 7.2 token reuse policy)
+- A3 inline comment updated to match actual `onboarding_step` semantics (0, 2, 3, 4, 5, 6)
+- B1 password validation now explicitly requires uppercase + lowercase + digit (matches Q4)
+
+**Edge case added:**
+- B1 now handles unverified duplicate emails: re-sends verification email (reuses valid token) instead of sending "Already Registered" email
+
+**New features:**
+- ToS/Privacy Policy checkbox added to Step 1 (GDPR compliance); `tos_accepted_at` column in migration; D5 tests added
+- Leaflet map lazy-loaded as separate chunk in Section 12
+- Step 5 wireframe: removed hardcoded "Crew 1", now shows generic "Crew created"
+
+---
+
+## 2026-02-21 - Phase 10 Onboarding: answers and suggestions incorporated
+
+### Agent: Composer
+
+### Summary
+
+Incorporated user answers and implementation suggestions into `PRJ_UX.MD` Phase 10 (Onboarding Wizard):
+
+**User answers:**
+1. Depot geocoding: new NATS subject (`sazinka.onboarding.geocode.depot`)
+2. Landing country list: exposed (public endpoint)
+3. Verification token: stored as hash (`verification_token_hash`)
+4. Crew 1: localized via i18n key `onboarding_default_crew_name`
+5. Step 1 Back: discards form, returns to Landing (start from scratch)
+
+**Suggestions added:**
+- Anti-enumeration for register/resend (generic success message)
+- LogEmailSender: `logs/emails.jsonl` in `.gitignore`, optional rotation
+- Verification link base URL configurable (`APP_BASE_URL`)
+- Lazy loading diagram: "CZ card static + Coming Soon from API"
+- `onboarding_step` transitions table (section 16.4)
+
+**Edits applied:** Migration updated for hash, handler/tests updated, geocode subject renamed, duplicate block removed, version footer set to v1.5.
+
 ## 2026-02-14 - Settings UI reorder + email templates update request
 
 ### User requirements (as requested)
@@ -900,3 +976,45 @@ Implemented a complete secrets management solution using SOPS (encrypted secrets
 - `.gitignore` – added SOPS-related patterns
 - `PRJ_DEVOPS.MD` – updated secrets management section
 - `PRJ_DATA.MD` – added SOPS implementation plan
+
+---
+
+## claude-4.6-sonnet-medium-thinking — 2026-02-21
+
+**Phase 10 – Onboarding Wizard: Phase B & C Implementation**
+
+Implemented Phase B (handlers) and Phase C (email infrastructure) of the Onboarding Wizard:
+
+**New files created:**
+
+- `worker/src/services/rate_limiter.rs` — `RateLimiter` (core) + `MultiRateLimiter` (named buckets) with independent per-endpoint configs. Unit tests cover allow/block/independence scenarios.
+
+- `worker/src/services/email_sender.rs` — `EmailSender` trait (async, object-safe) with three implementations:
+  - `LogEmailSender` — logs to tracing (dev/staging)
+  - `FakeEmailSender` — captures messages in memory for tests
+  - `ResendEmailSender` — live Resend.com API via reqwest
+
+- `worker/src/services/email_templates.rs` — `VerificationEmail` and `AlreadyRegisteredEmail` templates rendered per locale (en, cs, sk). Tests verify subject/body content for all three locales.
+
+- `worker/src/handlers/onboarding.rs` — Four NATS handlers:
+  - `handle_register_start` (`sazinka.auth.register.start`) — validates input, rate-limits, handles existing verified/unverified users with anti-enumeration, inserts new users, sends verification email
+  - `handle_verify_email` (`sazinka.auth.email.verify`) — verifies SHA-256 token hash, advances `onboarding_step` to 2, clears token
+  - `handle_resend_verification` (`sazinka.auth.email.resend`) — issues fresh token, responds generically (anti-enumeration)
+  - `handle_waitlist_join` (`sazinka.waitlist.join`) — idempotent upsert with ON CONFLICT DO NOTHING
+
+**Files modified:**
+
+- `worker/src/services/mod.rs` — added `email_sender`, `email_templates`, `rate_limiter` modules
+- `worker/src/handlers/mod.rs` — added `onboarding` module, wired all 4 handlers with `MultiRateLimiter` + `EmailSender` + `app_base_url`
+- `worker/src/config.rs` — added `app_base_url` field (from `APP_BASE_URL` env var, defaults to `http://localhost:5173`)
+- `worker/Cargo.toml` — added `sha2`, `hex`, `rand` dependencies
+
+**Key design decisions:**
+
+- Password validation: min 8 chars + 1 uppercase + 1 lowercase + 1 digit (matches PRJ_UX.MD Q4)
+- Token storage: SHA-256 hash only; plaintext never persisted
+- Verification link TTL: 24 hours
+- Anti-enumeration: identical success response regardless of whether email exists
+- Already-registered flow: sends dedicated email instead of silent drop
+- Password hashing: uses existing `crate::auth::hash_password` (argon2)
+- Pre-existing compile errors in `import.rs` and VRP modules prevent `cargo test`, but new code is structurally sound

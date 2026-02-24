@@ -40,6 +40,16 @@ pub struct User {
     pub role: String,
     pub owner_id: Option<Uuid>,
     
+    // Email verification (Phase 10)
+    pub email_verified: bool,
+    pub verification_token_hash: Option<String>,
+    pub verification_expires: Option<DateTime<Utc>>,
+    pub tos_accepted_at: Option<DateTime<Utc>>,
+    
+    // Onboarding progress (Phase 10)
+    pub onboarding_completed_at: Option<DateTime<Utc>>,
+    pub onboarding_step: i16,
+    
     // i18n
     /// BCP-47 locale code (e.g. "en", "cs", "en-GB"). Default: "en".
     pub locale: String,
@@ -62,6 +72,9 @@ pub struct UserPublic {
     pub permissions: Vec<String>,
     /// BCP-47 locale code (e.g. "en", "cs", "en-GB"). Default: "en".
     pub locale: String,
+    pub email_verified: bool,
+    pub onboarding_completed_at: Option<DateTime<Utc>>,
+    pub onboarding_step: i16,
 }
 
 impl From<User> for UserPublic {
@@ -75,6 +88,9 @@ impl From<User> for UserPublic {
             business_name: user.business_name,
             permissions: Vec::new(),
             locale: user.locale,
+            email_verified: user.email_verified,
+            onboarding_completed_at: user.onboarding_completed_at,
+            onboarding_step: user.onboarding_step,
         }
     }
 }

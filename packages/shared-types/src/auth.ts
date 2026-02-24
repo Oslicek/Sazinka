@@ -12,6 +12,30 @@ export interface RegisterRequest {
   businessName?: string;
 }
 
+/** Phase 10: New registration flow with email verification */
+export interface RegisterStartRequest {
+  email: string;
+  password: string;
+  locale: string;
+  country: string;
+}
+
+/** Phase 10: Generic success returned by register.start (anti-enumeration) */
+export interface RegisterStartResponse {
+  ok: true;
+  message: string;
+}
+
+/** Phase 10: Verify email token after clicking link */
+export interface VerifyEmailRequest {
+  token: string;
+}
+
+/** Phase 10: Resend verification email */
+export interface ResendVerificationRequest {
+  email: string;
+}
+
 export interface UserPublic {
   id: string;
   email: string;
@@ -22,6 +46,9 @@ export interface UserPublic {
   permissions?: string[];
   /** BCP-47 locale code (e.g. 'en', 'cs', 'en-GB'). Default: 'en'. */
   locale: string;
+  emailVerified: boolean;
+  onboardingCompletedAt?: string;
+  onboardingStep: number;
 }
 
 export interface AuthResponse {

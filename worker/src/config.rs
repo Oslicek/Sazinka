@@ -19,6 +19,10 @@ pub struct Config {
     
     /// JWT secret key for token signing/validation
     pub jwt_secret: String,
+
+    /// Base URL of the web app (e.g. "https://app.sazinka.cz").
+    /// Used to build email verification links.
+    pub app_base_url: String,
 }
 
 impl Config {
@@ -38,6 +42,9 @@ impl Config {
 
         let jwt_secret = std::env::var("JWT_SECRET")
             .context("JWT_SECRET must be set — generate one with: openssl rand -base64 48")?;
+
+        let app_base_url = std::env::var("APP_BASE_URL")
+            .unwrap_or_else(|_| "http://localhost:5173".to_string());
 
         if jwt_secret.len() < 32 {
             anyhow::bail!(
@@ -59,6 +66,7 @@ impl Config {
             nominatim_url,
             valhalla_url,
             jwt_secret,
+            app_base_url,
         })
     }
 }

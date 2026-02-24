@@ -22,9 +22,21 @@ pub struct Country {
     pub valhalla_region: Option<String>,
     pub nominatim_priority: i32,
     pub is_supported: bool,
+    pub coming_soon: bool,
     pub sort_order: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+/// One row in the `country_waitlist` table (Phase 10).
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct CountryWaitlistEntry {
+    pub id: uuid::Uuid,
+    pub email: String,
+    pub country: String,
+    pub locale: String,
+    pub created_at: DateTime<Utc>,
 }
 
 // =============================================================================
@@ -104,6 +116,7 @@ mod tests {
             valhalla_region: Some("europe".into()),
             nominatim_priority: 10,
             is_supported: true,
+            coming_soon: false,
             sort_order: 10,
             created_at: DateTime::from_timestamp(0, 0).unwrap(),
             updated_at: DateTime::from_timestamp(0, 0).unwrap(),
