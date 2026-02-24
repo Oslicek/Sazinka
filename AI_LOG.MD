@@ -1018,3 +1018,40 @@ Implemented Phase B (handlers) and Phase C (email infrastructure) of the Onboard
 - Already-registered flow: sends dedicated email instead of silent drop
 - Password hashing: uses existing `crate::auth::hash_password` (argon2)
 - Pre-existing compile errors in `import.rs` and VRP modules prevent `cargo test`, but new code is structurally sound
+
+---
+
+## 2026-02-21 — Phase D + E: Frontend Wizard + Auth Guard
+
+**Agent:** claude-4.6-sonnet-medium-thinking
+
+**Phase D — Frontend Wizard Components:**
+
+- `apps/web/src/components/onboarding/OnboardingWizard.tsx` — wizard shell with React context, step state machine (0=Landing, 1–5=steps, 'verify'=awaiting email), history-based goBack()
+- `apps/web/src/components/onboarding/types.ts` — WizardState + WizardContext types
+- `apps/web/src/components/onboarding/StepIndicator.tsx` + `.module.css` — horizontal stepper, 5 tests pass (labels, checkmarks, aria-current, clickable completed, disabled future)
+- `apps/web/src/components/onboarding/Landing.tsx` + `.module.css` — CZ available + coming-soon list + WaitlistForm lazy-load + language switcher
+- `apps/web/src/components/onboarding/WaitlistForm.tsx` + `.module.css` — submits sazinka.waitlist.join, lazy CountrySelect
+- `apps/web/src/components/onboarding/Step1Account.tsx` — password strength meter, ToS checkbox, anti-enumeration on success
+- `apps/web/src/components/onboarding/VerifyEmail.tsx` + `.module.css` — 60s resend cooldown with countdown timer
+- `apps/web/src/components/onboarding/Step2Profile.tsx` — name/biz/phone/ICO + locale selector + locked country
+- `apps/web/src/components/onboarding/Step3Devices.tsx` — 5 builtin types + expandable overrides + custom type creation
+- `apps/web/src/components/onboarding/Step4Depot.tsx` — address fields + geocode via NATS + lazy Leaflet map fallback
+- `apps/web/src/components/onboarding/LeafletMap.tsx` — placeholder for react-leaflet integration (lazy chunk)
+- `apps/web/src/components/onboarding/Step5Done.tsx` + `.module.css` — summary + free trial message
+- `apps/web/src/components/onboarding/Step.module.css` — shared CSS for all wizard steps
+- `apps/web/src/pages/VerifyEmailCallback.tsx` — reads ?token from URL, calls sazinka.auth.email.verify, redirects to /register?step=2
+- `apps/web/public/locales/{en,cs,sk}/onboarding.json` — complete i18n for all wizard screens
+- `apps/web/src/routes/index.tsx` — /register → OnboardingWizard, /verify-email → VerifyEmailCallback added
+- `apps/web/src/stores/authStore.test.ts` — fixtures updated with emailVerified + onboardingStep
+
+**Phase E — Integration & Auth Guard:**
+
+- `worker/src/auth.rs` — added `email_verified: bool` field to `Claims` struct; `generate_token()` gains `email_verified` parameter; all call sites and test fixtures updated
+- `apps/web/src/components/ProtectedRoute.tsx` — added email verification check (`user.emailVerified`) and onboarding completion check (`user.onboardingCompletedAt`); both redirect to /register
+
+**Key decisions:**
+- ProtectedRoute redirects unverified users to /register (wizard); wizard resumes from onboarding_step
+- Existing users backfilled as verified/completed via migrations A1+A3 (no disruption)
+- email_verified included in JWT so frontend can check without extra API call
+- LeafletMap is a placeholder; install react-leaflet when ready to enable interactive geocode fallback

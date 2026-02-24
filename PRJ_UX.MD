@@ -1609,8 +1609,8 @@ Inbox je prázdný – na tento den nejsou žádné položky k domluvení.
 
 ## Phase 10: Onboarding Wizard (New User Registration)
 
-> **Status:** In progress — Phase A ✅ · Phase B ✅ · Phase C ✅ · Phase D ✅ · Phase E ⬜  
-> **Version:** 1.8  
+> **Status:** ✅ Complete — Phase A ✅ · Phase B ✅ · Phase C ✅ · Phase D ✅ · Phase E ✅  
+> **Version:** 1.9  
 > **Date:** 2026-02-21
 
 ### 1. Goals
@@ -2785,7 +2785,7 @@ describe('onboarding translations', () => {
 
 ---
 
-#### Phase E: Integration & Auth Guard
+#### Phase E: Integration & Auth Guard ✅ DONE
 
 ##### E1. Protect app behind email_verified
 

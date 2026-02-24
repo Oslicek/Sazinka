@@ -11,8 +11,9 @@ interface ProtectedRouteProps {
 }
 
 /**
- * Protects routes by requiring authentication and optionally specific roles or permissions.
+ * Protects routes by requiring authentication, email verification, and completed onboarding.
  * Redirects to /login if not authenticated.
+ * Redirects to /register (wizard) if email is unverified or onboarding is incomplete.
  * Shows forbidden message if authenticated but lacks access.
  */
 export function ProtectedRoute({ children, roles, requiredPermission }: ProtectedRouteProps) {
@@ -30,6 +31,16 @@ export function ProtectedRoute({ children, roles, requiredPermission }: Protecte
   // Not authenticated - redirect to login
   if (!isAuthenticated) {
     return <Navigate to="/login" />;
+  }
+
+  // Email not verified - back to wizard Step 1
+  if (user && !user.emailVerified) {
+    return <Navigate to="/register" />;
+  }
+
+  // Onboarding incomplete - redirect to wizard to resume
+  if (user && !user.onboardingCompletedAt) {
+    return <Navigate to="/register" />;
   }
 
   // Check legacy role restriction (e.g. admin-only pages)
