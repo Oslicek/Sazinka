@@ -55,7 +55,7 @@ function detectLocale(): string {
 }
 
 export function OnboardingWizard() {
-  const { i18n, ready } = useTranslation('onboarding', { useSuspense: false });
+  const { i18n } = useTranslation('onboarding');
 
   const [step, setStepRaw] = useState<Step>(0);
   const [country, setCountry] = useState('CZ');
@@ -64,17 +64,11 @@ export function OnboardingWizard() {
   const [deviceTypeCount, setDeviceTypeCount] = useState(0);
   const [depotName, setDepotName] = useState('');
 
-  // On mount: switch i18n to the wizard's default locale (cs) and load the namespace
+  // On mount: switch i18n to the wizard's default locale (cs)
   useEffect(() => {
-    const init = async () => {
-      if (i18n.language !== locale) {
-        await i18n.changeLanguage(locale);
-      }
-      if (!i18n.hasLoadedNamespace('onboarding')) {
-        await i18n.loadNamespaces('onboarding');
-      }
-    };
-    init();
+    if (i18n.language !== locale) {
+      i18n.changeLanguage(locale);
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setStep = (s: Step) => setStepRaw(s);
@@ -105,11 +99,6 @@ export function OnboardingWizard() {
 
   const showIndicator = step !== 0 && step !== 'verify';
   const indicatorStep = toIndicatorStep(step);
-
-  // Wait for the onboarding namespace to load before rendering
-  if (!ready || !i18n.hasLoadedNamespace('onboarding')) {
-    return <div className={styles.root}><div className={styles.loader}>…</div></div>;
-  }
 
   return (
     <Ctx.Provider value={ctx}>
