@@ -15,7 +15,12 @@ import { Login } from '@/pages/Login';
 import { Calendar } from '@/pages/Calendar';
 
 // --- Lazy imports (loaded on navigate) ---
-const Register = lazy(() => import('@/pages/Register').then(m => ({ default: m.Register })));
+const Register = lazy(() =>
+  import('@/components/onboarding/OnboardingWizard').then(m => ({ default: m.OnboardingWizard }))
+);
+const VerifyEmailCallback = lazy(() =>
+  import('@/pages/VerifyEmailCallback').then(m => ({ default: m.VerifyEmailCallback }))
+);
 const Dashboard = lazy(() => import('@/pages/Dashboard').then(m => ({ default: m.Dashboard })));
 const Customers = lazy(() => import('@/pages/Customers').then(m => ({ default: m.Customers })));
 const CustomerDetail = lazy(() => import('@/pages/CustomerDetail').then(m => ({ default: m.CustomerDetail })));
@@ -51,6 +56,16 @@ const registerRoute = createRoute({
   component: () => (
     <Suspense fallback={<PageLoader />}>
       <Register />
+    </Suspense>
+  ),
+});
+
+const verifyEmailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/verify-email',
+  component: () => (
+    <Suspense fallback={<PageLoader />}>
+      <VerifyEmailCallback />
     </Suspense>
   ),
 });
@@ -247,6 +262,7 @@ const aboutRoute = createRoute({
 export const routeTree = rootRoute.addChildren([
   loginRoute,
   registerRoute,
+  verifyEmailRoute,
   layoutRoute.addChildren([
     indexRoute,
     customersRoute,

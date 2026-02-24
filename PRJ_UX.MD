@@ -1609,8 +1609,8 @@ Inbox je prázdný – na tento den nejsou žádné položky k domluvení.
 
 ## Phase 10: Onboarding Wizard (New User Registration)
 
-> **Status:** In progress — Phase A ✅ · Phase B ✅ · Phase C (partial) ✅ · Phase D ⬜ · Phase E ⬜  
-> **Version:** 1.7  
+> **Status:** In progress — Phase A ✅ · Phase B ✅ · Phase C ✅ · Phase D ✅ · Phase E ⬜  
+> **Version:** 1.8  
 > **Date:** 2026-02-21
 
 ### 1. Goals
@@ -2583,7 +2583,7 @@ The full email (HTML, text, headers) is in `logs/emails.jsonl` for inspection.
 
 ---
 
-#### Phase D: Frontend — Wizard Components
+#### Phase D: Frontend — Wizard Components ✅ DONE
 
 ##### D1. StepIndicator component
 

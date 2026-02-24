@@ -1,0 +1,150 @@
+{
+  "page_title": "Register – Sazinka",
+
+  "landing": {
+    "headline": "Plan routes, manage revisions, save time.",
+    "available_now": "Available now",
+    "trial_badge": "30 days free · No credit card",
+    "start_trial": "Start free trial →",
+    "coming_soon": "Coming soon",
+    "notify_me": "Notify me",
+    "different_country": "📍 Different country?",
+    "different_country_hint": "We'll let you know when we launch in your country.",
+    "already_account": "Already have an account?",
+    "sign_in": "Sign in"
+  },
+
+  "waitlist": {
+    "title": "Notify me when Sazinka launches",
+    "email_label": "Email address",
+    "email_placeholder": "you@example.com",
+    "country_label": "Your country",
+    "submit": "Notify me",
+    "success": "You're on the list! We'll notify you when we launch in your country.",
+    "error_rate_limit": "Too many requests. Please try again later."
+  },
+
+  "step_indicator": {
+    "step1": "Account",
+    "step2": "About you",
+    "step3": "Devices",
+    "step4": "Depot",
+    "step5": "All set!"
+  },
+
+  "step1": {
+    "title": "Create your account",
+    "email_label": "Email",
+    "email_placeholder": "you@example.com",
+    "password_label": "Password",
+    "password_placeholder": "Min. 8 characters",
+    "confirm_label": "Confirm password",
+    "confirm_placeholder": "Repeat password",
+    "password_hint": "Min. 8 characters, at least 1 uppercase, 1 lowercase, 1 digit.",
+    "strength_weak": "Weak",
+    "strength_fair": "Fair",
+    "strength_good": "Good",
+    "strength_strong": "Strong",
+    "tos_label": "I agree to the",
+    "tos_link": "Terms of Service",
+    "tos_and": "and",
+    "privacy_link": "Privacy Policy",
+    "error_password_mismatch": "Passwords do not match.",
+    "error_password_weak": "Password must have at least 8 characters, 1 uppercase, 1 lowercase, and 1 digit.",
+    "error_tos": "Please accept the Terms of Service to continue.",
+    "error_rate_limit": "Too many registration attempts. Please try again in a few minutes.",
+    "back": "← Back",
+    "continue": "Continue →",
+    "submitting": "Creating account…"
+  },
+
+  "verify_email": {
+    "title": "Check your inbox",
+    "description": "We sent a verification link to",
+    "description2": "Click the link in the email to continue.",
+    "resend": "Resend email",
+    "resend_wait": "Resend in {{seconds}}s",
+    "resend_success": "Email sent!",
+    "no_email": "Didn't receive it? Check your spam folder or click Resend."
+  },
+
+  "verify_callback": {
+    "verifying": "Verifying your email…",
+    "success": "Email verified! Setting up your account…",
+    "error_invalid": "This verification link is invalid or has expired.",
+    "error_generic": "Verification failed. Please try again.",
+    "request_new": "Request a new link"
+  },
+
+  "step2": {
+    "title": "About you",
+    "name_label": "Your name",
+    "name_placeholder": "Jan Novák",
+    "business_label": "Company name",
+    "business_placeholder": "Novák Revisions s.r.o. (optional)",
+    "phone_label": "Phone",
+    "phone_placeholder": "+420 xxx xxx xxx (optional)",
+    "ico_label": "Company registration number (IČO)",
+    "ico_placeholder": "12345678 (optional)",
+    "language_label": "Language",
+    "country_label": "Country",
+    "back": "← Back",
+    "continue": "Continue →",
+    "submitting": "Saving…"
+  },
+
+  "step3": {
+    "title": "What do you service?",
+    "subtitle": "Select the device types you work with. You can change these later in Settings.",
+    "chimney": "Chimney",
+    "gas_boiler": "Gas boiler",
+    "gas_water_heater": "Gas water heater",
+    "fireplace": "Fireplace / insert",
+    "gas_stove": "Gas stove",
+    "duration_label": "Default duration",
+    "interval_label": "Revision interval",
+    "minutes": "min",
+    "months": "months",
+    "add_custom": "+ Add custom device type",
+    "custom_label": "Label",
+    "custom_label_placeholder": "e.g. Heat pump",
+    "at_least_one": "Please select at least one device type.",
+    "back": "← Back",
+    "continue": "Continue →",
+    "submitting": "Saving…"
+  },
+
+  "step4": {
+    "title": "Your depot (home base)",
+    "subtitle": "This is where your crew starts and ends each day.",
+    "name_label": "Depot name",
+    "name_placeholder": "e.g. Main depot",
+    "street_label": "Street",
+    "street_placeholder": "e.g. Česká 12",
+    "city_label": "City",
+    "city_placeholder": "e.g. Brno",
+    "postal_label": "Postal code",
+    "postal_placeholder": "e.g. 602 00",
+    "verify_btn": "Verify address",
+    "verifying": "Verifying…",
+    "verified": "✅ Address verified",
+    "error_not_found": "Address not found. Please check the fields or place a pin on the map.",
+    "error_rate_limit": "Too many geocode attempts. Please wait a moment.",
+    "map_hint": "Drag the pin to the correct location.",
+    "back": "← Back",
+    "continue": "Continue →",
+    "submitting": "Saving…"
+  },
+
+  "step5": {
+    "title": "You're all set!",
+    "account_done": "Account created",
+    "devices_done": "{{count}} device type configured",
+    "devices_done_plural": "{{count}} device types configured",
+    "depot_done": "Depot "{{name}}" saved",
+    "crew_done": "Crew created",
+    "trial": "Your 30-day free trial starts today.",
+    "trial_hint": "We'll remind you before it ends — no surprises.",
+    "go_dashboard": "Go to Dashboard →"
+  }
+}

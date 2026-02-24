@@ -1,0 +1,150 @@
+{
+  "page_title": "Registrace – Sazinka",
+
+  "landing": {
+    "headline": "Plánujte trasy, spravujte revize, šetřete čas.",
+    "available_now": "Dostupné nyní",
+    "trial_badge": "30 dní zdarma · Bez kreditní karty",
+    "start_trial": "Spustit zkušební verzi →",
+    "coming_soon": "Připravujeme",
+    "notify_me": "Upozornit mě",
+    "different_country": "📍 Jiná země?",
+    "different_country_hint": "Dáme vám vědět, až se v vaší zemi spustíme.",
+    "already_account": "Již máte účet?",
+    "sign_in": "Přihlásit se"
+  },
+
+  "waitlist": {
+    "title": "Upozorněte mě na spuštění v mé zemi",
+    "email_label": "E-mailová adresa",
+    "email_placeholder": "vas@email.cz",
+    "country_label": "Vaše země",
+    "submit": "Upozornit mě",
+    "success": "Jste na seznamu! Dáme vám vědět, až spustíme ve vaší zemi.",
+    "error_rate_limit": "Příliš mnoho požadavků. Zkuste to prosím za chvíli."
+  },
+
+  "step_indicator": {
+    "step1": "Účet",
+    "step2": "O vás",
+    "step3": "Zařízení",
+    "step4": "Depo",
+    "step5": "Hotovo!"
+  },
+
+  "step1": {
+    "title": "Vytvořte si účet",
+    "email_label": "E-mail",
+    "email_placeholder": "vas@email.cz",
+    "password_label": "Heslo",
+    "password_placeholder": "Min. 8 znaků",
+    "confirm_label": "Potvrzení hesla",
+    "confirm_placeholder": "Zopakujte heslo",
+    "password_hint": "Min. 8 znaků, alespoň 1 velké, 1 malé písmeno a 1 číslice.",
+    "strength_weak": "Slabé",
+    "strength_fair": "Průměrné",
+    "strength_good": "Dobré",
+    "strength_strong": "Silné",
+    "tos_label": "Souhlasím s",
+    "tos_link": "Podmínkami služby",
+    "tos_and": "a",
+    "privacy_link": "Zásadami ochrany soukromí",
+    "error_password_mismatch": "Hesla se neshodují.",
+    "error_password_weak": "Heslo musí mít alespoň 8 znaků, 1 velké, 1 malé písmeno a 1 číslici.",
+    "error_tos": "Pro pokračování prosím přijměte podmínky služby.",
+    "error_rate_limit": "Příliš mnoho pokusů o registraci. Zkuste to prosím za pár minut.",
+    "back": "← Zpět",
+    "continue": "Pokračovat →",
+    "submitting": "Zakládám účet…"
+  },
+
+  "verify_email": {
+    "title": "Zkontrolujte svou schránku",
+    "description": "Poslali jsme ověřovací odkaz na",
+    "description2": "Klikněte na odkaz v e-mailu a pokračujte.",
+    "resend": "Znovu odeslat",
+    "resend_wait": "Odeslat znovu za {{seconds}} s",
+    "resend_success": "E-mail odeslán!",
+    "no_email": "E-mail nedorazil? Zkontrolujte složku nevyžádané pošty nebo klikněte na Znovu odeslat."
+  },
+
+  "verify_callback": {
+    "verifying": "Ověřuji váš e-mail…",
+    "success": "E-mail ověřen! Nastavuji váš účet…",
+    "error_invalid": "Tento ověřovací odkaz je neplatný nebo vypršela jeho platnost.",
+    "error_generic": "Ověření se nezdařilo. Zkuste to prosím znovu.",
+    "request_new": "Požádat o nový odkaz"
+  },
+
+  "step2": {
+    "title": "O vás",
+    "name_label": "Vaše jméno",
+    "name_placeholder": "Jan Novák",
+    "business_label": "Název firmy",
+    "business_placeholder": "Novák Revize s.r.o. (volitelné)",
+    "phone_label": "Telefon",
+    "phone_placeholder": "+420 xxx xxx xxx (volitelné)",
+    "ico_label": "IČO",
+    "ico_placeholder": "12345678 (volitelné)",
+    "language_label": "Jazyk",
+    "country_label": "Země",
+    "back": "← Zpět",
+    "continue": "Pokračovat →",
+    "submitting": "Ukládám…"
+  },
+
+  "step3": {
+    "title": "Co revidujete?",
+    "subtitle": "Vyberte typy zařízení, se kterými pracujete. Změnit je lze i později v Nastavení.",
+    "chimney": "Komín",
+    "gas_boiler": "Plynový kotel",
+    "gas_water_heater": "Plynový ohřívač vody",
+    "fireplace": "Krb / vložka",
+    "gas_stove": "Plynový sporák",
+    "duration_label": "Výchozí délka",
+    "interval_label": "Interval revize",
+    "minutes": "min",
+    "months": "měsíců",
+    "add_custom": "+ Přidat vlastní typ zařízení",
+    "custom_label": "Název",
+    "custom_label_placeholder": "např. Tepelné čerpadlo",
+    "at_least_one": "Vyberte prosím alespoň jeden typ zařízení.",
+    "back": "← Zpět",
+    "continue": "Pokračovat →",
+    "submitting": "Ukládám…"
+  },
+
+  "step4": {
+    "title": "Vaše depo (základna)",
+    "subtitle": "Odsud a sem se váš tým každý den přesunuje.",
+    "name_label": "Název depa",
+    "name_placeholder": "např. Hlavní depo",
+    "street_label": "Ulice",
+    "street_placeholder": "např. Česká 12",
+    "city_label": "Město",
+    "city_placeholder": "např. Brno",
+    "postal_label": "PSČ",
+    "postal_placeholder": "např. 602 00",
+    "verify_btn": "Ověřit adresu",
+    "verifying": "Ověřuji…",
+    "verified": "✅ Adresa ověřena",
+    "error_not_found": "Adresa nebyla nalezena. Zkontrolujte pole nebo umístěte špendlík na mapě.",
+    "error_rate_limit": "Příliš mnoho pokusů o geokódování. Chvíli počkejte.",
+    "map_hint": "Přetáhněte špendlík na správné místo.",
+    "back": "← Zpět",
+    "continue": "Pokračovat →",
+    "submitting": "Ukládám…"
+  },
+
+  "step5": {
+    "title": "Vše je připraveno!",
+    "account_done": "Účet vytvořen",
+    "devices_done": "{{count}} typ zařízení nakonfigurován",
+    "devices_done_plural": "{{count}} typy zařízení nakonfigurovány",
+    "depot_done": "Depo „{{name}}" uloženo",
+    "crew_done": "Tým vytvořen",
+    "trial": "Váš 30denní bezplatný zkušební provoz začíná dnes.",
+    "trial_hint": "Připomeneme vám ho před koncem — žádná překvapení.",
+    "go_dashboard": "Přejít na přehled →"
+  }
+}

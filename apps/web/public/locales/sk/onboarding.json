@@ -1,0 +1,150 @@
+{
+  "page_title": "Registrácia – Sazinka",
+
+  "landing": {
+    "headline": "Plánujte trasy, spravujte revízie, šetrite čas.",
+    "available_now": "Dostupné teraz",
+    "trial_badge": "30 dní zadarmo · Bez kreditnej karty",
+    "start_trial": "Spustiť skúšobnú verziu →",
+    "coming_soon": "Čoskoro",
+    "notify_me": "Upozorniť ma",
+    "different_country": "📍 Iná krajina?",
+    "different_country_hint": "Dáme vám vedieť, keď spustíme vo vašej krajine.",
+    "already_account": "Už máte účet?",
+    "sign_in": "Prihlásiť sa"
+  },
+
+  "waitlist": {
+    "title": "Upozornite ma na spustenie v mojej krajine",
+    "email_label": "E-mailová adresa",
+    "email_placeholder": "vas@email.sk",
+    "country_label": "Vaša krajina",
+    "submit": "Upozorniť ma",
+    "success": "Ste na zozname! Dáme vám vedieť, keď spustíme vo vašej krajine.",
+    "error_rate_limit": "Príliš veľa požiadaviek. Skúste to prosím neskôr."
+  },
+
+  "step_indicator": {
+    "step1": "Účet",
+    "step2": "O vás",
+    "step3": "Zariadenia",
+    "step4": "Depo",
+    "step5": "Hotovo!"
+  },
+
+  "step1": {
+    "title": "Vytvorte si účet",
+    "email_label": "E-mail",
+    "email_placeholder": "vas@email.sk",
+    "password_label": "Heslo",
+    "password_placeholder": "Min. 8 znakov",
+    "confirm_label": "Potvrdenie hesla",
+    "confirm_placeholder": "Zopakujte heslo",
+    "password_hint": "Min. 8 znakov, aspoň 1 veľké, 1 malé písmeno a 1 číslica.",
+    "strength_weak": "Slabé",
+    "strength_fair": "Primerané",
+    "strength_good": "Dobré",
+    "strength_strong": "Silné",
+    "tos_label": "Súhlasím s",
+    "tos_link": "Podmienkami služby",
+    "tos_and": "a",
+    "privacy_link": "Zásadami ochrany súkromia",
+    "error_password_mismatch": "Heslá sa nezhodujú.",
+    "error_password_weak": "Heslo musí mať aspoň 8 znakov, 1 veľké, 1 malé písmeno a 1 číslicu.",
+    "error_tos": "Pre pokračovanie prosím prijmite podmienky služby.",
+    "error_rate_limit": "Príliš veľa pokusov o registráciu. Skúste to prosím za pár minút.",
+    "back": "← Späť",
+    "continue": "Pokračovať →",
+    "submitting": "Zakladám účet…"
+  },
+
+  "verify_email": {
+    "title": "Skontrolujte svoju schránku",
+    "description": "Poslali sme overovací odkaz na",
+    "description2": "Kliknite na odkaz v e-maile a pokračujte.",
+    "resend": "Znova odoslať",
+    "resend_wait": "Odoslať znova za {{seconds}} s",
+    "resend_success": "E-mail odoslaný!",
+    "no_email": "E-mail neprišiel? Skontrolujte priečinok nevyžiadanej pošty alebo kliknite na Znova odoslať."
+  },
+
+  "verify_callback": {
+    "verifying": "Overujem váš e-mail…",
+    "success": "E-mail overený! Nastavujem váš účet…",
+    "error_invalid": "Tento overovací odkaz je neplatný alebo jeho platnosť vypršala.",
+    "error_generic": "Overenie zlyhalo. Skúste to prosím znova.",
+    "request_new": "Požiadať o nový odkaz"
+  },
+
+  "step2": {
+    "title": "O vás",
+    "name_label": "Vaše meno",
+    "name_placeholder": "Ján Novák",
+    "business_label": "Názov firmy",
+    "business_placeholder": "Novák Revízie s.r.o. (voliteľné)",
+    "phone_label": "Telefón",
+    "phone_placeholder": "+421 xxx xxx xxx (voliteľné)",
+    "ico_label": "IČO",
+    "ico_placeholder": "12345678 (voliteľné)",
+    "language_label": "Jazyk",
+    "country_label": "Krajina",
+    "back": "← Späť",
+    "continue": "Pokračovať →",
+    "submitting": "Ukladám…"
+  },
+
+  "step3": {
+    "title": "Čo revidujete?",
+    "subtitle": "Vyberte typy zariadení, s ktorými pracujete. Zmeniť ich môžete aj neskôr v Nastaveniach.",
+    "chimney": "Komín",
+    "gas_boiler": "Plynový kotol",
+    "gas_water_heater": "Plynový ohrievač vody",
+    "fireplace": "Krb / vložka",
+    "gas_stove": "Plynový sporák",
+    "duration_label": "Predvolená dĺžka",
+    "interval_label": "Interval revízie",
+    "minutes": "min",
+    "months": "mesiacov",
+    "add_custom": "+ Pridať vlastný typ zariadenia",
+    "custom_label": "Názov",
+    "custom_label_placeholder": "napr. Tepelné čerpadlo",
+    "at_least_one": "Prosím vyberte aspoň jeden typ zariadenia.",
+    "back": "← Späť",
+    "continue": "Pokračovať →",
+    "submitting": "Ukladám…"
+  },
+
+  "step4": {
+    "title": "Vaše depo (základňa)",
+    "subtitle": "Odtiaľto a sem sa váš tím každý deň presúva.",
+    "name_label": "Názov depa",
+    "name_placeholder": "napr. Hlavné depo",
+    "street_label": "Ulica",
+    "street_placeholder": "napr. Slovenská 12",
+    "city_label": "Mesto",
+    "city_placeholder": "napr. Bratislava",
+    "postal_label": "PSČ",
+    "postal_placeholder": "napr. 811 01",
+    "verify_btn": "Overiť adresu",
+    "verifying": "Overujem…",
+    "verified": "✅ Adresa overená",
+    "error_not_found": "Adresa nebola nájdená. Skontrolujte polia alebo umiestnite špendlík na mape.",
+    "error_rate_limit": "Príliš veľa pokusov o geokódovanie. Chvíľu počkajte.",
+    "map_hint": "Presuňte špendlík na správne miesto.",
+    "back": "← Späť",
+    "continue": "Pokračovať →",
+    "submitting": "Ukladám…"
+  },
+
+  "step5": {
+    "title": "Všetko je pripravené!",
+    "account_done": "Účet vytvorený",
+    "devices_done": "{{count}} typ zariadenia nakonfigurovaný",
+    "devices_done_plural": "{{count}} typy zariadení nakonfigurované",
+    "depot_done": "Depo „{{name}}" uložené",
+    "crew_done": "Tím vytvorený",
+    "trial": "Váš 30-dňový bezplatný skúšobný prevádzka začína dnes.",
+    "trial_hint": "Pripomenieme vám ho pred koncom — žiadne prekvapenia.",
+    "go_dashboard": "Prejsť na prehľad →"
+  }
+}

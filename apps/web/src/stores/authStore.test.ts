@@ -108,7 +108,7 @@ describe('AuthStore', () => {
   describe('logout', () => {
     it('clears auth state and removes token from localStorage', () => {
       useAuthStore.setState({
-        user: { id: '1', email: 'test@example.com', name: 'Test', role: 'customer', locale: 'en' },
+        user: { id: '1', email: 'test@example.com', name: 'Test', role: 'customer', locale: 'en', emailVerified: true, onboardingStep: 6 },
         token: 'some.token.here',
         isAuthenticated: true,
       });
@@ -167,7 +167,7 @@ describe('AuthStore', () => {
 
     it('getUserId returns user id', () => {
       useAuthStore.setState({
-        user: { id: 'user-uuid', email: 'a@b.c', name: 'A', role: 'customer', locale: 'en' },
+        user: { id: 'user-uuid', email: 'a@b.c', name: 'A', role: 'customer', locale: 'en', emailVerified: true, onboardingStep: 6 },
       });
       expect(useAuthStore.getState().getUserId()).toBe('user-uuid');
     });
@@ -179,7 +179,7 @@ describe('AuthStore', () => {
 
     it('getRole returns user role', () => {
       useAuthStore.setState({
-        user: { id: '1', email: 'a@b.c', name: 'A', role: 'admin', locale: 'en' },
+        user: { id: '1', email: 'a@b.c', name: 'A', role: 'admin', locale: 'en', emailVerified: true, onboardingStep: 6 },
       });
       expect(useAuthStore.getState().getRole()).toBe('admin');
     });
