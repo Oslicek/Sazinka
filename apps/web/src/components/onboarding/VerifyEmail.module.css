@@ -70,3 +70,15 @@
   font-size: 0.8125rem;
   color: var(--color-text-secondary, #9ca3af);
 }
+
+.devSkip {
+  margin-top: 1rem;
+  padding: 0.5rem 1.25rem;
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px dashed #f59e0b;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}

@@ -8,7 +8,7 @@ const RESEND_COOLDOWN_SECS = 60;
 
 export function VerifyEmail() {
   const { t } = useTranslation('onboarding');
-  const { email, locale } = useWizard();
+  const { email, locale, setStep } = useWizard();
   const request = useNatsStore((s) => s.request);
 
   const [cooldown, setCooldown] = useState(0);
@@ -72,6 +72,16 @@ export function VerifyEmail() {
       </button>
 
       <p className={styles.hint}>{t('verify_email.no_email')}</p>
+
+      {import.meta.env.DEV && (
+        <button
+          type="button"
+          className={styles.devSkip}
+          onClick={() => setStep(2)}
+        >
+          Skip verification (dev)
+        </button>
+      )}
     </div>
   );
 }

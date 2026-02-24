@@ -52,6 +52,7 @@
     "tos_link": "Terms of Service",
     "tos_and": "and",
     "privacy_link": "Privacy Policy",
+    "error_email_invalid": "Please enter a valid email address.",
     "error_password_mismatch": "Passwords do not match.",
     "error_password_weak": "Password must have at least 8 characters, 1 uppercase, 1 lowercase, and 1 digit.",
     "error_tos": "Please accept the Terms of Service to continue.",

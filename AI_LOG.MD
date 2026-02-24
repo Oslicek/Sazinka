@@ -1055,3 +1055,12 @@ Implemented Phase B (handlers) and Phase C (email infrastructure) of the Onboard
 - Existing users backfilled as verified/completed via migrations A1+A3 (no disruption)
 - email_verified included in JWT so frontend can check without extra API call
 - LeafletMap is a placeholder; install react-leaflet when ready to enable interactive geocode fallback
+
+---
+
+### 2026-02-21 — Onboarding Wizard: bugfixes (layout, email validation, dev backdoor)
+**Agent:** claude-4.6-opus-max
+
+1. **Fixed Step1Account ToS layout** — checkbox and label were misaligned (checkbox tiny/centered, label pushed right). Added explicit `width`/`height` on checkbox, `flex: 1; min-width: 0` on label, `box-sizing: border-box` on card.
+2. **Added email format validation** — form allowed submission with invalid email (e.g. `robert-email.cz` without `@`). Added `EMAIL_RE` regex check before submit with localized error messages (en/cs/sk).
+3. **Added dev backdoor on VerifyEmail** — a "Skip verification (dev)" button that only renders in `import.meta.env.DEV` mode, calling `setStep(2)` to jump past email verification. Styled with dashed amber border to be visually distinct.

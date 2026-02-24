@@ -52,6 +52,7 @@
     "tos_link": "Podmínkami služby",
     "tos_and": "a",
     "privacy_link": "Zásadami ochrany soukromí",
+    "error_email_invalid": "Zadejte platnou e-mailovou adresu.",
     "error_password_mismatch": "Hesla se neshodují.",
     "error_password_weak": "Heslo musí mít alespoň 8 znaků, 1 velké, 1 malé písmeno a 1 číslici.",
     "error_tos": "Pro pokračování prosím přijměte podmínky služby.",

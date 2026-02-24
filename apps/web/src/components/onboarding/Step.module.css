@@ -3,6 +3,7 @@
 .card {
   width: 100%;
   max-width: 480px;
+  box-sizing: border-box;
   background: white;
   border-radius: 16px;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
@@ -86,20 +87,26 @@
 .tosRow {
   display: flex;
   align-items: flex-start;
-  gap: 0.5rem;
+  gap: 0.625rem;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .checkbox {
-  margin-top: 2px;
+  margin-top: 3px;
   flex-shrink: 0;
   cursor: pointer;
+  width: 16px;
+  height: 16px;
 }
 
 .tosLabel {
+  flex: 1;
+  min-width: 0;
   font-size: 0.875rem;
   color: var(--color-text, #1f2937);
   cursor: pointer;
-  line-height: 1.4;
+  line-height: 1.5;
 }
 
 .tosLink {

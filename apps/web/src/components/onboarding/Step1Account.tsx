@@ -4,7 +4,8 @@ import { useNatsStore } from '@/stores/natsStore';
 import { useWizard } from './OnboardingWizard';
 import styles from './Step.module.css';
 
-/** Password strength score: 0–4 */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function scorePassword(pw: string): number {
   if (pw.length < 4) return 0;
   let score = 0;
@@ -39,6 +40,10 @@ export function Step1Account() {
     e.preventDefault();
     setError('');
 
+    if (!EMAIL_RE.test(email)) {
+      setError(t('step1.error_email_invalid'));
+      return;
+    }
     if (!tosChecked) {
       setError(t('step1.error_tos'));
       return;
