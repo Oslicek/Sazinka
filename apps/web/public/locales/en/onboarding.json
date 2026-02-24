@@ -11,7 +11,10 @@
     "different_country": "📍 Different country?",
     "different_country_hint": "We'll let you know when we launch in your country.",
     "already_account": "Already have an account?",
-    "sign_in": "Sign in"
+    "sign_in": "Sign in",
+    "country_CZ": "Czech Republic",
+    "country_SK": "Slovakia",
+    "country_AT": "Austria"
   },
 
   "waitlist": {

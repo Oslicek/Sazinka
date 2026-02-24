@@ -12,12 +12,10 @@ const SUPPORTED_LOCALES = [
   { code: 'sk', label: 'SK' },
 ] as const;
 
-/** Countries with coming_soon = true shown below CZ.
- * In production this would be fetched from DB; hardcoded here for now. */
 const COMING_SOON = [
-  { code: 'SK', flag: '🇸🇰', name: 'Slovakia' },
-  { code: 'AT', flag: '🇦🇹', name: 'Austria' },
-];
+  { code: 'SK', flag: '🇸🇰', nameKey: 'landing.country_SK' },
+  { code: 'AT', flag: '🇦🇹', nameKey: 'landing.country_AT' },
+] as const;
 
 export function Landing() {
   const { t } = useTranslation('onboarding');
@@ -47,7 +45,7 @@ export function Landing() {
         <div className={styles.countryCard}>
           <span className={styles.flag}>🇨🇿</span>
           <div className={styles.countryInfo}>
-            <span className={styles.countryName}>Czech Republic</span>
+            <span className={styles.countryName}>{t('landing.country_CZ')}</span>
             <span className={styles.badge}>{t('landing.available_now')}</span>
             <span className={styles.trialBadge}>{t('landing.trial_badge')}</span>
           </div>
@@ -66,7 +64,7 @@ export function Landing() {
           {COMING_SOON.map((c) => (
             <div key={c.code} className={styles.comingCard}>
               <span className={styles.flag}>{c.flag}</span>
-              <span className={styles.countryName}>{c.name}</span>
+              <span className={styles.countryName}>{t(c.nameKey)}</span>
               <button
                 type="button"
                 className={styles.notifyBtn}

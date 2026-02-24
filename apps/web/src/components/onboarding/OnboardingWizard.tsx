@@ -1,4 +1,4 @@
-import { createContext, lazy, Suspense, useContext, useState } from 'react';
+import { createContext, lazy, Suspense, useContext, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StepIndicator } from './StepIndicator';
 import type { WizardContext, WizardState } from './types';
@@ -40,24 +40,22 @@ const HISTORY_MAP: Partial<Record<string, Step>> = {
   'verify': 1,
 };
 
-// Numeric step for StepIndicator (0 = Landing has no indicator)
 function toIndicatorStep(step: Step): number {
   if (step === 'verify') return 1;
   return typeof step === 'number' ? step : 0;
 }
 
 // --------------------------------------------------------------------------
-// Wizard component
+// Default locale: Czech (primary market), unless browser is Slovak
 // --------------------------------------------------------------------------
 function detectLocale(): string {
   const base = navigator.language.split('-')[0].toLowerCase();
-  if (base === 'cs') return 'cs';
   if (base === 'sk') return 'sk';
-  return 'en';
+  return 'cs';
 }
 
 export function OnboardingWizard() {
-  const { i18n } = useTranslation();
+  const { i18n, ready } = useTranslation('onboarding', { useSuspense: false });
 
   const [step, setStepRaw] = useState<Step>(0);
   const [country, setCountry] = useState('CZ');
@@ -65,6 +63,19 @@ export function OnboardingWizard() {
   const [email, setEmail] = useState('');
   const [deviceTypeCount, setDeviceTypeCount] = useState(0);
   const [depotName, setDepotName] = useState('');
+
+  // On mount: switch i18n to the wizard's default locale (cs) and load the namespace
+  useEffect(() => {
+    const init = async () => {
+      if (i18n.language !== locale) {
+        await i18n.changeLanguage(locale);
+      }
+      if (!i18n.hasLoadedNamespace('onboarding')) {
+        await i18n.loadNamespaces('onboarding');
+      }
+    };
+    init();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setStep = (s: Step) => setStepRaw(s);
 
@@ -94,6 +105,11 @@ export function OnboardingWizard() {
 
   const showIndicator = step !== 0 && step !== 'verify';
   const indicatorStep = toIndicatorStep(step);
+
+  // Wait for the onboarding namespace to load before rendering
+  if (!ready || !i18n.hasLoadedNamespace('onboarding')) {
+    return <div className={styles.root}><div className={styles.loader}>…</div></div>;
+  }
 
   return (
     <Ctx.Provider value={ctx}>

@@ -11,7 +11,10 @@
     "different_country": "📍 Iná krajina?",
     "different_country_hint": "Dáme vám vedieť, keď spustíme vo vašej krajine.",
     "already_account": "Už máte účet?",
-    "sign_in": "Prihlásiť sa"
+    "sign_in": "Prihlásiť sa",
+    "country_CZ": "Česká republika",
+    "country_SK": "Slovensko",
+    "country_AT": "Rakúsko"
   },
 
   "waitlist": {
