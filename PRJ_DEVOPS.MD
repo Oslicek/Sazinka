@@ -899,6 +899,10 @@ Valhalla image :latest              Supply-chain riziko               STŘEDNÍ
 
 ### 16.2 Cílová architektura pro veřejný server
 
+> **⚠ AKTUALIZOVÁNO**: Viz sekce 20.2 pro aktuální architekturu.
+> Worker nyní běží jako Docker kontejner místo systemd service.
+> Caddy obsluhuje pouze `api.sazinka.cz` a `monitor.sazinka.cz`.
+
 Aplikace má dvě oddělené části:
 
 1. **Site** (marketingová část): Veřejná home page, demos, pricing, dokumentace.
@@ -993,6 +997,8 @@ STŘEDNÍ (pro stabilní provoz):
 ```
 
 ### 16.4 Síťová izolace: Docker Compose pro produkci
+
+> **⚠ IMPLEMENTOVÁNO**: Produkční compose vytvořen v `infra/docker-compose.prod.yml` (sekce 20.5 + 21.5).
 
 **Problém**: Na Linuxu Docker manipuluje s iptables a může obejít UFW/firewalld.
 Porty publikované jako `ports: - "5432:5432"` jsou dostupné z internetu i při
@@ -1114,6 +1120,10 @@ Klíčové rozdíly oproti dev konfiguraci:
 - Valhalla má **pinovanou verzi** (ne `:latest`)
 
 ### 16.5 Reverse proxy: Caddy konfigurace
+
+> **⚠ IMPLEMENTOVÁNO**: Caddyfile vytvořen v `infra/Caddyfile` (sekce 21.6).
+> Aktuální konfigurace obsluhuje pouze `api.sazinka.cz` (NATS proxy) a `monitor.sazinka.cz`.
+> Statické soubory (sazinka.cz, app.sazinka.cz) jsou na Cloudflare Pages.
 
 Caddy automaticky zajistí Let's Encrypt certifikát. Konfigurace pro Site + App:
 
@@ -1546,7 +1556,11 @@ Valhalla status                  != 200                  Uptime Kuma
     restart: unless-stopped
 ```
 
-### 16.13 Worker jako systemd service (Linux)
+### 16.13 Worker jako systemd service (Linux) ~~NAHRAZENO~~
+
+> **⚠ NAHRAZENO**: Worker nyní běží jako Docker kontejner.
+> Viz sekce 20 a `infra/docker-compose.prod.yml`.
+> systemd service se nepoužívá.
 
 ```ini
 # /etc/systemd/system/sazinka-worker.service
@@ -2364,7 +2378,7 @@ Pro problémy kontaktujte: admin@ariadline.com
 
 ---
 
-## 20. Containerizace Rust Workeru — Plán
+## 20. Containerizace Rust Workeru — Plán ✅ IMPLEMENTOVÁNO
 
 > **Stav**: PLÁN — dosud neimplementováno.
 > **Cíl**: Worker běží jako Docker kontejner vedle ostatních služeb. Na VPS není
@@ -2906,11 +2920,11 @@ Tím je zachována plná automatizace CI/CD bez rizika nechtěného smazání
 
 ## 21. TDD implementační plán — Containerizace Workeru
 
-> **Stav**: IMPLEMENTACE PROBÍHÁ
+> **Stav**: ✅ IMPLEMENTOVÁNO (fáze 1-9 dokončeny, fáze 10 = live deployment na VPS)
 > Tento plán pokrývá kroky ze sekce 20.13 rozepsané do TDD cyklů
 > (Red → Green → Refactor → Verify). Každá fáze je atomická a commitovatelná.
 >
-> **Legenda stavu**: ✅ Hotovo | 🔄 Probíhá | ⏳ Čeká
+> **Legenda stavu**: ✅ Hotovo | 🔄 Probíhá | ⏳ Čeká na VPS setup
 
 ### 21.1 Fáze 1: native-tls → rustls ✅
 
@@ -3599,7 +3613,7 @@ curl -u admin:PASS https://monitor.sazinka.cz/healthz  # → OK
 
 ---
 
-### 21.11 Fáze 11: Dokumentace cleanup
+### 21.11 Fáze 11: Dokumentace cleanup ✅
 
 **Cíl**: Aktualizovat PRJ_DEVOPS.MD — odstranit/označit zastaralé sekce,
 přidat cross-reference na novou architekturu.

@@ -2908,5 +2908,32 @@ Semantics: `0` = pre-verify, `2` = at About you, `3` = at Devices, `4` = at Depo
 
 ---
 
+## 17. Hlášení při krátkém výpadku backendu (worker restart)
+
+Při nasazení nové verze workeru přes `docker compose up -d worker` dochází
+k ~2-vteřinnému výpadku spojení. Frontend by měl tuto situaci řešit klidnou
+informací, nikoli chybovým hlášením.
+
+### 17.1 Kanonický text toastu
+
+| Jazyk | Text |
+|-------|------|
+| CS | „Propojení se serverem bylo přerušeno. Probíhá obnovení…" |
+| EN | "Connection to server lost. Reconnecting…" |
+| SK | „Spojenie so serverom bolo prerušené. Obnovujem…" |
+
+Toast se zobrazí po prvním NATS timeoutu (> 3 s bez odpovědi).
+Automaticky zmizí po úspěšném opětovném připojení.
+**Neukončuje WebSocket session** — jen informuje uživatele.
+
+### 17.2 Implementační poznámky
+
+- Globální NATS timeout listener v `useNats` hooku nebo Zustand middleware.
+- Timeout threshold: 3 s (kratší než lidský práh pro "přerušení").
+- Toast varianta: `info` (ne `error`) — situace je dočasná a řeší se sama.
+- Po reconnect: toast automaticky zmizí (ne nutné klikat na zavření).
+
+---
+
 *Dokument vytvořen: 2026-01-31*  
-*Poslední aktualizace: 2026-02-23 (Phase 10: Onboarding Wizard plan v1.6 — fixes + ToS, Leaflet lazy-load, unverified duplicate handling)*
+*Poslední aktualizace: 2026-02-25 (Sekce 17: UX pro výpadek při worker restartu)*
