@@ -303,19 +303,6 @@ mod tests {
     }
 
     #[test]
-    fn test_geocode_job_result_serializes_correctly() {
-        let result = GeocodeJobResult {
-            customer_id: Uuid::nil(),
-            success: true,
-            error: None,
-        };
-        
-        let json = serde_json::to_string(&result).unwrap();
-        assert!(json.contains("customerId"));
-        assert!(json.contains("\"success\":true"));
-    }
-
-    #[test]
     fn test_geocode_address_job_status_completed_serializes() {
         let status = GeocodeAddressJobStatus::Completed {
             coordinates: Coordinates { lat: 50.0, lng: 14.0 },

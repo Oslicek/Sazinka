@@ -2945,7 +2945,7 @@ cargo test                           # Všechny testy stále zelené
 
 ---
 
-### 21.2 Fáze 2: CLI flag --migrate-only
+### 21.2 Fáze 2: CLI flag --migrate-only ✅
 
 **Cíl**: Worker binárka podporuje `sazinka-worker migrate` — spustí DB migrace a ukončí se
 s exit code 0 (úspěch) nebo 1 (chyba). Prerekvizit pro Option B migraci v CI.

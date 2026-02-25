@@ -248,7 +248,7 @@ mod tests {
         let date = NaiveDate::from_ymd_opt(2026, 1, 26).unwrap();
         let problem = test_problem();
 
-        let json = build_pragmatic_problem(&problem, date);
+        let json = build_pragmatic_problem_with_buffer(&problem, date, None, 0.0, 0.0);
 
         let jobs = json["plan"]["jobs"].as_array().unwrap();
         assert_eq!(jobs.len(), 2);
@@ -265,7 +265,7 @@ mod tests {
         let date = NaiveDate::from_ymd_opt(2026, 1, 26).unwrap();
         let problem = test_problem();
 
-        let json = build_pragmatic_problem(&problem, date);
+        let json = build_pragmatic_problem_with_buffer(&problem, date, None, 0.0, 0.0);
         let place = &json["plan"]["jobs"][0]["services"][0]["places"][0];
 
         assert_eq!(place["duration"], 1800);
@@ -280,7 +280,7 @@ mod tests {
         let date = NaiveDate::from_ymd_opt(2026, 1, 26).unwrap();
         let problem = test_problem();
 
-        let json = build_pragmatic_problem(&problem, date);
+        let json = build_pragmatic_problem_with_buffer(&problem, date, None, 0.0, 0.0);
         let parsed: Problem = serde_json::from_value(json).unwrap();
 
         assert_eq!(parsed.plan.jobs.len(), 2);
@@ -462,8 +462,8 @@ mod tests {
         let date = NaiveDate::from_ymd_opt(2026, 1, 26).unwrap();
         let problem = test_problem();
 
-        // No buffer — original function
-        let json = build_pragmatic_problem(&problem, date);
+        // No buffer — equivalent to build_pragmatic_problem_with_buffer(..., None, 0.0, 0.0)
+        let json = build_pragmatic_problem_with_buffer(&problem, date, None, 0.0, 0.0);
         let place = &json["plan"]["jobs"][0]["services"][0]["places"][0];
         let times = place["times"].as_array().unwrap();
         let start_str = times[0][0].as_str().unwrap();
@@ -512,7 +512,7 @@ mod tests {
             break_config: None,
         };
 
-        let json = build_pragmatic_problem(&problem, date);
+        let json = build_pragmatic_problem_with_buffer(&problem, date, None, 0.0, 0.0);
 
         // Scheduled customer: duration = 60min = 3600s, point window [08:00, 08:00]
         let place_scheduled = &json["plan"]["jobs"][0]["services"][0]["places"][0];
@@ -541,7 +541,7 @@ mod tests {
             duration_minutes: 45,
         });
 
-        let json = build_pragmatic_problem(&problem, date);
+        let json = build_pragmatic_problem_with_buffer(&problem, date, None, 0.0, 0.0);
         let parsed: Problem = serde_json::from_value(json).unwrap();
 
         let breaks = parsed.fleet.vehicles[0].shifts[0]

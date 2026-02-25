@@ -28,6 +28,11 @@ async fn main() -> Result<()> {
     let pool = db::create_pool(&config.database_url).await?;
 
     match cli.command {
+        Some(cli::Command::Migrate) => {
+            db::run_migrations(&pool).await?;
+            info!("Migrations complete, exiting.");
+            Ok(())
+        }
         Some(cli::Command::CreateAdmin { email }) => {
             db::run_migrations(&pool).await?;
             admin::create_admin_interactive(&pool, &email).await
