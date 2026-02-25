@@ -2479,10 +2479,12 @@ Tato změna je již doporučena v sekci 19.1 (bod C).
 
 Soubor: `worker/Dockerfile`
 
-**Build context**: `worker/` — spouštět z root monorepa: `docker build -f worker/Dockerfile worker`
+**Build context**: monorepo root `.` — spouštět z root monorepa: `docker build -f worker/Dockerfile .`
 
-Worker je samostatný crate (ne součást Cargo workspace), takže kontext je adresář
-`worker/`. Výstupní binárka je v `target/release/sazinka-worker`.
+Worker embeduje `packages/countries/countries.json` přes `include_str!()`, proto
+kontext musí zahrnout jak `worker/` tak `packages/`. `.dockerignore` v rootu
+vylučuje `apps/`, `infra/`, `logs/`, `worker/target/` atd. pro rychlý přenos contextu.
+Výstupní binárka je v `/app/worker/target/release/sazinka-worker`.
 
 Kompilace Rustu v Dockeru vyžaduje optimalizaci, jinak se při každé změně zdrojového
 kódu znovu kompilují i všechny závislosti (což trvá ~10+ minut). Použijeme
@@ -3055,9 +3057,11 @@ echo $?                       # Mělo by být 0
 
 ---
 
-### 21.3 Fáze 3: Dockerfile
+### 21.3 Fáze 3: Dockerfile ✅
 
-**Cíl**: Multi-stage Dockerfile s cargo-chef. Build context = `worker/`.
+**Cíl**: Multi-stage Dockerfile s cargo-chef. Build context = monorepo root `.`
+(worker/ byl původní plán, ale worker embeduje `packages/countries/countries.json`
+via `include_str!`, takže kontext musí zahrnovat oba adresáře).
 
 **Existující stav**: Žádný `worker/Dockerfile`.
 
@@ -3097,9 +3101,10 @@ docker run --rm --network host \
 
 ---
 
-### 21.4 Fáze 4: .dockerignore
+### 21.4 Fáze 4: .dockerignore ✅
 
 **Cíl**: Zmenšit build context, zabránit leaku secrets do image.
+Soubor je v root monorepa (`.dockerignore`), ne v `worker/`, protože build context je root.
 
 **RED** — Ověřit velikost build contextu bez ignore:
 ```

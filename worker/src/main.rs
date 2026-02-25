@@ -24,15 +24,26 @@ async fn main() -> Result<()> {
 
     dotenvy::dotenv().ok();
 
+    // Migrate only needs DATABASE_URL — skip full config validation
+    if matches!(cli.command, Some(cli::Command::Migrate)) {
+        tracing_subscriber::fmt()
+            .with_env_filter(
+                std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
+            )
+            .init();
+        let database_url = std::env::var("DATABASE_URL")
+            .map_err(|_| anyhow::anyhow!("DATABASE_URL must be set"))?;
+        let pool = db::create_pool(&database_url).await?;
+        db::run_migrations(&pool).await?;
+        info!("Migrations complete, exiting.");
+        return Ok(());
+    }
+
     let config = config::Config::from_env()?;
     let pool = db::create_pool(&config.database_url).await?;
 
     match cli.command {
-        Some(cli::Command::Migrate) => {
-            db::run_migrations(&pool).await?;
-            info!("Migrations complete, exiting.");
-            Ok(())
-        }
+        Some(cli::Command::Migrate) => unreachable!("handled above"),
         Some(cli::Command::CreateAdmin { email }) => {
             db::run_migrations(&pool).await?;
             admin::create_admin_interactive(&pool, &email).await

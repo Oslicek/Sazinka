@@ -1,0 +1,11 @@
+worker/target/
+worker/.env
+worker/.env.*
+worker/logs/
+worker/*.log
+apps/
+infra/
+node_modules/
+logs/
+*.log
+.git/
