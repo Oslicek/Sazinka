@@ -2361,3 +2361,1283 @@ Pokud deployment selže:
 ### 16.15 Podpora
 
 Pro problémy kontaktujte: admin@ariadline.com
+
+---
+
+## 20. Containerizace Rust Workeru — Plán
+
+> **Stav**: PLÁN — dosud neimplementováno.
+> **Cíl**: Worker běží jako Docker kontejner vedle ostatních služeb. Na VPS není
+> potřeba Rust toolchain. Image se builduje v CI (GitHub Actions) a nasazuje
+> přes `docker compose pull && docker compose up -d`.
+> **Rozhodnutí**: GHCR image je **private**, nasazení používá **pouze immutable tag**
+> (`<git-sha>`, bez `latest` v produkci).
+
+### 20.1 Motivace
+
+Aktuální stav (sekce 16.13): Worker běží jako systemd service, binárka se kompiluje
+na serveru přes `cargo build --release` (~10+ minut, vyžaduje Rust toolchain + 2 GB).
+
+Problémy:
+- Rust toolchain na produkčním serveru je zbytečná závislost a útočná plocha.
+- Release build na VPS zabírá čas a RAM (LTO + codegen-units=1).
+- Worker je jediná služba mimo Docker → dvě různé správy (compose + systemd).
+- Rollback vyžaduje rekompilaci nebo uchování starých binárek.
+
+Řešení: Multi-stage Docker image buildovaný v CI, produkční image obsahuje
+pouze binárku (~30-50 MB) na minimálním base image.
+
+### 20.2 Cílová architektura (3 tiers)
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         CLOUDFLARE                                      │
+│                                                                         │
+│  ┌─────────────────────────┐    ┌──────────────────────────────────┐   │
+│  │ Cloudflare Pages        │    │ Cloudflare Pages                 │   │
+│  │ "sazinka-site"          │    │ "sazinka-app"                    │   │
+│  │                         │    │                                  │   │
+│  │ sazinka.cz              │    │ app.sazinka.cz                   │   │
+│  │ www.sazinka.cz          │    │                                  │   │
+│  │                         │    │ Build env:                       │   │
+│  │ Build: apps/site        │    │   VITE_NATS_WS_URL=             │   │
+│  │ Čistě statický          │    │   wss://api.sazinka.cz/nats     │   │
+│  │ Žádné WebSockety        │    │                                  │   │
+│  └─────────────────────────┘    └──────────────────────────────────┘   │
+│                                                                         │
+│  CDN edge caching, Brotli, HTTP/3, automatic SSL                       │
+└─────────────────────────────────────────────────────────────────────────┘
+                                         │
+                                         │ wss://api.sazinka.cz/nats
+                                         ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    HETZNER VPS (api.sazinka.cz)                         │
+│                    Ubuntu 22.04+, 4 CPU / 16 GB RAM / 60 GB SSD        │
+│                                                                         │
+│  Firewall: jen 22 (SSH) + 80 (ACME) + 443 (HTTPS)                     │
+│                                                                         │
+│  ┌────────────────────────────────────────────────────────────────┐    │
+│  │                    docker compose                              │    │
+│  │                    (docker-compose.prod.yml)                   │    │
+│  │                                                                │    │
+│  │  ┌──────────┐   :443 ┌──────────────────────────────────┐    │    │
+│  │  │  Caddy   │◄──────│  Internet (port 80 + 443)        │    │    │
+│  │  │  reverse │        └──────────────────────────────────┘    │    │
+│  │  │  proxy   │                                                │    │
+│  │  └──┬───┬───┘                                                │    │
+│  │     │   │                                                    │    │
+│  │     │   │ /nats → ws://nats:8222                             │    │
+│  │     │   ▼                                                    │    │
+│  │     │  ┌────────────┐  :4222  ┌───────────────────┐         │    │
+│  │     │  │   NATS     │◄───────│   Rust Worker     │         │    │
+│  │     │  │   :8222    │────────►│   (sazinka-worker)│         │    │
+│  │     │  │   :8223    │         │                   │         │    │
+│  │     │  └────────────┘         │   Žádné porty     │         │    │
+│  │     │                         │   Jen NATS klient │         │    │
+│  │     │                         └──┬──────┬─────┬───┘         │    │
+│  │     │                            │      │     │              │    │
+│  │     │                            ▼      ▼     ▼              │    │
+│  │     │                 ┌────────┐ ┌────────┐ ┌──────────┐   │    │
+│  │     │                 │Postgres│ │Nominat.│ │Valhalla  │   │    │
+│  │     │                 │ :5432  │ │ :8080  │ │ :8002    │   │    │
+│  │     │                 └────────┘ └────────┘ └──────────┘   │    │
+│  │     │                                                       │    │
+│  │     │ /monitor → nats:8223 (basic auth)                     │    │
+│  │     ▼                                                       │    │
+│  │  ┌──────────────┐                                          │    │
+│  │  │ Uptime Kuma  │  (volitelné)                             │    │
+│  │  │ :3001        │                                          │    │
+│  │  └──────────────┘                                          │    │
+│  │                                                             │    │
+│  │  sazinka_net (bridge)                                      │    │
+│  └─────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+Klíčový rozdíl oproti sekci 16.2: **Worker je uvnitř Docker Compose**, ne jako
+systemd service. Vše komunikuje přes interní Docker síť `sazinka_net`.
+
+### 20.3 Prerekvizit: native-tls → rustls
+
+Před vytvořením Dockerfile přepnout TLS backend v `worker/Cargo.toml`:
+
+```toml
+# BYLO:
+reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls"] }
+
+# BUDE:
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+```
+
+Důvod: S `native-tls` runtime image potřebuje `libssl3` (~5 MB + závislosti).
+S `rustls` stačí jen `ca-certificates` (~200 KB). Menší image, méně závislostí,
+žádná systémová OpenSSL.
+
+Tato změna je již doporučena v sekci 19.1 (bod C).
+
+### 20.4 Dockerfile (multi-stage build s cargo-chef)
+
+Soubor: `worker/Dockerfile`
+
+**Build context**: `worker/` — spouštět z root monorepa: `docker build -f worker/Dockerfile worker`
+
+Worker je samostatný crate (ne součást Cargo workspace), takže kontext je adresář
+`worker/`. Výstupní binárka je v `target/release/sazinka-worker`.
+
+Kompilace Rustu v Dockeru vyžaduje optimalizaci, jinak se při každé změně zdrojového
+kódu znovu kompilují i všechny závislosti (což trvá ~10+ minut). Použijeme
+nástroj `cargo-chef`, který přípravu závislostí oddělí do vlastní vrstvy (cache layer).
+
+```dockerfile
+# ============================================================
+# Stage 1: Planner — analýza závislostí
+# ============================================================
+FROM rust:1-slim-bookworm AS planner
+WORKDIR /app
+RUN cargo install cargo-chef
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+# ============================================================
+# Stage 2: Builder — kompilace s využitím vrstev Dockeru
+# ============================================================
+FROM rust:1-slim-bookworm AS builder
+WORKDIR /app
+RUN cargo install cargo-chef
+
+# Systémové závislosti pro kompilaci (s rustls není potřeba libssl-dev)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends pkg-config && \
+    rm -rf /var/lib/apt/lists/*
+
+# Krok 2a: kompilace závislostí (Tato vrstva se cachuje, dokud se nezmění Cargo.toml/lock)
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
+
+# Krok 2b: kompilace samotné aplikace (Tato vrstva se spustí při každé změně zdrojáků)
+COPY . .
+RUN touch src/main.rs && cargo build --release
+
+# ============================================================
+# Stage 3: Runtime — minimální image s binárkou
+# ============================================================
+FROM debian:bookworm-slim
+WORKDIR /opt/sazinka
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates procps && \
+    rm -rf /var/lib/apt/lists/*
+
+# Non-root user
+RUN groupadd -r sazinka && useradd -r -g sazinka -d /opt/sazinka sazinka
+RUN mkdir -p /opt/sazinka/logs && chown -R sazinka:sazinka /opt/sazinka
+
+# Zkopírovat binárku z builderu (kontext worker/ → target je v /app/target/)
+COPY --from=builder /app/target/release/sazinka-worker /usr/local/bin/sazinka-worker
+
+USER sazinka
+
+# Výchozí spuštění aplikace (lze přepsat pro CLI commandy, např. --migrate-only)
+CMD ["sazinka-worker"]
+```
+
+Výsledný image bude mít ~50-80 MB (binárka ~30-40 MB + debian-slim ~25 MB + ca-certs).
+`procps` je přidán pro health check s `pgrep`.
+
+### 20.5 Aktualizace docker-compose.prod.yml
+
+Produkční konfigurace: samostatný soubor `infra/docker-compose.prod.yml` (bez extendu
+nad dev souborem), aby byly jasně odděleny porty, env a služby. Dev používá
+`docker-compose.yml`, prod používá `docker-compose.prod.yml` s `.env.prod`.
+
+Přidat worker jako službu do `infra/docker-compose.prod.yml`:
+
+```yaml
+services:
+  # ... (caddy, nats, postgres, nominatim, valhalla — beze změn)
+
+  worker:
+    image: ghcr.io/<org>/sazinka-worker:${WORKER_VERSION:?Set WORKER_VERSION}
+    container_name: sazinka-worker
+    environment:
+      NATS_URL: nats://worker:${NATS_WORKER_PASSWORD}@nats:4222
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sazinka}
+      GEOCODER_BACKEND: nominatim
+      NOMINATIM_URL: http://nominatim:8080
+      VALHALLA_URL: http://valhalla:8002
+      JWT_SECRET: ${JWT_SECRET}
+      RUST_LOG: ${RUST_LOG:-info,sazinka_worker=debug}
+      LOGS_DIR: /opt/sazinka/logs
+    volumes:
+      - ../logs:/opt/sazinka/logs
+    networks:
+      - sazinka_net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    mem_limit: 2g
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+```
+
+Klíčové body:
+- **Žádné publikované porty** — worker nemá HTTP server.
+- **Adresy služeb**: hostname kontejnerů (`nats`, `postgres`, `nominatim`,
+  `valhalla`) místo `localhost`.
+- **depends_on** s health check podmínkami — worker čeká na Postgres a NATS.
+- **WORKER_VERSION** — umožňuje pinovat verzi image při deploymentu.
+
+### 20.6 Environment proměnné — změna adres
+
+Worker v kontejneru musí adresovat služby přes Docker DNS (hostname kontejneru),
+ne přes `localhost`. Dotčené proměnné:
+
+```
+PROMĚNNÁ              DEV (localhost)              PROD (Docker network)
+───────────────────── ─────────────────────────── ───────────────────────────
+NATS_URL              nats://localhost:4222        nats://worker:PASS@nats:4222
+DATABASE_URL          postgres://...@localhost:5432 postgres://...@postgres:5432
+NOMINATIM_URL         http://localhost:8080        http://nominatim:8080
+VALHALLA_URL          http://localhost:8002        http://valhalla:8002
+```
+
+Worker kód (`config.rs`) tyto URL čte z env proměnných — žádná změna v kódu
+není potřeba, jen jiné hodnoty v prostředí.
+
+### 20.7 Migrace databáze — Option B (samostatný CI job)
+
+Pro produkci je zvolená varianta **Option B**: migrace neběží při startu workeru,
+ale jako samostatný krok v CI/CD pipeline **před nasazením nové verze workeru**.
+
+**Důvody**:
+- Vyšší bezpečnost: runtime worker účet má minimální DB oprávnění (bez DDL).
+- Lepší škálování: při více replikách nehrozí souběžné spouštění migrací.
+- Predikovatelný deploy: když migrace selže, deploy se zastaví před rolloutem.
+
+**Provozní pravidla**:
+- Krok migrace bude řešen spuštěním samotného kontejneru s CLI flagem (např. `sazinka-worker --migrate-only`). Worker provede migrace a okamžitě se ukončí s `exit(0)`. Pro toto bude potřeba doimplementovat jednoduché CLI parsování (pomocí `clap`, který je už v závislostech) v Rustu.
+- CI job `db-migrate` běží jako první krok deploymentu backendu (přes SSH spustí migrační příkaz na VPS).
+- Migrační kontejner používá `MIGRATION_DATABASE_URL` (nebo `DATABASE_URL` s přihlašovacími údaji uživatele `sazinka_admin`). Runtime worker používá `DATABASE_URL` s uživatelem `sazinka_app`.
+- Pipeline pořadí: `build image` → `run migrations` → `deploy worker`.
+
+**PostgreSQL role (nutné vytvořit při prvním setupu)**:
+- `sazinka_admin` — DDL práva (CREATE, ALTER, DROP), používá se pouze pro migrační job.
+- `sazinka_app` — DML práva (SELECT, INSERT, UPDATE, DELETE), žádné schema změny. Používá runtime worker.
+
+Poznámka: `sqlx::migrate!` je compile-time makro; po přidání/odebrání migrací je
+nutný nový image build.
+
+### 20.8 Logování
+
+Dvě možnosti:
+
+**A) Volume mount (doporučeno pro začátek):**
+```yaml
+volumes:
+  - ../logs:/opt/sazinka/logs
+```
+Worker zapisuje do `/opt/sazinka/logs/worker.log.YYYY-MM-DD` jako dnes.
+Logy jsou přístupné na hostu v `logs/`.
+
+**B) Docker logging driver (budoucí optimalizace):**
+Worker zapisuje na stdout/stderr, Docker řeší rotaci:
+```yaml
+logging:
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "7"
+```
+Vyžaduje úpravu `tracing-subscriber` inicializace v `main.rs` — detekovat
+prostředí a přepnout mezi file appender a stdout.
+
+### 20.9 Health check workeru
+
+Worker nemá HTTP endpoint. Možnosti:
+
+**A) Process-based (jednoduchý):**
+```yaml
+healthcheck:
+  test: ["CMD", "pgrep", "-f", "sazinka-worker"]
+  interval: 10s
+  timeout: 3s
+  retries: 3
+```
+Ověřuje jen že proces běží, ne že je funkční.
+
+**B) NATS ping subject (robustní, vyžaduje implementaci):**
+Worker naslouchá na `sazinka.health.ping` a odpovídá `pong`.
+Health check skript publikuje zprávu a čeká na odpověď.
+```yaml
+healthcheck:
+  test: ["CMD", "nats", "req", "sazinka.health.ping", "ping", "--timeout=2s"]
+  interval: 30s
+  timeout: 5s
+  retries: 3
+```
+Vyžaduje: (1) handler v workeru, (2) `nats` CLI v image nebo sidecar.
+
+**Doporučení**: Začít s A, implementovat B jako follow-up.
+
+### 20.10 CI/CD pipeline (GitHub Actions) — plně automatická
+
+Soubor: `.github/workflows/deploy-worker.yml`
+
+Jeden společný workflow pro backend i frontend. Použijí se podmíněné kroky (path filters
+nebo `if:` podle změněných souborů), aby se nepřespalovalo — např. při změně jen
+`apps/site/**` se nebuduje worker image ani nespouštějí migrace.
+
+```
+Trigger: push to main (path filters: worker/**, apps/site/**, apps/web/**)
+
+Kroky:
+1. Checkout
+2. Set up Docker Buildx
+3. Login to GHCR (ghcr.io) s privátním tokenem
+4. Build & push Docker image (private registry)
+   - Tag: ghcr.io/<org>/sazinka-worker:<git-sha>   # immutable production tag
+   - Cache: GitHub Actions cache (nebo registry cache)
+5. Spustit DB migrace (samostatný job, Option B)
+6. Automatický deploy na VPS (SSH z CI):
+   - docker compose pull worker
+   - docker compose up -d worker
+7. Deploy Cloudflare Pages:
+   - apps/site → sazinka-site
+   - apps/web  → sazinka-app
+8. Post-deploy health checks + rollback při failu
+
+Odhadovaný čas:
+- První build: ~15 minut (kompilace všech závislostí)
+- Následné buildy: ~3-5 minut (cargo-chef cache)
+```
+
+**Image tagging strategie:**
+- `<git-sha>` — jediný produkční deploy tag (immutable)
+- `v1.2.3` — volitelný release alias pro milníky
+
+**Registry policy:**
+- GHCR repository je **private**
+- VPS má read-only token pouze pro pull image (GitHub PAT / Deploy token)
+- CI má write token pro push image
+- **Automatický cleanup**: v GHCR bude nastavena retention policy (např. pomocí GitHub Action
+  `delete-package-versions`), která automaticky maže image starší než např. 30 dní
+  (nebo ponechá jen posledních 30), aby se zamezilo nekonečnému růstu storage a nákladům.
+
+### 20.11 Deployment flow na Hetzner VPS
+
+```
+AKTUÁLNÍ POSTUP (sekce 16.14, krok 9):
+  1. SSH na server
+  2. git pull
+  3. cargo build --release (~10+ minut)
+  4. systemctl restart sazinka-worker
+
+NOVÝ POSTUP:
+  1. Push do main → GitHub Actions spustí plně automatický pipeline
+  2. CI:
+     - buildne worker image s immutable tagem (<git-sha>)
+     - spustí DB migrace (Option B)
+     - nasadí worker na VPS
+     - nasadí `apps/site` + `apps/web` na Cloudflare Pages
+  3. Deploy krok na VPS (spuštěný z CI):
+     cd /opt/sazinka/infra
+     docker compose pull worker              # ~30 sekund
+     docker compose up -d worker             # ~2 sekundy
+  4. Hotovo. Rollback:
+     WORKER_VERSION=<older-git-sha> docker compose up -d --no-deps worker
+```
+
+Zero-downtime restart: Worker zpracovává NATS zprávy. Při restartu se
+odpojí od NATS, přestane dostávat zprávy, nový kontejner se připojí
+a začne zpracovávat. JetStream garantuje at-least-once delivery pro
+asynchronní joby — nic se neztratí.
+
+**Ošetření frontendu (UX)**:
+Jelikož WebSocket spojení směrem na NATS proxy (Caddy/NATS) zůstane i při restartu
+workeru aktivní, uživateli spojení "nespadne". Nicméně případný request/reply call
+(odeslání formuláře) zůstane krátce bez odezvy (~2 vteřiny), než naběhne nový worker kontejner
+a začne zprávy obsluhovat.
+
+**Cíl pro UX**: Ve frontend aplikaci (React/Zustand) budeme globálně zachytávat krátké
+timeouty na NATS req/replies a vypisovat non-intrusive toast s uklidňující zprávou.
+Doporučení: kanonický text toastu uložit do `PRJ_UX.MD` (sekce hlášení při nedostupnosti),
+DevOps plán odkazuje na ni. UX copy tak zůstává v jednom místě.
+
+### 20.12 Co se odstraní / změní
+
+```
+ODSTRANÍ SE                                  NAHRADÍ SE
+─────────────────────────────────────────── ────────────────────────────────────
+/etc/systemd/system/sazinka-worker.service   Docker Compose service (worker)
+Rust toolchain na VPS                        (nepotřeba — build v CI)
+cargo build --release na VPS                 docker compose pull
+worker/.env.prod na VPS                      environment v compose + .env.prod
+Sekce 16.13 (systemd service)               Tato sekce (20.x)
+Sekce 16.14 krok 9 (compile + start)        docker compose pull + up
+Manuální deploy backend/frontend             CI/CD pipeline bez manuálních kroků
+
+ZMĚNÍ SE
+─────────────────────────────────────────── ────────────────────────────────────
+worker/Cargo.toml: native-tls → rustls      Menší image, žádná libssl
+docker-compose.prod.yml                      + worker service
+Sekce 16.2 architektura diagram             Worker uvnitř Docker Compose
+GHCR policy                                  private registry + immutable tags
+infra/Caddyfile                              Jen api.sazinka.cz (NATS proxy) +
+                                             monitor.sazinka.cz; statické soubory
+                                             nyní na Cloudflare Pages
+```
+
+### 20.13 Pořadí implementace
+
+```
+Krok  Úkon                                              Riziko    Rozsah
+───── ─────────────────────────────────────────────────  ───────── ──────────────
+ 1    Cargo.toml: native-tls → rustls                   Nízké     1 řádek
+      Otestovat: cargo build + cargo test lokálně
+
+ 2    Vytvořit worker/Dockerfile (multi-stage)           Nízké     1 nový soubor
+      Build context: docker build -f worker/Dockerfile worker
+      Otestovat: docker run s lokálními službami
+
+ 3    Vytvořit worker/.dockerignore                      Žádné     1 nový soubor
+      (target/, .env, .git)
+
+ 4    Implementovat CLI flag --migrate-only (clap)       Nízké     worker/src/main.rs
+      Spustí migrace a okamžitě exit(0)
+
+ 5    Aktualizovat / vytvořit infra/docker-compose.prod.yml  Střední  1 soubor
+      Přidat worker service, ověřit depends_on, mem_limit
+
+ 6    Aktualizovat infra/Caddyfile pro novou architekturu  Nízké    1 soubor
+      Odstranit sazinka.cz a app.sazinka.cz bloky (nyní Cloudflare Pages)
+      Ponechat jen api.sazinka.cz (/nats proxy) + monitor.sazinka.cz
+
+ 7    Vytvořit .github/workflows/deploy-worker.yml       Střední   1 nový soubor
+      Jediný workflow s podmíněnými kroky (path filters)
+
+ 8    Vytvořit Postgres role: sazinka_admin, sazinka_app  Střední  init/migration
+      Oprávnění viz 20.7
+
+ 9    Otestovat end-to-end na staging/lokálně             Střední   ověření
+      docker compose -f infra/docker-compose.prod.yml up -d
+      Ověřit: worker, migrace, NATS, Postgres, Caddy
+
+10    Nasadit na Hetzner VPS                              Střední   provoz
+      Pull image, spustit, ověřit funkčnost
+
+11    Odstranit systemd service z dokumentace             Žádné     dokumentace
+      Aktualizovat sekce 16.13, 16.14, 16.5 (Caddyfile)
+```
+
+### 20.14 Rizika a mitigace
+
+```
+RIZIKO                                    MITIGACE
+───────────────────────────────────────── ──────────────────────────────────────
+Build v CI trvá příliš dlouho             cargo-chef pro cache závislostí;
+(vrp-pragmatic je velký crate)            GitHub Actions larger runners
+
+Docker Hub / GHCR rate limit              Self-hosted registry jako fallback;
+                                          nebo build přímo na VPS jako nouzový plán
+
+Worker crash loop v kontejneru            restart: unless-stopped + health check;
+                                          docker compose logs pro diagnostiku
+
+Migrace selžou v CI jobu                  Deploy se zastaví před rolloutem workeru;
+                                          bezpečný fail-fast + rollback bez změny runtime
+
+rustls nekompatibilita s Nominatim/       Velmi nepravděpodobné (standardní HTTPS);
+Valhalla self-signed cert                 v Docker síti je komunikace přes HTTP
+                                          (ne HTTPS) → TLS backend se nepoužívá
+
+Ztráta zpráv při restartu workeru         JetStream at-least-once delivery;
+                                          request-reply: klient retry po timeout
+```
+
+### 20.15 Stavové služby: Postgres, Nominatim, Valhalla
+
+Provozní pravidlo: všechny kontejnery kromě datových služeb jsou stateless.
+
+- **Postgres**: stateful (trvalý volume), jediný zdroj business dat.
+- **Nominatim**: stateful (trvalý volume), geodata cache; rebuild je časově drahý.
+- **Valhalla**: stateful (trvalý volume), routing tiles; rebuild je časově drahý.
+- **NATS**: semi-stateful (trvalý volume `nats_jetstream`). JetStream uchovává nevyřízené
+  asynchronní joby (geocoding, Valhalla, VRP). Ztráta volume = ztráta rozpracovaných jobů.
+- **Worker, Caddy**: stateless kontejnery (stav mimo kontejner).
+
+Nominatim/Valhalla nejsou primární business data, ale kvůli dlouhému buildu
+se provozně chovají jako stateful služby a jejich volumes jsou **chráněné**.
+
+### 20.16 Ochrana volumes pro Nominatim, Valhalla a NATS JetStream
+
+**Chráněné volumes:**
+- `sazinka_nominatim_data` — geodata ČR (~2 GB, rebuild ~2 hodiny)
+- `sazinka_valhalla_tiles` — routing tiles (~8 GB, rebuild ~15 minut)
+- `sazinka_nats_jetstream` — nevyřízené async joby (geocoding, VRP, Valhalla geometry)
+
+**Zakázané operace v běžném deployi:**
+- `docker compose down -v`
+- `docker volume rm sazinka_nominatim_data`
+- `docker volume rm sazinka_valhalla_tiles`
+- `docker volume rm sazinka_nats_jetstream`
+- `docker system prune --volumes`
+
+**Povolené operace v CI/CD deployi:**
+- `docker compose pull`
+- `docker compose up -d`
+- restart konkrétních služeb bez mazání volumes
+
+**Refresh geodat (samostatný maintenance workflow, ne běžný deploy):**
+1. explicitní schválení změny
+2. snapshot/záloha volume
+3. řízený rebuild Nominatim/Valhalla
+4. health check po rebuild
+5. rollback ze snapshotu při problému
+
+Tím je zachována plná automatizace CI/CD bez rizika nechtěného smazání
+časově náročně buildovaných geodat.
+
+---
+
+## 21. TDD implementační plán — Containerizace Workeru
+
+> **Stav**: IMPLEMENTACE PROBÍHÁ
+> Tento plán pokrývá kroky ze sekce 20.13 rozepsané do TDD cyklů
+> (Red → Green → Refactor → Verify). Každá fáze je atomická a commitovatelná.
+>
+> **Legenda stavu**: ✅ Hotovo | 🔄 Probíhá | ⏳ Čeká
+
+### 21.1 Fáze 1: native-tls → rustls ✅
+
+**Cíl**: Odstranit závislost na systémovém OpenSSL. Prerekvizit pro minimální Docker image.
+
+**Existující stav**:
+- `worker/Cargo.toml` řádek 54: `reqwest = { ... features = ["json", "native-tls"] }`
+- Worker komunikuje s Nominatim (`http://`) a Valhalla (`http://`) — vše HTTP, ne HTTPS.
+- V Docker síti se TLS backend nepoužívá.
+
+**RED** — Ověřit že stávající testy procházejí:
+```
+cd worker
+cargo test
+```
+Poznamenat si výstup (baseline).
+
+**GREEN** — Změna jednoho řádku:
+```
+Soubor: worker/Cargo.toml
+Změna:  "native-tls" → "rustls-tls"
+```
+
+**REFACTOR** — Odstranit komentář `// using native-tls to avoid ring compilation`
+(už neplatí).
+
+**VERIFY**:
+```
+cargo build                          # Kompilace bez chyb
+cargo test                           # Všechny testy stále zelené
+```
+
+**Commit**: `chore: switch reqwest from native-tls to rustls-tls`
+
+---
+
+### 21.2 Fáze 2: CLI flag --migrate-only
+
+**Cíl**: Worker binárka podporuje `sazinka-worker migrate` — spustí DB migrace a ukončí se
+s exit code 0 (úspěch) nebo 1 (chyba). Prerekvizit pro Option B migraci v CI.
+
+**Existující stav**:
+- `worker/src/cli.rs`: `Cli` struct s `Option<Command>`, varianty `Serve` a `CreateAdmin`.
+- `worker/src/main.rs`: match na `cli.command`, `run_migrations()` se volá v `CreateAdmin`
+  i v `run_server()`.
+- `worker/src/db/mod.rs`: `run_migrations(pool)` — hotová funkce.
+
+#### Krok 2a: Přidat `Migrate` variantu do CLI
+
+**RED** — Napsat unit test v `worker/src/cli.rs`:
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn test_cli_migrate_command_parses() {
+        let cli = Cli::parse_from(["sazinka-worker", "migrate"]);
+        assert!(matches!(cli.command, Some(Command::Migrate)));
+    }
+
+    #[test]
+    fn test_cli_no_command_defaults_to_none() {
+        let cli = Cli::parse_from(["sazinka-worker"]);
+        assert!(cli.command.is_none());
+    }
+
+    #[test]
+    fn test_cli_serve_command_parses() {
+        let cli = Cli::parse_from(["sazinka-worker", "serve"]);
+        assert!(matches!(cli.command, Some(Command::Serve)));
+    }
+}
+```
+Test `test_cli_migrate_command_parses` SELŽE — varianta `Migrate` neexistuje.
+
+**GREEN** — Přidat variantu do `worker/src/cli.rs`:
+```rust
+#[derive(Subcommand)]
+pub enum Command {
+    /// Start the worker server (default if no subcommand given)
+    Serve,
+    /// Run database migrations and exit
+    Migrate,
+    /// Create or update an admin user interactively
+    CreateAdmin {
+        #[arg(long)]
+        email: String,
+    },
+}
+```
+
+**VERIFY**: `cargo test` — všechny 3 CLI testy zelené.
+
+#### Krok 2b: Zapojit `Migrate` do main.rs
+
+**RED** — Compile check: `cargo build` projde, ale `Migrate` varianta není v match armu
+(compiler warning o non-exhaustive pattern, nebo `_` wildcard pokud existuje).
+Aktuálně match arm je:
+```rust
+match cli.command {
+    Some(cli::Command::CreateAdmin { email }) => { ... }
+    Some(cli::Command::Serve) | None => run_server(config, pool).await,
+}
+```
+Přidání `Migrate` do `Command` enum způsobí compiler error (non-exhaustive patterns)
+protože `Some(Command::Migrate)` není pokryt. To je náš "RED" stav.
+
+**GREEN** — Přidat arm do match v `worker/src/main.rs`:
+```rust
+match cli.command {
+    Some(cli::Command::Migrate) => {
+        db::run_migrations(&pool).await?;
+        info!("Migrations complete, exiting.");
+        Ok(())
+    }
+    Some(cli::Command::CreateAdmin { email }) => {
+        db::run_migrations(&pool).await?;
+        admin::create_admin_interactive(&pool, &email).await
+    }
+    Some(cli::Command::Serve) | None => run_server(config, pool).await,
+}
+```
+
+Poznámka: `Migrate` arm nevolá `run_server()`, neinicializuje tracing appender
+(logy jdou jen na stdout přes default subscriber), nepřipojuje se k NATS.
+Pouze: connect DB → run migrations → exit.
+
+**REFACTOR** — Zvážit přesun inicializace tracing do `run_server()` místo
+před match (aby `migrate` nepotřeboval LOGS_DIR). Aktuálně tracing se inicializuje
+uvnitř `run_server()`, takže refactor není nutný.
+
+**VERIFY**:
+```
+cargo build
+cargo test
+# Manuální test (vyžaduje běžící PostgreSQL):
+cargo run -- migrate          # Mělo by vypsat "Migrations complete, exiting." a skončit
+echo $?                       # Mělo by být 0
+```
+
+**Commit**: `feat: add 'migrate' CLI subcommand for CI/CD pipeline migrations`
+
+---
+
+### 21.3 Fáze 3: Dockerfile
+
+**Cíl**: Multi-stage Dockerfile s cargo-chef. Build context = `worker/`.
+
+**Existující stav**: Žádný `worker/Dockerfile`.
+
+**RED** — Ověřit že build selže (soubor neexistuje):
+```
+docker build -f worker/Dockerfile worker
+# → ERROR: failed to solve: failed to read dockerfile
+```
+
+**GREEN** — Vytvořit `worker/Dockerfile` dle specifikace v sekci 20.4.
+
+**VERIFY** (postupně):
+```
+# 1. Image se builduje bez chyb
+docker build -t sazinka-worker:test -f worker/Dockerfile worker
+
+# 2. Image obsahuje binárku
+docker run --rm sazinka-worker:test sazinka-worker --help
+# → Mělo by vypsat clap help text
+
+# 3. Image běží pod non-root userem
+docker run --rm sazinka-worker:test whoami
+# → "sazinka"
+
+# 4. Image size je rozumná
+docker images sazinka-worker:test --format "{{.Size}}"
+# → Očekáváno ~50-80 MB
+
+# 5. Migrate command funguje (vyžaduje přístup k DB)
+docker run --rm --network host \
+  -e DATABASE_URL=postgres://sazinka:sazinka_dev@localhost:5432/sazinka \
+  sazinka-worker:test sazinka-worker migrate
+# → "Migrations complete, exiting." + exit code 0
+```
+
+**Commit**: `feat: add multi-stage Dockerfile with cargo-chef`
+
+---
+
+### 21.4 Fáze 4: .dockerignore
+
+**Cíl**: Zmenšit build context, zabránit leaku secrets do image.
+
+**RED** — Ověřit velikost build contextu bez ignore:
+```
+docker build -f worker/Dockerfile worker 2>&1 | grep "transferring context"
+# → Veliký context (stovky MB kvůli target/)
+```
+
+**GREEN** — Vytvořit `worker/.dockerignore`:
+```
+target/
+.env
+.env.*
+.git/
+*.log
+```
+
+**VERIFY**:
+```
+docker build -f worker/Dockerfile worker 2>&1 | grep "transferring context"
+# → Malý context (~pár MB)
+
+# Ověřit že .env není v image
+docker run --rm sazinka-worker:test ls -la /app/.env 2>&1
+# → "No such file" nebo permission denied
+```
+
+**Commit**: `chore: add worker/.dockerignore`
+
+---
+
+### 21.5 Fáze 5: docker-compose.prod.yml
+
+**Cíl**: Produkční compose soubor se worker service. Caddy, NATS, Postgres,
+Nominatim, Valhalla + nový worker container.
+
+**Existující stav**:
+- `infra/docker-compose.yml` — dev konfigurace (porty na localhost, dev hesla).
+- `infra/docker-compose.prod.yml` — neexistuje (popsán v sekci 16.4, nikdy nevytvořen).
+
+**RED** — Ověřit že prod compose neexistuje:
+```
+docker compose -f infra/docker-compose.prod.yml config
+# → ERROR: file not found
+```
+
+**GREEN** — Vytvořit `infra/docker-compose.prod.yml` dle specifikace v sekci 16.4 + 20.5.
+Klíčové rozdíly oproti dev:
+- Žádné publikované porty kromě Caddy (80, 443).
+- Worker service s `${WORKER_VERSION:?}`.
+- Hesla přes `${PROMĚNNÁ:?}` (vyžadují .env.prod).
+- `sazinka_net` bridge síť.
+- `mem_limit` místo `deploy.resources`.
+
+**VERIFY** (syntax check — bez skutečného startu):
+```
+# Vytvořit minimální .env.prod pro validaci
+cat > /tmp/test.env <<EOF
+WORKER_VERSION=test
+POSTGRES_USER=sazinka
+POSTGRES_PASSWORD=test
+POSTGRES_DB=sazinka
+JWT_SECRET=test-secret-at-least-32-bytes-long!!!
+NATS_WORKER_PASSWORD=test
+NATS_BROWSER_PASSWORD=test
+NOMINATIM_PASSWORD=test
+EOF
+
+docker compose --env-file /tmp/test.env -f infra/docker-compose.prod.yml config
+# → Validní YAML, žádné chyby
+
+# Ověřit že worker service existuje v konfiguraci
+docker compose --env-file /tmp/test.env -f infra/docker-compose.prod.yml config \
+  --services | grep worker
+# → "worker"
+```
+
+**Commit**: `feat: add production docker-compose with worker service`
+
+---
+
+### 21.6 Fáze 6: Caddyfile pro novou architekturu
+
+**Cíl**: Caddy na VPS obsluhuje pouze `api.sazinka.cz` (NATS WebSocket proxy)
+a volitelně `monitor.sazinka.cz` (NATS monitoring s basic auth).
+Statické soubory pro `sazinka.cz` a `app.sazinka.cz` jsou na Cloudflare Pages.
+
+**Existující stav**: `infra/Caddyfile` neexistuje jako soubor (byl popsán
+v sekci 16.5, ale nikdy nevytvořen).
+
+**RED** — Caddy kontejner nemá konfiguraci:
+```
+ls infra/Caddyfile
+# → No such file
+```
+
+**GREEN** — Vytvořit `infra/Caddyfile`:
+```
+# api.sazinka.cz — NATS WebSocket proxy
+api.sazinka.cz {
+    # NATS WebSocket proxy (wss:// → ws://)
+    handle /nats/* {
+        uri strip_prefix /nats
+        reverse_proxy nats:8222
+    }
+
+    # Deny everything else
+    handle {
+        respond "Not Found" 404
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+}
+
+# monitor.sazinka.cz — NATS monitoring (basic auth)
+monitor.sazinka.cz {
+    basicauth {
+        admin {$MONITOR_PASSWORD_HASH}
+    }
+    reverse_proxy nats:8223
+}
+```
+
+**VERIFY**:
+```
+# Validace Caddyfile syntaxe (vyžaduje caddy binárku nebo Docker)
+docker run --rm -v $(pwd)/infra/Caddyfile:/etc/caddy/Caddyfile:ro \
+  caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
+# → "Valid configuration"
+```
+
+**Commit**: `feat: add production Caddyfile for api.sazinka.cz`
+
+---
+
+### 21.7 Fáze 7: PostgreSQL role (sazinka_admin, sazinka_app)
+
+**Cíl**: Dva DB uživatelé — `sazinka_admin` (DDL pro migrace) a `sazinka_app`
+(DML pro runtime worker). Princip nejmenších oprávnění.
+
+**Existující stav**:
+- `infra/init-db.sql` — jen UUID extension + health check funkce.
+- Jediný DB user `sazinka` (superuser-like, vytvořen Postgres kontejnerem).
+
+**RED** — Ověřit že role neexistují:
+```
+docker exec sazinka-postgres psql -U sazinka -d sazinka \
+  -c "SELECT rolname FROM pg_roles WHERE rolname IN ('sazinka_admin','sazinka_app');"
+# → 0 rows
+```
+
+**GREEN** — Vytvořit migraci `worker/migrations/026_add_db_roles.sql`:
+```sql
+-- Create migration role (DDL rights for CI migration job)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'sazinka_admin') THEN
+    CREATE ROLE sazinka_admin LOGIN PASSWORD 'PLACEHOLDER_CHANGE_VIA_ENV';
+  END IF;
+END $$;
+
+GRANT CONNECT ON DATABASE sazinka TO sazinka_admin;
+GRANT ALL PRIVILEGES ON SCHEMA public TO sazinka_admin;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO sazinka_admin;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO sazinka_admin;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT ALL PRIVILEGES ON TABLES TO sazinka_admin;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT ALL PRIVILEGES ON SEQUENCES TO sazinka_admin;
+
+-- Create runtime role (DML only — no schema changes)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'sazinka_app') THEN
+    CREATE ROLE sazinka_app LOGIN PASSWORD 'PLACEHOLDER_CHANGE_VIA_ENV';
+  END IF;
+END $$;
+
+GRANT CONNECT ON DATABASE sazinka TO sazinka_app;
+GRANT USAGE ON SCHEMA public TO sazinka_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO sazinka_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO sazinka_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO sazinka_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT USAGE, SELECT ON SEQUENCES TO sazinka_app;
+```
+
+Poznámka: Hesla `PLACEHOLDER_CHANGE_VIA_ENV` budou po migraci přepsána
+přes `ALTER ROLE ... PASSWORD ...` v rámci VPS setupu (SOPS secrets).
+
+**VERIFY**:
+```
+# Spustit migrace
+cd worker && cargo run -- migrate
+
+# Ověřit role existují
+docker exec sazinka-postgres psql -U sazinka -d sazinka \
+  -c "SELECT rolname FROM pg_roles WHERE rolname IN ('sazinka_admin','sazinka_app');"
+# → 2 rows
+
+# Ověřit sazinka_app NEMÁ DDL práva
+docker exec sazinka-postgres psql -U sazinka_app -d sazinka \
+  -c "CREATE TABLE _test_ddl_denied (id int);" 2>&1
+# → ERROR: permission denied
+
+# Ověřit sazinka_app MÁ DML práva (příklad)
+docker exec sazinka-postgres psql -U sazinka_app -d sazinka \
+  -c "SELECT COUNT(*) FROM users;"
+# → 0 nebo N rows, bez chyby
+
+# Ověřit sazinka_admin MÁ DDL práva
+docker exec sazinka-postgres psql -U sazinka_admin -d sazinka \
+  -c "CREATE TABLE _test_ddl_allowed (id int); DROP TABLE _test_ddl_allowed;"
+# → CREATE TABLE + DROP TABLE bez chyb
+```
+
+**Commit**: `feat: add sazinka_admin and sazinka_app Postgres roles`
+
+---
+
+### 21.8 Fáze 8: GitHub Actions workflow
+
+**Cíl**: Jediný workflow pro celý deploy. Podmíněné kroky podle změněných souborů.
+Plně automatický: build → migrate → deploy VPS → deploy Cloudflare.
+
+**Existující stav**: Žádný `.github/workflows/` adresář.
+
+**RED** — Push do main nespustí žádný workflow:
+```
+gh run list --limit 5
+# → Žádné runs, nebo jen existující runs
+```
+
+**GREEN** — Vytvořit `.github/workflows/deploy.yml`:
+
+```yaml
+# Struktura workflow (pseudokód):
+name: Deploy
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'worker/**'
+      - 'apps/site/**'
+      - 'apps/web/**'
+      - 'packages/**'
+
+jobs:
+  changes:
+    # Detekce změněných souborů (dorny/paths-filter nebo custom)
+    # Výstup: worker_changed, site_changed, app_changed
+
+  build-worker:
+    needs: changes
+    if: needs.changes.outputs.worker_changed == 'true'
+    # 1. Checkout
+    # 2. Docker Buildx
+    # 3. Login to GHCR (private)
+    # 4. Build + push: ghcr.io/<org>/sazinka-worker:<git-sha>
+    # Cache: GitHub Actions cache
+
+  migrate-db:
+    needs: build-worker
+    if: needs.changes.outputs.worker_changed == 'true'
+    # 1. SSH do VPS
+    # 2. docker pull ghcr.io/<org>/sazinka-worker:<git-sha>
+    # 3. docker run --rm --network sazinka_net \
+    #      -e DATABASE_URL=postgres://sazinka_admin:...@postgres:5432/sazinka \
+    #      ghcr.io/<org>/sazinka-worker:<git-sha> migrate
+    # 4. Pokud exit != 0 → fail pipeline
+
+  deploy-worker:
+    needs: migrate-db
+    if: needs.changes.outputs.worker_changed == 'true'
+    # 1. SSH do VPS
+    # 2. Aktualizovat WORKER_VERSION v .env.prod
+    # 3. docker compose pull worker
+    # 4. docker compose up -d worker
+    # 5. Health check: docker ps --filter name=sazinka-worker --format "{{.Status}}"
+
+  deploy-site:
+    needs: changes
+    if: needs.changes.outputs.site_changed == 'true'
+    # Cloudflare Pages deploy (wrangler pages deploy)
+    # Project: sazinka-site
+    # Build: cd apps/site && pnpm install && pnpm build
+    # Output: apps/site/dist
+
+  deploy-app:
+    needs: changes
+    if: needs.changes.outputs.app_changed == 'true'
+    # Cloudflare Pages deploy (wrangler pages deploy)
+    # Project: sazinka-app
+    # Build: cd apps/web && pnpm install && pnpm build
+    # Output: apps/web/dist
+    # Env: VITE_NATS_WS_URL=wss://api.sazinka.cz/nats
+```
+
+**GitHub Secrets (nutné nastavit)**:
+```
+GHCR_TOKEN          — GitHub PAT s packages:write (pro push image)
+VPS_SSH_KEY         — Privátní SSH klíč pro deploy user na Hetzner
+VPS_HOST            — IP adresa Hetzner VPS
+VPS_USER            — Deploy user (sazinka)
+CF_API_TOKEN        — Cloudflare API token s Pages:write
+CF_ACCOUNT_ID       — Cloudflare account ID
+MIGRATION_DB_URL    — postgres://sazinka_admin:PASS@postgres:5432/sazinka
+```
+
+**VERIFY**:
+```
+# Syntax check workflow
+gh workflow list
+# → "Deploy" workflow se zobrazí
+
+# Dry run (push do feature branch + PR)
+git checkout -b test/ci-workflow
+git add .github/workflows/deploy.yml
+git commit -m "test: add deploy workflow"
+git push -u origin test/ci-workflow
+gh pr create --title "Test CI workflow" --body "Testing deploy workflow"
+# → PR vytvoří preview run (pokud paths match)
+
+# Ověřit job graph v GitHub Actions UI
+```
+
+**Commit**: `feat: add unified deploy workflow (GitHub Actions)`
+
+---
+
+### 21.9 Fáze 9: End-to-end test lokálně
+
+**Cíl**: Celý produkční stack běží lokálně přes docker-compose.prod.yml.
+Worker se připojí k NATS + Postgres, migrace proběhnou, WebSocket proxy funguje.
+
+**Prerekvizity**: Fáze 1-7 dokončeny. Lokálně buildnutý worker image.
+
+**RED** — Stack se nespustí (ještě nebyl testován jako celek):
+```
+docker compose --env-file infra/.env.test -f infra/docker-compose.prod.yml up -d
+docker compose -f infra/docker-compose.prod.yml ps
+# → Některé služby nemusí být healthy
+```
+
+**GREEN** — Krok za krokem:
+
+```
+# 1. Vytvořit testovací .env
+cat > infra/.env.test <<EOF
+WORKER_VERSION=test
+POSTGRES_USER=sazinka
+POSTGRES_PASSWORD=$(openssl rand -hex 16)
+POSTGRES_DB=sazinka
+JWT_SECRET=$(openssl rand -base64 48)
+NATS_WORKER_PASSWORD=$(openssl rand -hex 12)
+NATS_BROWSER_PASSWORD=$(openssl rand -hex 12)
+NOMINATIM_PASSWORD=$(openssl rand -hex 12)
+RUST_LOG=info,sazinka_worker=debug
+EOF
+
+# 2. Build lokální worker image s tagem "test"
+docker build -t ghcr.io/<org>/sazinka-worker:test -f worker/Dockerfile worker
+
+# 3. Spustit stack
+docker compose --env-file infra/.env.test -f infra/docker-compose.prod.yml up -d
+
+# 4. Počkat na health checks
+sleep 30
+docker compose -f infra/docker-compose.prod.yml ps
+```
+
+**VERIFY checklist**:
+```
+# A) Postgres healthy
+docker exec sazinka-postgres pg_isready -U sazinka
+# → "accepting connections"
+
+# B) NATS healthy
+docker exec sazinka-nats wget -q --spider http://localhost:8223/healthz
+# → exit 0
+
+# C) Worker running a připojený
+docker logs sazinka-worker 2>&1 | grep "Connected to NATS"
+docker logs sazinka-worker 2>&1 | grep "Migrations complete"
+# → Obě hlášky přítomny
+
+# D) Worker health check
+docker inspect sazinka-worker --format='{{.State.Health.Status}}'
+# → "healthy"
+
+# E) Migrace proběhly přes migrate command
+docker run --rm --network sazinka_net \
+  -e DATABASE_URL=postgres://sazinka:PASS@postgres:5432/sazinka \
+  ghcr.io/<org>/sazinka-worker:test migrate
+# → "Migrations complete, exiting." + exit 0
+
+# F) Caddy proxy (pokud Caddy je v compose)
+# Nelze testovat TLS lokálně bez DNS,
+# ale ověřit že Caddy kontejner běží:
+docker logs sazinka-caddy 2>&1 | head -5
+```
+
+**Teardown**:
+```
+docker compose --env-file infra/.env.test -f infra/docker-compose.prod.yml down
+rm infra/.env.test
+```
+
+**Commit**: žádný (testovací fáze)
+
+---
+
+### 21.10 Fáze 10: Nasazení na Hetzner VPS
+
+**Cíl**: Produkční stack běží na Hetzner VPS. CI/CD pipeline úspěšně nasadí
+worker image a Cloudflare Pages.
+
+**Prerekvizity**: Fáze 1-9 dokončeny. VPS provisioned (sekce 16.9, 16.14).
+
+**Krok 10a: VPS příprava (jednorázově)**:
+```
+# SSH na VPS jako deploy user
+ssh sazinka@api.sazinka.cz
+
+# Klonovat repo (nebo aktualizovat)
+git clone <repo-url> /opt/sazinka
+cd /opt/sazinka
+
+# Nainstalovat SOPS + age (sekce 16.7)
+# Dešifrovat secrets
+export SOPS_AGE_KEY_FILE=/etc/sazinka/age-key.txt
+sops -d infra/secrets/.env.production.enc > infra/.env.prod
+
+# Přihlásit se do GHCR (read-only PAT)
+echo $GHCR_READ_TOKEN | docker login ghcr.io -u <org> --password-stdin
+
+# Spustit infrastrukturu (bez workeru — ten přijde z CI)
+docker compose --env-file infra/.env.prod -f infra/docker-compose.prod.yml up -d
+
+# Počkat na Nominatim import (~2 hodiny při prvním spuštění)
+docker logs -f sazinka-nominatim
+
+# Počkat na Valhalla tile build (~15 minut)
+docker logs -f sazinka-valhalla
+```
+
+**Krok 10b: DNS nastavení**:
+```
+api.sazinka.cz      → A record   → IP adresa VPS
+sazinka.cz          → CNAME      → sazinka-site.pages.dev (Cloudflare Pages)
+www.sazinka.cz      → CNAME      → sazinka-site.pages.dev
+app.sazinka.cz      → CNAME      → sazinka-app.pages.dev (Cloudflare Pages)
+monitor.sazinka.cz  → A record   → IP adresa VPS
+```
+
+**Krok 10c: Ověření CI/CD pipeline**:
+```
+# Push změnu do main (např. minor worker change)
+git checkout main
+# ... commit ...
+git push origin main
+
+# Sledovat GitHub Actions
+gh run watch
+
+# Ověřit deployment
+curl -I https://sazinka.cz                    # → 200 (Cloudflare Pages)
+curl -I https://app.sazinka.cz                # → 200 (Cloudflare Pages)
+curl -I https://api.sazinka.cz/nats           # → 101 Switching Protocols (WS upgrade)
+curl -u admin:PASS https://monitor.sazinka.cz/healthz  # → OK
+```
+
+**VERIFY checklist**:
+```
+[ ] https://sazinka.cz se načte (Cloudflare Pages, marketing)
+[ ] https://app.sazinka.cz se načte (Cloudflare Pages, login stránka)
+[ ] WebSocket připojení z app.sazinka.cz na api.sazinka.cz/nats funguje
+[ ] Přihlášení funguje (NATS req/reply přes worker)
+[ ] GitHub Actions workflow proběhl bez chyb
+[ ] Worker image v GHCR je private a tagged s git-sha
+[ ] docker ps na VPS ukazuje všechny služby healthy
+[ ] Nominatim geocoding funguje (test adresa)
+[ ] Valhalla routing funguje (test route)
+```
+
+**Commit**: žádný (operační fáze)
+
+---
+
+### 21.11 Fáze 11: Dokumentace cleanup
+
+**Cíl**: Aktualizovat PRJ_DEVOPS.MD — odstranit/označit zastaralé sekce,
+přidat cross-reference na novou architekturu.
+
+**Změny**:
+- Sekce 16.2: Poznámka "NAHRAZENO sekcí 20.2" (nová architektura s worker v Dockeru).
+- Sekce 16.4: Poznámka "Produkční compose vytvořen v rámci sekce 20.5".
+- Sekce 16.5: Poznámka "Caddyfile aktualizován v rámci sekce 21.6" (jen api + monitor).
+- Sekce 16.13: Poznámka "NAHRAZENO — worker nyní běží jako Docker kontejner (sekce 20)".
+- Sekce 16.14 krok 9: Poznámka "NAHRAZENO — deploy přes CI/CD pipeline (sekce 20.11)".
+- Sekce 20: Stav změněn z "PLÁN" na "IMPLEMENTOVÁNO".
+- Sekce 21: Stav změněn z "PLÁN" na "IMPLEMENTOVÁNO".
+- PRJ_UX.MD: Přidat sekci "Hlášení při krátkém výpadku backendu" s kanonickým textem
+  toastu pro 2-vteřinovou nedostupnost při restartu workeru.
+
+**Commit**: `docs: update PRJ_DEVOPS.MD for containerized worker architecture`
+
+---
+
+### 21.12 Souhrn fází a závislostí
+
+```
+Fáze  Název                          Typ         Závisí na   Soubory
+───── ────────────────────────────── ─────────── ─────────── ────────────────────────
+ 1    native-tls → rustls            Rust change  —          worker/Cargo.toml
+ 2    CLI flag --migrate-only        Rust change  —          worker/src/cli.rs
+                                                              worker/src/main.rs
+ 3    Dockerfile                     Infra        1          worker/Dockerfile
+ 4    .dockerignore                  Infra        —          worker/.dockerignore
+ 5    docker-compose.prod.yml        Infra        3          infra/docker-compose.prod.yml
+ 6    Caddyfile                      Infra        —          infra/Caddyfile
+ 7    PostgreSQL role                DB change    2          worker/migrations/026_*.sql
+ 8    GitHub Actions workflow        CI/CD        3,5,6,7    .github/workflows/deploy.yml
+ 9    End-to-end test                Ověření      1-7        (žádný nový soubor)
+10    Nasazení na VPS                Provoz       8,9        (konfigurace na serveru)
+11    Dokumentace cleanup            Docs         10         PRJ_DEVOPS.MD, PRJ_UX.MD
+```
+
+Fáze 1, 2, 4, 6 jsou nezávislé — lze je implementovat paralelně.
+Fáze 3 závisí na 1 (rustls musí být v Cargo.toml před Docker buildem).
+Fáze 5 závisí na 3 (compose odkazuje worker image).
+Fáze 7 závisí na 2 (migrace se spouštějí přes `migrate` command).
+Fáze 8 závisí na 3, 5, 6, 7 (workflow musí mít všechny komponenty).
+Fáze 9 je validace před produkcí.
+Fáze 10 je live deployment.
+Fáze 11 je úklid.
