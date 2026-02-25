@@ -1,0 +1,201 @@
+# Production Docker Compose — Sazinka VPS
+#
+# Usage:
+#   docker compose --env-file .env.prod -f infra/docker-compose.prod.yml up -d
+#
+# Required environment variables (.env.prod):
+#   WORKER_VERSION          - Docker image tag (Git SHA from CI)
+#   POSTGRES_USER           - PostgreSQL superuser name
+#   POSTGRES_PASSWORD       - PostgreSQL superuser password
+#   POSTGRES_DB             - Database name (default: sazinka)
+#   JWT_SECRET              - JWT signing secret (min 32 bytes)
+#   NATS_WORKER_PASSWORD    - NATS password for worker
+#   NATS_BROWSER_PASSWORD   - NATS password for browser clients
+#   NOMINATIM_PASSWORD      - Nominatim internal DB password
+#   MONITOR_PASSWORD_HASH   - Caddy bcrypt hash for monitor.sazinka.cz
+#
+# Key differences from dev docker-compose.yml:
+#   - No published ports except Caddy (80, 443) and NATS WebSocket (8222 via Caddy)
+#   - Worker service with pinned WORKER_VERSION image
+#   - All services on sazinka_net bridge network
+#   - mem_limit instead of deploy.resources (standalone Docker Compose)
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: sazinka-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"    # HTTP/3
+    environment:
+      MONITOR_PASSWORD_HASH: "${MONITOR_PASSWORD_HASH:?Set MONITOR_PASSWORD_HASH}"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - sazinka_net
+    restart: unless-stopped
+
+  nats:
+    image: nats:2.10-alpine
+    container_name: sazinka-nats
+    # No published ports — Caddy proxies WebSocket on port 8222 internally
+    expose:
+      - "4222"   # NATS client (internal only)
+      - "8222"   # WebSocket (proxied by Caddy)
+      - "8223"   # Monitoring (proxied by Caddy with basic auth)
+      - "6222"   # Cluster (internal only)
+    environment:
+      NATS_WORKER_PASSWORD: "${NATS_WORKER_PASSWORD:?Set NATS_WORKER_PASSWORD}"
+      NATS_BROWSER_PASSWORD: "${NATS_BROWSER_PASSWORD:?Set NATS_BROWSER_PASSWORD}"
+    command: ["--config", "/etc/nats/nats-server.conf", "--jetstream", "--log", "/logs/nats.log"]
+    volumes:
+      - ./nats-server.conf:/etc/nats/nats-server.conf:ro
+      - ../logs:/logs
+      - nats_jetstream:/data/jetstream
+    networks:
+      - sazinka_net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8223/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: sazinka-postgres
+    # No published ports — only accessible within sazinka_net
+    expose:
+      - "5432"
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:?Set POSTGRES_USER}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}"
+      POSTGRES_DB: "${POSTGRES_DB:-sazinka}"
+      JWT_SECRET: "${JWT_SECRET:?Set JWT_SECRET}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    networks:
+      - sazinka_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sazinka}"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    mem_limit: 2g
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  # ============================================================================
+  # NOMINATIM GEOCODING SERVICE
+  # ============================================================================
+  # !!! PROTECTED STATEFUL SERVICE — DATA MUST NEVER BE DELETED !!!
+  # Initial import takes ~2 hours. Volume nominatim_data must persist.
+  # FORBIDDEN: docker compose down -v, docker volume rm sazinka_nominatim_data
+  # ============================================================================
+  nominatim:
+    image: mediagis/nominatim:4.4
+    container_name: sazinka-nominatim
+    expose:
+      - "8080"
+    environment:
+      PBF_URL: https://download.geofabrik.de/europe/czech-republic-latest.osm.pbf
+      NOMINATIM_PASSWORD: "${NOMINATIM_PASSWORD:?Set NOMINATIM_PASSWORD}"
+      FREEZE: "true"
+    volumes:
+      - nominatim_data:/var/lib/postgresql/14/main
+    networks:
+      - sazinka_net
+    shm_size: 1g
+    mem_limit: 4g
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 3600s
+    restart: unless-stopped
+
+  # ============================================================================
+  # VALHALLA ROUTING ENGINE
+  # ============================================================================
+  # !!! PROTECTED STATEFUL SERVICE — DATA MUST NEVER BE DELETED !!!
+  # First build takes ~5-30 minutes. Volume valhalla_tiles must persist.
+  # FORBIDDEN: docker compose down -v, docker volume rm sazinka_valhalla_tiles
+  # ============================================================================
+  valhalla:
+    image: ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+    container_name: sazinka-valhalla
+    expose:
+      - "8002"
+    volumes:
+      - valhalla_tiles:/custom_files
+    environment:
+      - tile_urls=https://download.geofabrik.de/europe/czech-republic-latest.osm.pbf
+      - serve_tiles=True
+      - build_elevation=False
+      - build_admins=False
+      - build_time_zones=False
+      - use_tiles_ignore_pbf=True
+      - max_matrix_distance=5000000
+      - max_distance=10000000
+    networks:
+      - sazinka_net
+    mem_limit: 4g
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 300s
+    restart: unless-stopped
+
+  worker:
+    image: ghcr.io/oslicek/sazinka-worker:${WORKER_VERSION:?Set WORKER_VERSION}
+    container_name: sazinka-worker
+    environment:
+      DATABASE_URL: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sazinka}"
+      NATS_URL: "nats://nats:4222"
+      NATS_USER: "worker"
+      NATS_PASSWORD: "${NATS_WORKER_PASSWORD}"
+      GEOCODER_BACKEND: nominatim
+      NOMINATIM_URL: http://nominatim:8080
+      VALHALLA_URL: http://valhalla:8002
+      JWT_SECRET: "${JWT_SECRET}"
+      RUST_LOG: "${RUST_LOG:-info,sazinka_worker=debug}"
+      LOGS_DIR: /opt/sazinka/logs
+    volumes:
+      - ../logs:/opt/sazinka/logs
+    networks:
+      - sazinka_net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    mem_limit: 2g
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+networks:
+  sazinka_net:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:
+  postgres_data:
+  nats_jetstream:
+  valhalla_tiles:
+
+  # ============================================================================
+  # !!! PROTECTED VOLUME — DO NOT DELETE !!!
+  # nominatim_data contains Czech Republic OSM data (~2 GB)
+  # Initial import takes ~2 HOURS. NEVER delete this volume.
+  # ============================================================================
+  nominatim_data:

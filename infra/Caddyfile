@@ -1,0 +1,37 @@
+# Sazinka production Caddyfile — VPS (Hetzner)
+#
+# This Caddy instance handles ONLY:
+#   api.sazinka.cz     — NATS WebSocket proxy (wss:// → ws://)
+#   monitor.sazinka.cz — NATS monitoring dashboard (basic auth)
+#
+# Static sites (sazinka.cz, app.sazinka.cz) are hosted on Cloudflare Pages.
+# Caddy handles automatic TLS via Let's Encrypt.
+
+# api.sazinka.cz — NATS WebSocket proxy
+api.sazinka.cz {
+    # NATS WebSocket connections from browser (wss://api.sazinka.cz/nats/...)
+    handle /nats/* {
+        uri strip_prefix /nats
+        reverse_proxy nats:8222
+    }
+
+    # Deny all other paths
+    handle {
+        respond "Not Found" 404
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+}
+
+# monitor.sazinka.cz — NATS monitoring (password protected)
+monitor.sazinka.cz {
+    basic_auth {
+        admin {$MONITOR_PASSWORD_HASH}
+    }
+    reverse_proxy nats:8223
+}

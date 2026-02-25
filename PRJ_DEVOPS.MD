@@ -3135,7 +3135,7 @@ docker run --rm sazinka-worker:test ls -la /app/.env 2>&1
 
 ---
 
-### 21.5 Fáze 5: docker-compose.prod.yml
+### 21.5 Fáze 5: docker-compose.prod.yml ✅
 
 **Cíl**: Produkční compose soubor se worker service. Caddy, NATS, Postgres,
 Nominatim, Valhalla + nový worker container.
@@ -3185,7 +3185,7 @@ docker compose --env-file /tmp/test.env -f infra/docker-compose.prod.yml config 
 
 ---
 
-### 21.6 Fáze 6: Caddyfile pro novou architekturu
+### 21.6 Fáze 6: Caddyfile pro novou architekturu ✅
 
 **Cíl**: Caddy na VPS obsluhuje pouze `api.sazinka.cz` (NATS WebSocket proxy)
 a volitelně `monitor.sazinka.cz` (NATS monitoring s basic auth).
@@ -3244,7 +3244,7 @@ docker run --rm -v $(pwd)/infra/Caddyfile:/etc/caddy/Caddyfile:ro \
 
 ---
 
-### 21.7 Fáze 7: PostgreSQL role (sazinka_admin, sazinka_app)
+### 21.7 Fáze 7: PostgreSQL role (sazinka_admin, sazinka_app) ✅
 
 **Cíl**: Dva DB uživatelé — `sazinka_admin` (DDL pro migrace) a `sazinka_app`
 (DML pro runtime worker). Princip nejmenších oprávnění.
