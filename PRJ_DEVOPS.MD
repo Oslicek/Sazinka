@@ -3330,7 +3330,7 @@ docker exec sazinka-postgres psql -U sazinka_admin -d sazinka \
 
 ---
 
-### 21.8 Fáze 8: GitHub Actions workflow
+### 21.8 Fáze 8: GitHub Actions workflow ✅
 
 **Cíl**: Jediný workflow pro celý deploy. Podmíněné kroky podle změněných souborů.
 Plně automatický: build → migrate → deploy VPS → deploy Cloudflare.

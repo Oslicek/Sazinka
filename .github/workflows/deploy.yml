@@ -1,0 +1,207 @@
+name: Deploy
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'worker/**'
+      - 'packages/**'
+      - 'apps/site/**'
+      - 'apps/web/**'
+      - 'infra/**'
+
+jobs:
+  # ============================================================
+  # Detect which parts of the repo changed
+  # ============================================================
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      worker: ${{ steps.filter.outputs.worker }}
+      site: ${{ steps.filter.outputs.site }}
+      app: ${{ steps.filter.outputs.app }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            worker:
+              - 'worker/**'
+              - 'packages/**'
+            site:
+              - 'apps/site/**'
+            app:
+              - 'apps/web/**'
+
+  # ============================================================
+  # Build and push Docker image for Rust worker
+  # ============================================================
+  build-worker:
+    name: Build worker image
+    needs: changes
+    if: needs.changes.outputs.worker == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: worker/Dockerfile
+          push: true
+          tags: ghcr.io/oslicek/sazinka-worker:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ============================================================
+  # Run database migrations (separate CI step for security)
+  # Uses sazinka_admin credentials — DDL rights only in migration
+  # ============================================================
+  migrate-db:
+    name: Run DB migrations
+    needs: build-worker
+    if: needs.changes.outputs.worker == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run migrations via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            # Pull new image
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker pull ghcr.io/oslicek/sazinka-worker:${{ github.sha }}
+
+            # Run migrations using sazinka_admin (DDL rights)
+            docker run --rm \
+              --network sazinka_net \
+              -e DATABASE_URL="${{ secrets.MIGRATION_DB_URL }}" \
+              ghcr.io/oslicek/sazinka-worker:${{ github.sha }} \
+              sazinka-worker migrate
+
+            echo "Migrations completed successfully"
+
+  # ============================================================
+  # Deploy worker to VPS (zero-downtime rolling restart)
+  # ============================================================
+  deploy-worker:
+    name: Deploy worker to VPS
+    needs: migrate-db
+    if: needs.changes.outputs.worker == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy worker via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            cd ~/sazinka
+
+            # Update WORKER_VERSION in .env.prod
+            sed -i "s/^WORKER_VERSION=.*/WORKER_VERSION=${{ github.sha }}/" .env.prod
+
+            # Pull new image and restart worker
+            docker compose --env-file .env.prod -f infra/docker-compose.prod.yml pull worker
+            docker compose --env-file .env.prod -f infra/docker-compose.prod.yml up -d worker
+
+            # Verify worker is running
+            sleep 10
+            STATUS=$(docker inspect sazinka-worker --format='{{.State.Status}}' 2>/dev/null || echo "not found")
+            echo "Worker status: $STATUS"
+            if [ "$STATUS" != "running" ]; then
+              echo "ERROR: Worker is not running after deploy!"
+              docker logs sazinka-worker --tail 50
+              exit 1
+            fi
+
+            echo "Worker deployed successfully: ${{ github.sha }}"
+
+  # ============================================================
+  # Deploy marketing site to Cloudflare Pages
+  # ============================================================
+  deploy-site:
+    name: Deploy site to Cloudflare Pages
+    needs: changes
+    if: needs.changes.outputs.site == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build site
+        run: pnpm --filter @sazinka/site build
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          command: pages deploy apps/site/dist --project-name=sazinka-site --commit-dirty=true
+
+  # ============================================================
+  # Deploy frontend app to Cloudflare Pages
+  # ============================================================
+  deploy-app:
+    name: Deploy app to Cloudflare Pages
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build app
+        run: pnpm --filter @sazinka/web build
+        env:
+          VITE_NATS_WS_URL: wss://api.sazinka.cz/nats
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          command: pages deploy apps/web/dist --project-name=sazinka-app --commit-dirty=true
