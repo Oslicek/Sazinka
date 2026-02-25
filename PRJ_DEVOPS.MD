@@ -3440,7 +3440,7 @@ gh pr create --title "Test CI workflow" --body "Testing deploy workflow"
 
 ---
 
-### 21.9 Fáze 9: End-to-end test lokálně
+### 21.9 Fáze 9: End-to-end test lokálně ✅
 
 **Cíl**: Celý produkční stack běží lokálně přes docker-compose.prod.yml.
 Worker se připojí k NATS + Postgres, migrace proběhnou, WebSocket proxy funguje.
