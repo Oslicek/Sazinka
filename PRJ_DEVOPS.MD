@@ -3660,3 +3660,36 @@ Fáze 8 závisí na 3, 5, 6, 7 (workflow musí mít všechny komponenty).
 Fáze 9 je validace před produkcí.
 Fáze 10 je live deployment.
 Fáze 11 je úklid.
+
+---
+
+## 22. Docker Deployment Rules — Checklist
+
+Source: [Docker Best Practices for Production](https://www.youtube.com/watch?v=ueTe-VQaD7c&t=5s)
+
+Pravidla pro všechny Dockerfiles a docker-compose soubory v projektu.
+Viz také `PRJ_RULES.MD` sekce "Docker / Deployment".
+
+| # | Pravidlo | Stav | Poznámka k implementaci |
+|---|----------|------|-------------------------|
+| 1 | Minimal base images | ✅ | `debian:bookworm-slim` v runtime stage |
+| 2 | Multi-stage builds | ✅ | 3 stages: planner → builder → runtime |
+| 3 | Derive version from project | ✅ | Git SHA tag z CI (`${{ github.sha }}`), OCI labels z `docker/metadata-action` |
+| 4 | Cache Docker layers | ✅ | `cargo-chef`: deps compiled separately, cached until Cargo.toml changes |
+| 5 | Combine/chain RUN, clean caches | ✅ | Single RUN: apt-get + rm lists + groupadd + useradd + mkdir |
+| 6 | Explicit COPY of specific files | ✅ | Only `worker/` and `packages/`; `.dockerignore` excludes rest |
+| 7 | Production dependencies only | ✅ | `--release` build; no dev deps in runtime |
+| 8 | Non-root user | ✅ | `USER sazinka` (UID 999) |
+| 9 | Pin image versions | ✅ | `rust:1.93-slim-bookworm` (ARG); Valhalla pinned by SHA digest |
+| 10 | Official images only | ✅ | `rust`, `debian`, `postgres`, `nats`, `caddy` all official |
+| 11 | No secrets in image | ✅ | `.dockerignore` excludes `.env`; secrets via env vars at runtime |
+| 12 | No sudo | ✅ | Not installed |
+| 13 | Minimal packages | ✅ | Only `ca-certificates` in runtime (required for rustls CA bundle) |
+| 14 | COPY over ADD | ✅ | All COPY, zero ADD |
+| 15 | No debugging tools | ✅ | No procps/curl/vim; healthcheck uses `/proc/1/status` |
+| 16 | Executables owned by root | ✅ | `COPY --chown=root:root` for binary; `USER sazinka` for execution |
+| 17 | Sort arguments alphabetically | ✅ | Single package (`ca-certificates`) — trivially sorted |
+| 18 | Use WORKDIR | ✅ | `/app/worker` for build, `/opt/sazinka` for runtime |
+| 19 | Exec form for CMD | ✅ | `CMD ["sazinka-worker"]` |
+| 20 | Comment non-obvious decisions | ✅ | SQLX_OFFLINE, build context, ca-certificates purpose documented |
+| 21 | OCI labels | ✅ | `LABEL org.opencontainers.image.*` in Dockerfile + CI metadata-action |

@@ -525,4 +525,30 @@ sazinka/
 - [ ] Documentation updated (if needed)
 - [ ] NATS message schemas documented
 
+### Docker / Deployment
+
+Source: [Docker Best Practices for Production](https://www.youtube.com/watch?v=ueTe-VQaD7c&t=5s)
+
+1. **Minimal base images** — use `-slim`, `-alpine`, or `distroless`
+2. **Multi-stage builds** — separate build tools from runtime
+3. **Derive version from project** — use git SHA or Cargo.toml version, never hardcode
+4. **Cache Docker layers** — base image first, dependencies before source
+5. **Combine & chain RUN commands** — clean caches in the same layer (`rm -rf /var/lib/apt/lists/*`)
+6. **Explicit COPY of specific files** — never `COPY . .` without `.dockerignore`
+7. **Production dependencies only** — no dev deps, no test frameworks in runtime
+8. **Non-root user** — always `USER <name>` before `CMD`
+9. **Pin image versions** — never `:latest`, use explicit tags or SHA digests
+10. **Official images only** — use Docker Hub official or verified publisher images
+11. **No secrets in image** — use env vars or mounted secrets, never bake in
+12. **No sudo** — never install or use sudo in containers
+13. **Minimal packages** — only what's strictly needed for runtime
+14. **COPY over ADD** — ADD has implicit tar extraction and URL fetching; use COPY
+15. **No debugging tools** — no `curl`, `vim`, `strace` in production images
+16. **Executables owned by root, run by non-root** — `COPY --chown=root:root`, then `USER`
+17. **Sort arguments alphabetically** — in `apt-get install`, `apk add`, etc.
+18. **Use WORKDIR** — never `RUN cd /path && ...`
+19. **Exec form for CMD** — `CMD ["binary"]`, not `CMD binary` (shell form)
+20. **Comment non-obvious decisions** — explain why, not what
+21. **Add OCI labels** — `org.opencontainers.image.*` for metadata
+
 ---

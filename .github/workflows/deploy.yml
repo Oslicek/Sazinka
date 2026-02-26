@@ -59,6 +59,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Extract metadata for OCI labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/oslicek/sazinka-worker
+          tags: type=sha
+
       - name: Build and push worker image
         uses: docker/build-push-action@v6
         with:
@@ -66,6 +73,7 @@ jobs:
           file: worker/Dockerfile
           push: true
           tags: ghcr.io/oslicek/sazinka-worker:${{ github.sha }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
