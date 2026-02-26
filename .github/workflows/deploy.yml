@@ -36,37 +36,148 @@ jobs:
               - 'apps/web/**'
 
   # ============================================================
-  # Build and push Docker image for Rust worker
+  # Rust: clippy + cargo test
+  # ============================================================
+  test-worker:
+    name: Test worker
+    needs: changes
+    if: needs.changes.outputs.worker == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: sazinka
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: sazinka
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U sazinka"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: worker
+
+      - name: Clippy (zero warnings)
+        run: cargo clippy --all-targets -- -D warnings
+        working-directory: worker
+        env:
+          DATABASE_URL: postgres://sazinka:test@localhost:5432/sazinka
+
+      - name: Tests
+        run: cargo test
+        working-directory: worker
+        env:
+          DATABASE_URL: postgres://sazinka:test@localhost:5432/sazinka
+          JWT_SECRET: test-secret-at-least-32-bytes-long!!!
+
+  # ============================================================
+  # Frontend: typecheck + vitest
+  # ============================================================
+  test-frontend:
+    name: Test frontend
+    needs: changes
+    if: needs.changes.outputs.app == 'true' || needs.changes.outputs.site == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Tests (web)
+        if: needs.changes.outputs.app == 'true'
+        run: pnpm --filter @sazinka/web test
+
+      - name: Tests (site)
+        if: needs.changes.outputs.site == 'true'
+        run: pnpm --filter @ariadline/site test
+
+  # ============================================================
+  # Security: cargo audit, pnpm audit, gitleaks, trivy
+  # ============================================================
+  security-audit:
+    name: Security audit
+    needs: changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cargo-audit
+        if: needs.changes.outputs.worker == 'true'
+        run: cargo install cargo-audit
+
+      - name: Cargo audit
+        if: needs.changes.outputs.worker == 'true'
+        run: cargo audit
+        working-directory: worker
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+
+      - name: pnpm audit (warn on non-critical)
+        run: pnpm audit --prod
+        continue-on-error: true
+
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ============================================================
+  # Build worker Docker image, minimize, scan
   # ============================================================
   build-worker:
     name: Build worker image
-    needs: changes
+    needs: [test-worker, security-audit]
     if: needs.changes.outputs.worker == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+      security-events: write
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GitHub Container Registry
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata for OCI labels
+      - name: Extract OCI metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/oslicek/sazinka-worker
           tags: type=sha
 
-      - name: Build and push worker image
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -76,10 +187,42 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          load: true
+
+      - name: Check image size
+        run: |
+          SIZE=$(docker inspect ghcr.io/oslicek/sazinka-worker:${{ github.sha }} --format='{{.Size}}')
+          SIZE_MB=$((SIZE / 1024 / 1024))
+          echo "Image size: ${SIZE_MB} MB"
+          if [ "$SIZE_MB" -gt 150 ]; then
+            echo "::error::Image size ${SIZE_MB} MB exceeds 150 MB limit!"
+            exit 1
+          fi
+          echo "::notice::Image size OK: ${SIZE_MB} MB"
+
+      - name: Trivy scan (SARIF)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ghcr.io/oslicek/sazinka-worker:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Trivy critical gate
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ghcr.io/oslicek/sazinka-worker:${{ github.sha }}
+          format: 'table'
+          severity: 'CRITICAL'
+          exit-code: '1'
 
   # ============================================================
-  # Run database migrations (separate CI step for security)
-  # Uses sazinka_admin credentials — DDL rights only in migration
+  # Database migrations (sazinka_admin credentials)
   # ============================================================
   migrate-db:
     name: Run DB migrations
@@ -95,21 +238,17 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             set -e
-            # Pull new image
             echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             docker pull ghcr.io/oslicek/sazinka-worker:${{ github.sha }}
-
-            # Run migrations using sazinka_admin (DDL rights)
             docker run --rm \
-              --network sazinka_net \
+              --network infra_sazinka_net \
               -e DATABASE_URL="${{ secrets.MIGRATION_DB_URL }}" \
               ghcr.io/oslicek/sazinka-worker:${{ github.sha }} \
               sazinka-worker migrate
-
             echo "Migrations completed successfully"
 
   # ============================================================
-  # Deploy worker to VPS (zero-downtime rolling restart)
+  # Deploy worker to VPS
   # ============================================================
   deploy-worker:
     name: Deploy worker to VPS
@@ -126,15 +265,9 @@ jobs:
           script: |
             set -e
             cd ~/sazinka
-
-            # Update WORKER_VERSION in .env.prod
             sed -i "s/^WORKER_VERSION=.*/WORKER_VERSION=${{ github.sha }}/" .env.prod
-
-            # Pull new image and restart worker
             docker compose --env-file .env.prod -f infra/docker-compose.prod.yml pull worker
             docker compose --env-file .env.prod -f infra/docker-compose.prod.yml up -d worker
-
-            # Verify worker is running
             sleep 10
             STATUS=$(docker inspect sazinka-worker --format='{{.State.Status}}' 2>/dev/null || echo "not found")
             echo "Worker status: $STATUS"
@@ -143,7 +276,6 @@ jobs:
               docker logs sazinka-worker --tail 50
               exit 1
             fi
-
             echo "Worker deployed successfully: ${{ github.sha }}"
 
   # ============================================================
@@ -151,27 +283,22 @@ jobs:
   # ============================================================
   deploy-site:
     name: Deploy site to Cloudflare Pages
-    needs: changes
+    needs: [test-frontend, security-audit]
     if: needs.changes.outputs.site == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: pnpm/action-setup@v4
         with:
           version: latest
-
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
       - name: Build site
-        run: pnpm --filter @sazinka/site build
-
+        run: pnpm --filter @ariadline/site build
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
@@ -184,32 +311,68 @@ jobs:
   # ============================================================
   deploy-app:
     name: Deploy app to Cloudflare Pages
-    needs: changes
+    needs: [test-frontend, security-audit]
     if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: pnpm/action-setup@v4
         with:
           version: latest
-
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
       - name: Build app
         run: pnpm --filter @sazinka/web build
         env:
           VITE_NATS_WS_URL: wss://api.sazinka.cz/nats
-
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
           command: pages deploy apps/web/dist --project-name=sazinka-app --commit-dirty=true
+
+  # ============================================================
+  # Smoke test after deploy
+  # ============================================================
+  smoke-test:
+    name: Smoke test
+    needs: [deploy-worker, deploy-site, deploy-app]
+    if: always() && (needs.deploy-worker.result == 'success' || needs.deploy-site.result == 'success' || needs.deploy-app.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - name: API health
+        if: needs.deploy-worker.result == 'success'
+        run: |
+          sleep 15
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://api.sazinka.cz/nats || echo "000")
+          echo "API status: $STATUS"
+          if [ "$STATUS" = "000" ]; then
+            echo "::error::API unreachable!"
+            exit 1
+          fi
+          echo "API reachable: HTTP $STATUS"
+
+      - name: Site health
+        if: needs.deploy-site.result == 'success'
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://sazinka.cz)
+          echo "Site status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Site returned $STATUS!"
+            exit 1
+          fi
+
+      - name: App health
+        if: needs.deploy-app.result == 'success'
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://app.sazinka.cz)
+          echo "App status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::App returned $STATUS!"
+            exit 1
+          fi

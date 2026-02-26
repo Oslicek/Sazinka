@@ -3693,3 +3693,709 @@ Viz také `PRJ_RULES.MD` sekce "Docker / Deployment".
 | 19 | Exec form for CMD | ✅ | `CMD ["sazinka-worker"]` |
 | 20 | Comment non-obvious decisions | ✅ | SQLX_OFFLINE, build context, ca-certificates purpose documented |
 | 21 | OCI labels | ✅ | `LABEL org.opencontainers.image.*` in Dockerfile + CI metadata-action |
+
+---
+
+## 23. Manual Deployment Runbook — First-Time Setup
+
+> **Kdy použít**: Poprvé nasazujeme na čistý server. Po tomto setupu se vše
+> spravuje přes CI/CD pipeline (sekce 24). Tento dokument slouží i jako
+> disaster recovery playbook.
+
+### 23.1 Přehled cílové infrastruktury
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Cloudflare                                             │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐ │
+│  │ sazinka.cz   │  │app.sazinka.cz│  │ DNS + Proxy   │ │
+│  │ Pages (site) │  │ Pages (app)  │  │ for api.*     │ │
+│  └──────────────┘  └──────────────┘  └───────┬───────┘ │
+└──────────────────────────────────────────────┬─────────┘
+                                               │ HTTPS
+┌──────────────────────────────────────────────▼─────────┐
+│  Hetzner VPS (srv1409906)                              │
+│  ┌─────────┐ ┌──────┐ ┌────────┐ ┌─────┐ ┌──────────┐ │
+│  │  Caddy  │ │ NATS │ │Postgres│ │Valve│ │Nominatim │ │
+│  │ :80/443 │ │:4222 │ │ :5432  │ │:8002│ │  :8080   │ │
+│  └────┬────┘ └──┬───┘ └───┬────┘ └──┬──┘ └────┬─────┘ │
+│       │         │         │         │          │       │
+│  ┌────▼─────────▼─────────▼─────────▼──────────▼─────┐ │
+│  │             sazinka_net (Docker bridge)            │ │
+│  │  ┌───────────────────────────────────────────┐    │ │
+│  │  │  sazinka-worker (ghcr.io/oslicek/...)     │    │ │
+│  │  └───────────────────────────────────────────┘    │ │
+│  └───────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────┘
+```
+
+### 23.2 Prerekvizity
+
+Před zahájením potřebujete:
+- [ ] Hetzner Cloud účet s platební metodou
+- [ ] Cloudflare účet (free tier stačí)
+- [ ] Doménu `sazinka.cz` s nameservery nastavenými na Cloudflare
+- [ ] GitHub účet s přístupem k repozitáři `Oslicek/Sazinka`
+- [ ] SSH klíč (ed25519) pro deploy — `ssh-keygen -t ed25519 -C "deploy@sazinka"`
+- [ ] Lokálně nainstalovaný `sops` + `age` pro správu secrets
+
+### 23.3 Krok 1: Vytvoření VPS na Hetzner
+
+1. Přihlásit se do [Hetzner Cloud Console](https://console.hetzner.cloud/)
+2. Vytvořit nový projekt "Sazinka"
+3. Vytvořit server:
+   - **Location**: Falkenstein (eu-central, nejblíže k CZ)
+   - **Image**: Ubuntu 24.04
+   - **Type**: CPX31 (4 vCPU, 8 GB RAM) — minimum pro Nominatim+Valhalla build
+   - **Networking**: přidat IPv4 + IPv6
+   - **SSH key**: nahrát deploy klíč
+   - **Name**: `sazinka-prod`
+4. Poznamenat si IP adresu serveru → `VPS_HOST`
+
+### 23.4 Krok 2: Základní zabezpečení VPS
+
+```bash
+# Připojit se jako root
+ssh root@<VPS_HOST>
+
+# --- Aktualizace systému ---
+apt update && apt upgrade -y
+
+# --- Vytvořit deploy uživatele ---
+adduser --disabled-password --gecos "" sazinka
+usermod -aG sudo sazinka
+# Zkopírovat SSH klíče z root
+mkdir -p /home/sazinka/.ssh
+cp /root/.ssh/authorized_keys /home/sazinka/.ssh/
+chown -R sazinka:sazinka /home/sazinka/.ssh
+chmod 700 /home/sazinka/.ssh
+chmod 600 /home/sazinka/.ssh/authorized_keys
+
+# --- Zakázat root SSH login a password auth ---
+sed -i 's/^PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
+sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+systemctl restart sshd
+
+# --- Firewall (UFW) ---
+ufw default deny incoming
+ufw default allow outgoing
+ufw allow 22/tcp        # SSH
+ufw allow 80/tcp        # HTTP (Caddy redirect)
+ufw allow 443/tcp       # HTTPS (Caddy)
+ufw allow 443/udp       # HTTP/3
+ufw allow 8222/tcp      # NATS WebSocket (browser)
+ufw enable
+
+# --- Nainstalovat Docker ---
+apt install -y docker.io docker-compose-plugin
+usermod -aG docker sazinka
+
+# --- Fail2ban ---
+apt install -y fail2ban
+systemctl enable fail2ban
+systemctl start fail2ban
+
+# --- Automatické bezpečnostní aktualizace ---
+apt install -y unattended-upgrades
+dpkg-reconfigure -plow unattended-upgrades
+```
+
+### 23.5 Krok 3: Deploy repozitáře na VPS
+
+```bash
+# Přepnout na deploy uživatele
+su - sazinka
+
+# Klonovat repozitář
+git clone git@github.com:Oslicek/Sazinka.git ~/sazinka
+cd ~/sazinka
+
+# Vytvořit .env.prod (nové produkční secrets!)
+# NIKDY nekopírovat dev secrets do produkce!
+cat > .env.prod << 'ENVEOF'
+WORKER_VERSION=<GIT_SHA_PRVNÍHO_BUILDU>
+POSTGRES_USER=sazinka
+POSTGRES_PASSWORD=<openssl rand -base64 32>
+POSTGRES_DB=sazinka
+JWT_SECRET=<openssl rand -base64 48>
+NATS_WORKER_PASSWORD=<openssl rand -base64 24>
+NATS_BROWSER_PASSWORD=<openssl rand -base64 24>
+NOMINATIM_PASSWORD=<openssl rand -base64 24>
+MONITOR_PASSWORD_HASH=<viz krok níže>
+RUST_LOG=info,sazinka_worker=info
+ENVEOF
+
+# Vygenerovat monitor heslo (zapamatovat si plaintext pro přihlášení)
+docker run --rm caddy:2-alpine caddy hash-password --plaintext 'VašeMonitorHeslo'
+# Výstup ($2a$14$...) vložit do .env.prod jako MONITOR_PASSWORD_HASH
+# POZOR: $ znaky v .env.prod escapovat jako $$
+
+chmod 600 .env.prod
+```
+
+### 23.6 Krok 4: Upravit volumes pro čistý server
+
+Na čistém serveru neexistují `infra_*` volumes. Upravit
+`infra/docker-compose.prod.yml` — odebrat `external: true` a `name:`
+u volumes `postgres_data`, `nats_jetstream`, `valhalla_tiles`, `nominatim_data`.
+
+Alternativně vytvořit volumes ručně:
+```bash
+docker volume create infra_postgres_data
+docker volume create infra_nats_jetstream
+docker volume create infra_valhalla_tiles
+docker volume create infra_nominatim_data
+```
+
+### 23.7 Krok 5: Build a první spuštění worker image
+
+```bash
+cd ~/sazinka
+
+# Build worker image lokálně na VPS (první build, CI ještě neběží)
+docker build -t ghcr.io/oslicek/sazinka-worker:initial -f worker/Dockerfile .
+
+# Aktualizovat .env.prod
+sed -i 's/^WORKER_VERSION=.*/WORKER_VERSION=initial/' .env.prod
+
+# Spustit celý stack
+docker compose --env-file .env.prod -f infra/docker-compose.prod.yml up -d
+
+# Sledovat start (Nominatim: ~2 hodiny, Valhalla: ~30 minut)
+docker compose -f infra/docker-compose.prod.yml logs -f
+```
+
+### 23.8 Krok 6: Ověření zdraví stacku
+
+```bash
+# Všechny služby healthy?
+docker ps --format 'table {{.Names}}\t{{.Status}}'
+
+# Worker: migrace proběhly?
+docker logs sazinka-worker 2>&1 | grep "Migrations complete"
+
+# Worker: připojení k NATS?
+docker logs sazinka-worker 2>&1 | grep "Connected to NATS"
+
+# Postgres: role existují?
+docker exec sazinka-postgres psql -U sazinka -d sazinka \
+  -c "SELECT rolname FROM pg_roles WHERE rolname IN ('sazinka_admin','sazinka_app');"
+
+# Caddy: TLS certifikáty získány?
+docker logs sazinka-caddy 2>&1 | grep "certificate obtained"
+```
+
+### 23.9 Krok 7: Cloudflare Pages — sazinka.cz (marketing site)
+
+1. Přihlásit se do [Cloudflare Dashboard](https://dash.cloudflare.com/)
+2. **Workers & Pages** → **Create** → **Pages** → **Connect to Git**
+3. Nastavení:
+   - **Repository**: `Oslicek/Sazinka`
+   - **Project name**: `sazinka-site`
+   - **Production branch**: `master`
+   - **Build command**: `pnpm install --frozen-lockfile && pnpm --filter @ariadline/site build`
+   - **Build output directory**: `apps/site/dist`
+   - **Root directory**: `/` (monorepo root — pnpm workspace)
+   - **Framework preset**: Astro
+4. **Environment variables**:
+   - nic speciálního (site je statický)
+5. Kliknout **Save and Deploy**
+6. Po dokončení buildu — **Custom domains** → přidat `sazinka.cz` a `www.sazinka.cz`
+
+### 23.10 Krok 8: Cloudflare Pages — app.sazinka.cz (SPA)
+
+1. **Workers & Pages** → **Create** → **Pages** → **Connect to Git**
+2. Nastavení:
+   - **Repository**: `Oslicek/Sazinka`
+   - **Project name**: `sazinka-app`
+   - **Production branch**: `master`
+   - **Build command**: `pnpm install --frozen-lockfile && pnpm --filter @sazinka/web build`
+   - **Build output directory**: `apps/web/dist`
+   - **Root directory**: `/`
+   - **Framework preset**: None (Vite)
+3. **Environment variables** (Production):
+   - `VITE_NATS_WS_URL` = `wss://api.sazinka.cz/nats`
+   - `VITE_NATS_USER` = `browser`
+   - `VITE_NATS_PASS` = `<NATS_BROWSER_PASSWORD z .env.prod>`
+4. Kliknout **Save and Deploy**
+5. **Custom domains** → přidat `app.sazinka.cz`
+
+### 23.11 Krok 9: Cloudflare DNS pro VPS
+
+1. **DNS** → **Records** → přidat:
+   - `api.sazinka.cz` → A record → `<VPS_HOST>` → Proxy: OFF (grey cloud)
+     - Proxy OFF protože Caddy řeší TLS sám přes Let's Encrypt
+   - `monitor.sazinka.cz` → A record → `<VPS_HOST>` → Proxy: OFF
+
+> **Důležité**: Pro `api.*` a `monitor.*` proxy vypnout (grey cloud),
+> aby Caddy mohl získat Let's Encrypt certifikáty.
+> Pro `sazinka.cz` a `app.sazinka.cz` proxy zapnout (orange cloud) — to
+> řeší Cloudflare Pages automaticky.
+
+### 23.12 Krok 10: GitHub Secrets pro CI/CD
+
+V repozitáři `Settings` → `Secrets and variables` → `Actions` → přidat:
+
+| Secret | Hodnota | Popis |
+|--------|---------|-------|
+| `VPS_HOST` | IP adresa VPS | Pro SSH deploy |
+| `VPS_USER` | `sazinka` | Deploy user |
+| `VPS_SSH_KEY` | Obsah privátního klíče | `cat ~/.ssh/deploy_ed25519` |
+| `GHCR_TOKEN` | GitHub PAT (packages:write) | Pro push/pull Docker image |
+| `MIGRATION_DB_URL` | `postgres://sazinka_admin:<heslo>@postgres:5432/sazinka` | DB URL pro migrační kontejner |
+| `CF_API_TOKEN` | Cloudflare API token | S oprávněním: Pages:Edit |
+| `CF_ACCOUNT_ID` | Cloudflare Account ID | Na stránce Overview |
+
+Pozn.: Heslo pro `sazinka_admin` nastavit na VPS:
+```bash
+docker exec sazinka-postgres psql -U sazinka -d sazinka \
+  -c "ALTER ROLE sazinka_admin PASSWORD '<nové heslo>';"
+```
+
+### 23.13 Krok 11: Ověření E2E
+
+Po kompletním setupu:
+```bash
+# Z lokálního stroje:
+# 1. Marketing site
+curl -sI https://sazinka.cz | head -5
+# → HTTP/2 200
+
+# 2. App
+curl -sI https://app.sazinka.cz | head -5
+# → HTTP/2 200
+
+# 3. API (NATS WebSocket)
+curl -sI https://api.sazinka.cz/nats
+# → HTTP/1.1 400 (očekáváno — není WebSocket upgrade)
+
+# 4. Monitor (vyžaduje přihlášení)
+curl -sI https://monitor.sazinka.cz
+# → HTTP/1.1 401 (basic auth)
+
+# 5. Test CI/CD — push malou změnu do master a sledovat GitHub Actions
+```
+
+### 23.14 Disaster Recovery
+
+V případě ztráty VPS:
+1. Vytvořit nový server (krok 1)
+2. Zabezpečit (krok 2)
+3. Klonovat repo + obnovit `.env.prod` ze SOPS (krok 3)
+4. Vytvořit volumes (krok 4) — **DATA BUDOU ZTRACENA** (Postgres, Nominatim, Valhalla)
+5. Spustit stack (krok 5) — Nominatim a Valhalla se znovu importují (~2.5 hodiny)
+6. Obnovit Postgres backup (pokud existuje — viz sekce o backup strategii)
+7. DNS záznamy aktualizovat na novou IP
+
+> **TODO**: Automatizovat Postgres backup (pg_dump) přes cron job
+> do Hetzner Object Storage nebo S3. Plánováno do Q2 2026.
+
+---
+
+## 24. CI/CD Pipeline — Automatický deploy
+
+> Toto nahrazuje sekci 21.8 (původní workflow) kompletní pipeline s testy,
+> bezpečnostním auditem, minimalizací image a kontrolními body.
+
+### 24.1 Přehled pipeline
+
+```
+push to master
+    │
+    ▼
+┌───────────┐
+│  changes  │ ← Detekce změněných souborů (dorny/paths-filter)
+└─────┬─────┘
+      │
+  ┌───┼──────────────┬────────────────┐
+  │   │              │                │
+  ▼   ▼              ▼                ▼
+┌──────────┐  ┌────────────┐  ┌───────────┐
+│test-worker│  │ test-site  │  │ test-app  │   ← Testy (paralelně)
+│cargo test │  │ vitest run │  │ vitest    │
+│cargo clippy│ │ astro check│  │ tsc       │
+└─────┬──────┘ └──────┬─────┘ └─────┬─────┘
+      │               │             │
+      ▼               │             │
+┌──────────┐          │             │
+│  audit   │          │             │
+│cargo audit│         │             │
+│trivy image│         │             │
+└─────┬────┘          │             │
+      │               │             │
+      ▼               │             │
+┌──────────┐          │             │
+│  build   │          │             │
+│Docker img│          │             │
+│minimize  │          │             │
+└─────┬────┘          │             │
+      │               │             │
+      ▼               │             │
+┌──────────┐          │             │
+│ migrate  │          │             │
+│ DB on VPS│          │             │
+└─────┬────┘          │             │
+      │               │             │
+      ▼               ▼             ▼
+┌──────────┐  ┌────────────┐  ┌───────────┐
+│  deploy  │  │deploy-site │  │deploy-app │   ← Deploy (paralelně)
+│worker VPS│  │CF Pages    │  │CF Pages   │
+└─────┬────┘  └──────┬─────┘  └─────┬─────┘
+      │               │             │
+      └───────┬───────┘─────────────┘
+              ▼
+       ┌────────────┐
+       │  smoke-test│ ← Ověření po deployi
+       │ curl + health│
+       └────────────┘
+```
+
+### 24.2 Job: `test-worker` — Rust testy a linting
+
+Spouštěno: při změně `worker/**` nebo `packages/**`.
+
+```yaml
+test-worker:
+  needs: changes
+  if: needs.changes.outputs.worker == 'true'
+  runs-on: ubuntu-latest
+  services:
+    postgres:
+      image: postgres:16-alpine
+      env:
+        POSTGRES_USER: sazinka
+        POSTGRES_PASSWORD: test
+        POSTGRES_DB: sazinka
+      ports: ["5432:5432"]
+      options: >-
+        --health-cmd "pg_isready -U sazinka"
+        --health-interval 5s
+        --health-timeout 3s
+        --health-retries 5
+  steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        components: clippy
+    - uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: worker
+
+    # Clippy: zero warnings policy
+    - name: Clippy
+      run: cargo clippy --all-targets -- -D warnings
+      working-directory: worker
+      env:
+        DATABASE_URL: postgres://sazinka:test@localhost:5432/sazinka
+
+    # Unit + integration tests
+    - name: Tests
+      run: cargo test
+      working-directory: worker
+      env:
+        DATABASE_URL: postgres://sazinka:test@localhost:5432/sazinka
+        JWT_SECRET: test-secret-at-least-32-bytes-long!!!
+```
+
+### 24.3 Job: `test-frontend` — TypeScript testy a typechecking
+
+Spouštěno: při změně `apps/web/**` nebo `apps/site/**`.
+
+```yaml
+test-frontend:
+  needs: changes
+  if: needs.changes.outputs.app == 'true' || needs.changes.outputs.site == 'true'
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v4
+    - uses: pnpm/action-setup@v4
+      with: { version: latest }
+    - uses: actions/setup-node@v4
+      with: { node-version: '22', cache: 'pnpm' }
+    - run: pnpm install --frozen-lockfile
+
+    # Type checking across all packages
+    - name: Typecheck
+      run: pnpm typecheck
+
+    # Unit tests
+    - name: Tests (web)
+      if: needs.changes.outputs.app == 'true'
+      run: pnpm --filter @sazinka/web test
+
+    - name: Tests (site)
+      if: needs.changes.outputs.site == 'true'
+      run: pnpm --filter @ariadline/site test
+```
+
+### 24.4 Job: `security-audit` — Bezpečnostní kontroly
+
+Spouštěno: při každém pushi. Blokuje deploy při kritických zranitelnostech.
+
+```yaml
+security-audit:
+  needs: changes
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v4
+
+    # --- Rust dependency audit ---
+    - name: Install cargo-audit
+      if: needs.changes.outputs.worker == 'true'
+      run: cargo install cargo-audit
+    - name: Cargo audit
+      if: needs.changes.outputs.worker == 'true'
+      run: cargo audit
+      working-directory: worker
+
+    # --- npm dependency audit ---
+    - uses: pnpm/action-setup@v4
+      with: { version: latest }
+    - run: pnpm install --frozen-lockfile
+    - name: pnpm audit
+      run: pnpm audit --prod
+      continue-on-error: true  # warn, don't block on non-critical
+
+    # --- Secret scanning ---
+    - name: Gitleaks (secret detection)
+      uses: gitleaks/gitleaks-action@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    # --- Container image scan (after build) ---
+    # Note: Trivy scan runs inside build-worker job (see 24.5)
+```
+
+### 24.5 Job: `build-worker` — Build, minimize, scan Docker image
+
+Spouštěno: po úspěšných testech a auditu.
+
+```yaml
+build-worker:
+  needs: [test-worker, security-audit]
+  if: needs.changes.outputs.worker == 'true'
+  runs-on: ubuntu-latest
+  permissions:
+    contents: read
+    packages: write
+    security-events: write  # for Trivy SARIF upload
+  steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to GHCR
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract OCI metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ghcr.io/oslicek/sazinka-worker
+        tags: type=sha
+
+    - name: Build and push
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: worker/Dockerfile
+        push: true
+        tags: ghcr.io/oslicek/sazinka-worker:${{ github.sha }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    # --- Image size check (minimization gate) ---
+    - name: Check image size
+      run: |
+        SIZE=$(docker inspect ghcr.io/oslicek/sazinka-worker:${{ github.sha }} \
+          --format='{{.Size}}')
+        SIZE_MB=$((SIZE / 1024 / 1024))
+        echo "Image size: ${SIZE_MB} MB"
+        if [ "$SIZE_MB" -gt 150 ]; then
+          echo "::error::Image size ${SIZE_MB} MB exceeds 150 MB limit!"
+          exit 1
+        fi
+        echo "::notice::Image size OK: ${SIZE_MB} MB"
+
+    # --- Trivy vulnerability scan ---
+    - name: Trivy vulnerability scan
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ghcr.io/oslicek/sazinka-worker:${{ github.sha }}
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        severity: 'CRITICAL,HIGH'
+
+    - name: Upload Trivy results to GitHub Security
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+    # --- Fail on CRITICAL vulnerabilities ---
+    - name: Trivy critical gate
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ghcr.io/oslicek/sazinka-worker:${{ github.sha }}
+        format: 'table'
+        severity: 'CRITICAL'
+        exit-code: '1'
+```
+
+### 24.6 Job: `migrate-db` — Bezpečná migrace databáze
+
+Spouštěno: po úspěšném buildu worker image. Používá `sazinka_admin` credentials.
+
+```yaml
+migrate-db:
+  needs: build-worker
+  if: needs.changes.outputs.worker == 'true'
+  runs-on: ubuntu-latest
+  steps:
+    - name: Run migrations via SSH
+      uses: appleboy/ssh-action@v1
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USER }}
+        key: ${{ secrets.VPS_SSH_KEY }}
+        script: |
+          set -e
+          echo "${{ secrets.GHCR_TOKEN }}" | \
+            docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker pull ghcr.io/oslicek/sazinka-worker:${{ github.sha }}
+          docker run --rm \
+            --network infra_sazinka_net \
+            -e DATABASE_URL="${{ secrets.MIGRATION_DB_URL }}" \
+            ghcr.io/oslicek/sazinka-worker:${{ github.sha }} \
+            sazinka-worker migrate
+          echo "Migrations completed successfully"
+```
+
+### 24.7 Job: `deploy-worker` — Deploy na VPS
+
+```yaml
+deploy-worker:
+  needs: migrate-db
+  if: needs.changes.outputs.worker == 'true'
+  runs-on: ubuntu-latest
+  steps:
+    - name: Deploy worker via SSH
+      uses: appleboy/ssh-action@v1
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USER }}
+        key: ${{ secrets.VPS_SSH_KEY }}
+        script: |
+          set -e
+          cd ~/sazinka
+          sed -i "s/^WORKER_VERSION=.*/WORKER_VERSION=${{ github.sha }}/" .env.prod
+          docker compose --env-file .env.prod \
+            -f infra/docker-compose.prod.yml pull worker
+          docker compose --env-file .env.prod \
+            -f infra/docker-compose.prod.yml up -d worker
+          sleep 10
+          STATUS=$(docker inspect sazinka-worker \
+            --format='{{.State.Status}}' 2>/dev/null || echo "not found")
+          if [ "$STATUS" != "running" ]; then
+            echo "::error::Worker not running after deploy!"
+            docker logs sazinka-worker --tail 50
+            exit 1
+          fi
+          echo "Worker deployed: ${{ github.sha }}"
+```
+
+### 24.8 Jobs: `deploy-site`, `deploy-app` — Cloudflare Pages
+
+Viz existující workflow — beze změn oproti sekci 21.8.
+Přidáno: závisí na `test-frontend` a `security-audit`.
+
+### 24.9 Job: `smoke-test` — Ověření po deployi
+
+```yaml
+smoke-test:
+  needs: [deploy-worker, deploy-site, deploy-app]
+  if: always() && (needs.deploy-worker.result == 'success' || needs.deploy-site.result == 'success' || needs.deploy-app.result == 'success')
+  runs-on: ubuntu-latest
+  steps:
+    - name: Smoke test — API health
+      if: needs.deploy-worker.result == 'success'
+      run: |
+        sleep 15
+        STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://api.sazinka.cz/nats || echo "000")
+        echo "API status: $STATUS"
+        # 400 is expected (not a WebSocket upgrade) — anything else is a problem
+        if [ "$STATUS" = "000" ]; then
+          echo "::error::API unreachable!"
+          exit 1
+        fi
+        echo "API reachable: HTTP $STATUS"
+
+    - name: Smoke test — site
+      if: needs.deploy-site.result == 'success'
+      run: |
+        STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://sazinka.cz)
+        echo "Site status: $STATUS"
+        if [ "$STATUS" != "200" ]; then
+          echo "::error::Site returned $STATUS!"
+          exit 1
+        fi
+
+    - name: Smoke test — app
+      if: needs.deploy-app.result == 'success'
+      run: |
+        STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://app.sazinka.cz)
+        echo "App status: $STATUS"
+        if [ "$STATUS" != "200" ]; then
+          echo "::error::App returned $STATUS!"
+          exit 1
+        fi
+```
+
+### 24.10 Pipeline — rozhodovací body a eskalace
+
+| Situace | Chování | Eskalace |
+|---------|---------|----------|
+| `cargo test` selhání | Pipeline STOP. Deploy se neuskuteční. | GitHub notifikace commit autoru. |
+| `cargo clippy` warnings | Pipeline STOP (`-D warnings`). | Vývojář musí opravit. |
+| `cargo audit` CRITICAL | Pipeline STOP. | Issue automaticky vytvořen (`audit-ci`). |
+| `trivy` CRITICAL CVE | Pipeline STOP. Image nebude deploynut. | SARIF upload do GitHub Security tab. |
+| `trivy` HIGH CVE | Pipeline pokračuje. | Varování v logu. |
+| Image > 150 MB | Pipeline STOP. | Vývojář musí optimalizovat Dockerfile. |
+| `pnpm audit` critical | Pipeline pokračuje (warn). | Log varování. |
+| Gitleaks nalezení | Pipeline STOP. Možný únik secrets. | Okamžitá rotace klíčů. |
+| Migration selhání | Pipeline STOP. Worker zůstane na staré verzi. | GitHub notifikace + SSH diagnostika. |
+| Worker health check fail | Pipeline STOP. Rollback: `docker compose up -d worker` s předchozí verzí. | GitHub notifikace. |
+| Smoke test fail | Pipeline označena jako failed. Deploy proběhl, ale monitoring varuje. | GitHub notifikace. |
+
+### 24.11 Minimalizace kontejnerů — implementované techniky
+
+| Technika | Kde | Efekt |
+|----------|-----|-------|
+| Multi-stage build | `worker/Dockerfile` | Builder ~2 GB → Runtime 108 MB |
+| `debian:slim` base | Runtime stage | ~75 MB (vs ~125 MB full) |
+| Single runtime package | `ca-certificates` only | ~1 MB navíc |
+| `--release` + LTO | `Cargo.toml` + build | Binárka ~35 MB (vs ~100 MB debug) |
+| `.dockerignore` | Repo root | Build context ~5 MB (vs ~500 MB) |
+| `cargo-chef` layer cache | Builder | Rebuild jen při změně source (~2 min vs ~15 min) |
+| CI image size gate | `build-worker` job | Hard limit 150 MB |
+| No debugging tools | Rule 15 | Žádný procps, curl, vim |
+
+### 24.12 GitHub Secrets — kompletní seznam
+
+| Secret | Účel | Kdo nastavuje |
+|--------|------|---------------|
+| `VPS_HOST` | IP adresa Hetzner VPS | Manuálně po vytvoření VPS |
+| `VPS_USER` | Deploy SSH user (`sazinka`) | Manuálně |
+| `VPS_SSH_KEY` | ED25519 privátní klíč | Manuálně |
+| `GHCR_TOKEN` | GitHub PAT (packages:write, read:packages) | Manuálně |
+| `MIGRATION_DB_URL` | `postgres://sazinka_admin:PASS@postgres:5432/sazinka` | Manuálně po krok 5 |
+| `CF_API_TOKEN` | Cloudflare API token (Pages:Edit) | Manuálně |
+| `CF_ACCOUNT_ID` | Cloudflare Account ID | Manuálně |
+
+> **Poznámka**: `GITHUB_TOKEN` je automatický — nemusí se nastavovat.
+> Používá se pro GHCR login a Gitleaks.
