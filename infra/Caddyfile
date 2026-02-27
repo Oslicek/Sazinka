@@ -10,7 +10,7 @@
 
 # api.ariadline.com — NATS WebSocket proxy
 api.ariadline.com {
-    handle /nats/* {
+    handle /nats* {
         uri strip_prefix /nats
         reverse_proxy nats:8222
     }
