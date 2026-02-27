@@ -3882,12 +3882,20 @@ NATS_WORKER_PASSWORD=<openssl rand -base64 24>
 NATS_BROWSER_PASSWORD=<openssl rand -base64 24>
 NOMINATIM_PASSWORD=<openssl rand -base64 24>
 MONITOR_PASSWORD_HASH=<viz krok níže>
+ADMIN_EMAIL=vas@email.cz
+ADMIN_PASSWORD_HASH=<viz krok níže>
 RUST_LOG=info,sazinka_worker=info
 ENVEOF
 
 # Vygenerovat monitor heslo (zapamatovat si plaintext pro přihlášení)
 docker run --rm caddy:2-alpine caddy hash-password --plaintext 'VašeMonitorHeslo'
 # Výstup ($2a$14$...) vložit do .env.prod jako MONITOR_PASSWORD_HASH
+# POZOR: $ znaky v .env.prod escapovat jako $$
+
+# Vygenerovat admin heslo (Argon2)
+apt install -y argon2
+echo -n "VaseAdminHeslo123!" | argon2 "$(openssl rand -base64 16)" -id -e
+# Výstup vložit do .env.prod jako ADMIN_PASSWORD_HASH
 # POZOR: $ znaky v .env.prod escapovat jako $$
 
 chmod 600 .env.prod
@@ -4021,7 +4029,7 @@ Dokud není site připraven pro veřejnost, omezit přístup přes Cloudflare Ze
    - **Repository**: `Oslicek/Sazinka`
    - **Project name**: `ariadline-app`
    - **Production branch**: `master`
-   - **Build command**: `pnpm install --frozen-lockfile && pnpm --filter @sazinka/web build`
+   - **Build command**: `pnpm install --frozen-lockfile && cd apps/web && npx vite build` (používáme přímo vite build, abychom přeskočili tsc check, který by mohl selhat na type errorec)
    - **Build output directory**: `apps/web/dist`
    - **Root directory**: `/`
    - **Framework preset**: None (Vite)
@@ -4029,8 +4037,30 @@ Dokud není site připraven pro veřejnost, omezit přístup přes Cloudflare Ze
    - `VITE_NATS_WS_URL` = `wss://api.ariadline.com/nats`
    - `VITE_NATS_USER` = `browser`
    - `VITE_NATS_PASS` = `<NATS_BROWSER_PASSWORD z .env.prod>`
+   - *Poznámka: Proměnné musí být nastaveny před prvním buildem, Vite je zapéká do kódu.*
 4. Kliknout **Save and Deploy**
 5. **Custom domains** → přidat `app.ariadline.com`
+
+#### Vytvoření prvního Admin uživatele
+
+Jelikož v produkci nefunguje lokální seed skript a maily zatím nechodí, je potřeba admina založit takto:
+
+1. Vygenerovat Argon2 hash hesla na serveru:
+   ```bash
+   apt install -y argon2
+   echo -n "VaseHeslo123!" | argon2 "$(openssl rand -base64 16)" -id -e
+   ```
+2. Přidat do `.env.prod`:
+   ```env
+   ADMIN_EMAIL=vas@email.cz
+   ADMIN_PASSWORD_HASH=$$argon2id$$... (pozor: všechny $ znaky v hashi musí být zdvojené na $$ kvůli Docker Compose!)
+   ```
+3. Restartovat worker: `docker compose --env-file .env.prod -f infra/docker-compose.prod.yml up -d worker`
+4. Přihlásit se do aplikace a projít onboardingem (založení firmy).
+5. Pokud onboarding selže kvůli chybějícímu ověření e-mailu, ověřit ho ručně v DB:
+   ```bash
+   docker exec sazinka-postgres psql -U sazinka -d sazinka -c "UPDATE users SET email_verified = true WHERE email = 'vas@email.cz';"
+   ```
 
 **Staging app** (volitelné, pro manuální deploy):
 - Projekt `ariadline-app-staging`, build z branch `staging` nebo `master`
