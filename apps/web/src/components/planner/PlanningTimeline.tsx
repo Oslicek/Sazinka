@@ -437,7 +437,7 @@ export function PlanningTimeline({
   isSaving = false,
   routeStartTime,
   routeEndTime,
-  // depotDeparture — available in interface, consumed by parent for RouteSummaryStats
+  depotDeparture,
   returnToDepotDistanceKm,
   returnToDepotDurationMinutes,
   candidateForInsertion,
@@ -470,8 +470,9 @@ export function PlanningTimeline({
         returnToDepotDistanceKm != null && returnToDepotDurationMinutes != null
           ? { distanceKm: returnToDepotDistanceKm, durationMinutes: returnToDepotDurationMinutes }
           : undefined,
+        depotDeparture,
       ),
-    [stops, workdayStart, workdayEnd, returnToDepotDistanceKm, returnToDepotDurationMinutes],
+    [stops, workdayStart, workdayEnd, returnToDepotDistanceKm, returnToDepotDurationMinutes, depotDeparture],
   );
 
   // The timeline item for the active drag (for DragOverlay rendering)

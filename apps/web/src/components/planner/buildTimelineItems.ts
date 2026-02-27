@@ -106,14 +106,17 @@ export function buildTimelineItems(
   workdayStart: string,
   workdayEnd: string,
   returnToDepot?: ReturnToDepotInfo,
+  depotDeparture?: string | null,
 ): TimelineItem[] {
   const items: TimelineItem[] = [];
+
+  const effectiveStart = depotDeparture ?? workdayStart;
 
   items.push({
     type: 'depot',
     id: 'depot-start',
-    startTime: normalise(workdayStart),
-    endTime: normalise(workdayStart),
+    startTime: normalise(effectiveStart),
+    endTime: normalise(effectiveStart),
     durationMinutes: 0,
   });
 
@@ -128,7 +131,7 @@ export function buildTimelineItems(
     return items;
   }
 
-  let cursor = parseHm(workdayStart);
+  let cursor = parseHm(effectiveStart);
   // Customer-only counter for gap insertAfterIndex (backend uses customer-only indices)
   let customerStopCount = 0;
 

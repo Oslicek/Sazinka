@@ -618,4 +618,104 @@ describe('buildTimelineItems', () => {
     const ids = items.map((i) => i.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
+
+  // ── depotDeparture: first segment from depot ──
+
+  it('uses depotDeparture as start time so first travel ends exactly at first visit (no gap)', () => {
+    // Scenario from real usage: workday 07:00, but depot departure is 07:20
+    // (backward-calculated: 08:00 scheduled - 40 min buffered travel).
+    // The 40 min travel duration already includes the arrival reserve.
+    // There must be NO gap between travel end and first visit.
+    const stops: SavedRouteStop[] = [
+      makeStop({
+        id: 'teplo', stopOrder: 1,
+        estimatedArrival: '08:00', estimatedDeparture: '08:45',
+        scheduledTimeStart: '08:00', scheduledTimeEnd: '08:45',
+        distanceFromPreviousKm: 64.4, durationFromPreviousMinutes: 40,
+      }),
+    ];
+    const items = buildTimelineItems(stops, '07:00', '16:00', undefined, '07:20');
+
+    // Depot should show 07:20 (actual departure), not 07:00 (workday start)
+    expect(items[0].startTime).toBe('07:20');
+
+    // Travel: 07:20 + 40 min = 08:00 — exactly at first visit
+    const travel = items.find((i) => i.type === 'travel')!;
+    expect(travel.startTime).toBe('07:20');
+    expect(travel.endTime).toBe('08:00');
+    expect(travel.durationMinutes).toBe(40);
+
+    // No gap between travel and first stop
+    expect(types(items)).toEqual(['depot', 'travel', 'stop', 'travel', 'depot']);
+
+    // First stop starts at 08:00
+    const stop = items.find((i) => i.type === 'stop')!;
+    expect(stop.startTime).toBe('08:00');
+  });
+
+  it('still creates gaps between later stops even when depotDeparture is used', () => {
+    // depotDeparture eliminates the gap before the FIRST visit only.
+    // Gaps between subsequent visits should still appear normally.
+    const stops: SavedRouteStop[] = [
+      makeStop({
+        id: 's1', stopOrder: 1,
+        estimatedArrival: '08:00', estimatedDeparture: '08:30',
+        scheduledTimeStart: '08:00', scheduledTimeEnd: '08:30',
+        distanceFromPreviousKm: 64, durationFromPreviousMinutes: 40,
+      }),
+      makeStop({
+        id: 's2', stopOrder: 2,
+        estimatedArrival: '12:00', estimatedDeparture: '12:30',
+        scheduledTimeStart: '12:00', scheduledTimeEnd: '12:30',
+        distanceFromPreviousKm: 24, durationFromPreviousMinutes: 26,
+      }),
+    ];
+    const items = buildTimelineItems(stops, '07:00', '16:00', undefined, '07:20');
+
+    // No gap before first stop (travel fills exactly)
+    // But there IS a gap between s1 and s2:
+    // s1 departs 08:30, travel 26 min → 08:56, s2 at 12:00 → gap 08:56–12:00
+    expect(types(items)).toEqual([
+      'depot', 'travel', 'stop', 'travel', 'gap', 'stop', 'travel', 'depot',
+    ]);
+
+    const gap = items.find((i) => i.type === 'gap')!;
+    expect(gap.startTime).toBe('08:56');
+    expect(gap.endTime).toBe('12:00');
+  });
+
+  it('falls back to workdayStart when depotDeparture is not provided', () => {
+    // Backward compatibility: without depotDeparture, behavior is unchanged.
+    const stops: SavedRouteStop[] = [
+      makeStop({
+        id: 's1', stopOrder: 1,
+        estimatedArrival: '10:00', estimatedDeparture: '11:00',
+        distanceFromPreviousKm: 10, durationFromPreviousMinutes: 20,
+      }),
+    ];
+    const items = buildTimelineItems(stops, '08:00', '16:00');
+
+    // Depot at workday start
+    expect(items[0].startTime).toBe('08:00');
+
+    // Travel starts at 08:00, gap appears between 08:20 and 10:00
+    expect(types(items)).toContain('gap');
+  });
+
+  it('uses depotDeparture for depot start even with unscheduled first stop', () => {
+    // When the first stop is unscheduled, backend sets depotDeparture = workdayStart.
+    // If depotDeparture is explicitly passed, it should still be used.
+    const stops: SavedRouteStop[] = [
+      makeStop({
+        id: 's1', stopOrder: 1,
+        estimatedArrival: '08:15', estimatedDeparture: '09:15',
+        distanceFromPreviousKm: 10, durationFromPreviousMinutes: 15,
+      }),
+    ];
+    const items = buildTimelineItems(stops, '08:00', '16:00', undefined, '08:00');
+
+    // depotDeparture = workdayStart = 08:00, so same as before
+    expect(items[0].startTime).toBe('08:00');
+    expect(types(items)).toEqual(['depot', 'travel', 'stop', 'travel', 'depot']);
+  });
 });

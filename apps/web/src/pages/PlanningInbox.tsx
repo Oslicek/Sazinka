@@ -974,6 +974,7 @@ export function PlanningInbox() {
       returnToDepotLeg?.distanceKm != null && returnToDepotLeg?.durationMinutes != null
         ? { distanceKm: returnToDepotLeg.distanceKm, durationMinutes: returnToDepotLeg.durationMinutes }
         : undefined,
+      depotDeparture,
     );
     const ids = new Set<string>();
     for (const item of items) {
