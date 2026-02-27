@@ -10,7 +10,10 @@
 
 # api.ariadline.com — NATS WebSocket proxy
 api.ariadline.com {
-    reverse_proxy /nats nats:8222
+    handle /nats* {
+        uri strip_prefix /nats
+        reverse_proxy nats:8222
+    }
 
     handle {
         respond "Not Found" 404
