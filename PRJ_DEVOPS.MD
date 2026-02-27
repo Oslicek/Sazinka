@@ -3707,10 +3707,10 @@ Viz také `PRJ_RULES.MD` sekce "Docker / Deployment".
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  Cloudflare                                             │
-│  ┌──────────────┐  ┌────────────────┐  ┌─────────────┐ │
-│  │ ariadline.cz │  │app.ariadline.cz│  │ DNS + Proxy │ │
-│  │ Pages (site) │  │  Pages (app)   │  │ for api.*   │ │
-│  └──────────────┘  └────────────────┘  └──────┬──────┘ │
+│  ┌───────────────┐  ┌─────────────────┐  ┌─────────────┐ │
+│  │ariadline.com  │  │app.ariadline.com│  │ DNS + Proxy │ │
+│  │ Pages (site)  │  │  Pages (app)    │  │ for api.*   │ │
+│  └───────────────┘  └─────────────────┘  └──────┬──────┘ │
 └───────────────────────────────────────────────┬────────┘
                                                 │ HTTPS
 ┌───────────────────────────────────────────────▼────────┐
@@ -3974,10 +3974,11 @@ Potřebný `infra/docker-compose.staging.yml` — odvozený od prod, ale:
 
 DNS (Cloudflare): přidat `api-staging.ariadline.cz` → `<VPS_HOST>` (Proxy OFF).
 
-### 23.9 Krok 7: Cloudflare Pages — ariadline.cz (marketing site)
+### 23.9 Krok 7: Cloudflare Pages — ariadline.com (marketing site)
 
 1. Přihlásit se do [Cloudflare Dashboard](https://dash.cloudflare.com/)
 2. **Workers & Pages** → **Create** → **Pages** → **Connect to Git**
+   - Pozor: vybrat záložku **Pages**, ne Workers. Workers setup ukazuje "Deploy command: npx wrangler deploy" a "API token" — to je špatná volba.
 3. Nastavení:
    - **Repository**: `Oslicek/Sazinka`
    - **Project name**: `ariadline-site`
@@ -3989,13 +3990,31 @@ DNS (Cloudflare): přidat `api-staging.ariadline.cz` → `<VPS_HOST>` (Proxy OFF
 4. **Environment variables**:
    - nic speciálního (site je statický)
 5. Kliknout **Save and Deploy**
-6. Po dokončení buildu — **Custom domains** → přidat `ariadline.cz` a `www.ariadline.cz`
+6. Po dokončení buildu — **Custom domains** → přidat `ariadline.com` a `www.ariadline.com`
+   - `ariadline.cz` a `www.ariadline.cz` budou přesměrovávat na `.com` (viz krok 9)
+
+#### Omezení přístupu před spuštěním (Cloudflare Access)
+
+Dokud není site připraven pro veřejnost, omezit přístup přes Cloudflare Zero Trust:
+
+1. **Zero Trust** → **Access** → **Applications** → **Add an application**
+2. Typ: **Self-hosted**
+3. Přidat **dva** doménové záznamy (oba jsou nutné):
+   - `ariadline-site.pages.dev` (hlavní produkční URL)
+   - `*.ariadline-site.pages.dev` (preview deploymenty)
+   - **Důležité**: wildcard `*` nepokrývá bare doménu — je nutné přidat obě varianty.
+4. Vytvořit policy (např. "Ariadline Testing"):
+   - **Action**: Allow
+   - **Session duration**: 24 hours
+   - **Include** → Selector: Emails → přidat povolené e-maily
+5. Po připojení custom domény (`ariadline.com`) přidat i tu do Application domains.
+6. Až bude site připraven pro veřejnost — smazat Access application.
 
 > **Manuální deploy**: Výchozí nastavení CF Pages builduje na každý push na production branch.
 > Pro manuální deploy: vypněte "Build on push" nebo používejte výhradně API pro spuštění buildu
 > z deploy workflow. Viz sekce 24.10.
 
-### 23.10 Krok 8: Cloudflare Pages — app.ariadline.cz (SPA)
+### 23.10 Krok 8: Cloudflare Pages — app.ariadline.com (SPA)
 
 1. **Workers & Pages** → **Create** → **Pages** → **Connect to Git**
 2. Nastavení:
@@ -4007,29 +4026,30 @@ DNS (Cloudflare): přidat `api-staging.ariadline.cz` → `<VPS_HOST>` (Proxy OFF
    - **Root directory**: `/`
    - **Framework preset**: None (Vite)
 3. **Environment variables** (Production):
-   - `VITE_NATS_WS_URL` = `wss://api.ariadline.cz/nats`
+   - `VITE_NATS_WS_URL` = `wss://api.ariadline.com/nats`
    - `VITE_NATS_USER` = `browser`
    - `VITE_NATS_PASS` = `<NATS_BROWSER_PASSWORD z .env.prod>`
 4. Kliknout **Save and Deploy**
-5. **Custom domains** → přidat `app.ariadline.cz`
+5. **Custom domains** → přidat `app.ariadline.com`
 
 **Staging app** (volitelné, pro manuální deploy):
 - Projekt `ariadline-app-staging`, build z branch `staging` nebo `master`
-- Custom domain: `app-staging.ariadline.cz`
-- `VITE_NATS_WS_URL` = `wss://api-staging.ariadline.cz/nats`
+- Custom domain: `app-staging.ariadline.com`
+- `VITE_NATS_WS_URL` = `wss://api-staging.ariadline.com/nats`
 
 ### 23.11 Krok 9: Cloudflare DNS pro VPS
 
-1. **DNS** → **Records** → přidat:
-   - `api.ariadline.cz` → A record → `<VPS_HOST>` → Proxy: OFF (grey cloud)
-   - `monitor.ariadline.cz` → A record → `<VPS_HOST>` → Proxy: OFF
-   - `api-staging.ariadline.cz` → A record → `<VPS_HOST>` → Proxy: OFF (staging)
+1. **DNS** → **Records** → přidat (na doméně `ariadline.com`):
+   - `api.ariadline.com` → A record → `<VPS_HOST>` → Proxy: OFF (grey cloud)
+   - `monitor.ariadline.com` → A record → `<VPS_HOST>` → Proxy: OFF
+   - `api-staging.ariadline.com` → A record → `<VPS_HOST>` → Proxy: OFF (staging)
    - Proxy OFF protože Caddy řeší TLS sám přes Let's Encrypt
 
 > **Důležité**: Pro `api.*`, `api-staging.*` a `monitor.*` proxy vypnout (grey cloud),
 > aby Caddy mohl získat Let's Encrypt certifikáty.
-> Pro `ariadline.cz` a `app.ariadline.cz` proxy zapnout (orange cloud) — to
+> Pro `ariadline.com` a `app.ariadline.com` proxy zapnout (orange cloud) — to
 > řeší Cloudflare Pages automaticky.
+> `ariadline.cz` bude přesměrovávat na `ariadline.com` (Cloudflare Redirect Rules).
 
 ### 23.12 Krok 10: Tailscale OAuth client pro CI/CD
 
