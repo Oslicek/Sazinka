@@ -168,6 +168,8 @@ services:
       JWT_SECRET: "${JWT_SECRET}"
       RUST_LOG: "${RUST_LOG:-info,sazinka_worker=debug}"
       LOGS_DIR: /opt/sazinka/logs
+      ADMIN_EMAIL: "${ADMIN_EMAIL:-}"
+      ADMIN_PASSWORD_HASH: "${ADMIN_PASSWORD_HASH:-}"
     volumes:
       - ../logs:/opt/sazinka/logs
     networks:
