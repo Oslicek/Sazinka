@@ -3707,26 +3707,34 @@ Viz také `PRJ_RULES.MD` sekce "Docker / Deployment".
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  Cloudflare                                             │
-│  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐ │
-│  │ sazinka.cz   │  │app.sazinka.cz│  │ DNS + Proxy   │ │
-│  │ Pages (site) │  │ Pages (app)  │  │ for api.*     │ │
-│  └──────────────┘  └──────────────┘  └───────┬───────┘ │
-└──────────────────────────────────────────────┬─────────┘
-                                               │ HTTPS
-┌──────────────────────────────────────────────▼─────────┐
-│  Hetzner VPS (srv1409906)                              │
-│  ┌─────────┐ ┌──────┐ ┌────────┐ ┌─────┐ ┌──────────┐ │
-│  │  Caddy  │ │ NATS │ │Postgres│ │Valve│ │Nominatim │ │
-│  │ :80/443 │ │:4222 │ │ :5432  │ │:8002│ │  :8080   │ │
-│  └────┬────┘ └──┬───┘ └───┬────┘ └──┬──┘ └────┬─────┘ │
-│       │         │         │         │          │       │
-│  ┌────▼─────────▼─────────▼─────────▼──────────▼─────┐ │
-│  │             sazinka_net (Docker bridge)            │ │
-│  │  ┌───────────────────────────────────────────┐    │ │
-│  │  │  sazinka-worker (ghcr.io/oslicek/...)     │    │ │
-│  │  └───────────────────────────────────────────┘    │ │
-│  └───────────────────────────────────────────────────┘ │
-└────────────────────────────────────────────────────────┘
+│  ┌──────────────┐  ┌────────────────┐  ┌─────────────┐ │
+│  │ ariadline.cz │  │app.ariadline.cz│  │ DNS + Proxy │ │
+│  │ Pages (site) │  │  Pages (app)   │  │ for api.*   │ │
+│  └──────────────┘  └────────────────┘  └──────┬──────┘ │
+└───────────────────────────────────────────────┬────────┘
+                                                │ HTTPS
+┌───────────────────────────────────────────────▼────────┐
+│  Hetzner VPS (ariadline-prod)                          │
+│  ┌───────┐ ┌──────┐ ┌────────┐ ┌─────────┐ ┌───────┐ │
+│  │ Caddy │ │ NATS │ │Postgres│ │Valhalla │ │Nomin. │ │
+│  │:80/443│ │:4222 │ │ :5432  │ │ :8002   │ │ :8080 │ │
+│  └───┬───┘ └──┬───┘ └───┬────┘ └────┬────┘ └───┬───┘ │
+│      │        │         │           │          │      │
+│  ┌───▼────────▼─────────▼───────────▼──────────▼────┐ │
+│  │           sazinka_net (Docker bridge)             │ │
+│  │  ┌───────────────────┐  ┌───────────────────────┐  │ │
+│  │  │ prod: worker, etc.│  │ staging: worker, etc. │  │ │
+│  │  └───────────────────┘  └───────────────────────┘  │ │
+│  └──────────────────────────────────────────────────┘ │
+│                                                       │
+│  ┌─────────────────────────────────────────────────┐  │
+│  │  Tailscale (WireGuard mesh VPN)                 │  │
+│  │  SSH management + CI/CD deploy (no public :22)  │  │
+│  └─────────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────┘
+
+GitHub Actions CI ── tailscale/github-action ──▶ VPS (Tailscale SSH)
+Your machine   ──── Tailscale client ──────────▶ VPS (Tailscale SSH)
 ```
 
 ### 23.2 Prerekvizity
@@ -3734,57 +3742,95 @@ Viz také `PRJ_RULES.MD` sekce "Docker / Deployment".
 Před zahájením potřebujete:
 - [ ] Hetzner Cloud účet s platební metodou
 - [ ] Cloudflare účet (free tier stačí)
-- [ ] Doménu `sazinka.cz` s nameservery nastavenými na Cloudflare
+- [ ] Domény `ariadline.cz` a `ariadline.com` s nameservery nastavenými na Cloudflare
 - [ ] GitHub účet s přístupem k repozitáři `Oslicek/Sazinka`
-- [ ] SSH klíč (ed25519) pro deploy — `ssh-keygen -t ed25519 -C "deploy@sazinka"`
+- [ ] Tailscale účet (stejný tailnet jako dev server na Hostingeru)
+- [ ] Tailscale OAuth client pro CI/CD (viz krok 10)
+- [ ] SSH klíč (ed25519) pro **iniciální** setup — `ssh-keygen -t ed25519 -C "setup@ariadline"`
+  - Po instalaci Tailscale (krok 2) se SSH klíč přestane používat
 - [ ] Lokálně nainstalovaný `sops` + `age` pro správu secrets
 
 ### 23.3 Krok 1: Vytvoření VPS na Hetzner
 
 1. Přihlásit se do [Hetzner Cloud Console](https://console.hetzner.cloud/)
-2. Vytvořit nový projekt "Sazinka"
+2. Vytvořit nový projekt "Ariadline"
 3. Vytvořit server:
    - **Location**: Falkenstein (eu-central, nejblíže k CZ)
    - **Image**: Ubuntu 24.04
-   - **Type**: CPX31 (4 vCPU, 8 GB RAM) — minimum pro Nominatim+Valhalla build
+   - **Type**: CPX41 (8 vCPU, 16 GB RAM) — Nominatim+Valhalla+NoMachine/Cursor
    - **Networking**: přidat IPv4 + IPv6
    - **SSH key**: nahrát deploy klíč
-   - **Name**: `sazinka-prod`
+   - **Name**: `ariadline-prod`
 4. Poznamenat si IP adresu serveru → `VPS_HOST`
+
+### 23.3a Krok 1a: Hetzner Cloud Firewall
+
+Firewall na úrovni hypervisoru — traffic je zahozen dříve, než dorazí na VPS.
+Funguje jako první vrstva obrany společně s UFW uvnitř OS (defense in depth).
+
+1. V Hetzner Cloud Console → **Firewalls** → **Create Firewall**
+2. Název: `ariadline-prod-fw`
+3. **Inbound Rules**:
+
+| Popis | Protokol | Port | Zdroj |
+|---|---|---|---|
+| HTTP | TCP | 80 | Any IPv4, Any IPv6 |
+| HTTPS | TCP | 443 | Any IPv4, Any IPv6 |
+| HTTP/3 | UDP | 443 | Any IPv4, Any IPv6 |
+| NATS WebSocket | TCP | 8222 | Any IPv4, Any IPv6 |
+| Tailscale | UDP | 41641 | Any IPv4, Any IPv6 |
+| Ping | ICMP | — | Any IPv4, Any IPv6 |
+
+4. **Outbound Rules**: žádné (vše povoleno implicitně). Smazat prázdné pravidlo, pokud ho UI vytvoří.
+5. **Apply to**: `ariadline-prod`
+6. Vytvořit firewall
+
+> **Důležité**: Port 22 (SSH) NENÍ povolen — veškerý SSH přístup jde přes Tailscale (UDP 41641).
+> Po vytvoření ověřit, že Tailscale SSH stále funguje: `ssh sazinka@ariadline-prod`.
 
 ### 23.4 Krok 2: Základní zabezpečení VPS
 
 ```bash
-# Připojit se jako root
+# Připojit se jako root (iniciální přístup přes veřejnou IP)
 ssh root@<VPS_HOST>
 
 # --- Aktualizace systému ---
 apt update && apt upgrade -y
 
-# --- Vytvořit deploy uživatele ---
+# --- Vytvořit deploy uživatele (BEZ sudo) ---
 adduser --disabled-password --gecos "" sazinka
-usermod -aG sudo sazinka
-# Zkopírovat SSH klíče z root
-mkdir -p /home/sazinka/.ssh
-cp /root/.ssh/authorized_keys /home/sazinka/.ssh/
-chown -R sazinka:sazinka /home/sazinka/.ssh
-chmod 700 /home/sazinka/.ssh
-chmod 600 /home/sazinka/.ssh/authorized_keys
+# Žádný sudo — snižuje blast radius při kompromitaci CI nebo Tailscale SSH.
 
-# --- Zakázat root SSH login a password auth ---
-sed -i 's/^PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
-sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
-systemctl restart sshd
+# --- Nainstalovat Tailscale ---
+curl -fsSL https://tailscale.com/install.sh | sh
+tailscale up --ssh --hostname ariadline-prod
+# Autorizovat node v Tailscale admin console nebo přes zobrazený URL.
+# --ssh flag zapne Tailscale SSH (žádné SSH klíče, autentizace přes Tailscale identity).
+
+# Ověřit připojení — poznamenat si Tailscale IP → VPS_TAILSCALE_IP
+tailscale ip -4
 
 # --- Firewall (UFW) ---
+# Port 22 NENÍ otevřen — veškerý SSH jde přes Tailscale (UDP 41641).
 ufw default deny incoming
 ufw default allow outgoing
-ufw allow 22/tcp        # SSH
 ufw allow 80/tcp        # HTTP (Caddy redirect)
 ufw allow 443/tcp       # HTTPS (Caddy)
 ufw allow 443/udp       # HTTP/3
 ufw allow 8222/tcp      # NATS WebSocket (browser)
+# Důležité: nepovolovat celé tailscale0. Povolit jen konkrétní management port.
+ufw allow in on tailscale0 to any port 22 proto tcp   # Tailscale SSH only
 ufw enable
+
+# --- Zakázat veřejný SSH úplně ---
+sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+# SSH na veřejné IP je blokovaný UFW, ale pro jistotu zamkneme i sshd.
+systemctl restart sshd
+
+# *** OD TEĎTO SE PŘIPOJOVAT JEN PŘES TAILSCALE: ***
+# ssh sazinka@ariadline-prod   (Tailscale hostname)
+# ssh sazinka@<VPS_TAILSCALE_IP>
 
 # --- Nainstalovat Docker ---
 apt install -y docker.io docker-compose-plugin
@@ -3799,6 +3845,20 @@ systemctl start fail2ban
 apt install -y unattended-upgrades
 dpkg-reconfigure -plow unattended-upgrades
 ```
+
+> **Tailscale SSH**: Díky `--ssh` flagu Tailscale zpřístupní SSH přes svůj
+> WireGuard tunel. Přístup se řídí Tailscale ACLs — žádné SSH klíče na serveru.
+> Stejný model jako dev server na Hostingeru.
+
+### 23.4a NoMachine + Cursor IDE na serveru
+
+Plán: připojit se přes NoMachine (remote desktop) via Tailscale a spouštět Cursor IDE přímo na VPS.
+
+**Doporučení**:
+- **NoMachine přes Tailscale** — v pořádku. Latence a bandwidth jsou obvykle dostačující.
+- **Cursor na 16 GB VPS** — v pořádku. Nominatim, Valhalla a Postgres zůstávají pod 10 GB; Cursor (1–2 GB) má dostatek místa.
+- **Bezpečnostní riziko** — Cursor odesílá kód do AI. Při otevření `.env.prod`, `MIGRATION_DB_URL` či dalších secrets hrozí jejich odeslání do modelu. **Nepoužívat Cursor na citlivých souborech** (`.env.*`, DB dumpy). Lepší: Cursor na lokálním stroji + Remote-SSH/remote edit, nebo oddělit adresáře (např. `/opt/sazinka` jen pro čtení v Cursoru).
+- **Alternativa** — pro rychlé úpravy konfigurace stačí NoMachine + obyčejný editor (vim, nano) nebo VS Code (lehčí než Cursor). Pro AI asistované editace preferovat lokální Cursor s Remote-SSH.
 
 ### 23.5 Krok 3: Deploy repozitáře na VPS
 
@@ -3885,13 +3945,42 @@ docker exec sazinka-postgres psql -U sazinka -d sazinka \
 docker logs sazinka-caddy 2>&1 | grep "certificate obtained"
 ```
 
-### 23.9 Krok 7: Cloudflare Pages — sazinka.cz (marketing site)
+### 23.8a Krok 6a: Staging stack na stejném serveru
+
+Staging běží na stejném VPS jako produkce. Sdílí Postgres instanci (jiná databáze),
+NATS, Nominatim a Valhalla. Samostatný worker a Caddy vhosty.
+
+```bash
+# Jako root nebo sazinka (docker group)
+cd ~/sazinka
+
+# Vytvořit .env.staging (oddělené secrets!)
+cp .env.prod .env.staging
+# Upravit: WORKER_VERSION, POSTGRES_DB=sazinka_staging, jiné hesla, RUST_LOG=debug
+
+# Vytvořit staging DB
+docker exec sazinka-postgres psql -U sazinka -c "CREATE DATABASE sazinka_staging;"
+
+# Spustit staging stack (jiný project name)
+docker compose -p ariadline-staging --env-file .env.staging \
+  -f infra/docker-compose.staging.yml up -d
+```
+
+Potřebný `infra/docker-compose.staging.yml` — odvozený od prod, ale:
+- jiný project/container prefix (`ariadline-staging`)
+- `POSTGRES_DB=sazinka_staging`
+- Caddy route pro `api-staging.ariadline.cz`, `app-staging.ariadline.cz`
+- NATS: sdílený nebo oddělené credentials podle potřeby
+
+DNS (Cloudflare): přidat `api-staging.ariadline.cz` → `<VPS_HOST>` (Proxy OFF).
+
+### 23.9 Krok 7: Cloudflare Pages — ariadline.cz (marketing site)
 
 1. Přihlásit se do [Cloudflare Dashboard](https://dash.cloudflare.com/)
 2. **Workers & Pages** → **Create** → **Pages** → **Connect to Git**
 3. Nastavení:
    - **Repository**: `Oslicek/Sazinka`
-   - **Project name**: `sazinka-site`
+   - **Project name**: `ariadline-site`
    - **Production branch**: `master`
    - **Build command**: `pnpm install --frozen-lockfile && pnpm --filter @ariadline/site build`
    - **Build output directory**: `apps/site/dist`
@@ -3900,51 +3989,105 @@ docker logs sazinka-caddy 2>&1 | grep "certificate obtained"
 4. **Environment variables**:
    - nic speciálního (site je statický)
 5. Kliknout **Save and Deploy**
-6. Po dokončení buildu — **Custom domains** → přidat `sazinka.cz` a `www.sazinka.cz`
+6. Po dokončení buildu — **Custom domains** → přidat `ariadline.cz` a `www.ariadline.cz`
 
-### 23.10 Krok 8: Cloudflare Pages — app.sazinka.cz (SPA)
+> **Manuální deploy**: Výchozí nastavení CF Pages builduje na každý push na production branch.
+> Pro manuální deploy: vypněte "Build on push" nebo používejte výhradně API pro spuštění buildu
+> z deploy workflow. Viz sekce 24.10.
+
+### 23.10 Krok 8: Cloudflare Pages — app.ariadline.cz (SPA)
 
 1. **Workers & Pages** → **Create** → **Pages** → **Connect to Git**
 2. Nastavení:
    - **Repository**: `Oslicek/Sazinka`
-   - **Project name**: `sazinka-app`
+   - **Project name**: `ariadline-app`
    - **Production branch**: `master`
    - **Build command**: `pnpm install --frozen-lockfile && pnpm --filter @sazinka/web build`
    - **Build output directory**: `apps/web/dist`
    - **Root directory**: `/`
    - **Framework preset**: None (Vite)
 3. **Environment variables** (Production):
-   - `VITE_NATS_WS_URL` = `wss://api.sazinka.cz/nats`
+   - `VITE_NATS_WS_URL` = `wss://api.ariadline.cz/nats`
    - `VITE_NATS_USER` = `browser`
    - `VITE_NATS_PASS` = `<NATS_BROWSER_PASSWORD z .env.prod>`
 4. Kliknout **Save and Deploy**
-5. **Custom domains** → přidat `app.sazinka.cz`
+5. **Custom domains** → přidat `app.ariadline.cz`
+
+**Staging app** (volitelné, pro manuální deploy):
+- Projekt `ariadline-app-staging`, build z branch `staging` nebo `master`
+- Custom domain: `app-staging.ariadline.cz`
+- `VITE_NATS_WS_URL` = `wss://api-staging.ariadline.cz/nats`
 
 ### 23.11 Krok 9: Cloudflare DNS pro VPS
 
 1. **DNS** → **Records** → přidat:
-   - `api.sazinka.cz` → A record → `<VPS_HOST>` → Proxy: OFF (grey cloud)
-     - Proxy OFF protože Caddy řeší TLS sám přes Let's Encrypt
-   - `monitor.sazinka.cz` → A record → `<VPS_HOST>` → Proxy: OFF
+   - `api.ariadline.cz` → A record → `<VPS_HOST>` → Proxy: OFF (grey cloud)
+   - `monitor.ariadline.cz` → A record → `<VPS_HOST>` → Proxy: OFF
+   - `api-staging.ariadline.cz` → A record → `<VPS_HOST>` → Proxy: OFF (staging)
+   - Proxy OFF protože Caddy řeší TLS sám přes Let's Encrypt
 
-> **Důležité**: Pro `api.*` a `monitor.*` proxy vypnout (grey cloud),
+> **Důležité**: Pro `api.*`, `api-staging.*` a `monitor.*` proxy vypnout (grey cloud),
 > aby Caddy mohl získat Let's Encrypt certifikáty.
-> Pro `sazinka.cz` a `app.sazinka.cz` proxy zapnout (orange cloud) — to
+> Pro `ariadline.cz` a `app.ariadline.cz` proxy zapnout (orange cloud) — to
 > řeší Cloudflare Pages automaticky.
 
-### 23.12 Krok 10: GitHub Secrets pro CI/CD
+### 23.12 Krok 10: Tailscale OAuth client pro CI/CD
+
+1. Přihlásit se do [Tailscale Admin Console](https://login.tailscale.com/admin/settings/oauth)
+2. **Settings** → **OAuth clients** → **Generate OAuth client**
+3. Nastavení:
+   - **Description**: `GitHub Actions CI/CD`
+   - **Scopes**: `devices:write` (pro vytváření ephemeral nodes)
+   - **Tags**: `tag:ci` (musí být definovaný v ACLs — viz níže)
+4. Zkopírovat **Client Secret** → `TAILSCALE_OAUTH_CLIENT_SECRET`
+
+**Tailscale ACL pravidla** (přidat do ACL editoru v admin console):
+
+```jsonc
+{
+  "tagOwners": {
+    "tag:ci": ["autogroup:admin"]
+  },
+  "acls": [
+    // CI runner může SSH na prod server
+    { "action": "accept", "src": ["tag:ci"], "dst": ["ariadline-prod:22"] }
+  ],
+  "ssh": [
+    // CI runner se připojuje jako user "sazinka" na prod
+    {
+      "action": "accept",
+      "src": ["tag:ci"],
+      "dst": ["ariadline-prod"],
+      "users": ["sazinka"]
+    }
+  ]
+}
+```
+
+### 23.13 Krok 11: GitHub Secrets pro CI/CD
 
 V repozitáři `Settings` → `Secrets and variables` → `Actions` → přidat:
 
 | Secret | Hodnota | Popis |
 |--------|---------|-------|
-| `VPS_HOST` | IP adresa VPS | Pro SSH deploy |
-| `VPS_USER` | `sazinka` | Deploy user |
-| `VPS_SSH_KEY` | Obsah privátního klíče | `cat ~/.ssh/deploy_ed25519` |
+| `TAILSCALE_OAUTH_CLIENT_ID` | OAuth client ID z kroku 10 | Spárování s OAuth secret |
+| `TAILSCALE_OAUTH_CLIENT_SECRET` | OAuth client secret z kroku 10 | Tailscale auth pro CI runner |
+| `VPS_TAILSCALE_IP` | Tailscale IP VPS (100.x.y.z) | Cíl pro SSH deploy |
+| `VPS_SSH_KNOWN_HOSTS` | SSH host key z `ssh-keyscan` | Ochrana proti MITM při CI SSH |
 | `GHCR_TOKEN` | GitHub PAT (packages:write) | Pro push/pull Docker image |
 | `MIGRATION_DB_URL` | `postgres://sazinka_admin:<heslo>@postgres:5432/sazinka` | DB URL pro migrační kontejner |
 | `CF_API_TOKEN` | Cloudflare API token | S oprávněním: Pages:Edit |
 | `CF_ACCOUNT_ID` | Cloudflare Account ID | Na stránce Overview |
+
+> **Oproti klasickému SSH**: Žádné `VPS_SSH_KEY` — Tailscale řeší autentizaci.
+> Žádná veřejná IP jako secret — server je dostupný jen přes Tailscale.
+> `VPS_SSH_KNOWN_HOSTS` ale ponechat — je to obrana proti man-in-the-middle útoku.
+
+Naplnění `VPS_SSH_KNOWN_HOSTS` (spustit z důvěryhodného stroje připojeného do tailnetu):
+```bash
+ssh-keyscan -H <VPS_TAILSCALE_IP>
+```
+Výstup vložit 1:1 do GitHub secretu `VPS_SSH_KNOWN_HOSTS`.
 
 Pozn.: Heslo pro `sazinka_admin` nastavit na VPS:
 ```bash
@@ -3952,105 +4095,85 @@ docker exec sazinka-postgres psql -U sazinka -d sazinka \
   -c "ALTER ROLE sazinka_admin PASSWORD '<nové heslo>';"
 ```
 
-### 23.13 Krok 11: Ověření E2E
+### 23.14 Krok 12: Ověření E2E
 
 Po kompletním setupu:
 ```bash
 # Z lokálního stroje:
 # 1. Marketing site
-curl -sI https://sazinka.cz | head -5
+curl -sI https://ariadline.cz | head -5
 # → HTTP/2 200
 
 # 2. App
-curl -sI https://app.sazinka.cz | head -5
+curl -sI https://app.ariadline.cz | head -5
 # → HTTP/2 200
 
 # 3. API (NATS WebSocket)
-curl -sI https://api.sazinka.cz/nats
+curl -sI https://api.ariadline.cz/nats
 # → HTTP/1.1 400 (očekáváno — není WebSocket upgrade)
 
 # 4. Monitor (vyžaduje přihlášení)
-curl -sI https://monitor.sazinka.cz
+curl -sI https://monitor.ariadline.cz
 # → HTTP/1.1 401 (basic auth)
 
 # 5. Test CI/CD — push malou změnu do master a sledovat GitHub Actions
 ```
 
-### 23.14 Disaster Recovery
+### 23.15 Disaster Recovery
 
 V případě ztráty VPS:
 1. Vytvořit nový server (krok 1)
-2. Zabezpečit (krok 2)
+2. Zabezpečit + nainstalovat Tailscale (krok 2) — node se automaticky připojí do tailnetu
 3. Klonovat repo + obnovit `.env.prod` ze SOPS (krok 3)
 4. Vytvořit volumes (krok 4) — **DATA BUDOU ZTRACENA** (Postgres, Nominatim, Valhalla)
 5. Spustit stack (krok 5) — Nominatim a Valhalla se znovu importují (~2.5 hodiny)
 6. Obnovit Postgres backup (pokud existuje — viz sekce o backup strategii)
 7. DNS záznamy aktualizovat na novou IP
+8. Aktualizovat `VPS_TAILSCALE_IP` a `VPS_SSH_KNOWN_HOSTS` v GitHub Secrets (nový server = nový host key)
 
 > **TODO**: Automatizovat Postgres backup (pg_dump) přes cron job
 > do Hetzner Object Storage nebo S3. Plánováno do Q2 2026.
 
 ---
 
-## 24. CI/CD Pipeline — Automatický deploy
+## 24. CI/CD Pipeline — Test on push, manuální deploy
 
-> Toto nahrazuje sekci 21.8 (původní workflow) kompletní pipeline s testy,
-> bezpečnostním auditem, minimalizací image a kontrolními body.
+> **Klíčové pravidlo**: Pushes na master **nevyvolávají deploy**. Spustí se pouze
+> testy, audit a build worker image do GHCR. Deploy (Hetzner + Cloudflare) probíhá
+> **jen manuálně** přes `workflow_dispatch`.
 
 ### 24.1 Přehled pipeline
 
+**Na každý push** (testy + build, bez deploye):
 ```
-push to master
-    │
-    ▼
-┌───────────┐
-│  changes  │ ← Detekce změněných souborů (dorny/paths-filter)
-└─────┬─────┘
-      │
-  ┌───┼──────────────┬────────────────┐
-  │   │              │                │
-  ▼   ▼              ▼                ▼
-┌──────────┐  ┌────────────┐  ┌───────────┐
-│test-worker│  │ test-site  │  │ test-app  │   ← Testy (paralelně)
-│cargo test │  │ vitest run │  │ vitest    │
-│cargo clippy│ │ astro check│  │ tsc       │
-└─────┬──────┘ └──────┬─────┘ └─────┬─────┘
-      │               │             │
-      ▼               │             │
-┌──────────┐          │             │
-│  audit   │          │             │
-│cargo audit│         │             │
-│trivy image│         │             │
-└─────┬────┘          │             │
-      │               │             │
-      ▼               │             │
-┌──────────┐          │             │
-│  build   │          │             │
-│Docker img│          │             │
-│minimize  │          │             │
-└─────┬────┘          │             │
-      │               │             │
-      ▼               │             │
-┌──────────┐          │             │
-│ migrate  │          │             │
-│ DB on VPS│          │             │
-└─────┬────┘          │             │
-      │               │             │
-      ▼               ▼             ▼
-┌──────────┐  ┌────────────┐  ┌───────────┐
-│  deploy  │  │deploy-site │  │deploy-app │   ← Deploy (paralelně)
-│worker VPS│  │CF Pages    │  │CF Pages   │
-└─────┬────┘  └──────┬─────┘  └─────┬─────┘
-      │               │             │
-      └───────┬───────┘─────────────┘
-              ▼
-       ┌────────────┐
-       │  smoke-test│ ← Ověření po deployi
-       │ curl + health│
-       └────────────┘
+push to master → changes → test-worker, test-site, test-app
+       → audit → build worker image → GHCR
+       → STOP (žádný deploy)
 ```
 
-### 24.2 Job: `test-worker` — Rust testy a linting
+**Manuální deploy** (workflow_dispatch):
+```
+Actions → Deploy workflow → Run
+Inputs: target (staging | production), components (worker | site | app | all)
+
+→ migrate-db (jen když worker + target)
+→ deploy-worker na Hetzner (jen když worker)
+→ CF Pages API: trigger build (jen když site/app)
+→ smoke-test
+```
+
+### 24.2 Workflow: `ci.yml` — na push (bez deploye)
+
+```yaml
+on:
+  push:
+    branches: [master]
+```
+
+Jobs: `changes` → `test-worker`, `test-site`, `test-app` → `security-audit` → `build-worker`.
+**Žádný** `migrate-db`, `deploy-worker`, `deploy-site`, `deploy-app` — ty jsou v `deploy.yml`.
+
+### 24.3 Job: `test-worker` — Rust testy a linting
 
 Spouštěno: při změně `worker/**` nebo `packages/**`.
 
@@ -4097,7 +4220,7 @@ test-worker:
         JWT_SECRET: test-secret-at-least-32-bytes-long!!!
 ```
 
-### 24.3 Job: `test-frontend` — TypeScript testy a typechecking
+### 24.4 Job: `test-frontend` — TypeScript testy a typechecking
 
 Spouštěno: při změně `apps/web/**` nebo `apps/site/**`.
 
@@ -4128,7 +4251,7 @@ test-frontend:
       run: pnpm --filter @ariadline/site test
 ```
 
-### 24.4 Job: `security-audit` — Bezpečnostní kontroly
+### 24.5 Job: `security-audit` — Bezpečnostní kontroly
 
 Spouštěno: při každém pushi. Blokuje deploy při kritických zranitelnostech.
 
@@ -4166,7 +4289,7 @@ security-audit:
     # Note: Trivy scan runs inside build-worker job (see 24.5)
 ```
 
-### 24.5 Job: `build-worker` — Build, minimize, scan Docker image
+### 24.6 Job: `build-worker` — Build, minimize, scan Docker image
 
 Spouštěno: po úspěšných testech a auditu.
 
@@ -4247,74 +4370,142 @@ build-worker:
         exit-code: '1'
 ```
 
-### 24.6 Job: `migrate-db` — Bezpečná migrace databáze
+### 24.6 Workflow: `deploy.yml` — jen workflow_dispatch
 
-Spouštěno: po úspěšném buildu worker image. Používá `sazinka_admin` credentials.
+Deploy workflow se **nespouští na push**. Spouští se manuálně:
+
+```yaml
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Deploy target'
+        required: true
+        default: 'staging'
+        type: choice
+        options: ['staging', 'production']
+      components:
+        description: 'What to deploy'
+        required: true
+        default: 'all'
+        type: choice
+        options: ['worker', 'site', 'app', 'all']
+      git_ref:
+        description: 'Git ref (branch/sha) to deploy'
+        required: false
+        default: 'master'
+```
+
+### 24.7 Job: `migrate-db` — Bezpečná migrace databáze
+
+Spouštěno: pouze v deploy workflow (`workflow_dispatch`), když `components` obsahuje worker.
+Používá `sazinka_admin` credentials. Target určuje DB (`sazinka` vs `sazinka_staging`).
 
 ```yaml
 migrate-db:
-  needs: build-worker
-  if: needs.changes.outputs.worker == 'true'
+  if: github.event_name == 'workflow_dispatch' && (github.event.inputs.components == 'worker' || github.event.inputs.components == 'all')
   runs-on: ubuntu-latest
   steps:
-    - name: Run migrations via SSH
-      uses: appleboy/ssh-action@v1
+    - name: Connect to Tailscale
+      uses: tailscale/github-action@v2
       with:
-        host: ${{ secrets.VPS_HOST }}
-        username: ${{ secrets.VPS_USER }}
-        key: ${{ secrets.VPS_SSH_KEY }}
-        script: |
+        oauth-client-id: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
+        oauth-secret: ${{ secrets.TAILSCALE_OAUTH_CLIENT_SECRET }}
+        tags: tag:ci
+
+    - name: Pin VPS SSH host key (MITM protection)
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.VPS_SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+        chmod 644 ~/.ssh/known_hosts
+
+    - name: Run migrations via Tailscale SSH (production)
+      if: github.event.inputs.target == 'production'
+      run: |
+        ssh -o StrictHostKeyChecking=yes sazinka@${{ secrets.VPS_TAILSCALE_IP }} << 'SCRIPT'
           set -e
-          echo "${{ secrets.GHCR_TOKEN }}" | \
-            docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
           docker pull ghcr.io/oslicek/sazinka-worker:${{ github.sha }}
-          docker run --rm \
-            --network infra_sazinka_net \
+          docker run --rm --network infra_sazinka_net \
             -e DATABASE_URL="${{ secrets.MIGRATION_DB_URL }}" \
-            ghcr.io/oslicek/sazinka-worker:${{ github.sha }} \
-            sazinka-worker migrate
-          echo "Migrations completed successfully"
+            ghcr.io/oslicek/sazinka-worker:${{ github.sha }} sazinka-worker migrate
+          echo "Migrations completed successfully (production)"
+        SCRIPT
+
+    - name: Run migrations via Tailscale SSH (staging)
+      if: github.event.inputs.target == 'staging'
+      run: |
+        ssh -o StrictHostKeyChecking=yes sazinka@${{ secrets.VPS_TAILSCALE_IP }} << 'SCRIPT'
+          set -e
+          echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker pull ghcr.io/oslicek/sazinka-worker:${{ github.sha }}
+          docker run --rm --network infra_sazinka_net \
+            -e DATABASE_URL="${{ secrets.MIGRATION_DB_URL_STAGING }}" \
+            ghcr.io/oslicek/sazinka-worker:${{ github.sha }} sazinka-worker migrate
+          echo "Migrations completed successfully (staging)"
+        SCRIPT
 ```
 
-### 24.7 Job: `deploy-worker` — Deploy na VPS
+**Obrázek z GHCR**: Deploy workflow neprovádí build. Používá image
+`ghcr.io/oslicek/sazinka-worker:${{ github.sha }}`, který musí už být v GHCR
+(z předchozího push, jenž spustil CI). Před deployem nutno aspoň jednou pushnout,
+aby CI image sestavil.
+
+### 24.9 Job: `deploy-worker` — Deploy na VPS
+
+Spouštěno: pouze v deploy workflow, když `components` obsahuje worker.
+`target` určuje `.env.prod` vs `.env.staging` a project name.
 
 ```yaml
 deploy-worker:
   needs: migrate-db
-  if: needs.changes.outputs.worker == 'true'
+  if: github.event_name == 'workflow_dispatch' && (github.event.inputs.components == 'worker' || github.event.inputs.components == 'all')
   runs-on: ubuntu-latest
   steps:
-    - name: Deploy worker via SSH
-      uses: appleboy/ssh-action@v1
+    - name: Connect to Tailscale
+      uses: tailscale/github-action@v2
       with:
-        host: ${{ secrets.VPS_HOST }}
-        username: ${{ secrets.VPS_USER }}
-        key: ${{ secrets.VPS_SSH_KEY }}
-        script: |
-          set -e
-          cd ~/sazinka
-          sed -i "s/^WORKER_VERSION=.*/WORKER_VERSION=${{ github.sha }}/" .env.prod
-          docker compose --env-file .env.prod \
-            -f infra/docker-compose.prod.yml pull worker
-          docker compose --env-file .env.prod \
-            -f infra/docker-compose.prod.yml up -d worker
-          sleep 10
-          STATUS=$(docker inspect sazinka-worker \
-            --format='{{.State.Status}}' 2>/dev/null || echo "not found")
-          if [ "$STATUS" != "running" ]; then
-            echo "::error::Worker not running after deploy!"
-            docker logs sazinka-worker --tail 50
-            exit 1
-          fi
-          echo "Worker deployed: ${{ github.sha }}"
+        oauth-client-id: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
+        oauth-secret: ${{ secrets.TAILSCALE_OAUTH_CLIENT_SECRET }}
+        tags: tag:ci
+
+    - name: Pin VPS SSH host key (MITM protection)
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.VPS_SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+        chmod 644 ~/.ssh/known_hosts
+
+    - name: Deploy worker via Tailscale SSH
+      run: |
+        TARGET="${{ github.event.inputs.target }}"
+        if [ "$TARGET" = "production" ]; then
+          ENV_FILE=".env.prod"
+          COMPOSE_FILE="infra/docker-compose.prod.yml"
+          PROJECT="infra"
+          CONTAINER="sazinka-worker"
+        else
+          ENV_FILE=".env.staging"
+          COMPOSE_FILE="infra/docker-compose.staging.yml"
+          PROJECT="ariadline-staging"
+          CONTAINER="ariadline-staging-worker"
+        fi
+        ssh -o StrictHostKeyChecking=yes sazinka@${{ secrets.VPS_TAILSCALE_IP }} \
+          "cd ~/sazinka && sed -i 's/^WORKER_VERSION=.*/WORKER_VERSION=${{ github.sha }}/' $ENV_FILE && \
+           docker compose -p $PROJECT --env-file $ENV_FILE -f $COMPOSE_FILE pull worker && \
+           docker compose -p $PROJECT --env-file $ENV_FILE -f $COMPOSE_FILE up -d worker && \
+           sleep 10 && STATUS=\$(docker inspect $CONTAINER --format='${{ '{{' }}.State.Status${{ '}}' }}' 2>/dev/null || echo 'not found') && \
+           if [ \"\$STATUS\" != 'running' ]; then docker logs $CONTAINER --tail 50; exit 1; fi && \
+           echo 'Worker deployed: ${{ github.sha }} ($TARGET)'"
 ```
 
-### 24.8 Jobs: `deploy-site`, `deploy-app` — Cloudflare Pages
+### 24.10 Jobs: `deploy-site`, `deploy-app` — Cloudflare Pages (manuálně)
 
-Viz existující workflow — beze změn oproti sekci 21.8.
-Přidáno: závisí na `test-frontend` a `security-audit`.
+Spouštěno: pouze v deploy workflow při `components` = site/app/all.
+Trigger buildu přes [Cloudflare Pages API](https://developers.cloudflare.com/api/operations/pages-deployment-create-deployment) —
+ne automatický deploy na každý push. CF projekt má připojený Git, ale production
+branch se nebuildí automaticky; build se spouští jen API voláním z workflow.
 
-### 24.9 Job: `smoke-test` — Ověření po deployi
+### 24.11 Job: `smoke-test` — Ověření po deployi
 
 ```yaml
 smoke-test:
@@ -4322,11 +4513,11 @@ smoke-test:
   if: always() && (needs.deploy-worker.result == 'success' || needs.deploy-site.result == 'success' || needs.deploy-app.result == 'success')
   runs-on: ubuntu-latest
   steps:
-    - name: Smoke test — API health
-      if: needs.deploy-worker.result == 'success'
+    - name: Smoke test — API health (production)
+      if: needs.deploy-worker.result == 'success' && github.event.inputs.target == 'production'
       run: |
         sleep 15
-        STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://api.sazinka.cz/nats || echo "000")
+        STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://api.ariadline.cz/nats || echo "000")
         echo "API status: $STATUS"
         # 400 is expected (not a WebSocket upgrade) — anything else is a problem
         if [ "$STATUS" = "000" ]; then
@@ -4335,10 +4526,18 @@ smoke-test:
         fi
         echo "API reachable: HTTP $STATUS"
 
+    - name: Smoke test — API health (staging)
+      if: needs.deploy-worker.result == 'success' && github.event.inputs.target == 'staging'
+      run: |
+        sleep 15
+        STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://api-staging.ariadline.cz/nats || echo "000")
+        if [ "$STATUS" = "000" ]; then echo "::error::Staging API unreachable!"; exit 1; fi
+        echo "Staging API reachable: HTTP $STATUS"
+
     - name: Smoke test — site
       if: needs.deploy-site.result == 'success'
       run: |
-        STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://sazinka.cz)
+        STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://ariadline.cz)
         echo "Site status: $STATUS"
         if [ "$STATUS" != "200" ]; then
           echo "::error::Site returned $STATUS!"
@@ -4348,7 +4547,7 @@ smoke-test:
     - name: Smoke test — app
       if: needs.deploy-app.result == 'success'
       run: |
-        STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://app.sazinka.cz)
+        STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://app.ariadline.cz)
         echo "App status: $STATUS"
         if [ "$STATUS" != "200" ]; then
           echo "::error::App returned $STATUS!"
@@ -4356,7 +4555,7 @@ smoke-test:
         fi
 ```
 
-### 24.10 Pipeline — rozhodovací body a eskalace
+### 24.12 Pipeline — rozhodovací body a eskalace
 
 | Situace | Chování | Eskalace |
 |---------|---------|----------|
@@ -4372,7 +4571,7 @@ smoke-test:
 | Worker health check fail | Pipeline STOP. Rollback: `docker compose up -d worker` s předchozí verzí. | GitHub notifikace. |
 | Smoke test fail | Pipeline označena jako failed. Deploy proběhl, ale monitoring varuje. | GitHub notifikace. |
 
-### 24.11 Minimalizace kontejnerů — implementované techniky
+### 24.13 Minimalizace kontejnerů — implementované techniky
 
 | Technika | Kde | Efekt |
 |----------|-----|-------|
@@ -4385,17 +4584,33 @@ smoke-test:
 | CI image size gate | `build-worker` job | Hard limit 150 MB |
 | No debugging tools | Rule 15 | Žádný procps, curl, vim |
 
-### 24.12 GitHub Secrets — kompletní seznam
+### 24.14 GitHub Secrets — kompletní seznam
 
 | Secret | Účel | Kdo nastavuje |
 |--------|------|---------------|
-| `VPS_HOST` | IP adresa Hetzner VPS | Manuálně po vytvoření VPS |
-| `VPS_USER` | Deploy SSH user (`sazinka`) | Manuálně |
-| `VPS_SSH_KEY` | ED25519 privátní klíč | Manuálně |
+| `TAILSCALE_OAUTH_CLIENT_ID` | OAuth client ID pro Tailscale | Manuálně (Tailscale admin console) |
+| `TAILSCALE_OAUTH_CLIENT_SECRET` | OAuth client secret pro Tailscale | Manuálně (Tailscale admin console) |
+| `VPS_TAILSCALE_IP` | Tailscale IP VPS (100.x.y.z) | Manuálně po `tailscale up` |
+| `VPS_SSH_KNOWN_HOSTS` | SSH host key VPS (`ssh-keyscan -H <VPS_TAILSCALE_IP>`) | Manuálně |
 | `GHCR_TOKEN` | GitHub PAT (packages:write, read:packages) | Manuálně |
-| `MIGRATION_DB_URL` | `postgres://sazinka_admin:PASS@postgres:5432/sazinka` | Manuálně po krok 5 |
+| `MIGRATION_DB_URL` | `postgres://sazinka_admin:PASS@postgres:5432/sazinka` (prod) | Manuálně po krok 5 |
+| `MIGRATION_DB_URL_STAGING` | `postgres://sazinka_admin:PASS@postgres:5432/sazinka_staging` | Manuálně po krok 6a |
 | `CF_API_TOKEN` | Cloudflare API token (Pages:Edit) | Manuálně |
 | `CF_ACCOUNT_ID` | Cloudflare Account ID | Manuálně |
 
 > **Poznámka**: `GITHUB_TOKEN` je automatický — nemusí se nastavovat.
 > Používá se pro GHCR login a Gitleaks.
+>
+> Oproti klasickému SSH deploy: žádný `VPS_SSH_KEY` (Tailscale řeší auth),
+> žádná veřejná IP (`VPS_HOST`) — server je dostupný jen přes tailnet.
+
+### 24.15 Security hardening — priority a důležitost
+
+| Priorita | Bod | Proč je důležitý | Co zavést |
+|----------|-----|------------------|-----------|
+| **KRITICKÁ** | SSH host key pinning v CI | Bez pinningu hrozí MITM (runner se může připojit na podvržený host). | Používat `VPS_SSH_KNOWN_HOSTS` + `StrictHostKeyChecking=yes` (už zahrnuto v 24.6/24.7). |
+| **VYSOKÁ** | Tailscale ACL least privilege | Příliš široká ACL zvětšují blast radius při kompromitaci CI identity. | `tag:ci` omezit jen na `ariadline-prod:22`, oddělit `tag:staging`/`tag:prod`, auditovat ACL změny. |
+| **VYSOKÁ** | Manuální deploy jen přes workflow_dispatch | Chrání produkci před nechtěným deployem. | Deploy workflow spouští se jen ručně; push nespouští deploy (implementováno). |
+| **STŘEDNÍ** | Rotace a expirace credentials | Dlouho platné tokeny zvyšují dopad úniku. | Rotace `TAILSCALE_OAUTH_CLIENT_SECRET`, `GHCR_TOKEN`, DB hesel minimálně kvartálně. |
+| **STŘEDNÍ** | DB migration safety gates | Chybná migrace může způsobit výpadek nebo ztrátu dat. | Před migrací snapshot/backup + expand/contract migrace + rollback postup v runbooku. |
+| **STŘEDNÍ** | Monitoring a alerting bezpečnosti | Bez alertů se incidenty odhalují pozdě. | Alerty na failed deploy, opakované Tailscale SSH deny, nečekané ACL změny, cert expirace. |
