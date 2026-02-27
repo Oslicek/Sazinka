@@ -93,6 +93,16 @@ async fn remove_orphaned_migrations(
 /// embedded in the current binary. Handles CRLF/LF line-ending differences
 /// across platforms.
 async fn fix_migration_checksums(pool: &PgPool, migrator: &sqlx::migrate::Migrator) -> Result<()> {
+    let table_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '_sqlx_migrations')"
+    )
+    .fetch_one(pool)
+    .await?;
+
+    if !table_exists {
+        return Ok(());
+    }
+
     for migration in migrator.iter() {
         if migration.migration_type.is_down_migration() {
             continue;
