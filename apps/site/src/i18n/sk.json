@@ -58,6 +58,7 @@
     "form": {
       "email": "Váš e-mail",
       "emailPlaceholder": "meno@firma.sk",
+      "country": "Krajina",
       "message": "Správa",
       "messagePlaceholder": "Ako vám môžeme pomôcť?",
       "submit": "Odoslať správu",

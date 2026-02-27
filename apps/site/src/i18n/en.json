@@ -58,6 +58,7 @@
     "form": {
       "email": "Your email",
       "emailPlaceholder": "name@company.com",
+      "country": "Country",
       "message": "Message",
       "messagePlaceholder": "How can we help you?",
       "submit": "Send message",

@@ -58,6 +58,7 @@
     "form": {
       "email": "Váš e-mail",
       "emailPlaceholder": "jmeno@firma.cz",
+      "country": "Země",
       "message": "Zpráva",
       "messagePlaceholder": "Jak vám můžeme pomoci?",
       "submit": "Odeslat zprávu",
