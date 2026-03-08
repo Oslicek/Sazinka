@@ -1,0 +1,15 @@
+[allowlist]
+description = "Known false positives"
+
+paths = [
+  '''PRJ_DEVOPS\.MD''',
+]
+
+[[rules]]
+id = "generic-api-key"
+description = "Test token in onboarding unit test"
+
+[rules.allowlist]
+paths = ['''worker/src/handlers/onboarding\.rs''']
+regexTarget = "line"
+regexes = ['''abc123def456''']
