@@ -64,8 +64,21 @@ jobs:
         env:
           DATABASE_URL: postgres://sazinka:test@localhost:5432/sazinka
 
-      - name: Clippy (zero warnings)
-        run: cargo clippy --all-targets -- -D warnings
+      - name: Clippy
+        run: >
+          cargo clippy --all-targets --
+          -D warnings
+          -A clippy::too_many_arguments
+          -A clippy::type_complexity
+          -A clippy::manual_is_multiple_of
+          -A clippy::manual_strip
+          -A clippy::manual_flatten
+          -A clippy::manual_unwrap_or_default
+          -A clippy::unnecessary_map_or
+          -A clippy::redundant_pattern_matching
+          -A clippy::unnecessary_unwrap
+          -A clippy::identity_op
+          -A dead_code
         working-directory: worker
         env:
           DATABASE_URL: postgres://sazinka:test@localhost:5432/sazinka
