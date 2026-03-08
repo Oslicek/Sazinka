@@ -2008,6 +2008,32 @@ Phase 10: Smart Slot Heuristics (v0.19.0): ✅ COMPLETED
     - Warning confirmation before scheduling conflicting slots ✅
     - groupSuggestionsByCrew() + getStatusColor() utilities ✅
 
+Phase 10.5: CI/CD Quality Improvements: 🔲 PLANNED
+  → Tracked in PRJ_DEVOPS.MD section 24.15
+  → Goal: Remove all temporary suppressions and reach clean CI
+
+  10.5.1 Clippy Cleanup (priority order):
+    - items_after_test_module — move `mod tests` to bottom of file (slots.rs, geocoding.rs)
+    - unnecessary_unwrap / manual_unwrap_or_default — simple refactors (import.rs, import_processors.rs)
+    - if_same_then_else — simplify duplicate branches (sequential_schedule.rs)
+    - manual_div_ceil — use .div_ceil() (insertion.rs, slot_suggester.rs)
+    - manual_clamp — use .clamp() (slot_suggester.rs)
+    - manual_strip — use .strip_prefix() (import.rs, import_processors.rs)
+    - derivable_impls — add #[derive(Default)] + #[default] (customer.rs, job.rs)
+    - unnecessary_cast / cast_abs_to_unsigned — trivial fixes (vrp/adapter.rs, vrp/mod.rs)
+    - extend_with_drain — use .append() (vrp/mod.rs)
+    - dead_code — remove or gate behind #[cfg(test)] (email_sender.rs, rate_limiter.rs, etc.)
+    - too_many_arguments — introduce param structs (biggest refactor, do last)
+    - type_complexity — introduce type aliases for complex tuples (geocode.rs)
+
+  10.5.2 Lighthouse Fixes (priority order):
+    - color-contrast — update CSS for text/background pairs on / and /contact pages
+    - errors-in-console — investigate and fix JS/SSR errors on all pages
+    - unused-javascript — tree-shake or lazy-load contact form bundle
+    - render-blocking resources — defer non-critical CSS/JS
+    - cache headers — configure long-lived cache for static assets in Cloudflare Pages
+    - After fixes: remove `continue-on-error: true` from site.yml Lighthouse step
+
 Phase 11: Internationalization (i18n): 🔲 PLANNED
   → Full design: PRJ_I18N.MD
   → TDD approach: Red → Green → Refactor for every step

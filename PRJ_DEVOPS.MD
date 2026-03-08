@@ -4654,7 +4654,49 @@ smoke-test:
 > Oproti klasickému SSH deploy: žádný `VPS_SSH_KEY` (Tailscale řeší auth),
 > žádná veřejná IP (`VPS_HOST`) — server je dostupný jen přes tailnet.
 
-### 24.15 Security hardening — priority a důležitost
+### 24.15 Stav implementace CI/CD (aktualizováno 2026-03-08)
+
+**Workflow soubory**:
+- `.github/workflows/ci.yml` — CI na push (testy, audit, GHCR build). Implementováno a testováno.
+- `.github/workflows/deploy.yml` — manuální deploy přes `workflow_dispatch` s Tailscale SSH. Implementováno.
+- `.github/workflows/site.yml` — CI pro marketing site (testy, Lighthouse). Auto-deploy odstraněn.
+
+**GitHub Secrets — stav nastavení**:
+
+| Secret | Stav |
+|--------|------|
+| `TAILSCALE_OAUTH_CLIENT_ID` | ✅ Nastaveno |
+| `TAILSCALE_OAUTH_CLIENT_SECRET` | ✅ Nastaveno |
+| `VPS_TAILSCALE_IP` | ✅ Nastaveno |
+| `VPS_SSH_KNOWN_HOSTS` | ✅ Nastaveno |
+| `GHCR_TOKEN` | ✅ Nastaveno (PAT s `read:packages` + `write:packages`) |
+| `MIGRATION_DB_URL` | ✅ Nastaveno (`postgres://sazinka_admin:...@postgres:5432/sazinka`) |
+| `MIGRATION_DB_URL_STAGING` | ⏳ Čeká na staging setup |
+| `CF_API_TOKEN` | ✅ Nastaveno (custom token s Pages:Edit) |
+| `CF_ACCOUNT_ID` | ✅ Nastaveno |
+
+**Tailscale OAuth client**:
+- Scopes: `devices:core`, `auth_keys` (read & write) — obojí je nutné.
+- Tags: `tag:ci`.
+- Pozor: scope `auth_keys:read` nestačí — GitHub Action potřebuje **write** pro vytvoření ephemeral auth key.
+
+**Známé problémy vyřešené při prvním spuštění CI**:
+
+1. **SQLx compile-time checks** — `sqlx::query!` makra ověřují dotazy proti DB při kompilaci.
+   CI Postgres service nemá tabulky → nutné spustit migrace před Clippy/testy.
+   Řešení: přidán krok `cargo sqlx migrate run` do `ci.yml` před Clippy.
+
+2. **Clippy pre-existing warnings** — desítky existujících varování (`too_many_arguments`,
+   `dead_code`, `items_after_test_module`, `manual_div_ceil`, `type_complexity` aj.).
+   Řešení: `-D warnings` zachováno (nové varování = fail), ale přidány `-A` pro
+   existující kategorie. Postupně zpřísňovat při refaktoringu.
+   Kompletní allow list viz `.github/workflows/ci.yml`.
+
+3. **CI path filter** — `ci.yml` se spouští jen při změnách v `worker/**`, `packages/**`,
+   `apps/web/**`, `infra/**`. Změny v `.github/workflows/**` CI nespustí — pro retrigger
+   je nutné změnit soubor ve sledovaném adresáři.
+
+### 24.16 Security hardening — priority a důležitost
 
 | Priorita | Bod | Proč je důležitý | Co zavést |
 |----------|-----|------------------|-----------|
