@@ -3,7 +3,7 @@ name = "sazinka-worker"
 version = "0.2.0"
 edition = "2021"
 authors = ["Sazinka Team"]
-description = "Backend worker for Sazinka CRM"
+description = "Backend worker for Ariadline CRM"
 
 [dependencies]
 # Async runtime
