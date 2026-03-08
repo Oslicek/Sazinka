@@ -28,7 +28,7 @@ describe('Hero.astro', () => {
 
   test('renders localized content for cs', async () => {
     const html = await renderHero({ locale: 'cs' });
-    expect(html).toContain('Rozmotat');
+    expect(html).toContain('Rozmotejte');
     expect(html).toContain('Vyzkoušet zdarma');
   });
 
