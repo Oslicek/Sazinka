@@ -1,6 +1,6 @@
 # Project Roadmap - Sazinka v1.0 GA
 
-> **Last Updated:** 2026-02-10 (v0.19.0 - Smart Slot Heuristics)
+> **Last Updated:** 2026-03-08 (v0.20.0 - CI/CD Pipeline)
 
 ## Current State Analysis
 

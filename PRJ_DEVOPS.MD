@@ -4696,6 +4696,34 @@ smoke-test:
    `apps/web/**`, `infra/**`. Změny v `.github/workflows/**` CI nespustí — pro retrigger
    je nutné změnit soubor ve sledovaném adresáři.
 
+4. **cargo audit — `bytes` a `time` CVE** — `bytes` 1.11.0 (integer overflow) a `time` 0.3.46
+   (DoS via stack exhaustion). Řešení: `cargo update -p bytes -p time`.
+   `rsa` RUSTSEC-2023-0071 (Marvin Attack) nemá fix — tranzitivní dep přes `sqlx-mysql`
+   (nepoužíváme). Ignorováno v `worker/.cargo/audit.toml`.
+
+5. **pnpm/action-setup verze konflikt** — `version: latest` v workflow koliduje s
+   `packageManager` v `package.json`. Řešení: odstranit `version` parametr z `pnpm/action-setup`,
+   nechat action číst verzi z `package.json`.
+
+6. **Hero test — zastaralý assertion** — test očekával "Rozmotat", ale headline byl změněn
+   na "Rozmotejte". Řešení: aktualizovat test.
+
+7. **Lighthouse CI** — `serve` nebyl nainstalován na runneru; cesta k `dist/` byla relativní
+   k `apps/site/`, ne k repo root. Řešení: `npm install -g serve` + cesta `apps/site/dist`.
+   Lighthouse assertions (color-contrast, errors-in-console) zatím neblokují pipeline
+   (`continue-on-error: true`). Plán oprav viz `PRJ_ROADMAP.MD` Phase 10.5.
+
+8. **Gitleaks false positives** — test token v `onboarding.rs` a `curl -u` příklad v
+   `PRJ_DEVOPS.MD`. Řešení: `.gitleaks.toml` s path allowlistem.
+
+9. **Trivy — zlib1g CVE-2023-45853** — CRITICAL CVE v Debian 12 base image, status
+   `will_not_fix` (affects minizip, not used). Řešení: `.trivyignore` soubor.
+
+**Konfigurační soubory přidané pro CI**:
+- `.gitleaks.toml` — allowlist pro false positive secret detekce
+- `.trivyignore` — ignorované CVE bez dostupného fixu
+- `worker/.cargo/audit.toml` — ignorované Rust advisory bez fixu
+
 ### 24.16 Security hardening — priority a důležitost
 
 | Priorita | Bod | Proč je důležitý | Co zavést |
