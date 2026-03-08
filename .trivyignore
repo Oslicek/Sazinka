@@ -1,0 +1,3 @@
+# zlib1g CVE-2023-45853: affects minizip component (zipOpenNewFileInZip4_64),
+# not used by our worker. Debian marks as will_not_fix.
+CVE-2023-45853
