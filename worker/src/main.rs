@@ -1,6 +1,6 @@
-//! Sazinka Worker - Backend service for CRM and route planning
+//! Sazinka Worker — Backend service for CRM and route planning
 //!
-//! This worker connects to NATS and handles messages from the frontend.
+//! Connects to NATS and handles messages from the frontend.
 
 mod admin;
 mod auth;
