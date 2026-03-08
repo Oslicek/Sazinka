@@ -358,7 +358,6 @@ pub fn compute_sequential_schedule(
             service_duration_minutes: break_dur,
         });
         total_service_min += break_dur;
-        cursor = break_end;
     }
 
     // Return leg to depot.

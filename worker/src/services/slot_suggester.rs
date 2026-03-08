@@ -497,8 +497,8 @@ mod tests {
         let slots = suggester.suggest_slots(&customer_near, 30, None, None, 5);
 
         // The slot with lower delta_travel should have higher score
-        let sorted_by_delta: Vec<i32> = slots.iter().map(|s| s.delta_travel_minutes).collect();
-        let sorted_by_score: Vec<i32> = slots.iter().map(|s| s.score).collect();
+        let _sorted_by_delta: Vec<i32> = slots.iter().map(|s| s.delta_travel_minutes).collect();
+        let _sorted_by_score: Vec<i32> = slots.iter().map(|s| s.score).collect();
         
         // First slot (highest score) should have reasonable delta
         assert!(slots[0].delta_travel_minutes <= 30);

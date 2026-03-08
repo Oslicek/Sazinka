@@ -238,7 +238,7 @@ pub async fn handle_register_start(
                     .await;
 
                     match row {
-                        Ok(Some((Some(hash), Some(exp)))) => {
+                        Ok(Some((Some(_hash), Some(exp)))) => {
                             // We stored the hash, not the plain token — we cannot reconstruct
                             // the original token. Issue a fresh one instead and overwrite.
                             let (pt, ph) = generate_token();

@@ -55,6 +55,15 @@ jobs:
         with:
           workspaces: worker
 
+      - name: Install sqlx-cli
+        run: cargo install sqlx-cli --no-default-features --features postgres
+
+      - name: Run migrations
+        run: cargo sqlx migrate run --source migrations
+        working-directory: worker
+        env:
+          DATABASE_URL: postgres://sazinka:test@localhost:5432/sazinka
+
       - name: Clippy (zero warnings)
         run: cargo clippy --all-targets -- -D warnings
         working-directory: worker
