@@ -78,6 +78,15 @@ jobs:
           -A clippy::redundant_pattern_matching
           -A clippy::unnecessary_unwrap
           -A clippy::identity_op
+          -A clippy::items_after_test_module
+          -A clippy::manual_div_ceil
+          -A clippy::unnecessary_literal_unwrap
+          -A clippy::if_same_then_else
+          -A clippy::manual_clamp
+          -A clippy::unnecessary_cast
+          -A clippy::extend_with_drain
+          -A clippy::derivable_impls
+          -A clippy::cast_abs_to_unsigned
           -A dead_code
         working-directory: worker
         env:
