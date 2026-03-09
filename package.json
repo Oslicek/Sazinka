@@ -12,7 +12,11 @@
     "clean": "turbo run clean && rimraf node_modules",
     "db:up": "docker compose -f infra/docker-compose.yml up -d",
     "db:down": "docker compose -f infra/docker-compose.yml down",
-    "db:logs": "docker compose -f infra/docker-compose.yml logs -f"
+    "db:logs": "docker compose -f infra/docker-compose.yml logs -f",
+    "deploy": "bash scripts/deploy.sh --deploy",
+    "deploy:app": "bash scripts/deploy.sh --deploy app",
+    "deploy:site": "bash scripts/deploy.sh --deploy site",
+    "deploy:worker": "bash scripts/deploy.sh --deploy worker"
   },
   "devDependencies": {
     "rimraf": "^6.0.1",
