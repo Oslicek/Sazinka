@@ -1,6 +1,6 @@
 [package]
 name = "sazinka-worker"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 authors = ["Sazinka Team"]
 description = "Backend worker for Ariadline CRM platform"
