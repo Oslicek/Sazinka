@@ -4734,3 +4734,207 @@ smoke-test:
 | **STŘEDNÍ** | Rotace a expirace credentials | Dlouho platné tokeny zvyšují dopad úniku. | Rotace `TAILSCALE_OAUTH_CLIENT_SECRET`, `GHCR_TOKEN`, DB hesel minimálně kvartálně. |
 | **STŘEDNÍ** | DB migration safety gates | Chybná migrace může způsobit výpadek nebo ztrátu dat. | Před migrací snapshot/backup + expand/contract migrace + rollback postup v runbooku. |
 | **STŘEDNÍ** | Monitoring a alerting bezpečnosti | Bez alertů se incidenty odhalují pozdě. | Alerty na failed deploy, opakované Tailscale SSH deny, nečekané ACL změny, cert expirace. |
+
+### 24.17 Problémy vyřešené při prvním deployi (2026-03-09)
+
+**10. Worker image not found v GHCR při deployi**
+
+Problém: Deploy workflow se pokoušel stáhnout `ghcr.io/oslicek/sazinka-worker:<SHA>`,
+ale image pro daný commit neexistoval v GHCR, protože CI `build-worker` job se spouští
+jen při změnách v `worker/**` nebo `packages/**`.
+
+Řešení (dvě části):
+- **CI (`ci.yml`)**: `build-push-action` nyní pushuje image se dvěma tagy:
+  `${{ github.sha }}` a `latest`. Tag `latest` vždy ukazuje na poslední CI-validovaný build.
+- **Deploy (`deploy.yml`)**: Job `prepare` nyní obsahuje krok `Resolve worker image tag`,
+  který přes `docker manifest inspect` ověří, zda existuje image pro aktuální SHA.
+  Pokud ne, fallback na `latest`. Pokud ani `latest` neexistuje, worker deploy se přeskočí
+  s varováním. Jobs `migrate-db` a `deploy-worker` mají podmínku
+  `needs.prepare.outputs.worker_available == 'true'`.
+
+**11. Wrangler-action selhání v pnpm workspace**
+
+Problém: `cloudflare/wrangler-action@v3` interně spouští `pnpm add wrangler@3.90.0`,
+což v pnpm workspace root selže s `ERR_PNPM_ADDING_TO_ROOT` (vyžaduje flag `-w`).
+Nastavení `packageManager: npm` v akci nepomohlo — npm vrátil
+`Cannot read properties of null (reading 'matches')` kvůli pnpm-managed `node_modules`.
+
+Řešení: Nahrazení `cloudflare/wrangler-action@v3` přímým voláním `npx wrangler`.
+Wrangler automaticky čte credentials z env vars `CLOUDFLARE_API_TOKEN`
+a `CLOUDFLARE_ACCOUNT_ID`.
+
+```yaml
+- name: Deploy to Cloudflare Pages
+  run: npx wrangler pages deploy apps/site/dist --project-name=ariadline-site --commit-dirty=true
+  env:
+    CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+    CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+```
+
+**12. DB migrace — password authentication failed**
+
+Problém: `MIGRATION_DB_URL` obsahoval správné heslo, ale migrace selhala s
+`password authentication failed for user "sazinka_admin"`. Heslo bylo ověřeno přes
+`docker exec sazinka-postgres psql "postgres://sazinka_admin:PWD@localhost:5432/sazinka"`,
+ale tento test neověřuje heslo — výchozí `pg_hba.conf` Postgres Docker image používá
+`trust` auth pro `localhost` (heslo se nekontroluje).
+
+Řešení: Test hesla je nutné provádět z **jiného kontejneru** na Docker síti:
+```bash
+docker run --rm --network infra_sazinka_net postgres:16-alpine \
+  psql "postgres://sazinka_admin:HESLO@postgres:5432/sazinka" -c "SELECT 1;"
+```
+Po resetu hesla přes `ALTER ROLE` a ověření z externího kontejneru migrace proběhla úspěšně.
+
+> **Poučení**: Nikdy netestovat DB hesla zevnitř Postgres kontejneru — `trust` auth na
+> localhost obejde jakékoliv heslo. Vždy testovat přes síť.
+
+---
+
+## 25. CLI Deploy Script
+
+> `scripts/deploy.sh` — push + CI + deploy z příkazové řádky.
+
+### 25.1 Přehled
+
+Většina pushů spouští jen CI (testy + build). Deploy do produkce je volitelný
+a vyžaduje explicitní flag `--deploy`.
+
+### 25.2 Použití
+
+```bash
+# Jen push (CI běží automaticky, žádný deploy)
+git push
+
+# Push + čekat na CI + deploy vše do produkce
+./scripts/deploy.sh --deploy
+
+# Push + deploy jen konkrétní komponentu
+./scripts/deploy.sh --deploy app
+./scripts/deploy.sh --deploy site
+./scripts/deploy.sh --deploy worker
+
+# Přes pnpm
+pnpm deploy           # = --deploy (all)
+pnpm deploy:app       # = --deploy app
+pnpm deploy:site      # = --deploy site
+pnpm deploy:worker    # = --deploy worker
+```
+
+### 25.3 Co skript dělá
+
+1. `git push origin HEAD:master`
+2. Čeká na CI run pro daný commit (polling GitHub API, max 30 minut)
+3. Pokud CI projde — spustí Deploy workflow přes `workflow_dispatch`
+4. Pokud CI selže — zastaví se a vypíše URL na selhání
+5. Pokud žádný CI run neběží (např. změna jen v docs) — pokračuje s deployem
+
+### 25.4 Prerekvizity
+
+GitHub PAT s oprávněními `repo` + `workflow`:
+
+```bash
+# Varianta A: env proměnná
+export GITHUB_TOKEN=ghp_...
+
+# Varianta B: soubor (přetrvává mezi sessions)
+mkdir -p ~/.config
+echo 'ghp_...' > ~/.config/deploy-token
+chmod 600 ~/.config/deploy-token
+```
+
+### 25.5 Flags
+
+| Flag | Popis |
+|------|-------|
+| `--deploy` | Spustit deploy po CI (default: `all` komponenty) |
+| `--deploy app` | Deploy jen frontend app |
+| `--deploy site` | Deploy jen marketing site |
+| `--deploy worker` | Deploy jen worker na VPS |
+| `--staging` | Deploy do staging místo produkce |
+| `--help` | Zobrazit nápovědu |
+
+---
+
+## 26. Build Info a Version Tracking
+
+### 26.1 Build-time metadata
+
+Vite config (`apps/web/vite.config.ts`) injektuje při buildu dvě globální konstanty:
+
+| Konstanta | Zdroj | Fallback |
+|-----------|-------|----------|
+| `__BUILD_SHA__` | `VITE_BUILD_SHA` env var | `"dev"` |
+| `__BUILD_TIME__` | `new Date().toISOString()` při buildu | — |
+
+Deploy workflow nastavuje `VITE_BUILD_SHA=${{ needs.prepare.outputs.sha }}` při buildu app.
+
+TypeScript deklarace v `src/vite-env.d.ts`:
+```typescript
+declare const __BUILD_SHA__: string;
+declare const __BUILD_TIME__: string;
+```
+
+### 26.2 version.json
+
+Vite plugin `generate-version-json` (v `vite.config.ts`) generuje při buildu soubor
+`dist/version.json`:
+
+```json
+{
+  "sha": "8836a3f...",
+  "built": "2026-03-09T15:30:00.000Z"
+}
+```
+
+Přístupný na `https://app.ariadline.com/version.json` **bez přihlášení**.
+Lze použít pro monitoring a automatické kontroly verze.
+
+### 26.3 Admin UI
+
+Na stránce **Admin → Services** (tab "Služby") je ve spodní části sekce
+"Build Info" zobrazující:
+- **Commit** — git SHA (monospace font)
+- **Built** — datum a čas buildu (lokalizovaný formát)
+
+i18n klíče:
+- `admin_build_info`: EN "Build Info", CS "Informace o buildu"
+
+---
+
+## 27. Stav produkčního nasazení (2026-03-09)
+
+### 27.1 Živé URL
+
+| Služba | URL | Platforma |
+|--------|-----|-----------|
+| Marketing site | `https://ariadline.com` | Cloudflare Pages (`ariadline-site`) |
+| Aplikace (SPA) | `https://app.ariadline.com` | Cloudflare Pages (`ariadline-app`) |
+| API (NATS WS) | `wss://api.ariadline.com/nats` | Caddy → NATS na Hetzner VPS |
+| NATS monitoring | `https://monitor.ariadline.com` | Caddy → NATS (basic auth) |
+| Version check | `https://app.ariadline.com/version.json` | Statický soubor v app buildu |
+
+### 27.2 Stav komponent
+
+| Komponenta | Verze/SHA | Stav |
+|------------|-----------|------|
+| Worker | `0.2.1` (`bb93556`) | ✅ Běží na VPS |
+| Frontend app | `897a4b0` | ✅ Deploynut na CF Pages |
+| Marketing site | `897a4b0` | ✅ Deploynut na CF Pages |
+| CI pipeline | `ci.yml` | ✅ Zelený (testy + audit + GHCR build) |
+| Deploy pipeline | `deploy.yml` | ✅ Funkční (workflow_dispatch) |
+| Deploy script | `scripts/deploy.sh` | ✅ Implementováno |
+
+### 27.3 Cloudflare Access
+
+Obě CF Pages aplikace jsou chráněny Cloudflare Access (email OTP) dokud
+nebudou připraveny pro veřejnost. Po spuštění — smazat Access applications.
+
+### 27.4 Co zbývá
+
+- [ ] Staging environment (DB, worker, CF Pages projekt, DNS)
+- [ ] Postgres backup (pg_dump → Hetzner Object Storage)
+- [ ] Monitoring a alerting (failed deploy, cert expiry, disk space)
+- [ ] Credential rotation schedule (TAILSCALE_OAUTH, GHCR_TOKEN, DB passwords)
+- [ ] Lighthouse quality fixes (color-contrast, errors-in-console)
+- [ ] Odstranit Cloudflare Access po veřejném spuštění
