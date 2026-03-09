@@ -60,6 +60,10 @@ const navItems = [
         ))}
       </div>
 
+      <a href="https://app.ariadline.com/login" class="loginButton">
+        {t('nav.login')}
+      </a>
+
       <a href="https://app.ariadline.com" class="ctaButton">
         {t('nav.tryFree')}
       </a>
@@ -90,6 +94,9 @@ const navItems = [
             </a>
           ))}
         </div>
+        <a href="https://app.ariadline.com/login" class="loginButton mobileLoginButton">
+          {t('nav.login')}
+        </a>
         <a href="https://app.ariadline.com" class="ctaButton mobileCtaButton">
           {t('nav.tryFree')}
         </a>
@@ -187,6 +194,26 @@ const navItems = [
     background-color: var(--color-bg-secondary);
   }
 
+  .loginButton {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.5rem 1.25rem;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--color-primary);
+    background-color: transparent;
+    border: 1.5px solid var(--color-primary);
+    border-radius: var(--radius-md);
+    text-decoration: none;
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+
+  .loginButton:hover {
+    background-color: var(--color-primary);
+    color: white;
+    text-decoration: none;
+  }
+
   .ctaButton {
     display: inline-flex;
     align-items: center;
@@ -277,6 +304,12 @@ const navItems = [
     display: flex;
     gap: 0.5rem;
     margin-bottom: 1rem;
+  }
+
+  .mobileLoginButton {
+    width: 100%;
+    justify-content: center;
+    margin-bottom: 0.75rem;
   }
 
   .mobileCtaButton {
