@@ -211,6 +211,7 @@ jobs:
         run: cd apps/web && npx vite build
         env:
           VITE_NATS_WS_URL: ${{ github.event.inputs.target == 'production' && 'wss://api.ariadline.com/nats' || 'wss://api-staging.ariadline.com/nats' }}
+          VITE_BUILD_SHA: ${{ needs.prepare.outputs.sha }}
 
       - name: Deploy to Cloudflare Pages
         run: npx wrangler pages deploy apps/web/dist --project-name=ariadline-app --commit-dirty=true

@@ -238,6 +238,7 @@
   "admin_restart": "↻ Restart",
   "admin_restart_title": "Restartovat službu",
   "admin_restart_stack": "↻ Restartovat vše",
+  "admin_build_info": "Informace o buildu",
   "admin_restart_stack_busy": "Restartuji…",
   "admin_restart_stack_confirm": "Tím se restartují všechny Docker služby (NATS, PostgreSQL, Nominatim, Valhalla). Aplikace bude dočasně nedostupná. Pokračovat?",
   "admin_restart_stack_initiated": "Restart zahájen. Služby se restartují — stránka se automaticky znovu připojí.",

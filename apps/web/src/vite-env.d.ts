@@ -5,6 +5,9 @@ declare module '*.module.css' {
   export default classes;
 }
 
+declare const __BUILD_SHA__: string;
+declare const __BUILD_TIME__: string;
+
 interface ImportMetaEnv {
   readonly VITE_NATS_WS_URL: string;
   readonly VITE_NATS_USER: string;

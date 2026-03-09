@@ -197,6 +197,51 @@
   gap: 8px;
 }
 
+/* Build info */
+.buildInfo {
+  margin-top: 2rem;
+  padding: 1rem 1.25rem;
+  background: #f8f9fa;
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 8px;
+}
+
+.buildInfo h3 {
+  margin: 0 0 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text-secondary, #666);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.buildDetails {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.375rem 1rem;
+  align-items: baseline;
+}
+
+.buildLabel {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #888;
+}
+
+.buildValue {
+  font-size: 0.8125rem;
+  color: var(--color-text, #333);
+}
+
+.buildValue code,
+code.buildValue {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.8125rem;
+  background: #e9ecef;
+  padding: 0.125rem 0.375rem;
+  border-radius: 3px;
+}
+
 /* Buttons */
 .primaryButton {
   background: #4361ee;

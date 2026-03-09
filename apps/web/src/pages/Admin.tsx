@@ -390,6 +390,16 @@ export function Admin() {
                   </div>
                 ))}
               </div>
+
+              <div className={styles.buildInfo}>
+                <h3>{t('admin_build_info')}</h3>
+                <div className={styles.buildDetails}>
+                  <span className={styles.buildLabel}>Commit</span>
+                  <code className={styles.buildValue}>{__BUILD_SHA__}</code>
+                  <span className={styles.buildLabel}>Built</span>
+                  <span className={styles.buildValue}>{new Date(__BUILD_TIME__).toLocaleString()}</span>
+                </div>
+              </div>
             </section>
           )}
 
