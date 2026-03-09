@@ -159,7 +159,9 @@ jobs:
           context: .
           file: worker/Dockerfile
           push: true
-          tags: ghcr.io/oslicek/sazinka-worker:${{ github.sha }}
+          tags: |
+            ghcr.io/oslicek/sazinka-worker:${{ github.sha }}
+            ghcr.io/oslicek/sazinka-worker:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

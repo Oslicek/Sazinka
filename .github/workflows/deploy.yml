@@ -24,20 +24,55 @@ jobs:
   prepare:
     name: Resolve deploy ref
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     outputs:
       sha: ${{ steps.ref.outputs.sha }}
+      worker_tag: ${{ steps.worker.outputs.tag }}
+      worker_available: ${{ steps.worker.outputs.available }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.git_ref || 'master' }}
+
       - name: Resolve SHA
         id: ref
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+      - name: Log in to GHCR
+        if: github.event.inputs.components == 'worker' || github.event.inputs.components == 'all'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve worker image tag
+        id: worker
+        if: github.event.inputs.components == 'worker' || github.event.inputs.components == 'all'
+        run: |
+          SHA=$(git rev-parse HEAD)
+          if docker manifest inspect "ghcr.io/oslicek/sazinka-worker:${SHA}" > /dev/null 2>&1; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "tag=${SHA}" >> "$GITHUB_OUTPUT"
+            echo "Worker image found for exact SHA: ${SHA}"
+          elif docker manifest inspect "ghcr.io/oslicek/sazinka-worker:latest" > /dev/null 2>&1; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+            echo "::notice::No worker image for ${SHA} — falling back to latest"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            echo "::warning::No worker image found in GHCR. Worker deploy will be skipped."
+          fi
+
   migrate-db:
     name: Run DB migrations (${{ github.event.inputs.target }})
     needs: prepare
-    if: github.event.inputs.components == 'worker' || github.event.inputs.components == 'all'
+    if: |
+      (github.event.inputs.components == 'worker' || github.event.inputs.components == 'all')
+      && needs.prepare.outputs.worker_available == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Connect to Tailscale
@@ -59,10 +94,10 @@ jobs:
           ssh -o StrictHostKeyChecking=yes sazinka@${{ secrets.VPS_TAILSCALE_IP }} << 'SCRIPT'
             set -e
             echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u oslicek --password-stdin
-            docker pull ghcr.io/oslicek/sazinka-worker:${{ needs.prepare.outputs.sha }}
+            docker pull ghcr.io/oslicek/sazinka-worker:${{ needs.prepare.outputs.worker_tag }}
             docker run --rm --network infra_sazinka_net \
               -e DATABASE_URL="${{ secrets.MIGRATION_DB_URL }}" \
-              ghcr.io/oslicek/sazinka-worker:${{ needs.prepare.outputs.sha }} sazinka-worker migrate
+              ghcr.io/oslicek/sazinka-worker:${{ needs.prepare.outputs.worker_tag }} sazinka-worker migrate
             echo "Migrations completed successfully (production)"
           SCRIPT
 
@@ -72,17 +107,19 @@ jobs:
           ssh -o StrictHostKeyChecking=yes sazinka@${{ secrets.VPS_TAILSCALE_IP }} << 'SCRIPT'
             set -e
             echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u oslicek --password-stdin
-            docker pull ghcr.io/oslicek/sazinka-worker:${{ needs.prepare.outputs.sha }}
+            docker pull ghcr.io/oslicek/sazinka-worker:${{ needs.prepare.outputs.worker_tag }}
             docker run --rm --network infra_sazinka_net \
               -e DATABASE_URL="${{ secrets.MIGRATION_DB_URL_STAGING }}" \
-              ghcr.io/oslicek/sazinka-worker:${{ needs.prepare.outputs.sha }} sazinka-worker migrate
+              ghcr.io/oslicek/sazinka-worker:${{ needs.prepare.outputs.worker_tag }} sazinka-worker migrate
             echo "Migrations completed successfully (staging)"
           SCRIPT
 
   deploy-worker:
     name: Deploy worker (${{ github.event.inputs.target }})
     needs: [prepare, migrate-db]
-    if: github.event.inputs.components == 'worker' || github.event.inputs.components == 'all'
+    if: |
+      (github.event.inputs.components == 'worker' || github.event.inputs.components == 'all')
+      && needs.prepare.outputs.worker_available == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Connect to Tailscale
@@ -101,7 +138,7 @@ jobs:
       - name: Deploy worker via Tailscale SSH
         run: |
           TARGET="${{ github.event.inputs.target }}"
-          SHA="${{ needs.prepare.outputs.sha }}"
+          TAG="${{ needs.prepare.outputs.worker_tag }}"
           if [ "$TARGET" = "production" ]; then
             ENV_FILE=".env.prod"
             COMPOSE_FILE="infra/docker-compose.prod.yml"
@@ -117,7 +154,7 @@ jobs:
             set -e
             cd ~/sazinka
             echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u oslicek --password-stdin
-            sed -i "s/^WORKER_VERSION=.*/WORKER_VERSION=${SHA}/" ${ENV_FILE}
+            sed -i "s/^WORKER_VERSION=.*/WORKER_VERSION=${TAG}/" ${ENV_FILE}
             docker compose -p ${PROJECT} --env-file ${ENV_FILE} -f ${COMPOSE_FILE} pull worker
             docker compose -p ${PROJECT} --env-file ${ENV_FILE} -f ${COMPOSE_FILE} up -d worker
             sleep 10
@@ -126,7 +163,7 @@ jobs:
               docker logs ${CONTAINER} --tail 50
               exit 1
             fi
-            echo "Worker deployed: ${SHA} (${TARGET})"
+            echo "Worker deployed: ${TAG} (${TARGET})"
           SCRIPT
 
   deploy-site:
@@ -154,6 +191,7 @@ jobs:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
           command: pages deploy apps/site/dist --project-name=ariadline-site --commit-dirty=true
+          packageManager: npm
 
   deploy-app:
     name: Deploy app (${{ github.event.inputs.target }})
@@ -182,6 +220,7 @@ jobs:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
           command: pages deploy apps/web/dist --project-name=ariadline-app --commit-dirty=true
+          packageManager: npm
 
   smoke-test:
     name: Smoke test (${{ github.event.inputs.target }})
