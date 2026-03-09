@@ -10,21 +10,45 @@ const t = (key: string) => getTranslation(locale, key);
 
 const tiers = [
   {
-    key: 'free',
-    name: t('pricing.free.name'),
-    description: t('pricing.free.description'),
-    price: t('pricing.free.price'),
-    limit: t('pricing.free.limit'),
-    cta: t('pricing.free.cta'),
+    key: 'trial',
+    name: t('pricing.trial.name'),
+    description: t('pricing.trial.description'),
+    price: t('pricing.trial.price'),
+    period: t('pricing.trial.period'),
+    features: [
+      t('pricing.trial.feature1'),
+      t('pricing.trial.feature2'),
+      t('pricing.trial.feature3'),
+    ],
+    cta: t('pricing.trial.cta'),
     featured: false,
   },
   {
-    key: 'pro',
-    name: t('pricing.pro.name'),
-    description: t('pricing.pro.description'),
-    price: t('pricing.pro.price'),
-    limit: t('pricing.pro.limit'),
-    cta: t('pricing.pro.cta'),
+    key: 'solo',
+    name: t('pricing.solo.name'),
+    description: t('pricing.solo.description'),
+    price: t('pricing.solo.price'),
+    period: t('pricing.period'),
+    features: [
+      t('pricing.solo.feature1'),
+      t('pricing.solo.feature2'),
+      t('pricing.solo.feature3'),
+    ],
+    cta: t('pricing.solo.cta'),
+    featured: false,
+  },
+  {
+    key: 'team',
+    name: t('pricing.team.name'),
+    description: t('pricing.team.description'),
+    price: t('pricing.team.price'),
+    period: t('pricing.period'),
+    features: [
+      t('pricing.team.feature1'),
+      t('pricing.team.feature2'),
+      t('pricing.team.feature3'),
+    ],
+    cta: t('pricing.team.cta'),
     featured: true,
   },
 ];
@@ -33,13 +57,27 @@ const tiers = [
 <section class="pricingSection">
   <div class="container">
     <h1 class="pageTitle">{t('pricing.title')}</h1>
+    <p class="pricingSubtitle">{t('pricing.vatNote')}</p>
     <div class="pricingGrid">
       {tiers.map((tier) => (
         <div class:list={['pricingCard', { featured: tier.featured }]}>
+          {tier.featured && (
+            <span class="featuredBadge">{t('pricing.popular')}</span>
+          )}
           <h2 class="tierName">{tier.name}</h2>
           <p class="tierDescription">{tier.description}</p>
-          <p class="tierPrice">{tier.price}</p>
-          <p class="tierLimit">{tier.limit}</p>
+          <div class="tierPricing">
+            <span class="tierPrice">{tier.price}</span>
+            <span class="tierPeriod">{tier.period}</span>
+          </div>
+          <ul class="tierFeatures">
+            {tier.features.map((feature) => (
+              <li class="tierFeature">
+                <span class="featureCheck" aria-hidden="true">✓</span>
+                {feature}
+              </li>
+            ))}
+          </ul>
           <a
             href="https://app.ariadline.com"
             class:list={['tierCta', { ctaFeatured: tier.featured }]}
@@ -62,15 +100,22 @@ const tiers = [
     font-size: 2.5rem;
     font-weight: 800;
     text-align: center;
-    margin-bottom: 3rem;
+    margin-bottom: 0.75rem;
     color: var(--color-text);
+  }
+
+  .pricingSubtitle {
+    text-align: center;
+    color: var(--color-text-secondary);
+    font-size: 0.9375rem;
+    margin-bottom: 3rem;
   }
 
   .pricingGrid {
     display: grid;
     grid-template-columns: 1fr;
     gap: 2rem;
-    max-width: 800px;
+    max-width: 1100px;
     margin: 0 auto;
   }
 
@@ -80,12 +125,30 @@ const tiers = [
     border-radius: var(--radius-lg);
     padding: 2.5rem;
     text-align: center;
+    display: flex;
+    flex-direction: column;
+    position: relative;
   }
 
   .pricingCard.featured {
     border-color: var(--color-primary);
-    box-shadow: 0 0 0 2px var(--color-primary), var(--shadow-lg);
-    position: relative;
+    box-shadow: 0 0 0 2px var(--color-primary);
+  }
+
+  .featuredBadge {
+    position: absolute;
+    top: -0.75rem;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: var(--color-primary);
+    color: white;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 0.25rem 0.875rem;
+    border-radius: 999px;
+    white-space: nowrap;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
   }
 
   .tierName {
@@ -102,23 +165,59 @@ const tiers = [
     margin-bottom: 1.5rem;
   }
 
-  .tierPrice {
-    font-family: var(--font-heading);
-    font-size: 2rem;
-    font-weight: 800;
-    color: var(--color-text);
-    margin-bottom: 0.5rem;
+  .tierPricing {
+    margin-bottom: 1.75rem;
   }
 
-  .tierLimit {
+  .tierPrice {
+    font-family: var(--font-heading);
+    font-size: 2.25rem;
+    font-weight: 800;
+    color: var(--color-text);
+    display: block;
+    line-height: 1.1;
+  }
+
+  .tierPeriod {
     color: var(--color-text-secondary);
     font-size: 0.875rem;
-    margin-bottom: 2rem;
+    display: block;
+    margin-top: 0.25rem;
+  }
+
+  .tierFeatures {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 2rem;
+    text-align: left;
+    flex: 1;
+  }
+
+  .tierFeature {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+    font-size: 0.9375rem;
+    color: var(--color-text);
+    padding: 0.375rem 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .tierFeature:last-child {
+    border-bottom: none;
+  }
+
+  .featureCheck {
+    color: var(--color-success);
+    font-weight: 700;
+    flex-shrink: 0;
+    margin-top: 0.05em;
   }
 
   .tierCta {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     padding: 0.75rem 2rem;
     font-size: 1rem;
     font-weight: 600;
@@ -147,7 +246,7 @@ const tiers = [
 
   @media (min-width: 768px) {
     .pricingGrid {
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: repeat(3, 1fr);
     }
   }
 </style>

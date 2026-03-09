@@ -38,19 +38,36 @@
   },
   "pricing": {
     "title": "Pricing",
-    "free": {
-      "name": "Free",
-      "description": "For individual tradespeople",
+    "vatNote": "Prices include VAT.",
+    "period": "/ month",
+    "popular": "Most popular",
+    "trial": {
+      "name": "Trial",
+      "description": "Try without commitment",
       "price": "Free",
-      "limit": "Up to 50 customers",
-      "cta": "Get started"
+      "period": "30 days",
+      "feature1": "Full access to all features",
+      "feature2": "One crew, one depot",
+      "feature3": "No credit card required",
+      "cta": "Start for free"
     },
-    "pro": {
-      "name": "Pro",
-      "description": "For growing businesses",
-      "price": "Contact us",
-      "limit": "Unlimited customers",
-      "cta": "Contact sales"
+    "solo": {
+      "name": "Solo",
+      "description": "For independent tradespeople",
+      "price": "$19.99",
+      "feature1": "One crew",
+      "feature2": "One depot",
+      "feature3": "Unlimited customers",
+      "cta": "Choose Solo"
+    },
+    "team": {
+      "name": "Team",
+      "description": "For businesses with multiple crews",
+      "price": "$39.99",
+      "feature1": "Multiple crews",
+      "feature2": "Multiple depots",
+      "feature3": "Unlimited customers",
+      "cta": "Choose Team"
     }
   },
   "contact": {

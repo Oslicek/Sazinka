@@ -38,19 +38,36 @@
   },
   "pricing": {
     "title": "Ceník",
-    "free": {
-      "name": "Zdarma",
-      "description": "Pro jednotlivce",
+    "vatNote": "Ceny jsou uvedeny s DPH.",
+    "period": "/ měsíc",
+    "popular": "Nejoblíbenější",
+    "trial": {
+      "name": "Zkušební",
+      "description": "Vyzkoušejte bez závazků",
       "price": "Zdarma",
-      "limit": "Až 50 zákazníků",
-      "cta": "Začít"
+      "period": "30 dní",
+      "feature1": "Plný přístup ke všem funkcím",
+      "feature2": "Jedna posádka, jedno depo",
+      "feature3": "Bez platební karty",
+      "cta": "Začít zdarma"
     },
-    "pro": {
-      "name": "Pro",
-      "description": "Pro rostoucí firmy",
-      "price": "Kontaktujte nás",
-      "limit": "Neomezený počet zákazníků",
-      "cta": "Kontaktovat obchod"
+    "solo": {
+      "name": "Solo",
+      "description": "Pro samostatné řemeslníky",
+      "price": "399 Kč",
+      "feature1": "Jedna posádka",
+      "feature2": "Jedno depo",
+      "feature3": "Neomezený počet zákazníků",
+      "cta": "Vybrat Solo"
+    },
+    "team": {
+      "name": "Team",
+      "description": "Pro firmy s více posádkami",
+      "price": "799 Kč",
+      "feature1": "Více posádek",
+      "feature2": "Více dep",
+      "feature3": "Neomezený počet zákazníků",
+      "cta": "Vybrat Team"
     }
   },
   "contact": {
