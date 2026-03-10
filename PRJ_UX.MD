@@ -2936,7 +2936,7 @@ Automaticky zmizí po úspěšném opětovném připojení.
 ---
 
 *Dokument vytvořen: 2026-01-31*  
-*Poslední aktualizace: 2026-02-24 (Sekce 18 v5: Phase 0–2 done)*
+*Poslední aktualizace: 2026-02-24 (Sekce 18 v6: Phase 0–3 done)*
 
 ---
 
@@ -3253,7 +3253,7 @@ is not `fixed` — each page places it in its own JSX tree.
 
 ---
 
-#### Phase 3: Layout Header — Mobile Polish
+#### Phase 3: Layout Header — Mobile Polish ✅ DONE
 
 **Scope:** Refine the header for narrow screens.
 
@@ -3297,6 +3297,10 @@ REFACTOR — ensure the drawer footer (already has user name + logout)
 is the only place to access user info on mobile.
 
 **Commit after Phase 3.**
+> ✅ 5 tests passing — `Layout.test.tsx`
+> - Added `statusText` + `activeJobsText` span wrappers in Layout.tsx
+> - CSS: `.statusText`, `.activeJobsText`, `.userMenu`, `.logoutButton` hidden at ≤ 1023px
+> - Baseline snapshots updated
 
 ---
 

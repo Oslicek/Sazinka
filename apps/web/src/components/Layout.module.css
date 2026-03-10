@@ -350,7 +350,15 @@
     padding-right: max(0.75rem, var(--safe-right));
   }
 
-  /* Hide username text — available in the drawer footer instead */
+  /* Hide text labels — keep indicator dots visible */
+  .statusText { display: none; }
+  .activeJobsText { display: none; }
+
+  /* Hide full user menu — name + logout available in drawer footer */
+  .userMenu { display: none; }
+  .logoutButton { display: none; }
+
+  /* Hide username text (belt-and-suspenders for .userMenu) */
   .userName {
     display: none;
   }
@@ -358,11 +366,6 @@
   /* Tighten spacing */
   .headerRight {
     gap: 0.5rem;
-  }
-
-  .userMenu {
-    gap: 0.5rem;
-    padding-left: 0.5rem;
   }
 
   /* Shrink main padding */

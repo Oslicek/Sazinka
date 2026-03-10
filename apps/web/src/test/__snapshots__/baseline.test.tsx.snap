@@ -102,7 +102,11 @@ exports[`Layout baseline snapshots > desktop (1280px) — header structure match
           class="_statusDot_f3788b"
           style="background-color: var(--color-success);"
         />
-        online
+        <span
+          class="_statusText_f3788b"
+        >
+          online
+        </span>
       </div>
       <div
         class="_userMenu_f3788b"
@@ -234,7 +238,11 @@ exports[`Layout baseline snapshots > phone (390px) — header structure matches 
           class="_statusDot_f3788b"
           style="background-color: var(--color-success);"
         />
-        online
+        <span
+          class="_statusText_f3788b"
+        >
+          online
+        </span>
       </div>
       <div
         class="_userMenu_f3788b"
@@ -366,7 +374,11 @@ exports[`Layout baseline snapshots > tablet (768px) — header structure matches
           class="_statusDot_f3788b"
           style="background-color: var(--color-success);"
         />
-        online
+        <span
+          class="_statusText_f3788b"
+        >
+          online
+        </span>
       </div>
       <div
         class="_userMenu_f3788b"

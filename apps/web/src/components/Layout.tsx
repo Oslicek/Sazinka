@@ -73,7 +73,9 @@ export function Layout({ children }: LayoutProps) {
           {activeJobsCount > 0 && (
             <Link to="/jobs" className={styles.activeJobs}>
               <span className={styles.activeJobsIndicator} />
-              {t('active_jobs', { count: activeJobsCount })}
+              <span className={styles.activeJobsText}>
+                {t('active_jobs', { count: activeJobsCount })}
+              </span>
             </Link>
           )}
           
@@ -82,7 +84,9 @@ export function Layout({ children }: LayoutProps) {
               className={styles.statusDot}
               style={{ backgroundColor: isConnected ? 'var(--color-success)' : 'var(--color-error)' }}
             />
-            {isConnected ? t('online') : t('offline')}
+            <span className={styles.statusText}>
+              {isConnected ? t('online') : t('offline')}
+            </span>
           </div>
 
           {user && (
