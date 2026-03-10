@@ -129,12 +129,7 @@
     "city_placeholder": "např. Brno",
     "postal_label": "PSČ",
     "postal_placeholder": "např. 602 00",
-    "verify_btn": "Ověřit adresu",
-    "verifying": "Ověřuji…",
-    "verified": "✅ Adresa ověřena",
-    "error_not_found": "Adresa nebyla nalezena. Zkontrolujte pole nebo umístěte špendlík na mapě.",
-    "error_rate_limit": "Příliš mnoho pokusů o geokódování. Chvíli počkejte.",
-    "map_hint": "Přetáhněte špendlík na správné místo.",
+    "geocode_hint": "Adresu ověříme na pozadí. Pokud ji nebude možné najít, dáme vám vědět.",
     "back": "← Zpět",
     "continue": "Pokračovat →",
     "submitting": "Ukládám…"

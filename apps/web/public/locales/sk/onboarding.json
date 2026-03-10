@@ -129,12 +129,7 @@
     "city_placeholder": "napr. Bratislava",
     "postal_label": "PSČ",
     "postal_placeholder": "napr. 811 01",
-    "verify_btn": "Overiť adresu",
-    "verifying": "Overujem…",
-    "verified": "✅ Adresa overená",
-    "error_not_found": "Adresa nebola nájdená. Skontrolujte polia alebo umiestnite špendlík na mape.",
-    "error_rate_limit": "Príliš veľa pokusov o geokódovanie. Chvíľu počkajte.",
-    "map_hint": "Presuňte špendlík na správne miesto.",
+    "geocode_hint": "Adresu overíme na pozadí. Ak ju nebude možné nájsť, dáme vám vedieť.",
     "back": "← Späť",
     "continue": "Pokračovať →",
     "submitting": "Ukladám…"

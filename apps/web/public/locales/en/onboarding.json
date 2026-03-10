@@ -129,12 +129,7 @@
     "city_placeholder": "e.g. Brno",
     "postal_label": "Postal code",
     "postal_placeholder": "e.g. 602 00",
-    "verify_btn": "Verify address",
-    "verifying": "Verifying…",
-    "verified": "✅ Address verified",
-    "error_not_found": "Address not found. Please check the fields or place a pin on the map.",
-    "error_rate_limit": "Too many geocode attempts. Please wait a moment.",
-    "map_hint": "Drag the pin to the correct location.",
+    "geocode_hint": "We'll verify the address in the background. If it can't be found, we'll let you know.",
     "back": "← Back",
     "continue": "Continue →",
     "submitting": "Saving…"

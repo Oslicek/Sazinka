@@ -12,7 +12,7 @@ const LOCALES = [
 
 export function Step2Profile() {
   const { t } = useTranslation('onboarding');
-  const { setStep, locale, setLocale, country, goBack } = useWizard();
+  const { setStep, locale, setLocale, country, email: wizardEmail, goBack } = useWizard();
   const request = useNatsStore((s) => s.request);
 
   const [name, setName] = useState('');
@@ -31,6 +31,7 @@ export function Step2Profile() {
         id: crypto.randomUUID(),
         timestamp: new Date().toISOString(),
         payload: {
+          email: wizardEmail,
           name,
           businessName: business || undefined,
           phone: phone || undefined,
@@ -123,9 +124,9 @@ export function Step2Profile() {
           <input
             type="text"
             readOnly
-            value={country}
+            value={t(`landing.country_${country}`, { defaultValue: country })}
             className={styles.input}
-            style={{ background: '#f9fafb', cursor: 'default' }}
+            style={{ background: '#f3f4f6', cursor: 'default', color: '#6b7280' }}
           />
         </div>
 

@@ -32,12 +32,14 @@ interface CustomType {
 
 export function Step3Devices() {
   const { t } = useTranslation('onboarding');
-  const { setStep, setDeviceTypeCount, goBack } = useWizard();
+  const { setStep, setDeviceTypeCount, email: wizardEmail, goBack } = useWizard();
   const request = useNatsStore((s) => s.request);
 
   const [selected, setSelected] = useState<Set<string>>(new Set(['chimney']));
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [overrides, setOverrides] = useState<Record<string, Override>>({});
+  const [overrides, setOverrides] = useState<Record<string, Override>>({
+    chimney: { duration: 30, interval: 12 },
+  });
   const [customTypes, setCustomTypes] = useState<CustomType[]>([]);
   const [showAddCustom, setShowAddCustom] = useState(false);
   const [newCustom, setNewCustom] = useState<CustomType>({ label: '', duration: 30, interval: 12 });
@@ -65,9 +67,11 @@ export function Step3Devices() {
   };
 
   const setOverride = (key: string, field: 'duration' | 'interval', value: number) => {
+    const bt = BUILTINS.find((b) => b.key === key);
+    const defaults = { duration: bt?.defaultDuration ?? 30, interval: bt?.defaultInterval ?? 12 };
     setOverrides((prev) => ({
       ...prev,
-      [key]: { ...prev[key], [field]: value },
+      [key]: { ...defaults, ...prev[key], [field]: value },
     }));
   };
 
@@ -98,7 +102,7 @@ export function Step3Devices() {
       await request('sazinka.onboarding.devices', {
         id: crypto.randomUUID(),
         timestamp: new Date().toISOString(),
-        payload: { selectedBuiltins, customTypes },
+        payload: { email: wizardEmail, selectedBuiltins, customTypes },
       });
 
       setDeviceTypeCount(selectedBuiltins.length + customTypes.length);

@@ -77,7 +77,16 @@ export function VerifyEmail() {
         <button
           type="button"
           className={styles.devSkip}
-          onClick={() => setStep(2)}
+          onClick={async () => {
+            try {
+              await request('sazinka.auth.dev.verify', {
+                id: crypto.randomUUID(),
+                timestamp: new Date().toISOString(),
+                payload: { email },
+              });
+            } catch { /* ignore in dev */ }
+            setStep(2);
+          }}
         >
           Skip verification (dev)
         </button>
