@@ -9,7 +9,7 @@
 > - ✅ Dialog pro plánování návštěvy (datum, časové okno, délka)
 > - ✅ Dialog pro odložení (snooze)
 > - ✅ Kalendář - přepínač Termíny/Naplánované
-> - ✅ **Plán dne** (`/planner`) - sloučená stránka Plánování + Můj den:
+> - ✅ **Plán dne** (`/plan`, ex `/planner`) - sloučená stránka Plánování + Můj den:
 >   - Mapa s trasou + statistiky
 >   - Seznam zastávek s akcemi (navigovat, volat, hotovo)
 >   - Google Maps export (single + segmented)
@@ -40,8 +40,8 @@
 > - ✅ **Timeline layout fix** — oprava vertikálního layoutu PlanningTimeline: min. výška stop/break karet 56px, odstraněn margin drift v gapZone
 > 
 > **Změny v navigaci:**
-> - `/planner` → "Plán dne" (sloučeno Plánování + Můj den)
-> - `/today` → přesměrování na `/planner`
+> - `/plan` → "Plán dne" (sloučeno Plánování + Můj den; renamed from `/planner`)
+> - `/today` → přesměrování na `/plan`
 > - Navigační položka "Můj den" odstraněna
 
 ### ⚠️ Internationalization note
@@ -478,7 +478,7 @@ Cíl: Uživatel nesmí "přeskakovat" mezi izolovanými stránkami. Každá obra
    - V detail panelu CTA: "Otevřít v plánovači" + "Domluvit" (pokud nemá termín).
    - Přepínač Termíny/Naplánované zachovat, ale doplnit legendu pro stav workflow.
 
-4. Plánovač (`/planner`)
+4. Plánovač (`/plan`)
    - V seznamu "Naplánované" zobrazit jméno zákazníka + adresu + časové okno.
    - Klik na položku → detail revize (nebo side panel).
    - Tlačítko "Přidat z fronty" (kontextový filtr na datum).
@@ -558,8 +558,8 @@ Cíl: Uživatel nesmí "přeskakovat" mezi izolovanými stránkami. Každá obra
 └───────────────────────────────────────────┘  └─────────────────────────────┘
 ```
 
-6. ~~Můj den (`/today`)~~ → **SLOUČENO DO PLÁN DNE (`/planner`)**
-   - `/today` nyní přesměrovává na `/planner`
+6. ~~Můj den (`/today`)~~ → **SLOUČENO DO PLÁN DNE (`/plan`)**
+   - `/today` nyní přesměrovává na `/plan`
    - Všechny funkce (navigace, volání, hotovo) jsou v Plán dne
 
 ### Minimální integrační checklist ✅ COMPLETE
@@ -1323,7 +1323,7 @@ Když je **OFF**:
 
 ---
 
-#### 8.2 Přehled cest / Planner (`/planner`)
+#### 8.2 Přehled cest / Plan (`/plan`)
 
 **Účel:** Přehled naplánovaných cest s filtrováním. Prohlížení tras s detailní časovou osou a vizualizací na mapě.
 
@@ -1387,7 +1387,7 @@ Když je **OFF**:
 
 **Nastavení uživatele (Settings → Moje nastavení):**
 - Defaultní posádka a depo se ukládají do DB (`users.default_crew_id`, `users.default_depot_id`)
-- Používají se jako výchozí filtry na stránce Planner
+- Používají se jako výchozí filtry na stránce Plan
 - Uživatel může filtrovat i jiné posádky/depa — preference nejsou tvrdá vazba
 
 ---
@@ -2936,14 +2936,14 @@ Automaticky zmizí po úspěšném opětovném připojení.
 ---
 
 *Dokument vytvořen: 2026-01-31*  
-*Poslední aktualizace: 2026-02-24 (Sekce 18: Responsive Mobile Layout)*
+*Poslední aktualizace: 2026-02-24 (Sekce 18 v4: Phase 0+1 implemented and committed)*
 
 ---
 
 ## 18. Responsive Mobile Layout — Implementation Plan
 
-> **Goal:** Make the entire app usable on phones (320px–640px) and tablets
-> (641px–1023px) while keeping the existing desktop layout (≥ 1024px)
+> **Goal:** Make the entire app usable on phones (≤ 639px) and tablets
+> (640–1023px) while keeping the existing desktop layout (≥ 1024px)
 > **completely unchanged**.
 >
 > **Constraint:** Maximize shared components, hooks, and CSS. No code
@@ -2951,12 +2951,24 @@ Automaticky zmizí po úspěšném opětovném připojení.
 >
 > **Status:** Planning
 
+### 18.0 Locked Decisions (Confirmed)
+
+1. **No desktop regression:** desktop viewport behavior must remain unchanged.
+2. **Phone breakpoint:** `max-width: 639px`.
+3. **Tablet behavior:** `640–1023px` uses the same UX model as phone (mobile UX).
+4. **Routing policy:** no external backwards compatibility for `/planner` is required.
+5. **Internal path consistency:** all user-facing internal routes/links/navigations must use `/plan`.
+6. **Panel navigation:** mobile/ tablet panel state must be URL-backed for back-button consistency.
+7. **Touch targets:** 44px minimum is required for primary interactive controls only.
+8. **Phase 13:** remains a hardening milestone (separate from blocker features).
+9. **Release blockers:** Layout, PlanningInbox, Plan, Calendar, Customers, WorkLog.
+
 ### 18.1 Current State Audit
 
 **What exists (partial):**
 - `<meta name="viewport">` in `index.html`
 - Layout header: hamburger on mobile, horizontal nav on desktop (768px breakpoint)
-- Planner: sidebar stacks below map at 900px
+- Plan (ex-Planner): sidebar stacks below map at 900px
 - Calendar: detail panel slides from bottom at 768px
 - Customers: card layout adapts at 768px
 - WorkLog: progressive column hiding at 900px / 600px
@@ -2972,8 +2984,8 @@ Automaticky zmizí po úspěšném opětovném připojení.
 | 3 | **Inconsistent breakpoints** — 5 different values used: 600px (21 files), 767px (1), 768px (13), 769px (1), 900px (8). No tokens. | High |
 | 4 | **No body scroll lock** when hamburger drawer is open — page scrolls behind overlay on touch. | High |
 | 5 | **Tables overflow** on narrow screens — WorkLog, Calendar week grid. | High |
-| 6 | **Fixed pixel widths** — Planner sidebar `420px`, Calendar detail panel `420px`. | Medium |
-| 7 | **No `useIsMobile` hook** — components can't conditionally render mobile UI. | Medium |
+| 6 | **Fixed pixel widths** — Plan sidebar `420px`, Calendar detail panel `420px`. | Medium |
+| 7 | **No shared responsive hook contract** — components can't consistently render mobile/tablet UX via one source (`useBreakpoint`). | Medium |
 | 8 | **Small font sizes** — `0.625rem` (10px), `0.6875rem` (11px) used in filters. | Medium |
 | 9 | **No safe-area insets** for iOS notch/home-indicator. | Low |
 | 10 | **SplitView resizer mouse-only** — no touch events. | Low |
@@ -2983,34 +2995,83 @@ Automaticky zmizí po úspěšném opětovném připojení.
 **Breakpoint system (3 tiers):**
 
 ```
-Phone:   0 – 639px    → single-column, hamburger nav, tab-switched panels
-Tablet:  640px – 1023px → adapted layouts, may stack 2 columns
+Phone:   0 – 639px      → mobile UX
+Tablet:  640px – 1023px → mobile UX (same interaction model as phone)
 Desktop: ≥ 1024px       → UNCHANGED (current layout)
 ```
 
 > Since CSS custom properties can't be used in `@media` queries, breakpoint
 > values are used as raw numbers. The canonical values live in the shared
-> `useIsMobile` hook and are documented here as the single source of truth.
+> `useBreakpoint` hook and are documented here as the single source of truth.
 
 **Strategy: Progressive enhancement from desktop down.**
 
 All changes are additive `@media (max-width)` rules. No existing desktop
 rule is modified or removed. Desktop rendering is regression-proof.
 
+**Route naming policy (final):**
+- User-facing route is `/plan`.
+- No external compatibility redirect from `/planner` is needed.
+- All internal user-facing references (router paths, `Link to=`, `navigate({ to })`,
+  and route tests) must point to `/plan`.
+- Internal non-URL identifiers may stay unchanged (`components/planner/`,
+  `page:planner`, `planner.json` i18n namespace, existing localStorage keys).
+
 **Shared infrastructure (new files):**
 
 | File | Purpose |
 |------|---------|
-| `hooks/useBreakpoint.ts` | Single hook: returns `'phone' \| 'tablet' \| 'desktop'`, `isMobile` (phone), `isTouch` (phone+tablet) |
-| `index.css` additions | Breakpoint tokens comment, touch-target global rule, safe-area insets, body scroll-lock class |
+| `hooks/useBreakpoint.ts` | Single hook: returns `'phone' \| 'tablet' \| 'desktop'`, `isPhone`, `isMobileUi` (phone+tablet), `isTouch` (phone+tablet) |
+| `hooks/useBodyScrollLock.ts` | Shared hook: lock/unlock body scroll with scroll-position restore (iOS-safe) |
+| `index.css` additions | Breakpoint comment, primary touch-target utility classes, safe-area insets |
 | `components/common/MobileTabBar.tsx` | Shared tab-switching bar for pages that need panel switching on mobile |
 | `components/common/MobileTabBar.module.css` | Styles for the shared tab bar |
+| `test/utils/responsive.tsx` | Shared viewport + matchMedia + router-aware render helpers for responsive tests |
 
 ### 18.3 Implementation Phases (TDD)
 
 ---
 
-#### Phase 1: Foundation — Breakpoints, Hook, Global CSS
+#### Phase 0: Baseline & Route Consistency Guard (Pre-work) ✅ DONE
+
+**Scope:** Capture a regression baseline and enforce `/plan` internal consistency
+before touching responsive behavior.
+
+**0.1 — Baseline snapshots (desktop + mobile/tablet)**
+
+RED:
+- Add baseline visual snapshots for key screens:
+  - Desktop (1280px): Layout, PlanningInbox, Plan, Calendar, Customers, WorkLog
+  - Phone (390px): same screens
+  - Tablet (768px): same screens (tablet follows mobile UX)
+
+GREEN:
+- Store snapshots in test fixtures and document update workflow.
+
+**0.2 — Internal `/plan` path consistency check**
+
+RED:
+```typescript
+describe('route path consistency', () => {
+  it('uses /plan in all user-facing internal links and navigations', () => { ... });
+  it('does not use /planner in user-facing internal paths', () => { ... });
+});
+```
+
+GREEN:
+- Add a test/script gate for route usage in:
+  - `routes/index.tsx`
+  - `Layout.tsx`
+  - page/component `Link` + `navigate({ to })` calls
+- Keep only allowed legacy internal identifiers (`components/planner/`,
+  `page:planner`, `planner.json`, existing localStorage keys).
+
+**Commit after Phase 0.** Baseline and routing guard are in place.
+> ✅ Committed: `30a21e0` — `test(responsive): Phase 0 — baseline snapshots and /plan route consistency guard`
+
+---
+
+#### Phase 1: Foundation — Breakpoints, Hook, Global CSS ✅ DONE
 
 **Scope:** Shared infrastructure that all subsequent phases depend on.
 
@@ -3022,7 +3083,8 @@ describe('useBreakpoint', () => {
   it('returns "desktop" for window width >= 1024', () => { ... });
   it('returns "tablet" for window width 640–1023', () => { ... });
   it('returns "phone" for window width < 640', () => { ... });
-  it('isMobile is true only for phone', () => { ... });
+  it('isPhone is true only for phone', () => { ... });
+  it('isMobileUi is true for phone and tablet', () => { ... });
   it('isTouch is true for phone and tablet', () => { ... });
   it('updates on window resize', () => { ... });
   it('cleans up resize listener on unmount', () => { ... });
@@ -3031,13 +3093,14 @@ describe('useBreakpoint', () => {
 
 GREEN — `hooks/useBreakpoint.ts`:
 - Uses `window.matchMedia` with `(max-width: 639px)` and `(max-width: 1023px)`
-- Returns `{ breakpoint, isMobile, isTouch }`
+- Returns `{ breakpoint, isPhone, isMobileUi, isTouch }`
 - Memoized, SSR-safe (defaults to `'desktop'`)
 
 REFACTOR — extract breakpoint constants to the hook file:
 ```typescript
 export const BP_PHONE = 639;
 export const BP_TABLET = 1023;
+export const BP_DESKTOP = 1024;
 ```
 
 **1.2 — Global CSS additions to `index.css`**
@@ -3055,43 +3118,51 @@ Changes to `:root`:
 
 New rules:
 ```css
-/* Body scroll lock — toggled by Layout.tsx when drawer is open */
-body.menu-open {
-  overflow: hidden;
-  position: fixed;
-  width: 100%;
-}
-
-/* Touch-friendly minimum target size on mobile */
-@media (max-width: 639px) {
-  button, a, select, [role="button"], [role="tab"] {
+/* Primary control touch targets (not global) */
+@media (max-width: 1023px) {
+  .touchTargetPrimary {
     min-height: 44px;
     min-width: 44px;
   }
 
-  /* Floor font size at 12px on mobile */
+  .touchTargetPrimaryInline {
+    min-height: 44px;
+  }
+
+  /* Floor base font at 16px — prevents iOS auto-zoom on inputs */
   html { font-size: max(16px, 1rem); }
 }
 ```
 
-**1.3 — Body scroll lock in Layout.tsx**
+**1.3 — Shared body scroll lock hook (`useBodyScrollLock`)**
 
-RED — test `components/Layout.test.tsx`:
+RED — test `hooks/useBodyScrollLock.test.ts` + `components/Layout.test.tsx`:
 ```typescript
+describe('useBodyScrollLock', () => {
+  it('locks body scroll when true', () => { ... });
+  it('unlocks body scroll when false', () => { ... });
+  it('cleans up on unmount', () => { ... });
+  it('preserves and restores scroll position on unlock', () => { ... });
+});
+
 describe('Layout scroll lock', () => {
-  it('adds menu-open class to body when drawer opens', () => { ... });
-  it('removes menu-open class when drawer closes', () => { ... });
-  it('removes menu-open class on unmount', () => { ... });
+  it('uses useBodyScrollLock when drawer opens/closes', () => { ... });
 });
 ```
 
-GREEN — add `useEffect` in Layout.tsx:
+GREEN — use shared hook in `Layout.tsx`:
 ```typescript
-useEffect(() => {
-  document.body.classList.toggle('menu-open', menuOpen);
-  return () => document.body.classList.remove('menu-open');
-}, [menuOpen]);
+useBodyScrollLock(menuOpen);
 ```
+
+The hook adds `overflow: hidden` to `document.body` when `true`. For iOS Safari compatibility,
+it must also apply `position: fixed`, `width: 100%`, and set `top: -${window.scrollY}px`.
+On cleanup (`false` or unmount), it removes these styles and restores `window.scrollTo(0, scrollY)`.
+
+REFACTOR — migrate existing inline scroll locks to the shared hook:
+- `CustomerEditDrawer.tsx` (lines 51–60): replace `document.body.style.overflow`
+  useEffect with `useBodyScrollLock(isOpen)`.
+- Grep for other `document.body.style.overflow` usages and migrate similarly.
 
 **1.4 — Safe-area insets on Layout header**
 
@@ -3106,14 +3177,37 @@ CSS-only — add to `Layout.module.css`:
 }
 ```
 
+**1.5 — Shared responsive test utilities**
+
+RED — tests for helper behavior:
+```typescript
+describe('responsive test utils', () => {
+  it('setViewport updates window dimensions + dispatches resize', () => { ... });
+  it('mockMatchMedia returns expected matches per breakpoint', () => { ... });
+  it('renderWithRouter renders route-aware components in tests', () => { ... });
+});
+```
+
+GREEN — add `test/utils/responsive.tsx` with:
+- `setViewport(width, height)`
+- `mockMatchMedia()`
+- `renderWithRouter(ui, options?)`
+
 **Commit after Phase 1.** All tests green. Desktop unaffected.
+> ✅ Committed: `a94cc7f` — `feat(responsive): Phase 1 — useBreakpoint, useBodyScrollLock, global CSS, Layout breakpoint fix`
+> - `hooks/useBreakpoint.ts` — 12 tests, canonical BP_PHONE_MAX=639 / BP_TABLET_MAX=1023
+> - `hooks/useBodyScrollLock.ts` — 6 tests, iOS-safe (position:fixed + scroll restore)
+> - `index.css` — safe-area vars, touchTargetPrimary/Inline utilities, font-size floor
+> - `Layout.module.css` — breakpoints corrected to 1023/1024px, safe-area on header
+> - `Layout.tsx` — useBodyScrollLock(menuOpen) integrated
+> - `CustomerEditDrawer.tsx` — migrated inline scroll lock to shared hook
 
 ---
 
 #### Phase 2: Shared MobileTabBar Component
 
 **Scope:** Reusable tab bar for pages that switch between panels on mobile
-(Inbox: List/Map/Detail; Planner: Sidebar/Map; CustomerDetail: Info/Tabs).
+(Inbox: List/Map/Detail; Plan: Sidebar/Map; CustomerDetail: Info/Tabs).
 
 **2.1 — MobileTabBar component**
 
@@ -3125,6 +3219,7 @@ describe('MobileTabBar', () => {
   it('calls onTabChange when a tab is tapped', () => { ... });
   it('renders badge count when provided', () => { ... });
   it('is not rendered when breakpoint is desktop', () => { ... });
+  it('updates URL when tab changes (back-button consistency)', () => { ... });
 });
 ```
 
@@ -3143,14 +3238,15 @@ interface MobileTabBarProps {
 }
 
 export function MobileTabBar({ tabs, activeTab, onTabChange }: MobileTabBarProps) {
-  const { isMobile } = useBreakpoint();
-  if (!isMobile) return null;
+  const { isMobileUi } = useBreakpoint();
+  if (!isMobileUi) return null;
   // render tab bar
 }
 ```
 
-CSS — `MobileTabBar.module.css`: fixed bottom bar, 44px height, equally
-spaced tabs, active indicator, safe-area bottom padding.
+CSS — `MobileTabBar.module.css`: horizontal tab bar (rendered inline below
+page header), 44px height, equally spaced tabs, active indicator. Position
+is not `fixed` — each page places it in its own JSX tree.
 
 **Commit after Phase 2.** New shared component, no pages changed yet.
 
@@ -3160,42 +3256,41 @@ spaced tabs, active indicator, safe-area bottom padding.
 
 **Scope:** Refine the header for narrow screens.
 
-**3.1 — Header compacting**
+**3.1 — Header compacting + selective text hiding**
 
-CSS-only changes to `Layout.module.css`:
+> **Note:** Layout.tsx currently has `.status` (container) with `.statusDot`
+> and inline text, and `.activeJobs` (Link) with `.activeJobsIndicator` and
+> inline text. There are no `.statusText` or `.activeJobsText` classes yet —
+> they must be created in this phase to allow CSS-only hiding of text while
+> keeping indicator dots visible.
 
+RED — tests:
+```typescript
+it('wraps online/offline text in span.statusText', () => { ... });
+it('wraps active-jobs text in span.activeJobsText', () => { ... });
+it('hides status text on mobile but shows dot', () => { ... });
+it('hides active-jobs text on mobile but shows indicator', () => { ... });
+it('shows full status + active-jobs text on desktop', () => { ... });
+```
+
+GREEN — JSX changes in Layout.tsx:
+- Wrap online/offline text in `<span className={styles.statusText}>`
+- Wrap active-jobs count text in `<span className={styles.activeJobsText}>`
+
+CSS additions to `Layout.module.css`:
 ```css
-@media (max-width: 639px) {
+@media (max-width: 1023px) {
   .header {
     height: 48px;
     padding: 0 0.75rem;
   }
 
-  /* Hide "Online"/"Offline" text, keep dot only */
   .statusText { display: none; }
-
-  /* Hide active-jobs text, keep indicator dot */
   .activeJobsText { display: none; }
-
   .logoutButton { display: none; }
-
   .userMenu { display: none; }
 }
 ```
-
-**3.2 — Wrap status text in a span for selective hiding**
-
-Small JSX change in Layout.tsx — wrap the online/offline text in a
-`<span className={styles.statusText}>` so CSS can target it without
-affecting the dot.
-
-RED — test:
-```typescript
-it('hides status text on mobile but shows dot', () => { ... });
-it('shows full status on desktop', () => { ... });
-```
-
-GREEN — add the span wrapper + CSS.
 
 REFACTOR — ensure the drawer footer (already has user name + logout)
 is the only place to access user info on mobile.
@@ -3226,28 +3321,40 @@ describe('PlanningInbox mobile', () => {
 ```
 
 GREEN — in `PlanningInbox.tsx`:
+- Use `useSearch` + `useNavigate` from `@tanstack/react-router` (the same
+  pattern already used by Plan.tsx, WorkLog.tsx, Customers.tsx, etc.).
+- On mount, read `panel` from URL; if missing, default to `'list'`.
+- On tab change, update URL via `navigate({ search })` so back button works.
+
+> **API note:** TanStack Router does NOT have `useSearchParams`. The codebase
+> uses `useSearch({ strict: false })` with a type cast. Panel state is read
+> from `searchParams.panel` and written via `navigate({ search: fn })`.
+
 ```typescript
-const { isMobile } = useBreakpoint();
-const [mobileTab, setMobileTab] = useState<'list' | 'map' | 'detail'>('list');
+const { isMobileUi } = useBreakpoint();
+const searchParams = useSearch({ strict: false }) as { panel?: string };
+const navigate = useNavigate();
+const activePanel = (searchParams.panel || 'list') as 'list' | 'map' | 'detail';
 
-// Auto-switch to detail when candidate selected
+const setPanel = (p: 'list' | 'map' | 'detail') => {
+  navigate({ search: (prev: Record<string, unknown>) => ({ ...prev, panel: p }) });
+};
+
 useEffect(() => {
-  if (isMobile && selectedCandidate) setMobileTab('detail');
-}, [isMobile, selectedCandidate]);
+  if (isMobileUi && selectedCandidate) setPanel('detail');
+}, [isMobileUi, selectedCandidate]);
 
-// Render:
-if (isMobile) {
+if (isMobileUi) {
   return (
     <div className={styles.page}>
-      <Header ... />
       <MobileTabBar tabs={[
         { id: 'list', label: t('list') },
         { id: 'map', label: t('map') },
         { id: 'detail', label: t('detail'), badge: selectedCandidate ? 1 : 0 },
-      ]} activeTab={mobileTab} onTabChange={setMobileTab} />
-      {mobileTab === 'list' && <InboxList ... />}
-      {mobileTab === 'map' && <MapPanel ... />}
-      {mobileTab === 'detail' && <DetailPanel ... />}
+      ]} activeTab={activePanel} onTabChange={setPanel} />
+      {activePanel === 'list' && <InboxList ... />}
+      {activePanel === 'map' && <MapPanel ... />}
+      {activePanel === 'detail' && <DetailPanel ... />}
     </div>
   );
 }
@@ -3256,9 +3363,9 @@ if (isMobile) {
 
 **4.2 — Inbox mobile CSS**
 
-New `@media (max-width: 639px)` block in `PlanningInbox.module.css`:
+New `@media (max-width: 1023px)` block in `PlanningInbox.module.css`:
 - `.page`: padding-bottom for MobileTabBar height
-- `.content`: height `calc(100vh - 48px - 44px)` (header + tab bar)
+- `.content`: height `calc(100vh - 48px - 44px)`; height `calc(100dvh - 48px - 44px)` (header + tab bar; fallback for older browsers)
 - Filter panel: chips wrap, full-width
 - Candidate cards: slightly larger touch padding
 
@@ -3268,16 +3375,22 @@ No existing desktop rules modified.
 
 ---
 
-#### Phase 5: Planner — Stacked Layout on Mobile
+#### Phase 5: Plan (ex-Planner) — Stacked Layout on Mobile
 
 **Scope:** Sidebar + map side-by-side → map on top, sidebar below, resizer
 hidden. Already partially working at 900px, needs refinement for phones.
+
+> **Note:** The page was renamed from `Planner.tsx` to `Plan.tsx` and the
+> route from `/planner` to `/plan`. No external backwards compatibility
+> redirect is needed. Internal non-URL identifiers
+> (`components/planner/`, `page:planner` permission, `planner.json` i18n,
+> localStorage keys) remain unchanged.
 
 **5.1 — Tests**
 
 RED:
 ```typescript
-describe('Planner mobile', () => {
+describe('Plan mobile', () => {
   it('renders map above sidebar on phone', () => { ... });
   it('hides sidebar resizer on phone', () => { ... });
   it('filters stack vertically on phone', () => { ... });
@@ -3285,13 +3398,14 @@ describe('Planner mobile', () => {
 });
 ```
 
-GREEN — CSS changes to `Planner.module.css`:
+GREEN — CSS changes to `Plan.module.css`:
 ```css
-@media (max-width: 639px) {
+@media (max-width: 1023px) {
   .planner {
     flex-direction: column;
     height: auto;
     min-height: calc(100vh - 48px);
+    min-height: calc(100dvh - 48px);
   }
 
   .sidebar {
@@ -3328,18 +3442,20 @@ or agenda view. Day detail panel → bottom sheet.
 RED:
 ```typescript
 describe('Calendar mobile', () => {
-  it('defaults to day view on phone', () => { ... });
-  it('week grid scrolls horizontally on phone', () => { ... });
-  it('month stats fill width', () => { ... });
-  it('detail panel renders as bottom sheet on phone', () => { ... });
+  it('defaults to day view on phone and tablet (isMobileUi)', () => { ... });
+  it('week grid scrolls horizontally on mobile', () => { ... });
+  it('month stats fill width on mobile', () => { ... });
+  it('detail panel renders as bottom sheet on mobile', () => { ... });
   it('desktop defaults to month view (unchanged)', () => { ... });
 });
 ```
 
 GREEN:
-- Calendar page uses `useBreakpoint` to set default view to `'day'` on phone
-- `CalendarGrid.module.css`: horizontal scroll with snap on phone
-- Existing 768px detail-panel bottom-sheet rule already works; lower it to 639px
+- Calendar page uses `useBreakpoint().isMobileUi` to set default view to `'day'`
+  on phones and tablets (locked decision: tablet = mobile UX)
+- `CalendarGrid.module.css`: horizontal scroll with snap at `max-width: 1023px`
+- Existing 768px detail-panel bottom-sheet rule: **raise** to `1023px` to cover
+  tablets (not lower to 639px — tablet uses mobile UX per locked decision #3)
 
 **Commit after Phase 6.**
 
@@ -3363,10 +3479,9 @@ describe('Customers mobile', () => {
 ```
 
 GREEN — mostly CSS adjustments:
-- Already has 768px breakpoint; lower customer-card stacking to 639px
-  for a phone-only card view, keeping 768px rules for tablet
+- Use `max-width: 1023px` for mobile UX (phone + tablet)
 - Toolbar: full-width search, stacked filter selects (already exists)
-- Customer card: enlarge touch area to 44px height per row
+- Customer card: add `.touchTargetPrimaryInline` to primary action rows
 
 **Commit after Phase 7.**
 
@@ -3389,10 +3504,10 @@ describe('WorkLog mobile', () => {
 ```
 
 GREEN:
-- `WorkLog.tsx`: use `useBreakpoint()` to conditionally render a card list
-  vs. table. Extract the card item into a shared sub-component.
+- `WorkLog.tsx`: use `useBreakpoint().isMobileUi` to conditionally render
+  a card list vs. table. Extract the card item into a shared sub-component.
 - `WorkLog.module.css`: new `.mobileCard` class used only inside
-  `@media (max-width: 639px)`. Desktop rules untouched.
+  `@media (max-width: 1023px)` (tablet = mobile UX). Desktop rules untouched.
 
 **Commit after Phase 8.**
 
@@ -3423,12 +3538,18 @@ Each dialog's `.module.css` gets the same pattern:
 }
 ```
 
-Files to update:
+Files to update (primary — release blockers):
 - `ScheduleDialog.module.css`
 - `CustomerEditDrawer.module.css`
 - `QuickVisitDialog.module.css`
 - `CompleteRevisionDialog.module.css`
 - `DeleteAccountDialog.module.css`
+
+Additional dialogs/drawers (same pattern, lower priority):
+- `VisitDetailDialog.module.css` (`components/timeline/`)
+- `DeleteConfirmDialog.module.css` (`components/customers/`)
+- `ImportReportDialog.module.css` (`components/import/`)
+- `AddFromInboxDrawer.module.css` (`components/planner/`)
 
 RED — test for each dialog:
 ```typescript
@@ -3460,7 +3581,7 @@ describe('CustomerDetail mobile', () => {
 
 GREEN — CSS in `CustomerDetail.module.css`:
 ```css
-@media (max-width: 639px) {
+@media (max-width: 1023px) {
   .workspace {
     flex-direction: column;
   }
@@ -3469,11 +3590,14 @@ GREEN — CSS in `CustomerDetail.module.css`:
 }
 ```
 
+> Using `1023px` (not `639px`) because locked decision #3: tablet = mobile UX.
+> A 768px tablet doesn't have room for side-by-side columns with dense content.
+
 **10.2 — RevisionDetail, VisitDetail, WorkItemDetail**
 
-Same pattern: stack columns, full-width buttons, smaller headings.
-These pages already have some 900px/600px rules; add 639px rules
-that complement them.
+Same pattern at `max-width: 1023px`: stack columns, full-width buttons,
+smaller headings. These pages already have some 900px/600px rules; the
+`1023px` rules supersede them (Phase 13 will consolidate the old values).
 
 **Commit after Phase 10.**
 
@@ -3494,7 +3618,11 @@ Minor touch-up needed.
 #### Phase 12: SplitView Touch Resize
 
 **Scope:** Add `onTouchStart`/`onTouchMove`/`onTouchEnd` to the SplitView
-resizer so tablet users can drag-resize panels.
+resizer for touch-screen desktop/laptop users (convertibles, Surface, etc.).
+
+> **Note:** On phones and tablets (≤ 1023px), SplitView panels are stacked
+> vertically and the resizer is hidden (Phase 5). Touch resize only applies
+> at ≥ 1024px where the side-by-side layout and resizer are still visible.
 
 RED:
 ```typescript
@@ -3512,10 +3640,11 @@ mouse handlers. Shared resize calculation logic extracted into a helper.
 
 ---
 
-#### Phase 13: Consolidate Breakpoints
+#### Phase 13: Consolidate Breakpoints (Hardening Milestone)
 
 **Scope:** Replace all ad-hoc breakpoint values across the codebase with
-the canonical 639px / 1023px values. No visual change — pure cleanup.
+the canonical 639px / 1023px values. Treat as a separate hardening milestone
+after blocker phases (1–11). No functional change intended — pure cleanup.
 
 Files to update (breakpoint audit):
 - 21 files using `600px` → change to `639px`
@@ -3549,6 +3678,9 @@ REFACTOR — add a comment block at the top of `index.css`:
 |------|-------|-------------|
 | `hooks/useBreakpoint.ts` (NEW) | 1 | New shared hook |
 | `hooks/useBreakpoint.test.ts` (NEW) | 1 | Tests |
+| `hooks/useBodyScrollLock.ts` (NEW) | 1 | New shared hook |
+| `hooks/useBodyScrollLock.test.ts` (NEW) | 1 | Tests |
+| `test/utils/responsive.tsx` (NEW) | 0, 1 | Shared viewport/mockMedia helpers |
 | `index.css` | 1, 13 | Additions only |
 | `components/Layout.tsx` | 1, 3 | `useEffect` scroll lock + span wrapper |
 | `components/Layout.module.css` | 1, 3 | Mobile-only additions |
@@ -3557,7 +3689,7 @@ REFACTOR — add a comment block at the top of `index.css`:
 | `components/common/MobileTabBar.test.tsx` (NEW) | 2 | Tests |
 | `pages/PlanningInbox.tsx` | 4 | Conditional mobile render |
 | `pages/PlanningInbox.module.css` | 4, 13 | Mobile-only additions |
-| `pages/Planner.module.css` | 5, 13 | Mobile-only additions |
+| `pages/Plan.module.css` (ex-Planner) | 5, 13 | Mobile-only additions |
 | `pages/Calendar.tsx` | 6 | Default view logic |
 | `pages/Calendar.module.css` | 6, 13 | Mobile-only additions |
 | `components/calendar/CalendarGrid.module.css` | 6, 13 | Mobile-only additions |
@@ -3569,6 +3701,11 @@ REFACTOR — add a comment block at the top of `index.css`:
 | `components/worklog/QuickVisitDialog.module.css` | 9 | Full-screen sheet rule |
 | `components/revisions/CompleteRevisionDialog.module.css` | 9 | Full-screen sheet rule |
 | `components/settings/DeleteAccountDialog.module.css` | 9 | Full-screen sheet rule |
+| `components/timeline/VisitDetailDialog.module.css` | 9 | Full-screen sheet rule (lower priority) |
+| `components/customers/DeleteConfirmDialog.module.css` | 9 | Full-screen sheet rule (lower priority) |
+| `components/import/ImportReportDialog.module.css` | 9 | Full-screen sheet rule (lower priority) |
+| `components/planner/AddFromInboxDrawer.module.css` | 9 | Full-screen sheet rule (lower priority) |
+| `components/customers/CustomerEditDrawer.tsx` | 1 | Migrate inline scroll lock → `useBodyScrollLock` |
 | `pages/CustomerDetail.module.css` | 10, 13 | Stacking rules |
 | `pages/RevisionDetail.module.css` | 10, 13 | Stacking rules |
 | `pages/VisitDetail.module.css` | 10, 13 | Stacking rules |
@@ -3587,30 +3724,41 @@ Every phase MUST satisfy these invariants:
    any `@media` block is modified or removed.**
 2. **All new CSS is inside `@media (max-width: 639px)` or
    `@media (max-width: 1023px)` blocks.**
-3. **All JSX changes are gated by `if (isMobile)` or `if (isTouch)`
-   from `useBreakpoint`. The `else` branch is exactly the existing code.**
+3. **All JSX changes are gated by `if (isMobileUi)` or `if (isTouch)`
+   from `useBreakpoint`. The `else` branch is exactly the existing desktop code.**
 4. **Snapshot tests at 1280px width must not change between phases.**
 
-### 18.6 Testing Strategy
+### 18.6 Release Blockers
+
+Mobile-ready v1 is defined as fully usable on these pages at 375px–1023px:
+
+- Layout (navigation, drawer, scroll lock)
+- PlanningInbox (tab-switched panels, URL-backed state)
+- Plan (stacked layout, filters)
+- Calendar (day default, bottom sheet)
+- Customers (card view, toolbar)
+- WorkLog (card layout)
+
+Phases 0–11 deliver these. Phases 12–13 are polish/hardening.
+
+### 18.7 Testing Strategy
 
 | Layer | Tool | What |
 |-------|------|------|
-| Unit | Vitest | `useBreakpoint`, `MobileTabBar`, conditional rendering |
-| Visual | Manual + phone | Each page at 375px (iPhone SE), 390px (iPhone 14), 768px (iPad mini) |
-| Regression | Vitest snapshot at 1280px | Desktop layout doesn't change |
-| Integration | Browser DevTools responsive mode | Full flow: login → dashboard → calendar → inbox → planner → customers → worklog → settings |
+| Phase 0 baseline | Vitest + DOM snapshots | Desktop/phone/tablet DOM snapshots before changes (Note: DOM snapshots don't catch CSS layout bugs, so manual visual testing is critical) |
+| Unit | Vitest | `useBreakpoint`, `useBodyScrollLock`, `MobileTabBar`, responsive utils |
+| Visual | Manual + device | Each page at 375px (iPhone SE), 390px (iPhone 14), 768px (iPad mini) |
+| Regression | Vitest snapshot at 1280px | Desktop DOM doesn't change |
+| Integration | Browser DevTools responsive mode | Full flow: login → dashboard → calendar → inbox → plan → customers → worklog → settings |
 
-### 18.7 Open Questions
+> **Existing test coverage:** Only Calendar, Customers, and Admin have test
+> files today. Phases 4–8, 10–12 will create new `*.test.tsx` files for pages
+> that lack them (PlanningInbox, Plan, WorkLog, Settings, SplitView, detail
+> pages). Each new test file should include both responsive tests and a minimal
+> desktop regression snapshot.
 
-1. **Offline support (Service Worker)** — listed in PRJ_CONTEXT.MD as a
-   future item. Mobile usage implies spotty connectivity. Should we add
-   basic cache-first SW as part of this effort or defer?
-   → **Recommendation: defer.** Separate concern, separate phase.
+### 18.8 Open Questions (Resolved)
 
-2. **Pull-to-refresh** — common mobile UX pattern for data pages. Add now
-   or later?
-   → **Recommendation: later.** Nice-to-have, not blocking usability.
-
-3. **Landscape phone** — should we optimize for landscape on phones?
-   → **Recommendation: no special handling.** The tablet breakpoint
-   (640–1023px) will naturally cover landscape phones.
+1. **Offline support (Service Worker)** — defer. Separate concern.
+2. **Pull-to-refresh** — later. Nice-to-have.
+3. **Landscape phone** — no special handling; tablet breakpoint covers it.
