@@ -1,4 +1,4 @@
-import { type ReactNode, useState, useCallback, useRef } from 'react';
+import { type ReactNode, useState, useCallback, useRef, useEffect } from 'react';
 import styles from './SplitView.module.css';
 
 type PanelConfig = {
@@ -33,6 +33,50 @@ export function SplitView({
     }
     return widths;
   });
+  // Keep a ref to panelWidths so resize handlers always see the latest value
+  const panelWidthsRef = useRef(panelWidths);
+  useEffect(() => {
+    panelWidthsRef.current = panelWidths;
+  }, [panelWidths]);
+
+  /** Shared resize calculation — used by both mouse and touch handlers. */
+  function calcResize(
+    leftPanel: PanelConfig,
+    rightPanel: PanelConfig,
+    startLeftWidth: number,
+    startRightWidth: number,
+    startPos: number,
+    currentPos: number,
+    containerSize: number
+  ): { newLeftWidth: number; newRightWidth: number } {
+    const delta = ((currentPos - startPos) / containerSize) * 100;
+    let newLeftWidth = startLeftWidth + delta;
+    let newRightWidth = startRightWidth - delta;
+
+    const leftMin = leftPanel.minWidth ?? 10;
+    const leftMax = leftPanel.maxWidth ?? 80;
+    const rightMin = rightPanel.minWidth ?? 10;
+    const rightMax = rightPanel.maxWidth ?? 80;
+
+    if (newLeftWidth < leftMin) {
+      newLeftWidth = leftMin;
+      newRightWidth = startLeftWidth + startRightWidth - leftMin;
+    }
+    if (newLeftWidth > leftMax) {
+      newLeftWidth = leftMax;
+      newRightWidth = startLeftWidth + startRightWidth - leftMax;
+    }
+    if (newRightWidth < rightMin) {
+      newRightWidth = rightMin;
+      newLeftWidth = startLeftWidth + startRightWidth - rightMin;
+    }
+    if (newRightWidth > rightMax) {
+      newRightWidth = rightMax;
+      newLeftWidth = startLeftWidth + startRightWidth - rightMax;
+    }
+
+    return { newLeftWidth, newRightWidth };
+  }
 
   const handleResizeStart = useCallback(
     (index: number) => (e: React.MouseEvent) => {
@@ -43,44 +87,18 @@ export function SplitView({
       const containerRect = container.getBoundingClientRect();
       const isHorizontal = direction === 'horizontal';
       const containerSize = isHorizontal ? containerRect.width : containerRect.height;
+      const startPos = isHorizontal ? e.clientX : e.clientY;
 
       const leftPanel = panels[index];
       const rightPanel = panels[index + 1];
-
-      const startPos = isHorizontal ? e.clientX : e.clientY;
-      const startLeftWidth = panelWidths[leftPanel.id];
-      const startRightWidth = panelWidths[rightPanel.id];
+      const startLeftWidth = panelWidthsRef.current[leftPanel.id];
+      const startRightWidth = panelWidthsRef.current[rightPanel.id];
 
       const handleMouseMove = (moveEvent: MouseEvent) => {
         const currentPos = isHorizontal ? moveEvent.clientX : moveEvent.clientY;
-        const delta = ((currentPos - startPos) / containerSize) * 100;
-
-        let newLeftWidth = startLeftWidth + delta;
-        let newRightWidth = startRightWidth - delta;
-
-        // Apply min/max constraints
-        const leftMin = leftPanel.minWidth ?? 10;
-        const leftMax = leftPanel.maxWidth ?? 80;
-        const rightMin = rightPanel.minWidth ?? 10;
-        const rightMax = rightPanel.maxWidth ?? 80;
-
-        if (newLeftWidth < leftMin) {
-          newLeftWidth = leftMin;
-          newRightWidth = startLeftWidth + startRightWidth - leftMin;
-        }
-        if (newLeftWidth > leftMax) {
-          newLeftWidth = leftMax;
-          newRightWidth = startLeftWidth + startRightWidth - leftMax;
-        }
-        if (newRightWidth < rightMin) {
-          newRightWidth = rightMin;
-          newLeftWidth = startLeftWidth + startRightWidth - rightMin;
-        }
-        if (newRightWidth > rightMax) {
-          newRightWidth = rightMax;
-          newLeftWidth = startLeftWidth + startRightWidth - rightMax;
-        }
-
+        const { newLeftWidth, newRightWidth } = calcResize(
+          leftPanel, rightPanel, startLeftWidth, startRightWidth, startPos, currentPos, containerSize
+        );
         setPanelWidths((prev) => ({
           ...prev,
           [leftPanel.id]: newLeftWidth,
@@ -100,7 +118,46 @@ export function SplitView({
       document.body.style.cursor = isHorizontal ? 'col-resize' : 'row-resize';
       document.body.style.userSelect = 'none';
     },
-    [direction, panels, panelWidths, resizable]
+    [direction, panels, resizable]
+  );
+
+  const handleTouchStart = useCallback(
+    (index: number) => (e: React.TouchEvent) => {
+      if (!resizable || !containerRef.current) return;
+
+      const container = containerRef.current;
+      const containerRect = container.getBoundingClientRect();
+      const isHorizontal = direction === 'horizontal';
+      const containerSize = isHorizontal ? containerRect.width : containerRect.height;
+      const startPos = isHorizontal ? e.touches[0].clientX : e.touches[0].clientY;
+
+      const leftPanel = panels[index];
+      const rightPanel = panels[index + 1];
+      const startLeftWidth = panelWidthsRef.current[leftPanel.id];
+      const startRightWidth = panelWidthsRef.current[rightPanel.id];
+
+      const handleTouchMove = (moveEvent: TouchEvent) => {
+        if (moveEvent.touches.length === 0) return;
+        const currentPos = isHorizontal ? moveEvent.touches[0].clientX : moveEvent.touches[0].clientY;
+        const { newLeftWidth, newRightWidth } = calcResize(
+          leftPanel, rightPanel, startLeftWidth, startRightWidth, startPos, currentPos, containerSize
+        );
+        setPanelWidths((prev) => ({
+          ...prev,
+          [leftPanel.id]: newLeftWidth,
+          [rightPanel.id]: newRightWidth,
+        }));
+      };
+
+      const handleTouchEnd = () => {
+        document.removeEventListener('touchmove', handleTouchMove);
+        document.removeEventListener('touchend', handleTouchEnd);
+      };
+
+      document.addEventListener('touchmove', handleTouchMove, { passive: true });
+      document.addEventListener('touchend', handleTouchEnd);
+    },
+    [direction, panels, resizable]
   );
 
   return (
@@ -123,6 +180,7 @@ export function SplitView({
             <div
               className={styles.resizer}
               onMouseDown={handleResizeStart(index)}
+              onTouchStart={handleTouchStart(index)}
             />
           )}
         </div>

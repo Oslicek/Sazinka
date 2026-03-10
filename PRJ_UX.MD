@@ -2936,7 +2936,7 @@ Automaticky zmizí po úspěšném opětovném připojení.
 ---
 
 *Dokument vytvořen: 2026-01-31*  
-*Poslední aktualizace: 2026-02-24 (Sekce 18 v14: Phase 0–11 done)*
+*Poslední aktualizace: 2026-02-24 (Sekce 18 v15: Phase 0–12 done)*
 
 ---
 
@@ -3651,7 +3651,7 @@ Minor touch-up needed.
 
 ---
 
-#### Phase 12: SplitView Touch Resize
+#### Phase 12: SplitView Touch Resize ✅ DONE
 
 **Scope:** Add `onTouchStart`/`onTouchMove`/`onTouchEnd` to the SplitView
 resizer for touch-screen desktop/laptop users (convertibles, Surface, etc.).
@@ -3673,6 +3673,9 @@ GREEN — add touch event handlers in `SplitView.tsx` alongside the existing
 mouse handlers. Shared resize calculation logic extracted into a helper.
 
 **Commit after Phase 12.**
+> ✅ 7 tests passing — `SplitView.test.tsx` (new file)
+> - `SplitView.tsx`: extracted `calcResize()` helper; added `handleTouchStart` with `touchmove`/`touchend` document listeners; `panelWidthsRef` for stale-closure safety
+> - Mouse resize behaviour unchanged (4 existing-behaviour tests pass)
 
 ---
 
