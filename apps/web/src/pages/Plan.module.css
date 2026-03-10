@@ -322,6 +322,7 @@
 
 /* ── Responsive ── */
 
+/* Legacy 900px rule kept for reference — superseded by 1023px below (Phase 13 will remove) */
 @media (max-width: 900px) {
   .planner {
     flex-direction: column;
@@ -361,6 +362,57 @@
     width: 100%;
   }
 
+  .filterSelect {
+    width: 100%;
+  }
+}
+
+/* ── Mobile / tablet (≤ 1023px) — canonical breakpoint ─────────────────── */
+
+@media (max-width: 1023px) {
+  .planner {
+    flex-direction: column;
+    height: auto;
+    min-height: calc(100vh - 48px);
+    min-height: calc(100dvh - 48px);
+    gap: 0;
+  }
+
+  /* Map on top, sidebar below */
+  .mapWrapper {
+    order: 0;
+    height: 220px;
+    border-radius: 0;
+    flex-shrink: 0;
+  }
+
+  .sidebar {
+    order: 1;
+    width: 100% !important;
+    max-height: none;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    border-top: 1px solid var(--color-border);
+  }
+
+  /* Hide resizers — no drag-resize in stacked layout */
+  .sidebarResizer { display: none; }
+  .routeListResizer { display: none; }
+
+  /* Route list fills available space */
+  .routeListSection {
+    max-height: none;
+    height: auto !important;
+  }
+
+  /* Filters stack vertically */
+  .filterRow {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .dateFilter,
   .filterSelect {
     width: 100%;
   }

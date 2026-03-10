@@ -1,0 +1,51 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Plan page — mobile layout structure > desktop (1280px) > desktop layout matches snapshot 1`] = `
+<div
+  class="_planner_00322f"
+>
+  <div
+    class="_sidebar_00322f"
+    style="width: 420px;"
+  >
+    <div
+      data-testid="planner-filters"
+    />
+    <div
+      class="_routeListSection_00322f"
+      style="height: 200px; min-height: 80px; max-height: 500px;"
+    >
+      <div
+        class="_sectionHeader_00322f"
+      >
+        <h3>
+          planned_routes
+        </h3>
+        <button
+          class="_refreshButton_00322f"
+          title="refresh"
+          type="button"
+        >
+          ↻
+        </button>
+      </div>
+      <div
+        data-testid="route-list-panel"
+      />
+    </div>
+    <div
+      class="_routeListResizer_00322f"
+    />
+  </div>
+  <div
+    class="_sidebarResizer_00322f"
+  />
+  <div
+    class="_mapWrapper_00322f"
+  >
+    <div
+      data-testid="route-map-panel"
+    />
+  </div>
+</div>
+`;

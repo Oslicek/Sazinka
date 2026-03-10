@@ -2936,7 +2936,7 @@ Automaticky zmizí po úspěšném opětovném připojení.
 ---
 
 *Dokument vytvořen: 2026-01-31*  
-*Poslední aktualizace: 2026-02-24 (Sekce 18 v7: Phase 0–4 done)*
+*Poslední aktualizace: 2026-02-24 (Sekce 18 v8: Phase 0–5 done)*
 
 ---
 
@@ -3385,7 +3385,7 @@ No existing desktop rules modified.
 
 ---
 
-#### Phase 5: Plan (ex-Planner) — Stacked Layout on Mobile
+#### Phase 5: Plan (ex-Planner) — Stacked Layout on Mobile ✅ DONE
 
 **Scope:** Sidebar + map side-by-side → map on top, sidebar below, resizer
 hidden. Already partially working at 900px, needs refinement for phones.
@@ -3439,6 +3439,9 @@ GREEN — CSS changes to `Plan.module.css`:
 ```
 
 **Commit after Phase 5.**
+> ✅ 6 tests passing — `Plan.test.tsx`
+> - CSS-only: `@media (max-width: 1023px)` — map on top, sidebar below, resizers hidden
+> - `min-height: 100dvh`, filters stack vertically
 
 ---
 
