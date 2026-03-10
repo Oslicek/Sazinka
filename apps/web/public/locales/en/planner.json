@@ -1,5 +1,8 @@
 {
   "page_title": "Planning inbox",
+  "tab_list": "List",
+  "tab_map": "Map",
+  "tab_detail": "Detail",
   "planned_routes": "Planned routes ({{count}})",
   "refresh": "Refresh",
 

@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useSearch } from '@tanstack/react-router';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { MobileTabBar } from '@/components/common/MobileTabBar';
 import { useNatsStore } from '../stores/natsStore';
 import { useRouteCacheStore } from '../stores/routeCacheStore';
 import { useAutoSave } from '../hooks/useAutoSave';
@@ -134,6 +136,16 @@ export function PlanningInbox() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<VirtualizedInboxListRef>(null);
   const sortedCandidatesRef = useRef<InboxCandidate[]>([]);
+
+  // ── Mobile / tablet responsive state ──────────────────────────────────────
+  const { isMobileUi } = useBreakpoint();
+  const searchParams = useSearch({ strict: false }) as { panel?: string };
+  const activePanel = (searchParams.panel || 'list') as 'list' | 'map' | 'detail';
+
+  const setPanel = useCallback((panel: 'list' | 'map' | 'detail') => {
+    navigate({ search: (prev: Record<string, unknown>) => ({ ...prev, panel }) });
+  }, [navigate]);
+  // ──────────────────────────────────────────────────────────────────────────
   
   // Route cache store
   const { 
@@ -197,6 +209,13 @@ export function PlanningInbox() {
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(() => {
     return sessionStorage.getItem('planningInbox.selectedId');
   });
+
+  // Auto-switch to detail panel on mobile when a candidate is selected
+  useEffect(() => {
+    if (isMobileUi && selectedCandidateId) {
+      setPanel('detail');
+    }
+  }, [isMobileUi, selectedCandidateId, setPanel]);
   
   // Map/timeline highlighting state
   const [highlightedSegment, setHighlightedSegment] = useState<number | null>(null);
@@ -2778,27 +2797,58 @@ export function PlanningInbox() {
     </div>
   );
 
+  const pageHeader = (
+    <header className={styles.header}>
+      <h1 className={styles.title}>{t('page_title')}</h1>
+      <DraftModeBar
+        hasChanges={hasChanges}
+        isSaving={isSaving}
+        lastSaved={lastSaved}
+        saveError={saveError}
+        onRetry={retrySave}
+      />
+    </header>
+  );
+
+  const breakWarningBanner = isBreakManuallyAdjusted && breakWarnings.length > 0 && (
+    <div className={styles.breakWarnings}>
+      {breakWarnings.map((warning, index) => (
+        <div key={`${warning}-${index}`} className={styles.breakWarningItem}>
+          <AlertTriangle size={14} /> {warning}
+        </div>
+      ))}
+    </div>
+  );
+
+  // ── Mobile / tablet: tab-switched single-panel layout ─────────────────────
+  if (isMobileUi) {
+    return (
+      <div className={`${styles.page} ${styles.pageMobile}`}>
+        {pageHeader}
+        {breakWarningBanner}
+        <MobileTabBar
+          tabs={[
+            { id: 'list', label: t('tab_list') },
+            { id: 'map', label: t('tab_map') },
+            { id: 'detail', label: t('tab_detail'), badge: selectedCandidateId ? 1 : 0 },
+          ]}
+          activeTab={activePanel}
+          onTabChange={(id) => setPanel(id as 'list' | 'map' | 'detail')}
+        />
+        <div className={styles.mobilePanel}>
+          {activePanel === 'list' && renderInboxList()}
+          {activePanel === 'map' && renderMapPanel()}
+          {activePanel === 'detail' && renderDetailPanel()}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Desktop: existing three-panel layout ──────────────────────────────────
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        <h1 className={styles.title}>{t('page_title')}</h1>
-        <DraftModeBar
-          hasChanges={hasChanges}
-          isSaving={isSaving}
-          lastSaved={lastSaved}
-          saveError={saveError}
-          onRetry={retrySave}
-        />
-      </header>
-      {isBreakManuallyAdjusted && breakWarnings.length > 0 && (
-        <div className={styles.breakWarnings}>
-          {breakWarnings.map((warning, index) => (
-            <div key={`${warning}-${index}`} className={styles.breakWarningItem}>
-              <AlertTriangle size={14} /> {warning}
-            </div>
-          ))}
-        </div>
-      )}
+      {pageHeader}
+      {breakWarningBanner}
       <div className={styles.content}>
         <ThreePanelLayout
           left={renderInboxList()}

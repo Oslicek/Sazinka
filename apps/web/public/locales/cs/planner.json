@@ -1,5 +1,8 @@
 {
   "page_title": "Plánovací inbox",
+  "tab_list": "Seznam",
+  "tab_map": "Mapa",
+  "tab_detail": "Detail",
   "planned_routes": "Naplánované cesty ({{count}})",
   "refresh": "Obnovit",
 

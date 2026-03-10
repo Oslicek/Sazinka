@@ -2936,7 +2936,7 @@ Automaticky zmizí po úspěšném opětovném připojení.
 ---
 
 *Dokument vytvořen: 2026-01-31*  
-*Poslední aktualizace: 2026-02-24 (Sekce 18 v6: Phase 0–3 done)*
+*Poslední aktualizace: 2026-02-24 (Sekce 18 v7: Phase 0–4 done)*
 
 ---
 
@@ -3304,7 +3304,7 @@ is the only place to access user info on mobile.
 
 ---
 
-#### Phase 4: PlanningInbox — Tab-Switched Panels on Mobile
+#### Phase 4: PlanningInbox — Tab-Switched Panels on Mobile ✅ DONE
 
 **Scope:** The most complex page. Three-panel layout → tab-switched
 single-panel on phones. Matches the PRJ_UX.MD Section 8.1 mobile layout.
@@ -3377,6 +3377,11 @@ New `@media (max-width: 1023px)` block in `PlanningInbox.module.css`:
 No existing desktop rules modified.
 
 **Commit after Phase 4.** Inbox fully usable on phones.
+> ✅ 7 tests passing — `PlanningInbox.test.tsx`
+> - `useBreakpoint` + `useSearch` for URL-backed panel state (`?panel=list|map|detail`)
+> - Auto-switch to detail panel when candidate selected on mobile
+> - Mobile CSS: `.pageMobile`, `.mobilePanel` with `100dvh` height
+> - i18n: `tab_list`, `tab_map`, `tab_detail` added to en/cs/sk planner.json
 
 ---
 

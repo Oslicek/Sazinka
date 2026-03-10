@@ -1107,3 +1107,43 @@
   }
 }
 
+/* ── Mobile / tablet responsive (≤ 1023px) ──────────────────────────────── */
+
+@media (max-width: 1023px) {
+  .pageMobile {
+    height: auto;
+    min-height: calc(100vh - 48px);
+    min-height: calc(100dvh - 48px);
+    overflow: visible;
+  }
+
+  /* Each tab panel fills the remaining viewport height */
+  .mobilePanel {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    /* Account for header (48px) + tab bar (44px) */
+    height: calc(100vh - 48px - 44px);
+    height: calc(100dvh - 48px - 44px);
+  }
+
+  /* Header: tighter on mobile */
+  .header {
+    padding: 0.5rem 0.75rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  /* Filter chips wrap on narrow screens */
+  .filterChips {
+    flex-wrap: wrap;
+    gap: 0.375rem;
+  }
+
+  /* Candidate cards: slightly more padding for touch */
+  .candidateCard,
+  .candidateRow {
+    padding: 0.75rem;
+  }
+}
+
