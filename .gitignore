@@ -11,6 +11,7 @@ target/
 .env
 .env.local
 .env.*.local
+.env.prod
 .env.production
 .env.staging
 
