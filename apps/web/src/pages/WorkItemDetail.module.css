@@ -486,7 +486,26 @@
   background: var(--primary-color-lighter, #dbeafe);
 }
 
-/* Responsive - Mobile */
+/* Responsive — mobile + tablet (canonical breakpoint) */
+@media (max-width: 1023px) {
+  .content {
+    grid-template-columns: 1fr;
+  }
+
+  .headerActions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .primaryButton,
+  .secondaryButton,
+  .dangerButton {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Responsive - Mobile (legacy, superseded by 1023px above) */
 @media (max-width: 900px) {
   .content {
     grid-template-columns: 1fr;

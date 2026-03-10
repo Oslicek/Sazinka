@@ -2936,7 +2936,7 @@ Automaticky zmizí po úspěšném opětovném připojení.
 ---
 
 *Dokument vytvořen: 2026-01-31*  
-*Poslední aktualizace: 2026-02-24 (Sekce 18 v12: Phase 0–9 done)*
+*Poslední aktualizace: 2026-02-24 (Sekce 18 v13: Phase 0–10 done)*
 
 ---
 
@@ -3591,7 +3591,7 @@ GREEN — add the `@media` block to each CSS file.
 
 ---
 
-#### Phase 10: Detail Pages — Single-Column on Mobile
+#### Phase 10: Detail Pages — Single-Column on Mobile ✅ DONE
 
 **Scope:** CustomerDetail, RevisionDetail, VisitDetail, WorkItemDetail.
 These use multi-column or workspace layouts that need to stack on mobile.
@@ -3628,6 +3628,11 @@ smaller headings. These pages already have some 900px/600px rules; the
 `1023px` rules supersede them (Phase 13 will consolidate the old values).
 
 **Commit after Phase 10.**
+> ✅ 4 tests passing — `detailPages.phase10.test.ts` (new file)
+> - `CustomerDetail.module.css`: 768px → 1023px; `.content` stacks vertically
+> - `RevisionDetail.module.css`: new 1023px rule (single-column, full-width buttons)
+> - `VisitDetail.module.css`: new 1023px rule (single-column, full-width buttons)
+> - `WorkItemDetail.module.css`: new 1023px rule (single-column, full-width buttons)
 
 ---
 

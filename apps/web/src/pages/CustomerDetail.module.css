@@ -291,11 +291,15 @@
   margin-bottom: 1rem;
 }
 
-/* Responsive */
-@media (max-width: 768px) {
+/* Responsive — mobile + tablet (canonical breakpoint) */
+@media (max-width: 1023px) {
   .container {
     height: auto;
     overflow: visible;
     padding: 1rem;
+  }
+
+  .content {
+    flex-direction: column;
   }
 }
