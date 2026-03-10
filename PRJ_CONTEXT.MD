@@ -1967,8 +1967,11 @@ UI: "Tip: Posádka 2 (+2 min)" - ne spam pro malé rozdíly
 - [x] ~~VRP point time window mapping (arrival at slot start, service = slot length)~~ (implemented v0.18.5)
 - [x] ~~VRP automatic break placement (activity-level timing + jobs handler)~~ (implemented v0.18.6)
 - [x] ~~Smart Slot Heuristics: multi-crew Valhalla-backed slot suggestion + validation~~ (implemented v0.19.0)
-- [ ] Email notifications with Resend
-- [ ] Mobile-responsive design
+- [x] ~~Onboarding wizard backend handlers (profile, devices, depot)~~ (implemented v0.20.0)
+- [x] ~~Async depot geocoding (fire-and-forget via NATS)~~ (implemented v0.20.0)
+- [x] ~~Responsive app navigation (hamburger on mobile, horizontal on desktop)~~ (implemented v0.20.0)
+- [ ] Email notifications with Resend/SES
+- [ ] Mobile-responsive pages (beyond navigation)
 - [ ] Offline support (Service Worker)
 - [ ] Invoicing with ISDOC export
 - [ ] Multi-user teams
