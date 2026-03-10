@@ -11,6 +11,7 @@
 import { useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Customer, UpdateCustomerRequest, CreateCustomerRequest } from '@shared/customer';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { CustomerForm } from './CustomerForm';
 import styles from './CustomerEditDrawer.module.css';
 
@@ -33,6 +34,8 @@ export function CustomerEditDrawer({
 }: CustomerEditDrawerProps) {
   const { t } = useTranslation('customers');
 
+  useBodyScrollLock(isOpen);
+
   // Handle Escape key
   useEffect(() => {
     if (!isOpen) return;
@@ -46,18 +49,6 @@ export function CustomerEditDrawer({
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose, isSubmitting]);
-
-  // Prevent body scroll when drawer is open
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [isOpen]);
 
   // Handle submit wrapper
   const handleSubmit = useCallback(async (data: CreateCustomerRequest | UpdateCustomerRequest) => {

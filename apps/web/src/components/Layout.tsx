@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useNatsStore } from '@/stores/natsStore';
 import { useActiveJobsStore } from '@/stores/activeJobsStore';
 import { useAuthStore } from '@/stores/authStore';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import styles from './Layout.module.css';
 
 interface LayoutProps {
@@ -30,6 +31,8 @@ export function Layout({ children }: LayoutProps) {
     logout();
     navigate({ to: '/login' });
   };
+
+  useBodyScrollLock(menuOpen);
 
   const handleMenuItemClick = () => {
     setMenuOpen(false);

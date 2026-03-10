@@ -326,27 +326,36 @@
   border-color: var(--color-error);
 }
 
-/* ── Responsive: mobile (hamburger only) ──────────────────────────────────── */
+/* ── Responsive: mobile + tablet (≤ 1023px) ──────────────────────────────── */
 
 /* On desktop: hide hamburger, show horizontal nav */
-@media (min-width: 768px) {
+@media (min-width: 1024px) {
   .hamburger {
     display: none;
   }
 }
 
-/* On mobile: hide horizontal nav and non-essential header-right items */
-@media (max-width: 767px) {
+/* On mobile + tablet: hide horizontal nav, compact header */
+@media (max-width: 1023px) {
   .nav {
     display: none;
   }
 
-  /* Keep header compact — hide username text, keep status dot + logout */
+  .header {
+    height: 48px;
+    padding: 0 0.75rem;
+    /* Safe-area inset for notched devices (iOS, Android) */
+    padding-top: var(--safe-top);
+    padding-left: max(0.75rem, var(--safe-left));
+    padding-right: max(0.75rem, var(--safe-right));
+  }
+
+  /* Hide username text — available in the drawer footer instead */
   .userName {
     display: none;
   }
 
-  /* Tighten spacing so status + logout button fit */
+  /* Tighten spacing */
   .headerRight {
     gap: 0.5rem;
   }
@@ -356,7 +365,7 @@
     padding-left: 0.5rem;
   }
 
-  /* Shrink main padding on small screens */
+  /* Shrink main padding */
   .main {
     padding: 1rem 0.75rem;
   }
