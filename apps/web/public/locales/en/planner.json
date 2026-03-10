@@ -260,6 +260,7 @@
   "map_preview_insert": "Will be inserted between {{from}} → {{to}}",
   "map_empty_hint": "No stops in route yet",
   "map_clear_highlight": "Clear highlight",
+  "map_webgl_unavailable": "Map is not available — your browser does not support WebGL.",
 
   "insertion_title": "Insert into route",
   "insertion_new_stop": "New stop",

@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link, useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import maplibregl from 'maplibre-gl';
+import { isWebGLSupported } from '../utils/webgl';
 import type { Visit } from '@shared/visit';
 import type { VisitWorkItem } from '@shared/workItem';
 import {
@@ -129,9 +130,11 @@ export function VisitDetail() {
     loadVisit();
   }, [loadVisit]);
 
+  const webglOk = isWebGLSupported();
+
   // Initialize map
   useEffect(() => {
-    if (!mapContainer.current || map.current || !data?.customerLat || !data?.customerLng) return;
+    if (!mapContainer.current || map.current || !webglOk || !data?.customerLat || !data?.customerLng) return;
 
     map.current = new maplibregl.Map({
       container: mapContainer.current,
@@ -427,7 +430,11 @@ export function VisitDetail() {
           {data.customerLat && data.customerLng && (
             <div className={styles.card}>
               <h3 className={styles.cardTitle}>{t('visit_location')}</h3>
-              <div ref={mapContainer} className={styles.map} />
+              {webglOk ? (
+                <div ref={mapContainer} className={styles.map} />
+              ) : (
+                <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.875rem', padding: '2rem', textAlign: 'center' }}>{t('map_webgl_unavailable')}</p>
+              )}
             </div>
           )}
 

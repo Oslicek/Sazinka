@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { MapPin } from 'lucide-react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { isWebGLSupported } from '../../utils/webgl';
 import styles from './AddressMap.module.css';
 
 interface AddressMapProps {
@@ -52,6 +53,7 @@ export function AddressMap({
   onAutoCenterComplete,
 }: AddressMapProps) {
   const { t } = useTranslation('customers');
+  const webglOk = isWebGLSupported();
   const resolvedEmptyMessage = emptyMessage ?? t('map_empty_message');
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
@@ -60,7 +62,7 @@ export function AddressMap({
 
   // Initialize map
   useEffect(() => {
-    if (!mapContainer.current || map.current) return;
+    if (!mapContainer.current || map.current || !webglOk) return;
 
     map.current = new maplibregl.Map({
       container: mapContainer.current,
@@ -190,6 +192,17 @@ export function AddressMap({
       map.current?.off('dragend', handleInteraction);
     };
   }, [mapLoaded, onMapInteraction]);
+
+  if (!webglOk) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.webglFallback}>
+          <MapPin size={16} />
+          <p>{t('map_webgl_unavailable')}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.container}>

@@ -7,6 +7,7 @@ import {
   getSegmentLabel,
 } from '../../utils/routeGeometry';
 import { logger } from '../../utils/logger';
+import { isWebGLSupported } from '../../utils/webgl';
 import type { SavedRouteStop } from '../../services/routeService';
 import styles from './RouteMapPanel.module.css';
 
@@ -67,6 +68,7 @@ export function RouteMapPanel({
   debugRouteId: _debugRouteId,
 }: RouteMapPanelProps) {
   const { t } = useTranslation('planner');
+  const webglOk = isWebGLSupported();
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
@@ -106,7 +108,7 @@ export function RouteMapPanel({
 
   // Initialize map (only once - depot changes are handled by fitBounds/flyTo)
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
+    if (!containerRef.current || mapRef.current || !webglOk) return;
 
     const initialCenter: [number, number] = [14.4378, 50.0755]; // Prague default
 
@@ -633,6 +635,16 @@ export function RouteMapPanel({
         depot?.name || t('map_depot_popup'),
       )
     : null;
+
+  if (!webglOk) {
+    return (
+      <div className={`${styles.container} ${className ?? ''}`}>
+        <div className={styles.webglFallback}>
+          <p>{t('map_webgl_unavailable')}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`${styles.container} ${className ?? ''}`}>

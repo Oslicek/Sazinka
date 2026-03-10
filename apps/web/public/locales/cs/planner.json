@@ -261,6 +261,7 @@
   "map_preview_insert": "Vloží se mezi {{from}} → {{to}}",
   "map_empty_hint": "Zatím žádné zastávky v trase",
   "map_clear_highlight": "Zrušit zvýraznění",
+  "map_webgl_unavailable": "Mapa není dostupná — váš prohlížeč nepodporuje WebGL.",
 
   "insertion_title": "Vložení do trasy",
   "insertion_new_stop": "Nová zastávka",

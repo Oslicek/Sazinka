@@ -70,6 +70,7 @@
   "visit_phone": "Phone",
   "visit_notes": "Notes",
   "visit_location": "Location",
+  "map_webgl_unavailable": "Map is not available — your browser does not support WebGL.",
   "visit_timeline": "Timeline",
   "visit_scheduled_time": "Scheduled Time",
   "visit_arrival": "Arrival",

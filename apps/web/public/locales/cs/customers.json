@@ -174,6 +174,7 @@
   "map_empty_message": "Vyplňte adresu pro zobrazení polohy na mapě",
   "map_searching_address": "Hledám adresu...",
   "map_drag_hint": "Přetáhněte značku pro úpravu polohy",
+  "map_webgl_unavailable": "Mapa není dostupná — váš prohlížeč nepodporuje WebGL.",
 
   "drawer_edit_customer": "Upravit zákazníka",
 

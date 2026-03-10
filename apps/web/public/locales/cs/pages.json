@@ -70,6 +70,7 @@
   "visit_phone": "Telefon",
   "visit_notes": "Poznámky",
   "visit_location": "Poloha",
+  "map_webgl_unavailable": "Mapa není dostupná — váš prohlížeč nepodporuje WebGL.",
   "visit_timeline": "Časová osa",
   "visit_scheduled_time": "Naplánovaný čas",
   "visit_arrival": "Příjezd",
