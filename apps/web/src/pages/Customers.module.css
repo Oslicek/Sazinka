@@ -401,10 +401,12 @@
   color: #d97706;
 }
 
-/* Responsive */
-@media (max-width: 768px) {
+/* Responsive — mobile + tablet (raised from 768px → 1023px) */
+@media (max-width: 1023px) {
   .customerCard {
     flex-direction: column;
+    /* Primary card rows get touch target height */
+    min-height: 44px;
   }
   
   .customerMeta {
@@ -440,5 +442,11 @@
 
   .filterSelect {
     width: 100%;
+  }
+
+  /* Touch target on primary action buttons inside cards */
+  .customerCard .actionButton,
+  .viewButton {
+    min-height: 44px;
   }
 }

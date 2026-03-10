@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Customers } from './Customers';
 import type { CustomerListItem, CustomerSummary } from '@shared/customer';
+import { mockMatchMedia, setViewport, VIEWPORTS } from '../test/utils/responsive';
 
 // Mock the customerService
 const mockListCustomersExtended = vi.fn();
@@ -355,6 +356,41 @@ describe('Customers', () => {
   // =========================================================================
   // Existing tests (updated to use new service mocks)
   // =========================================================================
+  describe('Phase 7 — mobile responsive structure', () => {
+    beforeEach(() => {
+      mockListCustomersExtended.mockResolvedValue({ items: [], total: 0 });
+      mockGetCustomerSummary.mockResolvedValue(null);
+    });
+
+    it('toolbar has the toolbar class (CSS targets it for stacking)', () => {
+      mockMatchMedia(VIEWPORTS.phone.width);
+      setViewport(VIEWPORTS.phone.width, VIEWPORTS.phone.height);
+      render(<Customers />);
+      expect(document.querySelector('[class*="toolbar"]')).toBeInTheDocument();
+    });
+
+    it('search input has the search class (CSS sets full-width on mobile)', () => {
+      mockMatchMedia(VIEWPORTS.phone.width);
+      setViewport(VIEWPORTS.phone.width, VIEWPORTS.phone.height);
+      render(<Customers />);
+      expect(document.querySelector('[class*="search"]')).toBeInTheDocument();
+    });
+
+    it('page container has the customers class (CSS root for mobile overrides)', () => {
+      mockMatchMedia(VIEWPORTS.phone.width);
+      setViewport(VIEWPORTS.phone.width, VIEWPORTS.phone.height);
+      render(<Customers />);
+      expect(document.querySelector('[class*="customers"]')).toBeInTheDocument();
+    });
+
+    it('desktop layout is unchanged (toolbar still present)', () => {
+      mockMatchMedia(VIEWPORTS.desktop.width);
+      setViewport(VIEWPORTS.desktop.width, VIEWPORTS.desktop.height);
+      render(<Customers />);
+      expect(document.querySelector('[class*="toolbar"]')).toBeInTheDocument();
+    });
+  });
+
   describe('Connection state', () => {
     it('should show error when not connected', async () => {
       mockIsConnected = false;

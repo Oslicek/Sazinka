@@ -2936,7 +2936,7 @@ Automaticky zmizí po úspěšném opětovném připojení.
 ---
 
 *Dokument vytvořen: 2026-01-31*  
-*Poslední aktualizace: 2026-02-24 (Sekce 18 v9: Phase 0–6 done)*
+*Poslední aktualizace: 2026-02-24 (Sekce 18 v10: Phase 0–7 done)*
 
 ---
 
@@ -3478,7 +3478,7 @@ GREEN:
 
 ---
 
-#### Phase 7: Customers — Full-Width Cards + Toolbar
+#### Phase 7: Customers — Full-Width Cards + Toolbar ✅ DONE
 
 **Scope:** Already partially responsive. Needs toolbar refinement and
 touch-target fix.
@@ -3501,6 +3501,8 @@ GREEN — mostly CSS adjustments:
 - Customer card: add `.touchTargetPrimaryInline` to primary action rows
 
 **Commit after Phase 7.**
+> ✅ 21 tests passing — `Customers.test.tsx` (+4 new mobile structure tests)
+> - `Customers.module.css`: breakpoint raised 768px → 1023px; touch target on cards + buttons
 
 ---
 
