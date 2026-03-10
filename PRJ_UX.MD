@@ -2936,7 +2936,7 @@ Automaticky zmizí po úspěšném opětovném připojení.
 ---
 
 *Dokument vytvořen: 2026-01-31*  
-*Poslední aktualizace: 2026-02-24 (Sekce 18 v8: Phase 0–5 done)*
+*Poslední aktualizace: 2026-02-24 (Sekce 18 v9: Phase 0–6 done)*
 
 ---
 
@@ -3445,7 +3445,7 @@ GREEN — CSS changes to `Plan.module.css`:
 
 ---
 
-#### Phase 6: Calendar — Day View Default + Grid Fix
+#### Phase 6: Calendar — Day View Default + Grid Fix ✅ DONE
 
 **Scope:** Week grid 7-column layout is unusable on phones. Default to day
 or agenda view. Day detail panel → bottom sheet.
@@ -3471,6 +3471,10 @@ GREEN:
   tablets (not lower to 639px — tablet uses mobile UX per locked decision #3)
 
 **Commit after Phase 6.**
+> ✅ 11 tests passing — `Calendar.test.tsx` (+4 new mobile tests)
+> - `Calendar.tsx`: `useBreakpoint().isMobileUi` → default layout `'day'` on mobile/tablet (URL param still overrides)
+> - `Calendar.module.css`: detail panel bottom-sheet raised 768px → 1023px; desktop `withSidePanel` shift raised 769px → 1024px; header wraps on mobile
+> - `CalendarGrid.module.css`: week grid horizontal scroll at 1023px
 
 ---
 

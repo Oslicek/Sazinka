@@ -28,14 +28,21 @@
   background: var(--color-border);
 }
 
-/* Mobile adjustments */
-@media (max-width: 768px) {
+/* Mobile + tablet adjustments (raised from 768px → 1023px) */
+@media (max-width: 1023px) {
   .weekday {
     font-size: 0.65rem;
   }
-  
+
   .days {
     gap: 1px;
     padding: 1px;
+  }
+
+  /* Week grid: horizontal scroll so 7 columns don't crush on phones */
+  .grid {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x mandatory;
   }
 }

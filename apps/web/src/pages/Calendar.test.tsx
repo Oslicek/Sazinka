@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { Calendar } from './Calendar';
 import type { CalendarItem } from '@shared/calendar';
+import { mockMatchMedia, setViewport, VIEWPORTS } from '../test/utils/responsive';
+
+vi.mock('@/hooks/useBreakpoint', () => ({
+  useBreakpoint: vi.fn(),
+}));
 
 // Mock dependencies
 vi.mock('@tanstack/react-router', () => ({
@@ -43,10 +48,22 @@ vi.mock('../components/calendar/DayCell', () => ({
 }));
 
 import { listCalendarItems } from '../services/calendarService';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
+const mockUseBreakpoint = vi.mocked(useBreakpoint);
 
 describe('Calendar', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: desktop
+    mockMatchMedia(VIEWPORTS.desktop.width);
+    setViewport(VIEWPORTS.desktop.width, VIEWPORTS.desktop.height);
+    mockUseBreakpoint.mockReturnValue({
+      breakpoint: 'desktop',
+      isPhone: false,
+      isMobileUi: false,
+      isTouch: false,
+    });
+    vi.mocked(listCalendarItems).mockResolvedValue({ items: [] });
   });
 
   it('should render calendar header', async () => {
@@ -142,5 +159,69 @@ describe('Calendar', () => {
       expect(screen.getByText('filter_crew')).toBeInTheDocument();
       expect(screen.getByPlaceholderText('filter_customer_placeholder')).toBeInTheDocument();
     });
+  });
+});
+
+// ── Phase 6: mobile responsive tests ─────────────────────────────────────────
+
+describe('Calendar — Phase 6 mobile', () => {
+  beforeEach(() => {
+    vi.mocked(listCalendarItems).mockResolvedValue({ items: [] });
+  });
+
+  it('defaults to day layout on phone (isMobileUi=true)', () => {
+    mockMatchMedia(VIEWPORTS.phone.width);
+    setViewport(VIEWPORTS.phone.width, VIEWPORTS.phone.height);
+    mockUseBreakpoint.mockReturnValue({
+      breakpoint: 'phone',
+      isPhone: true,
+      isMobileUi: true,
+      isTouch: true,
+    });
+    render(<Calendar />);
+    // The day layout button should be active (has active class or aria-pressed)
+    const dayBtn = screen.getByText('layout_day');
+    expect(dayBtn.closest('button')).toHaveClass(/_active_/);
+  });
+
+  it('defaults to day layout on tablet (isMobileUi=true)', () => {
+    mockMatchMedia(VIEWPORTS.tablet.width);
+    setViewport(VIEWPORTS.tablet.width, VIEWPORTS.tablet.height);
+    mockUseBreakpoint.mockReturnValue({
+      breakpoint: 'tablet',
+      isPhone: false,
+      isMobileUi: true,
+      isTouch: true,
+    });
+    render(<Calendar />);
+    const dayBtn = screen.getByText('layout_day');
+    expect(dayBtn.closest('button')).toHaveClass(/_active_/);
+  });
+
+  it('defaults to month layout on desktop (unchanged)', () => {
+    mockUseBreakpoint.mockReturnValue({
+      breakpoint: 'desktop',
+      isPhone: false,
+      isMobileUi: false,
+      isTouch: false,
+    });
+    render(<Calendar />);
+    const monthBtn = screen.getByText('layout_month');
+    expect(monthBtn.closest('button')).toHaveClass(/_active_/);
+  });
+
+  it('does not override layout when URL already specifies one on mobile', async () => {
+    // Simulate URL with layout=week on mobile — user explicitly chose it, keep it
+    const router = await import('@tanstack/react-router');
+    vi.mocked(router.useSearch).mockReturnValue({ layout: 'week' } as never);
+    mockUseBreakpoint.mockReturnValue({
+      breakpoint: 'phone',
+      isPhone: true,
+      isMobileUi: true,
+      isTouch: true,
+    });
+    render(<Calendar />);
+    const weekBtn = screen.getByText('layout_week');
+    expect(weekBtn.closest('button')).toHaveClass(/_active_/);
   });
 });

@@ -5,7 +5,7 @@
 }
 
 /* Shift content when side panel is open on desktop */
-@media (min-width: 769px) {
+@media (min-width: 1024px) {
   .calendar.withSidePanel {
     margin-right: 440px;
   }
@@ -254,8 +254,8 @@
   animation: slideInRight 0.3s ease-out;
 }
 
-/* Mobile: slide from bottom */
-@media (max-width: 768px) {
+/* Mobile + tablet: slide from bottom (raised from 768px → 1023px) */
+@media (max-width: 1023px) {
   .detailsPanel {
     top: auto;
     left: 0;
@@ -268,6 +268,19 @@
     border-top: 1px solid var(--color-border);
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     animation: slideInUp 0.3s ease-out;
+  }
+
+  /* Header wraps on narrow screens */
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  /* Layout toggle scrolls horizontally if needed */
+  .layoutToggle {
+    overflow-x: auto;
+    flex-wrap: nowrap;
   }
 }
 

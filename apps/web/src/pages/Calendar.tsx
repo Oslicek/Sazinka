@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, Link, useSearch } from '@tanstack/react-router';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useTranslation } from 'react-i18next';
 import type { CalendarItem, CalendarItemStatus, CalendarItemType } from '@shared/calendar';
 import type { CalendarDay } from '../utils/calendarUtils';
@@ -100,7 +101,10 @@ export function Calendar() {
   const isConnected = useNatsStore((s) => s.isConnected);
   const { t } = useTranslation('calendar');
 
+  const { isMobileUi } = useBreakpoint();
+
   const initialViewMode = searchParams.view === 'scheduled' ? 'scheduled' : 'due';
+  // On mobile/tablet: default to day view unless URL explicitly specifies a layout
   const initialLayout =
     searchParams.layout === 'week'
       ? 'week'
@@ -108,7 +112,11 @@ export function Calendar() {
         ? 'day'
         : searchParams.layout === 'agenda'
           ? 'agenda'
-          : 'month';
+          : searchParams.layout === 'month'
+            ? 'month'
+            : isMobileUi
+              ? 'day'
+              : 'month';
   const initialTypes = parseListParam(searchParams.types, ITEM_TYPES);
   const initialStatus = parseListParam(searchParams.status, STATUS_FILTERS);
 
