@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-02-17 (v0.19.2 - Slot heuristics fixes, default duration 60 min, quarter-hour alignment)
+> **Last Updated:** 2026-02-24 (v0.19.3 - Edge-side root redirect via Cloudflare Pages Function)
 
 ## Overview
 
@@ -1506,6 +1506,15 @@ cargo test
 - MVP focuses on core CRM + route planning
 - Email notifications deferred to later phase
 - Invoicing/billing architecture prepared but not implemented
+
+## Recent Changes (v0.19.3)
+
+- **Edge-side root redirect for ariadline.com:**
+  - New Cloudflare Pages Function (`apps/site/functions/index.ts`) handles `GET /` at the edge
+  - Parses `Accept-Language` header, returns instant 302 to `/en/`, `/cs/`, or `/sk/`
+  - Eliminates 2-3 second visible "Redirecting..." flash (was client-side JS redirect)
+  - `index.astro` simplified to empty-body fallback for local dev without wrangler
+  - `Vary: Accept-Language` + `no-cache` headers prevent stale cached redirects
 
 ## Recent Changes (v0.18.0)
 

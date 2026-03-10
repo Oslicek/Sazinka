@@ -2297,7 +2297,7 @@ wrangler pages deploy dist --project-name=ariadline-site
 
 - [ ] Web se načte na `https://ariadline.com`
 - [ ] Všechny 3 jazyky fungují (`/en/`, `/cs/`, `/sk/`)
-- [ ] Root `/` správně přesměruje
+- [ ] Root `/` vrací 302 redirect (edge function `functions/index.ts`, žádný flash)
 - [ ] Kontaktní formulář se úspěšně odešle
 - [ ] Newsletter subscription funguje (zkontrolujte email)
 - [ ] Newsletter confirmation link funguje

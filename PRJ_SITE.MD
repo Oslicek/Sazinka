@@ -52,8 +52,10 @@ Všechny stránky existují ve všech 3 jazykových verzích:
 /sk/...                     → Slovenština
 ```
 
-Root `/` — minimalistický JS redirect podle `navigator.language` na `/en/`, `/cs/` nebo `/sk/`.
-Při vypnutém JS je default `/en/` (angličtina).
+Root `/` — Cloudflare Pages Function (`functions/index.ts`) provede edge-side 302 redirect
+podle `Accept-Language` hlavičky na `/en/`, `/cs/` nebo `/sk/`. Redirect probíhá na edge
+(žádné HTML se neposílá do prohlížeče). Fallback `index.astro` existuje pro lokální vývoj
+bez wrangler (meta refresh + JS, prázdné `<body>`).
 
 ---
 
@@ -177,8 +179,9 @@ Astro má vestavěnou i18n podporu (od v4+):
 - **Překlady**: JSON soubory v `src/i18n/` (klíče → přeložené texty)
 - **Content Collections**: blogposty v `src/content/blog/en/`, `src/content/blog/cs/`, `src/content/blog/sk/`
 - **Language switcher**: Astro helper `getRelativeLocaleUrl()` generuje linky na stejnou stránku v jiném jazyce
-- **Auto-detekce jazyka na root `/`**: Minimalistický JS redirect podle `navigator.language`;
-  při vypnutém JS fallback na `/en/`.
+- **Auto-detekce jazyka na root `/`**: Cloudflare Pages Function (`functions/index.ts`)
+  parsuje `Accept-Language` header a vrací 302 redirect na edge. Fallback `index.astro`
+  (meta refresh + JS) pro lokální dev bez wrangler.
 
 > **Relationship with `apps/web` i18n:** The two apps use **fully separate i18n architectures** (decided — see `PRJ_I18N.MD`). `apps/site` uses build-time Astro SSG with URL-based locale routing; `apps/web` uses runtime i18next with state-based locale. No shared translation files. Future improvement: pass locale from site to app via `?lang=cs` query parameter on login/register links.
 
@@ -440,7 +443,9 @@ Všechny tři záznamy nastaví Resend dashboard automaticky (stačí kliknout "
 │       │   │   ├── en/         # Anglické stránky
 │       │   │   ├── cs/         # České stránky
 │       │   │   ├── sk/         # Slovenské stránky
-│       │   │   └── index.astro # Root redirect (Accept-Language)
+│       │   │   └── index.astro # Fallback redirect (local dev only)
+│       ├── functions/
+│       │   ├── index.ts       # Edge 302 redirect (Accept-Language)
 │       │   └── styles/
 │       │       └── global.css  # Reset, design token import, globální typografie
 │       ├── astro.config.mjs
@@ -604,7 +609,7 @@ Všechny tři záznamy nastaví Resend dashboard automaticky (stačí kliknout "
 - [x] Email služba — **Resend**. Pro site (Pages Functions, TS SDK) i aplikaci (Rust worker, REST API).
 - [x] Cookie consent banner — **nepotřebujeme**. Umami nepoužívá cookies.
 - [x] Ukládání dat — **Cloudflare D1** (managed SQLite) pro kontakty a newsletter.
-- [x] Jazyky na root `/` — Minimalistický JS redirect podle `navigator.language`; fallback bez JS je `/en/`.
+- [x] Jazyky na root `/` — Edge-side 302 redirect přes Cloudflare Pages Function (`Accept-Language`); fallback `index.astro` pro lokální dev.
 - [x] NewsletterForm — **Výrazně** na Contact, **méně výrazně** v patičce.
 - [x] Honeypot — Pole `website`, skryté CSS, prázdné = validní request.
 - [x] Newsletter — **Double opt-in**.
@@ -623,8 +628,8 @@ Všechny tři záznamy nastaví Resend dashboard automaticky (stačí kliknout "
 ## 12. Definition of Done (DoD)
 
 ### 12.1 MVP DoD (site + forms)
-- [ ] Root `/` používá minimalistický JS redirect podle `navigator.language` (`en/cs/sk`)
-- [ ] Při vypnutém JS je výchozí jazyk `/en/`
+- [x] Root `/` vrací 302 redirect na edge přes Cloudflare Pages Function (`Accept-Language` → `en/cs/sk`)
+- [x] Fallback `index.astro` (meta refresh + JS) pro prostředí bez Pages Functions
 - [ ] Stránky `/en`, `/cs`, `/sk` existují pro Landing, Features, Pricing, Contact, Legal, Blog
 - [ ] `ContactForm` je funkční na `/contact`, ukládá data do D1 a vrací čitelný `ticketId` formátu `REQ-YYYY-NNNNNN`
 - [ ] `NewsletterForm` je výrazně na Contact a méně výrazně v patičce všech stránek

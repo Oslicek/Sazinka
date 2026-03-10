@@ -1,15 +1,14 @@
 ---
-// Root redirect based on browser language
-// Falls back to /en/ if JavaScript is disabled
+// Fallback for environments where the Cloudflare Pages Function
+// (functions/index.ts) does not run (e.g. local dev without wrangler).
+// In production the edge function returns a 302 before this page is served.
 ---
 
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta http-equiv="refresh" content="0;url=/en/" />
-    <title>Ariadline — Redirecting...</title>
     <script is:inline>
       (function () {
         var lang = (navigator.language || '').toLowerCase().slice(0, 2);
@@ -18,7 +17,5 @@
       })();
     </script>
   </head>
-  <body>
-    <p>Redirecting to <a href="/en/">English version</a>...</p>
-  </body>
+  <body></body>
 </html>
