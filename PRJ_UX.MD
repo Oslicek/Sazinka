@@ -2936,7 +2936,7 @@ Automaticky zmizí po úspěšném opětovném připojení.
 ---
 
 *Dokument vytvořen: 2026-01-31*  
-*Poslední aktualizace: 2026-02-24 (Sekce 18 v4: Phase 0+1 implemented and committed)*
+*Poslední aktualizace: 2026-02-24 (Sekce 18 v5: Phase 0–2 done)*
 
 ---
 
@@ -3204,7 +3204,7 @@ GREEN — add `test/utils/responsive.tsx` with:
 
 ---
 
-#### Phase 2: Shared MobileTabBar Component
+#### Phase 2: Shared MobileTabBar Component ✅ DONE
 
 **Scope:** Reusable tab bar for pages that switch between panels on mobile
 (Inbox: List/Map/Detail; Plan: Sidebar/Map; CustomerDetail: Info/Tabs).
@@ -3249,6 +3249,7 @@ page header), 44px height, equally spaced tabs, active indicator. Position
 is not `fixed` — each page places it in its own JSX tree.
 
 **Commit after Phase 2.** New shared component, no pages changed yet.
+> ✅ 8 tests passing — `MobileTabBar.test.tsx`
 
 ---
 
