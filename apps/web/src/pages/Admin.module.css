@@ -640,8 +640,8 @@ code.buildValue {
   z-index: 1000;
 }
 
-/* Responsive */
-@media (max-width: 768px) {
+/* Responsive — mobile + tablet (canonical breakpoint) */
+@media (max-width: 1023px) {
   .container {
     padding: 16px;
   }

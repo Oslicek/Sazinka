@@ -2936,7 +2936,7 @@ Automaticky zmizí po úspěšném opětovném připojení.
 ---
 
 *Dokument vytvořen: 2026-01-31*  
-*Poslední aktualizace: 2026-02-24 (Sekce 18 v13: Phase 0–10 done)*
+*Poslední aktualizace: 2026-02-24 (Sekce 18 v14: Phase 0–11 done)*
 
 ---
 
@@ -3636,7 +3636,7 @@ smaller headings. These pages already have some 900px/600px rules; the
 
 ---
 
-#### Phase 11: Settings & Admin — Minor Fixes
+#### Phase 11: Settings & Admin — Minor Fixes ✅ DONE
 
 **Scope:** Settings and Admin pages are mostly single-column already.
 Minor touch-up needed.
@@ -3645,6 +3645,9 @@ Minor touch-up needed.
 - Admin: service cards stack at 639px (already partly works)
 
 **Commit after Phase 11.**
+> ✅ 2 tests passing — `settingsAdmin.phase11.test.ts` (new file)
+> - `Settings.module.css`: merged 768px + 640px rules into canonical 1023px block; added tab horizontal scroll
+> - `Admin.module.css`: 768px → 1023px; service cards stack, log controls full-width
 
 ---
 
