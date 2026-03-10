@@ -186,6 +186,10 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let verify_email_sub   = client.subscribe("sazinka.auth.email.verify").await?;
     let resend_verify_sub  = client.subscribe("sazinka.auth.email.resend").await?;
     let waitlist_join_sub  = client.subscribe("sazinka.waitlist.join").await?;
+    let onb_profile_sub    = client.subscribe("sazinka.onboarding.profile").await?;
+    let onb_devices_sub    = client.subscribe("sazinka.onboarding.devices").await?;
+    let onb_complete_sub   = client.subscribe("sazinka.onboarding.complete").await?;
+    let dev_verify_sub     = client.subscribe("sazinka.auth.dev.verify").await?;
 
     // Auth subscriptions
     let auth_register_sub = client.subscribe("sazinka.auth.register").await?;
@@ -693,6 +697,42 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         tokio::spawn(async move {
             if let Err(e) = onboarding::handle_waitlist_join(client_wl, waitlist_join_sub, pool_wl, rl_wl).await {
                 error!("onboarding.waitlist_join error: {}", e);
+            }
+        });
+    }
+    {
+        let client_op = client.clone();
+        let pool_op = pool.clone();
+        tokio::spawn(async move {
+            if let Err(e) = onboarding::handle_onboarding_profile(client_op, onb_profile_sub, pool_op).await {
+                error!("onboarding.profile error: {}", e);
+            }
+        });
+    }
+    {
+        let client_od = client.clone();
+        let pool_od = pool.clone();
+        tokio::spawn(async move {
+            if let Err(e) = onboarding::handle_onboarding_devices(client_od, onb_devices_sub, pool_od).await {
+                error!("onboarding.devices error: {}", e);
+            }
+        });
+    }
+    {
+        let client_oc = client.clone();
+        let pool_oc = pool.clone();
+        tokio::spawn(async move {
+            if let Err(e) = onboarding::handle_onboarding_complete(client_oc, onb_complete_sub, pool_oc).await {
+                error!("onboarding.complete error: {}", e);
+            }
+        });
+    }
+    {
+        let client_dv = client.clone();
+        let pool_dv = pool.clone();
+        tokio::spawn(async move {
+            if let Err(e) = onboarding::handle_dev_verify(client_dv, dev_verify_sub, pool_dv).await {
+                error!("auth.dev.verify error: {}", e);
             }
         });
     }

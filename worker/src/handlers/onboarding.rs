@@ -6,6 +6,9 @@
 //!   - `handle_verify_email`         — `sazinka.auth.email.verify`
 //!   - `handle_resend_verification`  — `sazinka.auth.email.resend`
 //!   - `handle_waitlist_join`        — `sazinka.waitlist.join`
+//!   - `handle_onboarding_profile`   — `sazinka.onboarding.profile`
+//!   - `handle_onboarding_devices`   — `sazinka.onboarding.devices`
+//!   - `handle_onboarding_complete`  — `sazinka.onboarding.complete`
 
 use std::sync::Arc;
 
@@ -88,6 +91,64 @@ pub struct WaitlistJoinRequest {
 pub struct WaitlistJoinResponse {
     pub ok: bool,
     pub message: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OnboardingProfileRequest {
+    pub email: String,
+    pub name: String,
+    pub business_name: Option<String>,
+    pub phone: Option<String>,
+    pub ico: Option<String>,
+    pub locale: String,
+    pub country: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectedBuiltin {
+    pub device_type_key: String,
+    pub default_revision_duration_minutes: i32,
+    pub default_revision_interval_months: i32,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomDeviceType {
+    pub label: String,
+    pub duration: i32,
+    pub interval: i32,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OnboardingDevicesRequest {
+    pub email: String,
+    pub selected_builtins: Vec<SelectedBuiltin>,
+    pub custom_types: Vec<CustomDeviceType>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DepotPayload {
+    pub name: String,
+    pub street: String,
+    pub city: String,
+    pub postal_code: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OnboardingCompleteRequest {
+    pub email: String,
+    pub depot: DepotPayload,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OnboardingOkResponse {
+    pub ok: bool,
 }
 
 // =============================================================================
@@ -613,6 +674,460 @@ pub async fn handle_waitlist_join(
                 let _ = client.publish(reply, serde_json::to_vec(&resp)?.into()).await;
             }
         }
+    }
+    Ok(())
+}
+
+// =============================================================================
+// DEV ONLY: handle_dev_verify  — `sazinka.auth.dev.verify`
+// Instantly marks an email as verified (skips the email flow).
+// Only active in non-release builds.
+// =============================================================================
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DevVerifyRequest {
+    pub email: String,
+}
+
+pub async fn handle_dev_verify(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        let reply = match msg.reply {
+            Some(ref r) => r.clone(),
+            None => continue,
+        };
+
+        let request: Request<DevVerifyRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(r) => r,
+            Err(e) => {
+                let err = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+                continue;
+            }
+        };
+
+        let email = normalize_email(&request.payload.email);
+        warn!("[DEV] Force-verifying email: {}", email);
+
+        let _ = sqlx::query(
+            r#"UPDATE users
+               SET email_verified = true,
+                   verification_token_hash = NULL,
+                   verification_expires = NULL,
+                   onboarding_step = GREATEST(onboarding_step, 2)
+               WHERE email = $1 AND email_verified = false"#,
+        )
+        .bind(&email)
+        .execute(&pool)
+        .await;
+
+        let resp = SuccessResponse::new(request.id, OnboardingOkResponse { ok: true });
+        let _ = client.publish(reply, serde_json::to_vec(&resp)?.into()).await;
+    }
+    Ok(())
+}
+
+// =============================================================================
+// B4: handle_onboarding_profile  — `sazinka.onboarding.profile`
+// =============================================================================
+
+pub async fn handle_onboarding_profile(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        let reply = match msg.reply {
+            Some(ref r) => r.clone(),
+            None => continue,
+        };
+
+        let request: Request<OnboardingProfileRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(r) => r,
+            Err(e) => {
+                let err = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+                continue;
+            }
+        };
+
+        let p = &request.payload;
+        let email = normalize_email(&p.email);
+
+        if p.name.trim().is_empty() {
+            let err = ErrorResponse::new(request.id, "VALIDATION_ERROR", "Name is required.");
+            let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+            continue;
+        }
+
+        let result = sqlx::query(
+            r#"UPDATE users
+               SET name = $1,
+                   business_name = $2,
+                   phone = $3,
+                   ico = $4,
+                   locale = $5,
+                   country = $6,
+                   onboarding_step = GREATEST(onboarding_step, 3)
+               WHERE email = $7 AND email_verified = true"#,
+        )
+        .bind(p.name.trim())
+        .bind(&p.business_name)
+        .bind(&p.phone)
+        .bind(&p.ico)
+        .bind(&p.locale)
+        .bind(&p.country)
+        .bind(&email)
+        .execute(&pool)
+        .await;
+
+        match result {
+            Err(e) => {
+                error!("onboarding.profile DB error: {}", e);
+                let err = ErrorResponse::new(request.id, "DB_ERROR", "Internal error.");
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+            }
+            Ok(r) if r.rows_affected() == 0 => {
+                let err = ErrorResponse::new(request.id, "USER_NOT_FOUND", "User not found or email not verified.");
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+            }
+            Ok(_) => {
+                info!("Onboarding profile saved for {}", email);
+                let resp = SuccessResponse::new(request.id, OnboardingOkResponse { ok: true });
+                let _ = client.publish(reply, serde_json::to_vec(&resp)?.into()).await;
+            }
+        }
+    }
+    Ok(())
+}
+
+// =============================================================================
+// B5: handle_onboarding_devices  — `sazinka.onboarding.devices`
+// =============================================================================
+
+pub async fn handle_onboarding_devices(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        let reply = match msg.reply {
+            Some(ref r) => r.clone(),
+            None => continue,
+        };
+
+        let request: Request<OnboardingDevicesRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(r) => r,
+            Err(e) => {
+                let err = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+                continue;
+            }
+        };
+
+        let p = &request.payload;
+        let email = normalize_email(&p.email);
+
+        if p.selected_builtins.is_empty() && p.custom_types.is_empty() {
+            let err = ErrorResponse::new(request.id, "VALIDATION_ERROR", "Select at least one device type.");
+            let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+            continue;
+        }
+
+        let user_row = sqlx::query_as::<_, (Uuid,)>(
+            "SELECT id FROM users WHERE email = $1 AND email_verified = true",
+        )
+        .bind(&email)
+        .fetch_optional(&pool)
+        .await;
+
+        let user_id = match user_row {
+            Err(e) => {
+                error!("onboarding.devices user lookup error: {}", e);
+                let err = ErrorResponse::new(request.id, "DB_ERROR", "Internal error.");
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+                continue;
+            }
+            Ok(None) => {
+                let err = ErrorResponse::new(request.id, "USER_NOT_FOUND", "User not found.");
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+                continue;
+            }
+            Ok(Some((uid,))) => uid,
+        };
+
+        let tenant_row = sqlx::query_as::<_, (Uuid,)>(
+            "SELECT tenant_id FROM user_tenants WHERE user_id = $1 LIMIT 1",
+        )
+        .bind(user_id)
+        .fetch_optional(&pool)
+        .await;
+
+        let tenant_id = match tenant_row {
+            Err(e) => {
+                error!("onboarding.devices tenant lookup error: {}", e);
+                let err = ErrorResponse::new(request.id, "DB_ERROR", "Internal error.");
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+                continue;
+            }
+            Ok(None) => {
+                // Auto-create tenant for this user (first time through onboarding)
+                let business = sqlx::query_as::<_, (String, Option<String>)>(
+                    "SELECT name, business_name FROM users WHERE id = $1",
+                )
+                .bind(user_id)
+                .fetch_one(&pool)
+                .await;
+
+                match business {
+                    Err(e) => {
+                        error!("onboarding.devices tenant create error: {}", e);
+                        let err = ErrorResponse::new(request.id, "DB_ERROR", "Internal error.");
+                        let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+                        continue;
+                    }
+                    Ok((name, biz)) => {
+                        let tenant_name = biz.unwrap_or(name);
+                        let tid = sqlx::query_as::<_, (Uuid,)>(
+                            "INSERT INTO tenants (name) VALUES ($1) RETURNING id",
+                        )
+                        .bind(&tenant_name)
+                        .fetch_one(&pool)
+                        .await;
+
+                        match tid {
+                            Err(e) => {
+                                error!("onboarding.devices tenant insert error: {}", e);
+                                let err = ErrorResponse::new(request.id, "DB_ERROR", "Internal error.");
+                                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+                                continue;
+                            }
+                            Ok((new_tid,)) => {
+                                let _ = sqlx::query(
+                                    "INSERT INTO user_tenants (user_id, tenant_id, role) VALUES ($1, $2, 'owner')",
+                                )
+                                .bind(user_id)
+                                .bind(new_tid)
+                                .execute(&pool)
+                                .await;
+                                new_tid
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(Some((tid,))) => tid,
+        };
+
+        // Update durations/intervals for selected builtins
+        for bt in &p.selected_builtins {
+            let _ = sqlx::query(
+                r#"UPDATE device_type_configs
+                   SET default_revision_duration_minutes = $1,
+                       default_revision_interval_months = $2,
+                       is_active = true
+                   WHERE tenant_id = $3 AND device_type_key = $4"#,
+            )
+            .bind(bt.default_revision_duration_minutes)
+            .bind(bt.default_revision_interval_months)
+            .bind(tenant_id)
+            .bind(&bt.device_type_key)
+            .execute(&pool)
+            .await;
+        }
+
+        // Deactivate builtins not selected
+        let selected_keys: Vec<String> = p.selected_builtins.iter().map(|b| b.device_type_key.clone()).collect();
+        let _ = sqlx::query(
+            r#"UPDATE device_type_configs
+               SET is_active = false
+               WHERE tenant_id = $1 AND is_builtin = true AND NOT (device_type_key = ANY($2))"#,
+        )
+        .bind(tenant_id)
+        .bind(&selected_keys)
+        .execute(&pool)
+        .await;
+
+        // Insert custom types
+        for (i, ct) in p.custom_types.iter().enumerate() {
+            let key = format!("custom_{}", Uuid::new_v4().simple());
+            let _ = sqlx::query(
+                r#"INSERT INTO device_type_configs
+                   (tenant_id, device_type_key, label, is_builtin,
+                    default_revision_duration_minutes, default_revision_interval_months, sort_order)
+                   VALUES ($1, $2, $3, false, $4, $5, $6)
+                   ON CONFLICT (tenant_id, device_type_key) DO NOTHING"#,
+            )
+            .bind(tenant_id)
+            .bind(&key)
+            .bind(&ct.label)
+            .bind(ct.duration)
+            .bind(ct.interval)
+            .bind((100 + i) as i32)
+            .execute(&pool)
+            .await;
+        }
+
+        // Advance onboarding step
+        let _ = sqlx::query(
+            "UPDATE users SET onboarding_step = GREATEST(onboarding_step, 4) WHERE id = $1",
+        )
+        .bind(user_id)
+        .execute(&pool)
+        .await;
+
+        info!("Onboarding devices saved for {} ({} builtin, {} custom)", email, p.selected_builtins.len(), p.custom_types.len());
+        let resp = SuccessResponse::new(request.id, OnboardingOkResponse { ok: true });
+        let _ = client.publish(reply, serde_json::to_vec(&resp)?.into()).await;
+    }
+    Ok(())
+}
+
+// =============================================================================
+// B8: handle_onboarding_complete  — `sazinka.onboarding.complete`
+// Geocoding is fire-and-forget via JetStream; the wizard never blocks on it.
+// =============================================================================
+
+pub async fn handle_onboarding_complete(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        let reply = match msg.reply {
+            Some(ref r) => r.clone(),
+            None => continue,
+        };
+
+        let request: Request<OnboardingCompleteRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(r) => r,
+            Err(e) => {
+                let err = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+                continue;
+            }
+        };
+
+        let p = &request.payload;
+        let email = normalize_email(&p.email);
+        let d = &p.depot;
+
+        let user_row = sqlx::query_as::<_, (Uuid, String)>(
+            "SELECT id, COALESCE(locale, 'en') FROM users WHERE email = $1 AND email_verified = true",
+        )
+        .bind(&email)
+        .fetch_optional(&pool)
+        .await;
+
+        let (user_id, user_locale) = match user_row {
+            Err(e) => {
+                error!("onboarding.complete user lookup error: {}", e);
+                let err = ErrorResponse::new(request.id, "DB_ERROR", "Internal error.");
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+                continue;
+            }
+            Ok(None) => {
+                let err = ErrorResponse::new(request.id, "USER_NOT_FOUND", "User not found.");
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+                continue;
+            }
+            Ok(Some(row)) => row,
+        };
+
+        // Delete any existing primary depot, then insert with lat/lng = 0 (pending geocode)
+        let _ = sqlx::query("DELETE FROM depots WHERE user_id = $1 AND is_primary = true")
+            .bind(user_id)
+            .execute(&pool)
+            .await;
+
+        let depot_result = sqlx::query_as::<_, (Uuid,)>(
+            r#"INSERT INTO depots (user_id, name, street, city, postal_code, lat, lng, is_primary)
+               VALUES ($1, $2, $3, $4, $5, 0, 0, true)
+               RETURNING id"#,
+        )
+        .bind(user_id)
+        .bind(&d.name)
+        .bind(&d.street)
+        .bind(&d.city)
+        .bind(&d.postal_code)
+        .fetch_one(&pool)
+        .await;
+
+        let depot_id = match depot_result {
+            Err(e) => {
+                error!("onboarding.complete depot insert error: {}", e);
+                let err = ErrorResponse::new(request.id, "DB_ERROR", "Failed to save depot.");
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+                continue;
+            }
+            Ok((id,)) => id,
+        };
+
+        // Fire async geocode job via NATS (fire-and-forget)
+        let geocode_payload = serde_json::json!({
+            "depot_id": depot_id.to_string(),
+            "user_id": user_id.to_string(),
+            "street": d.street,
+            "city": d.city,
+            "postal_code": d.postal_code,
+        });
+        let subject: async_nats::Subject = "sazinka.geocode.address.submit".into();
+        if let Err(e) = client
+            .publish(subject, serde_json::to_vec(&geocode_payload).unwrap_or_default().into())
+            .await
+        {
+            warn!("Failed to publish depot geocode job: {}", e);
+        }
+
+        // Create default crew linked to the depot, name localized
+        let crew_name = match user_locale.as_str() {
+            "cs" => "Posádka 1",
+            "sk" => "Posádka 1",
+            _ => "Crew 1",
+        };
+
+        let crew_exists = sqlx::query_as::<_, (bool,)>(
+            "SELECT EXISTS(SELECT 1 FROM crews WHERE user_id = $1)",
+        )
+        .bind(user_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap_or((false,));
+
+        if !crew_exists.0 {
+            let _ = sqlx::query(
+                r#"INSERT INTO crews (user_id, name, home_depot_id)
+                   VALUES ($1, $2, $3)"#,
+            )
+            .bind(user_id)
+            .bind(crew_name)
+            .bind(depot_id)
+            .execute(&pool)
+            .await;
+        }
+
+        // Mark onboarding complete; address stored on user for quick access
+        let _ = sqlx::query(
+            r#"UPDATE users
+               SET onboarding_step = 6,
+                   onboarding_completed_at = NOW(),
+                   street = $1, city = $2, postal_code = $3
+               WHERE id = $4"#,
+        )
+        .bind(&d.street)
+        .bind(&d.city)
+        .bind(&d.postal_code)
+        .bind(user_id)
+        .execute(&pool)
+        .await;
+
+        info!("Onboarding complete for {} (user_id={}), depot geocode queued", email, user_id);
+        let resp = SuccessResponse::new(request.id, OnboardingOkResponse { ok: true });
+        let _ = client.publish(reply, serde_json::to_vec(&resp)?.into()).await;
     }
     Ok(())
 }
