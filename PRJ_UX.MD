@@ -2936,7 +2936,7 @@ Automaticky zmizí po úspěšném opětovném připojení.
 ---
 
 *Dokument vytvořen: 2026-01-31*  
-*Poslední aktualizace: 2026-02-24 (Sekce 18 v11: Phase 0–8 done)*
+*Poslední aktualizace: 2026-02-24 (Sekce 18 v12: Phase 0–9 done)*
 
 ---
 
@@ -3535,7 +3535,7 @@ GREEN:
 
 ---
 
-#### Phase 9: Dialogs & Drawers — Full-Screen Sheets on Mobile
+#### Phase 9: Dialogs & Drawers — Full-Screen Sheets on Mobile ✅ DONE
 
 **Scope:** Schedule dialog, customer edit drawer, quick-visit dialog,
 completion dialog → slide-up full-screen sheets on phones.
@@ -3582,6 +3582,12 @@ it('renders as centered/side dialog on desktop (unchanged)', () => { ... });
 GREEN — add the `@media` block to each CSS file.
 
 **Commit after Phase 9.**
+> ✅ 10 tests passing — `dialogs.phase9.test.tsx` (new file)
+> - `ScheduleDialog.module.css`: 540px → 1023px + 639px full-screen sheet
+> - `CustomerEditDrawer.module.css`: 640px → 1023px + 639px full-screen sheet
+> - `QuickVisitDialog.module.css`: 680px → 1023px + 639px full-screen sheet
+> - `CompleteRevisionDialog.module.css`: new 1023px + 639px rules
+> - `DeleteAccountDialog.module.css`: 640px → 1023px + 639px full-screen sheet
 
 ---
 
