@@ -124,6 +124,15 @@ export function Layout({ children }: LayoutProps) {
               
               {hasPermission('page:about') && <MenuLink to="/about" onClick={handleMenuItemClick}>{t('about')}</MenuLink>}
             </div>
+
+            {user && (
+              <div className={styles.menuFooter}>
+                <span className={styles.menuUserName}>{user.name}</span>
+                <button className={styles.menuLogoutButton} onClick={() => { setMenuOpen(false); handleLogout(); }}>
+                  {t('logout')}
+                </button>
+              </div>
+            )}
           </nav>
         </>
       )}

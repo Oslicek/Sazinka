@@ -290,3 +290,74 @@
   background-color: var(--color-border);
   margin: 0.5rem 0;
 }
+
+.menuFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-top: 1px solid var(--color-border);
+  gap: 0.75rem;
+}
+
+.menuUserName {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menuLogoutButton {
+  flex-shrink: 0;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.menuLogoutButton:hover {
+  color: var(--color-error);
+  border-color: var(--color-error);
+}
+
+/* ── Responsive: mobile (hamburger only) ──────────────────────────────────── */
+
+/* On desktop: hide hamburger, show horizontal nav */
+@media (min-width: 768px) {
+  .hamburger {
+    display: none;
+  }
+}
+
+/* On mobile: hide horizontal nav and non-essential header-right items */
+@media (max-width: 767px) {
+  .nav {
+    display: none;
+  }
+
+  /* Keep header compact — hide username text, keep status dot + logout */
+  .userName {
+    display: none;
+  }
+
+  /* Tighten spacing so status + logout button fit */
+  .headerRight {
+    gap: 0.5rem;
+  }
+
+  .userMenu {
+    gap: 0.5rem;
+    padding-left: 0.5rem;
+  }
+
+  /* Shrink main padding on small screens */
+  .main {
+    padding: 1rem 0.75rem;
+  }
+}
