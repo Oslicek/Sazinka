@@ -2936,4 +2936,681 @@ Automaticky zmizí po úspěšném opětovném připojení.
 ---
 
 *Dokument vytvořen: 2026-01-31*  
-*Poslední aktualizace: 2026-02-25 (Sekce 17: UX pro výpadek při worker restartu)*
+*Poslední aktualizace: 2026-02-24 (Sekce 18: Responsive Mobile Layout)*
+
+---
+
+## 18. Responsive Mobile Layout — Implementation Plan
+
+> **Goal:** Make the entire app usable on phones (320px–640px) and tablets
+> (641px–1023px) while keeping the existing desktop layout (≥ 1024px)
+> **completely unchanged**.
+>
+> **Constraint:** Maximize shared components, hooks, and CSS. No code
+> duplication between mobile and desktop paths.
+>
+> **Status:** Planning
+
+### 18.1 Current State Audit
+
+**What exists (partial):**
+- `<meta name="viewport">` in `index.html`
+- Layout header: hamburger on mobile, horizontal nav on desktop (768px breakpoint)
+- Planner: sidebar stacks below map at 900px
+- Calendar: detail panel slides from bottom at 768px
+- Customers: card layout adapts at 768px
+- WorkLog: progressive column hiding at 900px / 600px
+- PlanningInbox: tighter padding/chips at 768px
+- SplitView: stacks horizontal panels vertically at 768px
+
+**What's broken or missing:**
+
+| # | Issue | Severity |
+|---|-------|----------|
+| 1 | **SplitView stacking breaks multi-panel pages** — ThreePanelLayout stacks 3 panels vertically on mobile, each 200px+ min-height. On a 667px phone only the first panel is visible. | Critical |
+| 2 | **No touch-friendly target sizes** — filter chips (10px height), buttons (22px height) far below 44px minimum. | Critical |
+| 3 | **Inconsistent breakpoints** — 5 different values used: 600px (21 files), 767px (1), 768px (13), 769px (1), 900px (8). No tokens. | High |
+| 4 | **No body scroll lock** when hamburger drawer is open — page scrolls behind overlay on touch. | High |
+| 5 | **Tables overflow** on narrow screens — WorkLog, Calendar week grid. | High |
+| 6 | **Fixed pixel widths** — Planner sidebar `420px`, Calendar detail panel `420px`. | Medium |
+| 7 | **No `useIsMobile` hook** — components can't conditionally render mobile UI. | Medium |
+| 8 | **Small font sizes** — `0.625rem` (10px), `0.6875rem` (11px) used in filters. | Medium |
+| 9 | **No safe-area insets** for iOS notch/home-indicator. | Low |
+| 10 | **SplitView resizer mouse-only** — no touch events. | Low |
+
+### 18.2 Design Decisions
+
+**Breakpoint system (3 tiers):**
+
+```
+Phone:   0 – 639px    → single-column, hamburger nav, tab-switched panels
+Tablet:  640px – 1023px → adapted layouts, may stack 2 columns
+Desktop: ≥ 1024px       → UNCHANGED (current layout)
+```
+
+> Since CSS custom properties can't be used in `@media` queries, breakpoint
+> values are used as raw numbers. The canonical values live in the shared
+> `useIsMobile` hook and are documented here as the single source of truth.
+
+**Strategy: Progressive enhancement from desktop down.**
+
+All changes are additive `@media (max-width)` rules. No existing desktop
+rule is modified or removed. Desktop rendering is regression-proof.
+
+**Shared infrastructure (new files):**
+
+| File | Purpose |
+|------|---------|
+| `hooks/useBreakpoint.ts` | Single hook: returns `'phone' \| 'tablet' \| 'desktop'`, `isMobile` (phone), `isTouch` (phone+tablet) |
+| `index.css` additions | Breakpoint tokens comment, touch-target global rule, safe-area insets, body scroll-lock class |
+| `components/common/MobileTabBar.tsx` | Shared tab-switching bar for pages that need panel switching on mobile |
+| `components/common/MobileTabBar.module.css` | Styles for the shared tab bar |
+
+### 18.3 Implementation Phases (TDD)
+
+---
+
+#### Phase 1: Foundation — Breakpoints, Hook, Global CSS
+
+**Scope:** Shared infrastructure that all subsequent phases depend on.
+
+**1.1 — `useBreakpoint` hook**
+
+RED — test file `hooks/useBreakpoint.test.ts`:
+```typescript
+describe('useBreakpoint', () => {
+  it('returns "desktop" for window width >= 1024', () => { ... });
+  it('returns "tablet" for window width 640–1023', () => { ... });
+  it('returns "phone" for window width < 640', () => { ... });
+  it('isMobile is true only for phone', () => { ... });
+  it('isTouch is true for phone and tablet', () => { ... });
+  it('updates on window resize', () => { ... });
+  it('cleans up resize listener on unmount', () => { ... });
+});
+```
+
+GREEN — `hooks/useBreakpoint.ts`:
+- Uses `window.matchMedia` with `(max-width: 639px)` and `(max-width: 1023px)`
+- Returns `{ breakpoint, isMobile, isTouch }`
+- Memoized, SSR-safe (defaults to `'desktop'`)
+
+REFACTOR — extract breakpoint constants to the hook file:
+```typescript
+export const BP_PHONE = 639;
+export const BP_TABLET = 1023;
+```
+
+**1.2 — Global CSS additions to `index.css`**
+
+No unit test (pure CSS). Verified visually + by Phase 1 integration test.
+
+Changes to `:root`:
+```css
+/* Safe-area insets for notched devices */
+--safe-top: env(safe-area-inset-top, 0px);
+--safe-bottom: env(safe-area-inset-bottom, 0px);
+--safe-left: env(safe-area-inset-left, 0px);
+--safe-right: env(safe-area-inset-right, 0px);
+```
+
+New rules:
+```css
+/* Body scroll lock — toggled by Layout.tsx when drawer is open */
+body.menu-open {
+  overflow: hidden;
+  position: fixed;
+  width: 100%;
+}
+
+/* Touch-friendly minimum target size on mobile */
+@media (max-width: 639px) {
+  button, a, select, [role="button"], [role="tab"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Floor font size at 12px on mobile */
+  html { font-size: max(16px, 1rem); }
+}
+```
+
+**1.3 — Body scroll lock in Layout.tsx**
+
+RED — test `components/Layout.test.tsx`:
+```typescript
+describe('Layout scroll lock', () => {
+  it('adds menu-open class to body when drawer opens', () => { ... });
+  it('removes menu-open class when drawer closes', () => { ... });
+  it('removes menu-open class on unmount', () => { ... });
+});
+```
+
+GREEN — add `useEffect` in Layout.tsx:
+```typescript
+useEffect(() => {
+  document.body.classList.toggle('menu-open', menuOpen);
+  return () => document.body.classList.remove('menu-open');
+}, [menuOpen]);
+```
+
+**1.4 — Safe-area insets on Layout header**
+
+CSS-only — add to `Layout.module.css`:
+```css
+@media (max-width: 639px) {
+  .header {
+    padding-top: var(--safe-top);
+    padding-left: max(0.75rem, var(--safe-left));
+    padding-right: max(0.75rem, var(--safe-right));
+  }
+}
+```
+
+**Commit after Phase 1.** All tests green. Desktop unaffected.
+
+---
+
+#### Phase 2: Shared MobileTabBar Component
+
+**Scope:** Reusable tab bar for pages that switch between panels on mobile
+(Inbox: List/Map/Detail; Planner: Sidebar/Map; CustomerDetail: Info/Tabs).
+
+**2.1 — MobileTabBar component**
+
+RED — test `components/common/MobileTabBar.test.tsx`:
+```typescript
+describe('MobileTabBar', () => {
+  it('renders all provided tabs', () => { ... });
+  it('highlights the active tab', () => { ... });
+  it('calls onTabChange when a tab is tapped', () => { ... });
+  it('renders badge count when provided', () => { ... });
+  it('is not rendered when breakpoint is desktop', () => { ... });
+});
+```
+
+GREEN — `components/common/MobileTabBar.tsx`:
+```typescript
+interface Tab {
+  id: string;
+  label: string;
+  badge?: number;
+}
+
+interface MobileTabBarProps {
+  tabs: Tab[];
+  activeTab: string;
+  onTabChange: (tabId: string) => void;
+}
+
+export function MobileTabBar({ tabs, activeTab, onTabChange }: MobileTabBarProps) {
+  const { isMobile } = useBreakpoint();
+  if (!isMobile) return null;
+  // render tab bar
+}
+```
+
+CSS — `MobileTabBar.module.css`: fixed bottom bar, 44px height, equally
+spaced tabs, active indicator, safe-area bottom padding.
+
+**Commit after Phase 2.** New shared component, no pages changed yet.
+
+---
+
+#### Phase 3: Layout Header — Mobile Polish
+
+**Scope:** Refine the header for narrow screens.
+
+**3.1 — Header compacting**
+
+CSS-only changes to `Layout.module.css`:
+
+```css
+@media (max-width: 639px) {
+  .header {
+    height: 48px;
+    padding: 0 0.75rem;
+  }
+
+  /* Hide "Online"/"Offline" text, keep dot only */
+  .statusText { display: none; }
+
+  /* Hide active-jobs text, keep indicator dot */
+  .activeJobsText { display: none; }
+
+  .logoutButton { display: none; }
+
+  .userMenu { display: none; }
+}
+```
+
+**3.2 — Wrap status text in a span for selective hiding**
+
+Small JSX change in Layout.tsx — wrap the online/offline text in a
+`<span className={styles.statusText}>` so CSS can target it without
+affecting the dot.
+
+RED — test:
+```typescript
+it('hides status text on mobile but shows dot', () => { ... });
+it('shows full status on desktop', () => { ... });
+```
+
+GREEN — add the span wrapper + CSS.
+
+REFACTOR — ensure the drawer footer (already has user name + logout)
+is the only place to access user info on mobile.
+
+**Commit after Phase 3.**
+
+---
+
+#### Phase 4: PlanningInbox — Tab-Switched Panels on Mobile
+
+**Scope:** The most complex page. Three-panel layout → tab-switched
+single-panel on phones. Matches the PRJ_UX.MD Section 8.1 mobile layout.
+
+**4.1 — Mobile state management**
+
+RED — test `pages/PlanningInbox.test.tsx` additions:
+```typescript
+describe('PlanningInbox mobile', () => {
+  it('renders MobileTabBar with List/Map/Detail tabs on phone', () => { ... });
+  it('shows only the inbox list when List tab is active', () => { ... });
+  it('shows only the map when Map tab is active', () => { ... });
+  it('shows candidate detail when Detail tab is active', () => { ... });
+  it('auto-switches to Detail tab when a candidate is selected', () => { ... });
+  it('shows badge on Detail tab when candidate is selected', () => { ... });
+  it('does NOT render MobileTabBar on desktop', () => { ... });
+  it('renders ThreePanelLayout on desktop (unchanged)', () => { ... });
+});
+```
+
+GREEN — in `PlanningInbox.tsx`:
+```typescript
+const { isMobile } = useBreakpoint();
+const [mobileTab, setMobileTab] = useState<'list' | 'map' | 'detail'>('list');
+
+// Auto-switch to detail when candidate selected
+useEffect(() => {
+  if (isMobile && selectedCandidate) setMobileTab('detail');
+}, [isMobile, selectedCandidate]);
+
+// Render:
+if (isMobile) {
+  return (
+    <div className={styles.page}>
+      <Header ... />
+      <MobileTabBar tabs={[
+        { id: 'list', label: t('list') },
+        { id: 'map', label: t('map') },
+        { id: 'detail', label: t('detail'), badge: selectedCandidate ? 1 : 0 },
+      ]} activeTab={mobileTab} onTabChange={setMobileTab} />
+      {mobileTab === 'list' && <InboxList ... />}
+      {mobileTab === 'map' && <MapPanel ... />}
+      {mobileTab === 'detail' && <DetailPanel ... />}
+    </div>
+  );
+}
+// else: existing desktop ThreePanelLayout unchanged
+```
+
+**4.2 — Inbox mobile CSS**
+
+New `@media (max-width: 639px)` block in `PlanningInbox.module.css`:
+- `.page`: padding-bottom for MobileTabBar height
+- `.content`: height `calc(100vh - 48px - 44px)` (header + tab bar)
+- Filter panel: chips wrap, full-width
+- Candidate cards: slightly larger touch padding
+
+No existing desktop rules modified.
+
+**Commit after Phase 4.** Inbox fully usable on phones.
+
+---
+
+#### Phase 5: Planner — Stacked Layout on Mobile
+
+**Scope:** Sidebar + map side-by-side → map on top, sidebar below, resizer
+hidden. Already partially working at 900px, needs refinement for phones.
+
+**5.1 — Tests**
+
+RED:
+```typescript
+describe('Planner mobile', () => {
+  it('renders map above sidebar on phone', () => { ... });
+  it('hides sidebar resizer on phone', () => { ... });
+  it('filters stack vertically on phone', () => { ... });
+  it('desktop layout is unchanged', () => { ... });
+});
+```
+
+GREEN — CSS changes to `Planner.module.css`:
+```css
+@media (max-width: 639px) {
+  .planner {
+    flex-direction: column;
+    height: auto;
+    min-height: calc(100vh - 48px);
+  }
+
+  .sidebar {
+    width: 100% !important;
+    order: 1;
+    max-height: none;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+
+  .mapWrapper {
+    order: 0;
+    height: 200px;
+    border-radius: 0;
+  }
+
+  .sidebarResizer { display: none; }
+  .routeListResizer { display: none; }
+}
+```
+
+**Commit after Phase 5.**
+
+---
+
+#### Phase 6: Calendar — Day View Default + Grid Fix
+
+**Scope:** Week grid 7-column layout is unusable on phones. Default to day
+or agenda view. Day detail panel → bottom sheet.
+
+**6.1 — Tests**
+
+RED:
+```typescript
+describe('Calendar mobile', () => {
+  it('defaults to day view on phone', () => { ... });
+  it('week grid scrolls horizontally on phone', () => { ... });
+  it('month stats fill width', () => { ... });
+  it('detail panel renders as bottom sheet on phone', () => { ... });
+  it('desktop defaults to month view (unchanged)', () => { ... });
+});
+```
+
+GREEN:
+- Calendar page uses `useBreakpoint` to set default view to `'day'` on phone
+- `CalendarGrid.module.css`: horizontal scroll with snap on phone
+- Existing 768px detail-panel bottom-sheet rule already works; lower it to 639px
+
+**Commit after Phase 6.**
+
+---
+
+#### Phase 7: Customers — Full-Width Cards + Toolbar
+
+**Scope:** Already partially responsive. Needs toolbar refinement and
+touch-target fix.
+
+**7.1 — Tests**
+
+RED:
+```typescript
+describe('Customers mobile', () => {
+  it('toolbar stacks vertically on phone', () => { ... });
+  it('search input fills width on phone', () => { ... });
+  it('customer cards stack vertically on phone', () => { ... });
+  it('desktop table/card layout unchanged', () => { ... });
+});
+```
+
+GREEN — mostly CSS adjustments:
+- Already has 768px breakpoint; lower customer-card stacking to 639px
+  for a phone-only card view, keeping 768px rules for tablet
+- Toolbar: full-width search, stacked filter selects (already exists)
+- Customer card: enlarge touch area to 44px height per row
+
+**Commit after Phase 7.**
+
+---
+
+#### Phase 8: WorkLog — Card Layout on Phone
+
+**Scope:** Table with progressive column hiding → card-based list on phone.
+
+**8.1 — Tests**
+
+RED:
+```typescript
+describe('WorkLog mobile', () => {
+  it('renders card layout instead of table on phone', () => { ... });
+  it('card shows time, customer, status, crew', () => { ... });
+  it('quick-create button fills width on phone', () => { ... });
+  it('desktop table layout unchanged', () => { ... });
+});
+```
+
+GREEN:
+- `WorkLog.tsx`: use `useBreakpoint()` to conditionally render a card list
+  vs. table. Extract the card item into a shared sub-component.
+- `WorkLog.module.css`: new `.mobileCard` class used only inside
+  `@media (max-width: 639px)`. Desktop rules untouched.
+
+**Commit after Phase 8.**
+
+---
+
+#### Phase 9: Dialogs & Drawers — Full-Screen Sheets on Mobile
+
+**Scope:** Schedule dialog, customer edit drawer, quick-visit dialog,
+completion dialog → slide-up full-screen sheets on phones.
+
+**9.1 — Shared CSS pattern**
+
+Each dialog's `.module.css` gets the same pattern:
+```css
+@media (max-width: 639px) {
+  .dialog {                    /* or .drawer, .overlay, etc. */
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    max-height: 100%;
+    border-radius: 0;
+    animation: slideUp 0.3s ease;
+    overflow-y: auto;
+    padding-bottom: calc(1rem + var(--safe-bottom));
+  }
+}
+```
+
+Files to update:
+- `ScheduleDialog.module.css`
+- `CustomerEditDrawer.module.css`
+- `QuickVisitDialog.module.css`
+- `CompleteRevisionDialog.module.css`
+- `DeleteAccountDialog.module.css`
+
+RED — test for each dialog:
+```typescript
+it('renders as full-screen sheet on phone', () => { ... });
+it('renders as centered/side dialog on desktop (unchanged)', () => { ... });
+```
+
+GREEN — add the `@media` block to each CSS file.
+
+**Commit after Phase 9.**
+
+---
+
+#### Phase 10: Detail Pages — Single-Column on Mobile
+
+**Scope:** CustomerDetail, RevisionDetail, VisitDetail, WorkItemDetail.
+These use multi-column or workspace layouts that need to stack on mobile.
+
+**10.1 — CustomerDetail**
+
+RED:
+```typescript
+describe('CustomerDetail mobile', () => {
+  it('stacks info + tabs vertically on phone', () => { ... });
+  it('action buttons fill width on phone', () => { ... });
+  it('desktop 2-column layout unchanged', () => { ... });
+});
+```
+
+GREEN — CSS in `CustomerDetail.module.css`:
+```css
+@media (max-width: 639px) {
+  .workspace {
+    flex-direction: column;
+  }
+  .sidebar { width: 100%; }
+  .mainContent { width: 100%; }
+}
+```
+
+**10.2 — RevisionDetail, VisitDetail, WorkItemDetail**
+
+Same pattern: stack columns, full-width buttons, smaller headings.
+These pages already have some 900px/600px rules; add 639px rules
+that complement them.
+
+**Commit after Phase 10.**
+
+---
+
+#### Phase 11: Settings & Admin — Minor Fixes
+
+**Scope:** Settings and Admin pages are mostly single-column already.
+Minor touch-up needed.
+
+- Settings: tab bar horizontal scroll on phone, form fields full width
+- Admin: service cards stack at 639px (already partly works)
+
+**Commit after Phase 11.**
+
+---
+
+#### Phase 12: SplitView Touch Resize
+
+**Scope:** Add `onTouchStart`/`onTouchMove`/`onTouchEnd` to the SplitView
+resizer so tablet users can drag-resize panels.
+
+RED:
+```typescript
+describe('SplitView touch resize', () => {
+  it('resizes panels on touchmove', () => { ... });
+  it('stops resizing on touchend', () => { ... });
+  it('mouse resize still works (unchanged)', () => { ... });
+});
+```
+
+GREEN — add touch event handlers in `SplitView.tsx` alongside the existing
+mouse handlers. Shared resize calculation logic extracted into a helper.
+
+**Commit after Phase 12.**
+
+---
+
+#### Phase 13: Consolidate Breakpoints
+
+**Scope:** Replace all ad-hoc breakpoint values across the codebase with
+the canonical 639px / 1023px values. No visual change — pure cleanup.
+
+Files to update (breakpoint audit):
+- 21 files using `600px` → change to `639px`
+- 13 files using `768px` → change to `639px` (phone) or `1023px` (tablet)
+- 8 files using `900px` → change to `1023px` (tablet breakpoint)
+- 1 file using `767px` → change to `639px`
+- 1 file using `769px` → change to `1023px` (min-width context)
+
+RED — snapshot tests to ensure no visual change at each breakpoint.
+
+GREEN — systematic find-and-replace within `@media` rules only.
+
+REFACTOR — add a comment block at the top of `index.css`:
+```css
+/*
+ * Canonical breakpoints (single source of truth):
+ *   Phone:   max-width: 639px
+ *   Tablet:  max-width: 1023px  (or min-width: 640px)
+ *   Desktop: min-width: 1024px
+ * See useBreakpoint.ts for the JS equivalent.
+ */
+```
+
+**Commit after Phase 13.**
+
+---
+
+### 18.4 File Impact Summary
+
+| File | Phase | Change type |
+|------|-------|-------------|
+| `hooks/useBreakpoint.ts` (NEW) | 1 | New shared hook |
+| `hooks/useBreakpoint.test.ts` (NEW) | 1 | Tests |
+| `index.css` | 1, 13 | Additions only |
+| `components/Layout.tsx` | 1, 3 | `useEffect` scroll lock + span wrapper |
+| `components/Layout.module.css` | 1, 3 | Mobile-only additions |
+| `components/common/MobileTabBar.tsx` (NEW) | 2 | New shared component |
+| `components/common/MobileTabBar.module.css` (NEW) | 2 | New styles |
+| `components/common/MobileTabBar.test.tsx` (NEW) | 2 | Tests |
+| `pages/PlanningInbox.tsx` | 4 | Conditional mobile render |
+| `pages/PlanningInbox.module.css` | 4, 13 | Mobile-only additions |
+| `pages/Planner.module.css` | 5, 13 | Mobile-only additions |
+| `pages/Calendar.tsx` | 6 | Default view logic |
+| `pages/Calendar.module.css` | 6, 13 | Mobile-only additions |
+| `components/calendar/CalendarGrid.module.css` | 6, 13 | Mobile-only additions |
+| `pages/Customers.module.css` | 7, 13 | Mobile-only refinements |
+| `pages/WorkLog.tsx` | 8 | Conditional card render |
+| `pages/WorkLog.module.css` | 8, 13 | Mobile card styles |
+| `components/common/ScheduleDialog.module.css` | 9 | Full-screen sheet rule |
+| `components/customers/CustomerEditDrawer.module.css` | 9 | Full-screen sheet rule |
+| `components/worklog/QuickVisitDialog.module.css` | 9 | Full-screen sheet rule |
+| `components/revisions/CompleteRevisionDialog.module.css` | 9 | Full-screen sheet rule |
+| `components/settings/DeleteAccountDialog.module.css` | 9 | Full-screen sheet rule |
+| `pages/CustomerDetail.module.css` | 10, 13 | Stacking rules |
+| `pages/RevisionDetail.module.css` | 10, 13 | Stacking rules |
+| `pages/VisitDetail.module.css` | 10, 13 | Stacking rules |
+| `pages/WorkItemDetail.module.css` | 10, 13 | Stacking rules |
+| `pages/Settings.module.css` | 11, 13 | Minor mobile fixes |
+| `pages/Admin.module.css` | 11, 13 | Minor mobile fixes |
+| `components/common/SplitView.tsx` | 12 | Touch event handlers |
+| `components/common/SplitView.module.css` | 12, 13 | Breakpoint update |
+| ~43 other `.module.css` files | 13 | Breakpoint value consolidation |
+
+### 18.5 Invariants (Desktop Regression Guard)
+
+Every phase MUST satisfy these invariants:
+
+1. **No existing CSS rule at `@media (min-width: 1024px)` or outside
+   any `@media` block is modified or removed.**
+2. **All new CSS is inside `@media (max-width: 639px)` or
+   `@media (max-width: 1023px)` blocks.**
+3. **All JSX changes are gated by `if (isMobile)` or `if (isTouch)`
+   from `useBreakpoint`. The `else` branch is exactly the existing code.**
+4. **Snapshot tests at 1280px width must not change between phases.**
+
+### 18.6 Testing Strategy
+
+| Layer | Tool | What |
+|-------|------|------|
+| Unit | Vitest | `useBreakpoint`, `MobileTabBar`, conditional rendering |
+| Visual | Manual + phone | Each page at 375px (iPhone SE), 390px (iPhone 14), 768px (iPad mini) |
+| Regression | Vitest snapshot at 1280px | Desktop layout doesn't change |
+| Integration | Browser DevTools responsive mode | Full flow: login → dashboard → calendar → inbox → planner → customers → worklog → settings |
+
+### 18.7 Open Questions
+
+1. **Offline support (Service Worker)** — listed in PRJ_CONTEXT.MD as a
+   future item. Mobile usage implies spotty connectivity. Should we add
+   basic cache-first SW as part of this effort or defer?
+   → **Recommendation: defer.** Separate concern, separate phase.
+
+2. **Pull-to-refresh** — common mobile UX pattern for data pages. Add now
+   or later?
+   → **Recommendation: later.** Nice-to-have, not blocking usability.
+
+3. **Landscape phone** — should we optimize for landscape on phones?
+   → **Recommendation: no special handling.** The tablet breakpoint
+   (640–1023px) will naturally cover landscape phones.

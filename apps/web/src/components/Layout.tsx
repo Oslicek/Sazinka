@@ -57,7 +57,7 @@ export function Layout({ children }: LayoutProps) {
         <nav className={styles.nav}>
           {hasPermission('page:calendar') && <NavLink to="/calendar">{t('calendar')}</NavLink>}
           {hasPermission('page:inbox') && <NavLink to="/inbox">{t('inbox')}</NavLink>}
-          {hasPermission('page:planner') && <NavLink to="/planner">{t('planner')}</NavLink>}
+          {hasPermission('page:planner') && <NavLink to="/plan">{t('planner')}</NavLink>}
           {hasPermission('page:worklog') && <NavLink to="/worklog">{t('worklog')}</NavLink>}
           {hasPermission('page:customers') && <NavLink to="/customers">{t('customers')}</NavLink>}
           {hasPermission('page:routes') && <NavLink to="/routes">{t('routes')}</NavLink>}
@@ -112,7 +112,7 @@ export function Layout({ children }: LayoutProps) {
             <div className={styles.menuItems}>
               {hasPermission('page:calendar') && <MenuLink to="/calendar" onClick={handleMenuItemClick}>{t('calendar')}</MenuLink>}
               {hasPermission('page:inbox') && <MenuLink to="/inbox" onClick={handleMenuItemClick}>{t('inbox')}</MenuLink>}
-              {hasPermission('page:planner') && <MenuLink to="/planner" onClick={handleMenuItemClick}>{t('planner')}</MenuLink>}
+              {hasPermission('page:planner') && <MenuLink to="/plan" onClick={handleMenuItemClick}>{t('planner')}</MenuLink>}
               {hasPermission('page:worklog') && <MenuLink to="/worklog" onClick={handleMenuItemClick}>{t('worklog')}</MenuLink>}
               {hasPermission('page:customers') && <MenuLink to="/customers" onClick={handleMenuItemClick}>{t('customers')}</MenuLink>}
               {hasPermission('page:routes') && <MenuLink to="/routes" onClick={handleMenuItemClick}>{t('routes')}</MenuLink>}

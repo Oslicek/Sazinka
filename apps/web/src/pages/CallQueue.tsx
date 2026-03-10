@@ -223,7 +223,7 @@ export function CallQueue() {
       setValidation(null);
       setShowWarningConfirm(false);
 
-      navigate({ to: '/planner', search: { date: scheduledDateValue } });
+      navigate({ to: '/plan', search: { date: scheduledDateValue } });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to schedule revision');
     }
@@ -689,7 +689,7 @@ export function CallQueue() {
                           setV2Response(null);
                           setValidation(null);
                           setShowWarningConfirm(false);
-                          navigate({ to: '/planner', search: { date: d } });
+                          navigate({ to: '/plan', search: { date: d } });
                         } catch (err) {
                           setError(err instanceof Error ? err.message : 'Failed to schedule revision');
                         }

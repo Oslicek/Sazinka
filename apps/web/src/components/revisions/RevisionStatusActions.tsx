@@ -81,7 +81,7 @@ export function RevisionStatusActions({
     scheduled: (
       <>
         <Link
-          to="/planner"
+          to="/plan"
           search={{ date: revision.scheduledDate }}
           className={`${styles.action} ${styles.primary}`}
         >

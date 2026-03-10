@@ -161,7 +161,7 @@ export function Dashboard() {
 
         {/* Clickable stat - Today's revisions -> Planner */}
         <Link 
-          to="/planner" 
+          to="/plan" 
           className={`card ${styles.statCard} ${styles.clickableStat} ${(stats?.scheduledToday ?? 0) > 0 ? styles.statActive : ''}`}
         >
           <h3>{t('today_revisions')}</h3>
@@ -349,7 +349,7 @@ export function Dashboard() {
           </button>
           <button 
             className="btn-secondary"
-            onClick={() => navigate({ to: '/planner' })}
+            onClick={() => navigate({ to: '/plan' })}
           >
             {t('plan')}
           </button>

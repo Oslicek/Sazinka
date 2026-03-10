@@ -291,7 +291,7 @@ export function Routes() {
                 return (
                   <tr key={route.id} className={styles.row}>
                     <td className={styles.tdDate}>
-                      <Link to="/planner" search={{ date: route.date }} className={styles.cellLink}>
+                      <Link to="/plan" search={{ date: route.date }} className={styles.cellLink}>
                         {formatDate(route.date)}
                       </Link>
                     </td>
@@ -317,7 +317,7 @@ export function Routes() {
                     </td>
                     <td className={styles.tdActions}>
                       <Link
-                        to="/planner"
+                        to="/plan"
                         search={{ date: route.date }}
                         className={styles.actionLink}
                         title={t('routes_view_plan')}

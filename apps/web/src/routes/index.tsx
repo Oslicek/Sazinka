@@ -25,7 +25,7 @@ const Dashboard = lazy(() => import('@/pages/Dashboard').then(m => ({ default: m
 const Customers = lazy(() => import('@/pages/Customers').then(m => ({ default: m.Customers })));
 const CustomerDetail = lazy(() => import('@/pages/CustomerDetail').then(m => ({ default: m.CustomerDetail })));
 const CustomerSummary = lazy(() => import('@/pages/CustomerSummary').then(m => ({ default: m.CustomerSummary })));
-const Planner = lazy(() => import('@/pages/Planner').then(m => ({ default: m.Planner })));
+const Plan = lazy(() => import('@/pages/Plan').then(m => ({ default: m.Plan })));
 const PlanningInbox = lazy(() => import('@/pages/PlanningInbox').then(m => ({ default: m.PlanningInbox })));
 const Admin = lazy(() => import('@/pages/Admin').then(m => ({ default: m.Admin })));
 const Settings = lazy(() => import('@/pages/Settings').then(m => ({ default: m.Settings })));
@@ -131,13 +131,13 @@ const calendarRoute = createRoute({
   ),
 });
 
-// Route planner
-const plannerRoute = createRoute({
+// Route plan
+const planRoute = createRoute({
   getParentRoute: () => layoutRoute,
-  path: '/planner',
+  path: '/plan',
   component: () => (
     <ProtectedRoute requiredPermission="page:planner">
-      <Planner />
+      <Plan />
     </ProtectedRoute>
   ),
 });
@@ -184,12 +184,12 @@ const callQueueRoute = createRoute({
   },
 });
 
-// Redirect /today to /planner (TechnicianDay merged into Planner)
+// Redirect /today to /plan (TechnicianDay merged into Plan)
 const todayRedirectRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: '/today',
   beforeLoad: () => {
-    throw redirect({ to: '/planner' });
+    throw redirect({ to: '/plan' });
   },
 });
 
@@ -269,7 +269,7 @@ export const routeTree = rootRoute.addChildren([
     customerSummaryRoute,
     customerDetailRoute,
     calendarRoute,
-    plannerRoute,
+    planRoute,
     inboxRoute,
     callQueueRoute,
     todayRedirectRoute,

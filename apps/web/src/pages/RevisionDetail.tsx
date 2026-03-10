@@ -97,7 +97,7 @@ export function RevisionDetail() {
       setShowScheduleDialog(false);
       await loadRevision();
       // Navigate to planner for that date
-      navigate({ to: '/planner', search: { date: scheduleDate } });
+      navigate({ to: '/plan', search: { date: scheduleDate } });
     } catch (err) {
       setError(err instanceof Error ? err.message : t('revision_error_schedule'));
     } finally {

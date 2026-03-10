@@ -281,7 +281,7 @@ export function Calendar() {
   // Navigate to planner for selected date
   const handlePlanDay = useCallback(() => {
     if (selectedDay) {
-      navigate({ to: '/planner', search: { date: selectedDay.dateKey, crew: selectedCrew || undefined } });
+      navigate({ to: '/plan', search: { date: selectedDay.dateKey, crew: selectedCrew || undefined } });
     }
   }, [navigate, selectedDay, selectedCrew]);
 
@@ -710,7 +710,7 @@ export function Calendar() {
                   {selectedDayRoutes.map((route) => (
                     <Link
                       key={route.id}
-                      to="/planner"
+                      to="/plan"
                       search={{ date: selectedDay.dateKey, crew: route.crewId || undefined }}
                       className={styles.routeItem}
                     >

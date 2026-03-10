@@ -21,7 +21,7 @@ import { logger } from '../utils/logger';
 import { RouteListPanel, RouteDetailTimeline, RouteMapPanel, type RouteMetrics, PlanningTimeline, TimelineViewToggle, type TimelineView, RouteSummaryStats, RouteSummaryActions, ArrivalBufferBar } from '../components/planner';
 import { PlannerFilters } from '../components/shared/PlannerFilters';
 import { AlertTriangle } from 'lucide-react';
-import styles from './Planner.module.css';
+import styles from './Plan.module.css';
 
 // Default depot location (Prague center) - fallback
 const DEFAULT_DEPOT = { lat: 50.0755, lng: 14.4378 };
@@ -90,7 +90,7 @@ function calculateMetrics(
   };
 }
 
-export function Planner() {
+export function Plan() {
   const { t } = useTranslation('planner');
   const navigate = useNavigate();
   const searchParams = useSearch({ strict: false }) as PlannerSearchParams;
@@ -390,7 +390,7 @@ export function Planner() {
     setDateFrom(value);
     if (!isDateRange) setDateTo(value);
     navigate({
-      to: '/planner',
+      to: '/plan',
       search: { date: value, crew: filterCrewId || undefined, depot: filterDepotId || undefined } as Record<string, string | undefined>,
       replace: true,
     });
