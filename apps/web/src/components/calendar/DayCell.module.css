@@ -228,7 +228,7 @@
 }
 
 /* Mobile adjustments */
-@media (max-width: 768px) {
+@media (max-width: 1023px) {
   .cell {
     min-height: 60px;
     padding: 0.25rem;

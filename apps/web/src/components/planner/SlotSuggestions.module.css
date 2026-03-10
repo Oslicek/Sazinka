@@ -135,7 +135,7 @@
 }
 
 /* Mobile */
-@media (max-width: 600px) {
+@media (max-width: 639px) {
   .slotMain {
     flex-wrap: wrap;
   }

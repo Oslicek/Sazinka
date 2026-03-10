@@ -323,7 +323,7 @@
 /* ── Responsive ── */
 
 /* Legacy 900px rule kept for reference — superseded by 1023px below (Phase 13 will remove) */
-@media (max-width: 900px) {
+@media (max-width: 1023px) {
   .planner {
     flex-direction: column;
     height: auto;
@@ -353,7 +353,7 @@
   }
 }
 
-@media (max-width: 600px) {
+@media (max-width: 639px) {
   .filterRow {
     flex-direction: column;
   }

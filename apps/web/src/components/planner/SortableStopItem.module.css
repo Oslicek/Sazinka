@@ -185,7 +185,7 @@
 }
 
 /* Mobile */
-@media (max-width: 600px) {
+@media (max-width: 639px) {
   .stopItem {
     padding: 0.625rem;
   }
