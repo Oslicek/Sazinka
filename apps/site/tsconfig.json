@@ -8,5 +8,6 @@
       "@tokens/*": ["../../packages/design-tokens/*"]
     }
   },
-  "include": ["src", "functions"]
+  "include": ["src", "functions"],
+  "exclude": ["src/**/__tests__/**", "functions/**/__tests__/**"]
 }

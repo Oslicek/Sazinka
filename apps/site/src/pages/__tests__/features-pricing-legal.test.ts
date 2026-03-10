@@ -20,11 +20,12 @@ describe('Features page', () => {
 });
 
 describe('Pricing page', () => {
-  test('renders Free and Pro tiers', async () => {
+  test('renders Trial, Solo and Team tiers', async () => {
     const container = await AstroContainer.create();
     const html = await container.renderToString(EnPricingPage);
-    expect(html).toContain('Free');
-    expect(html).toContain('Pro');
+    expect(html).toContain('Trial');
+    expect(html).toContain('Solo');
+    expect(html).toContain('Team');
   });
 
   test('contains CTA link to app.ariadline.com', async () => {
