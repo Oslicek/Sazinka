@@ -418,6 +418,55 @@
   color: white;
 }
 
+/* ── Mobile card list ────────────────────────────────────────────────────── */
+
+.cardList {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.mobileCard {
+  display: block;
+  padding: 0.875rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+  text-decoration: none;
+  color: var(--color-text);
+  min-height: 44px;
+  transition: background-color 0.1s;
+}
+
+.mobileCard:hover {
+  background-color: var(--color-bg-secondary);
+  text-decoration: none;
+}
+
+.mobileCardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.mobileCardTime {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.mobileCardCustomer {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.mobileCardCrew {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  margin-top: 0.125rem;
+}
+
 /* Responsive */
 @media (max-width: 900px) {
   .page {
@@ -461,5 +510,23 @@
   .dialogCancelBtn,
   .dialogSubmitBtn {
     flex: 1;
+  }
+}
+
+/* ── Mobile + tablet (canonical breakpoint) ──────────────────────────────── */
+
+@media (max-width: 1023px) {
+  .page {
+    padding: 0.75rem;
+  }
+
+  .header {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .quickCreateBtn {
+    width: 100%;
+    min-height: 44px;
   }
 }

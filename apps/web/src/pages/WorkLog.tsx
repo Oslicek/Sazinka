@@ -7,6 +7,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useSearch, useNavigate, Link } from '@tanstack/react-router';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useTranslation } from 'react-i18next';
 import { useNatsStore } from '../stores/natsStore';
 import * as settingsService from '../services/settingsService';
@@ -32,6 +33,7 @@ export function WorkLog() {
   const navigate = useNavigate();
   const searchParams = useSearch({ strict: false }) as WorkLogSearchParams;
   const { isConnected } = useNatsStore();
+  const { isMobileUi } = useBreakpoint();
 
   // --- Filters ---
   const today = new Date().toISOString().split('T')[0];
@@ -344,7 +346,46 @@ export function WorkLog() {
           <p>{t('worklog_empty')}</p>
           <p className={styles.emptyHint}>{t('worklog_empty_hint')}</p>
         </div>
+      ) : isMobileUi ? (
+        // ── Mobile / tablet: card list ────────────────────────────────────────
+        <div className={styles.cardList}>
+          {groupedVisits.map((group) => (
+            <div key={group.date} className={styles.dateGroup}>
+              <div className={styles.dateGroupHeader}>
+                <Link to="/calendar" className={styles.dateGroupLabel}>
+                  {formatDate(group.date + 'T00:00:00', 'short')}
+                </Link>
+                <span className={styles.dateGroupCount}>{group.visits.length}</span>
+              </div>
+              {group.visits.map((visit) => (
+                <Link
+                  key={visit.id}
+                  to="/visits/$visitId"
+                  params={{ visitId: visit.id }}
+                  className={styles.mobileCard}
+                >
+                  <div className={styles.mobileCardTop}>
+                    <span className={styles.mobileCardTime}>
+                      {formatTime(visit.scheduledTimeStart)}
+                      {visit.scheduledTimeEnd ? ` – ${formatTime(visit.scheduledTimeEnd)}` : ''}
+                    </span>
+                    <span className={`${styles.badge} ${getStatusBadgeClass(visit.status)}`}>
+                      {getVisitStatusIcon(visit.status)}{visitService.getVisitStatusLabel(visit.status)}
+                    </span>
+                  </div>
+                  <div className={styles.mobileCardCustomer}>
+                    {visit.customerName || '–'}
+                  </div>
+                  {visit.crewId && (
+                    <div className={styles.mobileCardCrew}>{getCrewName(visit.crewId)}</div>
+                  )}
+                </Link>
+              ))}
+            </div>
+          ))}
+        </div>
       ) : (
+        // ── Desktop: table layout ─────────────────────────────────────────────
         <div className={styles.tableWrapper}>
           {groupedVisits.map((group) => (
             <div key={group.date} className={styles.dateGroup}>

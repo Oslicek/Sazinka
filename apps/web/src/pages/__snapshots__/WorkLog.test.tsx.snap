@@ -1,0 +1,47 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`WorkLog — Phase 8 mobile > desktop layout > desktop layout matches snapshot 1`] = `
+<div
+  class="_page_85605b"
+>
+  <div
+    class="_header_85605b"
+  >
+    <div
+      class="_headerMain_85605b"
+    >
+      <h1
+        class="_title_85605b"
+      >
+        worklog_title
+      </h1>
+      <span
+        class="_count_85605b"
+      >
+        0
+         
+        worklog_count_other
+      </span>
+    </div>
+    <button
+      class="_quickCreateBtn_85605b"
+      type="button"
+    >
+      worklog_quick_create
+    </button>
+  </div>
+  <div
+    data-testid="planner-filters"
+  />
+  <div
+    class="_loading_85605b"
+  >
+    <div
+      class="_spinner_85605b"
+    />
+    <span>
+      worklog_loading
+    </span>
+  </div>
+</div>
+`;

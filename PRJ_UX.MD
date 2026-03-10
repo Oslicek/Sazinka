@@ -2936,7 +2936,7 @@ Automaticky zmizí po úspěšném opětovném připojení.
 ---
 
 *Dokument vytvořen: 2026-01-31*  
-*Poslední aktualizace: 2026-02-24 (Sekce 18 v10: Phase 0–7 done)*
+*Poslední aktualizace: 2026-02-24 (Sekce 18 v11: Phase 0–8 done)*
 
 ---
 
@@ -3506,7 +3506,7 @@ GREEN — mostly CSS adjustments:
 
 ---
 
-#### Phase 8: WorkLog — Card Layout on Phone
+#### Phase 8: WorkLog — Card Layout on Phone ✅ DONE
 
 **Scope:** Table with progressive column hiding → card-based list on phone.
 
@@ -3529,6 +3529,9 @@ GREEN:
   `@media (max-width: 1023px)` (tablet = mobile UX). Desktop rules untouched.
 
 **Commit after Phase 8.**
+> ✅ 6 tests passing — `WorkLog.test.tsx` (new file)
+> - `WorkLog.tsx`: `useBreakpoint().isMobileUi` → card list on mobile/tablet, table on desktop
+> - `WorkLog.module.css`: `.mobileCard`, `.cardList` styles; canonical 1023px rule for header + quick-create button
 
 ---
 
