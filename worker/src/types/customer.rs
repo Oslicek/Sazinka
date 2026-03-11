@@ -54,6 +54,12 @@ pub struct Customer {
     pub notes: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+
+    // Lifecycle fields (Phase 1)
+    #[sqlx(default)]
+    pub is_abandoned: bool,
+    #[sqlx(default)]
+    pub deleted_at: Option<DateTime<Utc>>,
 }
 
 /// Request to create a customer

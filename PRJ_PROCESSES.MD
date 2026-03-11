@@ -1,7 +1,16 @@
 # Business Processes & Customer Lifecycle
 
-> **Status**: Draft — consolidated after review; model/policy decisions recorded.  
+> **Status**: Implementation in progress — Phase 1 complete, Phase 2 in progress.  
 > **Last-Modified**: 2026-03-11
+
+| Phase | Status | Notes |
+|---|---|---|
+| Phase 1: Schema | ✅ Complete | Migrations 028-032, Rust types, shared TS types |
+| Phase 2: Backend | 🔄 In progress | — |
+| Phase 3: Frontend | ⏳ Pending | — |
+| Phase 4: Scoring | ⏳ Pending | — |
+| Phase 5: Cleanup | ⏳ Pending | — |
+| Phase 6: Tasks model | ⏳ Pending | — |
 
 ---
 
@@ -594,7 +603,753 @@ Previously open topics are now resolved in this document:
 
 ---
 
-## 7. Glossary
+## 7. TDD Implementation Plan
+
+This section breaks each migration phase into concrete implementation tickets. Each ticket follows the Red-Green-Refactor TDD cycle: write a failing test first, implement the minimum code to pass, then refactor. Tickets are ordered by dependency — later tickets may depend on earlier ones within the same phase.
+
+> **Notation**: `[R]` = Rust worker, `[F]` = Frontend (React/TS), `[DB]` = SQL migration, `[S]` = Shared types.
+> Test type suffixes: `(unit)`, `(integration)`, `(component)`.
+
+---
+
+### Phase 1: Schema — core planned actions
+
+#### P1-01 `[DB]` Migration: add `is_abandoned` and `deleted_at` to `customers`
+
+**File**: `worker/migrations/028_add_customer_lifecycle_fields.sql`
+
+Schema changes:
+- `ALTER TABLE customers ADD COLUMN is_abandoned BOOLEAN NOT NULL DEFAULT FALSE;`
+- `ALTER TABLE customers ADD COLUMN deleted_at TIMESTAMPTZ;`
+- `CREATE INDEX idx_customers_abandoned ON customers(user_id) WHERE is_abandoned = TRUE;`
+
+**TDD**:
+1. RED: Rust integration test — query `SELECT is_abandoned, deleted_at FROM customers WHERE id = $1` on a test customer → should return `(false, NULL)`.
+2. GREEN: Run migration.
+3. REFACTOR: Verify index exists via `pg_indexes`.
+
+---
+
+#### P1-02 `[DB]` Migration: create `action_status` and `action_target_kind` enums
+
+**File**: `worker/migrations/029_create_action_enums.sql`
+
+Schema changes:
+- `CREATE TYPE action_status AS ENUM ('open','completed','cancelled','snoozed');`
+- `CREATE TYPE action_target_kind AS ENUM ('task','visit','project','other');`
+
+**TDD**:
+1. RED: Query `SELECT 'open'::action_status` → should succeed after migration.
+2. GREEN: Run migration.
+
+---
+
+#### P1-03 `[DB]` Migration: create `action_targets` table
+
+**File**: `worker/migrations/030_create_action_targets.sql`
+
+Schema: as defined in Section 3.1 including the `CHECK` constraint that enforces `target_kind` matches exactly one non-NULL target FK.
+
+**TDD**:
+1. RED: Insert an `action_target` with `target_kind = 'visit'` and `visit_id = <valid UUID>` → should succeed.
+2. RED: Insert with `target_kind = 'visit'` and `task_id = <UUID>` (wrong FK) → should fail constraint.
+3. GREEN: Run migration.
+
+---
+
+#### P1-04 `[DB]` Migration: create `planned_actions` table
+
+**File**: `worker/migrations/031_create_planned_actions.sql`
+
+Schema: as defined in Section 3.1 including indexes `idx_planned_actions_queue` and `idx_planned_actions_customer`.
+
+**TDD**:
+1. RED: Insert a `planned_action` with `status = 'open'`, `due_date`, `customer_id`, `user_id` → should succeed.
+2. RED: Verify partial index `idx_planned_actions_queue` covers `status IN ('open','snoozed')`.
+3. GREEN: Run migration.
+
+---
+
+#### P1-05 `[R]` Types: `PlannedAction`, `ActionTarget`, `ActionStatus`, `ActionTargetKind`
+
+**Files**:
+- `worker/src/types/planned_action.rs` — `PlannedAction`, `CreatePlannedActionRequest`, `UpdatePlannedActionRequest`, `ListPlannedActionsRequest`, `ActionStatus` enum, `ActionTargetKind` enum.
+- `worker/src/types/action_target.rs` — `ActionTarget`, `CreateActionTargetRequest`.
+
+**TDD** (unit):
+1. RED: `ActionStatus::from_str("open")` → `Ok(ActionStatus::Open)`.
+2. RED: `ActionStatus::from_str("invalid")` → `Err(...)`.
+3. RED: Serialize `PlannedAction` → verify JSON field names are camelCase.
+4. GREEN: Implement structs and enums with `#[derive(Serialize, Deserialize, sqlx::Type)]`.
+5. REFACTOR: Derive `Clone`, `Debug` consistently.
+
+---
+
+#### P1-06 `[S]` Shared types: `PlannedAction`, `ActionStatus`, `InboxCandidate` (new shape)
+
+**Files**:
+- `packages/shared-types/src/plannedAction.ts` — `PlannedAction`, `ActionStatus`, `CreatePlannedActionRequest`.
+- `packages/shared-types/src/inbox.ts` — `InboxCandidate` (customer-centric), `LifecycleState`, `InboxResponse`.
+
+**TDD** (unit):
+1. RED: TypeScript type check — `InboxCandidate` must have `lifecycleState`, `lifecycleRank`, `nextActionDue`, `nextActionNote`, `totalCommunications`, `lastContactAt`. Compile fails until types are defined.
+2. GREEN: Define types.
+3. REFACTOR: Re-export from `index.ts`.
+
+---
+
+#### P1-07 `[DB]` Backfill script: seed `planned_actions` from existing data
+
+**File**: `worker/migrations/032_backfill_planned_actions.sql`
+
+Logic:
+- One `planned_action` per revision with `status IN ('upcoming','scheduled')` → action status `open`, `due_date = revisions.due_date`, link `revision_id`.
+- One `planned_action` per visit with `status = 'planned'` → action status `open`, `due_date = visits.scheduled_date`, link `visit_id`.
+- One `planned_action` per communication with `follow_up_date IS NOT NULL AND follow_up_completed = FALSE` → action status `open`, `due_date = communications.follow_up_date`.
+
+**TDD** (integration):
+1. RED: Insert test revision (status=upcoming, due_date=tomorrow) → run migration → `SELECT COUNT(*) FROM planned_actions WHERE revision_id = $1` should return 1.
+2. RED: Insert test completed revision (status=completed) → run migration → should NOT create a planned_action.
+3. GREEN: Run backfill.
+4. REFACTOR: Verify row counts match: `COUNT(planned_actions)` ≈ `COUNT(revisions WHERE status IN ('upcoming','scheduled'))` + `COUNT(visits WHERE status = 'planned')` + `COUNT(communications WHERE follow_up_date IS NOT NULL AND NOT follow_up_completed)`.
+
+---
+
+### Phase 2: Backend — customer-centric inbox
+
+#### P2-01 `[R]` DB query: `create_planned_action`
+
+**File**: `worker/src/db/queries/planned_action.rs`
+
+**TDD** (unit + integration):
+1. RED: Call `create_planned_action(pool, user_id, &req)` with valid input → should return `PlannedAction` with status `open` and matching `due_date`.
+2. RED: Call with missing `customer_id` → should return error.
+3. GREEN: Implement INSERT query.
+4. REFACTOR: Extract column list constant.
+
+---
+
+#### P2-02 `[R]` DB query: `get_planned_action`, `list_planned_actions`
+
+**File**: `worker/src/db/queries/planned_action.rs`
+
+**TDD**:
+1. RED: Create two planned actions for same customer → `list_planned_actions(pool, user_id, customer_id)` returns both, ordered by `due_date ASC`.
+2. RED: `get_planned_action(pool, user_id, action_id)` with wrong `user_id` → returns `None`.
+3. GREEN: Implement SELECT queries.
+
+---
+
+#### P2-03 `[R]` DB query: `update_planned_action` (status transitions, snooze)
+
+**File**: `worker/src/db/queries/planned_action.rs`
+
+**TDD**:
+1. RED: Update status from `open` → `completed` → should set `completed_at` to now.
+2. RED: Update status to `snoozed` with `snooze_until` date → should persist both fields.
+3. RED: Update status from `completed` → `open` → should clear `completed_at`.
+4. GREEN: Implement UPDATE query.
+
+---
+
+#### P2-04 `[R]` DB query: `cancel_planned_action`
+
+**TDD**:
+1. RED: Cancel an open action → status becomes `cancelled`.
+2. RED: Cancel an already-completed action → should return error (or succeed with no-op — decide).
+3. GREEN: Implement.
+
+---
+
+#### P2-05 `[R]` DB queries: `abandon_customer`, `unaban_customer`
+
+**File**: `worker/src/db/queries/customer.rs` (extend existing)
+
+**TDD**:
+1. RED: `abandon_customer(pool, user_id, customer_id)` → `SELECT is_abandoned FROM customers` returns `TRUE`.
+2. RED: `unabandon_customer(pool, user_id, customer_id)` → `is_abandoned` returns `FALSE`.
+3. RED: Abandon then unabandon → customer visible in inbox again (integration with lifecycle query).
+4. GREEN: Implement `UPDATE customers SET is_abandoned = ...`.
+
+---
+
+#### P2-06 `[R]` DB query: `anonymize_customer` (GDPR — extend existing)
+
+**File**: `worker/src/db/queries/customer.rs` (extend existing `anonymize_customer`)
+
+Current `anonymize_customer` sets `is_anonymized = TRUE` and scrubs PII. Extend to also:
+- Set `deleted_at = NOW()`.
+- Delete open planned actions (`DELETE FROM planned_actions WHERE customer_id = $1 AND status IN ('open','snoozed')`).
+- Soft-delete devices (existing behavior, verify).
+
+**TDD**:
+1. RED: Anonymize customer with 2 open planned actions → `SELECT COUNT(*) FROM planned_actions WHERE customer_id = $1 AND status = 'open'` returns 0.
+2. RED: Anonymize customer → `deleted_at IS NOT NULL`.
+3. RED: Completed planned actions survive: `SELECT COUNT(*) FROM planned_actions WHERE customer_id = $1 AND status = 'completed'` unchanged.
+4. GREEN: Extend existing function.
+
+---
+
+#### P2-07 `[R]` DB query: `get_customer_inbox` (Phase 2 query — no scoring)
+
+**File**: `worker/src/db/queries/planned_action.rs`
+
+Implements the Phase 2 query from Section 4.1. This is the core inbox query replacing `get_call_queue`.
+
+**TDD** (unit — SQL builder tests):
+1. RED: Default request → WHERE clause contains `c.is_anonymized = FALSE AND c.is_abandoned = FALSE`.
+2. RED: WHERE clause does NOT contain revision-specific filters (`r.status`, `r.due_date BETWEEN`).
+
+**TDD** (integration — requires test DB with seeded data):
+3. RED: Customer with no communications and no planned actions → `lifecycle_state = 'untouched'`, `lifecycle_rank = 0`.
+4. RED: Customer with one open planned action (due tomorrow) → `lifecycle_state = 'active'`, `lifecycle_rank = 2`.
+5. RED: Customer with one open planned action (due yesterday) → `lifecycle_state = 'active'`, `lifecycle_rank = 1` (overdue).
+6. RED: Customer with one completed planned action and no open ones → `lifecycle_state = 'needs_action'`, `lifecycle_rank = 3`.
+7. RED: Abandoned customer → excluded from results.
+8. RED: Anonymized customer → excluded from results.
+9. RED: Ordering — untouched before overdue before upcoming before needs_action.
+10. RED: Within overdue group — oldest overdue first.
+11. GREEN: Implement query.
+12. REFACTOR: Extract lifecycle CASE into a reusable SQL fragment or Rust builder function.
+
+---
+
+#### P2-08 `[R]` Types: `InboxRequest`, `InboxResponse`, `InboxItem`
+
+**File**: `worker/src/types/inbox.rs`
+
+**TDD** (unit):
+1. RED: Deserialize `InboxRequest` from JSON with `limit`, `offset` → succeeds.
+2. RED: Serialize `InboxItem` → JSON has `lifecycleState`, `lifecycleRank`, `nextActionDue`, `nextActionNote`, `totalCommunications`, `lastContactAt`.
+3. GREEN: Define structs.
+
+---
+
+#### P2-09 `[R]` Handler: `sazinka.planned_action.{create,list,get,update,cancel}`
+
+**File**: `worker/src/handlers/planned_action.rs`
+
+**TDD** (unit — mock pool):
+1. RED: Handle `sazinka.planned_action.create` with valid payload → returns `SuccessResponse<PlannedAction>`.
+2. RED: Handle with missing required field → returns `ErrorResponse`.
+3. RED: Handle `sazinka.planned_action.cancel` for non-existent ID → returns error.
+4. GREEN: Implement handlers, register subscriptions in `main.rs`.
+
+---
+
+#### P2-10 `[R]` Handler: `sazinka.customer.abandon`, `sazinka.customer.unabandon`
+
+**File**: `worker/src/handlers/customer.rs` (extend)
+
+**TDD**:
+1. RED: Handle `sazinka.customer.abandon` → customer's `is_abandoned = TRUE`.
+2. RED: Handle `sazinka.customer.unabandon` → `is_abandoned = FALSE`.
+3. GREEN: Add handler functions, register subscriptions.
+
+---
+
+#### P2-11 `[R]` Handler: `sazinka.inbox.query` (replaces `sazinka.revision.queue`)
+
+**File**: `worker/src/handlers/inbox.rs`
+
+**TDD**:
+1. RED: Handle `sazinka.inbox.query` with default request → returns `InboxResponse` with `items` array.
+2. RED: Response items have `lifecycle_state` field (not `priority`).
+3. GREEN: Implement handler calling `get_customer_inbox`.
+4. NOTE: Keep `sazinka.revision.queue` working during transition (deprecate in Phase 5).
+
+---
+
+#### P2-12 `[R]` Auto-create planned actions on revision schedule / visit plan
+
+**Files**: `worker/src/handlers/revision.rs`, `worker/src/handlers/visit.rs` (extend)
+
+When a revision is scheduled (`sazinka.revision.schedule`) or a visit is created (`sazinka.visit.create`), auto-create a corresponding `planned_action`.
+
+**TDD**:
+1. RED: Schedule a revision → `SELECT COUNT(*) FROM planned_actions WHERE revision_id = $1` returns 1.
+2. RED: Create a visit → `SELECT COUNT(*) FROM planned_actions WHERE visit_id = $1` returns 1.
+3. RED: Complete a visit → corresponding planned action status becomes `completed`.
+4. GREEN: Add auto-creation logic after existing handler logic.
+
+---
+
+### Phase 3: Frontend — inbox UI update
+
+#### P3-01 `[F]` Service: `inboxService.ts` (replaces revision queue calls)
+
+**File**: `apps/web/src/services/inboxService.ts`
+
+**TDD** (unit):
+1. RED: `getInbox({ limit: 25, offset: 0 })` calls NATS with subject `sazinka.inbox.query` and correct payload shape.
+2. RED: Response is parsed into `InboxCandidate[]` with `lifecycleState` field.
+3. RED: `createPlannedAction(req)` calls NATS with subject `sazinka.planned_action.create`.
+4. RED: `abandonCustomer(customerId)` calls NATS with subject `sazinka.customer.abandon`.
+5. GREEN: Implement service functions.
+
+---
+
+#### P3-02 `[F]` Hook: `useInbox.ts`
+
+**File**: `apps/web/src/hooks/useInbox.ts`
+
+**TDD** (unit):
+1. RED: `useInbox()` returns `{ items, total, isLoading, error, refetch }`.
+2. RED: On mount, calls `getInbox` and populates `items`.
+3. RED: `refetch()` triggers a new call and updates items.
+4. GREEN: Implement hook using existing NATS request pattern.
+
+---
+
+#### P3-03 `[F]` Component: updated `PlanningInbox` page
+
+**File**: `apps/web/src/pages/PlanningInbox.tsx` (refactor)
+
+**TDD** (component):
+1. RED: Render PlanningInbox → should call `useInbox` (not `getCallQueue`).
+2. RED: Items display `lifecycleState` badge (untouched / active / needs_action).
+3. RED: Untouched customers appear before overdue before upcoming before needs_action.
+4. GREEN: Refactor component to use new hook and types.
+5. REFACTOR: Remove `getCallQueue` import once verified.
+
+---
+
+#### P3-04 `[F]` Component: updated filter tabs
+
+**File**: `apps/web/src/pages/PlanningInbox.tsx` or extracted component
+
+Map to new semantics from Section 4.5:
+
+**TDD** (component):
+1. RED: "Vše" tab shows all non-abandoned, non-deleted customers.
+2. RED: "Akutní" tab filters to overdue + untouched.
+3. RED: "Problémové" tab includes customers with `geocodeStatus = 'failed'`.
+4. GREEN: Implement filter logic.
+
+---
+
+#### P3-05 `[F]` Component: "Schedule callback" action in candidate detail
+
+**File**: `apps/web/src/components/planner/CandidateDetail.tsx` (extend)
+
+**TDD** (component):
+1. RED: Render CandidateDetail → should show "Schedule callback" button.
+2. RED: Clicking button opens a form with date picker and note field.
+3. RED: Submitting form calls `createPlannedAction` with correct payload.
+4. GREEN: Implement UI.
+
+---
+
+#### P3-06 `[F]` Component: "Abandon" / "Unabandon" actions
+
+**Files**: `apps/web/src/components/planner/CandidateDetail.tsx`, `apps/web/src/components/customers/CustomerHeader.tsx`
+
+**TDD** (component):
+1. RED: CandidateDetail shows "Abandon" button.
+2. RED: Clicking "Abandon" calls `abandonCustomer` and removes customer from list.
+3. RED: CustomerHeader for abandoned customer shows "Remove abandoned status" button.
+4. GREEN: Implement.
+
+---
+
+#### P3-07 `[F]` Inbox state persistence (debounced autosave to `sessionStorage` as interim)
+
+**File**: `apps/web/src/hooks/useInboxState.ts`
+
+Phase 3 interim: persist to `sessionStorage` (DB persistence comes in Phase 4). The hook interface is designed for easy swap to DB later.
+
+**TDD** (unit):
+1. RED: `useInboxState()` returns `{ state, setSortMode, setFilter, setPage }`.
+2. RED: Changing sort mode triggers debounced save to `sessionStorage`.
+3. RED: On remount, state is restored from `sessionStorage`.
+4. GREEN: Implement using `useAutoSave` pattern (already exists in codebase).
+
+---
+
+### Phase 4: Scoring & state persistence
+
+#### P4-01 `[DB]` Migration: create scoring tables
+
+**File**: `worker/migrations/033_create_scoring_tables.sql`
+
+Schema: `scoring_rule_sets`, `scoring_rule_factors`, `dispatcher_inbox_state` as defined in Section 3.4.
+
+**TDD**:
+1. RED: Insert a rule set → succeeds.
+2. RED: Insert two rule sets with same name (case-insensitive) for same company → unique constraint violation.
+3. RED: Insert factor with `weight = 150` → fails CHECK constraint (`-100..100`).
+4. RED: Insert dispatcher_inbox_state → succeeds.
+5. GREEN: Run migration.
+
+---
+
+#### P4-02 `[R]` Types: `ScoringRuleSet`, `ScoringRuleFactor`, `DispatcherInboxState`
+
+**File**: `worker/src/types/scoring.rs`, `worker/src/types/inbox.rs` (extend)
+
+**TDD** (unit):
+1. RED: Serialize `ScoringRuleSet` → JSON has `isDefault`, `isArchived`, `createdByUserId`.
+2. RED: `DispatcherInboxState` deserializes `activeFiltersJson` as `serde_json::Value`.
+3. GREEN: Implement structs.
+
+---
+
+#### P4-03 `[R]` DB queries: `scoring_rule_set` CRUD
+
+**File**: `worker/src/db/queries/scoring.rs`
+
+**TDD**:
+1. RED: `create_rule_set(pool, company_id, &req)` → returns `ScoringRuleSet` with `is_default = false`.
+2. RED: `list_rule_sets(pool, company_id)` → returns only non-archived sets by default.
+3. RED: `list_rule_sets(pool, company_id, include_archived=true)` → returns all.
+4. RED: `set_default(pool, rule_set_id)` → clears `is_default` on others for same company, sets on target.
+5. RED: `archive_rule_set(pool, rule_set_id)` → sets `is_archived = TRUE`.
+6. RED: Delete the current default → another rule set auto-promoted (alphabetical).
+7. GREEN: Implement queries.
+
+---
+
+#### P4-04 `[R]` DB queries: `scoring_rule_factor` CRUD
+
+**File**: `worker/src/db/queries/scoring.rs`
+
+**TDD**:
+1. RED: `upsert_factors(pool, rule_set_id, &factors)` → inserts/updates factor weights.
+2. RED: Setting weight to `0` → factor row kept (weight = 0, effectively disabled).
+3. RED: Weight outside `-100..100` → DB constraint error.
+4. GREEN: Implement.
+
+---
+
+#### P4-05 `[R]` DB queries: `dispatcher_inbox_state` CRUD
+
+**File**: `worker/src/db/queries/inbox_state.rs`
+
+**TDD**:
+1. RED: `save_inbox_state(pool, user_id, &state)` → upsert (INSERT ON CONFLICT UPDATE).
+2. RED: `get_inbox_state(pool, user_id)` → returns saved state.
+3. RED: `get_inbox_state` for user with no saved state → returns `None`.
+4. RED: Save state with `selected_rule_set_id` pointing to archived rule set → on read, fallback to company default.
+5. GREEN: Implement.
+
+---
+
+#### P4-06 `[R]` Scoring computation: `compute_customer_urgency`
+
+**File**: `worker/src/services/scoring.rs`
+
+Application-level urgency score computation (not a PG function — keeps logic testable in Rust).
+
+**TDD** (unit):
+1. RED: Customer with overdue action (10 days late), `overdue_days` factor weight = 5 → score includes `50`.
+2. RED: Customer with failed geocode, `geocode_failed` factor weight = 20 → score includes `20`.
+3. RED: All weights zero → score = `0`.
+4. RED: Negative weight → score decreases.
+5. RED: No rule set (NULL) → score = `0`.
+6. GREEN: Implement `compute_urgency(customer_data: &CustomerScoringInput, factors: &[ScoringRuleFactor]) -> f64`.
+
+---
+
+#### P4-07 `[R]` DB query: `get_customer_inbox` v2 (with scoring)
+
+**File**: `worker/src/db/queries/planned_action.rs` (extend P2-07)
+
+Implements Phase 4 query from Section 4.2. Adds `action_targets` join, urgency scoring, sort-mode parameter.
+
+**TDD** (integration):
+1. RED: Request with `sort_mode = 'rank_first'` and `selected_rule_set_id = <valid>` → results ordered by rank, then urgency score DESC within group.
+2. RED: Request with `sort_mode = 'due_date'` → results ordered by `next_action_due ASC`.
+3. RED: Request with `selected_rule_set_id = NULL` → `urgency_score = 0` for all, ordering falls back to rank/date.
+4. RED: `InboxItem` now includes `nextActionKind`, `nextActionLabelKey`, `nextActionLabelFallback`, `urgencyScore`.
+5. GREEN: Extend query with lateral scoring and action_targets join.
+
+---
+
+#### P4-08 `[R]` Handlers: `sazinka.scoring.{ruleset.create,ruleset.list,ruleset.get,ruleset.update,ruleset.delete,ruleset.archive,ruleset.unarchive,ruleset.set_default}`
+
+**File**: `worker/src/handlers/scoring.rs`
+
+**TDD**:
+1. RED: Create rule set → returns `ScoringRuleSet`.
+2. RED: Archive rule set that is a dispatcher's selection → dispatcher's next load falls back to default.
+3. GREEN: Implement handlers.
+
+---
+
+#### P4-09 `[R]` Handler: `sazinka.inbox.state.{save,get}`
+
+**File**: `worker/src/handlers/inbox.rs` (extend P2-11)
+
+**TDD**:
+1. RED: `sazinka.inbox.state.save` with valid state → persists.
+2. RED: `sazinka.inbox.state.get` → returns last saved state.
+3. RED: `sazinka.inbox.state.get` with no saved state → returns defaults (rank_first, no filters, page 1, size 25).
+4. GREEN: Implement.
+
+---
+
+#### P4-10 `[F]` Hook: `useInboxState.ts` v2 — DB-backed persistence
+
+**File**: `apps/web/src/hooks/useInboxState.ts` (replace P3-07 interim)
+
+**TDD** (unit):
+1. RED: On mount, calls `sazinka.inbox.state.get` to restore state.
+2. RED: Changing sort mode triggers debounced call to `sazinka.inbox.state.save`.
+3. RED: Failed save shows subtle unsynced indicator (no toast).
+4. RED: Failed save retries after delay.
+5. GREEN: Implement, replacing `sessionStorage` persistence.
+
+---
+
+#### P4-11 `[F]` Component: rule-set selector in Inbox toolbar
+
+**File**: `apps/web/src/components/planner/InboxToolbar.tsx` (new or extracted)
+
+**TDD** (component):
+1. RED: Toolbar renders a dropdown listing available rule sets + "None".
+2. RED: Selecting a rule set updates inbox state and re-fetches inbox.
+3. RED: Selecting "None" disables scoring.
+4. GREEN: Implement.
+
+---
+
+#### P4-12 `[F]` Page: Scoring admin (rule-set CRUD)
+
+**File**: `apps/web/src/pages/ScoringAdmin.tsx`
+
+**TDD** (component):
+1. RED: Page lists all rule sets for the company (active + archived, separated).
+2. RED: Create form validates name uniqueness (case-insensitive).
+3. RED: Factor weight input rejects values outside `-100..100`.
+4. RED: Archive/unarchive toggle works.
+5. RED: Delete with confirmation dialog.
+6. GREEN: Implement.
+
+---
+
+### Phase 5: Cleanup — deprecate legacy fields
+
+#### P5-01 `[R]` Remove snooze from revisions, use planned_action snooze
+
+**TDD**:
+1. RED: `sazinka.revision.snooze` handler now creates/updates a `planned_action` snooze instead of setting `revisions.snooze_until`.
+2. RED: Inbox query no longer reads `revisions.snooze_until`.
+3. GREEN: Refactor handler and query.
+
+---
+
+#### P5-02 `[R]` Remove `communications.follow_up_date` usage
+
+**TDD**:
+1. RED: Creating a communication with `follow_up_date` now auto-creates a `planned_action` instead of setting the column.
+2. RED: Inbox query no longer reads `communications.follow_up_date`.
+3. GREEN: Refactor.
+
+---
+
+#### P5-03 `[DB]` Migration: drop deprecated columns (guarded)
+
+**File**: `worker/migrations/034_drop_legacy_snooze_followup.sql`
+
+Only drop columns after verifying no code references them:
+- `revisions.snooze_until`, `revisions.snooze_reason`
+- `communications.follow_up_date`, `communications.follow_up_completed`
+
+**TDD**:
+1. RED: `cargo build` succeeds without referencing dropped columns.
+2. RED: All existing tests pass.
+3. GREEN: Run migration.
+
+---
+
+#### P5-04 `[R]` Remove `create_initial_revisions_for_user` workaround
+
+**TDD**:
+1. RED: New user import flow works without migration 027 workaround.
+2. GREEN: Remove the workaround code; imported customers surface as `UNTOUCHED` via planned actions.
+
+---
+
+#### P5-05 `[F]` Remove `getCallQueue` and `CallQueueItem` references
+
+**TDD**:
+1. RED: `grep -r "getCallQueue\|CallQueueItem\|revision.queue" apps/web/src/` returns zero matches.
+2. GREEN: Remove dead code, update imports.
+
+---
+
+### Phase 6: Tasks model
+
+#### P6-01 `[DB]` Migration: create `task_types` and `tasks` tables
+
+**File**: `worker/migrations/035_create_tasks.sql`
+
+Schema:
+```sql
+CREATE TABLE task_types (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name            VARCHAR(120) NOT NULL,
+    label_key       VARCHAR(120),
+    is_system       BOOLEAN NOT NULL DEFAULT FALSE,
+    is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+    payload_schema  JSONB,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE tasks (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    task_type_id    UUID NOT NULL REFERENCES task_types(id) ON DELETE RESTRICT,
+    customer_id     UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+    visit_id        UUID REFERENCES visits(id) ON DELETE SET NULL,
+    device_id       UUID REFERENCES devices(id) ON DELETE SET NULL,
+    status          VARCHAR(30) NOT NULL DEFAULT 'pending',
+    payload         JSONB,
+    due_date        DATE,
+    completed_at    TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+Also add FK from `action_targets.task_id` to `tasks.id`.
+
+**TDD**:
+1. RED: Insert `task_type` "revision" → succeeds.
+2. RED: Insert `task` with `task_type_id` → succeeds.
+3. RED: `action_targets.task_id` now has FK to `tasks.id`.
+4. GREEN: Run migration.
+
+---
+
+#### P6-02 `[DB]` Migration: backfill tasks from revisions
+
+**File**: `worker/migrations/036_migrate_revisions_to_tasks.sql`
+
+**TDD**:
+1. RED: Pre-migration revision count = post-migration task count (for task_type = revision).
+2. RED: Each migrated task preserves `device_id`, `customer_id`, `due_date`, `status` mapping.
+3. RED: `action_targets` entries created for migrated tasks.
+4. RED: `planned_actions` updated from `revision_id` to `action_target_id` → `task_id`.
+5. GREEN: Run migration.
+
+---
+
+#### P6-03 `[R]` Types and DB queries: `Task`, `TaskType` CRUD
+
+**Files**: `worker/src/types/task.rs`, `worker/src/db/queries/task.rs`
+
+**TDD**:
+1. RED: `create_task_type(pool, user_id, &req)` → returns `TaskType`.
+2. RED: `create_task(pool, user_id, &req)` → returns `Task`.
+3. RED: `list_tasks(pool, user_id, customer_id)` → returns tasks for customer.
+4. RED: `complete_task(pool, task_id)` → sets `completed_at`, updates status.
+5. GREEN: Implement.
+
+---
+
+#### P6-04 `[R]` Handlers: `sazinka.task.{create,list,get,update,complete}`, `sazinka.task_type.{create,list,update}`
+
+**File**: `worker/src/handlers/task.rs`
+
+**TDD**:
+1. RED: Create task → returns `Task`.
+2. RED: Complete task → also completes linked planned_action.
+3. GREEN: Implement and register.
+
+---
+
+#### P6-05 `[R]` Update inbox query to use tasks instead of revisions
+
+**File**: `worker/src/db/queries/planned_action.rs`
+
+Replace `LEFT JOIN revisions r` / `LEFT JOIN devices d` with `LEFT JOIN tasks t` / `LEFT JOIN task_types tt` via `action_targets.task_id`. Derive label from `task_types.name` / `task_types.label_key`.
+
+**TDD**:
+1. RED: Inbox item for a task-backed action → `nextActionKind = 'task'`, `nextActionLabelFallback = task_type.name`.
+2. RED: Inbox item for a visit-backed action → `nextActionKind = 'visit'`.
+3. RED: Legacy revision columns no longer in SELECT.
+4. GREEN: Update query.
+
+---
+
+#### P6-06 `[DB]` Migration: drop legacy `planned_actions` columns
+
+**File**: `worker/migrations/037_drop_planned_action_legacy_columns.sql`
+
+Drop `planned_actions.revision_id`, `planned_actions.visit_id`, `planned_actions.device_id`.
+
+**TDD**:
+1. RED: `cargo build` succeeds.
+2. RED: All tests pass.
+3. GREEN: Run migration.
+
+---
+
+#### P6-07 `[F]` Update `InboxCandidate` and components for task-based model
+
+**Files**: `apps/web/src/types/inboxCandidate.ts`, `CandidateDetail.tsx`, `CandidateRow.tsx`
+
+**TDD** (component):
+1. RED: `InboxCandidate` has `nextActionKind`, `nextActionLabelKey`, `nextActionLabelFallback` instead of `deviceType`.
+2. RED: CandidateRow renders action kind badge from label.
+3. RED: CandidateDetail shows task details (type, status, payload).
+4. GREEN: Update types and components.
+
+---
+
+#### P6-08 `[F]` Import flow: new CSV formats for tasks
+
+**TDD**:
+1. RED: Import service accepts new task CSV format.
+2. RED: Import maps CSV rows to `create_task` calls with correct `task_type_id`.
+3. GREEN: Implement.
+
+---
+
+### Cross-cutting: test infrastructure setup
+
+These tickets are prerequisites executed before Phase 2 integration tests.
+
+#### T-01 `[R]` Test utilities: seeded test database helper
+
+**File**: `worker/src/test_utils.rs` (or `worker/tests/common/mod.rs`)
+
+Provide a helper that:
+- Creates a temporary test database (or uses a transaction that rolls back).
+- Runs all migrations.
+- Seeds baseline data (user, customer, device, revision).
+- Returns `(PgPool, TestData)`.
+
+**TDD**: The helper itself is tested by verifying seeded data is queryable.
+
+---
+
+#### T-02 `[F]` Test utilities: mock inbox service
+
+**File**: `apps/web/src/services/__mocks__/inboxService.ts`
+
+Provide mock implementations of `getInbox`, `createPlannedAction`, `abandonCustomer`, etc., returning predictable test data.
+
+---
+
+### Summary: ticket count per phase
+
+| Phase | Tickets | Scope |
+|-------|---------|-------|
+| Phase 1 | P1-01 to P1-07 | 7 tickets — schema + types + backfill |
+| Phase 2 | P2-01 to P2-12 | 12 tickets — backend queries + handlers |
+| Phase 3 | P3-01 to P3-07 | 7 tickets — frontend services + components |
+| Phase 4 | P4-01 to P4-12 | 12 tickets — scoring + state persistence |
+| Phase 5 | P5-01 to P5-05 | 5 tickets — legacy cleanup |
+| Phase 6 | P6-01 to P6-08 | 8 tickets — tasks model |
+| Cross-cutting | T-01, T-02 | 2 tickets — test infrastructure |
+| **Total** | **53 tickets** | |
+
+---
+
+## 8. Glossary
 
 | Term | Definition |
 |---|---|

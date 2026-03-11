@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 //! Type definitions
 
+pub mod action_target;
 pub mod communication;
 pub mod country;
 pub mod customer;
@@ -11,6 +12,7 @@ pub mod import_export_job;
 pub mod job;
 pub mod messages;
 pub mod notification_job;
+pub mod planned_action;
 pub mod revision;
 pub mod role;
 pub mod route;
@@ -21,6 +23,7 @@ pub mod crew;
 pub mod visit;
 pub mod work_item;
 
+pub use action_target::*;
 pub use communication::*;
 pub use country::*;
 pub use customer::*;
@@ -30,6 +33,7 @@ pub use import_export_job::*;
 pub use job::*;
 pub use messages::*;
 pub use notification_job::*;
+pub use planned_action::*;
 pub use revision::*;
 pub use role::*;
 pub use route::*;
