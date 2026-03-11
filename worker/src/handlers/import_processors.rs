@@ -443,6 +443,20 @@ impl DeviceImportProcessor {
         
         info!("Device import job {} completed: {}/{} succeeded", job_id, succeeded, total);
         
+        // Auto-create initial revisions for newly imported devices
+        if succeeded > 0 {
+            match queries::revision::create_initial_revisions_for_user(&self.pool, user_id).await {
+                Ok(count) => {
+                    if count > 0 {
+                        info!("Auto-created {} initial revisions for user {} after device import", count, user_id);
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to auto-create initial revisions after device import: {}", e);
+                }
+            }
+        }
+        
         Ok(())
     }
     
@@ -1853,6 +1867,27 @@ impl ZipImportProcessor {
         if customers_imported > 0 {
             if let Err(e) = self.trigger_geocoding(user_id).await {
                 warn!("Failed to trigger geocoding after ZIP import: {}", e);
+            }
+        }
+        
+        // Auto-create initial revisions for devices that don't have one,
+        // but only if no explicit revisions CSV was included in the ZIP
+        let has_revisions_file = results.iter().any(|r| r.file_type == ZipImportFileType::Revisions);
+        let devices_imported = results.iter()
+            .find(|r| r.file_type == ZipImportFileType::Devices)
+            .map(|r| r.succeeded)
+            .unwrap_or(0);
+        
+        if devices_imported > 0 && !has_revisions_file {
+            match queries::revision::create_initial_revisions_for_user(&self.pool, user_id).await {
+                Ok(count) => {
+                    if count > 0 {
+                        info!("Auto-created {} initial revisions for user {} after ZIP import", count, user_id);
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to auto-create initial revisions after ZIP import: {}", e);
+                }
             }
         }
         

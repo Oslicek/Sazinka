@@ -75,9 +75,22 @@ pub async fn handle_create(
         // Create device
         match queries::device::create_device(&pool, user_id, request.payload.customer_id, &request.payload).await {
             Ok(device) => {
+                let device_id = device.id;
                 let response = SuccessResponse::new(request.id, device);
                 let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
-                debug!("Created device: {}", response.payload.id);
+                debug!("Created device: {}", device_id);
+                
+                // Auto-create initial revision for the new device
+                match queries::revision::create_initial_revisions_for_user(&pool, user_id).await {
+                    Ok(count) => {
+                        if count > 0 {
+                            debug!("Auto-created {} initial revision(s) after device create", count);
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to auto-create initial revision after device create: {}", e);
+                    }
+                }
             }
             Err(e) => {
                 error!("Failed to create device: {}", e);

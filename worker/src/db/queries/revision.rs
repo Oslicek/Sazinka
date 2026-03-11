@@ -898,3 +898,49 @@ mod tests {
         assert!(parts.where_clause.contains("c.geocode_status::text = 'success'"));
     }
 }
+
+// ─── Auto-create initial revisions for devices without one ──────────────────
+
+/// Creates an 'upcoming' revision for every device owned by `user_id` that
+/// does not already have an active revision (status = 'upcoming' or 'scheduled').
+///
+/// Due date is resolved as:
+///   1. `devices.next_due_date` if set
+///   2. Otherwise `CURRENT_DATE + revision_interval_months` (from device_type_configs)
+///   3. Fallback: `CURRENT_DATE + 12 months`
+///
+/// Returns the number of revisions created.
+pub async fn create_initial_revisions_for_user(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<u64> {
+    let result = sqlx::query(
+        r#"
+        INSERT INTO revisions (id, device_id, customer_id, user_id, status, due_date)
+        SELECT
+            uuid_generate_v4(),
+            d.id,
+            d.customer_id,
+            d.user_id,
+            'upcoming'::revision_status,
+            COALESCE(
+                d.next_due_date,
+                CURRENT_DATE + (COALESCE(dtc.default_revision_interval_months, 12) || ' months')::interval
+            )::date
+        FROM devices d
+        LEFT JOIN device_type_configs dtc
+            ON d.device_type_config_id = dtc.id AND dtc.is_active = true
+        WHERE d.user_id = $1
+          AND NOT EXISTS (
+            SELECT 1 FROM revisions r
+            WHERE r.device_id = d.id
+              AND r.status IN ('upcoming', 'scheduled')
+          )
+        "#,
+    )
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected())
+}
