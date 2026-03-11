@@ -4,6 +4,7 @@
 pub mod action_target;
 pub mod communication;
 pub mod inbox;
+pub mod scoring;
 pub mod country;
 pub mod customer;
 pub mod device;
@@ -27,6 +28,7 @@ pub mod work_item;
 pub use action_target::*;
 pub use communication::*;
 pub use inbox::*;
+pub use scoring::*;
 pub use country::*;
 pub use customer::*;
 pub use device::*;

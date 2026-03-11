@@ -13,6 +13,7 @@ pub mod job_history;
 pub mod nominatim;
 pub mod rate_limiter;
 pub mod routing;
+pub mod scoring;
 pub mod sequential_schedule;
 pub mod slot_suggester;
 pub mod sms_processor;

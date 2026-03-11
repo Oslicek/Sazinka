@@ -8,7 +8,7 @@
 | Phase 1: Schema | ✅ Complete | Migrations 028-032, Rust types, shared TS types |
 | Phase 2: Backend | ✅ Complete | DB queries, NATS handlers for planned_action + inbox + customer lifecycle |
 | Phase 3: Frontend | ✅ Complete | inboxService, useInbox hook, CandidateDetail callback/abandon actions |
-| Phase 4: Scoring | ⏳ Pending | — |
+| Phase 4: Scoring | ✅ Complete | scoring_rule_sets/factors/dispatcher_inbox_state tables, Rust scoring service, NATS handlers |
 | Phase 5: Cleanup | ⏳ Pending | — |
 | Phase 6: Tasks model | ⏳ Pending | — |
 

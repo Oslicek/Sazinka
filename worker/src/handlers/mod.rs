@@ -5,6 +5,7 @@ pub mod auth;
 pub mod communication;
 pub mod inbox;
 pub mod planned_action;
+pub mod scoring;
 pub mod crew;
 pub mod customer;
 pub mod device;
@@ -227,6 +228,14 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     // Inbox subscription
     let inbox_query_sub = client.subscribe("sazinka.inbox.query").await?;
 
+    // Scoring subscriptions
+    let scoring_create_sub = client.subscribe("sazinka.scoring.rule_set.create").await?;
+    let scoring_list_sub = client.subscribe("sazinka.scoring.rule_set.list").await?;
+    let scoring_update_sub = client.subscribe("sazinka.scoring.rule_set.update").await?;
+    let scoring_archive_sub = client.subscribe("sazinka.scoring.rule_set.archive").await?;
+    let inbox_state_get_sub = client.subscribe("sazinka.inbox_state.get").await?;
+    let inbox_state_save_sub = client.subscribe("sazinka.inbox_state.save").await?;
+
     let route_plan_sub = client.subscribe("sazinka.route.plan").await?;
     let route_save_sub = client.subscribe("sazinka.route.save").await?;
     let route_delete_sub = client.subscribe("sazinka.route.delete").await?;
@@ -340,6 +349,12 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let client_pa_cancel = client.clone();
     let client_pa_complete = client.clone();
     let client_inbox_query = client.clone();
+    let client_scoring_create = client.clone();
+    let client_scoring_list = client.clone();
+    let client_scoring_update = client.clone();
+    let client_scoring_archive = client.clone();
+    let client_inbox_state_get = client.clone();
+    let client_inbox_state_save = client.clone();
     let client_route_plan = client.clone();
     let client_route_save = client.clone();
     let client_route_delete = client.clone();
@@ -391,6 +406,12 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_pa_cancel = pool.clone();
     let pool_pa_complete = pool.clone();
     let pool_inbox_query = pool.clone();
+    let pool_scoring_create = pool.clone();
+    let pool_scoring_list = pool.clone();
+    let pool_scoring_update = pool.clone();
+    let pool_scoring_archive = pool.clone();
+    let pool_inbox_state_get = pool.clone();
+    let pool_inbox_state_save = pool.clone();
     let pool_route_plan = pool.clone();
     let pool_route_save = pool.clone();
     let pool_route_delete = pool.clone();
@@ -538,6 +559,12 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let jwt_secret_pa_cancel = Arc::clone(&jwt_secret);
     let jwt_secret_pa_complete = Arc::clone(&jwt_secret);
     let jwt_secret_inbox_query = Arc::clone(&jwt_secret);
+    let jwt_secret_scoring_create = Arc::clone(&jwt_secret);
+    let jwt_secret_scoring_list = Arc::clone(&jwt_secret);
+    let jwt_secret_scoring_update = Arc::clone(&jwt_secret);
+    let jwt_secret_scoring_archive = Arc::clone(&jwt_secret);
+    let jwt_secret_inbox_state_get = Arc::clone(&jwt_secret);
+    let jwt_secret_inbox_state_save = Arc::clone(&jwt_secret);
     
     // JWT secret clones for route handlers
     let jwt_secret_route_plan = Arc::clone(&jwt_secret);
@@ -870,6 +897,30 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
 
     let inbox_query_handle = tokio::spawn(async move {
         inbox::handle_query(client_inbox_query, inbox_query_sub, pool_inbox_query, jwt_secret_inbox_query).await
+    });
+
+    let scoring_create_handle = tokio::spawn(async move {
+        scoring::handle_create_rule_set(client_scoring_create, scoring_create_sub, pool_scoring_create, jwt_secret_scoring_create).await
+    });
+
+    let scoring_list_handle = tokio::spawn(async move {
+        scoring::handle_list_rule_sets(client_scoring_list, scoring_list_sub, pool_scoring_list, jwt_secret_scoring_list).await
+    });
+
+    let scoring_update_handle = tokio::spawn(async move {
+        scoring::handle_update_rule_set(client_scoring_update, scoring_update_sub, pool_scoring_update, jwt_secret_scoring_update).await
+    });
+
+    let scoring_archive_handle = tokio::spawn(async move {
+        scoring::handle_archive_rule_set(client_scoring_archive, scoring_archive_sub, pool_scoring_archive, jwt_secret_scoring_archive).await
+    });
+
+    let inbox_state_get_handle = tokio::spawn(async move {
+        scoring::handle_get_inbox_state(client_inbox_state_get, inbox_state_get_sub, pool_inbox_state_get, jwt_secret_inbox_state_get).await
+    });
+
+    let inbox_state_save_handle = tokio::spawn(async move {
+        scoring::handle_save_inbox_state(client_inbox_state_save, inbox_state_save_sub, pool_inbox_state_save, jwt_secret_inbox_state_save).await
     });
 
     let route_plan_handle = tokio::spawn(async move {
@@ -1764,6 +1815,12 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         pa_cancel_handle.boxed(),
         pa_complete_handle.boxed(),
         inbox_query_handle.boxed(),
+        scoring_create_handle.boxed(),
+        scoring_list_handle.boxed(),
+        scoring_update_handle.boxed(),
+        scoring_archive_handle.boxed(),
+        inbox_state_get_handle.boxed(),
+        inbox_state_save_handle.boxed(),
         route_plan_handle.boxed(),
         route_save_handle.boxed(),
         route_delete_handle.boxed(),
