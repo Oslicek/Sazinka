@@ -1,6 +1,7 @@
 //! Database queries
 
 pub mod communication;
+pub mod planned_action;
 pub mod country;
 pub mod customer;
 pub mod device;

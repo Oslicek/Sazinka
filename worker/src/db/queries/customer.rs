@@ -44,7 +44,8 @@ pub async fn create_customer(
             id, user_id, customer_type, name, contact_person, ico, dic,
             email, phone, phone_raw,
             street, city, postal_code, country,
-            lat, lng, geocode_status::text, notes, created_at, updated_at
+            lat, lng, geocode_status::text, notes, created_at, updated_at,
+            is_abandoned, deleted_at
         "#
     )
     .bind(Uuid::new_v4())
@@ -83,7 +84,8 @@ pub async fn get_customer(
             id, user_id, customer_type, name, contact_person, ico, dic,
             email, phone, phone_raw,
             street, city, postal_code, country,
-            lat, lng, geocode_status::text, notes, created_at, updated_at
+            lat, lng, geocode_status::text, notes, created_at, updated_at,
+            is_abandoned, deleted_at
         FROM customers
         WHERE id = $1 AND user_id = $2 AND is_anonymized = FALSE
         "#
@@ -109,7 +111,8 @@ pub async fn list_customers(
             id, user_id, customer_type, name, contact_person, ico, dic,
             email, phone, phone_raw,
             street, city, postal_code, country,
-            lat, lng, geocode_status::text, notes, created_at, updated_at
+            lat, lng, geocode_status::text, notes, created_at, updated_at,
+            is_abandoned, deleted_at
         FROM customers
         WHERE user_id = $1 AND is_anonymized = FALSE
         ORDER BY name ASC
@@ -213,7 +216,8 @@ pub async fn update_customer(
             id, user_id, customer_type, name, contact_person, ico, dic,
             email, phone, phone_raw,
             street, city, postal_code, country,
-            lat, lng, geocode_status::text, notes, created_at, updated_at
+            lat, lng, geocode_status::text, notes, created_at, updated_at,
+            is_abandoned, deleted_at
         "#
     )
     .bind(req.id)
@@ -350,7 +354,8 @@ pub async fn get_random_customers_with_coords(
             id, user_id, customer_type, name, contact_person, ico, dic,
             email, phone, phone_raw,
             street, city, postal_code, country,
-            lat, lng, geocode_status::text, notes, created_at, updated_at
+            lat, lng, geocode_status::text, notes, created_at, updated_at,
+            is_abandoned, deleted_at
         FROM customers
         WHERE user_id = $1 AND is_anonymized = FALSE AND lat IS NOT NULL AND lng IS NOT NULL
         ORDER BY RANDOM()
@@ -795,3 +800,117 @@ pub async fn list_pending_geocode(
 
     Ok(customers)
 }
+
+// ============================================================================
+// LIFECYCLE — ABANDON / UNABANDON / ANONYMIZE
+// ============================================================================
+
+/// Mark a customer as abandoned (dispatcher explicitly gives up on them)
+pub async fn abandon_customer(
+    pool: &PgPool,
+    user_id: Uuid,
+    customer_id: Uuid,
+) -> Result<Option<Customer>> {
+    let customer = sqlx::query_as::<_, Customer>(
+        r#"
+        UPDATE customers
+        SET is_abandoned = TRUE, updated_at = NOW()
+        WHERE id = $1 AND user_id = $2 AND is_anonymized = FALSE
+        RETURNING
+            id, user_id, customer_type, name, contact_person, ico, dic,
+            email, phone, phone_raw,
+            street, city, postal_code, country,
+            lat, lng, geocode_status::text, notes, created_at, updated_at,
+            is_abandoned, deleted_at
+        "#,
+    )
+    .bind(customer_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(customer)
+}
+
+/// Unmark a customer as abandoned (bring them back into the inbox)
+pub async fn unabandon_customer(
+    pool: &PgPool,
+    user_id: Uuid,
+    customer_id: Uuid,
+) -> Result<Option<Customer>> {
+    let customer = sqlx::query_as::<_, Customer>(
+        r#"
+        UPDATE customers
+        SET is_abandoned = FALSE, updated_at = NOW()
+        WHERE id = $1 AND user_id = $2 AND is_anonymized = FALSE
+        RETURNING
+            id, user_id, customer_type, name, contact_person, ico, dic,
+            email, phone, phone_raw,
+            street, city, postal_code, country,
+            lat, lng, geocode_status::text, notes, created_at, updated_at,
+            is_abandoned, deleted_at
+        "#,
+    )
+    .bind(customer_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(customer)
+}
+
+/// GDPR anonymize a customer: scrub PII, soft-delete, cancel open planned actions.
+/// This is irreversible.
+pub async fn anonymize_customer(
+    pool: &PgPool,
+    user_id: Uuid,
+    customer_id: Uuid,
+) -> Result<bool> {
+    let mut tx = pool.begin().await?;
+
+    // Cancel all open planned actions for this customer
+    sqlx::query(
+        r#"
+        UPDATE planned_actions
+        SET status = 'cancelled'::action_status, updated_at = NOW()
+        WHERE customer_id = $1 AND user_id = $2 AND status IN ('open', 'snoozed')
+        "#,
+    )
+    .bind(customer_id)
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
+
+    // Scrub PII and set deleted_at
+    let result = sqlx::query(
+        r#"
+        UPDATE customers
+        SET
+            name           = '[anonymized]',
+            contact_person = NULL,
+            email          = NULL,
+            phone          = NULL,
+            phone_raw      = NULL,
+            street         = NULL,
+            city           = NULL,
+            postal_code    = NULL,
+            lat            = NULL,
+            lng            = NULL,
+            notes          = NULL,
+            ico            = NULL,
+            dic            = NULL,
+            is_anonymized  = TRUE,
+            deleted_at     = NOW(),
+            updated_at     = NOW()
+        WHERE id = $1 AND user_id = $2 AND is_anonymized = FALSE
+        "#,
+    )
+    .bind(customer_id)
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+    Ok(result.rows_affected() > 0)
+}
+

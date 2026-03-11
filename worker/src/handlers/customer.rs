@@ -552,3 +552,159 @@ pub async fn handle_summary(
 
     Ok(())
 }
+
+/// Handle sazinka.customer.abandon — marks customer as abandoned
+pub async fn handle_abandon(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+    jwt_secret: Arc<String>,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received customer.abandon");
+
+        let reply = match msg.reply {
+            Some(ref r) => r.clone(),
+            None => { warn!("No reply subject"); continue; }
+        };
+
+        let request: Request<uuid::Uuid> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                let error = ErrorResponse::new(uuid::Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        match queries::customer::abandon_customer(&pool, user_id, request.payload).await {
+            Ok(Some(customer)) => {
+                let response = SuccessResponse::new(request.id, customer);
+                let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+            }
+            Ok(None) => {
+                let error = ErrorResponse::new(request.id, "NOT_FOUND", "Customer not found");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+            Err(e) => {
+                error!("abandon_customer error: {}", e);
+                let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Handle sazinka.customer.unabandon — restores customer to inbox
+pub async fn handle_unabandon(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+    jwt_secret: Arc<String>,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received customer.unabandon");
+
+        let reply = match msg.reply {
+            Some(ref r) => r.clone(),
+            None => { warn!("No reply subject"); continue; }
+        };
+
+        let request: Request<uuid::Uuid> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                let error = ErrorResponse::new(uuid::Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        match queries::customer::unabandon_customer(&pool, user_id, request.payload).await {
+            Ok(Some(customer)) => {
+                let response = SuccessResponse::new(request.id, customer);
+                let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+            }
+            Ok(None) => {
+                let error = ErrorResponse::new(request.id, "NOT_FOUND", "Customer not found");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+            Err(e) => {
+                error!("unabandon_customer error: {}", e);
+                let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Handle sazinka.customer.anonymize — GDPR soft-delete (irreversible)
+pub async fn handle_anonymize(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+    jwt_secret: Arc<String>,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received customer.anonymize");
+
+        let reply = match msg.reply {
+            Some(ref r) => r.clone(),
+            None => { warn!("No reply subject"); continue; }
+        };
+
+        let request: Request<uuid::Uuid> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                let error = ErrorResponse::new(uuid::Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        match queries::customer::anonymize_customer(&pool, user_id, request.payload).await {
+            Ok(true) => {
+                let response = SuccessResponse::new(request.id, serde_json::json!({"anonymized": true}));
+                let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+            }
+            Ok(false) => {
+                let error = ErrorResponse::new(request.id, "NOT_FOUND", "Customer not found");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+            Err(e) => {
+                error!("anonymize_customer error: {}", e);
+                let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+    Ok(())
+}

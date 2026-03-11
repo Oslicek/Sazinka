@@ -3,6 +3,8 @@
 pub mod admin;
 pub mod auth;
 pub mod communication;
+pub mod inbox;
+pub mod planned_action;
 pub mod crew;
 pub mod customer;
 pub mod device;
@@ -210,6 +212,21 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let customer_random_sub = client.subscribe("sazinka.customer.random").await?;
     let customer_list_extended_sub = client.subscribe("sazinka.customer.list.extended").await?;
     let customer_summary_sub = client.subscribe("sazinka.customer.summary").await?;
+    let customer_abandon_sub = client.subscribe("sazinka.customer.abandon").await?;
+    let customer_unabandon_sub = client.subscribe("sazinka.customer.unabandon").await?;
+    let customer_anonymize_sub = client.subscribe("sazinka.customer.anonymize").await?;
+
+    // Planned action subscriptions
+    let pa_create_sub = client.subscribe("sazinka.planned_action.create").await?;
+    let pa_list_sub = client.subscribe("sazinka.planned_action.list").await?;
+    let pa_get_sub = client.subscribe("sazinka.planned_action.get").await?;
+    let pa_update_sub = client.subscribe("sazinka.planned_action.update").await?;
+    let pa_cancel_sub = client.subscribe("sazinka.planned_action.cancel").await?;
+    let pa_complete_sub = client.subscribe("sazinka.planned_action.complete").await?;
+
+    // Inbox subscription
+    let inbox_query_sub = client.subscribe("sazinka.inbox.query").await?;
+
     let route_plan_sub = client.subscribe("sazinka.route.plan").await?;
     let route_save_sub = client.subscribe("sazinka.route.save").await?;
     let route_delete_sub = client.subscribe("sazinka.route.delete").await?;
@@ -313,6 +330,16 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let client_customer_random = client.clone();
     let client_customer_list_extended = client.clone();
     let client_customer_summary = client.clone();
+    let client_customer_abandon = client.clone();
+    let client_customer_unabandon = client.clone();
+    let client_customer_anonymize = client.clone();
+    let client_pa_create = client.clone();
+    let client_pa_list = client.clone();
+    let client_pa_get = client.clone();
+    let client_pa_update = client.clone();
+    let client_pa_cancel = client.clone();
+    let client_pa_complete = client.clone();
+    let client_inbox_query = client.clone();
     let client_route_plan = client.clone();
     let client_route_save = client.clone();
     let client_route_delete = client.clone();
@@ -354,6 +381,16 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_customer_random = pool.clone();
     let pool_customer_list_extended = pool.clone();
     let pool_customer_summary = pool.clone();
+    let pool_customer_abandon = pool.clone();
+    let pool_customer_unabandon = pool.clone();
+    let pool_customer_anonymize = pool.clone();
+    let pool_pa_create = pool.clone();
+    let pool_pa_list = pool.clone();
+    let pool_pa_get = pool.clone();
+    let pool_pa_update = pool.clone();
+    let pool_pa_cancel = pool.clone();
+    let pool_pa_complete = pool.clone();
+    let pool_inbox_query = pool.clone();
     let pool_route_plan = pool.clone();
     let pool_route_save = pool.clone();
     let pool_route_delete = pool.clone();
@@ -491,6 +528,16 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let jwt_secret_customer_random = Arc::clone(&jwt_secret);
     let jwt_secret_customer_list_extended = Arc::clone(&jwt_secret);
     let jwt_secret_customer_summary = Arc::clone(&jwt_secret);
+    let jwt_secret_customer_abandon = Arc::clone(&jwt_secret);
+    let jwt_secret_customer_unabandon = Arc::clone(&jwt_secret);
+    let jwt_secret_customer_anonymize = Arc::clone(&jwt_secret);
+    let jwt_secret_pa_create = Arc::clone(&jwt_secret);
+    let jwt_secret_pa_list = Arc::clone(&jwt_secret);
+    let jwt_secret_pa_get = Arc::clone(&jwt_secret);
+    let jwt_secret_pa_update = Arc::clone(&jwt_secret);
+    let jwt_secret_pa_cancel = Arc::clone(&jwt_secret);
+    let jwt_secret_pa_complete = Arc::clone(&jwt_secret);
+    let jwt_secret_inbox_query = Arc::clone(&jwt_secret);
     
     // JWT secret clones for route handlers
     let jwt_secret_route_plan = Arc::clone(&jwt_secret);
@@ -783,6 +830,46 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
 
     let customer_summary_handle = tokio::spawn(async move {
         customer::handle_summary(client_customer_summary, customer_summary_sub, pool_customer_summary, jwt_secret_customer_summary).await
+    });
+
+    let customer_abandon_handle = tokio::spawn(async move {
+        customer::handle_abandon(client_customer_abandon, customer_abandon_sub, pool_customer_abandon, jwt_secret_customer_abandon).await
+    });
+
+    let customer_unabandon_handle = tokio::spawn(async move {
+        customer::handle_unabandon(client_customer_unabandon, customer_unabandon_sub, pool_customer_unabandon, jwt_secret_customer_unabandon).await
+    });
+
+    let customer_anonymize_handle = tokio::spawn(async move {
+        customer::handle_anonymize(client_customer_anonymize, customer_anonymize_sub, pool_customer_anonymize, jwt_secret_customer_anonymize).await
+    });
+
+    let pa_create_handle = tokio::spawn(async move {
+        planned_action::handle_create(client_pa_create, pa_create_sub, pool_pa_create, jwt_secret_pa_create).await
+    });
+
+    let pa_list_handle = tokio::spawn(async move {
+        planned_action::handle_list(client_pa_list, pa_list_sub, pool_pa_list, jwt_secret_pa_list).await
+    });
+
+    let pa_get_handle = tokio::spawn(async move {
+        planned_action::handle_get(client_pa_get, pa_get_sub, pool_pa_get, jwt_secret_pa_get).await
+    });
+
+    let pa_update_handle = tokio::spawn(async move {
+        planned_action::handle_update(client_pa_update, pa_update_sub, pool_pa_update, jwt_secret_pa_update).await
+    });
+
+    let pa_cancel_handle = tokio::spawn(async move {
+        planned_action::handle_cancel(client_pa_cancel, pa_cancel_sub, pool_pa_cancel, jwt_secret_pa_cancel).await
+    });
+
+    let pa_complete_handle = tokio::spawn(async move {
+        planned_action::handle_complete(client_pa_complete, pa_complete_sub, pool_pa_complete, jwt_secret_pa_complete).await
+    });
+
+    let inbox_query_handle = tokio::spawn(async move {
+        inbox::handle_query(client_inbox_query, inbox_query_sub, pool_inbox_query, jwt_secret_inbox_query).await
     });
 
     let route_plan_handle = tokio::spawn(async move {
@@ -1667,6 +1754,16 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         customer_random_handle.boxed(),
         customer_list_extended_handle.boxed(),
         customer_summary_handle.boxed(),
+        customer_abandon_handle.boxed(),
+        customer_unabandon_handle.boxed(),
+        customer_anonymize_handle.boxed(),
+        pa_create_handle.boxed(),
+        pa_list_handle.boxed(),
+        pa_get_handle.boxed(),
+        pa_update_handle.boxed(),
+        pa_cancel_handle.boxed(),
+        pa_complete_handle.boxed(),
+        inbox_query_handle.boxed(),
         route_plan_handle.boxed(),
         route_save_handle.boxed(),
         route_delete_handle.boxed(),
