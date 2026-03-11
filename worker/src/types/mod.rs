@@ -23,6 +23,7 @@ pub mod user;
 pub mod valhalla_job;
 pub mod crew;
 pub mod visit;
+pub mod task;
 pub mod work_item;
 
 pub use action_target::*;
@@ -46,4 +47,5 @@ pub use user::*;
 pub use valhalla_job::*;
 pub use crew::*;
 pub use visit::*;
+pub use task::*;
 pub use work_item::*;

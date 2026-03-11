@@ -23,6 +23,7 @@ pub mod route;
 pub mod settings;
 pub mod slots;
 pub mod visit;
+pub mod task;
 pub mod work_item;
 
 use std::sync::Arc;
@@ -325,6 +326,16 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let work_item_get_sub = client.subscribe("sazinka.work_item.get").await?;
     let work_item_complete_sub = client.subscribe("sazinka.work_item.complete").await?;
     
+    // Task subjects
+    let task_type_create_sub = client.subscribe("sazinka.task_type.create").await?;
+    let task_type_list_sub = client.subscribe("sazinka.task_type.list").await?;
+    let task_type_update_sub = client.subscribe("sazinka.task_type.update").await?;
+    let task_create_sub = client.subscribe("sazinka.task.create").await?;
+    let task_list_sub = client.subscribe("sazinka.task.list").await?;
+    let task_get_sub = client.subscribe("sazinka.task.get").await?;
+    let task_update_sub = client.subscribe("sazinka.task.update").await?;
+    let task_complete_sub = client.subscribe("sazinka.task.complete").await?;
+
     // Old sync import subjects removed - now using async processors
 
     info!("Subscribed to NATS subjects");
@@ -1789,6 +1800,40 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         jobs::handle_job_retry(client_job_retry, job_retry_sub, jwt_secret_job_retry).await
     });
 
+    // Task handlers
+    let task_type_create_handle = tokio::spawn({
+        let c = client.clone(); let p = pool.clone(); let j = Arc::clone(&jwt_secret);
+        async move { task::handle_task_type_create(c, task_type_create_sub, p, j).await }
+    });
+    let task_type_list_handle = tokio::spawn({
+        let c = client.clone(); let p = pool.clone(); let j = Arc::clone(&jwt_secret);
+        async move { task::handle_task_type_list(c, task_type_list_sub, p, j).await }
+    });
+    let task_type_update_handle = tokio::spawn({
+        let c = client.clone(); let p = pool.clone(); let j = Arc::clone(&jwt_secret);
+        async move { task::handle_task_type_update(c, task_type_update_sub, p, j).await }
+    });
+    let task_create_handle = tokio::spawn({
+        let c = client.clone(); let p = pool.clone(); let j = Arc::clone(&jwt_secret);
+        async move { task::handle_task_create(c, task_create_sub, p, j).await }
+    });
+    let task_list_handle = tokio::spawn({
+        let c = client.clone(); let p = pool.clone(); let j = Arc::clone(&jwt_secret);
+        async move { task::handle_task_list(c, task_list_sub, p, j).await }
+    });
+    let task_get_handle = tokio::spawn({
+        let c = client.clone(); let p = pool.clone(); let j = Arc::clone(&jwt_secret);
+        async move { task::handle_task_get(c, task_get_sub, p, j).await }
+    });
+    let task_update_handle = tokio::spawn({
+        let c = client.clone(); let p = pool.clone(); let j = Arc::clone(&jwt_secret);
+        async move { task::handle_task_update(c, task_update_sub, p, j).await }
+    });
+    let task_complete_handle = tokio::spawn({
+        let c = client.clone(); let p = pool.clone(); let j = Arc::clone(&jwt_secret);
+        async move { task::handle_task_complete(c, task_complete_sub, p, j).await }
+    });
+
     info!("All handlers started, waiting for messages...");
 
     // Wait for any handler to finish (which means an error occurred)
@@ -1892,6 +1937,14 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         dtf_update_handle.boxed(),
         dtf_set_active_handle.boxed(),
         dtf_reorder_handle.boxed(),
+        task_type_create_handle.boxed(),
+        task_type_list_handle.boxed(),
+        task_type_update_handle.boxed(),
+        task_create_handle.boxed(),
+        task_list_handle.boxed(),
+        task_get_handle.boxed(),
+        task_update_handle.boxed(),
+        task_complete_handle.boxed(),
     ];
 
     let (result, _index, _remaining) = futures::future::select_all(handles).await;

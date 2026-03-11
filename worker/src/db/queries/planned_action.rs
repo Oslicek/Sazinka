@@ -2,7 +2,7 @@
 //! Planned action database queries
 
 use anyhow::Result;
-use chrono::{NaiveDate, Utc};
+use chrono::NaiveDate;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -537,6 +537,34 @@ pub async fn upsert_snooze_for_revision(
     .await?;
 
     Ok(updated)
+}
+
+/// Complete all open planned_actions linked to a task (via action_targets).
+/// Called when a task is completed (Phase 6).
+pub async fn complete_planned_actions_for_task(
+    pool: &PgPool,
+    user_id: Uuid,
+    task_id: Uuid,
+) -> Result<u64> {
+    let result = sqlx::query(
+        r#"
+        UPDATE planned_actions pa
+        SET status = 'completed'::action_status,
+            completed_at = NOW(),
+            updated_at = NOW()
+        FROM action_targets at
+        WHERE at.id = pa.action_target_id
+          AND at.task_id = $1
+          AND pa.user_id = $2
+          AND pa.status IN ('open', 'snoozed')
+        "#,
+    )
+    .bind(task_id)
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected())
 }
 
 /// Auto-create a planned_action for a communication follow-up (Phase 5 dual-write).

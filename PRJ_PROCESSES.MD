@@ -1,6 +1,6 @@
 # Business Processes & Customer Lifecycle
 
-> **Status**: Implementation in progress — Phase 1 complete, Phase 2 in progress.  
+> **Status**: All 6 phases complete — Phases 1-6 implemented. Guarded migrations (034, 037) pending manual execution after code audit.  
 > **Last-Modified**: 2026-03-11
 
 | Phase | Status | Notes |
@@ -10,7 +10,7 @@
 | Phase 3: Frontend | ✅ Complete | inboxService, useInbox hook, CandidateDetail callback/abandon actions |
 | Phase 4: Scoring | ✅ Complete | scoring_rule_sets/factors/dispatcher_inbox_state tables, Rust scoring service, NATS handlers |
 | Phase 5: Cleanup | ✅ Complete | Dual-write: revision snooze → planned_action, communication follow_up → planned_action; migration 034 (guarded drop) |
-| Phase 6: Tasks model | ⏳ Pending | — |
+| Phase 6: Tasks model | ✅ Complete | task_types/tasks tables (035), backfill from revisions (036), Rust Task/TaskType types+queries, NATS handlers, shared TS types; migrations 037 (guarded drop) |
 
 ---
 
