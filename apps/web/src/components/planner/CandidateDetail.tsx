@@ -71,6 +71,10 @@ interface CandidateDetailProps {
   routeDate?: string;
   /** Default service duration in minutes from settings (for auto-filling "Do" time) */
   defaultServiceDurationMinutes?: number;
+  /** Create a planned action (callback / follow-up) for this customer */
+  onCreatePlannedAction?: (customerId: string, dueDate: string, note: string) => Promise<void>;
+  /** Abandon this customer (remove from inbox) */
+  onAbandon?: (customerId: string) => Promise<void>;
 }
 
 export function CandidateDetail({
@@ -85,6 +89,8 @@ export function CandidateDetail({
   needsReschedule = false,
   routeDate,
   defaultServiceDurationMinutes = 60,
+  onCreatePlannedAction,
+  onAbandon,
 }: CandidateDetailProps) {
   const { t } = useTranslation('planner');
   // Inline scheduling form state
@@ -100,6 +106,12 @@ export function CandidateDetail({
     resolveRevisionDuration(null, candidate?.deviceTypeDefaultDurationMinutes, defaultServiceDurationMinutes)
   );
   
+  // Schedule callback (planned action) form state
+  const [showCallbackForm, setShowCallbackForm] = useState(false);
+  const [callbackDate, setCallbackDate] = useState('');
+  const [callbackNote, setCallbackNote] = useState('');
+  const [isSavingCallback, setIsSavingCallback] = useState(false);
+
   // Snooze dropdown state
   const [showSnoozeDropdown, setShowSnoozeDropdown] = useState(false);
   const [defaultSnoozeDays, setDefaultSnoozeDays] = useState<SnoozeDuration>(() => {
@@ -314,6 +326,19 @@ export function CandidateDetail({
       case 30: return t('candidate_snooze_duration_30');
     }
   };
+
+  const handleSaveCallback = useCallback(async () => {
+    if (!candidate || !callbackDate || !onCreatePlannedAction) return;
+    setIsSavingCallback(true);
+    try {
+      await onCreatePlannedAction(candidate.customerId, callbackDate, callbackNote);
+      setShowCallbackForm(false);
+      setCallbackDate('');
+      setCallbackNote('');
+    } finally {
+      setIsSavingCallback(false);
+    }
+  }, [candidate, callbackDate, callbackNote, onCreatePlannedAction]);
 
   const formatPhoneDisplay = (phone: string): string => {
     const compact = phone.replace(/\s+/g, '');
@@ -562,6 +587,79 @@ export function CandidateDetail({
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Schedule callback (planned action) */}
+      {onCreatePlannedAction && (
+        <div className={styles.actionRow}>
+          {!showCallbackForm ? (
+            <button
+              type="button"
+              className={styles.callbackButton}
+              onClick={() => setShowCallbackForm(true)}
+              data-testid="schedule-callback-button"
+            >
+              <Plus size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+              {t('candidate_schedule_callback', 'Naplánovat callback')}
+            </button>
+          ) : (
+            <div className={styles.callbackForm} data-testid="callback-form">
+              <label className={styles.inlineEditLabel}>
+                {t('candidate_callback_date', 'Datum')}
+                <input
+                  type="date"
+                  className={styles.inlineEditInput}
+                  value={callbackDate}
+                  onChange={(e) => setCallbackDate(e.target.value)}
+                  autoFocus
+                />
+              </label>
+              <label className={styles.inlineEditLabel}>
+                {t('candidate_callback_note', 'Poznámka')}
+                <input
+                  type="text"
+                  className={styles.inlineEditInput}
+                  value={callbackNote}
+                  onChange={(e) => setCallbackNote(e.target.value)}
+                  placeholder={t('candidate_callback_note_placeholder', 'Volitelná poznámka...')}
+                />
+              </label>
+              <div className={styles.inlineEditActions}>
+                <button
+                  type="button"
+                  className={styles.inlineEditSave}
+                  onClick={handleSaveCallback}
+                  disabled={!callbackDate || isSavingCallback}
+                  data-testid="callback-form-submit"
+                >
+                  {isSavingCallback ? '⏳' : '✓'} {t('candidate_edit_save', 'Uložit')}
+                </button>
+                <button
+                  type="button"
+                  className={styles.inlineEditCancel}
+                  onClick={() => setShowCallbackForm(false)}
+                  disabled={isSavingCallback}
+                >
+                  {t('candidate_edit_cancel', 'Zrušit')}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Abandon customer */}
+      {onAbandon && (
+        <div className={styles.actionRow}>
+          <button
+            type="button"
+            className={styles.abandonButton}
+            onClick={() => candidate && onAbandon(candidate.customerId)}
+            data-testid="abandon-customer-button"
+          >
+            {t('candidate_abandon', 'Opustit zákazníka')}
+          </button>
         </div>
       )}
 
