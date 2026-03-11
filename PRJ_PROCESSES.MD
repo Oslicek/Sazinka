@@ -9,7 +9,7 @@
 | Phase 2: Backend | ✅ Complete | DB queries, NATS handlers for planned_action + inbox + customer lifecycle |
 | Phase 3: Frontend | ✅ Complete | inboxService, useInbox hook, CandidateDetail callback/abandon actions |
 | Phase 4: Scoring | ✅ Complete | scoring_rule_sets/factors/dispatcher_inbox_state tables, Rust scoring service, NATS handlers |
-| Phase 5: Cleanup | ⏳ Pending | — |
+| Phase 5: Cleanup | ✅ Complete | Dual-write: revision snooze → planned_action, communication follow_up → planned_action; migration 034 (guarded drop) |
 | Phase 6: Tasks model | ⏳ Pending | — |
 
 ---

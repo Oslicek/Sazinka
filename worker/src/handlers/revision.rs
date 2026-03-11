@@ -20,6 +20,7 @@ use crate::types::revision::{
     SuggestRevisionsRequest, SuggestRevisionsResponse,
     CallQueueRequest, SnoozeRevisionRequest, ScheduleRevisionRequest,
 };
+use crate::types::planned_action::CreatePlannedActionRequest;
 
 /// Response for list of revisions
 #[derive(Debug, serde::Serialize)]
@@ -748,6 +749,23 @@ pub async fn handle_snooze(
             request.payload.reason.clone(),
         ).await {
             Ok(Some(revision)) => {
+                // Phase 5 dual-write: upsert a snoozed planned_action for this revision
+                let pa_req = CreatePlannedActionRequest {
+                    customer_id: revision.customer_id,
+                    due_date: request.payload.snooze_until,
+                    note: request.payload.reason.clone(),
+                    snooze_until: Some(request.payload.snooze_until),
+                    snooze_reason: request.payload.reason.clone(),
+                    action_target_id: None,
+                    revision_id: Some(revision.id),
+                    visit_id: None,
+                    device_id: Some(revision.device_id),
+                };
+                if let Err(e) = queries::planned_action::upsert_snooze_for_revision(
+                    &pool, user_id, revision.id, &pa_req,
+                ).await {
+                    warn!("Failed to upsert planned_action snooze for revision {}: {}", revision.id, e);
+                }
                 let response = SuccessResponse::new(request.id, revision);
                 let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
             }

@@ -464,6 +464,127 @@ pub async fn get_customer_inbox(
 }
 
 // ============================================================================
+// PHASE 5: DUAL-WRITE HELPERS
+// ============================================================================
+
+/// Upsert a snoozed planned_action for a revision (Phase 5 dual-write).
+/// If an open/snoozed planned_action already exists for this revision, update it.
+/// Otherwise create a new one with status = 'snoozed'.
+pub async fn upsert_snooze_for_revision(
+    pool: &PgPool,
+    user_id: Uuid,
+    revision_id: Uuid,
+    req: &CreatePlannedActionRequest,
+) -> Result<PlannedAction> {
+    let action = sqlx::query_as::<_, PlannedAction>(&format!(
+        r#"
+        INSERT INTO planned_actions (
+            id, user_id, customer_id, status,
+            due_date, snooze_until, snooze_reason,
+            action_target_id, revision_id, visit_id, device_id,
+            note, created_at, updated_at
+        )
+        VALUES (
+            $1, $2, $3, 'snoozed'::action_status,
+            $4, $5, $6,
+            NULL, $7, NULL, $8,
+            $9, NOW(), NOW()
+        )
+        ON CONFLICT DO NOTHING
+        RETURNING {}
+        "#,
+        PLANNED_ACTION_COLS
+    ))
+    .bind(Uuid::new_v4())
+    .bind(user_id)
+    .bind(req.customer_id)
+    .bind(req.due_date)
+    .bind(req.snooze_until)
+    .bind(&req.snooze_reason)
+    .bind(revision_id)
+    .bind(req.device_id)
+    .bind(&req.note)
+    .fetch_optional(pool)
+    .await?;
+
+    // If the INSERT was a no-op (conflict), update the existing open/snoozed action
+    if let Some(a) = action {
+        return Ok(a);
+    }
+
+    let updated = sqlx::query_as::<_, PlannedAction>(&format!(
+        r#"
+        UPDATE planned_actions
+        SET status = 'snoozed'::action_status,
+            due_date = $1,
+            snooze_until = $2,
+            snooze_reason = $3,
+            note = COALESCE($4, note),
+            updated_at = NOW()
+        WHERE revision_id = $5 AND user_id = $6
+          AND status IN ('open', 'snoozed')
+        RETURNING {}
+        "#,
+        PLANNED_ACTION_COLS
+    ))
+    .bind(req.due_date)
+    .bind(req.snooze_until)
+    .bind(&req.snooze_reason)
+    .bind(&req.note)
+    .bind(revision_id)
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(updated)
+}
+
+/// Auto-create a planned_action for a communication follow-up (Phase 5 dual-write).
+/// Only creates if no open/snoozed planned_action already exists for this customer on that date.
+pub async fn create_followup_action_for_communication(
+    pool: &PgPool,
+    user_id: Uuid,
+    customer_id: Uuid,
+    follow_up_date: NaiveDate,
+    note: Option<String>,
+) -> Result<Option<PlannedAction>> {
+    let action = sqlx::query_as::<_, PlannedAction>(&format!(
+        r#"
+        INSERT INTO planned_actions (
+            id, user_id, customer_id, status,
+            due_date, snooze_until, snooze_reason,
+            action_target_id, revision_id, visit_id, device_id,
+            note, created_at, updated_at
+        )
+        SELECT $1, $2, $3, 'open'::action_status,
+               $4, NULL, NULL,
+               NULL, NULL, NULL, NULL,
+               $5, NOW(), NOW()
+        WHERE NOT EXISTS (
+            SELECT 1 FROM planned_actions
+            WHERE customer_id = $3
+              AND user_id = $2
+              AND due_date = $4
+              AND status IN ('open', 'snoozed')
+              AND revision_id IS NULL
+              AND visit_id IS NULL
+        )
+        RETURNING {}
+        "#,
+        PLANNED_ACTION_COLS
+    ))
+    .bind(Uuid::new_v4())
+    .bind(user_id)
+    .bind(customer_id)
+    .bind(follow_up_date)
+    .bind(&note)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(action)
+}
+
+// ============================================================================
 // TESTS
 // ============================================================================
 

@@ -15,6 +15,7 @@ use crate::types::{
     CreateCommunicationRequest, ErrorResponse, ListCommunicationsRequest,
     ListCommunicationsResponse, Request, SuccessResponse, UpdateCommunicationRequest,
 };
+use crate::db::queries::planned_action as pa_queries;
 
 /// Handle communication.create messages
 pub async fn handle_create(
@@ -78,6 +79,22 @@ pub async fn handle_create(
         .await
         {
             Ok(communication) => {
+                // Phase 5 dual-write: auto-create a planned_action for follow-up date
+                if let Some(follow_up_date) = payload.follow_up_date {
+                    let note = Some(format!(
+                        "Follow-up from communication on {}",
+                        communication.created_at.date_naive()
+                    ));
+                    if let Err(e) = pa_queries::create_followup_action_for_communication(
+                        &pool,
+                        user_id,
+                        payload.customer_id,
+                        follow_up_date,
+                        note,
+                    ).await {
+                        warn!("Failed to auto-create planned_action for follow-up: {}", e);
+                    }
+                }
                 let comm_id = communication.id;
                 let response = SuccessResponse::new(request.id, communication);
                 let _ = client
