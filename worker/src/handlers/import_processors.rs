@@ -1176,7 +1176,6 @@ impl CommunicationImportProcessor {
             row.contact_name.as_deref(),
             row.contact_phone.as_deref(),
             row.duration_minutes,
-            None, // follow_up_date
         ).await?;
         
         Ok(communication.id)
@@ -2280,7 +2279,6 @@ impl ZipImportProcessor {
             row.contact_name.as_deref(),
             row.contact_phone.as_deref(),
             row.duration_minutes,
-            None, // follow_up_date
         ).await?;
         
         Ok(communication.id)

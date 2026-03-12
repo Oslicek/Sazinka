@@ -89,9 +89,6 @@ pub struct Communication {
     pub email_status: Option<String>,
     pub duration_minutes: Option<i32>,
     
-    pub follow_up_date: Option<NaiveDate>,
-    pub follow_up_completed: Option<bool>,
-    
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -109,7 +106,7 @@ pub struct CreateCommunicationRequest {
     pub contact_name: Option<String>,
     pub contact_phone: Option<String>,
     pub duration_minutes: Option<i32>,
-    pub follow_up_date: Option<NaiveDate>,
+    pub follow_up_date: Option<NaiveDate>,  // used by handler for planned_action dual-write, not stored in communications table
 }
 
 /// Request to update a communication
@@ -119,8 +116,6 @@ pub struct UpdateCommunicationRequest {
     pub id: Uuid,
     pub subject: Option<String>,
     pub content: Option<String>,
-    pub follow_up_date: Option<NaiveDate>,
-    pub follow_up_completed: Option<bool>,
 }
 
 /// Request to list communications
@@ -130,7 +125,6 @@ pub struct ListCommunicationsRequest {
     pub customer_id: Option<Uuid>,
     pub revision_id: Option<Uuid>,
     pub comm_type: Option<String>,
-    pub follow_up_pending: Option<bool>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }

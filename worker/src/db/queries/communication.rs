@@ -2,7 +2,6 @@
 //! Communication database queries
 
 use anyhow::Result;
-use chrono::NaiveDate;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -21,7 +20,6 @@ pub async fn create_communication(
     contact_name: Option<&str>,
     contact_phone: Option<&str>,
     duration_minutes: Option<i32>,
-    follow_up_date: Option<NaiveDate>,
 ) -> Result<Communication> {
     let communication = sqlx::query_as::<_, Communication>(
         r#"
@@ -29,14 +27,14 @@ pub async fn create_communication(
             id, user_id, customer_id, revision_id,
             comm_type, direction, subject, content,
             contact_name, contact_phone, duration_minutes,
-            follow_up_date, follow_up_completed, created_at, updated_at
+            created_at, updated_at
         )
-        VALUES ($1, $2, $3, $4, $5::comm_type, $6::comm_direction, $7, $8, $9, $10, $11, $12, FALSE, NOW(), NOW())
+        VALUES ($1, $2, $3, $4, $5::comm_type, $6::comm_direction, $7, $8, $9, $10, $11, NOW(), NOW())
         RETURNING
             id, user_id, customer_id, revision_id,
             comm_type::text, direction::text, subject, content,
             contact_name, contact_phone, email_status,
-            duration_minutes, follow_up_date, follow_up_completed,
+            duration_minutes,
             created_at, updated_at
         "#,
     )
@@ -51,7 +49,6 @@ pub async fn create_communication(
     .bind(contact_name)
     .bind(contact_phone)
     .bind(duration_minutes)
-    .bind(follow_up_date)
     .fetch_one(pool)
     .await?;
 
@@ -70,7 +67,7 @@ pub async fn get_communication(
             id, user_id, customer_id, revision_id,
             comm_type::text, direction::text, subject, content,
             contact_name, contact_phone, email_status,
-            duration_minutes, follow_up_date, follow_up_completed,
+            duration_minutes,
             created_at, updated_at
         FROM communications
         WHERE id = $1 AND user_id = $2
@@ -91,11 +88,9 @@ pub async fn list_communications(
     customer_id: Option<Uuid>,
     revision_id: Option<Uuid>,
     comm_type: Option<&str>,
-    follow_up_pending: Option<bool>,
     limit: i64,
     offset: i64,
 ) -> Result<(Vec<Communication>, i64)> {
-    // Build dynamic query
     let mut conditions = vec!["user_id = $1".to_string()];
     let mut param_count = 1;
 
@@ -111,9 +106,6 @@ pub async fn list_communications(
         param_count += 1;
         conditions.push(format!("comm_type = ${}", param_count));
     }
-    if follow_up_pending == Some(true) {
-        conditions.push("follow_up_date IS NOT NULL AND follow_up_completed = FALSE".to_string());
-    }
 
     let where_clause = conditions.join(" AND ");
 
@@ -123,7 +115,7 @@ pub async fn list_communications(
             id, user_id, customer_id, revision_id,
             comm_type::text, direction::text, subject, content,
             contact_name, contact_phone, email_status,
-            duration_minutes, follow_up_date, follow_up_completed,
+            duration_minutes,
             created_at, updated_at
         FROM communications
         WHERE {}
@@ -172,8 +164,6 @@ pub async fn update_communication(
     user_id: Uuid,
     subject: Option<&str>,
     content: Option<&str>,
-    follow_up_date: Option<NaiveDate>,
-    follow_up_completed: Option<bool>,
 ) -> Result<Option<Communication>> {
     let communication = sqlx::query_as::<_, Communication>(
         r#"
@@ -181,14 +171,13 @@ pub async fn update_communication(
         SET
             subject = COALESCE($3, subject),
             content = COALESCE($4, content),
-            follow_up_date = COALESCE($5, follow_up_date),
-            follow_up_completed = COALESCE($6, follow_up_completed)
+            updated_at = NOW()
         WHERE id = $1 AND user_id = $2
         RETURNING
             id, user_id, customer_id, revision_id,
             comm_type::text, direction::text, subject, content,
             contact_name, contact_phone, email_status,
-            duration_minutes, follow_up_date, follow_up_completed,
+            duration_minutes,
             created_at, updated_at
         "#,
     )
@@ -196,8 +185,6 @@ pub async fn update_communication(
     .bind(user_id)
     .bind(subject)
     .bind(content)
-    .bind(follow_up_date)
-    .bind(follow_up_completed)
     .fetch_optional(pool)
     .await?;
 
@@ -228,7 +215,7 @@ pub async fn get_customer_communications(
             id, user_id, customer_id, revision_id,
             comm_type::text, direction::text, subject, content,
             contact_name, contact_phone, email_status,
-            duration_minutes, follow_up_date, follow_up_completed,
+            duration_minutes,
             created_at, updated_at
         FROM communications
         WHERE customer_id = $1 AND user_id = $2

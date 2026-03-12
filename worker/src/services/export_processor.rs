@@ -487,7 +487,6 @@ impl ExportProcessor {
             None,
             None,
             None,
-            None,
             10_000,
             0,
         )

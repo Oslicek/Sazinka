@@ -74,7 +74,6 @@ pub async fn handle_create(
             payload.contact_name.as_deref(),
             payload.contact_phone.as_deref(),
             payload.duration_minutes,
-            payload.follow_up_date,
         )
         .await
         {
@@ -167,7 +166,6 @@ pub async fn handle_list(
             payload.customer_id,
             payload.revision_id,
             payload.comm_type.as_deref(),
-            payload.follow_up_pending,
             limit,
             offset,
         )
@@ -249,8 +247,6 @@ pub async fn handle_update(
             user_id,
             payload.subject.as_deref(),
             payload.content.as_deref(),
-            payload.follow_up_date,
-            payload.follow_up_completed,
         )
         .await
         {

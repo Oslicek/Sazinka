@@ -351,8 +351,8 @@ pub async fn create_communication_import(
         r#"
         INSERT INTO communications (id, user_id, customer_id, comm_type, direction,
             subject, content, contact_name, contact_phone, duration_minutes,
-            follow_up_completed, created_at, updated_at)
-        VALUES ($1, $2, $3, $4::comm_type, $5::comm_direction, $6, $7, $8, $9, $10, false, $11, $11)
+            created_at, updated_at)
+        VALUES ($1, $2, $3, $4::comm_type, $5::comm_direction, $6, $7, $8, $9, $10, $11, $11)
         "#,
     )
     .bind(id)

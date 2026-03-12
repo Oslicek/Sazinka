@@ -16,7 +16,6 @@ const REVISION_COLS: &str = r#"
     r.completed_at, r.duration_minutes, r.result::text,
     r.findings, r.fulfilled_by_work_item_id,
     r.created_at, r.updated_at,
-    r.snooze_until, r.snooze_reason,
     r.assigned_crew_id, r.route_order
 "#;
 
@@ -28,7 +27,6 @@ const REVISION_COLS_SIMPLE: &str = r#"
     completed_at, duration_minutes, result::text,
     findings, fulfilled_by_work_item_id,
     created_at, updated_at,
-    snooze_until, snooze_reason,
     assigned_crew_id, route_order
 "#;
 
@@ -551,7 +549,6 @@ fn build_call_queue_sql_parts(request: &CallQueueRequest) -> CallQueueSqlParts {
             RevisionStatus::Upcoming.as_str(),
             RevisionStatus::Scheduled.as_str()
         ),
-        "(r.snooze_until IS NULL OR r.snooze_until <= $2)".to_string(),
         "r.due_date BETWEEN $2 - INTERVAL '30 days' AND $2 + INTERVAL '60 days'".to_string(),
     ];
 
@@ -609,7 +606,6 @@ pub async fn get_call_queue(
             r.id, r.device_id, r.customer_id, r.user_id,
             r.status::text, r.due_date,
             r.scheduled_date, r.scheduled_time_start, r.scheduled_time_end,
-            r.snooze_until, r.snooze_reason,
             c.name as customer_name, c.phone as customer_phone,
             c.email as customer_email, c.street as customer_street,
             c.city as customer_city, c.postal_code as customer_postal_code,
@@ -668,7 +664,7 @@ pub async fn get_call_queue(
     let total: (i64,) = count_builder.fetch_one(pool).await?;
 
     let overdue_count_query = format!(
-        "SELECT COUNT(*) FROM revisions r WHERE r.user_id = $1 AND r.status IN ('{}', '{}') AND (r.snooze_until IS NULL OR r.snooze_until <= $2) AND r.due_date < $2",
+        "SELECT COUNT(*) FROM revisions r WHERE r.user_id = $1 AND r.status IN ('{}', '{}') AND r.due_date < $2",
         RevisionStatus::Upcoming.as_str(),
         RevisionStatus::Scheduled.as_str()
     );
@@ -679,7 +675,7 @@ pub async fn get_call_queue(
         .await?;
 
     let due_soon_count_query = format!(
-        "SELECT COUNT(*) FROM revisions r WHERE r.user_id = $1 AND r.status IN ('{}', '{}') AND (r.snooze_until IS NULL OR r.snooze_until <= $2) AND r.due_date BETWEEN $2 AND $2 + INTERVAL '7 days'",
+        "SELECT COUNT(*) FROM revisions r WHERE r.user_id = $1 AND r.status IN ('{}', '{}') AND r.due_date BETWEEN $2 AND $2 + INTERVAL '7 days'",
         RevisionStatus::Upcoming.as_str(),
         RevisionStatus::Scheduled.as_str()
     );
@@ -697,53 +693,24 @@ pub async fn get_call_queue(
     })
 }
 
-/// Snooze a revision
+/// Snooze a revision (returns the revision for dual-write to planned_actions)
 pub async fn snooze_revision(
     pool: &PgPool,
     user_id: Uuid,
     revision_id: Uuid,
-    snooze_until: NaiveDate,
-    reason: Option<String>,
+    _snooze_until: NaiveDate,
+    _reason: Option<String>,
 ) -> Result<Option<Revision>> {
-    let query = format!(
-        r#"
-        UPDATE revisions
-        SET snooze_until = $1, snooze_reason = $2, updated_at = NOW()
-        WHERE id = $3 AND user_id = $4
-        RETURNING {}
-        "#,
-        REVISION_COLS_SIMPLE
-    );
-    
-    let revision = sqlx::query_as::<_, Revision>(&query)
-    .bind(snooze_until).bind(reason)
-    .bind(revision_id).bind(user_id)
-    .fetch_optional(pool).await?;
-
-    Ok(revision)
+    get_revision(pool, revision_id, user_id).await
 }
 
-/// Clear snooze
+/// Clear snooze (no-op on revision table; snooze state lives in planned_actions)
 pub async fn clear_snooze(
     pool: &PgPool,
     user_id: Uuid,
     revision_id: Uuid,
 ) -> Result<Option<Revision>> {
-    let query = format!(
-        r#"
-        UPDATE revisions
-        SET snooze_until = NULL, snooze_reason = NULL, updated_at = NOW()
-        WHERE id = $1 AND user_id = $2
-        RETURNING {}
-        "#,
-        REVISION_COLS_SIMPLE
-    );
-    
-    let revision = sqlx::query_as::<_, Revision>(&query)
-    .bind(revision_id).bind(user_id)
-    .fetch_optional(pool).await?;
-
-    Ok(revision)
+    get_revision(pool, revision_id, user_id).await
 }
 
 /// Schedule a revision
@@ -762,7 +729,7 @@ pub async fn schedule_revision(
         UPDATE revisions
         SET scheduled_date = $1, scheduled_time_start = $2, scheduled_time_end = $3,
             assigned_crew_id = $4, duration_minutes = COALESCE($5, duration_minutes),
-            status = 'scheduled', snooze_until = NULL, snooze_reason = NULL, updated_at = NOW()
+            status = 'scheduled', updated_at = NOW()
         WHERE id = $6 AND user_id = $7
         RETURNING {}
         "#,

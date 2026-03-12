@@ -27,11 +27,6 @@ pub struct Revision {
     pub fulfilled_by_work_item_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-    // Snooze fields (for call queue)
-    #[sqlx(default)]
-    pub snooze_until: Option<NaiveDate>,
-    #[sqlx(default)]
-    pub snooze_reason: Option<String>,
     // Crew assignment
     #[sqlx(default)]
     pub assigned_crew_id: Option<Uuid>,
@@ -271,8 +266,6 @@ pub struct CallQueueItem {
     pub scheduled_date: Option<NaiveDate>,
     pub scheduled_time_start: Option<NaiveTime>,
     pub scheduled_time_end: Option<NaiveTime>,
-    pub snooze_until: Option<NaiveDate>,
-    pub snooze_reason: Option<String>,
     
     // Customer fields
     pub customer_name: Option<String>,
