@@ -186,7 +186,12 @@ jobs:
         run: pnpm --filter @ariadline/site build
 
       - name: Deploy to Cloudflare Pages
-        run: npx wrangler pages deploy apps/site/dist --project-name=ariadline-site --commit-dirty=true
+        run: >-
+          npx wrangler pages deploy apps/site/dist
+          --project-name=ariadline-site
+          --branch=${{ github.event.inputs.target == 'production' && 'master' || 'staging' }}
+          --commit-hash=${{ needs.prepare.outputs.sha }}
+          --commit-dirty=true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
@@ -214,7 +219,12 @@ jobs:
           VITE_BUILD_SHA: ${{ needs.prepare.outputs.sha }}
 
       - name: Deploy to Cloudflare Pages
-        run: npx wrangler pages deploy apps/web/dist --project-name=ariadline-app --commit-dirty=true
+        run: >-
+          npx wrangler pages deploy apps/web/dist
+          --project-name=ariadline-app
+          --branch=${{ github.event.inputs.target == 'production' && 'master' || 'staging' }}
+          --commit-hash=${{ needs.prepare.outputs.sha }}
+          --commit-dirty=true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
