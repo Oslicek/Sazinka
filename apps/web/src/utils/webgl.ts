@@ -9,7 +9,7 @@ export function isWebGLSupported(): boolean {
       canvas.getContext('webgl2') ||
       canvas.getContext('webgl') ||
       canvas.getContext('experimental-webgl');
-    _supported = ctx instanceof WebGLRenderingContext;
+    _supported = !!ctx;
   } catch {
     _supported = false;
   }
