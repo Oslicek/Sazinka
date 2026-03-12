@@ -2267,6 +2267,7 @@ Přidejte do repository settings → Secrets and variables → Actions:
 |--------|-------|------|
 | `CLOUDFLARE_API_TOKEN` | Token s Pages write permissions | Deploy do Pages |
 | `CLOUDFLARE_ACCOUNT_ID` | Vaše account ID | Deploy do Pages |
+| `NATS_BROWSER_PASSWORD` | Stejná hodnota jako `NATS_BROWSER_PASSWORD` v `.env.prod` na VPS | Vite zapéká do SPA bundlu jako `VITE_NATS_PASS` |
 
 #### Vytvoření API tokenu
 

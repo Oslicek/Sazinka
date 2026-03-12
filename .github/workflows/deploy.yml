@@ -216,6 +216,8 @@ jobs:
         run: cd apps/web && npx vite build
         env:
           VITE_NATS_WS_URL: ${{ github.event.inputs.target == 'production' && 'wss://api.ariadline.com/nats' || 'wss://api-staging.ariadline.com/nats' }}
+          VITE_NATS_USER: browser
+          VITE_NATS_PASS: ${{ secrets.NATS_BROWSER_PASSWORD }}
           VITE_BUILD_SHA: ${{ needs.prepare.outputs.sha }}
 
       - name: Deploy to Cloudflare Pages
