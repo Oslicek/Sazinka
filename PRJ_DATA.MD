@@ -303,6 +303,65 @@ Postup:
 
 ---
 
+# DB Migration Ownership Issue — Resolution Notes
+
+## Problem
+
+Migration 028 (`028_add_customer_lifecycle_fields.sql`) failed in production with:
+
+```
+ERROR: must be owner of table customers
+```
+
+**Root cause:** Migration 026 (`026_add_db_roles.sql`) created the `sazinka_admin`
+role and granted it `ALL PRIVILEGES ON ALL TABLES`. However, `GRANT ALL PRIVILEGES`
+does **not** transfer ownership. `ALTER TABLE` requires the session user to be the
+table owner (or a superuser). All tables created before migration 026 are owned by
+the original `sazinka` superuser. After migration 026 was applied, the
+`MIGRATION_DB_URL` secret was updated to use `sazinka_admin`, which cannot `ALTER`
+tables it does not own.
+
+## Fix
+
+Run the following **once as a PostgreSQL superuser** on the VPS before re-triggering
+the deploy. This transfers ownership of all public schema objects (tables, sequences,
+types) from `sazinka` to `sazinka_admin` in a single command:
+
+```bash
+# SSH to VPS, then:
+docker exec <postgres-container-name> psql -U sazinka -d sazinka -c \
+  "REASSIGN OWNED BY sazinka TO sazinka_admin;"
+```
+
+Replace `<postgres-container-name>` with the actual container name (e.g.
+`sazinka-postgres` or `infra-postgres-1`). After this command succeeds,
+re-trigger the deploy — migrations 028–037 will all succeed.
+
+## Why `GRANT ALL PRIVILEGES` is not enough
+
+| Operation | Requires | `GRANT ALL PRIVILEGES` covers it? |
+|---|---|---|
+| `SELECT / INSERT / UPDATE / DELETE` | Privilege on table | ✅ Yes |
+| `ALTER TABLE ADD COLUMN` | Table ownership | ❌ No |
+| `ALTER TABLE OWNER TO` | Superuser | ❌ No |
+| `CREATE TABLE` | Schema privilege | ✅ Yes (new tables owned by creator) |
+| `DROP TABLE` | Table ownership | ❌ No |
+
+## Long-term recommendation
+
+`MIGRATION_DB_URL` should use the `sazinka` superuser, not `sazinka_admin`.
+Migrations need full DDL rights (ownership), not just DML privileges. The
+`sazinka_admin` role is appropriate as a runtime DDL role after initial setup,
+but the migration runner needs superuser access to `ALTER` and `DROP` objects
+it may not own.
+
+After the one-time `REASSIGN OWNED BY` fix, `sazinka_admin` will own all
+existing objects and all future `CREATE TABLE` statements will create tables
+owned by `sazinka_admin` — so subsequent migrations will work fine with
+`sazinka_admin` as the migration user.
+
+---
+
 # Admin Account Security — Backdoor Removal Plan (TDD)
 
 ## Problem Statement
