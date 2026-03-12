@@ -757,9 +757,6 @@ pub async fn handle_snooze(
                     snooze_until: Some(request.payload.snooze_until),
                     snooze_reason: request.payload.reason.clone(),
                     action_target_id: None,
-                    revision_id: Some(revision.id),
-                    visit_id: None,
-                    device_id: Some(revision.device_id),
                 };
                 if let Err(e) = queries::planned_action::upsert_snooze_for_revision(
                     &pool, user_id, revision.id, &pa_req,

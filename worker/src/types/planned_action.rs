@@ -78,11 +78,6 @@ pub struct PlannedAction {
     pub snooze_until: Option<NaiveDate>,
     pub snooze_reason: Option<String>,
     pub action_target_id: Option<Uuid>,
-    // Legacy transitional links (Phase 1-4)
-    pub revision_id: Option<Uuid>,
-    #[sqlx(rename = "visit_id")]
-    pub visit_id: Option<Uuid>,
-    pub device_id: Option<Uuid>,
     pub note: Option<String>,
     pub completed_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
@@ -99,10 +94,6 @@ pub struct CreatePlannedActionRequest {
     pub snooze_until: Option<NaiveDate>,
     pub snooze_reason: Option<String>,
     pub action_target_id: Option<Uuid>,
-    // Legacy links
-    pub revision_id: Option<Uuid>,
-    pub visit_id: Option<Uuid>,
-    pub device_id: Option<Uuid>,
 }
 
 /// Request to update a planned action
@@ -172,9 +163,6 @@ mod tests {
             snooze_until: None,
             snooze_reason: None,
             action_target_id: None,
-            revision_id: None,
-            visit_id: None,
-            device_id: None,
             note: None,
             completed_at: None,
             created_at: chrono::DateTime::from_timestamp(0, 0).unwrap(),

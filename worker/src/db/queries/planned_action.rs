@@ -17,7 +17,6 @@ const PLANNED_ACTION_COLS: &str = r#"
     id, user_id, customer_id, status,
     due_date, snooze_until, snooze_reason,
     action_target_id,
-    revision_id, visit_id, device_id,
     note, completed_at, created_at, updated_at
 "#;
 
@@ -37,15 +36,13 @@ pub async fn create_planned_action(
             id, user_id, customer_id, status,
             due_date, snooze_until, snooze_reason,
             action_target_id,
-            revision_id, visit_id, device_id,
             note, created_at, updated_at
         )
         VALUES (
             $1, $2, $3, 'open'::action_status,
             $4, $5, $6,
             $7,
-            $8, $9, $10,
-            $11, NOW(), NOW()
+            $8, NOW(), NOW()
         )
         RETURNING {}
         "#,
@@ -58,9 +55,6 @@ pub async fn create_planned_action(
     .bind(req.snooze_until)
     .bind(&req.snooze_reason)
     .bind(req.action_target_id)
-    .bind(req.revision_id)
-    .bind(req.visit_id)
-    .bind(req.device_id)
     .bind(&req.note)
     .fetch_one(pool)
     .await?;
@@ -362,8 +356,8 @@ pub async fn get_customer_inbox(
                 NULL::text AS next_action_label_fallback,
                 pa.due_date AS next_action_due,
                 pa.note     AS next_action_note,
-                -- Legacy device info (Phase 2-4)
-                r.device_id,
+                -- Device info (via action_targets → tasks → devices)
+                tk.device_id,
                 d.device_name,
                 d.device_type::text AS device_type,
                 -- Contact history
@@ -380,8 +374,9 @@ pub async fn get_customer_inbox(
                 ORDER BY pa.due_date ASC
                 LIMIT 1
             ) pa ON TRUE
-            LEFT JOIN revisions r ON pa.revision_id = r.id
-            LEFT JOIN devices d ON r.device_id = d.id
+            LEFT JOIN action_targets agt ON agt.id = pa.action_target_id
+            LEFT JOIN tasks tk ON tk.id = agt.task_id
+            LEFT JOIN devices d ON d.id = tk.device_id
             WHERE {}
         )
         SELECT *
@@ -467,28 +462,54 @@ pub async fn get_customer_inbox(
 // PHASE 5: DUAL-WRITE HELPERS
 // ============================================================================
 
-/// Upsert a snoozed planned_action for a revision (Phase 5 dual-write).
-/// If an open/snoozed planned_action already exists for this revision, update it.
-/// Otherwise create a new one with status = 'snoozed'.
+/// Upsert a snoozed planned_action for a revision/task (Phase 6).
+/// Finds or creates an action_target for the task (revision migrated to task with same ID),
+/// then upserts the planned_action via action_target_id.
 pub async fn upsert_snooze_for_revision(
     pool: &PgPool,
     user_id: Uuid,
     revision_id: Uuid,
     req: &CreatePlannedActionRequest,
 ) -> Result<PlannedAction> {
+    let action_target_id: Uuid = sqlx::query_as::<_, (Uuid,)>(
+        r#"
+        WITH existing AS (
+            SELECT id FROM action_targets
+            WHERE task_id = $1 AND user_id = $2
+            LIMIT 1
+        ),
+        inserted AS (
+            INSERT INTO action_targets (id, user_id, target_kind, task_id, created_at)
+            SELECT $3, $2, 'task'::action_target_kind, $1, NOW()
+            WHERE NOT EXISTS (SELECT 1 FROM existing)
+            RETURNING id
+        )
+        SELECT id FROM existing
+        UNION ALL
+        SELECT id FROM inserted
+        LIMIT 1
+        "#,
+    )
+    .bind(revision_id)
+    .bind(user_id)
+    .bind(Uuid::new_v4())
+    .fetch_one(pool)
+    .await?
+    .0;
+
     let action = sqlx::query_as::<_, PlannedAction>(&format!(
         r#"
         INSERT INTO planned_actions (
             id, user_id, customer_id, status,
             due_date, snooze_until, snooze_reason,
-            action_target_id, revision_id, visit_id, device_id,
+            action_target_id,
             note, created_at, updated_at
         )
         VALUES (
             $1, $2, $3, 'snoozed'::action_status,
             $4, $5, $6,
-            NULL, $7, NULL, $8,
-            $9, NOW(), NOW()
+            $7,
+            $8, NOW(), NOW()
         )
         ON CONFLICT DO NOTHING
         RETURNING {}
@@ -501,13 +522,11 @@ pub async fn upsert_snooze_for_revision(
     .bind(req.due_date)
     .bind(req.snooze_until)
     .bind(&req.snooze_reason)
-    .bind(revision_id)
-    .bind(req.device_id)
+    .bind(action_target_id)
     .bind(&req.note)
     .fetch_optional(pool)
     .await?;
 
-    // If the INSERT was a no-op (conflict), update the existing open/snoozed action
     if let Some(a) = action {
         return Ok(a);
     }
@@ -521,7 +540,7 @@ pub async fn upsert_snooze_for_revision(
             snooze_reason = $3,
             note = COALESCE($4, note),
             updated_at = NOW()
-        WHERE revision_id = $5 AND user_id = $6
+        WHERE action_target_id = $5 AND user_id = $6
           AND status IN ('open', 'snoozed')
         RETURNING {}
         "#,
@@ -531,7 +550,7 @@ pub async fn upsert_snooze_for_revision(
     .bind(req.snooze_until)
     .bind(&req.snooze_reason)
     .bind(&req.note)
-    .bind(revision_id)
+    .bind(action_target_id)
     .bind(user_id)
     .fetch_one(pool)
     .await?;
@@ -567,8 +586,9 @@ pub async fn complete_planned_actions_for_task(
     Ok(result.rows_affected())
 }
 
-/// Auto-create a planned_action for a communication follow-up (Phase 5 dual-write).
-/// Only creates if no open/snoozed planned_action already exists for this customer on that date.
+/// Auto-create a planned_action for a communication follow-up.
+/// Only creates if no open/snoozed planned_action already exists for this customer
+/// on that date without an action_target (i.e. a standalone follow-up).
 pub async fn create_followup_action_for_communication(
     pool: &PgPool,
     user_id: Uuid,
@@ -581,12 +601,12 @@ pub async fn create_followup_action_for_communication(
         INSERT INTO planned_actions (
             id, user_id, customer_id, status,
             due_date, snooze_until, snooze_reason,
-            action_target_id, revision_id, visit_id, device_id,
+            action_target_id,
             note, created_at, updated_at
         )
         SELECT $1, $2, $3, 'open'::action_status,
                $4, NULL, NULL,
-               NULL, NULL, NULL, NULL,
+               NULL,
                $5, NOW(), NOW()
         WHERE NOT EXISTS (
             SELECT 1 FROM planned_actions
@@ -594,8 +614,7 @@ pub async fn create_followup_action_for_communication(
               AND user_id = $2
               AND due_date = $4
               AND status IN ('open', 'snoozed')
-              AND revision_id IS NULL
-              AND visit_id IS NULL
+              AND action_target_id IS NULL
         )
         RETURNING {}
         "#,
