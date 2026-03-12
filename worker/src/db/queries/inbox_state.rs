@@ -19,7 +19,7 @@ pub async fn get_inbox_state(
     user_id: Uuid,
 ) -> Result<Option<DispatcherInboxState>> {
     // If selected_rule_set_id points to an archived rule set, treat as NULL
-    let state = sqlx::query_as::<_, DispatcherInboxState>(&format!(
+    let state = sqlx::query_as::<_, DispatcherInboxState>(
         r#"
         SELECT
             dis.user_id,
@@ -36,7 +36,7 @@ pub async fn get_inbox_state(
         LEFT JOIN scoring_rule_sets srs ON dis.selected_rule_set_id = srs.id
         WHERE dis.user_id = $1
         "#,
-    ))
+    )
     .bind(user_id)
     .fetch_optional(pool)
     .await?;

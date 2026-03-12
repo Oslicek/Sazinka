@@ -1,4 +1,10 @@
 [advisories]
-# rsa: Marvin Attack timing sidechannel — no fix available upstream.
-# Transitive dep via sqlx-mysql (not used). Revisit quarterly.
-ignore = ["RUSTSEC-2023-0071"]
+# RUSTSEC-2023-0071: rsa — Marvin Attack timing sidechannel.
+#   No fix available upstream. Transitive dep via sqlx-mysql (not used). Revisit quarterly.
+# RUSTSEC-2025-0134: rustls-pemfile — unmaintained (INFO, no CVE).
+#   Transitive dep via async-nats. No patched version; migration requires async-nats to
+#   switch to rustls-pki-types directly. Revisit when async-nats drops the dep.
+ignore = [
+    "RUSTSEC-2023-0071",
+    "RUSTSEC-2025-0134",
+]
