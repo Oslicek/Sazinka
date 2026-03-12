@@ -308,8 +308,18 @@ export function CandidateDetail({
     );
   }
 
+  // Debug: log candidate data to identify React #310 "Objects are not valid as a React child"
+  if (typeof window !== 'undefined' && (window as any).__SAZINKA_DEBUG_CANDIDATE !== candidate.id) {
+    (window as any).__SAZINKA_DEBUG_CANDIDATE = candidate.id;
+    for (const [k, v] of Object.entries(candidate)) {
+      if (v !== null && v !== undefined && typeof v === 'object' && !(v instanceof Array)) {
+        console.error(`[CandidateDetail] field "${k}" is an object:`, v);
+      }
+    }
+  }
+
   const daysOverdue = candidate.daysUntilDue < 0 ? Math.abs(candidate.daysUntilDue) : 0;
-  const dueDateFormatted = formatDate(candidate.dueDate);
+  const dueDateFormatted = candidate.dueDate ? formatDate(candidate.dueDate) : '—';
 
   const handleSnoozeSelect = (days: SnoozeDuration) => {
     setDefaultSnoozeDays(days);
