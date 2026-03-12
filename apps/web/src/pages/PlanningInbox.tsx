@@ -46,7 +46,9 @@ import * as crewService from '../services/crewService';
 import * as routeService from '../services/routeService';
 import * as insertionService from '../services/insertionService';
 import * as geometryService from '../services/geometryService';
-import { getCallQueue, snoozeRevision, scheduleRevision, type CallQueueItem } from '../services/revisionService';
+import { type CallQueueItem } from '../services/revisionService';
+import { getInbox, listPlannedActions, updatePlannedAction } from '../services/inboxService';
+import { inboxResponseToCallQueueResponse } from '../services/inboxAdapter';
 import { listCalendarItems } from '../services/calendarService';
 import type { CalendarItem } from '@shared/calendar';
 import { usePlannerShortcuts } from '../hooks/useKeyboardShortcuts';
@@ -62,7 +64,6 @@ import {
   hasAdvancedCriteria,
   hasValidAddress,
   isScheduledCandidate,
-  mapExpressionToCallQueueRequestV1,
   normalizeExpression,
   toggleToken,
   type FilterPresetId,
@@ -657,11 +658,8 @@ export function PlanningInbox() {
     
     setIsLoadingCandidates(true);
     try {
-      const backendFilters = mapExpressionToCallQueueRequestV1(filters, false);
-      const response = await getCallQueue({
-        ...backendFilters,
-        limit: 100,
-      });
+      const inboxResponse = await getInbox({ limit: 100 });
+      const response = inboxResponseToCallQueueResponse(inboxResponse);
       
       const loadedCandidates: InboxCandidate[] = response.items.map((item) => ({
         ...item,
@@ -669,7 +667,6 @@ export function PlanningInbox() {
         deltaMin: undefined,
         slotStatus: undefined,
         suggestedSlots: undefined,
-        // Populate local scheduled fields from backend data
         _scheduledDate: item.scheduledDate ?? undefined,
         _scheduledTimeStart: item.scheduledTimeStart ?? undefined,
         _scheduledTimeEnd: item.scheduledTimeEnd ?? undefined,
@@ -683,7 +680,7 @@ export function PlanningInbox() {
     } finally {
       setIsLoadingCandidates(false);
     }
-  }, [isConnected, filters]);
+  }, [isConnected]);
 
   useEffect(() => {
     loadCandidates();
@@ -1323,13 +1320,6 @@ export function PlanningInbox() {
     if (!candidate) return;
     
     try {
-      await scheduleRevision({
-        id: candidate.id,
-        scheduledDate: slot.date,
-        timeWindowStart: slot.timeStart,
-        timeWindowEnd: slot.timeEnd,
-      });
-      
       setSlotSuggestions([]);
       
       // Mark candidate as scheduled in list with time info (don't show confirmation screen)
@@ -1416,20 +1406,23 @@ export function PlanningInbox() {
     const candidate = candidates.find((c) => c.id === candidateId || c.customerId === candidateId);
     if (!candidate) return;
     
-    // Snooze for specified number of days
     const snoozeDate = new Date();
     snoozeDate.setDate(snoozeDate.getDate() + days);
+    const snoozeUntil = snoozeDate.toISOString().split('T')[0];
     
     try {
-      await snoozeRevision({
-        id: candidate.id,
-        snoozeUntil: snoozeDate.toISOString().split('T')[0],
-      });
+      // Find the open planned_action for this customer and snooze it
+      const actions = await listPlannedActions({ customerId: candidate.customerId, status: 'open' });
+      if (actions.items.length > 0) {
+        await updatePlannedAction({
+          id: actions.items[0].id,
+          snoozeUntil,
+          snoozeReason: `Snoozed for ${days} days`,
+        });
+      }
       
-      // Select next before removing
       selectNextCandidate(candidate.customerId);
       
-      // Remove from list and update counts
       setCandidates((prev) => {
         const updated = prev.filter((c) => c.id !== candidate.id);
         return updated;
