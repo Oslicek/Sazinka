@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, Component, type ReactNode, type ErrorInfo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Calendar, Clock, Pencil, Phone, Mail, ClipboardCopy, Check, FileText, Plus } from 'lucide-react';
@@ -13,23 +13,6 @@ import { CustomerTimeline } from '../timeline';
 import { SlotSuggestions, type SlotSuggestion } from './SlotSuggestions';
 import { TimeInput } from '@/components/common/TimeInput';
 import styles from './CandidateDetail.module.css';
-
-class CandidateDetailErrorBoundary extends Component<
-  { children: ReactNode },
-  { error: Error | null }
-> {
-  state = { error: null as Error | null };
-  static getDerivedStateFromError(error: Error) { return { error }; }
-  componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('[CandidateDetail ErrorBoundary]', error.message, info.componentStack);
-  }
-  render() {
-    if (this.state.error) {
-      return <div style={{ padding: 16, color: '#c00' }}>Render error: {this.state.error.message}</div>;
-    }
-    return this.props.children;
-  }
-}
 
 export interface CandidateDetailData {
   id: string;
@@ -328,6 +311,20 @@ export function CandidateDetail({
   const daysOverdue = candidate.daysUntilDue < 0 ? Math.abs(candidate.daysUntilDue) : 0;
   const dueDateFormatted = candidate.dueDate ? formatDate(candidate.dueDate) : '—';
 
+  // Debug: dump all rendered values to find the object causing React #310
+  console.log('[CandidateDetail] rendering candidate:', candidate.id,
+    'customerName:', typeof candidate.customerName, candidate.customerName,
+    'dueDate:', typeof candidate.dueDate, candidate.dueDate,
+    'phone:', typeof candidate.phone,
+    'email:', typeof candidate.email,
+    'city:', typeof candidate.city,
+    'street:', typeof candidate.street,
+    'postalCode:', typeof candidate.postalCode,
+    'notes:', typeof candidate.notes, candidate.notes !== undefined ? typeof candidate.notes : 'undef',
+    'deviceType:', typeof candidate.deviceType,
+    'deviceName:', typeof candidate.deviceName,
+  );
+
   const handleSnoozeSelect = (days: SnoozeDuration) => {
     setDefaultSnoozeDays(days);
     localStorage.setItem('sazinka.snooze.defaultDays', days.toString());
@@ -368,7 +365,6 @@ export function CandidateDetail({
   };
 
   return (
-    <CandidateDetailErrorBoundary>
     <div className={styles.container}>
       {/* Header */}
       <div className={styles.header} data-testid="candidate-header">
@@ -937,6 +933,5 @@ export function CandidateDetail({
         <span><kbd>1-5</kbd> {t('candidate_shortcut_slot')}</span>
       </div>
     </div>
-    </CandidateDetailErrorBoundary>
   );
 }
