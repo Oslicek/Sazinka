@@ -283,6 +283,20 @@ export function CandidateDetail({
     setEditingContact(false);
     setEditingAddress(false);
   }, [candidate?.id, routeDate, defaultServiceDurationMinutes]);
+
+  const handleSaveCallback = useCallback(async () => {
+    if (!candidate || !callbackDate || !onCreatePlannedAction) return;
+    setIsSavingCallback(true);
+    try {
+      await onCreatePlannedAction(candidate.customerId, callbackDate, callbackNote);
+      setShowCallbackForm(false);
+      setCallbackDate('');
+      setCallbackNote('');
+    } finally {
+      setIsSavingCallback(false);
+    }
+  }, [candidate, callbackDate, callbackNote, onCreatePlannedAction]);
+
   if (isLoading) {
     return (
       <div className={styles.container}>
@@ -311,20 +325,6 @@ export function CandidateDetail({
   const daysOverdue = candidate.daysUntilDue < 0 ? Math.abs(candidate.daysUntilDue) : 0;
   const dueDateFormatted = candidate.dueDate ? formatDate(candidate.dueDate) : '—';
 
-  // Debug: dump all rendered values to find the object causing React #310
-  console.log('[CandidateDetail] rendering candidate:', candidate.id,
-    'customerName:', typeof candidate.customerName, candidate.customerName,
-    'dueDate:', typeof candidate.dueDate, candidate.dueDate,
-    'phone:', typeof candidate.phone,
-    'email:', typeof candidate.email,
-    'city:', typeof candidate.city,
-    'street:', typeof candidate.street,
-    'postalCode:', typeof candidate.postalCode,
-    'notes:', typeof candidate.notes, candidate.notes !== undefined ? typeof candidate.notes : 'undef',
-    'deviceType:', typeof candidate.deviceType,
-    'deviceName:', typeof candidate.deviceName,
-  );
-
   const handleSnoozeSelect = (days: SnoozeDuration) => {
     setDefaultSnoozeDays(days);
     localStorage.setItem('sazinka.snooze.defaultDays', days.toString());
@@ -340,19 +340,6 @@ export function CandidateDetail({
       case 30: return t('candidate_snooze_duration_30');
     }
   };
-
-  const handleSaveCallback = useCallback(async () => {
-    if (!candidate || !callbackDate || !onCreatePlannedAction) return;
-    setIsSavingCallback(true);
-    try {
-      await onCreatePlannedAction(candidate.customerId, callbackDate, callbackNote);
-      setShowCallbackForm(false);
-      setCallbackDate('');
-      setCallbackNote('');
-    } finally {
-      setIsSavingCallback(false);
-    }
-  }, [candidate, callbackDate, callbackNote, onCreatePlannedAction]);
 
   const formatPhoneDisplay = (phone: string): string => {
     const compact = phone.replace(/\s+/g, '');

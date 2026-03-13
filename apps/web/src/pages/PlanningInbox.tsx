@@ -659,7 +659,6 @@ export function PlanningInbox() {
     setIsLoadingCandidates(true);
     try {
       const inboxResponse = await getInbox({ limit: 100 });
-      console.log('[PlanningInbox] inbox response:', inboxResponse.total, 'total,', inboxResponse.items.length, 'items');
       const response = inboxResponseToCallQueueResponse(inboxResponse);
       
       const loadedCandidates: InboxCandidate[] = response.items.map((item) => ({
