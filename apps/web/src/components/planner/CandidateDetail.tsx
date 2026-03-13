@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, Component, type ReactNode, type ErrorInfo } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Calendar, Clock, Pencil, Phone, Mail, ClipboardCopy, Check, FileText, Plus } from 'lucide-react';
@@ -13,6 +13,23 @@ import { CustomerTimeline } from '../timeline';
 import { SlotSuggestions, type SlotSuggestion } from './SlotSuggestions';
 import { TimeInput } from '@/components/common/TimeInput';
 import styles from './CandidateDetail.module.css';
+
+class CandidateDetailErrorBoundary extends Component<
+  { children: ReactNode },
+  { error: Error | null }
+> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('[CandidateDetail ErrorBoundary]', error.message, info.componentStack);
+  }
+  render() {
+    if (this.state.error) {
+      return <div style={{ padding: 16, color: '#c00' }}>Render error: {this.state.error.message}</div>;
+    }
+    return this.props.children;
+  }
+}
 
 export interface CandidateDetailData {
   id: string;
@@ -308,16 +325,6 @@ export function CandidateDetail({
     );
   }
 
-  // Debug: log candidate data to identify React #310 "Objects are not valid as a React child"
-  if (typeof window !== 'undefined' && (window as any).__SAZINKA_DEBUG_CANDIDATE !== candidate.id) {
-    (window as any).__SAZINKA_DEBUG_CANDIDATE = candidate.id;
-    for (const [k, v] of Object.entries(candidate)) {
-      if (v !== null && v !== undefined && typeof v === 'object' && !(v instanceof Array)) {
-        console.error(`[CandidateDetail] field "${k}" is an object:`, v);
-      }
-    }
-  }
-
   const daysOverdue = candidate.daysUntilDue < 0 ? Math.abs(candidate.daysUntilDue) : 0;
   const dueDateFormatted = candidate.dueDate ? formatDate(candidate.dueDate) : '—';
 
@@ -361,6 +368,7 @@ export function CandidateDetail({
   };
 
   return (
+    <CandidateDetailErrorBoundary>
     <div className={styles.container}>
       {/* Header */}
       <div className={styles.header} data-testid="candidate-header">
@@ -929,5 +937,6 @@ export function CandidateDetail({
         <span><kbd>1-5</kbd> {t('candidate_shortcut_slot')}</span>
       </div>
     </div>
+    </CandidateDetailErrorBoundary>
   );
 }
