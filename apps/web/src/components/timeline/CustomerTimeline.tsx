@@ -35,7 +35,7 @@ export function CustomerTimeline({ customerId }: CustomerTimelineProps) {
   }
   
   const [items, setItems] = useState<TimelineItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState<'communication' | 'visit' | null>(null);
   const [serviceAvailable, setServiceAvailable] = useState(true);
