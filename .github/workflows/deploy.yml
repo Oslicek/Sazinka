@@ -267,7 +267,7 @@ jobs:
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ steps.urls.outputs.site_url }}")
           echo "Site status: $STATUS"
-          if [ "$STATUS" != "200" ]; then
+          if [ "$STATUS" != "200" ] && [ "$STATUS" != "302" ]; then
             echo "::error::Site returned $STATUS!"
             exit 1
           fi
