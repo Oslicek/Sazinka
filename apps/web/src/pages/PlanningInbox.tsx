@@ -1529,7 +1529,7 @@ export function PlanningInbox() {
       newStops.push({
         id: crypto.randomUUID(),
         routeId: '',
-        revisionId: candidate.id,
+        revisionId: null,
         stopOrder: routeStops.length + newStops.length + 1,
         estimatedArrival: null,
         estimatedDeparture: null,
@@ -1634,9 +1634,9 @@ export function PlanningInbox() {
       resolveRevisionDuration(null, candidate.deviceTypeDefaultDurationMinutes, defaultServiceDurationMinutes);
 
     const newStop: SavedRouteStop = {
-      id: crypto.randomUUID(), // Generate new UUID for route_stop
-      routeId: '', // Will be set properly on save
-      revisionId: candidate.id,
+      id: crypto.randomUUID(),
+      routeId: '',
+      revisionId: null,
       stopOrder: routeStops.length + 1,
       estimatedArrival: null, // Will be calculated by optimizer
       estimatedDeparture: null,
