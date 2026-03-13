@@ -291,14 +291,15 @@ export function PlanningInbox() {
   // Auto-save route
   const autoSaveFn = useCallback(async () => {
     // #region agent log
-    console.log('[DEBUG-6ec9b9] autoSaveFn called', { stopsLen: routeStops.length, hasContext: !!context, date: context?.date });
-    fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6ec9b9'},body:JSON.stringify({sessionId:'6ec9b9',location:'PlanningInbox.tsx:autoSaveFn',message:'autoSaveFn called',data:{stopsLen:routeStops.length,hasContext:!!context,date:context?.date},timestamp:Date.now(),hypothesisId:'H-A'})}).catch(()=>{});
+    const firstStop = routeStops[0];
+    console.log('[DEBUG-6ec9b9] autoSaveFn called', { stopsLen: routeStops.length, date: context?.date, firstStop: firstStop ? { customerId: firstStop.customerId, stopType: firstStop.stopType, stopOrder: firstStop.stopOrder, eta: firstStop.estimatedArrival, etd: firstStop.estimatedDeparture } : null });
+    fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6ec9b9'},body:JSON.stringify({sessionId:'6ec9b9',location:'PlanningInbox.tsx:autoSaveFn',message:'autoSaveFn called',data:{stopsLen:routeStops.length,date:context?.date,firstStopCustomerId:firstStop?.customerId,firstStopType:firstStop?.stopType},timestamp:Date.now(),hypothesisId:'H-A'})}).catch(()=>{});
     // #endregion
     if (routeStops.length === 0 || !context) return;
     // Sanitize: convert empty/invalid UUID strings to undefined so they are omitted from JSON
     const sanitizeUuid = (v: string | null | undefined): string | undefined =>
       v && v.length >= 8 ? v : undefined;
-    await routeService.saveRoute({
+    const saveResult = await routeService.saveRoute({
       date: context.date,
       crewId: sanitizeUuid(context.crewId) ?? null,
       depotId: sanitizeUuid(context.depotId) ?? null,
@@ -327,8 +328,8 @@ export function PlanningInbox() {
       arrivalBufferFixedMinutes: routeBufferFixedMinutes,
     });
     // #region agent log
-    console.log('[DEBUG-6ec9b9] autoSave SUCCESS', { date: context.date, stopsLen: routeStops.length });
-    fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6ec9b9'},body:JSON.stringify({sessionId:'6ec9b9',location:'PlanningInbox.tsx:autoSave-success',message:'autoSave SUCCESS',data:{date:context.date,stopsLen:routeStops.length},timestamp:Date.now(),hypothesisId:'H-B'})}).catch(()=>{});
+    console.log('[DEBUG-6ec9b9] autoSave response', { date: context.date, sentStops: routeStops.length, savedRouteId: saveResult.routeId, savedStopsCount: saveResult.stopsCount });
+    fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6ec9b9'},body:JSON.stringify({sessionId:'6ec9b9',location:'PlanningInbox.tsx:autoSave-response',message:'autoSave response',data:{date:context.date,sentStops:routeStops.length,savedRouteId:saveResult.routeId,savedStopsCount:saveResult.stopsCount},timestamp:Date.now(),hypothesisId:'H-B'})}).catch(()=>{});
     // #endregion
     setHasChanges(false);
   }, [routeStops, context, metrics, returnToDepotLeg, routeBufferPercent, routeBufferFixedMinutes]);
