@@ -53,6 +53,10 @@ export function useAutoSave({
       return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      // #region agent log
+      console.log('[DEBUG-6ec9b9] doSave FAILED', { error: message });
+      fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6ec9b9'},body:JSON.stringify({sessionId:'6ec9b9',location:'useAutoSave.ts:doSave-catch',message:'doSave FAILED',data:{error:message},timestamp:Date.now(),hypothesisId:'H-B'})}).catch(()=>{});
+      // #endregion
       setSaveError(message);
       return false;
     } finally {
@@ -74,6 +78,10 @@ export function useAutoSave({
 
   // Debounced auto-save effect
   useEffect(() => {
+    // #region agent log
+    console.log('[DEBUG-6ec9b9] useAutoSave effect', { hasChanges, enabled });
+    fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6ec9b9'},body:JSON.stringify({sessionId:'6ec9b9',location:'useAutoSave.ts:effect',message:'useAutoSave effect',data:{hasChanges,enabled},timestamp:Date.now(),hypothesisId:'H-A'})}).catch(()=>{});
+    // #endregion
     if (!hasChanges || !enabled) return;
 
     // After a failure, use exponential backoff: 3s, 6s, 12s, max 30s

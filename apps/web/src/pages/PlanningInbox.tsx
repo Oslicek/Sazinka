@@ -290,6 +290,10 @@ export function PlanningInbox() {
   
   // Auto-save route
   const autoSaveFn = useCallback(async () => {
+    // #region agent log
+    console.log('[DEBUG-6ec9b9] autoSaveFn called', { stopsLen: routeStops.length, hasContext: !!context, date: context?.date });
+    fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6ec9b9'},body:JSON.stringify({sessionId:'6ec9b9',location:'PlanningInbox.tsx:autoSaveFn',message:'autoSaveFn called',data:{stopsLen:routeStops.length,hasContext:!!context,date:context?.date},timestamp:Date.now(),hypothesisId:'H-A'})}).catch(()=>{});
+    // #endregion
     if (routeStops.length === 0 || !context) return;
     // Sanitize: convert empty/invalid UUID strings to undefined so they are omitted from JSON
     const sanitizeUuid = (v: string | null | undefined): string | undefined =>
@@ -322,6 +326,10 @@ export function PlanningInbox() {
       arrivalBufferPercent: routeBufferPercent,
       arrivalBufferFixedMinutes: routeBufferFixedMinutes,
     });
+    // #region agent log
+    console.log('[DEBUG-6ec9b9] autoSave SUCCESS', { date: context.date, stopsLen: routeStops.length });
+    fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6ec9b9'},body:JSON.stringify({sessionId:'6ec9b9',location:'PlanningInbox.tsx:autoSave-success',message:'autoSave SUCCESS',data:{date:context.date,stopsLen:routeStops.length},timestamp:Date.now(),hypothesisId:'H-B'})}).catch(()=>{});
+    // #endregion
     setHasChanges(false);
   }, [routeStops, context, metrics, returnToDepotLeg, routeBufferPercent, routeBufferFixedMinutes]);
 
@@ -387,6 +395,10 @@ export function PlanningInbox() {
         const firstCrew = loadedVehicles[0];
 
         const saved = sessionStorage.getItem('planningInbox.context');
+        // #region agent log
+        console.log('[DEBUG-6ec9b9] context restore', { hasSaved: !!saved, savedRaw: saved });
+        fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6ec9b9'},body:JSON.stringify({sessionId:'6ec9b9',location:'PlanningInbox.tsx:context-restore',message:'context restore',data:{hasSaved:!!saved,savedRaw:saved},timestamp:Date.now(),hypothesisId:'H-C'})}).catch(()=>{});
+        // #endregion
         let restoredContext: RouteContext | null = null;
         if (saved) {
           try {
@@ -711,11 +723,19 @@ export function PlanningInbox() {
     if (!isConnected || !context?.date) return;
     
     const dateToLoad = context.date;
+    // #region agent log
+    console.log('[DEBUG-6ec9b9] loadRoute effect firing', { dateToLoad, isConnected });
+    fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6ec9b9'},body:JSON.stringify({sessionId:'6ec9b9',location:'PlanningInbox.tsx:loadRoute-effect',message:'loadRoute effect firing',data:{dateToLoad,isConnected},timestamp:Date.now(),hypothesisId:'H-C'})}).catch(()=>{});
+    // #endregion
     
     async function loadRoute() {
       setIsLoadingRoute(true);
       try {
         const response = await routeService.getRoute({ date: dateToLoad });
+        // #region agent log
+        console.log('[DEBUG-6ec9b9] getRoute response', { dateToLoad, hasRoute: !!response.route, routeId: response.route?.id, stopsLen: response.stops?.length });
+        fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6ec9b9'},body:JSON.stringify({sessionId:'6ec9b9',location:'PlanningInbox.tsx:getRoute-response',message:'getRoute response',data:{dateToLoad,hasRoute:!!response.route,routeId:response.route?.id,stopsLen:response.stops?.length},timestamp:Date.now(),hypothesisId:'H-D'})}).catch(()=>{});
+        // #endregion
         setLoadedRouteId(response.route?.id ?? null);
         
         if (response.route && response.stops.length > 0) {
