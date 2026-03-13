@@ -364,6 +364,9 @@ export function CandidateDetail({
       </div>
 
       {/* State Flags */}
+      {/* #region agent log */}
+      {(() => { fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6ec9b9'},body:JSON.stringify({sessionId:'6ec9b9',location:'CandidateDetail.tsx:render-flags',message:'rendering state flags',data:{isScheduled:candidate.isScheduled,scheduledDate:candidate.scheduledDate,candidateId:candidate.id},timestamp:Date.now(),hypothesisId:'H-E'})}).catch(()=>{}); return null; })()}
+      {/* #endregion */}
       <div className={styles.stateFlags} data-testid="state-flags">
         <div className={`${styles.stateFlag} ${candidate.isScheduled ? styles.stateFlagYes : styles.stateFlagNo}`}>
           <span className={styles.stateFlagLabel}>{t('candidate_state_appointment')}</span>
@@ -513,6 +516,9 @@ export function CandidateDetail({
                     deltaMin: 0,
                     insertAfterIndex: -1,
                   };
+                  // #region agent log
+                  fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6ec9b9'},body:JSON.stringify({sessionId:'6ec9b9',location:'CandidateDetail.tsx:confirm-click',message:'confirm clicked',data:{candidateId:candidate.id,slotDate:slot.date,hasOnSchedule:!!onSchedule},timestamp:Date.now(),hypothesisId:'H-A'})}).catch(()=>{});
+                  // #endregion
                   onSchedule?.(candidate.id, slot);
                   setIsScheduling(false);
                 }}

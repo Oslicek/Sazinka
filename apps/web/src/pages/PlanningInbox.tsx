@@ -905,6 +905,10 @@ export function PlanningInbox() {
       const scheduledTimeStart = selectedCandidate._scheduledTimeStart ?? routeStop?.scheduledTimeStart ?? undefined;
       const scheduledTimeEnd = selectedCandidate._scheduledTimeEnd ?? routeStop?.scheduledTimeEnd ?? undefined;
 
+      // #region agent log
+      fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6ec9b9'},body:JSON.stringify({sessionId:'6ec9b9',location:'PlanningInbox.tsx:selectedCandidateDetail-memo',message:'memo recomputing',data:{candidateId:selectedCandidate.customerId,candidateStatus:selectedCandidate.status,isScheduledFromCandidate,isScheduledFromRoute,isScheduled,scheduledDate,_scheduledDate:selectedCandidate._scheduledDate},timestamp:Date.now(),hypothesisId:'H-D'})}).catch(()=>{});
+      // #endregion
+
       return {
         id: selectedCandidate.id,
         customerId: selectedCandidate.customerId,
@@ -1344,7 +1348,13 @@ export function PlanningInbox() {
 
   // Action handlers
   const handleSchedule = useCallback(async (candidateId: string, slot: SlotSuggestion) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6ec9b9'},body:JSON.stringify({sessionId:'6ec9b9',location:'PlanningInbox.tsx:handleSchedule-entry',message:'handleSchedule called',data:{candidateId,slotDate:slot.date,candidatesLen:candidates.length},timestamp:Date.now(),hypothesisId:'H-B'})}).catch(()=>{});
+    // #endregion
     const candidate = candidates.find((c) => c.id === candidateId || c.customerId === candidateId);
+    // #region agent log
+    fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6ec9b9'},body:JSON.stringify({sessionId:'6ec9b9',location:'PlanningInbox.tsx:handleSchedule-find',message:'candidate lookup result',data:{candidateId,foundId:candidate?.id,foundCustomerId:candidate?.customerId,foundStatus:candidate?.status,found:!!candidate},timestamp:Date.now(),hypothesisId:'H-B'})}).catch(()=>{});
+    // #endregion
     if (!candidate) return;
     
     try {
