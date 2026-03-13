@@ -94,6 +94,29 @@ export function useAutoSave({
     return () => clearTimeout(timer);
   }, [hasChanges, enabled, debounceMs, doSave, retryAttempt]);
 
+  // Flush pending changes when the page is about to unload or hidden
+  const hasChangesRef = useRef(hasChanges);
+  hasChangesRef.current = hasChanges;
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
+
+  useEffect(() => {
+    const flush = () => {
+      if (hasChangesRef.current && enabledRef.current && !isSavingRef.current) {
+        doSave();
+      }
+    };
+    const onVisChange = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+    document.addEventListener('visibilitychange', onVisChange);
+    window.addEventListener('beforeunload', flush);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisChange);
+      window.removeEventListener('beforeunload', flush);
+    };
+  }, [doSave]);
+
   // Manual retry: immediate save
   const retry = useCallback(() => {
     setRetryAttempt(0);

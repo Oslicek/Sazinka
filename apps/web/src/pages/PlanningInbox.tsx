@@ -379,14 +379,33 @@ export function PlanningInbox() {
           setRouteBufferFixedMinutes(settings.preferences.lastArrivalBufferFixedMinutes);
         }
         
-        // Build initial context with whatever data we have
+        // Build initial context — restore from sessionStorage when available
         const primaryDepot = loadedDepots.find((d) => 
           settings?.depots.find((sd) => sd.name === d.name && sd.isPrimary)
         ) || loadedDepots[0];
         
         const firstCrew = loadedVehicles[0];
-        
-        const initialContext: RouteContext = {
+
+        const saved = sessionStorage.getItem('planningInbox.context');
+        let restoredContext: RouteContext | null = null;
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved) as RouteContext;
+            const crew = loadedVehicles.find((c) => c.id === parsed.crewId);
+            const depot = loadedDepots.find((d) => d.id === parsed.depotId);
+            restoredContext = {
+              date: parsed.date || new Date().toISOString().split('T')[0],
+              crewId: crew?.id ?? firstCrew?.id ?? '',
+              crewName: crew?.name ?? firstCrew?.name ?? '',
+              depotId: depot?.id ?? primaryDepot?.id ?? '',
+              depotName: depot?.name ?? primaryDepot?.name ?? '',
+            };
+          } catch {
+            // Ignore corrupt sessionStorage data
+          }
+        }
+
+        const initialContext: RouteContext = restoredContext ?? {
           date: new Date().toISOString().split('T')[0],
           crewId: firstCrew?.id ?? '',
           crewName: firstCrew?.name ?? '',
@@ -2143,6 +2162,12 @@ export function PlanningInbox() {
   useEffect(() => {
     sessionStorage.setItem('planningInbox.filters', JSON.stringify(filters));
   }, [filters]);
+
+  useEffect(() => {
+    if (context) {
+      sessionStorage.setItem('planningInbox.context', JSON.stringify(context));
+    }
+  }, [context]);
 
   const setRootOperator = useCallback((value: 'AND' | 'OR') => {
     setActivePresetId(null);
