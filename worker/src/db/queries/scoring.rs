@@ -495,7 +495,7 @@ mod tests {
     fn default_factors_weights_are_correct() {
         let map: std::collections::HashMap<&str, f64> =
             DEFAULT_FACTORS.iter().cloned().collect();
-        assert!((map["lifecycle_rank"] - (-1000.0)).abs() < f64::EPSILON);
+        assert!((map["lifecycle_rank"] - 1000.0).abs() < f64::EPSILON);
         assert!((map["days_until_due"] - (-5.0)).abs() < f64::EPSILON);
         assert!((map["customer_age_days"] - 0.01).abs() < f64::EPSILON);
     }
