@@ -12,6 +12,12 @@
 ALTER TABLE scoring_rule_sets
     ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT NULL DEFAULT FALSE;
 
+-- 1b. Widen the weight constraint to accommodate sorting factors like lifecycle_rank
+--     (factory weight -1000). Original range was -100..+100 which is too narrow.
+ALTER TABLE scoring_rule_factors
+    DROP CONSTRAINT IF EXISTS scoring_rule_factors__weight_check,
+    ADD CONSTRAINT scoring_rule_factors__weight_check CHECK (weight >= -10000 AND weight <= 10000);
+
 -- 2. Backfill: insert a Standard system profile for every qualifying user
 --    (role IN ('admin', 'customer') AND no existing scoring_rule_sets)
 WITH new_sets AS (
