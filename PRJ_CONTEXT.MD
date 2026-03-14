@@ -1515,6 +1515,7 @@ cargo test
   - Eliminates 2-3 second visible "Redirecting..." flash (was client-side JS redirect)
   - `index.astro` simplified to empty-body fallback for local dev without wrangler
   - `Vary: Accept-Language` + `no-cache` headers prevent stale cached redirects
+  - **Fix:** Disabled Astro's built-in `redirectToDefaultLocale` (`astro.config.mjs`) — it was generating its own "Redirecting from / to /en/" page that overrode the edge function's 302
 
 ## Recent Changes (v0.18.0)
 

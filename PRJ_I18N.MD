@@ -1372,7 +1372,7 @@ Frontend `resolveBackendMessage()` logic:
 | **Hosting** | Cloudflare Pages + Page Functions (D1 database) |
 | **Rendering** | Pre-generated static HTML at build time |
 | **Routing** | URL-based locale prefixes: `/en/`, `/cs/`, `/sk/` (SEO-required) |
-| **Locale detection** | Root `/` redirects via JS (`navigator.language`) + `<meta http-equiv="refresh">` fallback to `/en/` |
+| **Locale detection** | Root `/` redirects via Cloudflare Pages Function (302 based on `Accept-Language`); JS fallback in `index.astro` for local dev. Astro's built-in `redirectToDefaultLocale` is disabled. |
 | **i18n library** | None. Custom `getTranslation(locale, key)` function with dot-path traversal |
 | **Translation files** | 3 flat JSON files: `src/i18n/en.json`, `cs.json`, `sk.json` (~107 keys each) |
 | **Translation delivery** | Compiled into HTML at build time (zero runtime cost) |

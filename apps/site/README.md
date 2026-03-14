@@ -98,7 +98,7 @@ The site supports 3 languages:
 - Czech (`/cs/`)
 - Slovak (`/sk/`)
 
-Root `/` redirects based on `navigator.language` with `/en/` fallback.
+Root `/` redirects via Cloudflare Pages Function (302 based on `Accept-Language`). Fallback `index.astro` uses `navigator.language` with `/en/` default for local dev without wrangler. Astro's built-in `redirectToDefaultLocale` is disabled to prevent a visible "Redirecting..." flash.
 
 Translation files: `src/i18n/{en,cs,sk}.json`
 

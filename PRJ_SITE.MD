@@ -175,7 +175,7 @@ Jak generovat `variables.css` z `tokens.json` — viz otevřené otázky (sekce 
 Astro má vestavěnou i18n podporu (od v4+):
 
 - **Routing**: Path prefixes (`/en/`, `/cs/`, `/sk/`)
-- **Default locale**: `en` (s `prefixDefaultLocale: true` — každý jazyk má explicitní prefix)
+- **Default locale**: `en` (s `prefixDefaultLocale: true` + `redirectToDefaultLocale: false` — každý jazyk má explicitní prefix, Astro negeneruje vlastní redirect stránku)
 - **Překlady**: JSON soubory v `src/i18n/` (klíče → přeložené texty)
 - **Content Collections**: blogposty v `src/content/blog/en/`, `src/content/blog/cs/`, `src/content/blog/sk/`
 - **Language switcher**: Astro helper `getRelativeLocaleUrl()` generuje linky na stejnou stránku v jiném jazyce
