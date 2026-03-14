@@ -336,7 +336,7 @@
   "scoring_factors_group_sorting_hint": "Určují základní pořadí v inboxu (stav zákazníka, termín, stáří).",
   "scoring_factors_group_urgency": "Faktory urgence",
   "scoring_factors_group_urgency_hint": "Doladění priority v rámci skupin na základě dat zákazníka.",
-  "scoring_factor_lifecycle_rank": "Stav zákazníka (netknutý → po termínu → aktivní → čeká na akci)",
+  "scoring_factor_lifecycle_rank": "Stav zákazníka (netknutý → po termínu → aktivní → čeká na akci) — vyšší váha = netknutí první",
   "scoring_factor_days_until_due": "Dny do termínu (záporné = po termínu)",
   "scoring_factor_customer_age_days": "Stáří zákazníka ve dnech (rozhodující faktor při shodě)",
   "scoring_factor_overdue_days": "Dny po termínu",

@@ -21,7 +21,8 @@ pub mod factor_keys {
 
     // ── P4B-01: sorting factors (replace hardcoded lifecycle sort) ─────────
     /// Lifecycle rank (0=untouched, 1=overdue, 2=active, 3=needs_action).
-    /// Use large negative weight (e.g. -1000) so lower rank = higher score.
+    /// Formula inverts the rank: value = (3 − rank), so untouched → 3, needs_action → 0.
+    /// Use a large positive weight (e.g. +1000) so untouched scores 3000, overdue 2000, etc.
     pub const LIFECYCLE_RANK: &str = "lifecycle_rank";
     /// Signed days until next action due date (negative = overdue).
     /// Use negative weight (e.g. -5) so more overdue = higher score.
@@ -70,7 +71,10 @@ pub fn compute_urgency_with_breakdown(
                 (v, v * factor.weight)
             }
             factor_keys::LIFECYCLE_RANK => {
-                let v = input.lifecycle_rank.unwrap_or(0) as f64;
+                let rank = input.lifecycle_rank.unwrap_or(0) as f64;
+                // Inverted: rank 0 (untouched) → value 3 (highest); rank 3 (needs_action) → 0.
+                // Use a positive weight (e.g. +1000) so untouched scores 3000, overdue 2000, etc.
+                let v = (3.0 - rank).max(0.0);
                 (v, v * factor.weight)
             }
             factor_keys::DAYS_UNTIL_DUE => {
@@ -207,8 +211,10 @@ mod tests {
 
     // ── P4B-01: new factors ────────────────────────────────────────────────
 
+    // lifecycle_rank uses inverted formula: value = (3 − rank) × weight
+    // With positive weight +1000: untouched(0) → 3000, overdue(1) → 2000, active(2) → 1000, needs_action(3) → 0
     #[test]
-    fn lifecycle_rank_weight_neg1000_rank2_gives_neg2000() {
+    fn lifecycle_rank_weight_pos1000_rank0_gives_3000() {
         let input = CustomerScoringInput {
             customer_id: Uuid::nil(),
             days_overdue: None,
@@ -216,13 +222,49 @@ mod tests {
             total_communications: 0,
             days_since_last_contact: None,
             has_open_action: true,
-            lifecycle_rank: Some(2),
+            lifecycle_rank: Some(0), // untouched
             days_until_due: None,
             customer_age_days: None,
         };
-        let factors = vec![factor(factor_keys::LIFECYCLE_RANK, -1000.0)];
+        let factors = vec![factor(factor_keys::LIFECYCLE_RANK, 1000.0)];
         let score = compute_urgency(&input, &factors);
-        assert!((score - (-2000.0)).abs() < f64::EPSILON, "Expected -2000.0, got {}", score);
+        assert!((score - 3000.0).abs() < f64::EPSILON, "Expected 3000.0, got {}", score);
+    }
+
+    #[test]
+    fn lifecycle_rank_weight_pos1000_rank2_gives_1000() {
+        let input = CustomerScoringInput {
+            customer_id: Uuid::nil(),
+            days_overdue: None,
+            geocode_failed: false,
+            total_communications: 0,
+            days_since_last_contact: None,
+            has_open_action: true,
+            lifecycle_rank: Some(2), // active
+            days_until_due: None,
+            customer_age_days: None,
+        };
+        let factors = vec![factor(factor_keys::LIFECYCLE_RANK, 1000.0)];
+        let score = compute_urgency(&input, &factors);
+        assert!((score - 1000.0).abs() < f64::EPSILON, "Expected 1000.0, got {}", score);
+    }
+
+    #[test]
+    fn lifecycle_rank_weight_pos1000_rank3_gives_zero() {
+        let input = CustomerScoringInput {
+            customer_id: Uuid::nil(),
+            days_overdue: None,
+            geocode_failed: false,
+            total_communications: 0,
+            days_since_last_contact: None,
+            has_open_action: true,
+            lifecycle_rank: Some(3), // needs_action
+            days_until_due: None,
+            customer_age_days: None,
+        };
+        let factors = vec![factor(factor_keys::LIFECYCLE_RANK, 1000.0)];
+        let score = compute_urgency(&input, &factors);
+        assert!((score - 0.0).abs() < f64::EPSILON, "Expected 0.0, got {}", score);
     }
 
     #[test]
@@ -263,7 +305,8 @@ mod tests {
     }
 
     #[test]
-    fn lifecycle_rank_none_contributes_zero() {
+    fn lifecycle_rank_none_defaults_to_rank0_gives_3000() {
+        // None → defaults to rank 0 (untouched) → (3-0) × 1000 = 3000
         let input = CustomerScoringInput {
             customer_id: Uuid::nil(),
             days_overdue: None,
@@ -275,14 +318,14 @@ mod tests {
             days_until_due: None,
             customer_age_days: None,
         };
-        let factors = vec![factor(factor_keys::LIFECYCLE_RANK, -1000.0)];
+        let factors = vec![factor(factor_keys::LIFECYCLE_RANK, 1000.0)];
         let score = compute_urgency(&input, &factors);
-        assert!((score - 0.0).abs() < f64::EPSILON);
+        assert!((score - 3000.0).abs() < f64::EPSILON, "Expected 3000.0, got {}", score);
     }
 
     #[test]
     fn all_8_factors_combine_correctly() {
-        // lifecycle_rank=1 * -1000 = -1000
+        // lifecycle_rank=1 (overdue) → inverted=(3-1)=2, 2 * 1000 = +2000
         // days_until_due=-3 * -5 = +15
         // customer_age_days=100 * 0.01 = +1
         // overdue_days=3 * 2 = +6
@@ -290,7 +333,7 @@ mod tests {
         // total_communications=5 * 1 = +5
         // days_since_last_contact=20 * 0.5 = +10
         // no_open_action=false → 0
-        // total = -1000 + 15 + 1 + 6 + 10 + 5 + 10 = -953
+        // total = 2000 + 15 + 1 + 6 + 10 + 5 + 10 = 2047
         let input = CustomerScoringInput {
             customer_id: Uuid::nil(),
             days_overdue: Some(3),
@@ -303,7 +346,7 @@ mod tests {
             customer_age_days: Some(100),
         };
         let factors = vec![
-            factor(factor_keys::LIFECYCLE_RANK, -1000.0),
+            factor(factor_keys::LIFECYCLE_RANK, 1000.0),
             factor(factor_keys::DAYS_UNTIL_DUE, -5.0),
             factor(factor_keys::CUSTOMER_AGE_DAYS, 0.01),
             factor(factor_keys::OVERDUE_DAYS, 2.0),
@@ -313,6 +356,6 @@ mod tests {
             factor(factor_keys::NO_OPEN_ACTION, 99.0), // has_open_action=true → 0
         ];
         let score = compute_urgency(&input, &factors);
-        assert!((score - (-953.0)).abs() < 1e-9, "Expected -953.0, got {}", score);
+        assert!((score - 2047.0).abs() < 1e-9, "Expected 2047.0, got {}", score);
     }
 }

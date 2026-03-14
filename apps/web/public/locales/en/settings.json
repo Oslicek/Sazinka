@@ -334,7 +334,7 @@
   "scoring_factors_group_sorting_hint": "Control the primary order in the inbox (lifecycle state, due date, age).",
   "scoring_factors_group_urgency": "Urgency factors",
   "scoring_factors_group_urgency_hint": "Fine-tune priority within each group based on customer data.",
-  "scoring_factor_lifecycle_rank": "Lifecycle state (untouched → overdue → active → needs action)",
+  "scoring_factor_lifecycle_rank": "Lifecycle state (untouched → overdue → active → needs action) — higher weight = untouched first",
   "scoring_factor_days_until_due": "Days until due date (negative = overdue)",
   "scoring_factor_customer_age_days": "Customer age in days (tiebreaker)",
   "scoring_factor_overdue_days": "Days overdue",

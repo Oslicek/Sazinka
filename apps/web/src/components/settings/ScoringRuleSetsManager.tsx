@@ -369,8 +369,8 @@ function FactorGroup({
         const factor = factors.find((f) => f.factorKey === key);
         const weight = factor?.weight ?? 0;
         const isWide = key === 'lifecycle_rank'; // lifecycle_rank needs wider range
-        const min = isWide ? -1200 : -100;
-        const max = isWide ? 0 : 100;
+        const min = isWide ? 0 : -100;
+        const max = isWide ? 1200 : 100;
         const step = isWide ? 50 : 1;
         return (
           <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>

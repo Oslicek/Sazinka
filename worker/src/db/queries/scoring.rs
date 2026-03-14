@@ -19,8 +19,14 @@ const RULE_SET_COLS: &str = r#"
 
 /// Factory factor weights for the seeded "Standard" system profile.
 /// Used both when seeding and when restoring defaults.
+///
+/// lifecycle_rank uses an inverted formula: value = (3 − rank), so:
+///   rank 0 (untouched)    → 3 × 1000 = 3000  (highest)
+///   rank 1 (overdue)      → 2 × 1000 = 2000
+///   rank 2 (active)       → 1 × 1000 = 1000
+///   rank 3 (needs_action) → 0 × 1000 = 0     (lowest)
 pub const DEFAULT_FACTORS: &[(&str, f64)] = &[
-    (crate::services::scoring::factor_keys::LIFECYCLE_RANK, -1000.0),
+    (crate::services::scoring::factor_keys::LIFECYCLE_RANK, 1000.0),
     (crate::services::scoring::factor_keys::DAYS_UNTIL_DUE, -5.0),
     (crate::services::scoring::factor_keys::CUSTOMER_AGE_DAYS, 0.01),
 ];
