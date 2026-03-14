@@ -76,6 +76,14 @@ export const FACTOR_KEYS = {
 
 export type FactorKey = (typeof FACTOR_KEYS)[keyof typeof FACTOR_KEYS];
 
+/** One factor's contribution — returned per inbox item for the explanation UI */
+export interface ScoreBreakdownItem {
+  factorKey: string;
+  rawValue: number;
+  weight: number;
+  contribution: number;
+}
+
 /** Factory weights for the seeded "Standard" system profile */
 export const DEFAULT_PROFILE_FACTORS: ReadonlyArray<{ factorKey: FactorKey; weight: number }> = [
   { factorKey: FACTOR_KEYS.LIFECYCLE_RANK,   weight: -1000 },

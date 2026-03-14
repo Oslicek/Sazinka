@@ -1,5 +1,7 @@
 // Inbox types — customer-centric planning inbox
 
+import type { ScoreBreakdownItem } from './scoring';
+
 export type LifecycleState = 'untouched' | 'active' | 'needs_action' | 'abandoned' | 'deleted';
 
 export type InboxSortMode = 'rank_first' | 'due_date';
@@ -36,6 +38,8 @@ export interface InboxItem {
 
   // Urgency scoring (Phase 4+; 0 when scoring disabled)
   urgencyScore: number;
+  /** Per-factor breakdown for the score explanation UI */
+  scoreBreakdown?: ScoreBreakdownItem[];
 
   // Legacy device info (Phase 2-4; removed in Phase 6)
   deviceId?: string | null;

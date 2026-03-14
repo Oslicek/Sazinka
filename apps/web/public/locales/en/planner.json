@@ -356,5 +356,14 @@
   "scoring_loading": "Loading profiles...",
   "scoring_error_load": "Failed to load scoring profiles",
   "sort_mode_rank_first": "By lifecycle",
-  "sort_mode_due_date": "By due date"
+  "sort_mode_due_date": "By due date",
+
+  "score_label": "Score",
+  "score_explain_title": "Explain score",
+  "score_breakdown_hint": "How the ordering score is calculated from individual factors:",
+  "score_breakdown_factor": "Factor",
+  "score_breakdown_value": "Value",
+  "score_breakdown_weight": "Weight",
+  "score_breakdown_contribution": "Result",
+  "score_breakdown_total": "Total score"
 }

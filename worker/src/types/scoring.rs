@@ -89,6 +89,18 @@ pub struct SaveInboxStateRequest {
     pub page_size: Option<i32>,
 }
 
+/// One factor's contribution to the final urgency score.
+/// Serialised into `InboxItem.score_breakdown` for client-side explanation UI.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScoreBreakdownItem {
+    pub factor_key: String,
+    /// The raw input value used (e.g. days_overdue=5, geocode_failed=1/0).
+    pub raw_value: f64,
+    pub weight: f64,
+    pub contribution: f64,
+}
+
 /// Input data for urgency computation
 #[derive(Debug, Clone)]
 pub struct CustomerScoringInput {

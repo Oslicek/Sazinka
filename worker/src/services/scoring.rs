@@ -3,7 +3,7 @@
 //! Computes a numeric urgency score for a customer based on configurable factor weights.
 //! Higher score = more urgent. Score is 0 when no rule set is provided.
 
-use crate::types::scoring::{CustomerScoringInput, ScoringRuleFactor};
+use crate::types::scoring::{CustomerScoringInput, ScoreBreakdownItem, ScoringRuleFactor};
 
 /// Known factor keys for urgency scoring
 pub mod factor_keys {
@@ -34,44 +34,68 @@ pub mod factor_keys {
 /// Compute urgency score for a customer given a set of weighted factors.
 /// Returns 0.0 if factors is empty.
 pub fn compute_urgency(input: &CustomerScoringInput, factors: &[ScoringRuleFactor]) -> f64 {
-    if factors.is_empty() {
-        return 0.0;
-    }
+    compute_urgency_with_breakdown(input, factors).0
+}
 
+/// Compute urgency score AND a per-factor breakdown for the explanation UI.
+/// Returns `(total_score, breakdown)` where breakdown contains only factors
+/// with a non-zero weight (zero-weight factors are skipped).
+pub fn compute_urgency_with_breakdown(
+    input: &CustomerScoringInput,
+    factors: &[ScoringRuleFactor],
+) -> (f64, Vec<ScoreBreakdownItem>) {
     let mut score = 0.0;
+    let mut breakdown = Vec::with_capacity(factors.len());
 
     for factor in factors {
-        let contribution = match factor.factor_key.as_str() {
+        let (raw_value, contribution) = match factor.factor_key.as_str() {
             factor_keys::OVERDUE_DAYS => {
-                input.days_overdue.unwrap_or(0) as f64 * factor.weight
+                let v = input.days_overdue.unwrap_or(0) as f64;
+                (v, v * factor.weight)
             }
             factor_keys::GEOCODE_FAILED => {
-                if input.geocode_failed { factor.weight } else { 0.0 }
+                let v = if input.geocode_failed { 1.0 } else { 0.0 };
+                (v, v * factor.weight)
             }
             factor_keys::TOTAL_COMMUNICATIONS => {
-                input.total_communications as f64 * factor.weight
+                let v = input.total_communications as f64;
+                (v, v * factor.weight)
             }
             factor_keys::DAYS_SINCE_LAST_CONTACT => {
-                input.days_since_last_contact.unwrap_or(0) as f64 * factor.weight
+                let v = input.days_since_last_contact.unwrap_or(0) as f64;
+                (v, v * factor.weight)
             }
             factor_keys::NO_OPEN_ACTION => {
-                if !input.has_open_action { factor.weight } else { 0.0 }
+                let v = if !input.has_open_action { 1.0 } else { 0.0 };
+                (v, v * factor.weight)
             }
             factor_keys::LIFECYCLE_RANK => {
-                input.lifecycle_rank.unwrap_or(0) as f64 * factor.weight
+                let v = input.lifecycle_rank.unwrap_or(0) as f64;
+                (v, v * factor.weight)
             }
             factor_keys::DAYS_UNTIL_DUE => {
-                input.days_until_due.unwrap_or(0) as f64 * factor.weight
+                let v = input.days_until_due.unwrap_or(0) as f64;
+                (v, v * factor.weight)
             }
             factor_keys::CUSTOMER_AGE_DAYS => {
-                input.customer_age_days.unwrap_or(0) as f64 * factor.weight
+                let v = input.customer_age_days.unwrap_or(0) as f64;
+                (v, v * factor.weight)
             }
-            _ => 0.0,
+            _ => continue,
         };
+
         score += contribution;
+        if factor.weight != 0.0 {
+            breakdown.push(ScoreBreakdownItem {
+                factor_key: factor.factor_key.clone(),
+                raw_value,
+                weight: factor.weight,
+                contribution,
+            });
+        }
     }
 
-    score
+    (score, breakdown)
 }
 
 #[cfg(test)]

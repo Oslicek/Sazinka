@@ -357,5 +357,14 @@
   "scoring_loading": "Načítám profily...",
   "scoring_error_load": "Nepodařilo se načíst profily hodnocení",
   "sort_mode_rank_first": "Dle životního cyklu",
-  "sort_mode_due_date": "Dle termínu"
+  "sort_mode_due_date": "Dle termínu",
+
+  "score_label": "Skóre",
+  "score_explain_title": "Vysvětlit skóre",
+  "score_breakdown_hint": "Jak je skóre pořadí vypočítáno z jednotlivých faktorů:",
+  "score_breakdown_factor": "Faktor",
+  "score_breakdown_value": "Hodnota",
+  "score_breakdown_weight": "Váha",
+  "score_breakdown_contribution": "Příspěvek",
+  "score_breakdown_total": "Celkové skóre"
 }

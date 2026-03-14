@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, Calendar, Clock, Pencil, Phone, Mail, ClipboardCopy, Check, FileText, Plus } from 'lucide-react';
+import { AlertTriangle, Calendar, Clock, Pencil, Phone, Mail, ClipboardCopy, Check, FileText, Plus, Info } from 'lucide-react';
+import type { ScoreBreakdownItem } from '@shared/scoring';
 import { formatDate } from '@/i18n/formatters';
 import { listDevices } from '@/services/deviceService';
 import { listVisits, getVisit, getVisitStatusLabel, getVisitResultLabel } from '@/services/visitService';
@@ -40,6 +41,10 @@ export interface CandidateDetailData {
   scheduledTimeEnd?: string;
   /** Whether the candidate has valid geocoded coordinates */
   hasCoordinates?: boolean;
+  /** Computed urgency / ordering score */
+  urgencyScore?: number;
+  /** Per-factor breakdown for the score explanation popover */
+  scoreBreakdown?: ScoreBreakdownItem[];
 }
 
 export type SnoozeDuration = 1 | 7 | 14 | 30;
@@ -362,6 +367,14 @@ export function CandidateDetail({
           )}
         </div>
       </div>
+
+      {/* Ordering score */}
+      {candidate.urgencyScore !== undefined && (
+        <ScoreChip
+          score={candidate.urgencyScore}
+          breakdown={candidate.scoreBreakdown}
+        />
+      )}
 
       {/* State Flags */}
       <div className={styles.stateFlags} data-testid="state-flags">
@@ -919,6 +932,88 @@ export function CandidateDetail({
         <span><kbd>O</kbd> {t('candidate_shortcut_snooze')}</span>
         <span><kbd>1-5</kbd> {t('candidate_shortcut_slot')}</span>
       </div>
+    </div>
+  );
+}
+
+// ── Score chip + breakdown panel ─────────────────────────────────────────────
+
+const FACTOR_KEY_I18N: Record<string, string> = {
+  lifecycle_rank:          'scoring_factor_lifecycle_rank',
+  days_until_due:          'scoring_factor_days_until_due',
+  customer_age_days:       'scoring_factor_customer_age_days',
+  overdue_days:            'scoring_factor_overdue_days',
+  geocode_failed:          'scoring_factor_geocode_failed',
+  total_communications:    'scoring_factor_total_communications',
+  days_since_last_contact: 'scoring_factor_days_since_last_contact',
+  no_open_action:          'scoring_factor_no_open_action',
+};
+
+interface ScoreChipProps {
+  score: number;
+  breakdown?: ScoreBreakdownItem[];
+}
+
+function ScoreChip({ score, breakdown }: ScoreChipProps) {
+  const { t } = useTranslation('settings');
+  const { t: tp } = useTranslation('planner');
+  const [open, setOpen] = useState(false);
+
+  const displayed = Number.isFinite(score) ? score.toFixed(1) : '—';
+
+  return (
+    <div className={styles.scoreChipWrapper}>
+      <div className={styles.scoreChip}>
+        <span className={styles.scoreChipLabel}>{tp('score_label')}</span>
+        <span className={styles.scoreChipValue}>{displayed}</span>
+        {breakdown && breakdown.length > 0 && (
+          <button
+            type="button"
+            className={styles.scoreInfoBtn}
+            onClick={() => setOpen((v) => !v)}
+            title={tp('score_explain_title')}
+            aria-expanded={open}
+          >
+            <Info size={13} />
+          </button>
+        )}
+      </div>
+
+      {open && breakdown && breakdown.length > 0 && (
+        <div className={styles.scoreBreakdown}>
+          <p className={styles.scoreBreakdownHint}>{tp('score_breakdown_hint')}</p>
+          <table className={styles.scoreBreakdownTable}>
+            <thead>
+              <tr>
+                <th>{tp('score_breakdown_factor')}</th>
+                <th>{tp('score_breakdown_value')}</th>
+                <th>{tp('score_breakdown_weight')}</th>
+                <th>{tp('score_breakdown_contribution')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {breakdown.map((row) => (
+                <tr key={row.factorKey}>
+                  <td>{t(FACTOR_KEY_I18N[row.factorKey] ?? row.factorKey, { defaultValue: row.factorKey })}</td>
+                  <td>{row.rawValue}</td>
+                  <td>{row.weight > 0 ? `+${row.weight}` : row.weight}</td>
+                  <td className={row.contribution >= 0 ? styles.scorePos : styles.scoreNeg}>
+                    {row.contribution > 0 ? `+${row.contribution.toFixed(2)}` : row.contribution.toFixed(2)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colSpan={3}><strong>{tp('score_breakdown_total')}</strong></td>
+                <td className={score >= 0 ? styles.scorePos : styles.scoreNeg}>
+                  <strong>{score > 0 ? `+${score.toFixed(2)}` : score.toFixed(2)}</strong>
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

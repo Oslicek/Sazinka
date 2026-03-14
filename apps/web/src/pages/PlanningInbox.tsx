@@ -49,6 +49,7 @@ import * as geometryService from '../services/geometryService';
 import { type CallQueueItem } from '../services/revisionService';
 import { getInbox, listPlannedActions, updatePlannedAction } from '../services/inboxService';
 import { inboxResponseToCallQueueResponse } from '../services/inboxAdapter';
+import type { InboxItem } from '@shared/inbox';
 import { listRuleSets, getInboxState, saveInboxState } from '../services/scoringService';
 import type { ScoringRuleSet } from '../services/scoringService';
 import { listCalendarItems } from '../services/calendarService';
@@ -208,6 +209,7 @@ export function PlanningInbox() {
     }
   });
   const [candidates, setCandidates] = useState<InboxCandidate[]>([]);
+  const [inboxItemMap, setInboxItemMap] = useState<Map<string, InboxItem>>(new Map());
   const [isLoadingCandidates, setIsLoadingCandidates] = useState(false);
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(() => {
     return sessionStorage.getItem('planningInbox.selectedId');
@@ -736,6 +738,8 @@ export function PlanningInbox() {
         _scheduledTimeEnd: item.scheduledTimeEnd ?? undefined,
       }));
       
+      // Keep raw inbox items indexed by customerId for score breakdown lookup
+      setInboxItemMap(new Map(inboxResponse.items.map((item) => [item.id, item])));
       setCandidates(loadedCandidates);
       setSlotSuggestions([]);
     } catch (err) {
@@ -970,6 +974,10 @@ export function PlanningInbox() {
         scheduledTimeStart,
         scheduledTimeEnd,
         hasCoordinates: !!(selectedCandidate.customerLat && selectedCandidate.customerLng),
+        ...(inboxItemMap.get(selectedCandidate.customerId) !== undefined && {
+          urgencyScore: inboxItemMap.get(selectedCandidate.customerId)!.urgencyScore,
+          scoreBreakdown: inboxItemMap.get(selectedCandidate.customerId)!.scoreBreakdown,
+        }),
       };
     }
 
@@ -1000,7 +1008,7 @@ export function PlanningInbox() {
     }
 
     return null;
-  }, [selectedCandidate, selectedCandidateId, routeStops, slotSuggestions]);
+  }, [selectedCandidate, selectedCandidateId, routeStops, slotSuggestions, inboxItemMap]);
 
   // Selected candidate for map preview (before adding to route)
   // Only shown for candidates NOT yet in the route (in-route stops already have numbered markers)

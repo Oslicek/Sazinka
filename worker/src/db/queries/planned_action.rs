@@ -444,7 +444,9 @@ pub async fn get_customer_inbox(
                 days_until_due,
                 customer_age_days: Some(customer_age_days),
             };
-            item.urgency_score = scoring_service::compute_urgency(&input, &factors);
+            let (score, breakdown) = scoring_service::compute_urgency_with_breakdown(&input, &factors);
+            item.urgency_score = score;
+            item.score_breakdown = breakdown;
         }
     }
 

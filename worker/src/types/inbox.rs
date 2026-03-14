@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
+use crate::types::scoring::ScoreBreakdownItem;
+
 /// Request to query the customer inbox
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -21,7 +23,8 @@ pub struct InboxRequest {
     pub area_filter: Option<String>,
 }
 
-/// A single customer row in the planning inbox (Phase 2 shape)
+/// A single customer row in the planning inbox (Phase 2 shape).
+/// `score_breakdown` is NOT in the DB — it is populated in Rust after scoring.
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct InboxItem {
@@ -60,6 +63,12 @@ pub struct InboxItem {
     pub device_name: Option<String>,
     #[sqlx(default)]
     pub device_type: Option<String>,
+
+    /// Per-factor breakdown for the client-side explanation UI.
+    /// NOT stored in the DB — always populated in Rust after scoring.
+    /// Serialised as camelCase JSON in the NATS response.
+    #[sqlx(skip)]
+    pub score_breakdown: Vec<ScoreBreakdownItem>,
 }
 
 /// Response from the inbox query
