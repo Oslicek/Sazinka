@@ -103,6 +103,31 @@ export async function setDefaultRuleSet(
   if (isErrorResponse(response)) throw new Error(response.error.message);
 }
 
+export async function deleteRuleSet(
+  ruleSetId: string,
+  deps: ServiceDeps = getDefaultDeps()
+): Promise<void> {
+  const request = createRequest(getToken(), ruleSetId);
+  const response = await deps.request<typeof request, NatsResponse<unknown>>(
+    'sazinka.scoring.rule_set.delete',
+    request
+  );
+  if (isErrorResponse(response)) throw new Error(response.error.message);
+}
+
+export async function restoreRuleSetDefaults(
+  ruleSetId: string,
+  deps: ServiceDeps = getDefaultDeps()
+): Promise<ScoringRuleSet> {
+  const request = createRequest(getToken(), ruleSetId);
+  const response = await deps.request<typeof request, NatsResponse<ScoringRuleSet>>(
+    'sazinka.scoring.rule_set.restore_defaults',
+    request
+  );
+  if (isErrorResponse(response)) throw new Error(response.error.message);
+  return response.payload;
+}
+
 export async function getRuleSetFactors(
   _ruleSetId: string,
   _deps: ServiceDeps = getDefaultDeps()

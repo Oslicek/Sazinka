@@ -1313,19 +1313,20 @@ Když je **OFF**:
 **Segmenty:**
 - Po termínu / Tento týden / Do 30 dní / Vše / Odložené / Problémy
 
-**Scoring dropdown (Phase 4A):**
+**Scoring dropdown (Phase 4A → updated Phase 4B):**
 
 Toolbar contains a rule-set selector dropdown next to the filter tabs:
 ```
-[Vše] [Akutní] [Do 7 dnů] ...    Hodnocení: [Výchozí profil ▾]
-                                              ├─ Žádné (bez hodnocení)
-                                              ├─ Výchozí profil ★
+[Vše] [Akutní] [Do 7 dnů] ...    Hodnocení: [Standardní ★ ▾]
+                                              ├─ Standardní ★
                                               ├─ Agresivní priority
                                               └─ Pouze geocoding
 ```
 - "★" marks the company default rule set
-- "Žádné" disables scoring (ordering falls back to date-based ranking)
+- Every company has a "Standardní" (Standard) default profile seeded at onboarding that reproduces the legacy lifecycle-rank → due-date → age ordering via factor weights
+- The "Žádné" (None) option is removed — a scoring profile is always active
 - Selection is persisted per dispatcher in `dispatcher_inbox_state` and restored on next inbox open
+- If no selection is persisted yet, the default profile is auto-selected
 - Changing selection re-fetches the inbox with the new `selectedRuleSetId`
 
 **UI stavy:**
@@ -1521,7 +1522,7 @@ Poznámka: [__________]
 
 ---
 
-#### 8.6a Nastavení hodnocení (Settings → Scoring) — Phase 4A
+#### 8.6a Nastavení hodnocení (Settings → Scoring) — Phase 4A, updated Phase 4B
 
 **Účel:** Správa profilů hodnocení naléhavosti zákazníků pro řazení v inboxu.
 
@@ -1534,17 +1535,27 @@ Poznámka: [__________]
 │ Nastavení > Hodnocení                                             │
 │                                                                   │
 │ Profily hodnocení určují pořadí zákazníků v Inboxu.               │
-│ Dispečer si může v Inboxu zvolit profil nebo hodnocení vypnout.   │
+│ Každá firma má výchozí profil "Standardní", který lze upravit.    │
 │                                                                   │
 │ Aktivní profily                                    [+ Nový profil] │
 │ ┌──────────────────────────────────────────────────────────────┐  │
-│ │ ★ Výchozí profil                               [Upravit] [⋯]│  │
-│ │   Vyvážené hodnocení pro běžný provoz.                       │  │
-│ │   Dny po termínu: 5 │ Geocoding selhal: 20 │ …              │  │
+│ │ ★ Standardní 🔒                   [Upravit] [Obnovit výchozí]│  │
+│ │   Výchozí řazení: stav → termín → stáří zákazníka.          │  │
+│ │                                                              │  │
+│ │   ── Řazení (sorting) ──────────────────────────             │  │
+│ │   Stav zákazníka:       [●========] -1000                    │  │
+│ │   Dny do termínu:       [====●====] -5                       │  │
+│ │   Stáří zákazníka:      [●========] 0.01                     │  │
+│ │                                                              │  │
+│ │   ── Urgence (urgency) ─────────────────────────             │  │
+│ │   Dny po termínu:       [●========] 0                        │  │
+│ │   Geocoding selhal:     [●========] 0                        │  │
+│ │   Počet komunikací:     [●========] 0                        │  │
+│ │   Dny od posl. kontaktu:[●========] 0                        │  │
+│ │   Žádná otevřená akce:  [●========] 0                        │  │
 │ ├──────────────────────────────────────────────────────────────┤  │
 │ │   Agresivní priority                           [Upravit] [⋯]│  │
 │ │   Zákazníci po termínu mají silnou prioritu.                 │  │
-│ │   Dny po termínu: 10 │ Geocoding selhal: 5 │ …              │  │
 │ └──────────────────────────────────────────────────────────────┘  │
 │                                                                   │
 │ Archivované profily                                               │
@@ -1558,34 +1569,44 @@ Poznámka: [__________]
 
 ```
 ┌──────────────────────────────────────────────────┐
-│ Nový profil hodnocení                             │
+│ Upravit profil hodnocení                          │
 │                                                   │
-│ Název*:       [_________________________]         │
+│ Název*:       [Standardní_______________]         │
 │ Popis:        [_________________________]         │
 │                                                   │
-│ Váhy faktorů (rozsah -100 až 100):               │
+│ ── Řazení (sorting) ──────────────────────        │
+│ Stav zákazníka:           [●========] -1000       │
+│ Dny do termínu:           [====●====] -5          │
+│ Stáří zákazníka:          [●========] 0.01        │
 │                                                   │
+│ ── Urgence (urgency) ─────────────────────        │
 │ Dny po termínu:           [====●====] 5           │
 │ Geocoding selhal:         [========●] 20          │
 │ Počet komunikací:         [●========] -5          │
 │ Dny od posledního kontaktu: [===●=====] 3         │
 │ Žádná otevřená akce:     [=====●===] 10           │
 │                                                   │
-│ ⓘ Všechny váhy jsou 0 — hodnocení je vypnuté,    │
-│   řazení závisí pouze na datu.                    │
-│                                                   │
 │ [Zrušit]                    [Uložit profil]       │
 └──────────────────────────────────────────────────┘
 ```
 
-**Akce v kontextovém menu [⋯]:**
+**Akce v kontextovém menu [⋯] — user-created profiles:**
 - Nastavit jako výchozí (confirmation dialog)
 - Archivovat
 - Smazat (only if not referenced by any dispatcher's saved state)
 
+**System profile (🔒) — different actions:**
+- [Upravit] — opens the same edit form (name, description, all 8 factor weights are editable)
+- [Obnovit výchozí] — confirmation dialog, then resets name + factors to factory defaults
+- [⋯] menu: Nastavit jako výchozí, Archivovat — but **no "Smazat"** option
+- 🔒 badge indicates the profile is system-managed and cannot be deleted
+
 **Chování:**
+- Každá firma má automaticky vytvořený profil "Standardní" s `is_system = TRUE` (seeded at onboarding, backfilled for existing companies)
+- Systémový profil je plně editovatelný (název, popis, váhy), ale nelze ho smazat
+- Tlačítko "Obnovit výchozí" resetuje název a váhy na tovární hodnoty (s potvrzovacím dialogem)
 - Alespoň jeden profil musí existovat jako výchozí (pokud se výchozí archivuje, systém automaticky promuje další abecedně)
-- Profil s váhami = 0 zobrazí info hint o tom, že hodnocení je efektivně vypnuté
+- Faktory jsou vizuálně rozděleny do dvou skupin: "Řazení" (lifecycle_rank, days_until_due, customer_age_days) a "Urgence" (overdue_days, geocode_failed, total_communications, days_since_last_contact, no_open_action)
 - Změna vah se projeví při dalším načtení inboxu (bez cache — okamžitě)
 
 ---

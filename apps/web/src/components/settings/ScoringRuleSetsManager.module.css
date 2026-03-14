@@ -142,6 +142,10 @@
   background: var(--color-text-secondary, #9ca3af);
 }
 
+.badgeSystem {
+  background: var(--color-success, #16a34a);
+}
+
 .itemActions {
   display: flex;
   gap: 0.4rem;

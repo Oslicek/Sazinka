@@ -17,6 +17,10 @@ pub struct ScoringRuleSet {
     pub description: Option<String>,
     pub is_default: bool,
     pub is_archived: bool,
+    /// System profiles are seeded automatically and cannot be deleted.
+    /// They are fully editable (name, weights) and have a "Restore defaults" action.
+    #[sqlx(default)]
+    pub is_system: bool,
     pub created_by_user_id: Uuid,
     pub updated_by_user_id: Uuid,
     pub created_at: DateTime<Utc>,
@@ -89,11 +93,16 @@ pub struct SaveInboxStateRequest {
 #[derive(Debug, Clone)]
 pub struct CustomerScoringInput {
     pub customer_id: Uuid,
+    // existing factors
     pub days_overdue: Option<i64>,
     pub geocode_failed: bool,
     pub total_communications: i64,
     pub days_since_last_contact: Option<i64>,
     pub has_open_action: bool,
+    // P4B-01: new sorting factors
+    pub lifecycle_rank: Option<i32>,
+    pub days_until_due: Option<i64>,
+    pub customer_age_days: Option<i64>,
 }
 
 #[cfg(test)]
@@ -109,6 +118,7 @@ mod tests {
             description: None,
             is_default: false,
             is_archived: false,
+            is_system: false,
             created_by_user_id: Uuid::nil(),
             updated_by_user_id: Uuid::nil(),
             created_at: chrono::DateTime::from_timestamp(0, 0).unwrap(),
@@ -117,6 +127,7 @@ mod tests {
         let json = serde_json::to_string(&rss).unwrap();
         assert!(json.contains("\"isDefault\""));
         assert!(json.contains("\"isArchived\""));
+        assert!(json.contains("\"isSystem\""));
         assert!(json.contains("\"createdByUserId\""));
         assert!(!json.contains("\"is_default\""));
     }

@@ -1,6 +1,6 @@
 # Business Processes & Customer Lifecycle
 
-> **Status**: Phases 1-6 and Phase 4A complete.  
+> **Status**: Phases 1-6, Phase 4A and Phase 4B complete.  
 > **Last-Modified**: 2026-03-11
 
 | Phase | Status | Notes |
@@ -10,6 +10,7 @@
 | Phase 3: Frontend | ✅ Complete | inboxService, useInbox hook, CandidateDetail callback/abandon actions |
 | Phase 4: Scoring | ✅ Complete | scoring_rule_sets/factors/dispatcher_inbox_state tables, Rust scoring service, NATS handlers |
 | **Phase 4A: Scoring activation & UI** | ✅ Complete | compute_urgency wired into inbox query; set_default handler; shared TS types; scoringService; i18n (en/cs/sk); ScoringRuleSetsManager Settings tab; inbox rule-set selector dropdown; DB-backed inbox state persistence |
+| **Phase 4B: Default scoring profile** | ✅ Complete | New factors (lifecycle_rank, days_until_due, customer_age_days); `is_system` column; seed default profile on onboarding; backfill existing; block delete + restore defaults; remove hardcoded sort; auto-select default in inbox |
 | Phase 5: Cleanup | ✅ Complete | Dual-write: revision snooze → planned_action, communication follow_up → planned_action; migration 034 (guarded drop) |
 | Phase 6: Tasks model | ✅ Complete | task_types/tasks tables (035), backfill from revisions (036), Rust Task/TaskType types+queries, NATS handlers, shared TS types; migrations 037 (guarded drop) |
 
@@ -1327,6 +1328,235 @@ Rationale: backend first (01-02), then shared types (03) that frontend depends o
 
 ---
 
+### Phase 4B: Default scoring profile & unified score-based sorting
+
+#### Problem
+
+When no scoring profile exists (fresh company), the inbox falls back to a hardcoded
+Rust sort: `lifecycle_rank` → `due_date` → `created_at`. This means:
+
+- The "Urgency score" column is always `0.0` — confusing for the user.
+- The hardcoded sort logic is a parallel code path that can drift from score-based sorting.
+- New companies see an empty scoring selector with no guidance.
+
+#### Goal
+
+1. Express the current default sort order **as a scoring profile** with well-chosen factor weights.
+2. **Seed this profile automatically** when a company completes onboarding.
+3. **Backfill** the profile for existing companies that have no scoring rule set.
+4. **Remove the hardcoded `RankFirst` sort** — all sorting goes through `compute_urgency` + score DESC.
+5. **Auto-select the default profile** in the inbox when no `dispatcher_inbox_state` exists yet.
+6. The default profile is **fully editable** (name, weights) like any other profile, but **cannot be deleted**. A "Restore defaults" action resets its weights to the factory values.
+
+#### New scoring factors needed
+
+The current 5 factors (`overdue_days`, `geocode_failed`, `total_communications`,
+`days_since_last_contact`, `no_open_action`) cannot reproduce the lifecycle-rank
+ordering. We need:
+
+| Factor key | Type | Raw value | Purpose |
+|---|---|---|---|
+| `lifecycle_rank` | integer 0-3 | `lifecycle_rank` from SQL CASE | Primary sort bucket. Weight should be large negative (e.g. −1000) so rank 0 scores highest, rank 3 lowest. |
+| `days_until_due` | signed integer | `due_date − today` (negative = overdue) | Within a rank, overdue items score higher. Weight negative (e.g. −5) so more-overdue = higher score. |
+| `customer_age_days` | integer ≥ 0 | `today − customer_created_at` | Tiebreaker: older customers first. Small positive weight (e.g. 0.01). |
+
+These join the existing 5 factors — all 8 are available in every profile. The
+default "Standard" profile uses only the 3 new ones; users can add/adjust the
+other 5 to taste.
+
+#### Default profile definition
+
+| Factor | Weight | Effect |
+|---|---|---|
+| `lifecycle_rank` | −1000 | Rank 0 (untouched) → +0; Rank 1 (overdue) → −1000; Rank 2 (active) → −2000; Rank 3 (needs_action) → −3000. Lower rank = higher score. |
+| `days_until_due` | −5 | Overdue by 10 days → +50; due in 10 days → −50. Overdue items float up within their rank. |
+| `customer_age_days` | 0.01 | 365-day-old customer → +3.65. Tiny tiebreaker so older customers appear first. |
+| *(all other factors)* | 0 | Inactive by default. Users can enable them in Settings. |
+
+Profile name (localized):
+- en: "Standard"
+- cs: "Standardní"
+- sk: "Štandardný"
+
+#### System profile behavior
+
+The seeded profile has `is_system = TRUE` on the `scoring_rule_sets` row.
+
+| Action | System profile | User-created profile |
+|---|---|---|
+| Edit name | ✅ Allowed | ✅ Allowed |
+| Edit description | ✅ Allowed | ✅ Allowed |
+| Edit factor weights | ✅ Allowed | ✅ Allowed |
+| Set as default | ✅ Allowed | ✅ Allowed |
+| Archive | ✅ Allowed | ✅ Allowed |
+| **Delete** | ❌ Blocked (backend returns error) | ✅ Allowed |
+| **Restore defaults** | ✅ Resets name + factors to factory values | N/A (button not shown) |
+
+The `is_system` flag is immutable — it cannot be set or cleared via the API.
+The "Restore defaults" NATS subject: `sazinka.scoring.rule_set.restore_defaults`.
+
+#### Inbox query changes
+
+Once every company has a default profile, the inbox query can be simplified:
+
+1. If `selected_rule_set_id` is `None` in the request, **look up the user's default
+   rule set** (`is_default = TRUE`) and use it automatically.
+2. Remove the `InboxSortMode` enum and the `match sort_mode { ... }` block —
+   sorting is always by `urgency_score DESC`, then `customer_created_at ASC`.
+3. The `lifecycle_rank` column stays in the SQL (the scoring function reads it),
+   but it no longer drives a separate sort path.
+
+#### TDD tickets
+
+##### P4B-01 `[R]` New scoring factors in Rust
+
+**RED**:
+1. Unit test: `compute_urgency` with `lifecycle_rank` factor, weight −1000, input rank=2 → contribution = −2000.
+2. Unit test: `compute_urgency` with `days_until_due` factor, weight −5, input due in −10 (overdue 10) → contribution = +50.
+3. Unit test: `compute_urgency` with `customer_age_days` factor, weight 0.01, input 365 → contribution = 3.65.
+
+**GREEN**:
+1. Add `LIFECYCLE_RANK`, `DAYS_UNTIL_DUE`, `CUSTOMER_AGE_DAYS` to `scoring::factor_keys`.
+2. Add `lifecycle_rank: Option<i32>`, `days_until_due: Option<i64>`, `customer_age_days: Option<i64>` to `CustomerScoringInput`.
+3. Add match arms in `compute_urgency` for the 3 new keys.
+
+**REFACTOR**: Ensure all 8 factor keys are tested in isolation and in combination.
+
+---
+
+##### P4B-02 `[R]` Seed default profile on onboarding complete
+
+**RED**:
+1. Unit test: after `onboarding.complete`, a `scoring_rule_sets` row exists for the user with `is_default = TRUE`, `is_system = TRUE`, and name = localized "Standard".
+2. Unit test: the rule set has exactly 3 factors with the expected weights.
+
+**GREEN**:
+1. Create a helper `create_default_scoring_profile(pool, user_id, locale)` in `db::queries::scoring`. Sets `is_system = TRUE`.
+2. Call it from `handle_onboarding_complete` after the user update, passing the user's locale.
+
+**REFACTOR**: Extract the factor definitions into a constant (`DEFAULT_FACTORS`) so they're reusable for backfill and restore-defaults.
+
+---
+
+##### P4B-03 `[R]` Schema migration + backfill for existing companies
+
+**RED**:
+1. Test: migration 038 adds `is_system BOOLEAN NOT NULL DEFAULT FALSE` to `scoring_rule_sets`.
+2. Test: migration 038 creates a default scoring rule set for every user that has `role = 'admin'` or `role = 'customer'` AND has zero rows in `scoring_rule_sets`, with `is_system = TRUE` and `is_default = TRUE`.
+
+**GREEN**:
+1. Write migration `038_seed_default_scoring_profiles.sql`:
+   - `ALTER TABLE scoring_rule_sets ADD COLUMN is_system BOOLEAN NOT NULL DEFAULT FALSE;`
+   - For each qualifying user, INSERT a rule set with `is_default = TRUE`, `is_system = TRUE`, name = 'Standard'.
+   - INSERT the 3 default factors for each new rule set.
+
+**REFACTOR**: Verify idempotency (re-running doesn't duplicate). Update `ScoringRuleSet` Rust struct and TS interface to include `isSystem: boolean`.
+
+---
+
+##### P4B-04 `[R]` System profile guards: block delete + restore defaults handler
+
+**RED**:
+1. Unit test: `archive_rule_set` on a system profile succeeds (archiving is allowed).
+2. Unit test: a new `delete_rule_set` function returns an error when `is_system = TRUE`.
+3. Unit test: `restore_defaults` resets the system profile's name (to locale-appropriate "Standard") and replaces all factors with the 3 factory defaults.
+4. Unit test: `restore_defaults` on a non-system profile returns an error.
+
+**GREEN**:
+1. Add `delete_rule_set` to `db::queries::scoring` — hard-deletes the row but returns error if `is_system = TRUE`.
+2. Add `restore_rule_set_defaults(pool, user_id, rule_set_id, locale)` to `db::queries::scoring` — resets name + factors using `DEFAULT_FACTORS` constant. Only works when `is_system = TRUE`.
+3. Wire NATS handler `sazinka.scoring.rule_set.restore_defaults` in `handlers/scoring.rs` and `handlers/mod.rs`.
+
+**REFACTOR**: Ensure `archive_rule_set` auto-promotes the next profile as default if the archived one was default.
+
+---
+
+##### P4B-05 `[R]` Auto-select default profile in inbox query
+
+**RED**:
+1. Unit test: `get_customer_inbox` with `selected_rule_set_id = None` loads the user's default rule set and applies scoring.
+2. Unit test: inbox items are sorted by `urgency_score DESC` (no separate rank-based sort).
+
+**GREEN**:
+1. In `get_customer_inbox`: if `selected_rule_set_id` is `None`, query `scoring_rule_sets WHERE user_id = $1 AND is_default = TRUE` and use its ID.
+2. Populate the 3 new `CustomerScoringInput` fields from the SQL result (`lifecycle_rank`, computed `days_until_due`, computed `customer_age_days`).
+3. Replace the `match sort_mode { ... }` block with a single sort: `urgency_score DESC`, then `customer_created_at ASC`.
+4. Remove `InboxSortMode` enum (or keep for backward compat but ignore).
+
+**REFACTOR**: Remove dead `RankFirst`/`DueDate` match arms. Clean up `InboxRequest.sort_mode`.
+
+---
+
+##### P4B-06 `[F]` Update shared TS types & FACTOR_KEYS
+
+**RED**:
+1. TS compile check: `FACTOR_KEYS` includes `LIFECYCLE_RANK`, `DAYS_UNTIL_DUE`, `CUSTOMER_AGE_DAYS`.
+2. TS compile check: `ScoringRuleSet` includes `isSystem: boolean`.
+
+**GREEN**:
+1. Add the 3 new keys to `packages/shared-types/src/scoring.ts` `FACTOR_KEYS`.
+2. Add `isSystem: boolean` to `ScoringRuleSet` interface.
+3. Remove `InboxSortMode` references from `packages/shared-types/src/inbox.ts` if exported.
+4. Add `restoreDefaults(ruleSetId)` to `scoringService.ts`.
+
+**REFACTOR**: Ensure no dead imports.
+
+---
+
+##### P4B-07 `[F]` Frontend: remove sort-mode selector, auto-select default profile
+
+**RED**:
+1. Inbox loads with the default profile pre-selected (no "None" option visible when a default exists).
+2. Sort-mode dropdown is removed from the inbox toolbar.
+
+**GREEN**:
+1. In `PlanningInbox.tsx`: on initial load, if `getInboxState` returns no `selectedRuleSetId`, find the rule set with `isDefault === true` from the fetched list and select it.
+2. Remove the sort-mode selector UI (if any) and the `sortMode` field from `saveInboxState` calls.
+3. Remove the "None" option from the scoring selector dropdown.
+
+**REFACTOR**: Clean up unused sort-mode i18n keys and CSS.
+
+---
+
+##### P4B-08 `[F]` i18n & Settings UI: new factors, system profile UX
+
+**RED**:
+1. Settings → Scoring tab shows labels for all 8 factors including the 3 new ones.
+2. System profile card shows no "Delete" option in the context menu.
+3. System profile card shows a "Restore defaults" button.
+4. Clicking "Restore defaults" resets the profile and refreshes the card.
+
+**GREEN**:
+1. Add i18n keys for `scoring_factor_lifecycle_rank`, `scoring_factor_days_until_due`, `scoring_factor_customer_age_days` in `en`, `cs`, `sk` settings.json.
+2. Add i18n keys for `scoring_restore_defaults`, `scoring_restore_defaults_confirm`, `scoring_restore_defaults_success` in `en`, `cs`, `sk`.
+3. `ScoringRuleSetsManager`: hide "Delete" action when `ruleSet.isSystem === true`.
+4. `ScoringRuleSetsManager`: show "Restore defaults" button for system profiles, calling `scoringService.restoreDefaults(id)`.
+5. `ScoringRuleSetsManager`: render sliders for all 8 factors, grouped into "Sorting" and "Urgency" sections.
+
+**REFACTOR**: Factor grouping is visual only (no backend concept of groups).
+
+---
+
+#### Summary: Phase 4B ticket count
+
+| Ticket | Layer | Scope |
+|--------|-------|-------|
+| P4B-01 | Backend | New scoring factors in `compute_urgency` |
+| P4B-02 | Backend | Seed default profile on onboarding complete (`is_system = TRUE`) |
+| P4B-03 | Backend | Schema migration (`is_system` column) + backfill existing companies |
+| P4B-04 | Backend | System profile guards: block delete + restore defaults handler |
+| P4B-05 | Backend | Auto-select default profile in inbox query; remove hardcoded sort |
+| P4B-06 | Frontend | Update shared TS types, FACTOR_KEYS, `isSystem`, `restoreDefaults` |
+| P4B-07 | Frontend | Remove sort-mode selector; auto-select default profile in inbox |
+| P4B-08 | Frontend | i18n keys, new factor labels, system profile UX (no delete, restore defaults) |
+| **Total** | | **8 tickets** |
+
+**Suggested implementation order**: P4B-01 → P4B-02 → P4B-03 → P4B-04 → P4B-05 → P4B-06 → P4B-07 → P4B-08
+
+Rationale: new factors first (01), then seeding logic (02) and schema+backfill (03) so every company has a system profile, then guards and restore handler (04), then inbox query simplification (05) that depends on profiles existing, then frontend types (06) and UI (07-08).
+
+---
+
 ### Phase 5: Cleanup — deprecate legacy fields
 
 #### P5-01 `[R]` Remove snooze from revisions, use planned_action snooze
@@ -1543,10 +1773,11 @@ Provide mock implementations of `getInbox`, `createPlannedAction`, `abandonCusto
 | Phase 3 | P3-01 to P3-07 | 7 tickets — frontend services + components |
 | Phase 4 | P4-01 to P4-12 | 12 tickets — scoring infra (tables, Rust types, queries, handlers, service) |
 | **Phase 4A** | **P4A-01 to P4A-08** | **8 tickets — scoring activation & UI (wire into inbox, shared types, frontend service, Settings tab, inbox selector, state persistence, i18n)** |
+| **Phase 4B** | **P4B-01 to P4B-08** | **8 tickets — default scoring profile (new factors, seed on onboarding, backfill, is_system guard, restore defaults, remove hardcoded sort, auto-select, frontend cleanup)** |
 | Phase 5 | P5-01 to P5-05 | 5 tickets — legacy cleanup |
 | Phase 6 | P6-01 to P6-08 | 8 tickets — tasks model |
 | Cross-cutting | T-01, T-02 | 2 tickets — test infrastructure |
-| **Total** | **61 tickets** | |
+| **Total** | **69 tickets** | |
 
 ---
 
@@ -1562,6 +1793,6 @@ Provide mock implementations of `getInbox`, `createPlannedAction`, `abandonCusto
 | **Task** | Generic unit of work (Section 3.3). User-definable types via `task_types` (revision, installation, software update, etc.). Replaces `revisions` after Phase 6. Can be visit-bound or remote. |
 | **Action target** | Polymorphic target object referenced by `planned_actions`. Resolves the action to exactly one entity (task, visit, project, or other reference). |
 | **Task type** | User-definable category for tasks (e.g., revision, installation, callback). Stored in `task_types` reference table; each task references one type. |
-| **Scoring rule set** | Named company-level configuration of urgency factor weights. Multiple sets per company; one is the default. Dispatchers can select a set or opt out. |
-| **Urgency score** | Weighted numeric score computed per customer from scoring factors. Used to order customers within lifecycle rank groups in the inbox. |
+| **Scoring rule set** | Named company-level configuration of urgency factor weights. Multiple sets per company; one is the default. A "Standard" system profile (`is_system = TRUE`) is seeded automatically for every new company — it is fully editable but cannot be deleted, and has a "Restore defaults" action. Dispatchers can select a set in the inbox toolbar. |
+| **Urgency score** | Weighted numeric score computed per customer from scoring factors. The sole determinant of inbox ordering (score DESC). The default "Standard" profile reproduces the legacy lifecycle-rank → due-date → age ordering via factor weights. |
 | **Dispatcher inbox state** | Per-dispatcher persisted configuration (sort mode, active filters, selected scoring rule set, page number/size). Autosaved and restored on inbox open. |

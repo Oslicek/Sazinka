@@ -196,6 +196,88 @@ pub async fn handle_set_default_rule_set(
     Ok(())
 }
 
+/// Handle sazinka.scoring.rule_set.delete
+pub async fn handle_delete_rule_set(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+    jwt_secret: Arc<String>,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received scoring.rule_set.delete");
+        let reply = match msg.reply { Some(r) => r, None => { warn!("No reply"); continue; } };
+        let request = parse_request!(msg, Uuid, client, reply);
+        let user_id = require_auth!(request, jwt_secret, client, reply);
+
+        match queries::scoring::delete_rule_set(&pool, user_id, request.payload).await {
+            Ok(true) => {
+                let response = SuccessResponse::new(request.id, serde_json::json!({"deleted": true}));
+                let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+            }
+            Ok(false) => {
+                let error = ErrorResponse::new(request.id, "NOT_FOUND", "Rule set not found");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+            Err(e) => {
+                let code = if e.to_string().contains("SYSTEM_PROFILE") {
+                    "SYSTEM_PROFILE"
+                } else {
+                    "DATABASE_ERROR"
+                };
+                error!("delete_rule_set error: {}", e);
+                let error = ErrorResponse::new(request.id, code, e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Handle sazinka.scoring.rule_set.restore_defaults
+/// Payload: UUID of the rule set to restore. Locale is looked up from the user record.
+pub async fn handle_restore_rule_set_defaults(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+    jwt_secret: Arc<String>,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received scoring.rule_set.restore_defaults");
+        let reply = match msg.reply { Some(r) => r, None => { warn!("No reply"); continue; } };
+        let request = parse_request!(msg, Uuid, client, reply);
+        let user_id = require_auth!(request, jwt_secret, client, reply);
+
+        // Look up user locale for localized name reset
+        let locale: String = sqlx::query_as::<_, (String,)>(
+            "SELECT COALESCE(locale, 'en') FROM users WHERE id = $1",
+        )
+        .bind(user_id)
+        .fetch_optional(&pool)
+        .await
+        .ok()
+        .flatten()
+        .map(|(l,)| l)
+        .unwrap_or_else(|| "en".to_string());
+
+        match queries::scoring::restore_rule_set_defaults(&pool, user_id, request.payload, &locale).await {
+            Ok(Some(rule_set)) => {
+                let response = SuccessResponse::new(request.id, rule_set);
+                let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+            }
+            Ok(None) => {
+                let error = ErrorResponse::new(request.id, "NOT_FOUND", "Rule set not found or not a system profile");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+            Err(e) => {
+                error!("restore_rule_set_defaults error: {}", e);
+                let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Handle sazinka.inbox_state.get
 pub async fn handle_get_inbox_state(
     client: Client,

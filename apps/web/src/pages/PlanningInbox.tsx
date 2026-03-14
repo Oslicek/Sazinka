@@ -688,11 +688,16 @@ export function PlanningInbox() {
       inboxStateLoadedRef.current ? Promise.resolve(null) : getInboxState().catch(() => null),
     ])
       .then(([sets, state]) => {
-        setRuleSets(sets.filter((rs) => !rs.isArchived));
+            const activeSets = sets.filter((rs) => !rs.isArchived);
+        setRuleSets(activeSets);
         if (!inboxStateLoadedRef.current) {
           inboxStateLoadedRef.current = true;
           if (state?.selectedRuleSetId) {
             setSelectedRuleSetId(state.selectedRuleSetId);
+          } else {
+            // Auto-select the default profile if no persisted state
+            const defaultSet = activeSets.find((rs) => rs.isDefault);
+            if (defaultSet) setSelectedRuleSetId(defaultSet.id);
           }
         }
       })
@@ -2330,7 +2335,6 @@ export function PlanningInbox() {
               onChange={(e) => setSelectedRuleSetId(e.target.value || null)}
               disabled={isLoadingRuleSets}
             >
-              <option value="">{t('scoring_none')}</option>
               {ruleSets.map((rs) => (
                 <option key={rs.id} value={rs.id}>
                   {rs.isDefault ? `${t('scoring_default_marker')} ` : ''}{rs.name}

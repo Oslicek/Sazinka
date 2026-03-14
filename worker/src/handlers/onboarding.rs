@@ -21,6 +21,7 @@ use sqlx::PgPool;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
+use crate::db::queries;
 use crate::services::email_sender::EmailSender;
 use crate::services::email_templates::{AlreadyRegisteredEmail, VerificationEmail};
 use crate::services::rate_limiter::MultiRateLimiter;
@@ -1124,6 +1125,11 @@ pub async fn handle_onboarding_complete(
         .bind(user_id)
         .execute(&pool)
         .await;
+
+        // Seed the "Standard" system scoring profile for the new company
+        if let Err(e) = queries::scoring::create_default_scoring_profile(&pool, user_id, &user_locale).await {
+            warn!("Failed to seed default scoring profile for user {}: {}", user_id, e);
+        }
 
         info!("Onboarding complete for {} (user_id={}), depot geocode queued", email, user_id);
         let resp = SuccessResponse::new(request.id, OnboardingOkResponse { ok: true });

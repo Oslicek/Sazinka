@@ -7,18 +7,30 @@ import {
   updateRuleSet,
   archiveRuleSet,
   setDefaultRuleSet,
+  deleteRuleSet,
+  restoreRuleSetDefaults,
 } from '../../services/scoringService';
 import type { ScoringRuleSet, FactorInput } from '../../services/scoringService';
 import { FACTOR_KEYS } from '@shared/scoring';
 import styles from './ScoringRuleSetsManager.module.css';
 
-const ALL_FACTOR_KEYS = [
+// Sorting factors (control primary inbox order via lifecycle_rank, due date, age)
+const SORTING_FACTOR_KEYS = [
+  FACTOR_KEYS.LIFECYCLE_RANK,
+  FACTOR_KEYS.DAYS_UNTIL_DUE,
+  FACTOR_KEYS.CUSTOMER_AGE_DAYS,
+] as const;
+
+// Urgency factors (fine-tune priority within lifecycle groups)
+const URGENCY_FACTOR_KEYS = [
   FACTOR_KEYS.OVERDUE_DAYS,
   FACTOR_KEYS.GEOCODE_FAILED,
   FACTOR_KEYS.TOTAL_COMMUNICATIONS,
   FACTOR_KEYS.DAYS_SINCE_LAST_CONTACT,
   FACTOR_KEYS.NO_OPEN_ACTION,
 ] as const;
+
+const ALL_FACTOR_KEYS = [...SORTING_FACTOR_KEYS, ...URGENCY_FACTOR_KEYS] as const;
 
 function defaultFactors(): FactorInput[] {
   return ALL_FACTOR_KEYS.map((key) => ({ factorKey: key, weight: 0 }));
@@ -141,6 +153,27 @@ export function ScoringRuleSetsManager() {
     }
   };
 
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteRuleSet(id);
+      showSuccess(t('scoring_success_delete'));
+      await load();
+    } catch {
+      setError(t('scoring_error_delete'));
+    }
+  };
+
+  const handleRestoreDefaults = async (id: string) => {
+    if (!window.confirm(t('scoring_restore_defaults_confirm'))) return;
+    try {
+      await restoreRuleSetDefaults(id);
+      showSuccess(t('scoring_restore_defaults_success'));
+      await load();
+    } catch {
+      setError(t('scoring_error_restore_defaults'));
+    }
+  };
+
   const setFactorWeight = (factorKey: string, weight: number) => {
     setEditState((prev) => ({
       ...prev,
@@ -152,6 +185,9 @@ export function ScoringRuleSetsManager() {
 
   const factorLabel = (key: string): string => {
     const map: Record<string, string> = {
+      [FACTOR_KEYS.LIFECYCLE_RANK]: t('scoring_factor_lifecycle_rank'),
+      [FACTOR_KEYS.DAYS_UNTIL_DUE]: t('scoring_factor_days_until_due'),
+      [FACTOR_KEYS.CUSTOMER_AGE_DAYS]: t('scoring_factor_customer_age_days'),
       [FACTOR_KEYS.OVERDUE_DAYS]: t('scoring_factor_overdue_days'),
       [FACTOR_KEYS.GEOCODE_FAILED]: t('scoring_factor_geocode_failed'),
       [FACTOR_KEYS.TOTAL_COMMUNICATIONS]: t('scoring_factor_total_communications'),
@@ -203,6 +239,8 @@ export function ScoringRuleSetsManager() {
           onCancel={cancelEdit}
           saving={saving}
           factorLabel={factorLabel}
+          sortingFactorKeys={SORTING_FACTOR_KEYS as unknown as string[]}
+          urgencyFactorKeys={URGENCY_FACTOR_KEYS as unknown as string[]}
           t={t}
         />
       )}
@@ -219,12 +257,19 @@ export function ScoringRuleSetsManager() {
                 onCancel={cancelEdit}
                 saving={saving}
                 factorLabel={factorLabel}
+                sortingFactorKeys={SORTING_FACTOR_KEYS as unknown as string[]}
+                urgencyFactorKeys={URGENCY_FACTOR_KEYS as unknown as string[]}
                 t={t}
               />
             ) : (
               <div className={styles.itemRow}>
                 <div className={styles.itemInfo}>
                   <span className={styles.itemName}>{rs.name}</span>
+                  {rs.isSystem && (
+                    <span className={`${styles.badge} ${styles.badgeSystem}`}>
+                      {t('scoring_system_badge')}
+                    </span>
+                  )}
                   {rs.isDefault && (
                     <span className={styles.badge}>{t('scoring_default_badge')}</span>
                   )}
@@ -254,12 +299,28 @@ export function ScoringRuleSetsManager() {
                       {t('scoring_edit')}
                     </button>
                   )}
+                  {rs.isSystem && !rs.isArchived && (
+                    <button
+                      className={styles.actionBtn}
+                      onClick={() => handleRestoreDefaults(rs.id)}
+                    >
+                      {t('scoring_restore_defaults')}
+                    </button>
+                  )}
                   {!rs.isArchived && (
                     <button
                       className={`${styles.actionBtn} ${styles.dangerBtn}`}
                       onClick={() => handleArchive(rs.id)}
                     >
                       {t('scoring_archive')}
+                    </button>
+                  )}
+                  {!rs.isSystem && rs.isArchived && (
+                    <button
+                      className={`${styles.actionBtn} ${styles.dangerBtn}`}
+                      onClick={() => handleDelete(rs.id)}
+                    >
+                      {t('delete_action')}
                     </button>
                   )}
                 </div>
@@ -280,10 +341,63 @@ interface FormProps {
   onCancel: () => void;
   saving: boolean;
   factorLabel: (key: string) => string;
+  sortingFactorKeys: string[];
+  urgencyFactorKeys: string[];
   t: (key: string) => string;
 }
 
-function RuleSetForm({ state, onChange, onFactorChange, onSave, onCancel, saving, factorLabel, t }: FormProps) {
+function FactorGroup({
+  title,
+  hint,
+  factorKeys,
+  factors,
+  factorLabel,
+  onFactorChange,
+}: {
+  title: string;
+  hint: string;
+  factorKeys: string[];
+  factors: FactorInput[];
+  factorLabel: (key: string) => string;
+  onFactorChange: (key: string, weight: number) => void;
+}) {
+  return (
+    <div>
+      <h5 className="">{title}</h5>
+      <p style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary, #888)', marginBottom: '0.5rem' }}>{hint}</p>
+      {factorKeys.map((key) => {
+        const factor = factors.find((f) => f.factorKey === key);
+        const weight = factor?.weight ?? 0;
+        const isWide = key === 'lifecycle_rank'; // lifecycle_rank needs wider range
+        const min = isWide ? -1200 : -100;
+        const max = isWide ? 0 : 100;
+        const step = isWide ? 50 : 1;
+        return (
+          <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
+            <span style={{ flex: 1, fontSize: '0.85rem' }}>{factorLabel(key)}</span>
+            <input
+              type="range"
+              min={min}
+              max={max}
+              step={step}
+              value={weight}
+              onChange={(e) => onFactorChange(key, Number(e.target.value))}
+              style={{ width: '120px' }}
+            />
+            <span style={{ width: '60px', textAlign: 'right', fontSize: '0.85rem', fontVariantNumeric: 'tabular-nums' }}>
+              {weight > 0 ? `+${weight}` : weight}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function RuleSetForm({
+  state, onChange, onFactorChange, onSave, onCancel,
+  saving, factorLabel, sortingFactorKeys, urgencyFactorKeys, t,
+}: FormProps) {
   return (
     <div className={styles.form}>
       <div className={styles.formRow}>
@@ -318,21 +432,24 @@ function RuleSetForm({ state, onChange, onFactorChange, onSave, onCancel, saving
       <div className={styles.factorsSection}>
         <h4 className={styles.factorsTitle}>{t('scoring_factors_title')}</h4>
         <p className={styles.factorsHint}>{t('scoring_factors_hint')}</p>
-        {state.factors.map((f) => (
-          <div key={f.factorKey} className={styles.factorRow}>
-            <span className={styles.factorLabel}>{factorLabel(f.factorKey)}</span>
-            <input
-              type="range"
-              min={-100}
-              max={100}
-              step={1}
-              value={f.weight}
-              onChange={(e) => onFactorChange(f.factorKey, Number(e.target.value))}
-              className={styles.slider}
-            />
-            <span className={styles.factorValue}>{f.weight > 0 ? `+${f.weight}` : f.weight}</span>
-          </div>
-        ))}
+
+        <FactorGroup
+          title={t('scoring_factors_group_sorting')}
+          hint={t('scoring_factors_group_sorting_hint')}
+          factorKeys={sortingFactorKeys}
+          factors={state.factors}
+          factorLabel={factorLabel}
+          onFactorChange={onFactorChange}
+        />
+
+        <FactorGroup
+          title={t('scoring_factors_group_urgency')}
+          hint={t('scoring_factors_group_urgency_hint')}
+          factorKeys={urgencyFactorKeys}
+          factors={state.factors}
+          factorLabel={factorLabel}
+          onFactorChange={onFactorChange}
+        />
       </div>
 
       <div className={styles.formActions}>

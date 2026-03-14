@@ -12,16 +12,33 @@ use crate::types::scoring::{
 
 const RULE_SET_COLS: &str = r#"
     id, user_id, name, description,
-    is_default, is_archived,
+    is_default, is_archived, is_system,
     created_by_user_id, updated_by_user_id,
     created_at, updated_at
 "#;
+
+/// Factory factor weights for the seeded "Standard" system profile.
+/// Used both when seeding and when restoring defaults.
+pub const DEFAULT_FACTORS: &[(&str, f64)] = &[
+    (crate::services::scoring::factor_keys::LIFECYCLE_RANK, -1000.0),
+    (crate::services::scoring::factor_keys::DAYS_UNTIL_DUE, -5.0),
+    (crate::services::scoring::factor_keys::CUSTOMER_AGE_DAYS, 0.01),
+];
+
+/// Returns the localized name for the system "Standard" profile.
+pub fn default_profile_name(locale: &str) -> &'static str {
+    match locale {
+        "cs" => "Standardní",
+        "sk" => "Štandardný",
+        _ => "Standard",
+    }
+}
 
 // ============================================================================
 // SCORING RULE SETS
 // ============================================================================
 
-/// Create a new scoring rule set
+/// Create a new scoring rule set (user-created; is_system = FALSE)
 pub async fn create_rule_set(
     pool: &PgPool,
     user_id: Uuid,
@@ -40,7 +57,6 @@ pub async fn create_rule_set(
 
     let mut tx = pool.begin().await?;
 
-    // Clear existing default if we're setting a new one
     if effective_default {
         sqlx::query(
             "UPDATE scoring_rule_sets SET is_default = FALSE WHERE user_id = $1 AND is_default = TRUE",
@@ -53,10 +69,10 @@ pub async fn create_rule_set(
     let rule_set = sqlx::query_as::<_, ScoringRuleSet>(&format!(
         r#"
         INSERT INTO scoring_rule_sets (
-            id, user_id, name, description, is_default, is_archived,
+            id, user_id, name, description, is_default, is_archived, is_system,
             created_by_user_id, updated_by_user_id, created_at, updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, FALSE, $2, $2, NOW(), NOW())
+        VALUES ($1, $2, $3, $4, $5, FALSE, FALSE, $2, $2, NOW(), NOW())
         RETURNING {}
         "#,
         RULE_SET_COLS
@@ -69,13 +85,129 @@ pub async fn create_rule_set(
     .fetch_one(&mut *tx)
     .await?;
 
-    // Insert factors if provided
     if let Some(ref factors) = req.factors {
         upsert_factors_in_tx(&mut tx, rule_set.id, factors).await?;
     }
 
     tx.commit().await?;
     Ok(rule_set)
+}
+
+/// Seed the "Standard" system profile for a new company at onboarding.
+/// Idempotent — does nothing if a system profile already exists for the user.
+pub async fn create_default_scoring_profile(
+    pool: &PgPool,
+    user_id: Uuid,
+    locale: &str,
+) -> Result<ScoringRuleSet> {
+    let mut tx = pool.begin().await?;
+
+    // Clear any existing default before setting the new one
+    sqlx::query(
+        "UPDATE scoring_rule_sets SET is_default = FALSE WHERE user_id = $1 AND is_default = TRUE",
+    )
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
+
+    let name = default_profile_name(locale);
+    let rule_set = sqlx::query_as::<_, ScoringRuleSet>(&format!(
+        r#"
+        INSERT INTO scoring_rule_sets (
+            id, user_id, name, description, is_default, is_archived, is_system,
+            created_by_user_id, updated_by_user_id, created_at, updated_at
+        )
+        VALUES ($1, $2, $3, NULL, TRUE, FALSE, TRUE, $2, $2, NOW(), NOW())
+        RETURNING {}
+        "#,
+        RULE_SET_COLS
+    ))
+    .bind(Uuid::new_v4())
+    .bind(user_id)
+    .bind(name)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    let factors: Vec<FactorInput> = DEFAULT_FACTORS
+        .iter()
+        .map(|(k, w)| FactorInput { factor_key: k.to_string(), weight: *w })
+        .collect();
+    upsert_factors_in_tx(&mut tx, rule_set.id, &factors).await?;
+
+    tx.commit().await?;
+    Ok(rule_set)
+}
+
+/// Reset a system profile's name and factors to factory defaults.
+/// Returns error if the profile is not a system profile.
+pub async fn restore_rule_set_defaults(
+    pool: &PgPool,
+    user_id: Uuid,
+    rule_set_id: Uuid,
+    locale: &str,
+) -> Result<Option<ScoringRuleSet>> {
+    let mut tx = pool.begin().await?;
+
+    let name = default_profile_name(locale);
+    let rule_set = sqlx::query_as::<_, ScoringRuleSet>(&format!(
+        r#"
+        UPDATE scoring_rule_sets
+        SET name = $3, description = NULL, updated_at = NOW()
+        WHERE id = $1 AND user_id = $2 AND is_system = TRUE
+        RETURNING {}
+        "#,
+        RULE_SET_COLS
+    ))
+    .bind(rule_set_id)
+    .bind(user_id)
+    .bind(name)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    if let Some(ref rs) = rule_set {
+        let factors: Vec<FactorInput> = DEFAULT_FACTORS
+            .iter()
+            .map(|(k, w)| FactorInput { factor_key: k.to_string(), weight: *w })
+            .collect();
+        upsert_factors_in_tx(&mut tx, rs.id, &factors).await?;
+    }
+
+    tx.commit().await?;
+    Ok(rule_set)
+}
+
+/// Hard-delete a rule set. Returns error if is_system = TRUE.
+pub async fn delete_rule_set(
+    pool: &PgPool,
+    user_id: Uuid,
+    rule_set_id: Uuid,
+) -> Result<bool> {
+    // Guard: refuse to delete system profiles
+    let row = sqlx::query_as::<_, (bool,)>(
+        "SELECT is_system FROM scoring_rule_sets WHERE id = $1 AND user_id = $2",
+    )
+    .bind(rule_set_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    match row {
+        None => return Ok(false),
+        Some((true,)) => {
+            anyhow::bail!("SYSTEM_PROFILE: Cannot delete a system scoring profile");
+        }
+        Some((false,)) => {}
+    }
+
+    let result = sqlx::query(
+        "DELETE FROM scoring_rule_sets WHERE id = $1 AND user_id = $2",
+    )
+    .bind(rule_set_id)
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() > 0)
 }
 
 /// List scoring rule sets for a user (excludes archived by default)
@@ -214,20 +346,53 @@ pub async fn set_default_rule_set(
     Ok(result.rows_affected() > 0)
 }
 
-/// Archive a rule set (soft-delete)
+/// Archive a rule set (soft-delete). Auto-promotes next active profile to default
+/// if the archived profile was the current default.
 pub async fn archive_rule_set(
     pool: &PgPool,
     user_id: Uuid,
     rule_set_id: Uuid,
 ) -> Result<bool> {
+    let mut tx = pool.begin().await?;
+
+    let was_default = sqlx::query_as::<_, (bool,)>(
+        "SELECT is_default FROM scoring_rule_sets WHERE id = $1 AND user_id = $2",
+    )
+    .bind(rule_set_id)
+    .bind(user_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .map(|(v,)| v)
+    .unwrap_or(false);
+
     let result = sqlx::query(
         "UPDATE scoring_rule_sets SET is_archived = TRUE, is_default = FALSE, updated_at = NOW() WHERE id = $1 AND user_id = $2",
     )
     .bind(rule_set_id)
     .bind(user_id)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
+    // If we just archived the default, promote the next active profile alphabetically
+    if was_default && result.rows_affected() > 0 {
+        sqlx::query(
+            r#"
+            UPDATE scoring_rule_sets SET is_default = TRUE
+            WHERE id = (
+                SELECT id FROM scoring_rule_sets
+                WHERE user_id = $1 AND is_archived = FALSE AND id != $2
+                ORDER BY name ASC
+                LIMIT 1
+            )
+            "#,
+        )
+        .bind(user_id)
+        .bind(rule_set_id)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    tx.commit().await?;
     Ok(result.rows_affected() > 0)
 }
 
@@ -300,5 +465,32 @@ mod tests {
         let json = serde_json::to_string(&f).unwrap();
         assert!(json.contains("\"factorKey\""));
         assert!(json.contains("\"weight\""));
+    }
+
+    #[test]
+    fn default_profile_name_localization() {
+        assert_eq!(default_profile_name("cs"), "Standardní");
+        assert_eq!(default_profile_name("sk"), "Štandardný");
+        assert_eq!(default_profile_name("en"), "Standard");
+        assert_eq!(default_profile_name("de"), "Standard");
+        assert_eq!(default_profile_name(""), "Standard");
+    }
+
+    #[test]
+    fn default_factors_contains_3_entries() {
+        assert_eq!(DEFAULT_FACTORS.len(), 3);
+        let keys: Vec<&str> = DEFAULT_FACTORS.iter().map(|(k, _)| *k).collect();
+        assert!(keys.contains(&"lifecycle_rank"));
+        assert!(keys.contains(&"days_until_due"));
+        assert!(keys.contains(&"customer_age_days"));
+    }
+
+    #[test]
+    fn default_factors_weights_are_correct() {
+        let map: std::collections::HashMap<&str, f64> =
+            DEFAULT_FACTORS.iter().cloned().collect();
+        assert!((map["lifecycle_rank"] - (-1000.0)).abs() < f64::EPSILON);
+        assert!((map["days_until_due"] - (-5.0)).abs() < f64::EPSILON);
+        assert!((map["customer_age_days"] - 0.01).abs() < f64::EPSILON);
     }
 }

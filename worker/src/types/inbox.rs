@@ -6,22 +6,16 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
-/// Sort mode for the inbox
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum InboxSortMode {
-    #[default]
-    RankFirst,
-    DueDate,
-}
-
 /// Request to query the customer inbox
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct InboxRequest {
     pub limit: Option<u32>,
     pub offset: Option<u32>,
-    pub sort_mode: Option<InboxSortMode>,
+    /// Ignored — sorting is fully driven by the scoring profile (Phase 4B).
+    /// Kept for backward compatibility; clients should stop sending this field.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sort_mode: Option<String>,
     pub selected_rule_set_id: Option<Uuid>,
     pub geocoded_only: Option<bool>,
     pub area_filter: Option<String>,

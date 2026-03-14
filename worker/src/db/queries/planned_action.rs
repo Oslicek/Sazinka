@@ -10,7 +10,7 @@ use crate::types::planned_action::{
     CreatePlannedActionRequest, ListPlannedActionsRequest, PlannedAction,
     PlannedActionListResponse, UpdatePlannedActionRequest,
 };
-use crate::types::inbox::{InboxItem, InboxRequest, InboxResponse, InboxSortMode};
+use crate::types::inbox::{InboxItem, InboxRequest, InboxResponse};
 use crate::types::scoring::CustomerScoringInput;
 use crate::services::scoring as scoring_service;
 use crate::db::queries::scoring as scoring_queries;
@@ -316,7 +316,10 @@ fn build_inbox_sql_parts(req: &InboxRequest) -> InboxSqlParts {
     }
 }
 
-/// Customer-centric inbox query (Phase 4A — with urgency scoring and sort-mode support)
+/// Customer-centric inbox query (Phase 4B — unified score-based sorting)
+///
+/// Sorting is always by `urgency_score DESC, customer_created_at ASC`.
+/// If no rule set is requested, the user's default (`is_default = TRUE`) is used automatically.
 pub async fn get_customer_inbox(
     pool: &PgPool,
     user_id: Uuid,
@@ -324,12 +327,25 @@ pub async fn get_customer_inbox(
 ) -> Result<InboxResponse> {
     let limit = req.limit.unwrap_or(25) as i64;
     let offset = req.offset.unwrap_or(0) as i64;
-    let sort_mode = req.sort_mode.unwrap_or(InboxSortMode::RankFirst);
-    let selected_rule_set_id = req.selected_rule_set_id;
     let sql_parts = build_inbox_sql_parts(&req);
 
-    // Load scoring factors if a rule set is selected
-    let factors = if let Some(rule_set_id) = selected_rule_set_id {
+    // Resolve rule set: explicit request → user default → no factors (score = 0)
+    let resolved_rule_set_id = if let Some(id) = req.selected_rule_set_id {
+        Some(id)
+    } else {
+        sqlx::query_as::<_, (Uuid,)>(
+            "SELECT id FROM scoring_rule_sets WHERE user_id = $1 AND is_default = TRUE AND is_archived = FALSE LIMIT 1",
+        )
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .map(|(id,)| id)
+    };
+
+    // Load scoring factors for the resolved rule set
+    let factors = if let Some(rule_set_id) = resolved_rule_set_id {
         scoring_queries::get_factors(pool, rule_set_id).await.unwrap_or_default()
     } else {
         vec![]
@@ -413,6 +429,10 @@ pub async fn get_customer_inbox(
             let days_since_last_contact = item.last_contact_at.map(|last| {
                 (today - last.date_naive()).num_days()
             });
+            let days_until_due = item.next_action_due.map(|due| {
+                (due - today).num_days()
+            });
+            let customer_age_days = (today - item.customer_created_at.date_naive()).num_days();
             let input = CustomerScoringInput {
                 customer_id: item.id,
                 days_overdue,
@@ -420,48 +440,24 @@ pub async fn get_customer_inbox(
                 total_communications: item.total_communications,
                 days_since_last_contact,
                 has_open_action: item.lifecycle_state == "active",
+                lifecycle_rank: Some(item.lifecycle_rank),
+                days_until_due,
+                customer_age_days: Some(customer_age_days),
             };
             item.urgency_score = scoring_service::compute_urgency(&input, &factors);
         }
     }
 
-    // Sort in Rust according to sort_mode
+    // Unified sort: urgency_score DESC, then customer_created_at ASC as tiebreaker.
+    // All ordering logic is now encoded in the scoring profile weights (lifecycle_rank,
+    // days_until_due, customer_age_days factors). No separate hardcoded sort path.
     let total = items.len() as i64;
-    match sort_mode {
-        InboxSortMode::DueDate => {
-            items.sort_by(|a, b| {
-                let a_due = a.next_action_due.unwrap_or(NaiveDate::MAX);
-                let b_due = b.next_action_due.unwrap_or(NaiveDate::MAX);
-                a_due.cmp(&b_due)
-                    .then(b.urgency_score.partial_cmp(&a.urgency_score).unwrap_or(std::cmp::Ordering::Equal))
-                    .then(a.customer_created_at.cmp(&b.customer_created_at))
-            });
-        }
-        InboxSortMode::RankFirst => {
-            items.sort_by(|a, b| {
-                a.lifecycle_rank.cmp(&b.lifecycle_rank)
-                    .then_with(|| {
-                        // Within rank 1 (overdue): oldest overdue first, then score
-                        if a.lifecycle_rank == 1 {
-                            let a_due = a.next_action_due.unwrap_or(NaiveDate::MAX);
-                            let b_due = b.next_action_due.unwrap_or(NaiveDate::MAX);
-                            a_due.cmp(&b_due)
-                                .then(b.urgency_score.partial_cmp(&a.urgency_score).unwrap_or(std::cmp::Ordering::Equal))
-                        } else {
-                            // All other ranks: score DESC, then date/created_at
-                            b.urgency_score.partial_cmp(&a.urgency_score)
-                                .unwrap_or(std::cmp::Ordering::Equal)
-                                .then_with(|| {
-                                    let a_due = a.next_action_due.unwrap_or(NaiveDate::MAX);
-                                    let b_due = b.next_action_due.unwrap_or(NaiveDate::MAX);
-                                    a_due.cmp(&b_due)
-                                })
-                                .then(a.customer_created_at.cmp(&b.customer_created_at))
-                        }
-                    })
-            });
-        }
-    }
+    items.sort_by(|a, b| {
+        b.urgency_score
+            .partial_cmp(&a.urgency_score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.customer_created_at.cmp(&b.customer_created_at))
+    });
 
     // Apply pagination after sorting
     let offset_usize = offset as usize;

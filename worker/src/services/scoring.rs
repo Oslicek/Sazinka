@@ -7,6 +7,7 @@ use crate::types::scoring::{CustomerScoringInput, ScoringRuleFactor};
 
 /// Known factor keys for urgency scoring
 pub mod factor_keys {
+    // ── Existing urgency factors ──────────────────────────────────────────
     /// Days the next action is overdue (positive = overdue, negative = upcoming)
     pub const OVERDUE_DAYS: &str = "overdue_days";
     /// Customer has no valid geocoded coordinates
@@ -17,6 +18,17 @@ pub mod factor_keys {
     pub const DAYS_SINCE_LAST_CONTACT: &str = "days_since_last_contact";
     /// Customer has no open planned action (needs attention)
     pub const NO_OPEN_ACTION: &str = "no_open_action";
+
+    // ── P4B-01: sorting factors (replace hardcoded lifecycle sort) ─────────
+    /// Lifecycle rank (0=untouched, 1=overdue, 2=active, 3=needs_action).
+    /// Use large negative weight (e.g. -1000) so lower rank = higher score.
+    pub const LIFECYCLE_RANK: &str = "lifecycle_rank";
+    /// Signed days until next action due date (negative = overdue).
+    /// Use negative weight (e.g. -5) so more overdue = higher score.
+    pub const DAYS_UNTIL_DUE: &str = "days_until_due";
+    /// Days since customer was created. Use small positive weight (e.g. 0.01)
+    /// as a tiebreaker so older customers appear first.
+    pub const CUSTOMER_AGE_DAYS: &str = "customer_age_days";
 }
 
 /// Compute urgency score for a customer given a set of weighted factors.
@@ -45,6 +57,15 @@ pub fn compute_urgency(input: &CustomerScoringInput, factors: &[ScoringRuleFacto
             factor_keys::NO_OPEN_ACTION => {
                 if !input.has_open_action { factor.weight } else { 0.0 }
             }
+            factor_keys::LIFECYCLE_RANK => {
+                input.lifecycle_rank.unwrap_or(0) as f64 * factor.weight
+            }
+            factor_keys::DAYS_UNTIL_DUE => {
+                input.days_until_due.unwrap_or(0) as f64 * factor.weight
+            }
+            factor_keys::CUSTOMER_AGE_DAYS => {
+                input.customer_age_days.unwrap_or(0) as f64 * factor.weight
+            }
             _ => 0.0,
         };
         score += contribution;
@@ -66,6 +87,9 @@ mod tests {
             total_communications: 0,
             days_since_last_contact: None,
             has_open_action: true,
+            lifecycle_rank: None,
+            days_until_due: None,
+            customer_age_days: None,
         }
     }
 
@@ -136,6 +160,9 @@ mod tests {
             total_communications: 0,
             days_since_last_contact: None,
             has_open_action: true,
+            lifecycle_rank: None,
+            days_until_due: None,
+            customer_age_days: None,
         };
         let factors = vec![
             factor(factor_keys::OVERDUE_DAYS, 3.0),   // 5 * 3 = 15
@@ -152,5 +179,116 @@ mod tests {
         let factors = vec![factor(factor_keys::NO_OPEN_ACTION, 15.0)];
         let score = compute_urgency(&input, &factors);
         assert!((score - 15.0).abs() < f64::EPSILON);
+    }
+
+    // ── P4B-01: new factors ────────────────────────────────────────────────
+
+    #[test]
+    fn lifecycle_rank_weight_neg1000_rank2_gives_neg2000() {
+        let input = CustomerScoringInput {
+            customer_id: Uuid::nil(),
+            days_overdue: None,
+            geocode_failed: false,
+            total_communications: 0,
+            days_since_last_contact: None,
+            has_open_action: true,
+            lifecycle_rank: Some(2),
+            days_until_due: None,
+            customer_age_days: None,
+        };
+        let factors = vec![factor(factor_keys::LIFECYCLE_RANK, -1000.0)];
+        let score = compute_urgency(&input, &factors);
+        assert!((score - (-2000.0)).abs() < f64::EPSILON, "Expected -2000.0, got {}", score);
+    }
+
+    #[test]
+    fn days_until_due_neg5_overdue10_gives_pos50() {
+        // overdue 10 days → days_until_due = -10 → contribution = -10 * -5 = +50
+        let input = CustomerScoringInput {
+            customer_id: Uuid::nil(),
+            days_overdue: None,
+            geocode_failed: false,
+            total_communications: 0,
+            days_since_last_contact: None,
+            has_open_action: true,
+            lifecycle_rank: None,
+            days_until_due: Some(-10),
+            customer_age_days: None,
+        };
+        let factors = vec![factor(factor_keys::DAYS_UNTIL_DUE, -5.0)];
+        let score = compute_urgency(&input, &factors);
+        assert!((score - 50.0).abs() < f64::EPSILON, "Expected 50.0, got {}", score);
+    }
+
+    #[test]
+    fn customer_age_days_001_365days_gives_365() {
+        let input = CustomerScoringInput {
+            customer_id: Uuid::nil(),
+            days_overdue: None,
+            geocode_failed: false,
+            total_communications: 0,
+            days_since_last_contact: None,
+            has_open_action: true,
+            lifecycle_rank: None,
+            days_until_due: None,
+            customer_age_days: Some(365),
+        };
+        let factors = vec![factor(factor_keys::CUSTOMER_AGE_DAYS, 0.01)];
+        let score = compute_urgency(&input, &factors);
+        assert!((score - 3.65).abs() < 1e-9, "Expected 3.65, got {}", score);
+    }
+
+    #[test]
+    fn lifecycle_rank_none_contributes_zero() {
+        let input = CustomerScoringInput {
+            customer_id: Uuid::nil(),
+            days_overdue: None,
+            geocode_failed: false,
+            total_communications: 0,
+            days_since_last_contact: None,
+            has_open_action: true,
+            lifecycle_rank: None,
+            days_until_due: None,
+            customer_age_days: None,
+        };
+        let factors = vec![factor(factor_keys::LIFECYCLE_RANK, -1000.0)];
+        let score = compute_urgency(&input, &factors);
+        assert!((score - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn all_8_factors_combine_correctly() {
+        // lifecycle_rank=1 * -1000 = -1000
+        // days_until_due=-3 * -5 = +15
+        // customer_age_days=100 * 0.01 = +1
+        // overdue_days=3 * 2 = +6
+        // geocode_failed=true * 10 = +10
+        // total_communications=5 * 1 = +5
+        // days_since_last_contact=20 * 0.5 = +10
+        // no_open_action=false → 0
+        // total = -1000 + 15 + 1 + 6 + 10 + 5 + 10 = -953
+        let input = CustomerScoringInput {
+            customer_id: Uuid::nil(),
+            days_overdue: Some(3),
+            geocode_failed: true,
+            total_communications: 5,
+            days_since_last_contact: Some(20),
+            has_open_action: true,
+            lifecycle_rank: Some(1),
+            days_until_due: Some(-3),
+            customer_age_days: Some(100),
+        };
+        let factors = vec![
+            factor(factor_keys::LIFECYCLE_RANK, -1000.0),
+            factor(factor_keys::DAYS_UNTIL_DUE, -5.0),
+            factor(factor_keys::CUSTOMER_AGE_DAYS, 0.01),
+            factor(factor_keys::OVERDUE_DAYS, 2.0),
+            factor(factor_keys::GEOCODE_FAILED, 10.0),
+            factor(factor_keys::TOTAL_COMMUNICATIONS, 1.0),
+            factor(factor_keys::DAYS_SINCE_LAST_CONTACT, 0.5),
+            factor(factor_keys::NO_OPEN_ACTION, 99.0), // has_open_action=true → 0
+        ];
+        let score = compute_urgency(&input, &factors);
+        assert!((score - (-953.0)).abs() < 1e-9, "Expected -953.0, got {}", score);
     }
 }
