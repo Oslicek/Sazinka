@@ -33,13 +33,17 @@ export function ProtectedRoute({ children, roles, requiredPermission }: Protecte
     return <Navigate to="/login" />;
   }
 
+  // Workers are created by admins and never go through the onboarding wizard —
+  // skip email-verification and onboarding checks for them.
+  const isWorker = user?.role === 'worker';
+
   // Email not verified - back to wizard Step 1
-  if (user && !user.emailVerified) {
+  if (user && !isWorker && !user.emailVerified) {
     return <Navigate to="/register" />;
   }
 
   // Onboarding incomplete - redirect to wizard to resume
-  if (user && !user.onboardingCompletedAt) {
+  if (user && !isWorker && !user.onboardingCompletedAt) {
     return <Navigate to="/register" />;
   }
 
