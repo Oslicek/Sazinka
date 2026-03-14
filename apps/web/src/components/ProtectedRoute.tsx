@@ -33,17 +33,19 @@ export function ProtectedRoute({ children, roles, requiredPermission }: Protecte
     return <Navigate to="/login" />;
   }
 
-  // Workers are created by admins and never go through the onboarding wizard —
-  // skip email-verification and onboarding checks for them.
-  const isWorker = user?.role === 'worker';
+  // Only enforce onboarding gates for users who actually registered through the
+  // wizard (onboardingStep > 0). Legacy admin/customer accounts and worker
+  // accounts created by admins never went through the wizard, so their
+  // emailVerified / onboardingCompletedAt fields may be unset.
+  const startedWizard = user && user.onboardingStep > 0 && !user.onboardingCompletedAt;
 
   // Email not verified - back to wizard Step 1
-  if (user && !isWorker && !user.emailVerified) {
+  if (user && user.onboardingStep > 0 && !user.emailVerified) {
     return <Navigate to="/register" />;
   }
 
   // Onboarding incomplete - redirect to wizard to resume
-  if (user && !isWorker && !user.onboardingCompletedAt) {
+  if (startedWizard) {
     return <Navigate to="/register" />;
   }
 
