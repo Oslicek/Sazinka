@@ -234,6 +234,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let scoring_list_sub = client.subscribe("sazinka.scoring.rule_set.list").await?;
     let scoring_update_sub = client.subscribe("sazinka.scoring.rule_set.update").await?;
     let scoring_archive_sub = client.subscribe("sazinka.scoring.rule_set.archive").await?;
+    let scoring_set_default_sub = client.subscribe("sazinka.scoring.rule_set.set_default").await?;
     let inbox_state_get_sub = client.subscribe("sazinka.inbox_state.get").await?;
     let inbox_state_save_sub = client.subscribe("sazinka.inbox_state.save").await?;
 
@@ -364,6 +365,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let client_scoring_list = client.clone();
     let client_scoring_update = client.clone();
     let client_scoring_archive = client.clone();
+    let client_scoring_set_default = client.clone();
     let client_inbox_state_get = client.clone();
     let client_inbox_state_save = client.clone();
     let client_route_plan = client.clone();
@@ -421,6 +423,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_scoring_list = pool.clone();
     let pool_scoring_update = pool.clone();
     let pool_scoring_archive = pool.clone();
+    let pool_scoring_set_default = pool.clone();
     let pool_inbox_state_get = pool.clone();
     let pool_inbox_state_save = pool.clone();
     let pool_route_plan = pool.clone();
@@ -574,6 +577,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let jwt_secret_scoring_list = Arc::clone(&jwt_secret);
     let jwt_secret_scoring_update = Arc::clone(&jwt_secret);
     let jwt_secret_scoring_archive = Arc::clone(&jwt_secret);
+    let jwt_secret_scoring_set_default = Arc::clone(&jwt_secret);
     let jwt_secret_inbox_state_get = Arc::clone(&jwt_secret);
     let jwt_secret_inbox_state_save = Arc::clone(&jwt_secret);
     
@@ -924,6 +928,10 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
 
     let scoring_archive_handle = tokio::spawn(async move {
         scoring::handle_archive_rule_set(client_scoring_archive, scoring_archive_sub, pool_scoring_archive, jwt_secret_scoring_archive).await
+    });
+
+    let scoring_set_default_handle = tokio::spawn(async move {
+        scoring::handle_set_default_rule_set(client_scoring_set_default, scoring_set_default_sub, pool_scoring_set_default, jwt_secret_scoring_set_default).await
     });
 
     let inbox_state_get_handle = tokio::spawn(async move {
@@ -1864,6 +1872,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         scoring_list_handle.boxed(),
         scoring_update_handle.boxed(),
         scoring_archive_handle.boxed(),
+        scoring_set_default_handle.boxed(),
         inbox_state_get_handle.boxed(),
         inbox_state_save_handle.boxed(),
         route_plan_handle.boxed(),

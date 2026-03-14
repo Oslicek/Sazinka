@@ -316,5 +316,13 @@
   "buffer_percent_label": "Percento",
   "buffer_fixed_label": "Fixné min",
   "buffer_save": "Uložiť",
-  "buffer_cancel": "Zrušiť"
+  "buffer_cancel": "Zrušiť",
+
+  "scoring_selector_label": "Hodnotenie",
+  "scoring_none": "Žiadne (zoradenie podľa dátumu)",
+  "scoring_default_marker": "★",
+  "scoring_loading": "Načítavam profily...",
+  "scoring_error_load": "Nepodarilo sa načítať profily hodnotenia",
+  "sort_mode_rank_first": "Podľa životného cyklu",
+  "sort_mode_due_date": "Podľa termínu"
 }

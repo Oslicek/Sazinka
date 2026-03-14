@@ -16,4 +16,5 @@ export * from './onboarding';
 export * from './roles';
 export * from './plannedAction';
 export * from './inbox';
+export * from './scoring';
 export * from './task';

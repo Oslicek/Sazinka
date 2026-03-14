@@ -142,8 +142,30 @@
   padding: 0.5rem 0.75rem;
 }
 
-.filterResults {
+.scoringSelector {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
   margin-left: auto;
+}
+
+.scoringSelectorLabel {
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.scoringSelectorSelect {
+  font-size: 0.78rem;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  background: var(--color-bg, #fff);
+  cursor: pointer;
+  max-width: 160px;
+}
+
+.filterResults {
   font-size: 0.6875rem;
   color: var(--color-text-secondary);
   white-space: nowrap;

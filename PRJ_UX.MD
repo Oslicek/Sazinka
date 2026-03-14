@@ -1313,6 +1313,21 @@ Když je **OFF**:
 **Segmenty:**
 - Po termínu / Tento týden / Do 30 dní / Vše / Odložené / Problémy
 
+**Scoring dropdown (Phase 4A):**
+
+Toolbar contains a rule-set selector dropdown next to the filter tabs:
+```
+[Vše] [Akutní] [Do 7 dnů] ...    Hodnocení: [Výchozí profil ▾]
+                                              ├─ Žádné (bez hodnocení)
+                                              ├─ Výchozí profil ★
+                                              ├─ Agresivní priority
+                                              └─ Pouze geocoding
+```
+- "★" marks the company default rule set
+- "Žádné" disables scoring (ordering falls back to date-based ranking)
+- Selection is persisted per dispatcher in `dispatcher_inbox_state` and restored on next inbox open
+- Changing selection re-fetches the inbox with the new `selectedRuleSetId`
+
 **UI stavy:**
 1. `context=missing` - Vyžaduje výběr dne+posádky
 2. `context=ready, route=loading` - Skeleton metrik a mapy
@@ -1503,6 +1518,75 @@ Poznámka: [__________]
 ```
 
 **Důvody:** Nezvedá, Dovolená, Chce zavolat později, Jiný
+
+---
+
+#### 8.6a Nastavení hodnocení (Settings → Scoring) — Phase 4A
+
+**Účel:** Správa profilů hodnocení naléhavosti zákazníků pro řazení v inboxu.
+
+**Umístění:** Nový tab "Hodnocení" (`#scoring`) v Nastavení. Vyžaduje oprávnění `settings:scoring`.
+
+**Desktop wireframe:**
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ Nastavení > Hodnocení                                             │
+│                                                                   │
+│ Profily hodnocení určují pořadí zákazníků v Inboxu.               │
+│ Dispečer si může v Inboxu zvolit profil nebo hodnocení vypnout.   │
+│                                                                   │
+│ Aktivní profily                                    [+ Nový profil] │
+│ ┌──────────────────────────────────────────────────────────────┐  │
+│ │ ★ Výchozí profil                               [Upravit] [⋯]│  │
+│ │   Vyvážené hodnocení pro běžný provoz.                       │  │
+│ │   Dny po termínu: 5 │ Geocoding selhal: 20 │ …              │  │
+│ ├──────────────────────────────────────────────────────────────┤  │
+│ │   Agresivní priority                           [Upravit] [⋯]│  │
+│ │   Zákazníci po termínu mají silnou prioritu.                 │  │
+│ │   Dny po termínu: 10 │ Geocoding selhal: 5 │ …              │  │
+│ └──────────────────────────────────────────────────────────────┘  │
+│                                                                   │
+│ Archivované profily                                               │
+│ ┌──────────────────────────────────────────────────────────────┐  │
+│ │   Starý profil                    [Obnovit]                  │  │
+│ └──────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**Formulář (vytvořit / upravit profil):**
+
+```
+┌──────────────────────────────────────────────────┐
+│ Nový profil hodnocení                             │
+│                                                   │
+│ Název*:       [_________________________]         │
+│ Popis:        [_________________________]         │
+│                                                   │
+│ Váhy faktorů (rozsah -100 až 100):               │
+│                                                   │
+│ Dny po termínu:           [====●====] 5           │
+│ Geocoding selhal:         [========●] 20          │
+│ Počet komunikací:         [●========] -5          │
+│ Dny od posledního kontaktu: [===●=====] 3         │
+│ Žádná otevřená akce:     [=====●===] 10           │
+│                                                   │
+│ ⓘ Všechny váhy jsou 0 — hodnocení je vypnuté,    │
+│   řazení závisí pouze na datu.                    │
+│                                                   │
+│ [Zrušit]                    [Uložit profil]       │
+└──────────────────────────────────────────────────┘
+```
+
+**Akce v kontextovém menu [⋯]:**
+- Nastavit jako výchozí (confirmation dialog)
+- Archivovat
+- Smazat (only if not referenced by any dispatcher's saved state)
+
+**Chování:**
+- Alespoň jeden profil musí existovat jako výchozí (pokud se výchozí archivuje, systém automaticky promuje další abecedně)
+- Profil s váhami = 0 zobrazí info hint o tom, že hodnocení je efektivně vypnuté
+- Změna vah se projeví při dalším načtení inboxu (bez cache — okamžitě)
 
 ---
 

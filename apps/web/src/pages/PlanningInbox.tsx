@@ -49,6 +49,8 @@ import * as geometryService from '../services/geometryService';
 import { type CallQueueItem } from '../services/revisionService';
 import { getInbox, listPlannedActions, updatePlannedAction } from '../services/inboxService';
 import { inboxResponseToCallQueueResponse } from '../services/inboxAdapter';
+import { listRuleSets, getInboxState, saveInboxState } from '../services/scoringService';
+import type { ScoringRuleSet } from '../services/scoringService';
 import { listCalendarItems } from '../services/calendarService';
 import type { CalendarItem } from '@shared/calendar';
 import { usePlannerShortcuts } from '../hooks/useKeyboardShortcuts';
@@ -260,6 +262,12 @@ export function PlanningInbox() {
   const [routeJobProgress, setRouteJobProgress] = useState<string | null>(null);
   const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState(false);
   const [activePresetId, setActivePresetId] = useState<FilterPresetId | null>(null);
+
+  // Scoring state
+  const [ruleSets, setRuleSets] = useState<ScoringRuleSet[]>([]);
+  const [selectedRuleSetId, setSelectedRuleSetId] = useState<string | null>(null);
+  const [isLoadingRuleSets, setIsLoadingRuleSets] = useState(false);
+  const inboxStateLoadedRef = useRef(false);
 
   // Map resize drag handlers
   const handleMapResizeStart = useCallback((e: React.MouseEvent) => {
@@ -671,13 +679,45 @@ export function PlanningInbox() {
     calculateInsertion();
   }, [isConnected, selectedCandidateId, routeShapeKey, context, depots, getCachedInsertion, defaultServiceDurationMinutes, defaultWorkingHoursStart, defaultWorkingHoursEnd]);
 
+  // Load scoring rule sets and persisted inbox state from DB once on connect
+  useEffect(() => {
+    if (!isConnected) return;
+    setIsLoadingRuleSets(true);
+    Promise.all([
+      listRuleSets(false),
+      inboxStateLoadedRef.current ? Promise.resolve(null) : getInboxState().catch(() => null),
+    ])
+      .then(([sets, state]) => {
+        setRuleSets(sets.filter((rs) => !rs.isArchived));
+        if (!inboxStateLoadedRef.current) {
+          inboxStateLoadedRef.current = true;
+          if (state?.selectedRuleSetId) {
+            setSelectedRuleSetId(state.selectedRuleSetId);
+          }
+        }
+      })
+      .catch(() => setRuleSets([]))
+      .finally(() => setIsLoadingRuleSets(false));
+  }, [isConnected]);
+
+  // Persist selected rule set to DB (debounced via useEffect)
+  useEffect(() => {
+    if (!isConnected || !inboxStateLoadedRef.current) return;
+    saveInboxState({ selectedRuleSetId: selectedRuleSetId ?? null }).catch(() => {
+      // Non-critical — silently ignore save errors
+    });
+  }, [isConnected, selectedRuleSetId]);
+
   // Load candidates (filtering is applied client-side via advanced filters)
   const loadCandidates = useCallback(async () => {
     if (!isConnected) return;
     
     setIsLoadingCandidates(true);
     try {
-      const inboxResponse = await getInbox({ limit: 100 });
+      const inboxResponse = await getInbox({
+        limit: 100,
+        selectedRuleSetId: selectedRuleSetId ?? undefined,
+      });
       const response = inboxResponseToCallQueueResponse(inboxResponse);
       
       const loadedCandidates: InboxCandidate[] = response.items.map((item) => ({
@@ -699,7 +739,7 @@ export function PlanningInbox() {
     } finally {
       setIsLoadingCandidates(false);
     }
-  }, [isConnected]);
+  }, [isConnected, selectedRuleSetId]);
 
   useEffect(() => {
     loadCandidates();
@@ -2281,6 +2321,22 @@ export function PlanningInbox() {
                 {t(preset.label)}
               </button>
             ))}
+          </div>
+          <div className={styles.scoringSelector}>
+            <label className={styles.scoringSelectorLabel}>{t('scoring_selector_label')}:</label>
+            <select
+              className={styles.scoringSelectorSelect}
+              value={selectedRuleSetId ?? ''}
+              onChange={(e) => setSelectedRuleSetId(e.target.value || null)}
+              disabled={isLoadingRuleSets}
+            >
+              <option value="">{t('scoring_none')}</option>
+              {ruleSets.map((rs) => (
+                <option key={rs.id} value={rs.id}>
+                  {rs.isDefault ? `${t('scoring_default_marker')} ` : ''}{rs.name}
+                </option>
+              ))}
+            </select>
           </div>
           <span className={styles.filterResults}>
             {sortedCandidates.length}

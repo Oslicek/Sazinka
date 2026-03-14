@@ -348,5 +348,13 @@
     "minimal_slack_after": "Minimal time slack after the slot.",
     "crew_heavily_loaded": "Crew day is heavily loaded ({{load}}%).",
     "conflicts_with_break": "Slot conflicts with preferred break window."
-  }
+  },
+
+  "scoring_selector_label": "Scoring",
+  "scoring_none": "None (date order)",
+  "scoring_default_marker": "★",
+  "scoring_loading": "Loading profiles...",
+  "scoring_error_load": "Failed to load scoring profiles",
+  "sort_mode_rank_first": "By lifecycle",
+  "sort_mode_due_date": "By due date"
 }

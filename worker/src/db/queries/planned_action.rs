@@ -10,7 +10,10 @@ use crate::types::planned_action::{
     CreatePlannedActionRequest, ListPlannedActionsRequest, PlannedAction,
     PlannedActionListResponse, UpdatePlannedActionRequest,
 };
-use crate::types::inbox::{InboxItem, InboxRequest, InboxResponse};
+use crate::types::inbox::{InboxItem, InboxRequest, InboxResponse, InboxSortMode};
+use crate::types::scoring::CustomerScoringInput;
+use crate::services::scoring as scoring_service;
+use crate::db::queries::scoring as scoring_queries;
 
 // Column list for SELECT / RETURNING (excludes computed lifecycle columns)
 const PLANNED_ACTION_COLS: &str = r#"
@@ -313,7 +316,7 @@ fn build_inbox_sql_parts(req: &InboxRequest) -> InboxSqlParts {
     }
 }
 
-/// Customer-centric inbox query (Phase 2 — rank-first ordering, no urgency scoring)
+/// Customer-centric inbox query (Phase 4A — with urgency scoring and sort-mode support)
 pub async fn get_customer_inbox(
     pool: &PgPool,
     user_id: Uuid,
@@ -321,98 +324,153 @@ pub async fn get_customer_inbox(
 ) -> Result<InboxResponse> {
     let limit = req.limit.unwrap_or(25) as i64;
     let offset = req.offset.unwrap_or(0) as i64;
+    let sort_mode = req.sort_mode.unwrap_or(InboxSortMode::RankFirst);
+    let selected_rule_set_id = req.selected_rule_set_id;
     let sql_parts = build_inbox_sql_parts(&req);
 
+    // Load scoring factors if a rule set is selected
+    let factors = if let Some(rule_set_id) = selected_rule_set_id {
+        scoring_queries::get_factors(pool, rule_set_id).await.unwrap_or_default()
+    } else {
+        vec![]
+    };
+
+    // Fetch all matching customers (without LIMIT/OFFSET) for scoring, then sort+page in Rust
+    // This is the "compute-on-query" strategy: load all, score in Rust, sort, then slice.
     let query = format!(
         r#"
-        WITH queue AS (
-            SELECT
-                c.id, c.name, c.phone, c.city, c.postal_code,
-                c.lat, c.lng, c.geocode_status::text AS geocode_status,
-                c.created_at AS customer_created_at,
-                -- Lifecycle state
-                CASE
-                    WHEN NOT EXISTS (SELECT 1 FROM communications cm WHERE cm.customer_id = c.id)
-                         AND NOT EXISTS (SELECT 1 FROM planned_actions p0 WHERE p0.customer_id = c.id)
-                        THEN 'untouched'
-                    WHEN pa.id IS NOT NULL
-                        THEN 'active'
-                    ELSE 'needs_action'
-                END AS lifecycle_state,
-                -- Rank for ordering
-                CASE
-                    WHEN NOT EXISTS (SELECT 1 FROM communications cm WHERE cm.customer_id = c.id)
-                         AND NOT EXISTS (SELECT 1 FROM planned_actions p0 WHERE p0.customer_id = c.id)
-                        THEN 0
-                    WHEN pa.id IS NOT NULL AND pa.due_date < CURRENT_DATE
-                        THEN 1
-                    WHEN pa.id IS NOT NULL
-                        THEN 2
-                    ELSE 3
-                END AS lifecycle_rank,
-                -- Next action details (NULL for untouched/needs_action)
-                NULL::text AS next_action_kind,
-                NULL::text AS next_action_label_key,
-                NULL::text AS next_action_label_fallback,
-                pa.due_date AS next_action_due,
-                pa.note     AS next_action_note,
-                -- Device info (via action_targets → tasks → devices)
-                tk.device_id,
-                d.device_name,
-                d.device_type::text AS device_type,
-                -- Contact history
-                (SELECT COUNT(*) FROM communications cm WHERE cm.customer_id = c.id)::bigint AS total_communications,
-                (SELECT MAX(created_at) FROM communications cm WHERE cm.customer_id = c.id) AS last_contact_at,
-                -- Urgency score placeholder (Phase 4)
-                0.0::float8 AS urgency_score
-            FROM customers c
-            LEFT JOIN LATERAL (
-                SELECT * FROM planned_actions pa
-                WHERE pa.customer_id = c.id
-                  AND pa.status IN ('open', 'snoozed')
-                  AND (pa.snooze_until IS NULL OR pa.snooze_until <= CURRENT_DATE)
-                ORDER BY pa.due_date ASC
-                LIMIT 1
-            ) pa ON TRUE
-            LEFT JOIN action_targets agt ON agt.id = pa.action_target_id
-            LEFT JOIN tasks tk ON tk.id = agt.task_id
-            LEFT JOIN devices d ON d.id = tk.device_id
-            WHERE {}
-        )
-        SELECT *
-        FROM queue
-        ORDER BY
-            lifecycle_rank ASC,
-            CASE WHEN lifecycle_rank = 1 THEN next_action_due END ASC,
-            CASE WHEN lifecycle_rank = 2 THEN next_action_due END ASC,
-            CASE WHEN lifecycle_rank = 3 THEN COALESCE(last_contact_at, customer_created_at) END ASC,
-            customer_created_at ASC
-        LIMIT $2 OFFSET $3
+        SELECT
+            c.id, c.name, c.phone, c.city, c.postal_code,
+            c.lat, c.lng, c.geocode_status::text AS geocode_status,
+            c.created_at AS customer_created_at,
+            -- Lifecycle state
+            CASE
+                WHEN NOT EXISTS (SELECT 1 FROM communications cm WHERE cm.customer_id = c.id)
+                     AND NOT EXISTS (SELECT 1 FROM planned_actions p0 WHERE p0.customer_id = c.id)
+                    THEN 'untouched'
+                WHEN pa.id IS NOT NULL
+                    THEN 'active'
+                ELSE 'needs_action'
+            END AS lifecycle_state,
+            -- Rank for ordering
+            CASE
+                WHEN NOT EXISTS (SELECT 1 FROM communications cm WHERE cm.customer_id = c.id)
+                     AND NOT EXISTS (SELECT 1 FROM planned_actions p0 WHERE p0.customer_id = c.id)
+                    THEN 0
+                WHEN pa.id IS NOT NULL AND pa.due_date < CURRENT_DATE
+                    THEN 1
+                WHEN pa.id IS NOT NULL
+                    THEN 2
+                ELSE 3
+            END AS lifecycle_rank,
+            -- Next action details
+            NULL::text AS next_action_kind,
+            NULL::text AS next_action_label_key,
+            NULL::text AS next_action_label_fallback,
+            pa.due_date AS next_action_due,
+            pa.note     AS next_action_note,
+            -- Device info (via action_targets → tasks → devices)
+            tk.device_id,
+            d.device_name,
+            d.device_type::text AS device_type,
+            -- Contact history
+            (SELECT COUNT(*) FROM communications cm WHERE cm.customer_id = c.id)::bigint AS total_communications,
+            (SELECT MAX(created_at) FROM communications cm WHERE cm.customer_id = c.id) AS last_contact_at,
+            -- Urgency score placeholder (overwritten in Rust below)
+            0.0::float8 AS urgency_score
+        FROM customers c
+        LEFT JOIN LATERAL (
+            SELECT * FROM planned_actions pa
+            WHERE pa.customer_id = c.id
+              AND pa.status IN ('open', 'snoozed')
+              AND (pa.snooze_until IS NULL OR pa.snooze_until <= CURRENT_DATE)
+            ORDER BY pa.due_date ASC
+            LIMIT 1
+        ) pa ON TRUE
+        LEFT JOIN action_targets agt ON agt.id = pa.action_target_id
+        LEFT JOIN tasks tk ON tk.id = agt.task_id
+        LEFT JOIN devices d ON d.id = tk.device_id
+        WHERE {}
         "#,
         sql_parts.where_clause
     );
 
-    let mut qb = sqlx::query_as::<_, InboxItem>(&query)
-        .bind(user_id)
-        .bind(limit)
-        .bind(offset);
+    let mut qb = sqlx::query_as::<_, InboxItem>(&query).bind(user_id);
 
     if let Some(ref pattern) = sql_parts.area_pattern {
         qb = qb.bind(pattern);
     }
 
-    let items = qb.fetch_all(pool).await?;
+    let mut items = qb.fetch_all(pool).await?;
 
-    // Total count
-    let count_query = format!(
-        "SELECT COUNT(*) FROM customers c WHERE {}",
-        sql_parts.where_clause
-    );
-    let mut count_qb = sqlx::query_as::<_, (i64,)>(&count_query).bind(user_id);
-    if let Some(ref pattern) = sql_parts.area_pattern {
-        count_qb = count_qb.bind(pattern);
+    // Compute urgency scores in Rust and apply to items
+    if !factors.is_empty() {
+        let today = chrono::Utc::now().date_naive();
+        for item in &mut items {
+            let days_overdue = item.next_action_due.map(|due| {
+                (today - due).num_days()
+            });
+            let days_since_last_contact = item.last_contact_at.map(|last| {
+                (today - last.date_naive()).num_days()
+            });
+            let input = CustomerScoringInput {
+                customer_id: item.id,
+                days_overdue,
+                geocode_failed: item.geocode_status == "failed",
+                total_communications: item.total_communications,
+                days_since_last_contact,
+                has_open_action: item.lifecycle_state == "active",
+            };
+            item.urgency_score = scoring_service::compute_urgency(&input, &factors);
+        }
     }
-    let (total,) = count_qb.fetch_one(pool).await?;
+
+    // Sort in Rust according to sort_mode
+    let total = items.len() as i64;
+    match sort_mode {
+        InboxSortMode::DueDate => {
+            items.sort_by(|a, b| {
+                let a_due = a.next_action_due.unwrap_or(NaiveDate::MAX);
+                let b_due = b.next_action_due.unwrap_or(NaiveDate::MAX);
+                a_due.cmp(&b_due)
+                    .then(b.urgency_score.partial_cmp(&a.urgency_score).unwrap_or(std::cmp::Ordering::Equal))
+                    .then(a.customer_created_at.cmp(&b.customer_created_at))
+            });
+        }
+        InboxSortMode::RankFirst => {
+            items.sort_by(|a, b| {
+                a.lifecycle_rank.cmp(&b.lifecycle_rank)
+                    .then_with(|| {
+                        // Within rank 1 (overdue): oldest overdue first, then score
+                        if a.lifecycle_rank == 1 {
+                            let a_due = a.next_action_due.unwrap_or(NaiveDate::MAX);
+                            let b_due = b.next_action_due.unwrap_or(NaiveDate::MAX);
+                            a_due.cmp(&b_due)
+                                .then(b.urgency_score.partial_cmp(&a.urgency_score).unwrap_or(std::cmp::Ordering::Equal))
+                        } else {
+                            // All other ranks: score DESC, then date/created_at
+                            b.urgency_score.partial_cmp(&a.urgency_score)
+                                .unwrap_or(std::cmp::Ordering::Equal)
+                                .then_with(|| {
+                                    let a_due = a.next_action_due.unwrap_or(NaiveDate::MAX);
+                                    let b_due = b.next_action_due.unwrap_or(NaiveDate::MAX);
+                                    a_due.cmp(&b_due)
+                                })
+                                .then(a.customer_created_at.cmp(&b.customer_created_at))
+                        }
+                    })
+            });
+        }
+    }
+
+    // Apply pagination after sorting
+    let offset_usize = offset as usize;
+    let limit_usize = limit as usize;
+    let items: Vec<InboxItem> = items
+        .into_iter()
+        .skip(offset_usize)
+        .take(limit_usize)
+        .collect();
 
     // Overdue count
     let (overdue_count,): (i64,) = sqlx::query_as(

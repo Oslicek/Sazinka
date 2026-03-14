@@ -178,6 +178,29 @@ sazinka.job.import.communication.status.<job_id> # Communication import status
 sazinka.job.import.visit.status.<job_id>         # Visit import status
 sazinka.job.import.zip.status.<job_id>           # ZIP import status
 
+# Inbox & Planned Actions
+sazinka.inbox.query                     # Customer-centric planning inbox (planned_actions-based)
+sazinka.planned_action.create           # Create planned action for customer
+sazinka.planned_action.list             # List planned actions (filterable by customer/status)
+sazinka.planned_action.get              # Get single planned action
+sazinka.planned_action.update           # Update planned action (snooze, reschedule)
+sazinka.planned_action.cancel           # Cancel planned action
+sazinka.planned_action.complete         # Complete planned action
+
+# Scoring & Inbox State
+sazinka.scoring.rule_set.create         # Create urgency scoring rule set
+sazinka.scoring.rule_set.list           # List scoring rule sets
+sazinka.scoring.rule_set.update         # Update rule set (name, description, factors)
+sazinka.scoring.rule_set.archive        # Archive rule set
+sazinka.scoring.rule_set.set_default    # Set rule set as company default (Phase 4A)
+sazinka.inbox_state.get                 # Get persisted dispatcher inbox state
+sazinka.inbox_state.save                # Save dispatcher inbox state
+
+# Customer Lifecycle
+sazinka.customer.abandon                # Mark customer as abandoned
+sazinka.customer.unabandon              # Restore abandoned customer
+sazinka.customer.anonymize              # GDPR anonymize (soft-delete)
+
 # Settings
 sazinka.settings.get            # Get all user settings including depots
 sazinka.settings.work.update    # Update work constraints (hours, limits)

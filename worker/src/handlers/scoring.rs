@@ -164,6 +164,38 @@ pub async fn handle_archive_rule_set(
     Ok(())
 }
 
+/// Handle sazinka.scoring.rule_set.set_default
+pub async fn handle_set_default_rule_set(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+    jwt_secret: Arc<String>,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received scoring.rule_set.set_default");
+        let reply = match msg.reply { Some(r) => r, None => { warn!("No reply"); continue; } };
+        let request = parse_request!(msg, Uuid, client, reply);
+        let user_id = require_auth!(request, jwt_secret, client, reply);
+
+        match queries::scoring::set_default_rule_set(&pool, user_id, request.payload).await {
+            Ok(true) => {
+                let response = SuccessResponse::new(request.id, serde_json::json!({"default": true}));
+                let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+            }
+            Ok(false) => {
+                let error = ErrorResponse::new(request.id, "NOT_FOUND", "Rule set not found");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+            Err(e) => {
+                error!("set_default_rule_set error: {}", e);
+                let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Handle sazinka.inbox_state.get
 pub async fn handle_get_inbox_state(
     client: Client,

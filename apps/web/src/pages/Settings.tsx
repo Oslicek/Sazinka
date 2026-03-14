@@ -26,12 +26,13 @@ import { ExportPlusPanel } from '../components/shared/ExportPlusPanel';
 import { RolesManager } from '../components/settings/RolesManager';
 import { DangerZoneSection } from '../components/settings/DeleteAccountDialog';
 import { DeviceTypeConfigManager } from '../components/settings/DeviceTypeConfigManager';
+import { ScoringRuleSetsManager } from '../components/settings/ScoringRuleSetsManager';
 import { TimeInput } from '../components/common';
 import { CountrySelect } from '../components/common/CountrySelect';
 import { ClipboardList, Star, Pencil, Trash2, KeyRound } from 'lucide-react';
 import styles from './Settings.module.css';
 
-type SettingsTab = 'preferences' | 'work' | 'business' | 'email' | 'breaks' | 'depots' | 'crews' | 'workers' | 'import-export' | 'roles' | 'devices';
+type SettingsTab = 'preferences' | 'work' | 'business' | 'email' | 'breaks' | 'depots' | 'crews' | 'workers' | 'import-export' | 'roles' | 'devices' | 'scoring';
 
 const DEFAULT_BREAK_SETTINGS: BreakSettings = {
   breakEnabled: true,
@@ -150,6 +151,7 @@ export function Settings() {
     { id: 'email', label: t('tab_email'), permission: 'settings:email' },
     { id: 'business', label: t('tab_business'), permission: 'settings:business' },
     { id: 'devices', label: t('tab_devices'), permission: 'settings:devices' },
+    { id: 'scoring', label: t('tab_scoring'), permission: 'settings:business' },
     { id: 'import-export', label: t('tab_import_export'), permission: 'settings:import-export' },
   ];
 
@@ -384,6 +386,10 @@ export function Settings() {
 
         {activeTab === 'devices' && (
           <DeviceTypeConfigManager />
+        )}
+
+        {activeTab === 'scoring' && (
+          <ScoringRuleSetsManager />
         )}
 
         {activeTab === 'import-export' && (

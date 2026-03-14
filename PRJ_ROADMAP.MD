@@ -1782,6 +1782,38 @@ Kompletní přepis Planner stránky z "Plán dne" (DnD, queue preview, inbox dra
 
 ---
 
+## Phase 4A: Urgency Scoring Activation & UI 🔲 PLANNED
+
+> **Status:** Planned  
+> **Goal:** Wire the existing scoring infrastructure (Phase 4 of PRJ_PROCESSES.MD) into the live inbox and build the admin + dispatcher UI.  
+> **Prerequisite:** Phase 4 backend complete (scoring tables, Rust service, NATS handlers all exist).  
+> **Full plan:** PRJ_PROCESSES.MD → Phase 4A (tickets P4A-01 through P4A-08)
+
+### What this phase delivers
+
+1. **Inbox uses urgency scores** — `get_customer_inbox` loads rule-set factors and computes `urgency_score` per customer using `scoring::compute_urgency()`. Score influences ordering within lifecycle rank groups.
+2. **Settings → Scoring tab** — CRUD for scoring rule sets and factor weights (slider UI, -100..100 range).
+3. **Inbox toolbar rule-set selector** — Dispatcher picks a scoring profile or disables scoring.
+4. **Inbox state DB persistence** — Sort mode, selected rule set, filters saved per dispatcher in `dispatcher_inbox_state` instead of `sessionStorage`.
+5. **`set_default` NATS handler** — Missing handler for the existing `set_default_rule_set` DB query.
+6. **Shared TS types** — `ScoringRuleSet`, `ScoringRuleFactor`, `DispatcherInboxState` in `packages/shared-types/src/scoring.ts`.
+7. **i18n** — Translation keys for scoring UI in en/cs/sk.
+
+### TDD sequence (8 tickets)
+
+| # | Ticket | Layer | Summary |
+|---|--------|-------|---------|
+| 1 | P4A-01 | Backend | Wire `compute_urgency` into inbox query |
+| 2 | P4A-02 | Backend | `sazinka.scoring.rule_set.set_default` handler |
+| 3 | P4A-03 | Frontend | Shared TS types for scoring |
+| 4 | P4A-04 | Frontend | `scoringService.ts` (NATS client functions) |
+| 5 | P4A-08 | Frontend | i18n keys for scoring |
+| 6 | P4A-05 | Frontend | Settings → Scoring tab (ScoringRuleSetsManager) |
+| 7 | P4A-06 | Frontend | Inbox toolbar rule-set selector dropdown |
+| 8 | P4A-07 | Frontend | Inbox state DB persistence (replace sessionStorage) |
+
+---
+
 ## Out of Scope for v1.0
 
 Explicitly excluded:

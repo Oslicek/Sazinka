@@ -1,6 +1,6 @@
 # Business Processes & Customer Lifecycle
 
-> **Status**: All 6 phases complete — Phases 1-6 implemented. Guarded migrations (034, 037) pending manual execution after code audit.  
+> **Status**: Phases 1-6 and Phase 4A complete.  
 > **Last-Modified**: 2026-03-11
 
 | Phase | Status | Notes |
@@ -9,6 +9,7 @@
 | Phase 2: Backend | ✅ Complete | DB queries, NATS handlers for planned_action + inbox + customer lifecycle |
 | Phase 3: Frontend | ✅ Complete | inboxService, useInbox hook, CandidateDetail callback/abandon actions |
 | Phase 4: Scoring | ✅ Complete | scoring_rule_sets/factors/dispatcher_inbox_state tables, Rust scoring service, NATS handlers |
+| **Phase 4A: Scoring activation & UI** | ✅ Complete | compute_urgency wired into inbox query; set_default handler; shared TS types; scoringService; i18n (en/cs/sk); ScoringRuleSetsManager Settings tab; inbox rule-set selector dropdown; DB-backed inbox state persistence |
 | Phase 5: Cleanup | ✅ Complete | Dual-write: revision snooze → planned_action, communication follow_up → planned_action; migration 034 (guarded drop) |
 | Phase 6: Tasks model | ✅ Complete | task_types/tasks tables (035), backfill from revisions (036), Rust Task/TaskType types+queries, NATS handlers, shared TS types; migrations 037 (guarded drop) |
 
@@ -1127,6 +1128,205 @@ Implements Phase 4 query from Section 4.2. Adds `action_targets` join, urgency s
 
 ---
 
+### Phase 4A: Scoring activation & UI
+
+Phase 4 built the backend infrastructure (tables, Rust types, queries, NATS handlers, scoring service). However, the scoring computation is not wired into the inbox query (`urgency_score` is hardcoded to `0.0`), no shared TS types exist for scoring, no frontend UI exists for managing rule sets or selecting them in the inbox, and inbox state is persisted only in `sessionStorage` rather than the DB.
+
+Phase 4A closes these gaps in 8 TDD tickets.
+
+**What exists (Phase 4):**
+- DB tables: `scoring_rule_sets`, `scoring_rule_factors`, `dispatcher_inbox_state` (migration 033)
+- Rust types: `ScoringRuleSet`, `ScoringRuleFactor`, `DispatcherInboxState`, `CustomerScoringInput`, `FactorInput`, request/response types
+- Rust queries: rule-set CRUD, factor upsert, inbox-state get/save
+- Rust handlers: `sazinka.scoring.rule_set.{create,list,update,archive}`, `sazinka.inbox_state.{get,save}`
+- Rust service: `compute_urgency()` with 5 factor keys (`overdue_days`, `geocode_failed`, `total_communications`, `days_since_last_contact`, `no_open_action`)
+
+**What's missing (Phase 4A):**
+1. Inbox query ignores `selected_rule_set_id` and hardcodes `urgency_score = 0.0`
+2. No shared TS types for scoring (`ScoringRuleSet`, `ScoringRuleFactor`, etc.)
+3. No frontend scoring service (NATS calls for rule-set CRUD)
+4. No Settings tab for scoring rule-set management
+5. No inbox toolbar selector for rule sets
+6. No inbox state DB persistence (still `sessionStorage`)
+7. No `set_default` NATS handler (DB query exists but no handler)
+8. Inbox sort doesn't use `urgency_score` in ordering
+
+---
+
+#### P4A-01 `[R]` Wire scoring into inbox query
+
+**Files**: `worker/src/db/queries/planned_action.rs`
+
+Extend `get_customer_inbox` to:
+- Accept `selected_rule_set_id` from `InboxRequest` (already in the struct but unused)
+- Accept `sort_mode` from `InboxRequest` (already in the struct but unused)
+- Load factors for the selected rule set
+- Compute `urgency_score` per customer using `scoring::compute_urgency()`
+- Order by `urgency_score DESC` within lifecycle rank groups (rank-first mode), or by `next_action_due ASC` (due-date mode)
+
+**TDD**:
+1. RED: Request with `selected_rule_set_id = <valid>` → items have non-zero `urgency_score` for customers with overdue actions.
+2. RED: Request with `selected_rule_set_id = None` → all items have `urgency_score = 0.0`.
+3. RED: Request with `sort_mode = 'due_date'` → items ordered by `next_action_due ASC`.
+4. RED: Two customers in same rank group, one with higher urgency score → higher score appears first.
+5. GREEN: Implement scoring integration. Compute scores in Rust (not SQL lateral) per the existing `compute_urgency` function.
+
+---
+
+#### P4A-02 `[R]` Handler: `sazinka.scoring.rule_set.set_default`
+
+**File**: `worker/src/handlers/scoring.rs`
+
+The `set_default_rule_set` DB query exists but has no NATS handler. Add one.
+
+**TDD**:
+1. RED: Calling `sazinka.scoring.rule_set.set_default` with a valid rule set ID → sets it as default, clears others.
+2. RED: Setting default on archived rule set → returns error.
+3. GREEN: Implement handler.
+
+---
+
+#### P4A-03 `[F]` Shared TS types for scoring
+
+**File**: `packages/shared-types/src/scoring.ts` (new)
+
+Define TypeScript interfaces matching the Rust types:
+- `ScoringRuleSet` (id, name, description, isDefault, isArchived, factors, timestamps)
+- `ScoringRuleFactor` (ruleSetId, factorKey, weight)
+- `CreateScoringRuleSetRequest`, `UpdateScoringRuleSetRequest`
+- `ScoringRuleSetListResponse`
+- `DispatcherInboxState`, `SaveInboxStateRequest`
+- `FACTOR_KEYS` constant object
+
+**TDD**:
+1. RED: TS compiles with new types imported.
+2. GREEN: Create type definitions.
+
+---
+
+#### P4A-04 `[F]` Frontend service: `scoringService.ts`
+
+**File**: `apps/web/src/services/scoringService.ts` (new)
+
+NATS client functions wrapping the scoring handlers:
+- `listRuleSets()` → calls `sazinka.scoring.rule_set.list`
+- `createRuleSet(req)` → calls `sazinka.scoring.rule_set.create`
+- `updateRuleSet(req)` → calls `sazinka.scoring.rule_set.update`
+- `archiveRuleSet(id)` → calls `sazinka.scoring.rule_set.archive`
+- `setDefaultRuleSet(id)` → calls `sazinka.scoring.rule_set.set_default`
+- `getInboxState()` → calls `sazinka.inbox_state.get`
+- `saveInboxState(req)` → calls `sazinka.inbox_state.save`
+
+**TDD**:
+1. RED: `listRuleSets()` with mock NATS → returns `ScoringRuleSet[]`.
+2. RED: `createRuleSet({ name, factors })` → returns created rule set.
+3. RED: `getInboxState()` → returns `DispatcherInboxState | null`.
+4. GREEN: Implement service functions following `inboxService.ts` pattern.
+
+---
+
+#### P4A-05 `[F]` Settings tab: Scoring rule-set management
+
+**File**: `apps/web/src/components/settings/ScoringRuleSetsManager.tsx` (new)
+
+New Settings tab "Scoring" (permission: `settings:scoring`) that provides:
+- List of rule sets (active section + archived section)
+- Default badge on the current default rule set
+- Create form: name (required, unique), description (optional), factor weights (slider/input for each known factor key, range -100..100, default 0)
+- Edit form: same as create, inline or modal
+- "Set as default" action (with confirmation)
+- "Archive" / "Unarchive" toggle
+- Subtle info hint when all weights in a set are zero ("Scoring disabled — ordering falls back to date-based ranking")
+- Factor key display names (i18n keys: `scoring.factor.overdue_days`, etc.)
+
+**TDD** (component):
+1. RED: Renders list of rule sets from mock data, separated into active and archived.
+2. RED: Create form validates name is non-empty.
+3. RED: Factor weight input rejects values outside -100..100.
+4. RED: "Set as default" calls `setDefaultRuleSet` and refreshes list.
+5. RED: Archive toggle calls `archiveRuleSet` and moves item to archived section.
+6. RED: All-zero weights show info hint.
+7. GREEN: Implement component.
+
+**Settings.tsx integration**: Add `'scoring'` to `SettingsTab` union. Add tab entry `{ id: 'scoring', label: t('tab_scoring'), permission: 'settings:scoring' }`. Render `<ScoringRuleSetsManager>` when active.
+
+---
+
+#### P4A-06 `[F]` Inbox toolbar: rule-set selector dropdown
+
+**File**: `apps/web/src/pages/PlanningInbox.tsx` (extend)
+
+Add a dropdown in the inbox toolbar (near the filter tabs) that:
+- Lists active (non-archived) rule sets from `scoringService.listRuleSets()`
+- Includes a "None (no scoring)" option
+- Shows the company default with a subtle marker
+- On selection change: updates `selectedRuleSetId` in inbox state, re-fetches inbox with the new rule set ID via `getInbox({ selectedRuleSetId, limit: 100 })`
+- Persists selection via inbox state (P4A-07)
+- Loads initial selection from persisted inbox state on mount
+
+**TDD** (component):
+1. RED: Dropdown renders available rule sets + "None" option.
+2. RED: Selecting a rule set triggers `loadCandidates` with `selectedRuleSetId`.
+3. RED: Selecting "None" passes `selectedRuleSetId: null`.
+4. GREEN: Implement.
+
+---
+
+#### P4A-07 `[F]` Inbox state DB persistence
+
+**File**: `apps/web/src/hooks/useInboxState.ts` (new or replace P3-07 interim)
+
+Replace `sessionStorage`-based inbox state with DB-backed persistence:
+- On mount: call `scoringService.getInboxState()` to restore last state (sort mode, selected rule set, filters, page)
+- On state change: debounced (500ms) call to `scoringService.saveInboxState()`
+- Failed save: silent retry (3 attempts with exponential backoff), subtle unsaved indicator icon
+- Fallback: if DB call fails on mount, use defaults (rank_first, no rule set, page 1, size 25)
+
+**TDD**:
+1. RED: On mount, calls `getInboxState` and applies returned state.
+2. RED: Changing sort mode triggers debounced `saveInboxState`.
+3. RED: Changing selected rule set triggers debounced `saveInboxState`.
+4. RED: Failed save retries after delay.
+5. RED: Mount with no saved state → uses defaults.
+6. GREEN: Implement hook.
+
+---
+
+#### P4A-08 `[F]` i18n keys for scoring
+
+**Files**: `apps/web/public/locales/{en,cs,sk}/settings.json`, `apps/web/public/locales/{en,cs,sk}/inbox.json`
+
+Add translation keys:
+- Settings: `tab_scoring`, `scoring_title`, `scoring_description`, `scoring_create`, `scoring_name`, `scoring_description_field`, `scoring_factors`, `scoring_set_default`, `scoring_archive`, `scoring_unarchive`, `scoring_all_zero_hint`, `scoring_confirm_default`, `scoring_no_rule_sets`
+- Factor labels: `scoring.factor.overdue_days`, `scoring.factor.geocode_failed`, `scoring.factor.total_communications`, `scoring.factor.days_since_last_contact`, `scoring.factor.no_open_action`
+- Inbox: `inbox_scoring_selector`, `inbox_scoring_none`, `inbox_scoring_default_marker`
+
+**TDD**:
+1. RED: All new i18n keys resolve in `en`, `cs`, `sk` without fallback warnings.
+2. GREEN: Add translations.
+
+---
+
+### Summary: Phase 4A ticket count
+
+| Ticket | Layer | Scope |
+|--------|-------|-------|
+| P4A-01 | Backend | Wire scoring computation into inbox query |
+| P4A-02 | Backend | `set_default` NATS handler |
+| P4A-03 | Frontend | Shared TS types for scoring |
+| P4A-04 | Frontend | `scoringService.ts` |
+| P4A-05 | Frontend | Settings tab: ScoringRuleSetsManager |
+| P4A-06 | Frontend | Inbox toolbar rule-set selector |
+| P4A-07 | Frontend | Inbox state DB persistence |
+| P4A-08 | Frontend | i18n keys |
+| **Total** | | **8 tickets** |
+
+**Suggested implementation order**: P4A-01 → P4A-02 → P4A-03 → P4A-04 → P4A-08 → P4A-05 → P4A-06 → P4A-07
+
+Rationale: backend first (01-02), then shared types (03) that frontend depends on, then frontend service (04), then i18n keys (08) needed by components, then UI components (05-07) that consume everything above.
+
+---
+
 ### Phase 5: Cleanup — deprecate legacy fields
 
 #### P5-01 `[R]` Remove snooze from revisions, use planned_action snooze
@@ -1341,11 +1541,12 @@ Provide mock implementations of `getInbox`, `createPlannedAction`, `abandonCusto
 | Phase 1 | P1-01 to P1-07 | 7 tickets — schema + types + backfill |
 | Phase 2 | P2-01 to P2-12 | 12 tickets — backend queries + handlers |
 | Phase 3 | P3-01 to P3-07 | 7 tickets — frontend services + components |
-| Phase 4 | P4-01 to P4-12 | 12 tickets — scoring + state persistence |
+| Phase 4 | P4-01 to P4-12 | 12 tickets — scoring infra (tables, Rust types, queries, handlers, service) |
+| **Phase 4A** | **P4A-01 to P4A-08** | **8 tickets — scoring activation & UI (wire into inbox, shared types, frontend service, Settings tab, inbox selector, state persistence, i18n)** |
 | Phase 5 | P5-01 to P5-05 | 5 tickets — legacy cleanup |
 | Phase 6 | P6-01 to P6-08 | 8 tickets — tasks model |
 | Cross-cutting | T-01, T-02 | 2 tickets — test infrastructure |
-| **Total** | **53 tickets** | |
+| **Total** | **61 tickets** | |
 
 ---
 
