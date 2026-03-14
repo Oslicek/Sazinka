@@ -694,7 +694,6 @@ export function PlanningInbox() {
       setCandidates(loadedCandidates);
       setSlotSuggestions([]);
     } catch (err) {
-      console.error('[PlanningInbox] Failed to load candidates:', err);
       logger.error('Failed to load candidates:', err);
       setCandidates([]);
     } finally {
