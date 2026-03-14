@@ -14,9 +14,26 @@ ALTER TABLE scoring_rule_sets
 
 -- 1b. Widen the weight constraint to accommodate sorting factors like lifecycle_rank
 --     (factory weight -1000). Original range was -100..+100 which is too narrow.
+--     We look up the constraint name dynamically because inline CHECK constraints get
+--     an auto-generated name that can vary (single vs. double underscore).
+DO $$
+DECLARE
+    _con TEXT;
+BEGIN
+    SELECT conname INTO _con
+    FROM pg_constraint
+    WHERE conrelid = 'scoring_rule_factors'::regclass
+      AND contype   = 'c'
+      AND conname  LIKE '%weight%';
+
+    IF _con IS NOT NULL THEN
+        EXECUTE format('ALTER TABLE scoring_rule_factors DROP CONSTRAINT %I', _con);
+    END IF;
+END $$;
+
 ALTER TABLE scoring_rule_factors
-    DROP CONSTRAINT IF EXISTS scoring_rule_factors__weight_check,
-    ADD CONSTRAINT scoring_rule_factors__weight_check CHECK (weight >= -10000 AND weight <= 10000);
+    ADD CONSTRAINT scoring_rule_factors_weight_range
+    CHECK (weight >= -10000 AND weight <= 10000);
 
 -- 2. Backfill: insert a Standard system profile for every qualifying user
 --    (role IN ('admin', 'customer') AND no existing scoring_rule_sets)
