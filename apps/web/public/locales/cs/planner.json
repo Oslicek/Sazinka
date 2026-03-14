@@ -351,7 +351,7 @@
     "conflicts_with_break": "Slot zasahuje do preferovaného okna pauzy."
   },
 
-  "scoring_selector_label": "Hodnocení",
+  "scoring_selector_label": "Pořadí",
   "scoring_none": "Žádné (řazení dle data)",
   "scoring_default_marker": "★",
   "scoring_loading": "Načítám profily...",

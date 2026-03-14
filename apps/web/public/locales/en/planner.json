@@ -350,7 +350,7 @@
     "conflicts_with_break": "Slot conflicts with preferred break window."
   },
 
-  "scoring_selector_label": "Scoring",
+  "scoring_selector_label": "Ordering",
   "scoring_none": "None (date order)",
   "scoring_default_marker": "★",
   "scoring_loading": "Loading profiles...",
