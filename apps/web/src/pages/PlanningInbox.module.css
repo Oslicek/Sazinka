@@ -1133,27 +1133,33 @@
 
 @media (max-width: 1023px) {
   .pageMobile {
-    height: auto;
-    min-height: calc(100vh - 48px);
-    min-height: calc(100dvh - 48px);
-    overflow: visible;
+    height: calc(100vh - 48px);
+    height: calc(100dvh - 48px);
+    overflow: hidden;
   }
 
   /* Each tab panel fills the remaining viewport height */
   .mobilePanel {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    /* Account for header (48px) + tab bar (44px) */
-    height: calc(100vh - 48px - 44px);
-    height: calc(100dvh - 48px - 44px);
+    display: flex;
+    flex-direction: column;
   }
 
-  /* Header: tighter on mobile */
+  .inboxPanel {
+    flex: 1;
+    min-height: 0;
+    height: auto;
+  }
+
+  /* Header: tighter on mobile, never shrink */
   .header {
     padding: 0.5rem 0.75rem;
     flex-wrap: wrap;
     gap: 0.5rem;
+    flex-shrink: 0;
   }
 
   /* Filter chips wrap on narrow screens */
