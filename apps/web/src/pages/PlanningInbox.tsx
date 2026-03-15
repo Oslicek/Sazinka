@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useSearch } from '@tanstack/react-router';
+import { useNavigate } from '@tanstack/react-router';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { MobileTabBar } from '@/components/common/MobileTabBar';
+import { BottomSheet } from '@/components/common/BottomSheet';
 import { useNatsStore } from '../stores/natsStore';
 import { useRouteCacheStore } from '../stores/routeCacheStore';
 import { useAutoSave } from '../hooks/useAutoSave';
@@ -34,6 +34,7 @@ import {
 } from '../components/planner';
 import { DraftModeBar } from '../components/planner/DraftModeBar';
 import { CollapseButton, ThreePanelLayout } from '../components/common';
+import { Map as MapIcon } from 'lucide-react';
 import type { SavedRouteStop } from '../services/routeService';
 import { recalculateRoute, type RecalcStopInput } from '../services/routeService';
 import type { BreakSettings } from '@shared/settings';
@@ -79,7 +80,7 @@ import {
 import { getMonthNames, getWeekdayNames } from '@/i18n/formatters';
 import { updateCustomer } from '../services/customerService';
 import type { CustomerUpdateFields } from '../components/planner/CandidateDetail';
-import { Plus, AlertTriangle } from 'lucide-react';
+import { Plus, AlertTriangle, X } from 'lucide-react';
 import styles from './PlanningInbox.module.css';
 
 /** Parse "HH:MM" or "HH:MM:SS" to total minutes from midnight. */
@@ -143,12 +144,7 @@ export function PlanningInbox() {
 
   // ── Mobile / tablet responsive state ──────────────────────────────────────
   const { isMobileUi } = useBreakpoint();
-  const searchParams = useSearch({ strict: false }) as { panel?: string };
-  const activePanel = (searchParams.panel || 'list') as 'list' | 'map' | 'detail';
-
-  const setPanel = useCallback((panel: 'list' | 'map' | 'detail') => {
-    navigate({ search: (prev: Record<string, unknown>) => ({ ...prev, panel }) });
-  }, [navigate]);
+  const [isMapOverlayOpen, setIsMapOverlayOpen] = useState(false);
   // ──────────────────────────────────────────────────────────────────────────
   
   // Route cache store
@@ -215,13 +211,6 @@ export function PlanningInbox() {
     return sessionStorage.getItem('planningInbox.selectedId');
   });
 
-  // Auto-switch to detail panel on mobile when a candidate is selected
-  useEffect(() => {
-    if (isMobileUi && selectedCandidateId) {
-      setPanel('detail');
-    }
-  }, [isMobileUi, selectedCandidateId, setPanel]);
-  
   // Map/timeline highlighting state
   const [highlightedSegment, setHighlightedSegment] = useState<number | null>(null);
   
@@ -2195,7 +2184,16 @@ export function PlanningInbox() {
 
   const handleEscape = useCallback(() => {
     setSelectedCandidateId(null);
+    sessionStorage.removeItem('planningInbox.selectedId');
     setSlotSuggestions([]);
+  }, []);
+
+  // Close bottom sheet (deselect candidate)
+  const handleSheetClose = useCallback(() => {
+    setSelectedCandidateId(null);
+    sessionStorage.removeItem('planningInbox.selectedId');
+    setSlotSuggestions([]);
+    setScheduledConfirmation(null);
   }, []);
 
   // Register keyboard shortcuts
@@ -2911,26 +2909,49 @@ export function PlanningInbox() {
     </div>
   );
 
-  // ── Mobile / tablet: tab-switched single-panel layout ─────────────────────
+  // ── Mobile / tablet: list + bottom sheet layout ───────────────────────────
   if (isMobileUi) {
     return (
       <div className={`${styles.page} ${styles.pageMobile}`}>
         {pageHeader}
         {breakWarningBanner}
-        <MobileTabBar
-          tabs={[
-            { id: 'list', label: t('tab_list') },
-            { id: 'map', label: t('tab_map') },
-            { id: 'detail', label: t('tab_detail'), badge: selectedCandidateId ? 1 : 0 },
-          ]}
-          activeTab={activePanel}
-          onTabChange={(id) => setPanel(id as 'list' | 'map' | 'detail')}
-        />
         <div className={styles.mobilePanel}>
-          {activePanel === 'list' && renderInboxList()}
-          {activePanel === 'map' && renderMapPanel()}
-          {activePanel === 'detail' && renderDetailPanel()}
+          {renderInboxList()}
         </div>
+
+        {/* Map FAB */}
+        <button
+          type="button"
+          className={styles.mapFab}
+          onClick={() => setIsMapOverlayOpen(true)}
+          aria-label={t('tab_map')}
+        >
+          <MapIcon size={20} />
+        </button>
+
+        {/* Map overlay */}
+        {isMapOverlayOpen && (
+          <div className={styles.mapOverlay}>
+            <button
+              type="button"
+              className={styles.mapOverlayClose}
+              onClick={() => setIsMapOverlayOpen(false)}
+              aria-label="Close map"
+            >
+              <X size={20} />
+            </button>
+            {renderMapPanel()}
+          </div>
+        )}
+
+        {/* Candidate detail bottom sheet */}
+        <BottomSheet
+          isOpen={!!selectedCandidateId}
+          onClose={handleSheetClose}
+          title={selectedCandidateDetail?.customerName ?? selectedCandidate?.customerName}
+        >
+          {renderDetailPanel()}
+        </BottomSheet>
       </div>
     );
   }

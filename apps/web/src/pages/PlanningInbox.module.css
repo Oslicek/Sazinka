@@ -1129,6 +1129,18 @@
   }
 }
 
+/* ── Map FAB (floating action button) ───────────────────────────────────── */
+
+.mapFab {
+  display: none; /* shown only on mobile via media query below */
+}
+
+/* ── Map overlay (full-screen) ───────────────────────────────────────────── */
+
+.mapOverlay {
+  display: none; /* shown only on mobile via media query below */
+}
+
 /* ── Mobile / tablet responsive (≤ 1023px) ──────────────────────────────── */
 
 @media (max-width: 1023px) {
@@ -1138,7 +1150,7 @@
     overflow: hidden;
   }
 
-  /* Each tab panel fills the remaining viewport height */
+  /* List panel fills remaining height */
   .mobilePanel {
     flex: 1;
     min-height: 0;
@@ -1172,6 +1184,68 @@
   .candidateCard,
   .candidateRow {
     padding: 0.75rem;
+  }
+
+  /* Map FAB */
+  .mapFab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+    right: 1.25rem;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: none;
+    background-color: var(--color-primary);
+    color: white;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    cursor: pointer;
+    z-index: 200;
+    transition: background-color 0.15s, transform 0.15s;
+  }
+
+  .mapFab:hover {
+    background-color: var(--color-primary-dark);
+    transform: scale(1.05);
+  }
+
+  .mapFab:active {
+    transform: scale(0.97);
+  }
+
+  /* Map overlay */
+  .mapOverlay {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    inset: 0;
+    z-index: 250;
+    background-color: var(--color-bg);
+  }
+
+  .mapOverlayClose {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: none;
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    cursor: pointer;
+    transition: background-color 0.15s;
+  }
+
+  .mapOverlayClose:hover {
+    background-color: var(--color-bg-secondary);
   }
 }
 
