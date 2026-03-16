@@ -271,14 +271,23 @@ const panelRoute = createRoute({
     const pageContext = (searchParams.get('page') === 'plan' ? 'plan' : 'inbox') as 'inbox' | 'plan';
     const validPanels = ['map', 'list'] as const;
     type PanelType = typeof validPanels[number];
-    const panel: PanelType = validPanels.includes(panelId as PanelType)
-      ? (panelId as PanelType)
-      : 'map';
+    const isValid = validPanels.includes(panelId as PanelType);
+    const panel: PanelType = isValid ? (panelId as PanelType) : 'map';
+
+    // Parse URL-seeded context for hybrid bootstrap
+    const date = searchParams.get('date') ?? undefined;
+    const crewId = searchParams.get('crewId') ?? undefined;
+    const depotId = searchParams.get('depotId') ?? undefined;
+    const urlSeed = date && crewId && depotId ? { date, crewId, depotId } : undefined;
 
     return (
       <ProtectedRoute>
         <Suspense fallback={<PageLoader />}>
-          <DetachedPanelPage panel={panel} pageContext={pageContext} />
+          <DetachedPanelPage
+            panel={panel}
+            pageContext={pageContext}
+            urlSeed={urlSeed}
+          />
         </Suspense>
       </ProtectedRoute>
     );

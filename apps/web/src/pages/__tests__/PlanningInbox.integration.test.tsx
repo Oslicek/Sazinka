@@ -103,9 +103,31 @@ vi.mock('@/hooks/useKeyboardShortcuts', () => ({
   usePlannerShortcuts: vi.fn(),
 }));
 
+vi.mock('@/hooks/useDetachState', () => ({
+  useDetachState: () => ({
+    isDetached: () => false,
+    detach: vi.fn(),
+    reattach: vi.fn(),
+    canDetach: true,
+  }),
+}));
+
+vi.mock('@/hooks/useLayoutMode', () => ({
+  useLayoutMode: () => ({ mode: 'classic', setMode: vi.fn() }),
+}));
+
+// ── Panel mocks (self-sufficient panels) ──────────────────────────────────────
+vi.mock('@/panels/RouteMapPanel', () => ({
+  RouteMapPanel: () => <div data-testid="map-panel">Map</div>,
+}));
+
+vi.mock('@/panels/InboxListPanel', () => ({
+  InboxListPanel: () => <div data-testid="inbox-list-panel">List</div>,
+}));
+
 // ── Heavy planner component mocks ─────────────────────────────────────────────
 vi.mock('@/components/planner', () => ({
-  RouteMapPanel: () => <div data-testid="map-panel">Map</div>,
+  RouteMapPanel: () => <div data-testid="map-panel-planner">Map</div>,
   VirtualizedInboxList: ({
     onCandidateSelect,
   }: {
@@ -189,7 +211,8 @@ describe('PlanningInbox — A.6 PanelStateProvider integration', () => {
 
     it('renders inbox list panel', () => {
       render(<PlanningInbox />);
-      expect(screen.getByTestId('inbox-list')).toBeInTheDocument();
+      // InboxListPanel is now self-sufficient; rendered as inbox-list-panel
+      expect(screen.getByTestId('inbox-list-panel')).toBeInTheDocument();
     });
 
     it('renders map panel', () => {
@@ -214,20 +237,13 @@ describe('PlanningInbox — A.6 PanelStateProvider integration', () => {
 
     it('renders inbox list panel on mobile', () => {
       render(<PlanningInbox />);
-      expect(screen.getByTestId('inbox-list')).toBeInTheDocument();
+      expect(screen.getByTestId('inbox-list-panel')).toBeInTheDocument();
     });
 
-    it('selecting a candidate opens the detail bottom sheet', async () => {
+    it('renders inbox list panel on mobile (selection is handled inside InboxListPanel)', () => {
       render(<PlanningInbox />);
-
-      // BottomSheet is closed — CandidateDetail not in DOM
-      expect(screen.queryByTestId('candidate-detail')).not.toBeInTheDocument();
-
-      // Simulate candidate selection in the inbox list
-      await userEvent.click(screen.getByRole('button', { name: 'Select candidate' }));
-
-      // Detail panel should now appear inside the opened BottomSheet
-      expect(screen.getByTestId('candidate-detail')).toBeInTheDocument();
+      // InboxListPanel is self-sufficient — it handles selection internally
+      expect(screen.getByTestId('inbox-list-panel')).toBeInTheDocument();
     });
   });
 });

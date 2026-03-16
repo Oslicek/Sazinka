@@ -3105,6 +3105,32 @@ function PlanningInboxInner() {
     </div>
   );
 
+  // ── Self-sufficient panel content (used in all layouts) ─────────────────────
+
+  const listPanelContent = !isDetached('list') ? (
+    <div className={styles.inboxPanelWrapper}>
+      {canDetach && (
+        <DetachButton
+          data-testid="detach-list-btn"
+          onDetach={() => detach('list')}
+        />
+      )}
+      <InboxListPanel />
+    </div>
+  ) : null;
+
+  const mapPanelContent = !isDetached('map') ? (
+    <div className={styles.mapPanelWrapper}>
+      {canDetach && (
+        <DetachButton
+          data-testid="detach-map-btn"
+          onDetach={() => detach('map')}
+        />
+      )}
+      <RouteMapPanelSelfSufficient />
+    </div>
+  ) : null;
+
   // ── Mobile / tablet: list + inline detail split layout ─────────────────────
   if (isMobileUi) {
     const hasDetail = !!selectedCandidateId;
@@ -3137,7 +3163,7 @@ function PlanningInboxInner() {
         {hasDetail ? (
           <SplitLayout
             direction="vertical"
-            left={<div className={styles.mobileSplitList}>{renderInboxList()}</div>}
+            left={<div className={styles.mobileSplitList}>{listPanelContent}</div>}
             right={detailPane}
             leftWidth={40}
             minLeftWidth={20}
@@ -3146,7 +3172,7 @@ function PlanningInboxInner() {
           />
         ) : (
           <div className={styles.mobilePanel}>
-            {renderInboxList()}
+            {listPanelContent}
           </div>
         )}
 
@@ -3169,30 +3195,6 @@ function PlanningInboxInner() {
   }
 
   // ── Desktop layouts based on layoutMode ─────────────────────────────────
-
-  const listPanelContent = !isDetached('list') ? (
-    <div className={styles.inboxPanelWrapper}>
-      {canDetach && (
-        <DetachButton
-          data-testid="detach-list-btn"
-          onDetach={() => detach('list')}
-        />
-      )}
-      <InboxListPanel />
-    </div>
-  ) : null;
-
-  const mapPanelContent = !isDetached('map') ? (
-    <div className={styles.mapPanelWrapper}>
-      {canDetach && (
-        <DetachButton
-          data-testid="detach-map-btn"
-          onDetach={() => detach('map')}
-        />
-      )}
-      <RouteMapPanelSelfSufficient />
-    </div>
-  ) : null;
 
   if (layoutMode === 'split') {
     return (
