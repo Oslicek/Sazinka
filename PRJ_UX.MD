@@ -4859,6 +4859,8 @@ NATS. It no longer reads bulk data from PanelState context.
 
 #### Phase G.5 — Wire detach into PlanningInbox page
 
+> **Status: ✅ DONE** (2026-03-10)
+
 **Goal:** PlanningInbox uses `useDetachState` to show/hide Map and List
 panels. DetachButton appears on each panel header. When a panel is
 detached, its space is given to the remaining panels.

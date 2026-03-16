@@ -85,6 +85,9 @@ import type { CustomerUpdateFields } from '../components/planner/CandidateDetail
 import { Plus, AlertTriangle } from 'lucide-react';
 import { PanelStateProvider } from '../contexts/PanelStateContext';
 import { usePanelState } from '../hooks/usePanelState';
+import { useDetachState } from '../hooks/useDetachState';
+import { InboxListPanel } from '../panels/InboxListPanel';
+import { RouteMapPanel as RouteMapPanelSelfSufficient } from '../panels/RouteMapPanel';
 import styles from './PlanningInbox.module.css';
 
 /** Parse "HH:MM" or "HH:MM:SS" to total minutes from midnight. */
@@ -151,6 +154,7 @@ function PlanningInboxInner() {
   const { isMobileUi } = useBreakpoint();
   const { mode: layoutMode, setMode: setLayoutMode } = useLayoutMode();
   const [isMapOverlayOpen, setIsMapOverlayOpen] = useState(false);
+  const { isDetached, detach, canDetach } = useDetachState();
   // ──────────────────────────────────────────────────────────────────────────
   
   // Route cache store
@@ -3166,12 +3170,29 @@ function PlanningInboxInner() {
 
   // ── Desktop layouts based on layoutMode ─────────────────────────────────
 
-  const detachBtn = (panel: string) => (
-    <DetachButton
-      panelUrl={`/panel/${panel}?page=inbox`}
-      windowName={`sazinka-${panel}`}
-    />
-  );
+  const listPanelContent = !isDetached('list') ? (
+    <div className={styles.inboxPanelWrapper}>
+      {canDetach && (
+        <DetachButton
+          data-testid="detach-list-btn"
+          onDetach={() => detach('list')}
+        />
+      )}
+      <InboxListPanel />
+    </div>
+  ) : null;
+
+  const mapPanelContent = !isDetached('map') ? (
+    <div className={styles.mapPanelWrapper}>
+      {canDetach && (
+        <DetachButton
+          data-testid="detach-map-btn"
+          onDetach={() => detach('map')}
+        />
+      )}
+      <RouteMapPanelSelfSufficient />
+    </div>
+  ) : null;
 
   if (layoutMode === 'split') {
     return (
@@ -3182,11 +3203,11 @@ function PlanningInboxInner() {
           <SplitLayout
             left={
               <div className={styles.splitLeftStack}>
-                <div className={styles.splitLeftTop}>{renderInboxList()}</div>
+                {listPanelContent && <div className={styles.splitLeftTop}>{listPanelContent}</div>}
                 <div className={styles.splitLeftBottom}>{renderDetailPanel()}</div>
               </div>
             }
-            right={renderMapPanel()}
+            right={mapPanelContent ?? renderDetailPanel()}
             leftWidth={40}
             minLeftWidth={25}
             maxLeftWidth={65}
@@ -3203,31 +3224,31 @@ function PlanningInboxInner() {
         {pageHeader}
         {breakWarningBanner}
         <div className={styles.tilesGrid}>
-          <div className={styles.tilesCell}>
-            <div className={styles.tilesCellHeader}>
-              <span>{t('panel_list', 'Seznam')}</span>
-              {detachBtn('list', 'list')}
+          {listPanelContent && (
+            <div className={styles.tilesCell}>
+              <div className={styles.tilesCellHeader}>
+                <span>{t('panel_list', 'Seznam')}</span>
+              </div>
+              <div className={styles.tilesCellContent}>{listPanelContent}</div>
             </div>
-            <div className={styles.tilesCellContent}>{renderInboxList()}</div>
-          </div>
+          )}
           <div className={styles.tilesCell}>
             <div className={styles.tilesCellHeader}>
               <span>{t('panel_detail', 'Detail')}</span>
-              {detachBtn('detail', 'detail')}
             </div>
             <div className={styles.tilesCellContent}>{renderDetailPanel()}</div>
           </div>
-          <div className={styles.tilesCell}>
-            <div className={styles.tilesCellHeader}>
-              <span>{t('panel_map', 'Mapa')}</span>
-              {detachBtn('map', 'map')}
+          {mapPanelContent && (
+            <div className={styles.tilesCell}>
+              <div className={styles.tilesCellHeader}>
+                <span>{t('panel_map', 'Mapa')}</span>
+              </div>
+              <div className={styles.tilesCellContent}>{mapPanelContent}</div>
             </div>
-            <div className={styles.tilesCellContent}>{renderMapOnly()}</div>
-          </div>
+          )}
           <div className={styles.tilesCell}>
             <div className={styles.tilesCellHeader}>
               <span>{t('panel_timeline', 'Časová osa')}</span>
-              {detachBtn('route', 'route')}
             </div>
             <div className={styles.tilesCellContent}>{renderRouteTimelineOnly()}</div>
           </div>
@@ -3243,9 +3264,9 @@ function PlanningInboxInner() {
       {breakWarningBanner}
       <div className={styles.content}>
         <ThreePanelLayout
-          left={renderInboxList()}
+          left={listPanelContent ?? <div />}
           center={renderDetailPanel()}
-          right={renderMapPanel()}
+          right={mapPanelContent ?? renderDetailPanel()}
           leftWidth={22}
           centerWidth={33}
           rightWidth={45}
@@ -3262,7 +3283,7 @@ function PlanningInboxInner() {
  */
 export function PlanningInbox() {
   return (
-    <PanelStateProvider activePageContext="inbox" enableChannel>
+    <PanelStateProvider activePageContext="inbox" enableChannel isSourceOfTruth={true}>
       <PlanningInboxInner />
     </PanelStateProvider>
   );
