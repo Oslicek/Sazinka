@@ -22,6 +22,9 @@ import { RouteListPanel, RouteDetailTimeline, RouteMapPanel, type RouteMetrics, 
 import { PlannerFilters } from '../components/shared/PlannerFilters';
 import { AlertTriangle } from 'lucide-react';
 import styles from './Plan.module.css';
+import { PanelStateProvider } from '../contexts/PanelStateContext';
+import { usePanelState } from '../hooks/usePanelState';
+import { CustomerDetailPanel } from '../panels/CustomerDetailPanel';
 
 // Default depot location (Prague center) - fallback
 const DEFAULT_DEPOT = { lat: 50.0755, lng: 14.4378 };
@@ -91,6 +94,15 @@ function calculateMetrics(
 }
 
 export function Plan() {
+  return (
+    <PanelStateProvider activePageContext="plan">
+      <PlanInner />
+    </PanelStateProvider>
+  );
+}
+
+function PlanInner() {
+  const { state, actions } = usePanelState();
   const { t } = useTranslation('planner');
   const navigate = useNavigate();
   const searchParams = useSearch({ strict: false }) as PlannerSearchParams;
@@ -204,6 +216,50 @@ export function Plan() {
   // --- Arrival buffer (route-level) ---
   const [routeBufferPercent, setRouteBufferPercent] = useState(10);
   const [routeBufferFixedMinutes, setRouteBufferFixedMinutes] = useState(0);
+
+  // ─── CustomerDetailPanel visibility ──────────────────────────────
+
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
+
+  useEffect(() => {
+    if (state.selectedCustomerId) setIsDetailOpen(true);
+  }, [state.selectedCustomerId]);
+
+  // ─── Bridge effects: sync local state → PanelStateContext ─────────
+
+  useEffect(() => { actions.setRouteStops(selectedRouteStops); }, [selectedRouteStops]);
+  useEffect(() => { actions.setRouteGeometry(routeGeometry); }, [routeGeometry]);
+  useEffect(() => {
+    actions.setReturnToDepotLeg(returnToDepotLeg ? {
+      distanceKm: returnToDepotLeg.distanceKm ?? 0,
+      durationMinutes: returnToDepotLeg.durationMinutes ?? 0,
+    } : null);
+  }, [returnToDepotLeg]);
+  useEffect(() => { actions.setDepotDeparture(depotDeparture); }, [depotDeparture]);
+  useEffect(() => { actions.setRouteWarnings(routeWarnings); }, [routeWarnings]);
+  useEffect(() => { actions.setBreakWarnings(breakWarnings); }, [breakWarnings]);
+  useEffect(() => { actions.setMetrics(metrics); }, [metrics]);
+  useEffect(() => {
+    actions.setRouteBuffer(routeBufferPercent, routeBufferFixedMinutes);
+  }, [routeBufferPercent, routeBufferFixedMinutes]);
+
+  // Bidirectional sync: selectedRouteId ↔ context
+  useEffect(() => { actions.selectRoute(selectedRouteId); }, [selectedRouteId]);
+  useEffect(() => {
+    if (state.selectedRouteId !== selectedRouteId) {
+      setSelectedRouteId(state.selectedRouteId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.selectedRouteId]);
+
+  // Bidirectional sync: highlightedSegment ↔ context
+  useEffect(() => { actions.highlightSegment(highlightedSegment); }, [highlightedSegment]);
+  useEffect(() => {
+    if (state.highlightedSegment !== highlightedSegment) {
+      setHighlightedSegment(state.highlightedSegment);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.highlightedSegment]);
 
   // ─── Load settings (crews, depots, user preferences) ─────────────
 
@@ -1031,6 +1087,12 @@ export function Plan() {
           isLoading={isLoadingStops}
         />
       </div>
+
+      {/* Customer detail panel — opens when a stop/customer is selected */}
+      <CustomerDetailPanel
+        mode="plan"
+        isOpen={isDetailOpen}
+      />
     </div>
   );
 }

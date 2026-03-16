@@ -3910,3 +3910,645 @@ Phases 0–11 deliver these. Phases 12–13 are polish/hardening.
 1. **Offline support (Service Worker)** — defer. Separate concern.
 2. **Pull-to-refresh** — later. Nice-to-have.
 3. **Landscape phone** — no special handling; tablet breakpoint covers it.
+
+---
+
+## 19. Inbox Panel Architecture — Multi-Window Flexible Layout
+
+> **Status:** Design phase  
+> **Datum:** 2026-03-10
+
+### 19.1 Motivation
+
+Plánovací inbox je nejdůležitější a nejkomplexnější stránka aplikace. Obsahuje 4 hlavní oblasti:
+
+1. **Seznam kandidátů (List)** — filtrovatelná fronta zákazníků k obvolání/naplánování *(Inbox only)*
+2. **Detail zákazníka (Detail)** — kontakt, termín, akce (domluvit, přidat do trasy, odložit), timeline *(Inbox: otevřený při výběru kandidáta; Plan: zavřený, otevře se klikem na zastávku v Route/Map)*
+3. **Mapa trasy (Map)** — mapa se zastávkami, geometrií trasy, depot, insertion preview *(Inbox + Plan)*
+4. **Timeline trasy (Route)** — seřazené zastávky s drag-reorder, časová okna, pauzy, metriky *(Inbox + Plan)*
+5. **Seznam tras (RouteList)** — filtr den/posádka, přehled naplánovaných tras se statistikami *(Plan only)*
+
+> **Sdílené komponenty:** Map, Route a Detail jsou **jedna implementace** (`RouteMapPanel`, `RouteTimelinePanel`, `CustomerDetailPanel`) použitá na obou stránkách. Žádná duplikace kódu. List a RouteList jsou page-specific.
+
+Při práci dispečer potřebuje typicky 2–3 oblasti současně:
+
+| Workflow | Oblasti |
+|----------|---------|
+| Obvolávání zákazníků | List + Detail |
+| Prostorové plánování | List + Map |
+| Optimalizace trasy | Detail + Map + Route |
+| Kompletní přehled | List + Detail + Map + Route |
+| Prohlížení tras (Plan) | RouteList + Map + Route |
+| Kontrola konkrétní trasy | RouteList + Map |
+
+**Problém:** Na telefonu se vejde 1 oblast. Na tabletu 2. Na desktopu 3. Dispečer s velkým monitorem nebo více monitory by chtěl mít všechny oblasti viditelné a volně rozmístěné.
+
+**Sdílené panely:** Map, Route a Detail jsou sdílené mezi Inbox a Plan — stejná komponenta, stejný stav. Na Plan stránce je Detail zavřený ve výchozím stavu a otevře se klikem na zastávku v Route timeline nebo na pin v Map. List je specifický pro Inbox; RouteList je specifický pro Plan.
+
+### 19.2 Koncept: Detachable Panels
+
+Každá ze 4 oblastí je samostatný "panel", který lze:
+
+- **Na telefonu:** zobrazit jako full-screen s bottom sheet (současný stav) nebo jako horizontální pruhy (2 panely nad sebou)
+- **Na tabletu:** zobrazit jako 2×2 dlaždice nebo 2 panely vedle sebe
+- **Na desktopu:** zobrazit v klasickém 3-panel layoutu (současný stav) nebo detachovat do samostatných oken
+- **Multi-monitor:** otevřít každý panel v samostatném okně prohlížeče a rozmístit na různé monitory
+
+### 19.3 Technické řešení: BroadcastChannel
+
+Panely komunikují přes `BroadcastChannel` API — moderní, synchronní, bez serveru:
+
+```
+┌─────────────────────────────────────────────────────┐
+│              BroadcastChannel("sazinka-inbox")       │
+│                                                      │
+│  ┌──────────┐ ┌──────────┐ ┌──────┐ ┌───────────┐  │
+│  │  List     │ │  Detail  │ │ Map  │ │  Route    │  │
+│  │  window   │ │  window  │ │window│ │  window   │  │
+│  └──────────┘ └──────────┘ └──────┘ └───────────┘  │
+│       │             │           │          │         │
+│       └─────────────┴───────────┴──────────┘         │
+│                  sdílený stav                         │
+└─────────────────────────────────────────────────────┘
+```
+
+**Sdílený stav (přes BroadcastChannel):**
+
+| Klíč | Popis | Producent |
+|------|-------|-----------|
+| `selectedCustomerId` | Vybraný zákazník (kandidát nebo zastávka) | List, Map, Route |
+| `selectedRouteId` | Vybraná trasa | RouteList, Map |
+| `routeContext` | Den, posádka, depo | List (header), RouteList (header) |
+| `routeStops` | Zastávky trasy | Route, List (add/remove) |
+| `highlightedSegment` | Zvýrazněný segment | Route, Map |
+| `insertionPreview` | Náhled vložení | List (hover) |
+| `filters` | Aktivní filtry | List, RouteList |
+| `activePageContext` | `"inbox"` nebo `"plan"` | Hlavní okno |
+
+**Lokální stav (zůstává v okně):**
+
+- Scroll pozice, UI toggle stavy, formuláře
+- MapLibre instance, Virtuoso instance
+
+### 19.4 Architektura
+
+```
+InboxStateProvider (React context)
+├── useInboxChannel()          — BroadcastChannel hook
+│   ├── postMessage(action)    — odeslat změnu do ostatních oken
+│   └── onMessage(action)      — přijmout změnu z jiného okna
+├── useInboxState()            — sdílený stav (selectedId, context, stops, ...)
+└── panely:
+    ├── InboxListPanel         — kandidáti k naplánování (Inbox only)
+    ├── CustomerDetailPanel    — detail zákazníka (sdílená Inbox + Plan; na Plan zavřený by default)
+    ├── RouteMapPanel          — mapa trasy (sdílená Inbox + Plan)
+    ├── RouteTimelinePanel     — timeline zastávek (sdílená Inbox + Plan)
+    └── RouteListPanel         — seznam tras s filtry (Plan only)
+```
+
+Každý panel je zabalený v `InboxStateProvider` a může běžet:
+- Jako child uvnitř hlavní stránky (embedded mode — současný stav)
+- Jako root v samostatném okně (`window.open()` → detached mode)
+
+### 19.5 Layout Manager
+
+UI manager v headeru inboxu umožní:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Plánovací inbox   [Den ▾] [Posádka ▾]   Layout: [≡] [⊞] [↗]│
+│                                          ≡ = stack (phone)   │
+│                                          ⊞ = tiles (tablet+) │
+│                                          ↗ = detach panel    │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Režimy:**
+
+| Režim | Ikona | Popis | Viewport |
+|-------|-------|-------|----------|
+| Stack | ≡ | Panely jako pruhy pod sebou, bottom sheet pro detail | Phone |
+| Split | ⊟ | 2 panely vedle sebe (volitelné které) | Tablet |
+| Tiles | ⊞ | 2×2 dlaždice | Desktop / velký tablet |
+| Classic | ◫ | Současný 3-panel layout (List + Detail + Map) | Desktop |
+| Detach | ↗ | Otevřít panel v novém okně | Multi-monitor |
+
+**Na telefonu:**
+- Výchozí: Stack (list full-screen + bottom sheet detail)
+- Volitelně: 2 pruhy (list nahoře, detail/map dole — 50/50 split)
+
+**Na tabletu:**
+- Výchozí: Split (list + detail vedle sebe)
+- Volitelně: Tiles (2×2) nebo Stack
+
+**Na desktopu:**
+- Výchozí: Classic (současný 3-panel)
+- Volitelně: Tiles (4 panely) nebo Detach (samostatná okna)
+
+### 19.6 Detach Flow (multi-window)
+
+1. Dispečer klikne na ikonu ↗ u panelu (např. Map)
+2. Otevře se nové okno: `window.open('/inbox/map', 'inbox-map', 'width=800,height=600')`
+3. Nové okno renderuje pouze `InboxMapPanel` uvnitř `InboxStateProvider`
+4. Oba okna se připojí ke stejnému `BroadcastChannel("sazinka-inbox")`
+5. Výběr kandidáta v List okně → Detail i Map okna reagují okamžitě
+6. Zavření detached okna → hlavní okno se vrátí k embedded režimu
+
+**Omezení:**
+- `window.open()` může být blokován pop-up blockerem → uživatel musí povolit pop-upy pro doménu
+- Každé okno má vlastní NATS připojení (to je OK — NATS je na to stavěný)
+- Při zavření hlavního okna se detached okna odpojí od BroadcastChannel (graceful degradation)
+
+### 19.7 Fáze implementace (TDD, parallelizable)
+
+> **Metodika:** Každý krok dodržuje TDD cyklus: RED (napsat failing test) → GREEN (minimální kód) → REFACTOR (vyčistit). Testy se píšou PŘED implementací.
+>
+> **Paralelizace:** Kroky bez vzájemných závislostí mohou běžet souběžně jako samostatné agentní úlohy. Diagram závislostí definuje, co může běžet paralelně.
+
+---
+
+#### Dependency diagram
+
+```
+A.0 ─────────────────────────────────────────────────────────┐
+│  Define shared types, interfaces, context contract          │
+│  (PanelState, PanelActions, PanelContext types)             │
+└──┬──────┬──────┬──────┬──────┬─────────────────────────────┘
+   │      │      │      │      │
+   ▼      ▼      ▼      ▼      ▼         ◄── PARALLEL WAVE 1
+  A.1    A.2    A.3    A.4    A.5
+  Map   Route  Detail  List  RouteList
+  Panel Panel  Panel  Panel  Panel
+   │      │      │      │      │
+   └──┬───┘      │      │      │
+      │    ┌─────┘      │      │
+      ▼    ▼            ▼      ▼          ◄── PARALLEL WAVE 2
+     A.6 (Wire        A.7 (Wire
+     PlanningInbox)    Plan.tsx)
+      │                 │
+      └────────┬────────┘
+               ▼
+              A.8                         ◄── Integration tests
+               │
+       ┌───────┼───────┐
+       ▼       ▼       ▼                 ◄── PARALLEL WAVE 3
+      E        C        B
+  Broadcast  Tablet   Phone layout
+  Channel    layout   (HOTOVO)
+       │       │
+       └───┬───┘
+           ▼
+           D                              ◄── Layout Manager
+           │
+           ▼
+           F                              ◄── Detach to window
+```
+
+Legend:
+- `A.0` = prerequisite for everything
+- `A.1–A.5` = parallel panel extractions (WAVE 1, up to 4 agents)
+- `A.6–A.7` = parallel page wiring (WAVE 2, 2 agents)
+- `A.8` = integration verification
+- `E, C` = parallel (WAVE 3, 2 agents)
+- `D, F` = sequential
+
+---
+
+#### A.0 — Shared types and PanelStateProvider shell (SEQUENTIAL — must be first)
+
+> **Agent instruction:** Run this step first, alone. All other steps depend on the output of A.0.
+
+**Cíl:** Definovat kontrakty (typy, interfaces, context) které všechny panely budou konzumovat. Vytvořit prázdný PanelStateProvider, který zatím jen drží stav a neposílá BroadcastChannel zprávy.
+
+**TDD:**
+
+1. **RED:** Napsat test `PanelStateProvider.test.tsx`:
+   - `it('provides default state to children')` — render provider, child reads `selectedCustomerId === null`
+   - `it('allows selecting a customer')` — call `actions.selectCustomer(id)`, verify state updated
+   - `it('allows setting route context')` — call `actions.setRouteContext(ctx)`, verify
+   - `it('allows updating route stops')` — call `actions.setRouteStops(stops)`, verify
+   - `it('allows highlighting a segment')` — call `actions.highlightSegment(idx)`, verify
+   - `it('notifies all consumers on change')` — two children both see the update
+
+2. **GREEN:** Implementovat:
+   - `types/panelState.ts` — shared interfaces:
+     ```
+     PanelState {
+       selectedCustomerId: string | null
+       selectedRouteId: string | null
+       routeContext: RouteContext | null
+       routeStops: SavedRouteStop[]
+       highlightedSegment: number | null
+       insertionPreview: InsertionPreview | null
+       activePageContext: 'inbox' | 'plan'
+       routeGeometry: [number, number][]
+       returnToDepotLeg: { distanceKm, durationMinutes } | null
+       depotDeparture: string | null
+       routeWarnings: RouteWarning[]
+       breakWarnings: string[]
+       metrics: RouteMetrics | null
+       routeBufferPercent: number
+       routeBufferFixedMinutes: number
+     }
+     PanelActions {
+       selectCustomer(id: string | null): void
+       selectRoute(id: string | null): void
+       setRouteContext(ctx: RouteContext | null): void
+       setRouteStops(stops: SavedRouteStop[]): void
+       highlightSegment(idx: number | null): void
+       setInsertionPreview(preview: InsertionPreview | null): void
+       setRouteGeometry(geo: [number, number][]): void
+       setReturnToDepotLeg(leg: {...} | null): void
+       setDepotDeparture(dep: string | null): void
+       setRouteWarnings(w: RouteWarning[]): void
+       setBreakWarnings(w: string[]): void
+       setMetrics(m: RouteMetrics | null): void
+       setRouteBuffer(percent: number, fixedMinutes: number): void
+     }
+     ```
+   - `contexts/PanelStateContext.tsx` — React context + provider
+   - `hooks/usePanelState.ts` — `usePanelState()` returning `{ state, actions }`
+
+3. **REFACTOR:** Ověřit, že typy pokrývají všechny sdílené state z analýzy PlanningInbox.tsx a Plan.tsx.
+
+**Soubory:**
+- `apps/web/src/types/panelState.ts` (nový)
+- `apps/web/src/contexts/PanelStateContext.tsx` (nový)
+- `apps/web/src/hooks/usePanelState.ts` (nový)
+- `apps/web/src/contexts/__tests__/PanelStateProvider.test.tsx` (nový)
+
+---
+
+#### A.1 — Extract RouteMapPanel (WAVE 1 — parallel)
+
+> **Agent instruction:** Launch as parallel child agent. Depends only on A.0 types. Does NOT modify PlanningInbox.tsx or Plan.tsx yet.
+
+**Cíl:** Vytvořit samostatnou `RouteMapPanel` komponentu, která konzumuje stav z `usePanelState()` a je plně nezávislá. Existující `RouteMapPanel` v `components/planner/` je UI-only mapová komponenta — nový panel ji obalí logikou (geometry fetch, depot resolution, insertion preview rendering).
+
+**TDD:**
+
+1. **RED:** Napsat test `RouteMapPanel.test.tsx`:
+   - `it('renders map when routeStops provided')` — mock provider with stops, verify map component rendered
+   - `it('highlights segment when highlightedSegment changes')` — update context, verify prop passed to map
+   - `it('shows insertion preview when insertionPreview set')` — set preview in context, verify rendered
+   - `it('shows depot marker when routeContext has depot')` — verify depot pin
+   - `it('calls highlightSegment on segment click')` — simulate click, verify action called
+
+2. **GREEN:** Vytvořit `panels/RouteMapPanel.tsx`:
+   - Reads from `usePanelState()`: `routeStops`, `routeGeometry`, `highlightedSegment`, `insertionPreview`, `routeContext`, `selectedCustomerId`
+   - Wraps existing `components/planner/RouteMapPanel` (rename current to `RouteMapView`)
+   - Contains geometry fetch logic (extracted from PlanningInbox lines 506–522 and Plan lines 378–386)
+   - Contains depot resolution logic
+
+3. **REFACTOR:** Extrahovat `useRouteGeometry` hook pro geometry subscription logiku sdílenou oběma stránkami.
+
+**Soubory:**
+- `apps/web/src/panels/RouteMapPanel.tsx` (nový)
+- `apps/web/src/panels/__tests__/RouteMapPanel.test.tsx` (nový)
+- `apps/web/src/hooks/useRouteGeometry.ts` (nový — extrahováno z obou stránek)
+- `apps/web/src/components/planner/RouteMapPanel.tsx` → přejmenovat na `RouteMapView.tsx` (UI-only)
+
+---
+
+#### A.2 — Extract RouteTimelinePanel (WAVE 1 — parallel)
+
+> **Agent instruction:** Launch as parallel child agent. Depends only on A.0 types. Does NOT modify PlanningInbox.tsx or Plan.tsx yet.
+
+**Cíl:** Samostatný panel pro timeline zastávek s drag-reorder, break management, buffer, stats, optimize.
+
+**TDD:**
+
+1. **RED:** Napsat test `RouteTimelinePanel.test.tsx`:
+   - `it('renders stops from panelState')` — provide stops, verify rendered
+   - `it('calls setRouteStops on reorder')` — drag stop, verify action
+   - `it('renders break warnings')` — provide breakWarnings, verify banner
+   - `it('renders route metrics')` — provide metrics, verify stats displayed
+   - `it('toggles timeline view')` — click toggle, verify compact ↔ planning
+   - `it('calls highlightSegment on stop click')` — click stop, verify action
+
+2. **GREEN:** Vytvořit `panels/RouteTimelinePanel.tsx`:
+   - Reads from `usePanelState()`: `routeStops`, `metrics`, `routeWarnings`, `breakWarnings`, `highlightedSegment`, `routeBufferPercent`, `routeBufferFixedMinutes`, `routeContext`
+   - Contains: `handleReorder`, `handleAddBreak`, `handleUpdateBreak`, `handleRemoveStop`, `handleOptimizeRoute`, `handleUpdateTravelDuration`, `handleResetTravelDuration`, `handleUpdateServiceDuration`, `handleResetServiceDuration`, `handleBufferChange`
+   - Wraps existing `RouteDetailTimeline`, `PlanningTimeline`, `TimelineViewToggle`, `RouteSummaryStats`, `RouteSummaryActions`, `ArrivalBufferBar`
+   - Manages local state: `timelineView`, `isOptimizing`, `routeJobProgress`
+
+3. **REFACTOR:** Extrahovat `useRouteActions` hook se sdílenou logikou pro reorder, breaks, optimize (totožná v Inbox i Plan).
+
+**Soubory:**
+- `apps/web/src/panels/RouteTimelinePanel.tsx` (nový)
+- `apps/web/src/panels/__tests__/RouteTimelinePanel.test.tsx` (nový)
+- `apps/web/src/hooks/useRouteActions.ts` (nový — extrahovat sdílené handlery)
+
+---
+
+#### A.3 — Extract CustomerDetailPanel (WAVE 1 — parallel)
+
+> **Agent instruction:** Launch as parallel child agent. Depends only on A.0 types. Does NOT modify PlanningInbox.tsx or Plan.tsx yet.
+
+**Cíl:** Samostatný panel pro detail zákazníka se slot suggestions, scheduling actions, customer update. Na Plan stránce se zobrazí po kliknutí na zastávku.
+
+**TDD:**
+
+1. **RED:** Napsat test `CustomerDetailPanel.test.tsx`:
+   - `it('renders nothing when selectedCustomerId is null')` — no customer selected, panel empty/hidden
+   - `it('renders customer detail when selectedCustomerId set')` — provide ID, verify name/contact shown
+   - `it('shows slot suggestions')` — provide slots, verify list
+   - `it('calls handleSchedule on slot click')` — click slot, verify action
+   - `it('calls handleSnooze on snooze button')` — click snooze, verify
+   - `it('calls handleUpdateCustomer on field change')` — edit field, verify
+   - `it('shows scheduled confirmation after scheduling')` — schedule, verify confirmation UI
+
+2. **GREEN:** Vytvořit `panels/CustomerDetailPanel.tsx`:
+   - Reads from `usePanelState()`: `selectedCustomerId`, `routeStops`, `routeContext`
+   - Contains: `handleSchedule`, `handleSnooze`, `handleUpdateCustomer`, `handleAddToRoute`, slot calculation logic
+   - Wraps existing `CandidateDetail` component
+   - Manages local state: `slotSuggestions`, `isCalculatingSlots`, `scheduledConfirmation`, `dayOverview`
+   - Props: `mode: 'inbox' | 'plan'` — na Plan stránce skrytý by default, otevře se klikem
+
+3. **REFACTOR:** Extrahovat `useSlotCalculation` hook pro slot suggestion logiku.
+
+**Soubory:**
+- `apps/web/src/panels/CustomerDetailPanel.tsx` (nový)
+- `apps/web/src/panels/__tests__/CustomerDetailPanel.test.tsx` (nový)
+- `apps/web/src/hooks/useSlotCalculation.ts` (nový — extrahovat z PlanningInbox lines 552–672)
+
+---
+
+#### A.4 — Extract InboxListPanel (WAVE 1 — parallel)
+
+> **Agent instruction:** Launch as parallel child agent. Depends only on A.0 types. Does NOT modify PlanningInbox.tsx yet.
+
+**Cíl:** Samostatný panel pro seznam kandidátů s filtry, scoring, checkbox selection, batch actions.
+
+**TDD:**
+
+1. **RED:** Napsat test `InboxListPanel.test.tsx`:
+   - `it('renders candidates list')` — provide candidates, verify rows
+   - `it('calls selectCustomer on candidate click')` — click row, verify action
+   - `it('filters candidates by preset')` — apply preset, verify filtered list
+   - `it('shows scoring rule set selector')` — verify dropdown
+   - `it('marks in-route candidates')` — provide inRouteIds, verify badge
+   - `it('supports checkbox selection')` — check rows, verify selectedIds
+   - `it('supports batch add to route')` — select multiple, click add, verify action
+
+2. **GREEN:** Vytvořit `panels/InboxListPanel.tsx`:
+   - Reads from `usePanelState()`: `selectedCustomerId`, `routeStops`, `routeContext`
+   - Contains: filter state (`filters`, `activePresetId`, `isAdvancedFiltersOpen`), scoring state (`ruleSets`, `selectedRuleSetId`), selection state (`selectedIds`), `candidates`, `inboxItemMap`
+   - Contains: all filter handlers (`setRootOperator`, `toggleTimeFilter`, `clearFilters`, `applyPreset`, etc.)
+   - Contains: `handleCandidateSelect`, `handleSelectionChange`, `handleAddSelectedToRoute`
+   - Wraps `VirtualizedInboxList`
+   - Contains: `loadCandidates` logic, inbox state persistence
+
+3. **REFACTOR:** Extrahovat `useInboxFilters` hook a `useInboxCandidates` hook.
+
+**Soubory:**
+- `apps/web/src/panels/InboxListPanel.tsx` (nový)
+- `apps/web/src/panels/__tests__/InboxListPanel.test.tsx` (nový)
+- `apps/web/src/hooks/useInboxFilters.ts` (nový)
+- `apps/web/src/hooks/useInboxCandidates.ts` (nový)
+
+---
+
+#### A.5 — Extract RouteListPanel (WAVE 1 — parallel)
+
+> **Agent instruction:** Launch as parallel child agent. Depends only on A.0 types. Does NOT modify Plan.tsx yet.
+
+**Cíl:** Samostatný panel pro seznam naplánovaných tras s filtry (den, posádka, depo).
+
+**TDD:**
+
+1. **RED:** Napsat test `RouteListPanel.test.tsx`:
+   - `it('renders routes list')` — provide routes, verify rows
+   - `it('calls selectRoute on route click')` — click row, verify action
+   - `it('filters by date')` — change date, verify filtered list
+   - `it('filters by crew')` — change crew, verify
+   - `it('shows route stats per row')` — verify km, stops count
+   - `it('supports delete route')` — click delete, verify action
+
+2. **GREEN:** Vytvořit `panels/RouteListPanel.tsx`:
+   - Reads from `usePanelState()`: `selectedRouteId`, `routeContext`
+   - Contains: filter state (`dateFrom`, `dateTo`, `isDateRange`, `filterCrewId`, `filterDepotId`), `routes`, `crews`, `depots`
+   - Contains: `loadRoutes`, `handleSelectRoute`, `handleDeleteRoute`, filter handlers
+   - Wraps existing `RouteListPanel` component (rename current to `RouteListView`)
+
+3. **REFACTOR:** Extrahovat `useRouteList` hook.
+
+**Soubory:**
+- `apps/web/src/panels/RouteListPanel.tsx` (nový)
+- `apps/web/src/panels/__tests__/RouteListPanel.test.tsx` (nový)
+- `apps/web/src/hooks/useRouteList.ts` (nový)
+- `apps/web/src/components/planner/RouteListPanel.tsx` → přejmenovat na `RouteListView.tsx`
+
+---
+
+#### A.6 — Wire PlanningInbox.tsx (WAVE 2 — parallel with A.7)
+
+> **Agent instruction:** Launch as parallel child agent. Depends on A.0–A.4 being complete. Modifies PlanningInbox.tsx.
+
+**Cíl:** Nahradit 2900 řádků v PlanningInbox.tsx za kompozici panelů uvnitř `PanelStateProvider`.
+
+**TDD:**
+
+1. **RED:** Napsat integrační test `PlanningInbox.integration.test.tsx`:
+   - `it('renders all 4 panels on desktop')` — verify List, Detail, Map, Route visible
+   - `it('renders stack layout on mobile')` — verify mobile rendering with bottom sheet
+   - `it('selecting candidate in list updates detail and map')` — click candidate, verify detail + map highlight
+   - `it('adding to route updates route timeline')` — add candidate, verify stop appears
+   - `it('preserves existing keyboard shortcuts')` — verify ↑↓ navigation, Ctrl+Enter
+
+2. **GREEN:** Refaktorovat `PlanningInbox.tsx`:
+   - Wrap with `<PanelStateProvider>`
+   - Replace `renderInboxList()` → `<InboxListPanel />`
+   - Replace `renderDetailPanel()` → `<CustomerDetailPanel mode="inbox" />`
+   - Replace `renderMapPanel()` → `<RouteMapPanel />`
+   - Extract route section → `<RouteTimelinePanel />`
+   - Keep: layout logic (ThreePanelLayout, mobile stack, BottomSheet), context selectors in header, settings loading, auto-save
+
+3. **REFACTOR:** Cíl: PlanningInbox.tsx pod 300 řádků (layout orchestration only).
+
+**Soubory:**
+- `apps/web/src/pages/PlanningInbox.tsx` (zásadní refactor)
+- `apps/web/src/pages/__tests__/PlanningInbox.integration.test.tsx` (nový)
+
+---
+
+#### A.7 — Wire Plan.tsx (WAVE 2 — parallel with A.6)
+
+> **Agent instruction:** Launch as parallel child agent. Depends on A.0, A.1, A.2, A.3, A.5 being complete. Modifies Plan.tsx.
+
+**Cíl:** Nahradit Plan.tsx za kompozici sdílených panelů + RouteListPanel uvnitř `PanelStateProvider`.
+
+**TDD:**
+
+1. **RED:** Napsat integrační test `Plan.integration.test.tsx`:
+   - `it('renders RouteList, Map, Route panels')` — verify all 3 visible
+   - `it('selecting route loads stops into RouteTimelinePanel')` — click route, verify timeline
+   - `it('clicking stop in timeline highlights on map')` — click stop, verify map highlight
+   - `it('shows CustomerDetailPanel on stop click')` — click stop, verify detail opens
+   - `it('detail is hidden by default')` — verify no detail panel initially
+
+2. **GREEN:** Refaktorovat `Plan.tsx`:
+   - Wrap with `<PanelStateProvider activePageContext="plan">`
+   - Replace sidebar route list → `<RouteListPanel />`
+   - Replace map → `<RouteMapPanel />`
+   - Replace timeline section → `<RouteTimelinePanel />`
+   - Add `<CustomerDetailPanel mode="plan" />` (zavřený by default)
+   - Keep: layout logic (resizable sidebar), settings loading
+
+3. **REFACTOR:** Cíl: Plan.tsx pod 200 řádků.
+
+**Soubory:**
+- `apps/web/src/pages/Plan.tsx` (zásadní refactor)
+- `apps/web/src/pages/__tests__/Plan.integration.test.tsx` (nový)
+
+---
+
+#### A.8 — Cross-page integration tests (SEQUENTIAL — after A.6 + A.7)
+
+> **Agent instruction:** Run after A.6 and A.7 are both complete. Verifies the shared panel contract works across both pages.
+
+**TDD:**
+
+1. **RED → GREEN:** Napsat a projít testy:
+   - `it('RouteMapPanel renders identically in Inbox and Plan')` — same stops → same output
+   - `it('RouteTimelinePanel handlers work in both contexts')` — reorder in Inbox and Plan
+   - `it('CustomerDetailPanel shows on Plan after stop click')` — verify mode="plan" behavior
+   - `it('no regressions on desktop Inbox layout')` — snapshot or DOM structure test
+   - `it('no regressions on desktop Plan layout')` — snapshot or DOM structure test
+   - `it('mobile Inbox still uses bottom sheet')` — verify mobile layout intact
+
+2. Run `vitest` full suite, fix any failures.
+
+**Soubory:**
+- `apps/web/src/panels/__tests__/shared-panels.integration.test.tsx` (nový)
+
+---
+
+#### E — BroadcastChannel synchronization (WAVE 3 — parallel with C)
+
+> **Agent instruction:** Launch as parallel child agent. Depends on A.8 complete.
+
+**TDD:**
+
+1. **RED:** Napsat test `usePanelChannel.test.ts`:
+   - `it('sends state changes to BroadcastChannel')` — update state, verify `postMessage` called
+   - `it('receives state changes from BroadcastChannel')` — post message, verify state updated
+   - `it('does not echo own messages back')` — prevent infinite loop
+   - `it('handles channel close gracefully')` — close channel, no crash
+   - `it('merges remote state with local state')` — concurrent updates from two "windows"
+   - `it('debounce-syncs layout preference to localStorage')` — change layout, verify localStorage after 5s
+
+2. **GREEN:** Implementovat:
+   - `hooks/usePanelChannel.ts` — BroadcastChannel hook
+   - Integrate into `PanelStateProvider` — opt-in via `enableChannel` prop
+   - `services/layoutPreferenceService.ts` — hybrid localStorage + DB sync
+
+3. **REFACTOR:** Zajistit, že BroadcastChannel je opt-in a embedded panely ho nepoužívají (zbytečná režie).
+
+**Soubory:**
+- `apps/web/src/hooks/usePanelChannel.ts` (nový)
+- `apps/web/src/hooks/__tests__/usePanelChannel.test.ts` (nový)
+- `apps/web/src/services/layoutPreferenceService.ts` (nový)
+
+---
+
+#### C — Tablet layout: split view (WAVE 3 — parallel with E)
+
+> **Agent instruction:** Launch as parallel child agent. Depends on A.8 complete.
+
+**TDD:**
+
+1. **RED:** Napsat testy:
+   - `it('renders 2 panels side by side on tablet viewport')` — resize to tablet, verify split
+   - `it('allows choosing which 2 panels to show')` — select List+Map, verify
+   - `it('falls back to stack on phone')` — resize to phone, verify stack
+   - `it('maintains classic layout on desktop')` — verify no regression
+
+2. **GREEN:** Implementovat:
+   - `components/layout/SplitLayout.tsx` — 2-panel side-by-side
+   - Integrate into PlanningInbox.tsx and Plan.tsx for tablet breakpoint
+   - Panel selector dropdown
+
+3. **REFACTOR:** CSS modules for split layout.
+
+**Soubory:**
+- `apps/web/src/components/layout/SplitLayout.tsx` (nový)
+- `apps/web/src/components/layout/__tests__/SplitLayout.test.tsx` (nový)
+
+---
+
+#### D — Layout Manager UI (SEQUENTIAL — after C + E)
+
+> **Agent instruction:** Run after both C and E are complete.
+
+**TDD:**
+
+1. **RED → GREEN:**
+   - `it('renders layout mode selector in header')` — verify icons
+   - `it('switches between Stack/Split/Tiles/Classic modes')` — click each, verify layout change
+   - `it('persists layout choice to localStorage')` — switch mode, verify localStorage
+   - `it('debounce-syncs to DB')` — switch mode, verify API call after 5s
+   - `it('restores layout from DB on fresh load')` — set mode in mock DB, verify restored
+
+2. Implementovat `components/layout/LayoutManager.tsx` + integrace do header obou stránek.
+
+---
+
+#### F — Detach panel to separate window (SEQUENTIAL — after D)
+
+> **Agent instruction:** Run after D is complete.
+
+**TDD:**
+
+1. **RED → GREEN:**
+   - `it('opens new window with panel route')` — click detach, verify `window.open` called
+   - `it('detached window renders single panel with PanelStateProvider')` — mock window, verify panel
+   - `it('detached window connects to BroadcastChannel')` — verify channel messages flow
+   - `it('main window hides detached panel')` — detach Map, verify Map hidden in main window
+   - `it('re-embeds panel when detached window closes')` — close window, verify panel reappears
+
+2. Implementovat:
+   - Routes: `/inbox/map`, `/inbox/detail`, `/inbox/route`, `/plan/map`, `/plan/route`, `/plan/detail`
+   - Detach button per panel
+   - Window lifecycle management (onbeforeunload → notify main window via BroadcastChannel)
+
+---
+
+#### Agent orchestration instructions
+
+Při implementaci použít `Task` tool pro paralelní agenty:
+
+**WAVE 1 (po dokončení A.0):**
+```
+Spustit 4 paralelní agenty v jedné zprávě:
+- Agent 1: "Extract RouteMapPanel" — prompt s instrukcemi A.1
+- Agent 2: "Extract RouteTimelinePanel" — prompt s instrukcemi A.2
+- Agent 3: "Extract CustomerDetailPanel" — prompt s instrukcemi A.3
+- Agent 4: "Extract InboxListPanel + RouteListPanel" — prompt s instrukcemi A.4 + A.5
+  (A.4 a A.5 jdou do jednoho agenta, protože oba jsou list panely a sdílí patterns)
+```
+
+**WAVE 2 (po dokončení WAVE 1):**
+```
+Spustit 2 paralelní agenty:
+- Agent 1: "Wire PlanningInbox" — prompt s instrukcemi A.6
+- Agent 2: "Wire Plan.tsx" — prompt s instrukcemi A.7
+```
+
+**A.8:** Spustit sekvenčně po WAVE 2. Jeden agent, integration tests.
+
+**WAVE 3 (po dokončení A.8):**
+```
+Spustit 2 paralelní agenty:
+- Agent 1: "BroadcastChannel sync" — prompt s instrukcemi E
+- Agent 2: "Tablet split layout" — prompt s instrukcemi C
+```
+
+**D, F:** Sekvenčně, jeden agent.
+
+### 19.8 Otevřené otázky
+
+1. **Persistence layoutu** — ✅ ROZHODNUTO: Hybrid. localStorage pro okamžitou odezvu, debounce-sync do DB (5s po poslední změně) pro cross-device. Při načtení stránky: fetch z DB, merge s localStorage (DB wins pokud novější). Tabulka `dispatcher_preferences` nebo sloupec v existující tabulce.
+2. **NATS reconnect v detached oknech** — ✅ ROZHODNUTO: Nezávislé spojení. Každé okno má vlastní NATS connection a reconnectuje se samostatně. Jednodušší, drobný gap při reconnectu je akceptovatelný. BroadcastChannel zajišťuje UI synchronizaci i během NATS výpadku.
+3. **Drag-and-drop across windows** — ✅ ROZHODNUTO: Oba způsoby. (a) Tlačítko "Přidat do trasy" v Detail panelu (současný stav). (b) Klávesová zkratka (např. Ctrl+Enter) pro vložení vybraného kandidáta na optimální pozici — funguje cross-window přes BroadcastChannel. Nativní drag-and-drop pouze v rámci jednoho okna.
+4. **Phone bottom sheet vs. horizontal split** — ✅ ROZHODNUTO: Stack (bottom sheet) jako výchozí a jediný režim na telefonu. Full-screen list + bottom sheet pro detail. Horizontal split se na telefonu neimplementuje — příliš stísněný na malých obrazovkách.

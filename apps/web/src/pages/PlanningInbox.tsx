@@ -81,6 +81,8 @@ import { getMonthNames, getWeekdayNames } from '@/i18n/formatters';
 import { updateCustomer } from '../services/customerService';
 import type { CustomerUpdateFields } from '../components/planner/CandidateDetail';
 import { Plus, AlertTriangle } from 'lucide-react';
+import { PanelStateProvider } from '../contexts/PanelStateContext';
+import { usePanelState } from '../hooks/usePanelState';
 import styles from './PlanningInbox.module.css';
 
 /** Parse "HH:MM" or "HH:MM:SS" to total minutes from midnight. */
@@ -134,7 +136,8 @@ function toPriority(item: CallQueueItem): CandidateRowData['priority'] {
   return 'upcoming';
 }
 
-export function PlanningInbox() {
+function PlanningInboxInner() {
+  const { state, actions } = usePanelState();
   const { t } = useTranslation('planner');
   const { isConnected } = useNatsStore();
   const navigate = useNavigate();
@@ -330,6 +333,53 @@ export function PlanningInbox() {
     debounceMs: 1500,
     enabled: routeStops.length > 0 && !!context,
   });
+
+  // ── Bridge: sync local state → PanelStateContext ─────────────────────────
+  // This allows smart panel components (RouteMapPanel, RouteTimelinePanel, etc.)
+  // to read route data from context without duplicating state.
+  useEffect(() => { actions.setRouteStops(routeStops); }, [actions, routeStops]);
+  useEffect(() => { actions.setRouteContext(context); }, [actions, context]);
+  useEffect(() => { actions.setRouteGeometry(routeGeometry); }, [actions, routeGeometry]);
+  useEffect(() => {
+    if (!returnToDepotLeg || returnToDepotLeg.distanceKm === null || returnToDepotLeg.durationMinutes === null) {
+      actions.setReturnToDepotLeg(null);
+    } else {
+      actions.setReturnToDepotLeg({ distanceKm: returnToDepotLeg.distanceKm, durationMinutes: returnToDepotLeg.durationMinutes });
+    }
+  }, [actions, returnToDepotLeg]);
+  useEffect(() => { actions.setDepotDeparture(depotDeparture); }, [actions, depotDeparture]);
+  useEffect(() => { actions.setRouteWarnings(routeWarnings); }, [actions, routeWarnings]);
+  useEffect(() => { actions.setBreakWarnings(breakWarnings); }, [actions, breakWarnings]);
+  useEffect(() => { actions.setMetrics(metrics); }, [actions, metrics]);
+  useEffect(() => {
+    actions.setRouteBuffer(routeBufferPercent, routeBufferFixedMinutes);
+  }, [actions, routeBufferPercent, routeBufferFixedMinutes]);
+
+  // ── Bridge: selectedCandidateId ↔ context.selectedCustomerId ─────────────
+  // Local → context (e.g. user clicks inbox list row)
+  useEffect(() => {
+    actions.selectCustomer(selectedCandidateId);
+  }, [actions, selectedCandidateId]);
+  // Context → local (e.g. user clicks a stop on the map).
+  // Intentionally omits selectedCandidateId from deps: we only want this to run
+  // when the CONTEXT changes (not when local state changes), to avoid a
+  // feedback loop where both effects fire in the same cycle.
+  useEffect(() => {
+    setSelectedCandidateId(state.selectedCustomerId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.selectedCustomerId]);
+
+  // ── Bridge: highlightedSegment ↔ context.highlightedSegment ──────────────
+  // Local → context
+  useEffect(() => {
+    actions.highlightSegment(highlightedSegment);
+  }, [actions, highlightedSegment]);
+  // Context → local — same pattern: only deps on context value to avoid loop.
+  useEffect(() => {
+    setHighlightedSegment(state.highlightedSegment);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.highlightedSegment]);
+  // ─────────────────────────────────────────────────────────────────────────
 
   // Load settings (crews, depots)
   useEffect(() => {
@@ -2978,5 +3028,17 @@ export function PlanningInbox() {
         />
       </div>
     </div>
+  );
+}
+
+/**
+ * Outer shell: provides PanelStateContext to the entire inbox page tree.
+ * All state and handlers live in PlanningInboxInner.
+ */
+export function PlanningInbox() {
+  return (
+    <PanelStateProvider activePageContext="inbox">
+      <PlanningInboxInner />
+    </PanelStateProvider>
   );
 }
