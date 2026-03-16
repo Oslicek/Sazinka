@@ -80,7 +80,7 @@ import {
 import { getMonthNames, getWeekdayNames } from '@/i18n/formatters';
 import { updateCustomer } from '../services/customerService';
 import type { CustomerUpdateFields } from '../components/planner/CandidateDetail';
-import { Plus, AlertTriangle, X } from 'lucide-react';
+import { Plus, AlertTriangle } from 'lucide-react';
 import styles from './PlanningInbox.module.css';
 
 /** Parse "HH:MM" or "HH:MM:SS" to total minutes from midnight. */
@@ -2943,7 +2943,7 @@ export function PlanningInbox() {
               onClick={() => setIsMapOverlayOpen(false)}
               aria-label="Close map"
             >
-              <X size={20} />
+              ✕
             </button>
             {renderMapPanel()}
           </div>
