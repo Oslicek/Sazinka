@@ -218,4 +218,61 @@ describe('DetachedPanelPage (G.6 bootstrap)', () => {
     expect(screen.queryByTestId('map-panel')).not.toBeInTheDocument();
     expect(screen.queryByTestId('list-panel')).not.toBeInTheDocument();
   });
+
+  it('clears syncing indicator when CONTEXT_SNAPSHOT with null routeContext arrives', async () => {
+    render(
+      <DetachedPanelPage
+        panel="map"
+        pageContext="inbox"
+        urlSeed={{ date: '2026-03-10', crewId: 'crew-1', depotId: 'depot-1' }}
+        snapshotTimeoutMs={5000}
+      />
+    );
+
+    await waitFor(() => {
+      const ch = MockBroadcastChannel.instances[0];
+      return (ch?.postedMessages as PanelSignalEnvelope[])?.some(m => m.signal.type === 'REQUEST_CONTEXT_SNAPSHOT');
+    });
+
+    const ch = MockBroadcastChannel.instances[0];
+    act(() => {
+      ch.simulateReceive({
+        senderId: 'main-window',
+        signal: {
+          type: 'CONTEXT_SNAPSHOT',
+          routeContext: null,
+          selectedCustomerId: null,
+          selectedRouteId: null,
+          highlightedSegment: null,
+        },
+      } as PanelSignalEnvelope);
+    });
+
+    const chrome = screen.getByTestId('detached-panel-chrome');
+    expect(chrome.textContent).not.toContain('syncing');
+  });
+
+  it('passes activePageContext from pageContext prop to provider', () => {
+    render(<DetachedPanelPage panel="map" pageContext="plan" />);
+    expect(screen.getByTestId('panel-provider')).toHaveAttribute('data-page-context', 'plan');
+  });
+
+  it('sends PANEL_REATTACHED with correct panel and page on beforeunload', async () => {
+    render(<DetachedPanelPage panel="list" pageContext="inbox" />);
+
+    await waitFor(() => MockBroadcastChannel.instances.length > 0);
+
+    act(() => {
+      window.dispatchEvent(new Event('beforeunload'));
+    });
+
+    const ch = MockBroadcastChannel.instances[0];
+    const msgs = ch.postedMessages as PanelSignalEnvelope[];
+    const reattachMsg = msgs.find(m => m.signal.type === 'PANEL_REATTACHED');
+    expect(reattachMsg).toBeDefined();
+    if (reattachMsg?.signal.type === 'PANEL_REATTACHED') {
+      expect(reattachMsg.signal.panel).toBe('list');
+      expect(reattachMsg.signal.page).toBe('inbox');
+    }
+  });
 });

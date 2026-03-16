@@ -17,6 +17,19 @@ import type { SavedRouteStop } from '@/services/routeService';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
+vi.mock('@/stores/natsStore', () => ({
+  useNatsStore: () => ({ isConnected: false }),
+}));
+
+vi.mock('@/services/routeService', () => ({
+  getRoute: vi.fn().mockResolvedValue({ route: null, stops: [] }),
+}));
+
+vi.mock('@/services/geometryService', () => ({
+  submitGeometryJob: vi.fn(),
+  subscribeToGeometryJobStatus: vi.fn(),
+}));
+
 const capturedMapProps: Record<string, unknown> = {};
 vi.mock('@/components/planner/RouteMapPanel', () => ({
   RouteMapPanel: (props: Record<string, unknown>) => {

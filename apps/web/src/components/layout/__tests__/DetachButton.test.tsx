@@ -1,51 +1,28 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { DetachButton } from '../DetachButton';
 
 describe('DetachButton', () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
+  it('renders a button with accessible label', () => {
+    render(<DetachButton onDetach={vi.fn()} />);
+    const btn = screen.getByRole('button', { name: 'Open in new window' });
+    expect(btn).toBeInTheDocument();
   });
 
-  it('renders a button', () => {
-    render(<DetachButton panelUrl="/inbox/map" windowName="sazinka-inbox-map" />);
-    expect(screen.getByRole('button')).toBeInTheDocument();
-  });
-
-  it('calls window.open with correct url and windowName on click', () => {
-    const mockWin = { closed: false, focus: vi.fn() } as unknown as Window;
-    const openSpy = vi.spyOn(window, 'open').mockReturnValue(mockWin);
-
-    render(<DetachButton panelUrl="/inbox/map" windowName="sazinka-inbox-map" />);
-    fireEvent.click(screen.getByRole('button'));
-
-    expect(openSpy).toHaveBeenCalledWith('/inbox/map', 'sazinka-inbox-map', expect.any(String));
-  });
-
-  it('calls onDetach callback after opening window', () => {
-    const mockWin = { closed: false, focus: vi.fn() } as unknown as Window;
-    vi.spyOn(window, 'open').mockReturnValue(mockWin);
+  it('calls onDetach callback on click', () => {
     const onDetach = vi.fn();
-
-    render(
-      <DetachButton panelUrl="/inbox/map" windowName="sazinka-inbox-map" onDetach={onDetach} />,
-    );
+    render(<DetachButton onDetach={onDetach} />);
     fireEvent.click(screen.getByRole('button'));
-
     expect(onDetach).toHaveBeenCalledOnce();
   });
 
-  it('does not open duplicate window if same windowName is already open', () => {
-    const mockWin = { closed: false, focus: vi.fn() } as unknown as Window;
-    const openSpy = vi.spyOn(window, 'open').mockReturnValue(mockWin);
+  it('passes data-testid to the button element', () => {
+    render(<DetachButton onDetach={vi.fn()} data-testid="detach-map" />);
+    expect(screen.getByTestId('detach-map')).toBeInTheDocument();
+  });
 
-    render(<DetachButton panelUrl="/inbox/map" windowName="sazinka-inbox-map" />);
-    const btn = screen.getByRole('button');
-
-    fireEvent.click(btn);
-    fireEvent.click(btn);
-
-    expect(openSpy).toHaveBeenCalledTimes(1);
-    expect(mockWin.focus).toHaveBeenCalledTimes(1);
+  it('passes className to the button element', () => {
+    render(<DetachButton onDetach={vi.fn()} className="custom-class" />);
+    expect(screen.getByRole('button')).toHaveClass('custom-class');
   });
 });

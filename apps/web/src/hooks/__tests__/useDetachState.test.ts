@@ -209,4 +209,88 @@ describe('useDetachState', () => {
     unmount();
     expect((win as unknown as { close: ReturnType<typeof vi.fn> }).close).toHaveBeenCalled();
   });
+
+  it('closes all detached windows and clears polls on unmount', () => {
+    const win1 = mockWin();
+    const win2 = mockWin();
+    let callCount = 0;
+    vi.spyOn(window, 'open').mockImplementation(() => {
+      callCount++;
+      return callCount === 1 ? win1 : win2;
+    });
+    const { result, unmount } = renderHook(() => useDetachState(), { wrapper });
+    act(() => { result.current.detach('map'); });
+    act(() => { result.current.detach('list'); });
+    unmount();
+    expect((win1 as unknown as { close: ReturnType<typeof vi.fn> }).close).toHaveBeenCalled();
+    expect((win2 as unknown as { close: ReturnType<typeof vi.fn> }).close).toHaveBeenCalled();
+  });
+
+  it('handles popup blocked (window.open returns null)', () => {
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    const { result } = renderHook(() => useDetachState(), { wrapper });
+    act(() => { result.current.detach('map'); });
+    expect(result.current.isDetached('map')).toBe(false);
+  });
+
+  it('stores page per panel and uses it in reattach signal', () => {
+    vi.spyOn(window, 'open').mockReturnValue(mockWin());
+    const { result } = renderHook(() => useDetachState(), { wrapper });
+    act(() => { result.current.detach('map'); });
+    act(() => { result.current.reattach('map'); });
+    const ch = MockBroadcastChannel.instances[0];
+    const msgs = ch.postedMessages as PanelSignalEnvelope[];
+    const reattachMsg = msgs.find(m => m.signal.type === 'PANEL_REATTACHED');
+    expect(reattachMsg).toBeDefined();
+    if (reattachMsg?.signal.type === 'PANEL_REATTACHED') {
+      expect(reattachMsg.signal.page).toBe('inbox');
+    }
+  });
+
+  it('sends PANEL_REATTACHED when poll detects window closed', () => {
+    const win = { closed: false, close: vi.fn() } as unknown as Window & { closed: boolean };
+    vi.spyOn(window, 'open').mockReturnValue(win);
+    const { result } = renderHook(() => useDetachState(), { wrapper });
+    act(() => { result.current.detach('map'); });
+    const ch = MockBroadcastChannel.instances[0];
+    const beforeCount = ch.postedMessages.length;
+    (win as { closed: boolean }).closed = true;
+    act(() => { vi.advanceTimersByTime(1100); });
+    const afterMessages = (ch.postedMessages as PanelSignalEnvelope[]).slice(beforeCount);
+    const reattachMsg = afterMessages.find(m => m.signal.type === 'PANEL_REATTACHED');
+    expect(reattachMsg).toBeDefined();
+  });
+
+  it('detach URL has no date/crewId/depotId when routeContext is null', () => {
+    function wrapperNoContext({ children }: { children: React.ReactNode }) {
+      return React.createElement(
+        PanelStateProvider,
+        { activePageContext: 'inbox', enableChannel: false },
+        children,
+      );
+    }
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(mockWin());
+    const { result } = renderHook(() => useDetachState(), { wrapper: wrapperNoContext });
+    act(() => { result.current.detach('map'); });
+    const calledUrl = openSpy.mock.calls[0][0] as string;
+    expect(calledUrl).toContain('page=inbox');
+    expect(calledUrl).not.toContain('date=');
+    expect(calledUrl).not.toContain('crewId=');
+    expect(calledUrl).not.toContain('depotId=');
+  });
+
+  it('plan page canDetach logic: only map is detachable', () => {
+    function wrapperPlan({ children }: { children: React.ReactNode }) {
+      return React.createElement(
+        PanelStateProvider,
+        { activePageContext: 'plan', enableChannel: false, initialRouteContext: routeContext },
+        children,
+      );
+    }
+    vi.spyOn(window, 'open').mockReturnValue(mockWin());
+    const { result } = renderHook(() => useDetachState(), { wrapper: wrapperPlan });
+    expect(result.current.canDetach).toBe(true);
+    act(() => { result.current.detach('map'); });
+    expect(result.current.canDetach).toBe(false);
+  });
 });

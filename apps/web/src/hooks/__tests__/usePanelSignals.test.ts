@@ -246,4 +246,78 @@ describe('usePanelSignals', () => {
       );
     }).not.toThrow();
   });
+
+  it('ignores malformed envelope with missing signal', () => {
+    const onSignal = vi.fn();
+    renderHook(() =>
+      usePanelSignals({ enabled: true, isSourceOfTruth: false, onSignal })
+    );
+    const ch = MockBroadcastChannel.instances[0];
+    act(() => {
+      ch.simulateReceive({ senderId: 'other' });
+    });
+    act(() => {
+      ch.simulateReceive({ senderId: 'other', signal: null });
+    });
+    act(() => {
+      ch.simulateReceive({ senderId: 'other', signal: 42 });
+    });
+    expect(onSignal).not.toHaveBeenCalled();
+  });
+
+  it('ignores completely foreign data on the channel', () => {
+    const onSignal = vi.fn();
+    renderHook(() =>
+      usePanelSignals({ enabled: true, isSourceOfTruth: false, onSignal })
+    );
+    const ch = MockBroadcastChannel.instances[0];
+    act(() => { ch.simulateReceive('random-string'); });
+    act(() => { ch.simulateReceive(null); });
+    act(() => { ch.simulateReceive(undefined); });
+    expect(onSignal).not.toHaveBeenCalled();
+  });
+
+  it('sendSignal no-ops when channel is not open', () => {
+    const { result } = renderHook(() =>
+      usePanelSignals({ enabled: false, isSourceOfTruth: false, onSignal: vi.fn() })
+    );
+    expect(() => {
+      act(() => {
+        result.current.sendSignal({ type: 'SELECT_CUSTOMER', customerId: 'x' });
+      });
+    }).not.toThrow();
+  });
+
+  it('does not respond to REQUEST_CONTEXT_SNAPSHOT when isSourceOfTruth but no getSnapshot', () => {
+    renderHook(() =>
+      usePanelSignals({ enabled: true, isSourceOfTruth: true, onSignal: vi.fn() })
+    );
+    const ch = MockBroadcastChannel.instances[0];
+    act(() => {
+      ch.simulateReceive(foreignEnvelope({ type: 'REQUEST_CONTEXT_SNAPSHOT' }));
+    });
+    expect(ch.postedMessages).toHaveLength(0);
+  });
+
+  it('forwards CONTEXT_SNAPSHOT with null routeContext to onSignal', () => {
+    const onSignal = vi.fn();
+    renderHook(() =>
+      usePanelSignals({ enabled: true, isSourceOfTruth: false, onSignal })
+    );
+    const ch = MockBroadcastChannel.instances[0];
+    act(() => {
+      ch.simulateReceive(
+        foreignEnvelope({
+          type: 'CONTEXT_SNAPSHOT',
+          routeContext: null,
+          selectedCustomerId: null,
+          selectedRouteId: null,
+          highlightedSegment: null,
+        })
+      );
+    });
+    expect(onSignal).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'CONTEXT_SNAPSHOT', routeContext: null })
+    );
+  });
 });

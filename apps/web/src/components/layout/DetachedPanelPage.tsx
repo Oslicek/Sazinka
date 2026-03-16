@@ -60,12 +60,12 @@ export function DetachedPanelPage({
     };
   });
 
-  const snapshotReceivedRef = useRef(false);
+  const [snapshotReceived, setSnapshotReceived] = useState(false);
   const [snapshotTimedOut, setSnapshotTimedOut] = useState(false);
 
   const onSignal = (signal: PanelSignal) => {
-    if (signal.type === 'CONTEXT_SNAPSHOT' && !snapshotReceivedRef.current) {
-      snapshotReceivedRef.current = true;
+    if (signal.type === 'CONTEXT_SNAPSHOT' && !snapshotReceived) {
+      setSnapshotReceived(true);
       if (signal.routeContext) {
         setRouteContext({
           date: signal.routeContext.date,
@@ -123,7 +123,7 @@ export function DetachedPanelPage({
       >
         <div style={{ padding: '4px 8px', fontSize: '12px', background: '#f0f0f0', flexShrink: 0 }}>
           {panel === 'map' ? 'Map' : 'List'} — detached
-          {!snapshotTimedOut && !snapshotReceivedRef.current && ' (syncing…)'}
+          {!snapshotTimedOut && !snapshotReceived && ' (syncing…)'}
         </div>
         <div style={{ flex: 1, overflow: 'hidden' }}>
           {isValidPanel ? <PanelSwitch panel={panel} /> : null}

@@ -27,6 +27,7 @@ export function useDetachState(): DetachStateReturn {
   const [detachedPanels, setDetachedPanels] = useState<Set<DetachablePanel>>(new Set());
   const windowRefs = useRef<Map<DetachablePanel, Window>>(new Map());
   const pollRefs = useRef<Map<DetachablePanel, ReturnType<typeof setInterval>>>(new Map());
+  const panelPageRefs = useRef<Map<DetachablePanel, 'inbox' | 'plan'>>(new Map());
 
   const stopPoll = useCallback((panel: DetachablePanel) => {
     const id = pollRefs.current.get(panel);
@@ -39,6 +40,7 @@ export function useDetachState(): DetachStateReturn {
   const markReattached = useCallback((panel: DetachablePanel) => {
     stopPoll(panel);
     windowRefs.current.delete(panel);
+    panelPageRefs.current.delete(panel);
     setDetachedPanels(prev => {
       const next = new Set(prev);
       next.delete(panel);
@@ -83,23 +85,26 @@ export function useDetachState(): DetachStateReturn {
     }
 
     windowRefs.current.set(panel, win);
+    panelPageRefs.current.set(panel, activePageContext);
     setDetachedPanels(prev => new Set([...prev, panel]));
     sendSignalRef.current({ type: 'PANEL_DETACHED', panel, page: activePageContext });
 
+    const page = activePageContext;
     const id = setInterval(() => {
       if (win.closed) {
         markReattached(panel);
-        sendSignalRef.current({ type: 'PANEL_REATTACHED', panel, page: activePageContext });
+        sendSignalRef.current({ type: 'PANEL_REATTACHED', panel, page });
       }
     }, 1000);
     pollRefs.current.set(panel, id);
   }, [activePageContext, routeContext, markReattached]);
 
   const reattach = useCallback((panel: DetachablePanel) => {
+    const page = panelPageRefs.current.get(panel) ?? activePageContext;
     const win = windowRefs.current.get(panel);
     if (win && !win.closed) win.close();
     markReattached(panel);
-    sendSignalRef.current({ type: 'PANEL_REATTACHED', panel, page: activePageContext });
+    sendSignalRef.current({ type: 'PANEL_REATTACHED', panel, page });
   }, [activePageContext, markReattached]);
 
   // Cleanup on unmount (page navigation)
@@ -107,11 +112,11 @@ export function useDetachState(): DetachStateReturn {
     return () => {
       for (const [panel, win] of windowRefs.current.entries()) {
         if (!win.closed) win.close();
-        sendSignalRef.current({ type: 'PANEL_REATTACHED', panel, page: activePageContext });
+        const page = panelPageRefs.current.get(panel) ?? 'inbox';
+        sendSignalRef.current({ type: 'PANEL_REATTACHED', panel, page });
       }
       for (const id of pollRefs.current.values()) clearInterval(id);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const detachable = DETACHABLE_BY_PAGE[activePageContext];

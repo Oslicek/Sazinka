@@ -229,6 +229,24 @@ function PlanInner() {
     if (state.selectedCustomerId) setIsDetailOpen(true);
   }, [state.selectedCustomerId]);
 
+  // ─── Derive routeContext from selected route / filters ──────────────
+  const derivedRouteContext = useMemo(() => {
+    const route = routes.find(r => r.id === selectedRouteId);
+    const date = route?.date ?? dateFrom;
+    const crewId = route?.crewId ?? filterCrewId;
+    const depotId = (() => {
+      if (crewId) {
+        const crew = crews.find(c => c.id === crewId);
+        if (crew?.homeDepotId) return crew.homeDepotId;
+      }
+      return filterDepotId;
+    })();
+    if (!date || !crewId || !depotId) return null;
+    const crewName = crews.find(c => c.id === crewId)?.name ?? '';
+    const depotName = depots.find(d => d.id === depotId)?.name ?? '';
+    return { date, crewId, crewName, depotId, depotName };
+  }, [selectedRouteId, routes, dateFrom, filterCrewId, filterDepotId, crews, depots]);
+
   // ─── Bridge: sync local state → PanelStateContext (single batched effect) ──
   // Consolidated into one effect to produce at most one context setState per
   // render cycle, preventing cascading re-renders (React error #185).
@@ -240,6 +258,7 @@ function PlanInner() {
     depotDeparture, routeWarnings, breakWarnings, metrics,
     routeBufferPercent, routeBufferFixedMinutes,
     selectedRouteId, highlightedSegment,
+    derivedRouteContext,
   });
 
   useEffect(() => {
@@ -247,6 +266,7 @@ function PlanInner() {
     const a = actionsRef.current;
 
     if (prev.selectedRouteStops !== selectedRouteStops) a.setRouteStops(selectedRouteStops);
+    if (prev.derivedRouteContext !== derivedRouteContext) a.setRouteContext(derivedRouteContext);
     if (prev.routeGeometry !== routeGeometry) a.setRouteGeometry(routeGeometry);
     if (prev.returnToDepotLeg !== returnToDepotLeg) {
       if (!returnToDepotLeg || returnToDepotLeg.distanceKm === null || returnToDepotLeg.durationMinutes === null) {
@@ -270,6 +290,7 @@ function PlanInner() {
       depotDeparture, routeWarnings, breakWarnings, metrics,
       routeBufferPercent, routeBufferFixedMinutes,
       selectedRouteId, highlightedSegment,
+      derivedRouteContext,
     };
   });
 

@@ -41,6 +41,7 @@ export function usePanelSignals({
       if (!envelope || envelope.senderId === senderIdRef.current) return;
 
       const { signal } = envelope;
+      if (!signal || typeof signal.type !== 'string') return;
 
       if (signal.type === 'REQUEST_CONTEXT_SNAPSHOT') {
         if (isSourceOfTruth && getSnapshotRef.current) {
