@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from '@tanstack/react-router';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { BottomSheet } from '@/components/common/BottomSheet';
+
 import { useNatsStore } from '../stores/natsStore';
 import { useRouteCacheStore } from '../stores/routeCacheStore';
 import { useAutoSave } from '../hooks/useAutoSave';
@@ -2991,14 +2991,37 @@ function PlanningInboxInner() {
     </div>
   );
 
-  // ── Mobile / tablet: list + bottom sheet layout ───────────────────────────
+  // ── Mobile / tablet: list + inline detail split layout ─────────────────────
   if (isMobileUi) {
+    const hasDetail = !!selectedCandidateId;
     return (
       <div className={`${styles.page} ${styles.pageMobile}`}>
         {pageHeader}
         {breakWarningBanner}
-        <div className={styles.mobilePanel}>
-          {renderInboxList()}
+        <div className={hasDetail ? styles.mobileSplitContainer : styles.mobilePanel}>
+          <div className={hasDetail ? styles.mobileSplitList : styles.mobilePanelFull}>
+            {renderInboxList()}
+          </div>
+          {hasDetail && (
+            <div className={styles.mobileSplitDetail}>
+              <div className={styles.mobileSplitDetailHeader}>
+                <span className={styles.mobileSplitDetailTitle}>
+                  {selectedCandidateDetail?.customerName ?? selectedCandidate?.customerName}
+                </span>
+                <button
+                  type="button"
+                  className={styles.mobileSplitDetailClose}
+                  onClick={handleSheetClose}
+                  aria-label="Close"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+              <div className={styles.mobileSplitDetailContent}>
+                {renderDetailPanel()}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Map overlay */}
@@ -3015,15 +3038,6 @@ function PlanningInboxInner() {
             {renderMapPanel()}
           </div>
         )}
-
-        {/* Candidate detail bottom sheet */}
-        <BottomSheet
-          isOpen={!!selectedCandidateId}
-          onClose={handleSheetClose}
-          title={selectedCandidateDetail?.customerName ?? selectedCandidate?.customerName}
-        >
-          {renderDetailPanel()}
-        </BottomSheet>
       </div>
     );
   }
