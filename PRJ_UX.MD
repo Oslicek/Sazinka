@@ -4819,6 +4819,8 @@ rules via NATS. It no longer depends on `PlanningInboxInner` for data.
 
 #### Phase G.4 — Make RouteMapPanel self-sufficient (independent data fetching)
 
+> **Status: ✅ DONE** (2026-03-10)
+
 **Goal:** The Map panel fetches route stops and geometry independently via
 NATS. It no longer reads bulk data from PanelState context.
 
