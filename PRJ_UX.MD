@@ -4552,3 +4552,501 @@ Spustit 2 paralelní agenty:
 2. **NATS reconnect v detached oknech** — ✅ ROZHODNUTO: Nezávislé spojení. Každé okno má vlastní NATS connection a reconnectuje se samostatně. Jednodušší, drobný gap při reconnectu je akceptovatelný. BroadcastChannel zajišťuje UI synchronizaci i během NATS výpadku.
 3. **Drag-and-drop across windows** — ✅ ROZHODNUTO: Oba způsoby. (a) Tlačítko "Přidat do trasy" v Detail panelu (současný stav). (b) Klávesová zkratka (např. Ctrl+Enter) pro vložení vybraného kandidáta na optimální pozici — funguje cross-window přes BroadcastChannel. Nativní drag-and-drop pouze v rámci jednoho okna.
 4. **Phone bottom sheet vs. horizontal split** — ✅ ROZHODNUTO: Stack (bottom sheet) jako výchozí a jediný režim na telefonu. Full-screen list + bottom sheet pro detail. Horizontal split se na telefonu neimplementuje — příliš stísněný na malých obrazovkách.
+
+---
+
+## 20. Detachable Panels — Map & List (Implementation Plan)
+
+> **Status:** Plan  
+> **Datum:** 2026-03-10  
+> **Prerequisite:** Section 19 infrastructure (PanelStateContext, BroadcastChannel, LayoutManager, DetachButton, /panel/:panelId route)
+
+### 20.1 Scope & Constraints
+
+**Detachable per page:**
+- **Inbox:** Map, List (Queue)
+- **Plan:** Map
+
+**NOT detachable:** Detail + Timeline stay together on the main page. RouteList (Plan-only) is not detachable.
+
+**Rules:**
+1. **Single instance** — each panel type exists exactly once. When detached, it disappears from the main page. When the detached window is closed, the panel re-appears on the main page.
+2. **Independent data** — each panel connects to NATS independently and fetches its own data. No bulk data sync over BroadcastChannel.
+3. **Coordination signals only** — BroadcastChannel carries lightweight IDs/indices: `selectedCustomerId`, `highlightedSegment`, `selectedRouteId`, `routeContext` (day/crew/depot). Never arrays or objects with many items.
+4. **Main page = menu host** — the original page always keeps the navigation bar. Panel-specific UI (filters, map controls) travels with the panel.
+5. **Last panel can't detach** — when only one panel group remains on the main page, its detach button is hidden.
+6. **Detach in all views** — Map and List can be detached from every layout mode (`stack`, `split`, `tiles`, `classic`) whenever those panels are visible.
+7. **TDD** — every step follows RED → GREEN → REFACTOR.
+
+### 20.2 Architecture Overview
+
+```
+Main window (app.ariadline.com/inbox)
+├── Navigation menu (always present)
+├── LayoutManager toolbar (Stack / Split / Tiles / Classic)
+└── Embedded panels:
+    ├── [List]          — detachable ↗
+    ├── [Detail+Timeline] — always here, not detachable
+    └── [Map]           — detachable ↗
+
+BroadcastChannel("sazinka-panels")
+├── { type: "SELECT_CUSTOMER", customerId }
+├── { type: "SELECT_ROUTE", routeId }
+├── { type: "HIGHLIGHT_SEGMENT", segmentIndex }
+├── { type: "ROUTE_CONTEXT", date, crewId, depotId }
+├── { type: "REQUEST_CONTEXT_SNAPSHOT" }
+├── { type: "CONTEXT_SNAPSHOT", routeContext, selected* }
+├── { type: "PANEL_DETACHED", panel, page }
+├── { type: "PANEL_REATTACHED", panel, page }
+└── (sender filtering via senderId — ignore own messages)
+
+Detached window (app.ariadline.com/panel/map?page=inbox&date=YYYY-MM-DD&crewId=...&depotId=...)
+├── Own NATS connection (via existing natsStore)
+├── Own PanelStateProvider (enableChannel=true)
+├── RouteMapPanel — fetches geometry, route stops independently
+└── No navigation menu, no Layout wrapper
+```
+
+### 20.3 Key Data Each Panel Needs Independently
+
+**Map panel (detached):**
+- Bootstrap context → URL seed (`date`, `crewId`, `depotId`) on open
+- Context correction → `CONTEXT_SNAPSHOT` handshake after mount (latest main-window context wins)
+- Route stops for current day+crew → fetch via `routeService.loadRouteStops(routeId)`
+- Route geometry → fetch via `geometryService.submitGeometryJob()`
+- Depot location → fetch via `settingsService` or receive `routeContext.depotId` from BroadcastChannel, then resolve locally
+- Selected customer ID → from BroadcastChannel
+- Highlighted segment → from BroadcastChannel
+
+**List panel (detached):**
+- Inbox candidates → fetch via `getInbox()` (NATS)
+- Scoring rule sets → fetch via `listRuleSets()` (NATS)
+- Inbox state (persisted filters) → fetch via `getInboxState()` (NATS)
+- Route context bootstrap → URL seed (`date`, `crewId`, `depotId`), then optional snapshot override
+- In-route customer IDs → fetch route stops for current context locally and derive `Set<string>` in panel (single source of truth; no list payloads over BroadcastChannel)
+
+### 20.4 BroadcastChannel Message Contract (v2 — signals only)
+
+Replace current `usePanelChannel` (which syncs full PanelState diffs) with a
+lightweight signal-only channel:
+
+```typescript
+type PanelSignal =
+  | { type: 'SELECT_CUSTOMER'; customerId: string | null }
+  | { type: 'HIGHLIGHT_SEGMENT'; segmentIndex: number | null }
+  | { type: 'ROUTE_CONTEXT'; date: string; crewId: string; depotId: string }
+  | { type: 'SELECT_ROUTE'; routeId: string | null }
+  | { type: 'REQUEST_CONTEXT_SNAPSHOT' }
+  | {
+      type: 'CONTEXT_SNAPSHOT';
+      routeContext: { date: string; crewId: string; depotId: string } | null;
+      selectedCustomerId: string | null;
+      selectedRouteId: string | null;
+      highlightedSegment: number | null;
+    }
+  | { type: 'PANEL_DETACHED'; panel: 'map' | 'list'; page: 'inbox' | 'plan' }
+  | { type: 'PANEL_REATTACHED'; panel: 'map' | 'list'; page: 'inbox' | 'plan' }
+```
+
+Each message includes a `senderId` (random UUID per window) to filter out echoes.
+Each `PANEL_DETACHED` / `PANEL_REATTACHED` signal includes `page` so Inbox and Plan
+detach states don't interfere with each other.
+Detached windows send `REQUEST_CONTEXT_SNAPSHOT` on mount; the main window responds
+once with `CONTEXT_SNAPSHOT`.
+
+**Hybrid bootstrap precedence:**
+1. Parse URL seed context (`date`, `crewId`, `depotId`) immediately and start loading.
+2. Request `CONTEXT_SNAPSHOT` from main window.
+3. If snapshot arrives and differs, snapshot overrides seeded context.
+4. If no snapshot arrives (timeout), keep URL-seeded context and continue.
+
+### 20.5 DetachState — tracking which panels are detached
+
+A new hook `useDetachState()` manages which panels are currently detached:
+
+```typescript
+interface DetachState {
+  detachedPanels: Set<'map' | 'list'>;
+  detach(panel: 'map' | 'list'): void;   // opens window, marks panel as detached
+  reattach(panel: 'map' | 'list'): void; // marks panel as reattached (called on window close)
+  isDetached(panel: 'map' | 'list'): boolean;
+  canDetach: boolean; // false when all detachable panels for this page are already detached
+}
+```
+
+Hook reads `activePageContext` from `usePanelState()` to:
+- Build the correct `?page=` URL param on detach
+- Filter incoming `PANEL_DETACHED` / `PANEL_REATTACHED` signals by page (ignore signals from the other page)
+- Close all open detached windows on unmount (page navigation cleanup)
+
+On the main page: `isDetached('map') === true` → do not render the Map panel.
+Detach button is hidden when `canDetach === false`.
+
+### 20.6 Implementation Phases (TDD)
+
+---
+
+#### Phase G.1 — Signal-only BroadcastChannel hook (`usePanelSignals`)
+
+> **Status: ✅ DONE** (2026-03-10)
+
+**Goal:** Replace the current `usePanelChannel` (full state diff sync) with a
+signal-only channel that carries only coordination IDs.
+
+**TDD:**
+
+1. **RED** — `hooks/__tests__/usePanelSignals.test.ts`:
+   - `it('sends SELECT_CUSTOMER signal when selectCustomer called')`
+   - `it('receives SELECT_CUSTOMER from another sender and calls onSelectCustomer')`
+   - `it('ignores own messages (same senderId)')`
+   - `it('sends ROUTE_CONTEXT signal')`
+   - `it('sends SELECT_ROUTE signal')`
+   - `it('sends HIGHLIGHT_SEGMENT signal')`
+   - `it('handles REQUEST_CONTEXT_SNAPSHOT and emits CONTEXT_SNAPSHOT from main window')`
+   - `it('applies CONTEXT_SNAPSHOT in detached window')`
+   - `it('sends PANEL_DETACHED / PANEL_REATTACHED signals')`
+   - `it('does nothing when enabled=false')`
+
+2. **GREEN** — `hooks/usePanelSignals.ts`:
+   - Creates `BroadcastChannel('sazinka-panels')`
+   - `sendSignal(signal: PanelSignal)` — posts message with senderId
+   - `onSignal` callback — receives messages, filters own senderId, dispatches to handler map
+   - Types: `types/panelSignals.ts`
+
+3. **REFACTOR** — Update `PanelStateContext` to use `usePanelSignals` instead
+   of `usePanelChannel`. Remove old `usePanelChannel.ts`.
+   - Add `initialRouteContext` and `isSourceOfTruth` props to `PanelStateProvider`.
+   - Only the provider with `isSourceOfTruth={true}` (main window) responds to `REQUEST_CONTEXT_SNAPSHOT`.
+   In the same phase, restrict detached panel routing to `map | list` so there is
+   no mixed behavior window where legacy detached panels rely on removed full-state sync.
+
+**Files:**
+- `types/panelSignals.ts` (new)
+- `hooks/usePanelSignals.ts` (new)
+- `hooks/__tests__/usePanelSignals.test.ts` (new)
+- `hooks/usePanelChannel.ts` (delete)
+- `contexts/PanelStateContext.tsx` (update — replace usePanelChannel)
+- `routes/index.tsx` (update — valid detached panels only `map`, `list`)
+- `components/layout/DetachedPanelPage.tsx` (update panel prop union to `map | list`)
+
+---
+
+#### Phase G.2 — DetachState hook (`useDetachState`)
+
+**Goal:** Track which panels are detached, open/close windows, sync state
+via `PANEL_DETACHED` / `PANEL_REATTACHED` signals.
+
+**TDD:**
+
+1. **RED** — `hooks/__tests__/useDetachState.test.ts`:
+   - `it('starts with no detached panels')`
+   - `it('detach("map") opens window and marks map as detached')`
+   - `it('detach("map") seeds URL with date/crewId/depotId from current context')`
+   - `it('detach uses activePageContext for ?page= param (inbox or plan)')`
+   - `it('isDetached("map") returns true after detaching')`
+   - `it('reattach("map") marks map as embedded again')`
+   - `it('canDetach is false when all detachable panels for this page are detached')`
+   - `it('auto-reattaches when detached window closes (poll window.closed)')`
+   - `it('sends PANEL_DETACHED signal with page field on detach')`
+   - `it('sends PANEL_REATTACHED signal with page field on reattach')`
+   - `it('receives PANEL_DETACHED from other window and updates state')`
+   - `it('ignores PANEL_DETACHED signals from a different page')`
+   - `it('closes all detached windows on unmount (page navigation cleanup)')`
+
+2. **GREEN** — `hooks/useDetachState.ts`:
+   - Stores `detachedPanels: Set<'map' | 'list'>` in state
+   - Reads current `routeContext` and `activePageContext` from `usePanelState()`.
+   - `detach(panel)` — builds URL with context seed:
+     `/panel/{panel}?page={activePageContext}&date={date}&crewId={crewId}&depotId={depotId}`,
+     then calls `window.open(...)`, starts polling `window.closed`, sends `PANEL_DETACHED` signal (with `page` field)
+   - `reattach(panel)` — closes window if open, sends `PANEL_REATTACHED` signal (with `page` field)
+   - Listens for `PANEL_DETACHED` / `PANEL_REATTACHED` signals; ignores signals where `page` doesn't match own `activePageContext`
+   - `canDetach` — true when at least one detachable panel for this page is still embedded
+   - On unmount (page navigation): close all open detached windows and send `PANEL_REATTACHED` for each
+
+3. **REFACTOR** — Consolidate with existing `usePanelWindow.ts` (merge or
+   replace — they serve the same purpose).
+
+**Files:**
+- `hooks/useDetachState.ts` (new)
+- `hooks/__tests__/useDetachState.test.ts` (new)
+- `hooks/usePanelWindow.ts` (delete — merged into useDetachState)
+
+---
+
+#### Phase G.3 — Make InboxListPanel self-sufficient (independent data fetching)
+
+**Goal:** The List panel fetches its own candidates, filter state, and scoring
+rules via NATS. It no longer depends on `PlanningInboxInner` for data.
+
+**TDD:**
+
+1. **RED** — `panels/__tests__/InboxListPanel.test.tsx` (rewrite existing stubs):
+   - `it('fetches candidates from NATS on mount')`
+   - `it('renders candidate rows after fetch')`
+   - `it('applies filter presets')`
+   - `it('sends SELECT_CUSTOMER signal on row click')`
+   - `it('receives ROUTE_CONTEXT and re-fetches when day changes')`
+   - `it('loads route stops for current context and marks in-route candidates')`
+   - `it('loads scoring rule sets on mount')`
+   - `it('persists filter state via getInboxState/saveInboxState')`
+   - `it('shows loading state while fetching')`
+
+2. **GREEN** — Rewrite `panels/InboxListPanel.tsx`:
+   - Extract from `PlanningInboxInner`: `loadCandidates()` logic (lines 778–810), filter state and handlers (lines 605–745), scoring state (lines 748–775), selection state and batch actions.
+   - Panel connects to NATS via `useNatsStore`
+   - Panel listens for `ROUTE_CONTEXT` signal to know current day/crew
+   - Panel fetches route stops for current context and derives `inRouteIds` locally
+   - Panel sends `SELECT_CUSTOMER` signal on row click
+   - All filter UI (presets, time tokens, problem tokens, search, advanced panel) rendered inside the panel
+   - All scoring UI (rule set selector, sort order) rendered inside the panel
+
+3. **REFACTOR** — Extract reusable hooks:
+   - `useInboxCandidates(ruleSetId)` — fetches & returns candidates
+   - `useInboxFilters()` — manages filter expression state & persistence
+
+**Files:**
+- `panels/InboxListPanel.tsx` (rewrite)
+- `panels/__tests__/InboxListPanel.test.tsx` (rewrite)
+- `hooks/useInboxCandidates.ts` (new — extracted from PlanningInboxInner)
+- `hooks/useInboxFilters.ts` (new — extracted from PlanningInboxInner)
+
+---
+
+#### Phase G.4 — Make RouteMapPanel self-sufficient (independent data fetching)
+
+**Goal:** The Map panel fetches route stops and geometry independently via
+NATS. It no longer reads bulk data from PanelState context.
+
+**TDD:**
+
+1. **RED** — `panels/__tests__/RouteMapPanel.test.tsx` (rewrite existing stubs):
+   - `it('fetches route stops from NATS on mount when routeContext provided')`
+   - `it('fetches geometry after stops load')`
+   - `it('re-fetches when ROUTE_CONTEXT signal changes day/crew')`
+   - `it('resolves depot from depotId in routeContext')`
+   - `it('highlights stop when SELECT_CUSTOMER signal received')`
+   - `it('highlights segment when HIGHLIGHT_SEGMENT signal received')`
+   - `it('sends SELECT_CUSTOMER signal on stop click')`
+   - `it('sends HIGHLIGHT_SEGMENT signal on segment click')`
+   - `it('shows loading state while fetching')`
+
+2. **GREEN** — Rewrite `panels/RouteMapPanel.tsx`:
+   - Extract from `PlanningInboxInner`: geometry fetching (lines 506–580), depot resolution, route loading for the current context
+   - Panel connects to NATS via `useNatsStore`
+   - Panel listens for `ROUTE_CONTEXT` signal to know which route to display
+   - Panel listens for `SELECT_CUSTOMER` / `HIGHLIGHT_SEGMENT` signals
+   - Panel sends `SELECT_CUSTOMER` on stop click, `HIGHLIGHT_SEGMENT` on segment click
+   - Contains map controls (fullscreen/collapse toggle) inside the panel
+
+3. **REFACTOR** — Extract:
+   - `useRouteGeometry(stops)` — submits geometry job, subscribes to updates, returns coordinates
+   - `useRouteData(context)` — loads route + stops for a given day/crew/depot
+
+**Files:**
+- `panels/RouteMapPanel.tsx` (rewrite)
+- `panels/__tests__/RouteMapPanel.test.tsx` (rewrite)
+- `hooks/useRouteGeometry.ts` (new — extracted from PlanningInboxInner)
+- `hooks/useRouteData.ts` (new — extracted from PlanningInboxInner)
+
+---
+
+#### Phase G.5 — Wire detach into PlanningInbox page
+
+**Goal:** PlanningInbox uses `useDetachState` to show/hide Map and List
+panels. DetachButton appears on each panel header. When a panel is
+detached, its space is given to the remaining panels.
+
+**TDD:**
+
+1. **RED** — `pages/__tests__/PlanningInbox.detach.test.tsx`:
+   - `it('shows detach button on Map and List panels in Tiles mode')`
+   - `it('shows detach button on Map and List panels in Split mode')`
+   - `it('shows detach button on Map and List panels in Classic mode')`
+   - `it('shows detach entrypoints in Stack mode (list header + map overlay header)')`
+   - `it('does NOT show detach button on Detail+Timeline')`
+   - `it('hides Map panel when map is detached')`
+   - `it('hides List panel when list is detached')`
+   - `it('shows Map panel again when detached window closes')`
+   - `it('hides detach button when only Detail+Timeline remains')`
+   - `it('adjusts layout when one panel is detached (3→2 panels)')`
+
+2. **GREEN** — Update `pages/PlanningInbox.tsx`:
+   - Set `<PanelStateProvider isSourceOfTruth={true}>` on the existing wrapper (enables snapshot responses)
+   - Add `useDetachState()` hook
+   - All modes: conditionally render Map / List based on `isDetached()`
+   - Show `DetachButton` for Map and List in every layout mode where those panels are visible, only when `canDetach`
+   - When one panel detached: remaining panels expand (e.g. 2×2 → 1×2 or full-width)
+   - Stack mode (phone): expose detach actions via list header and map overlay header controls
+   - Replace inline `renderInboxList()` with `<InboxListPanel />` (now self-sufficient)
+   - Replace inline `renderMapOnly()` with `<RouteMapPanel />` (now self-sufficient)
+   - Keep Detail+Timeline rendered inline (they use existing `PlanningInboxInner` handlers)
+
+3. **REFACTOR** — Remove dead code from `PlanningInboxInner`:
+   - Remove candidate loading logic (now in InboxListPanel)
+   - Remove geometry fetching logic (now in RouteMapPanel)
+   - Remove filter state & handlers (now in InboxListPanel)
+   - `PlanningInboxInner` becomes primarily Detail+Timeline + route context management
+
+**Files:**
+- `pages/PlanningInbox.tsx` (update — major simplification)
+- `pages/__tests__/PlanningInbox.detach.test.tsx` (new)
+- `pages/PlanningInbox.module.css` (update — layout adjustments)
+
+---
+
+#### Phase G.5b — Wire detach into Plan page (Map only)
+
+**Goal:** Plan page uses `useDetachState` to show/hide the Map panel.
+Only Map is detachable on Plan (RouteList is not detachable, Detail+Timeline stay together).
+
+**TDD:**
+
+1. **RED** — `pages/__tests__/Plan.detach.test.tsx`:
+   - `it('shows detach button on Map panel')`
+   - `it('does NOT show detach button on Detail+Timeline')`
+   - `it('does NOT show detach button on RouteList')`
+   - `it('hides Map panel when map is detached')`
+   - `it('shows Map panel again when detached window closes')`
+   - `it('adjusts layout when map is detached (RouteList + Detail+Timeline expand)')`
+   - `it('detach URL uses page=plan')`
+
+2. **GREEN** — Update `pages/Plan.tsx`:
+   - Set `<PanelStateProvider isSourceOfTruth={true}>` on the existing wrapper
+   - Add `useDetachState()` hook
+   - Conditionally render Map based on `isDetached('map')`
+   - Show `DetachButton` on Map panel header in every layout mode, only when `canDetach`
+   - When Map detached: remaining panels (RouteList + Detail+Timeline) expand to fill space
+   - Keep Detail+Timeline and RouteList rendered inline
+
+3. **REFACTOR** — Extract shared detach layout logic (conditional rendering,
+   panel expansion) into a reusable helper if PlanningInbox and Plan share patterns.
+
+**Files:**
+- `pages/Plan.tsx` (update)
+- `pages/__tests__/Plan.detach.test.tsx` (new)
+
+---
+
+#### Phase G.6 — DetachedPanelPage: NATS bootstrap for standalone windows
+
+**Goal:** The `/panel/:panelId` route bootstraps a standalone panel with its
+own NATS connection, auth, and signal channel.
+
+**TDD:**
+
+1. **RED** — `components/layout/__tests__/DetachedPanelPage.test.tsx` (update):
+   - `it('renders Map panel at /panel/map?page=inbox&date=...&crewId=...&depotId=...')`
+   - `it('renders List panel at /panel/list?page=inbox&date=...&crewId=...&depotId=...')`
+   - `it('connects to NATS on mount')`
+   - `it('connects to BroadcastChannel for signals')`
+   - `it('applies URL-seeded context immediately for initial load')`
+   - `it('requests CONTEXT_SNAPSHOT on mount')`
+   - `it('overrides URL-seeded context when CONTEXT_SNAPSHOT arrives')`
+   - `it('keeps URL-seeded context when snapshot timeout elapses')`
+   - `it('sends PANEL_REATTACHED signal on window beforeunload')`
+   - `it('shows connection status indicator')`
+   - `it('rejects invalid panel IDs gracefully')`
+
+2. **GREEN** — Update `DetachedPanelPage.tsx`:
+   - Wrap in auth check (token from existing cookie/localStorage)
+   - Initialize NATS connection (reuse existing `natsStore` — it auto-connects)
+   - Parse URL seed params (`date`, `crewId`, `depotId`)
+   - Wrap panel in `<PanelStateProvider enableChannel={true} isSourceOfTruth={false} initialRouteContext={parsedSeed}>`
+   - On mount, send `REQUEST_CONTEXT_SNAPSHOT`; if snapshot arrives, override seeded context (snapshot wins)
+   - If snapshot does not arrive within timeout window, continue with URL-seeded context
+   - Add `beforeunload` listener → send `PANEL_REATTACHED` signal
+   - Show minimal chrome: connection indicator, panel title bar with "Return to main window" link
+   - Keep strict `map` and `list` panel whitelist (already enforced in G.1)
+
+3. **REFACTOR** — Clean up the route definition in `routes/index.tsx`:
+   - Ensure no dead panel branches remain (`detail`, `route`, `routeList` removed from detached rendering paths)
+
+**Files:**
+- `components/layout/DetachedPanelPage.tsx` (update)
+- `components/layout/__tests__/DetachedPanelPage.test.tsx` (update)
+- `routes/index.tsx` (update — restrict panel types)
+
+---
+
+### 20.7 Dependency Diagram
+
+```
+G.1 (Signal-only BroadcastChannel)
+ │
+ ├──→ G.2 (DetachState hook)
+ │      │
+ │      ├──→ G.5  (Wire into PlanningInbox)
+ │      │      │
+ │      │      └──→ G.6 (DetachedPanelPage bootstrap)
+ │      │
+ │      └──→ G.5b (Wire into Plan — Map only)
+ │             │
+ │             └──→ G.6
+ │
+ ├──→ G.3 (InboxListPanel self-sufficient)
+ │      │
+ │      └──→ G.5
+ │
+ └──→ G.4 (RouteMapPanel self-sufficient)
+        │
+        ├──→ G.5
+        └──→ G.5b
+```
+
+**Parallel opportunities:**
+- G.2, G.3, G.4 can all run in parallel after G.1 completes
+- G.5 depends on G.2 + G.3 + G.4
+- G.5b depends on G.2 + G.4 (does NOT need G.3 — List is Inbox-only)
+- G.5 and G.5b can run in parallel
+- G.6 depends on G.5 + G.5b
+
+**Estimated sequence:**
+1. G.1 (signal channel)
+2. G.2 + G.3 + G.4 in parallel (3 agents)
+3. G.5 + G.5b in parallel (2 agents)
+4. G.6 (detached window bootstrap)
+
+### 20.8 What Changes vs. Section 19
+
+| Aspect | Section 19 (original) | Section 20 (revised) |
+|--------|----------------------|---------------------|
+| Detachable panels | All 5 | Inbox: Map + List; Plan: Map |
+| Data sync | Full PanelState diffs via BroadcastChannel | Hybrid bootstrap (URL seed + snapshot handshake) + signal-only runtime sync |
+| Panel data loading | From PanelStateContext (bridged from parent) | Each panel fetches independently via NATS |
+| Panel instances | Could coexist (embedded + detached) | Single instance — detach removes from main page |
+| Detail+Timeline | Independent panels | Stay together, always on main page |
+| Last panel rule | Not defined | Last panel can't be detached |
+
+### 20.9 Resolved Questions
+
+1. **Route context ownership** — When both List and Map are detached, who owns the route context (day/crew/depot) selectors? → The main page (Detail+Timeline) keeps the context selectors. Changes are broadcast as `ROUTE_CONTEXT` signal.
+2. **Detached panel title bar** — Should detached windows show a minimal title bar with "Back to main" link? → Yes, small bar with panel name + link.
+
+### 20.10 Decision Note — Detach in All Views
+
+**Decision:** Keep detach available for Map and List in all layout modes (`stack`, `split`, `tiles`, `classic`), not only in Tiles.
+**Comparison baseline:** The pros/cons below compare this decision against the alternative **"detach allowed only in Tiles mode."**
+
+**Complexity impact:** Medium (UI wiring + tests), not architectural heavy. The detach core (`window.open`, panel lifecycle, BroadcastChannel signals) stays the same.
+
+**Pros:**
+- Consistent dispatcher experience across phone/tablet/desktop.
+- Faster workflows (no forced mode switch before detach).
+- Fewer support questions ("why does detach work only in Tiles?").
+- Better fit for mixed-monitor operations and rapid context switching.
+
+**Cons:**
+- More UI states to test (all four modes + detached lifecycle).
+- More header/action placement work on phone stack and map overlay.
+- Slightly higher risk of mode-specific regressions if tests are weak.
+- More visible controls can increase UI noise on small screens.
+
+### 20.11 Decision Note — Hybrid Detached Bootstrap
+
+**Decision:** Use **hybrid bootstrap** for detached windows:
+- URL-seeded route context (`date`, `crewId`, `depotId`) for immediate startup
+- `REQUEST_CONTEXT_SNAPSHOT` / `CONTEXT_SNAPSHOT` handshake for live alignment
+
+**Runtime rule:** URL seed is initial value; `CONTEXT_SNAPSHOT` overrides when received.
+If no snapshot arrives within timeout, detached panel keeps seeded context.

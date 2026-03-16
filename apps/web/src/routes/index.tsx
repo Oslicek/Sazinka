@@ -269,7 +269,7 @@ const panelRoute = createRoute({
     const { panelId } = panelRoute.useParams();
     const searchParams = new URLSearchParams(window.location.search);
     const pageContext = (searchParams.get('page') === 'plan' ? 'plan' : 'inbox') as 'inbox' | 'plan';
-    const validPanels = ['map', 'detail', 'route', 'list', 'routeList'] as const;
+    const validPanels = ['map', 'list'] as const;
     type PanelType = typeof validPanels[number];
     const panel: PanelType = validPanels.includes(panelId as PanelType)
       ? (panelId as PanelType)

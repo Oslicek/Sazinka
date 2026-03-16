@@ -3,47 +3,52 @@ import { render, screen } from '@testing-library/react';
 import React from 'react';
 import { DetachedPanelPage } from '../DetachedPanelPage';
 
-vi.mock('@/panels', () => ({
+vi.mock('@/panels/RouteMapPanel', () => ({
   RouteMapPanel: () => <div data-testid="map-panel">MapPanel</div>,
-  RouteTimelinePanel: () => <div data-testid="route-panel">RoutePanel</div>,
-  CustomerDetailPanel: () => <div data-testid="detail-panel">DetailPanel</div>,
+}));
+
+vi.mock('@/panels/InboxListPanel', () => ({
   InboxListPanel: () => <div data-testid="list-panel">ListPanel</div>,
-  RouteListPanel: () => <div data-testid="routeList-panel">RouteListPanel</div>,
 }));
 
 vi.mock('@/contexts/PanelStateContext', () => ({
   PanelStateProvider: ({
     children,
     enableChannel,
+    isSourceOfTruth,
   }: {
     children: React.ReactNode;
     enableChannel: boolean;
+    isSourceOfTruth: boolean;
   }) => (
-    <div data-testid="panel-provider" data-enable-channel={String(enableChannel)}>
+    <div
+      data-testid="panel-provider"
+      data-enable-channel={String(enableChannel)}
+      data-source-of-truth={String(isSourceOfTruth)}
+    >
       {children}
     </div>
   ),
 }));
 
 describe('DetachedPanelPage', () => {
-  it('renders the requested panel (map)', () => {
+  it('renders Map panel at /panel/map', () => {
     render(<DetachedPanelPage panel="map" pageContext="inbox" />);
     expect(screen.getByTestId('map-panel')).toBeInTheDocument();
   });
 
-  it('renders the requested panel (route)', () => {
-    render(<DetachedPanelPage panel="route" pageContext="inbox" />);
-    expect(screen.getByTestId('route-panel')).toBeInTheDocument();
-  });
-
-  it('renders the requested panel (detail)', () => {
-    render(<DetachedPanelPage panel="detail" pageContext="inbox" />);
-    expect(screen.getByTestId('detail-panel')).toBeInTheDocument();
+  it('renders List panel at /panel/list', () => {
+    render(<DetachedPanelPage panel="list" pageContext="inbox" />);
+    expect(screen.getByTestId('list-panel')).toBeInTheDocument();
   });
 
   it('wraps panel in PanelStateProvider with enableChannel=true', () => {
     render(<DetachedPanelPage panel="map" pageContext="inbox" />);
-    const provider = screen.getByTestId('panel-provider');
-    expect(provider).toHaveAttribute('data-enable-channel', 'true');
+    expect(screen.getByTestId('panel-provider')).toHaveAttribute('data-enable-channel', 'true');
+  });
+
+  it('wraps panel in PanelStateProvider with isSourceOfTruth=false', () => {
+    render(<DetachedPanelPage panel="map" pageContext="inbox" />);
+    expect(screen.getByTestId('panel-provider')).toHaveAttribute('data-source-of-truth', 'false');
   });
 });

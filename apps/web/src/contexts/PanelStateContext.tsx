@@ -1,4 +1,4 @@
-import { createContext, useState, useCallback, useMemo } from 'react';
+import { createContext, useState, useCallback, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import type {
   PanelState,
@@ -11,7 +11,8 @@ import type {
   RouteWarning,
   RouteMetrics,
 } from '../types/panelState';
-import { usePanelChannel } from '../hooks/usePanelChannel';
+import { usePanelSignals } from '../hooks/usePanelSignals';
+import type { PanelSignal } from '../types/panelSignals';
 
 export const PanelStateContext = createContext<PanelStateContextValue | null>(null);
 
@@ -37,34 +38,101 @@ interface PanelStateProviderProps {
   children: ReactNode;
   activePageContext?: 'inbox' | 'plan';
   enableChannel?: boolean;
+  /** Main window sets this true — it responds to REQUEST_CONTEXT_SNAPSHOT */
+  isSourceOfTruth?: boolean;
+  /** Detached windows pass the URL-seeded context here for immediate load */
+  initialRouteContext?: RouteContext | null;
 }
 
 export function PanelStateProvider({
   children,
   activePageContext = 'inbox',
   enableChannel = false,
+  isSourceOfTruth = false,
+  initialRouteContext,
 }: PanelStateProviderProps) {
-  const [state, setState] = useState<PanelState>({
+  const [state, setState] = useState<PanelState>(() => ({
     ...DEFAULT_STATE,
     activePageContext,
-  });
+    routeContext: initialRouteContext ?? null,
+  }));
 
-  const applyPartial = useCallback((partial: Partial<PanelState>) => {
-    setState(s => ({ ...s, ...partial }));
+  // Keep a ref so getSnapshot always reads current state without stale closure
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  const onSignal = useCallback((signal: PanelSignal) => {
+    switch (signal.type) {
+      case 'SELECT_CUSTOMER':
+        setState(s => s.selectedCustomerId === signal.customerId ? s : { ...s, selectedCustomerId: signal.customerId });
+        break;
+      case 'SELECT_ROUTE':
+        setState(s => s.selectedRouteId === signal.routeId ? s : { ...s, selectedRouteId: signal.routeId });
+        break;
+      case 'HIGHLIGHT_SEGMENT':
+        setState(s => s.highlightedSegment === signal.segmentIndex ? s : { ...s, highlightedSegment: signal.segmentIndex });
+        break;
+      case 'ROUTE_CONTEXT':
+        setState(s => {
+          const ctx = s.routeContext;
+          if (ctx && ctx.date === signal.date && ctx.crewId === signal.crewId && ctx.depotId === signal.depotId) return s;
+          return { ...s, routeContext: { ...signal, crewName: ctx?.crewName ?? '', depotName: ctx?.depotName ?? '' } };
+        });
+        break;
+      case 'CONTEXT_SNAPSHOT':
+        setState(s => ({
+          ...s,
+          selectedCustomerId: signal.selectedCustomerId,
+          selectedRouteId: signal.selectedRouteId,
+          highlightedSegment: signal.highlightedSegment,
+          routeContext: signal.routeContext
+            ? { ...signal.routeContext, crewName: s.routeContext?.crewName ?? '', depotName: s.routeContext?.depotName ?? '' }
+            : s.routeContext,
+        }));
+        break;
+      default:
+        break;
+    }
   }, []);
 
-  usePanelChannel(enableChannel, state, applyPartial);
+  const getSnapshot = useCallback(() => {
+    const s = stateRef.current;
+    return {
+      routeContext: s.routeContext
+        ? { date: s.routeContext.date, crewId: s.routeContext.crewId, depotId: s.routeContext.depotId }
+        : null,
+      selectedCustomerId: s.selectedCustomerId,
+      selectedRouteId: s.selectedRouteId,
+      highlightedSegment: s.highlightedSegment,
+    };
+  }, []);
+
+  const { sendSignal } = usePanelSignals({
+    enabled: enableChannel,
+    isSourceOfTruth,
+    onSignal,
+    getSnapshot: isSourceOfTruth ? getSnapshot : undefined,
+  });
+
+  // Expose sendSignal via context so panels can emit signals
+  const sendSignalRef = useRef(sendSignal);
+  sendSignalRef.current = sendSignal;
 
   const selectCustomer = useCallback((id: string | null) => {
     setState(s => s.selectedCustomerId === id ? s : { ...s, selectedCustomerId: id });
+    sendSignalRef.current({ type: 'SELECT_CUSTOMER', customerId: id });
   }, []);
 
   const selectRoute = useCallback((id: string | null) => {
     setState(s => s.selectedRouteId === id ? s : { ...s, selectedRouteId: id });
+    sendSignalRef.current({ type: 'SELECT_ROUTE', routeId: id });
   }, []);
 
   const setRouteContext = useCallback((ctx: RouteContext | null) => {
     setState(s => s.routeContext === ctx ? s : { ...s, routeContext: ctx });
+    if (ctx) {
+      sendSignalRef.current({ type: 'ROUTE_CONTEXT', date: ctx.date, crewId: ctx.crewId, depotId: ctx.depotId });
+    }
   }, []);
 
   const setRouteStops = useCallback((stops: SavedRouteStop[]) => {
@@ -73,6 +141,7 @@ export function PanelStateProvider({
 
   const highlightSegment = useCallback((idx: number | null) => {
     setState(s => s.highlightedSegment === idx ? s : { ...s, highlightedSegment: idx });
+    sendSignalRef.current({ type: 'HIGHLIGHT_SEGMENT', segmentIndex: idx });
   }, []);
 
   const setInsertionPreview = useCallback((preview: MapInsertionPreview | null) => {
