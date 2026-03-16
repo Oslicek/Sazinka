@@ -4,6 +4,7 @@ import {
   setLocalLayoutPreference,
   syncLayoutPreferenceToDb,
 } from '@/services/layoutPreferenceService';
+import styles from './LayoutManager.module.css';
 
 export type LayoutMode = 'stack' | 'split' | 'tiles' | 'classic';
 
@@ -42,12 +43,14 @@ export function LayoutManager({ mode, onModeChange }: LayoutManagerProps) {
   };
 
   return (
-    <div role="toolbar" aria-label="Layout mode">
+    <div role="toolbar" aria-label="Layout mode" className={styles.toolbar}>
       {buttons.map((m) => (
         <button
           key={m}
+          type="button"
           aria-pressed={mode === m}
           onClick={() => handleClick(m)}
+          className={`${styles.button} ${mode === m ? styles.buttonActive : ''}`}
         >
           {MODE_LABELS[m]}
         </button>

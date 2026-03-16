@@ -95,7 +95,7 @@ function calculateMetrics(
 
 export function Plan() {
   return (
-    <PanelStateProvider activePageContext="plan">
+    <PanelStateProvider activePageContext="plan" enableChannel>
       <PlanInner />
     </PanelStateProvider>
   );

@@ -116,6 +116,88 @@
   height: 100%;
 }
 
+/* ── Split layout: list+detail stacked on left, map on right ─────────── */
+
+.splitLeftStack {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.splitLeftTop {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.splitLeftBottom {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Tiles layout: 2×2 grid ──────────────────────────────────────────── */
+
+.tilesGrid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 2px;
+  background: var(--color-border);
+  padding: 0;
+}
+
+.tilesCell {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-bg);
+}
+
+.tilesCellHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.25rem 0.5rem;
+  background: var(--color-bg-secondary);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.tilesCellHeader button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+}
+
+.tilesCellHeader button:hover {
+  background: var(--color-bg);
+  color: var(--color-primary);
+}
+
+.tilesCellContent {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 /* Inbox Panel */
 .inboxPanel {
   display: flex;

@@ -34,7 +34,8 @@ import {
 } from '../components/planner';
 import { DraftModeBar } from '../components/planner/DraftModeBar';
 import { CollapseButton, ThreePanelLayout } from '../components/common';
-import { SplitLayout } from '../components/layout';
+import { SplitLayout, LayoutManager, DetachButton } from '../components/layout';
+import { useLayoutMode } from '../hooks/useLayoutMode';
 import { Map as MapIcon } from 'lucide-react';
 import type { SavedRouteStop } from '../services/routeService';
 import { recalculateRoute, type RecalcStopInput } from '../services/routeService';
@@ -146,8 +147,9 @@ function PlanningInboxInner() {
   const listRef = useRef<VirtualizedInboxListRef>(null);
   const sortedCandidatesRef = useRef<InboxCandidate[]>([]);
 
-  // ── Mobile / tablet responsive state ──────────────────────────────────────
+  // ── Layout / responsive state ───────────────────────────────────────────
   const { isMobileUi } = useBreakpoint();
+  const { mode: layoutMode, setMode: setLayoutMode } = useLayoutMode();
   const [isMapOverlayOpen, setIsMapOverlayOpen] = useState(false);
   // ──────────────────────────────────────────────────────────────────────────
   
@@ -2901,6 +2903,110 @@ function PlanningInboxInner() {
     </div>
   );
 
+  // Render route timeline only (for tiles layout where timeline is a separate panel)
+  const renderRouteTimelineOnly = () => (
+    <div className={styles.routeStopSection}>
+      {contextSelectorsJsx}
+      <div className={styles.routeSummaryBar}>
+        <RouteSummaryStats
+          routeStartTime={actualRouteStart}
+          routeEndTime={actualRouteEnd}
+          metrics={metrics}
+          stopCount={routeStops.filter(s => s.stopType !== 'break').length}
+        />
+        <RouteSummaryActions
+          onOptimize={handleOptimizeRoute}
+          onAddBreak={handleAddBreak}
+          onDeleteRoute={handleClearRoute}
+          isOptimizing={isOptimizing}
+          canOptimize={routeStops.length >= 2}
+          deleteLabel="Smazat trasu"
+        />
+      </div>
+      <ArrivalBufferBar
+        percent={routeBufferPercent}
+        fixedMinutes={routeBufferFixedMinutes}
+        onChange={handleBufferChange}
+      />
+      {timelineView === 'compact' ? (
+        <RouteDetailTimeline
+          stops={routeStops}
+          depot={currentDepot ? { ...currentDepot, name: currentDepot.name ?? 'Depo' } : null}
+          selectedStopId={selectedCandidateId}
+          highlightedSegment={highlightedSegment}
+          onStopClick={(customerId) => {
+            setSelectedCandidateId(customerId);
+            setHighlightedSegment(null);
+          }}
+          onSegmentClick={setHighlightedSegment}
+          onReorder={handleReorder}
+          onRemoveStop={handleRemoveFromRoute}
+          onUpdateBreak={handleUpdateBreak}
+          onUpdateTravelDuration={handleUpdateTravelDuration}
+          onResetTravelDuration={handleResetTravelDuration}
+          onUpdateServiceDuration={handleUpdateServiceDuration}
+          onResetServiceDuration={handleResetServiceDuration}
+          isSaving={isSaving}
+          warnings={routeWarnings}
+          routeStartTime={routeStartTime}
+          routeEndTime={routeEndTime}
+          depotDeparture={depotDeparture}
+          returnToDepotDistanceKm={returnToDepotLeg?.distanceKm ?? null}
+          returnToDepotDurationMinutes={returnToDepotLeg?.durationMinutes ?? null}
+        />
+      ) : (
+        <PlanningTimeline
+          stops={routeStops}
+          depot={currentDepot ? { ...currentDepot, name: currentDepot.name ?? 'Depo' } : null}
+          selectedStopId={selectedCandidateId}
+          onStopClick={(customerId) => {
+            setSelectedCandidateId(customerId);
+            setHighlightedSegment(null);
+          }}
+          onReorder={handleReorder}
+          onRemoveStop={handleRemoveFromRoute}
+          onUpdateBreak={handleUpdateBreak}
+          onUpdateTravelDuration={handleUpdateTravelDuration}
+          onResetTravelDuration={handleResetTravelDuration}
+          onUpdateServiceDuration={handleUpdateServiceDuration}
+          onResetServiceDuration={handleResetServiceDuration}
+          isSaving={isSaving}
+          routeStartTime={routeStartTime}
+          routeEndTime={routeEndTime}
+          depotDeparture={depotDeparture}
+          returnToDepotDistanceKm={returnToDepotLeg?.distanceKm ?? null}
+          returnToDepotDurationMinutes={returnToDepotLeg?.durationMinutes ?? null}
+          candidateForInsertion={candidateForInsertion}
+          onInsertCandidate={(insertAfterIndex) => {
+            if (selectedCandidate) {
+              handleAddToRoute(selectedCandidate.customerId, insertAfterIndex);
+            }
+          }}
+          onQuickPlaceInGap={handleQuickPlaceInGap}
+        />
+      )}
+    </div>
+  );
+
+  // Render map only (no timeline, for tiles layout)
+  const renderMapOnly = () => (
+    <div className={styles.mapSection} style={{ height: '100%' }}>
+      <RouteMapPanel
+        stops={routeStops}
+        depot={currentDepot}
+        routeGeometry={routeGeometry}
+        highlightedStopId={selectedCandidateId}
+        highlightedSegment={highlightedSegment}
+        debugSource="inbox-main"
+        debugRouteId={loadedRouteId}
+        selectedCandidate={selectedCandidateForMap}
+        insertionPreview={insertionPreviewForMap}
+        onSegmentHighlight={setHighlightedSegment}
+        isLoading={isLoadingRoute}
+      />
+    </div>
+  );
+
   // Context selectors JSX for the right column
   const contextSelectorsJsx = (
     <div className={styles.contextSelectorsRow}>
@@ -2968,6 +3074,9 @@ function PlanningInboxInner() {
         saveError={saveError}
         onRetry={retrySave}
       />
+      {!isMobileUi && (
+        <LayoutManager mode={layoutMode} onModeChange={setLayoutMode} />
+      )}
       {isMobileUi && (
         <button
           type="button"
@@ -3055,7 +3164,79 @@ function PlanningInboxInner() {
     );
   }
 
-  // ── Desktop: existing three-panel layout ──────────────────────────────────
+  // ── Desktop layouts based on layoutMode ─────────────────────────────────
+
+  const detachBtn = (panel: string) => (
+    <DetachButton
+      panelUrl={`/panel/${panel}?page=inbox`}
+      windowName={`sazinka-${panel}`}
+    />
+  );
+
+  if (layoutMode === 'split') {
+    return (
+      <div className={styles.page}>
+        {pageHeader}
+        {breakWarningBanner}
+        <div className={styles.content}>
+          <SplitLayout
+            left={
+              <div className={styles.splitLeftStack}>
+                <div className={styles.splitLeftTop}>{renderInboxList()}</div>
+                <div className={styles.splitLeftBottom}>{renderDetailPanel()}</div>
+              </div>
+            }
+            right={renderMapPanel()}
+            leftWidth={40}
+            minLeftWidth={25}
+            maxLeftWidth={65}
+            className={styles.splitLayout}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (layoutMode === 'tiles') {
+    return (
+      <div className={styles.page}>
+        {pageHeader}
+        {breakWarningBanner}
+        <div className={styles.tilesGrid}>
+          <div className={styles.tilesCell}>
+            <div className={styles.tilesCellHeader}>
+              <span>{t('panel_list', 'Seznam')}</span>
+              {detachBtn('list', 'list')}
+            </div>
+            <div className={styles.tilesCellContent}>{renderInboxList()}</div>
+          </div>
+          <div className={styles.tilesCell}>
+            <div className={styles.tilesCellHeader}>
+              <span>{t('panel_detail', 'Detail')}</span>
+              {detachBtn('detail', 'detail')}
+            </div>
+            <div className={styles.tilesCellContent}>{renderDetailPanel()}</div>
+          </div>
+          <div className={styles.tilesCell}>
+            <div className={styles.tilesCellHeader}>
+              <span>{t('panel_map', 'Mapa')}</span>
+              {detachBtn('map', 'map')}
+            </div>
+            <div className={styles.tilesCellContent}>{renderMapOnly()}</div>
+          </div>
+          <div className={styles.tilesCell}>
+            <div className={styles.tilesCellHeader}>
+              <span>{t('panel_timeline', 'Časová osa')}</span>
+              {detachBtn('route', 'route')}
+            </div>
+            <div className={styles.tilesCellContent}>{renderRouteTimelineOnly()}</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // classic (default) — existing three-panel layout
   return (
     <div className={styles.page}>
       {pageHeader}
@@ -3081,7 +3262,7 @@ function PlanningInboxInner() {
  */
 export function PlanningInbox() {
   return (
-    <PanelStateProvider activePageContext="inbox">
+    <PanelStateProvider activePageContext="inbox" enableChannel>
       <PlanningInboxInner />
     </PanelStateProvider>
   );

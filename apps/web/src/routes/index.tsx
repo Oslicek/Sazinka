@@ -36,6 +36,9 @@ const Jobs = lazy(() => import('@/pages/Jobs').then(m => ({ default: m.Jobs })))
 const WorkLog = lazy(() => import('@/pages/WorkLog').then(m => ({ default: m.WorkLog })));
 const RoutesPage = lazy(() => import('@/pages/Routes').then(m => ({ default: m.Routes })));
 const About = lazy(() => import('@/pages/About').then(m => ({ default: m.About })));
+const DetachedPanelPage = lazy(() =>
+  import('@/components/layout/DetachedPanelPage').then(m => ({ default: m.DetachedPanelPage }))
+);
 
 // Root route with layout (only for authenticated pages)
 const rootRoute = createRootRoute({
@@ -258,11 +261,36 @@ const aboutRoute = createRoute({
   ),
 });
 
+// Detached panel route (no Layout wrapper — standalone window)
+const panelRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/panel/$panelId',
+  component: () => {
+    const { panelId } = panelRoute.useParams();
+    const searchParams = new URLSearchParams(window.location.search);
+    const pageContext = (searchParams.get('page') === 'plan' ? 'plan' : 'inbox') as 'inbox' | 'plan';
+    const validPanels = ['map', 'detail', 'route', 'list', 'routeList'] as const;
+    type PanelType = typeof validPanels[number];
+    const panel: PanelType = validPanels.includes(panelId as PanelType)
+      ? (panelId as PanelType)
+      : 'map';
+
+    return (
+      <ProtectedRoute>
+        <Suspense fallback={<PageLoader />}>
+          <DetachedPanelPage panel={panel} pageContext={pageContext} />
+        </Suspense>
+      </ProtectedRoute>
+    );
+  },
+});
+
 // Route tree
 export const routeTree = rootRoute.addChildren([
   loginRoute,
   registerRoute,
   verifyEmailRoute,
+  panelRoute,
   layoutRoute.addChildren([
     indexRoute,
     customersRoute,
