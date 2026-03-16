@@ -4905,6 +4905,8 @@ detached, its space is given to the remaining panels.
 
 #### Phase G.5b — Wire detach into Plan page (Map only)
 
+> **Status: ✅ DONE** (2026-03-10)
+
 **Goal:** Plan page uses `useDetachState` to show/hide the Map panel.
 Only Map is detachable on Plan (RouteList is not detachable, Detail+Timeline stay together).
 

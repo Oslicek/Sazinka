@@ -24,7 +24,10 @@ import { AlertTriangle } from 'lucide-react';
 import styles from './Plan.module.css';
 import { PanelStateProvider } from '../contexts/PanelStateContext';
 import { usePanelState } from '../hooks/usePanelState';
+import { useDetachState } from '../hooks/useDetachState';
 import { CustomerDetailPanel } from '../panels/CustomerDetailPanel';
+import { RouteMapPanel as RouteMapPanelSelfSufficient } from '../panels/RouteMapPanel';
+import { DetachButton } from '../components/layout';
 
 // Default depot location (Prague center) - fallback
 const DEFAULT_DEPOT = { lat: 50.0755, lng: 14.4378 };
@@ -95,7 +98,7 @@ function calculateMetrics(
 
 export function Plan() {
   return (
-    <PanelStateProvider activePageContext="plan" enableChannel>
+    <PanelStateProvider activePageContext="plan" enableChannel isSourceOfTruth={true}>
       <PlanInner />
     </PanelStateProvider>
   );
@@ -107,6 +110,7 @@ function PlanInner() {
   const navigate = useNavigate();
   const searchParams = useSearch({ strict: false }) as PlannerSearchParams;
   const { isConnected } = useNatsStore();
+  const { isDetached, detach, canDetach } = useDetachState();
 
   // --- Filters ---
   const today = new Date().toISOString().split('T')[0];
@@ -1095,23 +1099,18 @@ function PlanInner() {
       {/* Sidebar/Map resize handle */}
       <div className={styles.sidebarResizer} onMouseDown={handleSidebarResizeStart} />
 
-      {/* Map */}
-      <div className={styles.mapWrapper}>
-        <RouteMapPanel
-          stops={selectedRouteStops}
-          depot={selectedRouteDepot}
-          routeGeometry={routeGeometry}
-          highlightedStopId={highlightedStopId}
-          highlightedSegment={highlightedSegment}
-          debugSource="planner"
-          debugRouteId={selectedRouteId}
-          onStopClick={(stopId) => {
-            setHighlightedStopId(stopId);
-          }}
-          onSegmentHighlight={setHighlightedSegment}
-          isLoading={isLoadingStops}
-        />
-      </div>
+      {/* Map — self-sufficient panel, detachable */}
+      {!isDetached('map') && (
+        <div className={styles.mapWrapper}>
+          {canDetach && (
+            <DetachButton
+              data-testid="detach-map-btn"
+              onDetach={() => detach('map')}
+            />
+          )}
+          <RouteMapPanelSelfSufficient />
+        </div>
+      )}
 
       {/* Customer detail panel — opens when a stop/customer is selected */}
       <CustomerDetailPanel
