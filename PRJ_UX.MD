@@ -4778,6 +4778,8 @@ via `PANEL_DETACHED` / `PANEL_REATTACHED` signals.
 
 #### Phase G.3 — Make InboxListPanel self-sufficient (independent data fetching)
 
+> **Status: ✅ DONE** (2026-03-10)
+
 **Goal:** The List panel fetches its own candidates, filter state, and scoring
 rules via NATS. It no longer depends on `PlanningInboxInner` for data.
 
