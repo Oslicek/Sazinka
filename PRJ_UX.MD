@@ -4940,6 +4940,8 @@ Only Map is detachable on Plan (RouteList is not detachable, Detail+Timeline sta
 
 #### Phase G.6 — DetachedPanelPage: NATS bootstrap for standalone windows
 
+> **Status: ✅ DONE** (2026-03-10)
+
 **Goal:** The `/panel/:panelId` route bootstraps a standalone panel with its
 own NATS connection, auth, and signal channel.
 
