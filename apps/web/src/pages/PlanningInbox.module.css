@@ -1129,16 +1129,37 @@
   }
 }
 
-/* ── Map FAB (floating action button) ───────────────────────────────────── */
+/* ── Map header button (mobile only) ────────────────────────────────────── */
 
-.mapFab {
-  display: none; /* shown only on mobile via media query below */
+.mapHeaderButton {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-primary);
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s;
+  flex-shrink: 0;
 }
 
-/* ── Map overlay (full-screen) ───────────────────────────────────────────── */
+.mapHeaderButton:hover {
+  background-color: var(--color-bg-secondary);
+}
+
+.mapHeaderButton:active {
+  background-color: var(--color-border);
+}
+
+/* ── Map overlay (full-screen, mobile only) ──────────────────────────────── */
 
 .mapOverlay {
-  display: none; /* shown only on mobile via media query below */
+  display: none;
 }
 
 /* ── Mobile / tablet responsive (≤ 1023px) ──────────────────────────────── */
@@ -1184,35 +1205,6 @@
   .candidateCard,
   .candidateRow {
     padding: 0.75rem;
-  }
-
-  /* Map FAB */
-  .mapFab {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: fixed;
-    bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
-    right: 1.25rem;
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    border: none;
-    background-color: var(--color-primary);
-    color: white;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-    cursor: pointer;
-    z-index: 200;
-    transition: background-color 0.15s, transform 0.15s;
-  }
-
-  .mapFab:hover {
-    background-color: var(--color-primary-dark);
-    transform: scale(1.05);
-  }
-
-  .mapFab:active {
-    transform: scale(0.97);
   }
 
   /* Map overlay */

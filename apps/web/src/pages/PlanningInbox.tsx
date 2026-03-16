@@ -2208,11 +2208,15 @@ export function PlanningInbox() {
     enabled: true,
   });
 
-  // Handle candidate selection
+  // Handle candidate selection — scroll to keep selected row visible above sheet
   const handleCandidateSelect = useCallback((id: string) => {
     setSelectedCandidateId(id);
     sessionStorage.setItem('planningInbox.selectedId', id);
-  }, []);
+    if (isMobileUi) {
+      const idx = candidateRowData.findIndex((c) => c.id === id);
+      if (idx >= 0) listRef.current?.scrollToIndex(idx);
+    }
+  }, [isMobileUi, candidateRowData]);
 
   useEffect(() => {
     sessionStorage.setItem('planningInbox.filters', JSON.stringify(filters));
@@ -2896,6 +2900,17 @@ export function PlanningInbox() {
         saveError={saveError}
         onRetry={retrySave}
       />
+      {isMobileUi && (
+        <button
+          type="button"
+          className={styles.mapHeaderButton}
+          onClick={() => setIsMapOverlayOpen(true)}
+          aria-label={t('tab_map')}
+        >
+          <MapIcon size={16} />
+          <span>{t('tab_map')}</span>
+        </button>
+      )}
     </header>
   );
 
@@ -2918,16 +2933,6 @@ export function PlanningInbox() {
         <div className={styles.mobilePanel}>
           {renderInboxList()}
         </div>
-
-        {/* Map FAB */}
-        <button
-          type="button"
-          className={styles.mapFab}
-          onClick={() => setIsMapOverlayOpen(true)}
-          aria-label={t('tab_map')}
-        >
-          <MapIcon size={20} />
-        </button>
 
         {/* Map overlay */}
         {isMapOverlayOpen && (
