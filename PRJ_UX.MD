@@ -4733,6 +4733,8 @@ signal-only channel that carries only coordination IDs.
 
 #### Phase G.2 — DetachState hook (`useDetachState`)
 
+> **Status: ✅ DONE** (2026-03-10)
+
 **Goal:** Track which panels are detached, open/close windows, sync state
 via `PANEL_DETACHED` / `PANEL_REATTACHED` signals.
 
