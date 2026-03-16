@@ -226,39 +226,50 @@ function PlanInner() {
   }, [state.selectedCustomerId]);
 
   // ─── Bridge effects: sync local state → PanelStateContext ─────────
+  // `actions` is a stable ref (useCallback+useMemo), safe to omit from deps.
+  // Context setters bail out when value is referentially equal, preventing loops.
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { actions.setRouteStops(selectedRouteStops); }, [selectedRouteStops]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { actions.setRouteGeometry(routeGeometry); }, [routeGeometry]);
   useEffect(() => {
-    actions.setReturnToDepotLeg(returnToDepotLeg ? {
-      distanceKm: returnToDepotLeg.distanceKm ?? 0,
-      durationMinutes: returnToDepotLeg.durationMinutes ?? 0,
-    } : null);
+    if (!returnToDepotLeg || returnToDepotLeg.distanceKm === null || returnToDepotLeg.durationMinutes === null) {
+      actions.setReturnToDepotLeg(null);
+    } else {
+      actions.setReturnToDepotLeg({ distanceKm: returnToDepotLeg.distanceKm, durationMinutes: returnToDepotLeg.durationMinutes });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [returnToDepotLeg]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { actions.setDepotDeparture(depotDeparture); }, [depotDeparture]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { actions.setRouteWarnings(routeWarnings); }, [routeWarnings]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { actions.setBreakWarnings(breakWarnings); }, [breakWarnings]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { actions.setMetrics(metrics); }, [metrics]);
-  useEffect(() => {
-    actions.setRouteBuffer(routeBufferPercent, routeBufferFixedMinutes);
-  }, [routeBufferPercent, routeBufferFixedMinutes]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { actions.setRouteBuffer(routeBufferPercent, routeBufferFixedMinutes); }, [routeBufferPercent, routeBufferFixedMinutes]);
 
   // Bidirectional sync: selectedRouteId ↔ context
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { actions.selectRoute(selectedRouteId); }, [selectedRouteId]);
   useEffect(() => {
     if (state.selectedRouteId !== selectedRouteId) {
       setSelectedRouteId(state.selectedRouteId);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.selectedRouteId]);
 
   // Bidirectional sync: highlightedSegment ↔ context
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { actions.highlightSegment(highlightedSegment); }, [highlightedSegment]);
   useEffect(() => {
     if (state.highlightedSegment !== highlightedSegment) {
       setHighlightedSegment(state.highlightedSegment);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.highlightedSegment]);
 
   // ─── Load settings (crews, depots, user preferences) ─────────────

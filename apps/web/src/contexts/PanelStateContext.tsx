@@ -56,55 +56,60 @@ export function PanelStateProvider({
   usePanelChannel(enableChannel, state, applyPartial);
 
   const selectCustomer = useCallback((id: string | null) => {
-    setState(s => ({ ...s, selectedCustomerId: id }));
+    setState(s => s.selectedCustomerId === id ? s : { ...s, selectedCustomerId: id });
   }, []);
 
   const selectRoute = useCallback((id: string | null) => {
-    setState(s => ({ ...s, selectedRouteId: id }));
+    setState(s => s.selectedRouteId === id ? s : { ...s, selectedRouteId: id });
   }, []);
 
   const setRouteContext = useCallback((ctx: RouteContext | null) => {
-    setState(s => ({ ...s, routeContext: ctx }));
+    setState(s => s.routeContext === ctx ? s : { ...s, routeContext: ctx });
   }, []);
 
   const setRouteStops = useCallback((stops: SavedRouteStop[]) => {
-    setState(s => ({ ...s, routeStops: stops }));
+    setState(s => s.routeStops === stops ? s : { ...s, routeStops: stops });
   }, []);
 
   const highlightSegment = useCallback((idx: number | null) => {
-    setState(s => ({ ...s, highlightedSegment: idx }));
+    setState(s => s.highlightedSegment === idx ? s : { ...s, highlightedSegment: idx });
   }, []);
 
   const setInsertionPreview = useCallback((preview: MapInsertionPreview | null) => {
-    setState(s => ({ ...s, insertionPreview: preview }));
+    setState(s => s.insertionPreview === preview ? s : { ...s, insertionPreview: preview });
   }, []);
 
   const setRouteGeometry = useCallback((geo: [number, number][]) => {
-    setState(s => ({ ...s, routeGeometry: geo }));
+    setState(s => s.routeGeometry === geo ? s : { ...s, routeGeometry: geo });
   }, []);
 
   const setReturnToDepotLeg = useCallback((leg: ReturnToDepotLeg | null) => {
-    setState(s => ({ ...s, returnToDepotLeg: leg }));
+    setState(s => {
+      if (leg === null && s.returnToDepotLeg === null) return s;
+      if (leg === s.returnToDepotLeg) return s;
+      if (leg && s.returnToDepotLeg && leg.distanceKm === s.returnToDepotLeg.distanceKm && leg.durationMinutes === s.returnToDepotLeg.durationMinutes) return s;
+      return { ...s, returnToDepotLeg: leg };
+    });
   }, []);
 
   const setDepotDeparture = useCallback((dep: string | null) => {
-    setState(s => ({ ...s, depotDeparture: dep }));
+    setState(s => s.depotDeparture === dep ? s : { ...s, depotDeparture: dep });
   }, []);
 
   const setRouteWarnings = useCallback((warnings: RouteWarning[]) => {
-    setState(s => ({ ...s, routeWarnings: warnings }));
+    setState(s => s.routeWarnings === warnings ? s : { ...s, routeWarnings: warnings });
   }, []);
 
   const setBreakWarnings = useCallback((warnings: string[]) => {
-    setState(s => ({ ...s, breakWarnings: warnings }));
+    setState(s => s.breakWarnings === warnings ? s : { ...s, breakWarnings: warnings });
   }, []);
 
   const setMetrics = useCallback((metrics: RouteMetrics | null) => {
-    setState(s => ({ ...s, metrics: metrics }));
+    setState(s => s.metrics === metrics ? s : { ...s, metrics: metrics });
   }, []);
 
   const setRouteBuffer = useCallback((percent: number, fixedMinutes: number) => {
-    setState(s => ({ ...s, routeBufferPercent: percent, routeBufferFixedMinutes: fixedMinutes }));
+    setState(s => s.routeBufferPercent === percent && s.routeBufferFixedMinutes === fixedMinutes ? s : { ...s, routeBufferPercent: percent, routeBufferFixedMinutes: fixedMinutes });
   }, []);
 
   const actions: PanelActions = useMemo(() => ({

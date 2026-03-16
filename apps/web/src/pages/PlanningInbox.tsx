@@ -335,33 +335,36 @@ function PlanningInboxInner() {
   });
 
   // ── Bridge: sync local state → PanelStateContext ─────────────────────────
-  // This allows smart panel components (RouteMapPanel, RouteTimelinePanel, etc.)
-  // to read route data from context without duplicating state.
-  useEffect(() => { actions.setRouteStops(routeStops); }, [actions, routeStops]);
-  useEffect(() => { actions.setRouteContext(context); }, [actions, context]);
-  useEffect(() => { actions.setRouteGeometry(routeGeometry); }, [actions, routeGeometry]);
+  // `actions` is a stable ref (useCallback+useMemo), safe to omit from deps.
+  // Context setters bail out when value is referentially equal, preventing loops.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { actions.setRouteStops(routeStops); }, [routeStops]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { actions.setRouteContext(context); }, [context]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { actions.setRouteGeometry(routeGeometry); }, [routeGeometry]);
   useEffect(() => {
     if (!returnToDepotLeg || returnToDepotLeg.distanceKm === null || returnToDepotLeg.durationMinutes === null) {
       actions.setReturnToDepotLeg(null);
     } else {
       actions.setReturnToDepotLeg({ distanceKm: returnToDepotLeg.distanceKm, durationMinutes: returnToDepotLeg.durationMinutes });
     }
-  }, [actions, returnToDepotLeg]);
-  useEffect(() => { actions.setDepotDeparture(depotDeparture); }, [actions, depotDeparture]);
-  useEffect(() => { actions.setRouteWarnings(routeWarnings); }, [actions, routeWarnings]);
-  useEffect(() => { actions.setBreakWarnings(breakWarnings); }, [actions, breakWarnings]);
-  useEffect(() => { actions.setMetrics(metrics); }, [actions, metrics]);
-  useEffect(() => {
-    actions.setRouteBuffer(routeBufferPercent, routeBufferFixedMinutes);
-  }, [actions, routeBufferPercent, routeBufferFixedMinutes]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [returnToDepotLeg]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { actions.setDepotDeparture(depotDeparture); }, [depotDeparture]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { actions.setRouteWarnings(routeWarnings); }, [routeWarnings]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { actions.setBreakWarnings(breakWarnings); }, [breakWarnings]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { actions.setMetrics(metrics); }, [metrics]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { actions.setRouteBuffer(routeBufferPercent, routeBufferFixedMinutes); }, [routeBufferPercent, routeBufferFixedMinutes]);
 
   // ── Bridge: selectedCandidateId ↔ context.selectedCustomerId ─────────────
-  useEffect(() => {
-    if (state.selectedCustomerId !== selectedCandidateId) {
-      actions.selectCustomer(selectedCandidateId);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCandidateId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { actions.selectCustomer(selectedCandidateId); }, [selectedCandidateId]);
   useEffect(() => {
     if (state.selectedCustomerId !== selectedCandidateId) {
       setSelectedCandidateId(state.selectedCustomerId);
@@ -370,12 +373,8 @@ function PlanningInboxInner() {
   }, [state.selectedCustomerId]);
 
   // ── Bridge: highlightedSegment ↔ context.highlightedSegment ──────────────
-  useEffect(() => {
-    if (state.highlightedSegment !== highlightedSegment) {
-      actions.highlightSegment(highlightedSegment);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [highlightedSegment]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { actions.highlightSegment(highlightedSegment); }, [highlightedSegment]);
   useEffect(() => {
     if (state.highlightedSegment !== highlightedSegment) {
       setHighlightedSegment(state.highlightedSegment);
