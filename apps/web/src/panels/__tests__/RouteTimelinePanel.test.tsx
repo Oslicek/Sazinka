@@ -158,15 +158,21 @@ function renderPanel(
 function makeStop(id: string): SavedRouteStop {
   return {
     id,
+    routeId: 'route-1',
+    revisionId: null,
+    stopOrder: 0,
     customerId: `cust-${id}`,
     customerName: `Customer ${id}`,
     address: '1 Main St',
     customerLat: 50.0,
     customerLng: 14.0,
+    customerPhone: null,
+    customerEmail: null,
     status: 'assigned',
     revisionStatus: null,
     estimatedArrival: null,
     estimatedDeparture: null,
+    scheduledDate: null,
     scheduledTimeStart: null,
     scheduledTimeEnd: null,
     serviceDurationMinutes: 30,
@@ -174,10 +180,9 @@ function makeStop(id: string): SavedRouteStop {
     durationFromPreviousMinutes: null,
     distanceFromPreviousKm: null,
     overrideTravelDurationMinutes: null,
-    stopType: 'stop',
+    stopType: 'customer',
     breakTimeStart: null,
     breakDurationMinutes: null,
-    insertionOrder: 0,
   };
 }
 
@@ -205,7 +210,7 @@ describe('RouteTimelinePanel', () => {
   });
 
   it('passes metrics from state to stats component', () => {
-    const metrics = { travelTimeMin: 60, serviceTimeMin: 30, distanceKm: 40 };
+    const metrics = { travelTimeMin: 60, serviceTimeMin: 30, distanceKm: 40, loadPercent: 80, slackMin: 15, stopCount: 3 };
     renderPanel({ metrics });
     expect(screen.getByTestId('stats-metrics')).toHaveTextContent('has metrics');
   });
@@ -222,7 +227,7 @@ describe('RouteTimelinePanel', () => {
     const { mockActions } = renderPanel({ routeStops: stops });
     fireEvent.click(screen.getByTestId('reorder-btn'));
     expect(mockActions.setRouteStops).toHaveBeenCalledOnce();
-    const reordered = mockActions.setRouteStops.mock.calls[0][0] as SavedRouteStop[];
+    const reordered = (mockActions.setRouteStops as ReturnType<typeof vi.fn>).mock.calls[0][0] as SavedRouteStop[];
     expect(reordered[0].id).toBe('2');
     expect(reordered[1].id).toBe('1');
   });

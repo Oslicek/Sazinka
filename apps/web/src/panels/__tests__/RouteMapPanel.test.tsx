@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, act } from '@testing-library/react';
-import React from 'react';
 import { PanelStateProvider } from '../../contexts/PanelStateContext';
 import { usePanelState } from '../../hooks/usePanelState';
 import { RouteMapPanel } from '../RouteMapPanel';
