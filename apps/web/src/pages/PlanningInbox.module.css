@@ -1242,39 +1242,23 @@
     background-color: var(--color-bg-secondary);
   }
 
-  /* ── Mobile split: list + detail as vertical split ──────────────────────── */
-
-  .mobilePanelFull {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    overflow-x: hidden;
-    display: flex;
-    flex-direction: column;
-  }
+  /* ── Mobile split: list + detail via SplitLayout vertical ────────────── */
 
   .mobileSplitContainer {
     flex: 1;
     min-height: 0;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
   }
 
   .mobileSplitList {
-    flex: 0 0 40%;
-    min-height: 120px;
-    max-height: 50%;
+    height: 100%;
     overflow-y: auto;
     overflow-x: hidden;
     display: flex;
     flex-direction: column;
-    border-bottom: 2px solid var(--color-primary-light, #93c5fd);
   }
 
   .mobileSplitDetail {
-    flex: 1;
-    min-height: 0;
+    height: 100%;
     display: flex;
     flex-direction: column;
     overflow: hidden;

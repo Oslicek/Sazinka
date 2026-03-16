@@ -34,6 +34,7 @@ import {
 } from '../components/planner';
 import { DraftModeBar } from '../components/planner/DraftModeBar';
 import { CollapseButton, ThreePanelLayout } from '../components/common';
+import { SplitLayout } from '../components/layout';
 import { Map as MapIcon } from 'lucide-react';
 import type { SavedRouteStop } from '../services/routeService';
 import { recalculateRoute, type RecalcStopInput } from '../services/routeService';
@@ -2994,35 +2995,47 @@ function PlanningInboxInner() {
   // ── Mobile / tablet: list + inline detail split layout ─────────────────────
   if (isMobileUi) {
     const hasDetail = !!selectedCandidateId;
+
+    const detailPane = (
+      <div className={styles.mobileSplitDetail}>
+        <div className={styles.mobileSplitDetailHeader}>
+          <span className={styles.mobileSplitDetailTitle}>
+            {selectedCandidateDetail?.customerName ?? selectedCandidate?.customerName}
+          </span>
+          <button
+            type="button"
+            className={styles.mobileSplitDetailClose}
+            onClick={handleSheetClose}
+            aria-label="Close"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div className={styles.mobileSplitDetailContent}>
+          {renderDetailPanel()}
+        </div>
+      </div>
+    );
+
     return (
       <div className={`${styles.page} ${styles.pageMobile}`}>
         {pageHeader}
         {breakWarningBanner}
-        <div className={hasDetail ? styles.mobileSplitContainer : styles.mobilePanel}>
-          <div className={hasDetail ? styles.mobileSplitList : styles.mobilePanelFull}>
+        {hasDetail ? (
+          <SplitLayout
+            direction="vertical"
+            left={<div className={styles.mobileSplitList}>{renderInboxList()}</div>}
+            right={detailPane}
+            leftWidth={40}
+            minLeftWidth={20}
+            maxLeftWidth={70}
+            className={styles.mobileSplitContainer}
+          />
+        ) : (
+          <div className={styles.mobilePanel}>
             {renderInboxList()}
           </div>
-          {hasDetail && (
-            <div className={styles.mobileSplitDetail}>
-              <div className={styles.mobileSplitDetailHeader}>
-                <span className={styles.mobileSplitDetailTitle}>
-                  {selectedCandidateDetail?.customerName ?? selectedCandidate?.customerName}
-                </span>
-                <button
-                  type="button"
-                  className={styles.mobileSplitDetailClose}
-                  onClick={handleSheetClose}
-                  aria-label="Close"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                </button>
-              </div>
-              <div className={styles.mobileSplitDetailContent}>
-                {renderDetailPanel()}
-              </div>
-            </div>
-          )}
-        </div>
+        )}
 
         {/* Map overlay */}
         {isMapOverlayOpen && (
