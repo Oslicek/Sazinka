@@ -225,49 +225,63 @@ function PlanInner() {
     if (state.selectedCustomerId) setIsDetailOpen(true);
   }, [state.selectedCustomerId]);
 
-  // ─── Bridge effects: sync local state → PanelStateContext ─────────
-  // `actions` is a stable ref (useCallback+useMemo), safe to omit from deps.
-  // Context setters bail out when value is referentially equal, preventing loops.
+  // ─── Bridge: sync local state → PanelStateContext (single batched effect) ──
+  // Consolidated into one effect to produce at most one context setState per
+  // render cycle, preventing cascading re-renders (React error #185).
+  const actionsRef = useRef(actions);
+  actionsRef.current = actions;
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { actions.setRouteStops(selectedRouteStops); }, [selectedRouteStops]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { actions.setRouteGeometry(routeGeometry); }, [routeGeometry]);
+  const prevBridgeRef = useRef({
+    selectedRouteStops, routeGeometry, returnToDepotLeg,
+    depotDeparture, routeWarnings, breakWarnings, metrics,
+    routeBufferPercent, routeBufferFixedMinutes,
+    selectedRouteId, highlightedSegment,
+  });
+
   useEffect(() => {
-    if (!returnToDepotLeg || returnToDepotLeg.distanceKm === null || returnToDepotLeg.durationMinutes === null) {
-      actions.setReturnToDepotLeg(null);
-    } else {
-      actions.setReturnToDepotLeg({ distanceKm: returnToDepotLeg.distanceKm, durationMinutes: returnToDepotLeg.durationMinutes });
+    const prev = prevBridgeRef.current;
+    const a = actionsRef.current;
+
+    if (prev.selectedRouteStops !== selectedRouteStops) a.setRouteStops(selectedRouteStops);
+    if (prev.routeGeometry !== routeGeometry) a.setRouteGeometry(routeGeometry);
+    if (prev.returnToDepotLeg !== returnToDepotLeg) {
+      if (!returnToDepotLeg || returnToDepotLeg.distanceKm === null || returnToDepotLeg.durationMinutes === null) {
+        a.setReturnToDepotLeg(null);
+      } else {
+        a.setReturnToDepotLeg({ distanceKm: returnToDepotLeg.distanceKm, durationMinutes: returnToDepotLeg.durationMinutes });
+      }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [returnToDepotLeg]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { actions.setDepotDeparture(depotDeparture); }, [depotDeparture]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { actions.setRouteWarnings(routeWarnings); }, [routeWarnings]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { actions.setBreakWarnings(breakWarnings); }, [breakWarnings]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { actions.setMetrics(metrics); }, [metrics]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { actions.setRouteBuffer(routeBufferPercent, routeBufferFixedMinutes); }, [routeBufferPercent, routeBufferFixedMinutes]);
+    if (prev.depotDeparture !== depotDeparture) a.setDepotDeparture(depotDeparture);
+    if (prev.routeWarnings !== routeWarnings) a.setRouteWarnings(routeWarnings);
+    if (prev.breakWarnings !== breakWarnings) a.setBreakWarnings(breakWarnings);
+    if (prev.metrics !== metrics) a.setMetrics(metrics);
+    if (prev.routeBufferPercent !== routeBufferPercent || prev.routeBufferFixedMinutes !== routeBufferFixedMinutes) {
+      a.setRouteBuffer(routeBufferPercent, routeBufferFixedMinutes);
+    }
+    if (prev.selectedRouteId !== selectedRouteId) a.selectRoute(selectedRouteId);
+    if (prev.highlightedSegment !== highlightedSegment) a.highlightSegment(highlightedSegment);
 
-  // Bidirectional sync: selectedRouteId ↔ context
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { actions.selectRoute(selectedRouteId); }, [selectedRouteId]);
+    prevBridgeRef.current = {
+      selectedRouteStops, routeGeometry, returnToDepotLeg,
+      depotDeparture, routeWarnings, breakWarnings, metrics,
+      routeBufferPercent, routeBufferFixedMinutes,
+      selectedRouteId, highlightedSegment,
+    };
+  });
+
+  // Context → local (bidirectional): only when context changes from outside
   useEffect(() => {
-    if (state.selectedRouteId !== selectedRouteId) {
+    if (state.selectedRouteId !== prevBridgeRef.current.selectedRouteId) {
       setSelectedRouteId(state.selectedRouteId);
+      prevBridgeRef.current = { ...prevBridgeRef.current, selectedRouteId: state.selectedRouteId };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.selectedRouteId]);
 
-  // Bidirectional sync: highlightedSegment ↔ context
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { actions.highlightSegment(highlightedSegment); }, [highlightedSegment]);
   useEffect(() => {
-    if (state.highlightedSegment !== highlightedSegment) {
+    if (state.highlightedSegment !== prevBridgeRef.current.highlightedSegment) {
       setHighlightedSegment(state.highlightedSegment);
+      prevBridgeRef.current = { ...prevBridgeRef.current, highlightedSegment: state.highlightedSegment };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.highlightedSegment]);

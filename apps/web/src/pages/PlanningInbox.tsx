@@ -334,50 +334,65 @@ function PlanningInboxInner() {
     enabled: routeStops.length > 0 && !!context,
   });
 
-  // ── Bridge: sync local state → PanelStateContext ─────────────────────────
-  // `actions` is a stable ref (useCallback+useMemo), safe to omit from deps.
-  // Context setters bail out when value is referentially equal, preventing loops.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { actions.setRouteStops(routeStops); }, [routeStops]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { actions.setRouteContext(context); }, [context]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { actions.setRouteGeometry(routeGeometry); }, [routeGeometry]);
-  useEffect(() => {
-    if (!returnToDepotLeg || returnToDepotLeg.distanceKm === null || returnToDepotLeg.durationMinutes === null) {
-      actions.setReturnToDepotLeg(null);
-    } else {
-      actions.setReturnToDepotLeg({ distanceKm: returnToDepotLeg.distanceKm, durationMinutes: returnToDepotLeg.durationMinutes });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [returnToDepotLeg]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { actions.setDepotDeparture(depotDeparture); }, [depotDeparture]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { actions.setRouteWarnings(routeWarnings); }, [routeWarnings]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { actions.setBreakWarnings(breakWarnings); }, [breakWarnings]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { actions.setMetrics(metrics); }, [metrics]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { actions.setRouteBuffer(routeBufferPercent, routeBufferFixedMinutes); }, [routeBufferPercent, routeBufferFixedMinutes]);
+  // ── Bridge: sync local state → PanelStateContext (single batched effect) ──
+  // All one-way and bidirectional syncs are consolidated into one effect to
+  // produce at most one context setState per render cycle, preventing cascading
+  // re-renders that cause React error #185.
+  const actionsRef = useRef(actions);
+  actionsRef.current = actions;
 
-  // ── Bridge: selectedCandidateId ↔ context.selectedCustomerId ─────────────
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { actions.selectCustomer(selectedCandidateId); }, [selectedCandidateId]);
+  const prevBridgeRef = useRef({
+    routeStops, context, routeGeometry, returnToDepotLeg,
+    depotDeparture, routeWarnings, breakWarnings, metrics,
+    routeBufferPercent, routeBufferFixedMinutes,
+    selectedCandidateId, highlightedSegment,
+  });
+
   useEffect(() => {
-    if (state.selectedCustomerId !== selectedCandidateId) {
+    const prev = prevBridgeRef.current;
+    const a = actionsRef.current;
+
+    if (prev.routeStops !== routeStops) a.setRouteStops(routeStops);
+    if (prev.context !== context) a.setRouteContext(context);
+    if (prev.routeGeometry !== routeGeometry) a.setRouteGeometry(routeGeometry);
+    if (prev.returnToDepotLeg !== returnToDepotLeg) {
+      if (!returnToDepotLeg || returnToDepotLeg.distanceKm === null || returnToDepotLeg.durationMinutes === null) {
+        a.setReturnToDepotLeg(null);
+      } else {
+        a.setReturnToDepotLeg({ distanceKm: returnToDepotLeg.distanceKm, durationMinutes: returnToDepotLeg.durationMinutes });
+      }
+    }
+    if (prev.depotDeparture !== depotDeparture) a.setDepotDeparture(depotDeparture);
+    if (prev.routeWarnings !== routeWarnings) a.setRouteWarnings(routeWarnings);
+    if (prev.breakWarnings !== breakWarnings) a.setBreakWarnings(breakWarnings);
+    if (prev.metrics !== metrics) a.setMetrics(metrics);
+    if (prev.routeBufferPercent !== routeBufferPercent || prev.routeBufferFixedMinutes !== routeBufferFixedMinutes) {
+      a.setRouteBuffer(routeBufferPercent, routeBufferFixedMinutes);
+    }
+    if (prev.selectedCandidateId !== selectedCandidateId) a.selectCustomer(selectedCandidateId);
+    if (prev.highlightedSegment !== highlightedSegment) a.highlightSegment(highlightedSegment);
+
+    prevBridgeRef.current = {
+      routeStops, context, routeGeometry, returnToDepotLeg,
+      depotDeparture, routeWarnings, breakWarnings, metrics,
+      routeBufferPercent, routeBufferFixedMinutes,
+      selectedCandidateId, highlightedSegment,
+    };
+  });
+
+  // Context → local (bidirectional): only when context changes from outside
+  useEffect(() => {
+    if (state.selectedCustomerId !== prevBridgeRef.current.selectedCandidateId) {
       setSelectedCandidateId(state.selectedCustomerId);
+      prevBridgeRef.current = { ...prevBridgeRef.current, selectedCandidateId: state.selectedCustomerId };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.selectedCustomerId]);
 
-  // ── Bridge: highlightedSegment ↔ context.highlightedSegment ──────────────
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { actions.highlightSegment(highlightedSegment); }, [highlightedSegment]);
   useEffect(() => {
-    if (state.highlightedSegment !== highlightedSegment) {
+    if (state.highlightedSegment !== prevBridgeRef.current.highlightedSegment) {
       setHighlightedSegment(state.highlightedSegment);
+      prevBridgeRef.current = { ...prevBridgeRef.current, highlightedSegment: state.highlightedSegment };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.highlightedSegment]);
