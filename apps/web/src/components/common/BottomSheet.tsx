@@ -6,11 +6,11 @@ interface BottomSheetProps {
   onClose: () => void;
   title?: ReactNode;
   children: ReactNode;
-  /** Initial snap point height as a fraction of dvh. Default: 0.55 */
+  /** Initial snap point height as a fraction of dvh. Default: 0.7 */
   initialSnap?: number;
 }
 
-const SNAP_HALF = 0.55;
+const SNAP_HALF = 0.7;
 const SNAP_FULL = 0.92;
 const DISMISS_THRESHOLD = 0.25; // fraction of sheet height to trigger dismiss
 
