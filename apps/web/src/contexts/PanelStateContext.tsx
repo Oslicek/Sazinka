@@ -11,6 +11,7 @@ import type {
   RouteWarning,
   RouteMetrics,
 } from '../types/panelState';
+import { usePanelChannel } from '../hooks/usePanelChannel';
 
 export const PanelStateContext = createContext<PanelStateContextValue | null>(null);
 
@@ -35,13 +36,24 @@ const DEFAULT_STATE: PanelState = {
 interface PanelStateProviderProps {
   children: ReactNode;
   activePageContext?: 'inbox' | 'plan';
+  enableChannel?: boolean;
 }
 
-export function PanelStateProvider({ children, activePageContext = 'inbox' }: PanelStateProviderProps) {
+export function PanelStateProvider({
+  children,
+  activePageContext = 'inbox',
+  enableChannel = false,
+}: PanelStateProviderProps) {
   const [state, setState] = useState<PanelState>({
     ...DEFAULT_STATE,
     activePageContext,
   });
+
+  const applyPartial = useCallback((partial: Partial<PanelState>) => {
+    setState(s => ({ ...s, ...partial }));
+  }, []);
+
+  usePanelChannel(enableChannel, state, applyPartial);
 
   const selectCustomer = useCallback((id: string | null) => {
     setState(s => ({ ...s, selectedCustomerId: id }));
