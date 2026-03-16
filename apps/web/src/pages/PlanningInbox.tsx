@@ -356,27 +356,30 @@ function PlanningInboxInner() {
   }, [actions, routeBufferPercent, routeBufferFixedMinutes]);
 
   // ── Bridge: selectedCandidateId ↔ context.selectedCustomerId ─────────────
-  // Local → context (e.g. user clicks inbox list row)
   useEffect(() => {
-    actions.selectCustomer(selectedCandidateId);
-  }, [actions, selectedCandidateId]);
-  // Context → local (e.g. user clicks a stop on the map).
-  // Intentionally omits selectedCandidateId from deps: we only want this to run
-  // when the CONTEXT changes (not when local state changes), to avoid a
-  // feedback loop where both effects fire in the same cycle.
+    if (state.selectedCustomerId !== selectedCandidateId) {
+      actions.selectCustomer(selectedCandidateId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCandidateId]);
   useEffect(() => {
-    setSelectedCandidateId(state.selectedCustomerId);
+    if (state.selectedCustomerId !== selectedCandidateId) {
+      setSelectedCandidateId(state.selectedCustomerId);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.selectedCustomerId]);
 
   // ── Bridge: highlightedSegment ↔ context.highlightedSegment ──────────────
-  // Local → context
   useEffect(() => {
-    actions.highlightSegment(highlightedSegment);
-  }, [actions, highlightedSegment]);
-  // Context → local — same pattern: only deps on context value to avoid loop.
+    if (state.highlightedSegment !== highlightedSegment) {
+      actions.highlightSegment(highlightedSegment);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightedSegment]);
   useEffect(() => {
-    setHighlightedSegment(state.highlightedSegment);
+    if (state.highlightedSegment !== highlightedSegment) {
+      setHighlightedSegment(state.highlightedSegment);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.highlightedSegment]);
   // ─────────────────────────────────────────────────────────────────────────
