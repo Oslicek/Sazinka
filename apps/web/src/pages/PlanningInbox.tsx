@@ -215,6 +215,8 @@ function PlanningInboxInner() {
     }
   });
   const [candidates, setCandidates] = useState<InboxCandidate[]>([]);
+  const candidatesRef = useRef<InboxCandidate[]>([]);
+  candidatesRef.current = candidates;
   const [inboxItemMap, setInboxItemMap] = useState<Map<string, InboxItem>>(new Map());
   const [isLoadingCandidates, setIsLoadingCandidates] = useState(false);
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(() => {
@@ -1458,6 +1460,16 @@ function PlanningInboxInner() {
   }, [triggerRecalculate, currentDepot]);
 
   // Action handlers
+  /** Compute the authoritative scheduled-customer set from the latest candidates ref. */
+  const broadcastScheduleSnapshot = useCallback((excludeCustomerId?: string) => {
+    const ids = candidatesRef.current
+      .filter((c) =>
+        c.customerId !== excludeCustomerId &&
+        (c._scheduled || c.status === 'scheduled' || c.status === 'confirmed'))
+      .map((c) => c.customerId);
+    actions.sendScheduleSnapshot(ids);
+  }, [actions]);
+
   const handleSchedule = useCallback(async (candidateId: string, slot: SlotSuggestion) => {
     const candidate = candidates.find((c) => c.id === candidateId || c.customerId === candidateId);
     if (!candidate) return;
@@ -1512,20 +1524,14 @@ function PlanningInboxInner() {
       // Invalidate route cache since route changed
       incrementRouteVersion();
 
-      // Broadcast authoritative scheduled set to detached panels
-      const newScheduledCustomerIds = candidates
-        .filter((c) => c._scheduled || c.status === 'scheduled' || c.status === 'confirmed')
-        .map((c) => c.customerId);
-      if (!newScheduledCustomerIds.includes(candidate.customerId)) {
-        newScheduledCustomerIds.push(candidate.customerId);
-      }
-      actions.sendScheduleSnapshot(newScheduledCustomerIds);
+      // Broadcast authoritative scheduled set to detached panels (reads from ref for latest state)
+      broadcastScheduleSnapshot();
       
       setHasChanges(true);
     } catch (err) {
       logger.error('Failed to schedule:', err);
     }
-  }, [candidates, actions, incrementRouteVersion, loadDayOverview, triggerRecalculate]);
+  }, [candidates, broadcastScheduleSnapshot, incrementRouteVersion, loadDayOverview, triggerRecalculate]);
   
   // Dismiss confirmation and move on to next candidate
   const handleDismissConfirmation = useCallback(() => {
@@ -1566,7 +1572,7 @@ function PlanningInboxInner() {
       if (candidate.scheduledRevisionCount === 1 && candidate.latestScheduledRevisionId) {
         revisionId = candidate.latestScheduledRevisionId;
       } else if (candidate.scheduledRevisionCount > 1) {
-        logger.error('Cannot unschedule: multiple scheduled revisions for this customer', { customerId: candidate.customerId });
+        window.alert(t('candidate_cancel_appointment_ambiguous'));
         return;
       } else {
         // No revision to unschedule — clear local state only (e.g. only locally scheduled)
@@ -1578,6 +1584,8 @@ function PlanningInboxInner() {
       if (revisionId) {
         await unscheduleRevision({ id: revisionId });
       }
+
+      setSlotSuggestions([]);
 
       // Clear local candidate scheduling state
       setCandidates((prev) =>
@@ -1602,11 +1610,8 @@ function PlanningInboxInner() {
       setReturnToDepotLeg(null);
       incrementRouteVersion();
 
-      // Broadcast authoritative scheduled set to detached panels
-      const newScheduledCustomerIds = candidates
-        .filter((c) => c.id !== candidate.id && (c._scheduled || c.status === 'scheduled' || c.status === 'confirmed'))
-        .map((c) => c.customerId);
-      actions.sendScheduleSnapshot(newScheduledCustomerIds);
+      // Broadcast authoritative scheduled set to detached panels (reads from ref for latest state)
+      broadcastScheduleSnapshot(candidate.customerId);
 
       if (remainingStops.length > 0) {
         triggerRecalculate(remainingStops);
@@ -1615,7 +1620,7 @@ function PlanningInboxInner() {
     } catch (err) {
       logger.error('Failed to unschedule revision:', err);
     }
-  }, [candidates, routeStops, actions, incrementRouteVersion, triggerRecalculate]);
+  }, [candidates, routeStops, broadcastScheduleSnapshot, incrementRouteVersion, triggerRecalculate]);
 
   const handleSnooze = useCallback(async (candidateId: string, days: number) => {
     const candidate = candidates.find((c) => c.id === candidateId || c.customerId === candidateId);

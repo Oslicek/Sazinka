@@ -752,7 +752,7 @@ fn build_unschedule_revision_sql() -> String {
         UPDATE revisions
         SET scheduled_date = NULL, scheduled_time_start = NULL, scheduled_time_end = NULL,
             assigned_crew_id = NULL, status = 'upcoming', updated_at = NOW()
-        WHERE id = $1 AND user_id = $2 AND status IN ('scheduled', 'confirmed')
+        WHERE id = $1 AND user_id = $2 AND status IN ('upcoming', 'scheduled', 'confirmed')
         RETURNING {}
         "#,
         REVISION_COLS_SIMPLE
@@ -792,8 +792,17 @@ mod unschedule_tests {
     fn unschedule_sql_has_status_guard() {
         let sql = build_unschedule_revision_sql();
         assert!(
-            sql.contains("status IN ('scheduled', 'confirmed')"),
-            "must guard against non-scheduled revisions"
+            sql.contains("status IN ('upcoming', 'scheduled', 'confirmed')"),
+            "must accept upcoming (idempotent no-op), scheduled, and confirmed"
+        );
+    }
+
+    #[test]
+    fn unschedule_sql_rejects_completed_and_cancelled() {
+        let sql = build_unschedule_revision_sql();
+        assert!(
+            !sql.contains("'completed'") && !sql.contains("'cancelled'"),
+            "must not allow unscheduling completed or cancelled revisions"
         );
     }
 

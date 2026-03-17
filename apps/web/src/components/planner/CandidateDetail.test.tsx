@@ -359,5 +359,34 @@ describe('CandidateDetail', () => {
       fireEvent.click(screen.getByRole('button', { name: /candidate_cancel_appointment/i }));
       expect(onUnschedule).not.toHaveBeenCalled();
     });
+
+    it('disables button while unschedule is in progress (double-click protection)', async () => {
+      let resolveUnschedule: () => void;
+      const onUnschedule = vi.fn(() => new Promise<void>((resolve) => { resolveUnschedule = resolve; }));
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+      render(
+        <CandidateDetail
+          candidate={scheduledCandidate}
+          onUnschedule={onUnschedule}
+          {...mockHandlers}
+        />
+      );
+
+      const button = screen.getByRole('button', { name: /candidate_cancel_appointment/i });
+      expect(button).not.toBeDisabled();
+
+      fireEvent.click(button);
+      expect(onUnschedule).toHaveBeenCalledTimes(1);
+
+      await waitFor(() => {
+        expect(button).toBeDisabled();
+      });
+
+      resolveUnschedule!();
+      await waitFor(() => {
+        expect(button).not.toBeDisabled();
+      });
+    });
   });
 });

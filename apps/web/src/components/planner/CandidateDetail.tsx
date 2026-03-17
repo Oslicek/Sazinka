@@ -81,7 +81,7 @@ interface CandidateDetailProps {
   /** Abandon this customer (remove from inbox) */
   onAbandon?: (customerId: string) => Promise<void>;
   /** Cancel (unschedule) the agreed appointment, reverting the revision to 'upcoming' */
-  onUnschedule?: (candidateId: string) => void;
+  onUnschedule?: (candidateId: string) => void | Promise<void>;
 }
 
 export function CandidateDetail({
@@ -126,6 +126,9 @@ export function CandidateDetail({
     const saved = localStorage.getItem('sazinka.snooze.defaultDays');
     return (saved ? parseInt(saved) : 7) as SnoozeDuration;
   });
+
+  // Unschedule loading guard
+  const [isUnscheduling, setIsUnscheduling] = useState(false);
 
   // Devices and visits
   const [devices, setDevices] = useState<Device[]>([]);
@@ -430,9 +433,15 @@ export function CandidateDetail({
               <button
                 type="button"
                 className={styles.unscheduleButton}
-                onClick={() => {
+                disabled={isUnscheduling}
+                onClick={async () => {
                   if (window.confirm(t('candidate_cancel_appointment_confirm'))) {
-                    onUnschedule(candidate.id);
+                    setIsUnscheduling(true);
+                    try {
+                      await onUnschedule(candidate.id);
+                    } finally {
+                      setIsUnscheduling(false);
+                    }
                   }
                 }}
               >

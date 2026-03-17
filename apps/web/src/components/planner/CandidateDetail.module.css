@@ -1049,8 +1049,13 @@
   transition: background 0.15s;
 }
 
-.unscheduleButton:hover {
+.unscheduleButton:hover:not(:disabled) {
   background: var(--color-danger-bg, #fef2f2);
+}
+
+.unscheduleButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ── Score chip + breakdown ──────────────────────────────────────────────── */

@@ -461,5 +461,23 @@ describe('revisionService', () => {
         'Revision not found or not currently scheduled'
       );
     });
+
+    it('should throw when backend returns DATABASE_ERROR', async () => {
+      mockRequest.mockResolvedValueOnce({
+        error: { code: 'DATABASE_ERROR', message: 'Query failed' },
+      });
+
+      await expect(unscheduleRevision({ id: 'rev-1' }, mockDeps)).rejects.toThrow('Query failed');
+    });
+
+    it('should verify all scheduling fields are null in response', async () => {
+      mockRequest.mockResolvedValueOnce({ payload: unscheduledRevision });
+
+      const result = await unscheduleRevision({ id: 'rev-1' }, mockDeps);
+
+      expect(result.scheduledDate).toBeNull();
+      expect(result.scheduledTimeStart).toBeNull();
+      expect(result.scheduledTimeEnd).toBeNull();
+    });
   });
 });

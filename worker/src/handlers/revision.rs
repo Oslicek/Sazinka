@@ -899,7 +899,7 @@ pub async fn handle_schedule(
             request.payload.duration_minutes,
         ).await {
             Ok(Some(revision)) => {
-                info!("Successfully scheduled revision {} for {}", revision.id, revision.scheduled_date.unwrap());
+                info!("Successfully scheduled revision {} for {}", revision.id, revision.scheduled_date.map(|d| d.to_string()).unwrap_or_else(|| "unknown".to_string()));
                 let response = SuccessResponse::new(request.id, revision);
                 let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
             }

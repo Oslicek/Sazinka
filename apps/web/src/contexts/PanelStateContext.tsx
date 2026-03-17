@@ -118,7 +118,9 @@ export function PanelStateProvider({
     const inRouteCustomerIds = stops
       .map(st => st.customerId)
       .filter((id): id is string => id !== null);
-    const scheduledCustomerIds = stops
+    // Prefer the authoritative snapshot (includes candidates scheduled outside the route)
+    // over the route-stop-derived set (which misses inbox-only scheduling)
+    const scheduledCustomerIds = s.lastScheduledSnapshot ?? stops
       .filter(st =>
         st.customerId !== null &&
         (st.scheduledTimeStart !== null ||
@@ -179,6 +181,7 @@ export function PanelStateProvider({
   }, [isSourceOfTruth, enableChannel]);
 
   const sendScheduleSnapshot = useCallback((scheduledCustomerIds: string[]) => {
+    setState(s => ({ ...s, lastScheduledSnapshot: scheduledCustomerIds }));
     if (isSourceOfTruth && enableChannel) {
       sendSignalRef.current({ type: 'SCHEDULE_SNAPSHOT', scheduledCustomerIds });
     }

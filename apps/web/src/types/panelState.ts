@@ -46,6 +46,8 @@ export interface PanelState {
   remoteInRouteIds?: string[];
   /** Scheduled customer IDs received via ROUTE_DATA_CHANGED signal (detached panels) */
   remoteScheduledIds?: string[];
+  /** Last-known authoritative scheduled IDs (set by source-of-truth window for getSnapshot) */
+  lastScheduledSnapshot?: string[];
 }
 
 export interface PanelActions {
