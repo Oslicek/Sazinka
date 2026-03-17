@@ -49,6 +49,10 @@ export function inboxItemToCallQueueItem(item: InboxItem): CallQueueItem {
 }
 
 export function inboxResponseToCallQueueResponse(resp: InboxResponse): CallQueueResponse {
+  // #region agent log
+  const scheduled = resp.items.filter(i => i.revisionStatus === 'scheduled' || i.revisionStatus === 'confirmed');
+  fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2ba648'},body:JSON.stringify({sessionId:'2ba648',location:'inboxAdapter.ts:response',message:'inbox response stats',data:{totalItems:resp.items.length,scheduledCount:scheduled.length,sampleStatuses:resp.items.slice(0,3).map(i=>({id:i.id,revStatus:i.revisionStatus}))},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
   return {
     items: resp.items.map(inboxItemToCallQueueItem),
     total: resp.total,

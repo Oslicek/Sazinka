@@ -91,6 +91,9 @@ export function PanelStateProvider({
         }));
         break;
       case 'ROUTE_DATA_CHANGED':
+        // #region agent log
+        fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2ba648'},body:JSON.stringify({sessionId:'2ba648',location:'PanelStateContext.tsx:ROUTE_DATA_CHANGED-received',message:'signal received',data:{inRouteCustomerIds:signal.inRouteCustomerIds,scheduledCustomerIds:signal.scheduledCustomerIds},timestamp:Date.now(),hypothesisId:'B,D'})}).catch(()=>{});
+        // #endregion
         setState(s => ({
           ...s,
           routeDataVersion: (s.routeDataVersion ?? 0) + 1,
