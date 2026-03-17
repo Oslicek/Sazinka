@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-02-24 (v0.19.3 - Edge-side root redirect via Cloudflare Pages Function)
+> **Last Updated:** 2026-03-17 (v0.20.0 - Unschedule visit feature: cancel agreed appointment, revert to upcoming)
 
 ## Overview
 
@@ -1530,6 +1530,19 @@ cargo test
 - MVP focuses on core CRM + route planning
 - Email notifications deferred to later phase
 - Invoicing/billing architecture prepared but not implemented
+
+## Recent Changes (v0.20.0)
+
+- **Unschedule visit feature (Phase 7):**
+  - New NATS handler `sazinka.revision.unschedule` (`worker/src/handlers/revision.rs`) — clears scheduling fields, reverts revision status to `upcoming`; guarded by `status IN ('scheduled','confirmed')`
+  - Inbox query extended with `latest_scheduled_revision_id` and `scheduled_revision_count` subqueries so the frontend can resolve the exact revision to unschedule without an extra round-trip
+  - Rust types, shared TypeScript `InboxItem`, `CallQueueItem`, and `inboxAdapter.ts` all updated
+  - Frontend service `unscheduleRevision` added to `revisionService.ts`
+  - "Zrušit termín" button in `CandidateDetail` — visible only when candidate `isScheduled` and `onUnschedule` prop provided; requires confirm dialog before firing
+  - `handleUnschedule` in `PlanningInbox` — resolves revision ID (route stop revisionId → `latestScheduledRevisionId` when count=1 → block on ambiguity), calls backend, clears local candidate state, removes route stop
+  - `SCHEDULE_SNAPSHOT` signal introduced — replaces the old accumulate-on-`ROUTE_DATA_CHANGED` pattern; main window broadcasts full scheduled-customer set after every schedule/unschedule; detached panels **replace** (not union) their `remoteScheduledIds`
+  - i18n keys `candidate_cancel_appointment` and `candidate_cancel_appointment_confirm` added to cs/en/sk
+  - 4 Rust SQL-structure unit tests; adapter tests extended; service tests extended; CandidateDetail component tests added
 
 ## Recent Changes (v0.19.4)
 

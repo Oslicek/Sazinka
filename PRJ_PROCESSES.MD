@@ -1,7 +1,7 @@
 # Business Processes & Customer Lifecycle
 
 > **Status**: Phases 1-6, Phase 4A and Phase 4B complete.  
-> **Last-Modified**: 2026-03-11
+> **Last-Modified**: 2026-03-10
 
 | Phase | Status | Notes |
 |---|---|---|
@@ -13,6 +13,7 @@
 | **Phase 4B: Default scoring profile** | ✅ Complete | New factors (lifecycle_rank, days_until_due, customer_age_days); `is_system` column; seed default profile on onboarding; backfill existing; block delete + restore defaults; remove hardcoded sort; auto-select default in inbox |
 | Phase 5: Cleanup | ✅ Complete | Dual-write: revision snooze → planned_action, communication follow_up → planned_action; migration 034 (guarded drop) |
 | Phase 6: Tasks model | ✅ Complete | task_types/tasks tables (035), backfill from revisions (036), Rust Task/TaskType types+queries, NATS handlers, shared TS types; migrations 037 (guarded drop) |
+| **Phase 7: Unschedule visit** | ✅ Complete | Cancel a scheduled visit without requiring a new date/time; revision reverts to `upcoming`; customer returns to inbox |
 
 ---
 
@@ -1776,15 +1777,284 @@ Provide mock implementations of `getInbox`, `createPlannedAction`, `abandonCusto
 | **Phase 4B** | **P4B-01 to P4B-08** | **8 tickets — default scoring profile (new factors, seed on onboarding, backfill, is_system guard, restore defaults, remove hardcoded sort, auto-select, frontend cleanup)** |
 | Phase 5 | P5-01 to P5-05 | 5 tickets — legacy cleanup |
 | Phase 6 | P6-01 to P6-08 | 8 tickets — tasks model |
+| **Phase 7** | **P7-01 to P7-08** | **8 tickets — unschedule visit (backend handler, frontend service, UI button, detached panel sync)** |
 | Cross-cutting | T-01, T-02 | 2 tickets — test infrastructure |
-| **Total** | **69 tickets** | |
+| **Total** | **77 tickets** | |
 
 ---
 
-## 8. Glossary
+## 8. Phase 7: Unschedule Visit
+
+### 8.1 Problem
+
+Once a visit is scheduled (`revision.status = 'scheduled'` or `'confirmed'`), the dispatcher can change the date/time but cannot simply **cancel the appointment** without setting a new one. This is a gap: the customer may have cancelled, become unreachable, or the visit may no longer be needed on that date. The dispatcher needs a way to remove the scheduled visit so the customer returns to the inbox for later handling (reschedule, snooze, abandon, or delete).
+
+### 8.2 Design
+
+**Semantics**: The *revision* (obligation to inspect a device) still exists — it is the *visit appointment* that is being deleted. The revision reverts from `scheduled`/`confirmed` to `upcoming` with all scheduling fields cleared. The customer reappears in the inbox as needing attention.
+
+**Phase 7 scope decision (explicit)**:
+- Inbox unschedule acts on exactly **one** revision appointment.
+- Revision ID resolution order:
+  1. If customer is in route and stop has `revisionId`, use that `revisionId`.
+  2. Otherwise use inbox-provided `latestScheduledRevisionId` **only when** `scheduledRevisionCount === 1`.
+  3. If `scheduledRevisionCount > 1`, block unschedule in Inbox and direct dispatcher to revision list/detail where a specific revision can be selected.
+
+**Idempotency contract**:
+- Calling unschedule on a revision already in `upcoming` is a **success** (no-op, same resulting state).
+- Calling unschedule on `completed`/`cancelled` is rejected with a domain error.
+
+**State transition**:
+
+```
+scheduled ──► upcoming   (scheduling fields cleared)
+confirmed ──► upcoming   (scheduling fields cleared)
+```
+
+**Fields cleared on unschedule**:
+- `scheduled_date` → NULL
+- `scheduled_time_start` → NULL
+- `scheduled_time_end` → NULL
+- `assigned_crew_id` → NULL
+- `status` → `'upcoming'`
+
+**Deterministic route behavior**:
+- Unscheduling always auto-removes that customer stop from the current route (if present) and triggers recalculation.
+- There is no optional prompt/branching for route membership in Phase 7; behavior must be deterministic.
+
+**Authoritative state contract (attached + detached queues)**:
+- `isInRoute` source of truth: route stops in the source-of-truth window.
+- `isScheduled` source of truth: full scheduled-customer snapshot from source-of-truth window.
+- Detached windows **replace** `remoteScheduledIds` from full snapshot payloads (never union/accumulate stale values).
+
+**Side effects**:
+- The existing `planned_action` for this customer remains `open` — the customer stays in the inbox.
+- If unschedule removes the last agreed visit and no callback is created, lifecycle transitions follow existing inbox rules (`needs_action`/`active`) based on current planned actions and communications.
+- The `InboxItem.revisionStatus` field (added in the inbox query) will reflect `NULL` after unscheduling, so the visit icon disappears correctly.
+
+**What this is NOT**:
+- This is not `cancelled` — cancellation means the obligation itself is permanently dismissed.
+- This is not `completed` — the work was never performed.
+- This is not delete — the revision record persists with its `due_date` and history.
+
+### 8.3 Current Implementation Status
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| SQL query `unschedule_revision` | ✅ Done | `worker/src/db/queries/revision.rs` — clears scheduling fields, guard `status IN ('scheduled','confirmed')` |
+| Rust handler `handle_unschedule` | ✅ Done | `worker/src/handlers/revision.rs` — handles `sazinka.revision.unschedule` |
+| Handler registration in `mod.rs` | ✅ Done | Fully wired with pool/jwt_secret clone, tokio::spawn, select! join |
+| Rust unit tests (P7-02) | ✅ Done | 4 SQL-structure tests in `unschedule_tests` module |
+| `latestScheduledRevisionId` + `scheduledRevisionCount` in inbox query | ✅ Done | `worker/src/db/queries/planned_action.rs` — subqueries added |
+| `InboxItem` Rust + TS types | ✅ Done | `worker/src/types/inbox.rs`, `packages/shared-types/src/inbox.ts` |
+| `CallQueueItem` + `inboxAdapter.ts` | ✅ Done | New fields in `revisionService.ts` + adapter mapping + adapter tests |
+| Frontend service `unscheduleRevision` | ✅ Done | `apps/web/src/services/revisionService.ts` — `UnscheduleRevisionRequest` + function + tests |
+| i18n keys | ✅ Done | `candidate_cancel_appointment` + `candidate_cancel_appointment_confirm` in cs/en/sk |
+| UI button "Zrušit termín" | ✅ Done | `apps/web/src/components/planner/CandidateDetail.tsx` — `onUnschedule` prop, confirm dialog, tests |
+| PlanningInbox handler | ✅ Done | `apps/web/src/pages/PlanningInbox.tsx` — `handleUnschedule` with revision ID resolution, route cleanup, `SCHEDULE_SNAPSHOT` broadcast |
+| Detached panel sync (P7-08) | ✅ Done | `SCHEDULE_SNAPSHOT` signal replaces accumulate logic; `sendScheduleSnapshot` emitted after schedule/unschedule |
+| Documentation | ✅ Done | This section |
+
+### 8.4 TDD Implementation Plan
+
+Each ticket follows **Red → Green → Refactor → Update docs → Commit**.
+
+---
+
+#### P7-01 `[B]` Finish handler registration in `mod.rs`
+
+**File**: `worker/src/handlers/mod.rs`
+
+**What**: Complete the wiring for `handle_unschedule`:
+- Add `pool_revision_unschedule = pool.clone()`
+- Add `jwt_secret_revision_unschedule = Arc::clone(&jwt_secret)`
+- Add `let revision_unschedule_handle = tokio::spawn(async move { revision::handle_unschedule(...).await })`
+- Add `revision_unschedule_handle.boxed()` to the `select!` join
+
+**Test (Red)**: Add an automated failing integration test that publishes `sazinka.revision.unschedule` and asserts:
+1. valid request returns success payload,
+2. unauthorized request returns `UNAUTHORIZED`,
+3. malformed request returns `INVALID_REQUEST`.
+
+**Green**: Wire the remaining clone/spawn/join lines following the exact pattern of `revision_schedule`.
+
+---
+
+#### P7-02 `[B]` Rust unit test for `unschedule_revision` query
+
+**File**: `worker/src/db/queries/revision.rs` (test module)
+
+**Test (Red)**:
+1. Create a revision with `status = 'scheduled'`, `scheduled_date`, `scheduled_time_start`, `scheduled_time_end`, `assigned_crew_id`.
+2. Call `unschedule_revision(pool, user_id, revision_id)`.
+3. Assert returned revision has `status = 'upcoming'`, all scheduling fields are `None`.
+4. Call `unschedule_revision` again on the same (now `upcoming`) revision → assert success (idempotent no-op) with `status = 'upcoming'`.
+5. Create a `completed` revision → call unschedule → assert domain error `INVALID_STATE`.
+
+**Green**: The query is already written; this ticket only adds the test.
+
+---
+
+#### P7-03 `[F]` Frontend service: `unscheduleRevision`
+
+**File**: `apps/web/src/services/revisionService.ts`
+
+**What**: Add `UnscheduleRevisionRequest` interface (only `id: string`) and `unscheduleRevision` function calling `sazinka.revision.unschedule`.
+
+**Test (Red)**: Unit test in `revisionService.test.ts`:
+1. Mock NATS request.
+2. Call `unscheduleRevision({ id: 'rev-1' })`.
+3. Assert NATS subject is `sazinka.revision.unschedule` and payload contains `id`.
+4. Assert returned revision has `status: 'upcoming'`.
+
+**Green**: Implement the function following the `scheduleRevision` pattern.
+
+---
+
+#### P7-04 `[F]` i18n keys for unschedule action
+
+**Files**: `apps/web/public/locales/{cs,en,sk}/planner.json`
+
+**What**: Add keys:
+- `candidate_cancel_appointment`: "Zrušit termín" / "Cancel appointment" / "Zrušiť termín"
+- `candidate_cancel_appointment_confirm`: "Opravdu zrušit domluvený termín?" / "Really cancel the agreed appointment?" / "Naozaj zrušiť dohodnutý termín?"
+
+**Test (Red)**: i18n completeness test (if exists) should flag missing keys.
+
+**Green**: Add the keys to all three locale files.
+
+---
+
+#### P7-05 `[F]` UI: "Zrušit termín" button in `CandidateDetail.tsx`
+
+**File**: `apps/web/src/components/planner/CandidateDetail.tsx`
+
+**What**: Add a new prop `onUnschedule?: (candidateId: string) => void` and render a button when `candidate.isScheduled` is true.
+
+**Placement**: In the "Domluvený termín" section (below the scheduled date/time display), alongside "Změnit termín". The button should be a destructive-style action (red/warning).
+
+**Confirmation**: Before calling `onUnschedule`, show a simple confirm dialog using `candidate_cancel_appointment_confirm`.
+
+**Test (Red)**: Component test in `CandidateDetail.test.tsx`:
+1. Render with a scheduled candidate and `onUnschedule` mock.
+2. Assert button with text "Zrušit termín" is visible.
+3. Click button → confirm dialog appears.
+4. Confirm → assert `onUnschedule` called with candidate ID.
+5. Render with non-scheduled candidate → assert button is NOT visible.
+
+**Green**: Add the prop, button, and confirmation logic.
+
+---
+
+#### P7-06 `[F]` `handleUnschedule` in `PlanningInbox.tsx`
+
+**File**: `apps/web/src/pages/PlanningInbox.tsx`
+
+**What**: Implement `handleUnschedule(candidateId: string)` that:
+1. Resolves a **single** revision ID using the scope contract:
+   - route stop `revisionId` when present,
+   - else `latestScheduledRevisionId` only when `scheduledRevisionCount === 1`,
+   - else block action with explicit user-facing error (multiple scheduled revisions ambiguity).
+2. Calls `unscheduleRevision({ id: revisionId })` on the backend.
+3. Updates local candidate state: clears `_scheduled`, `_scheduledDate`, `_scheduledTimeStart`, `_scheduledTimeEnd`, sets `status: 'upcoming'`.
+4. Removes matching customer from route stops and triggers recalculation (deterministic route behavior).
+5. Emits route + schedule synchronization signals so detached panels update immediately.
+
+**Test (Red)**: Integration test:
+1. Setup: candidate with `_scheduled: true`, route stop with `revisionId`.
+2. Call `handleUnschedule(candidateId)`.
+3. Assert `unscheduleRevision` was called with correct revision ID.
+4. Assert candidate state updated (status: 'upcoming', scheduling fields cleared).
+5. Assert customer stop removed from route and recalculation triggered.
+6. Ambiguity case: `scheduledRevisionCount > 1` and no route stop `revisionId` → assert API not called and user-facing error shown.
+
+**Green**: Implement the handler, wire it to `CandidateDetail`'s `onUnschedule` prop.
+
+---
+
+#### P7-07 `[B]` Add `latestScheduledRevisionId` + `scheduledRevisionCount` to inbox query
+
+**Files**:
+- `worker/src/db/queries/planned_action.rs` — add subqueries to `get_customer_inbox`
+- `worker/src/types/inbox.rs` — add field to `InboxItem`
+- `packages/shared-types/src/inbox.ts` — add field to `InboxItem`
+- `apps/web/src/services/inboxAdapter.ts` — map to `CallQueueItem`
+
+**What**: Add:
+1. a subquery that returns the ID of the latest `scheduled` or `confirmed` revision for each customer:
+```sql
+(SELECT rev.id
+ FROM revisions rev
+ WHERE rev.customer_id = c.id
+   AND rev.status IN ('scheduled', 'confirmed')
+ ORDER BY rev.scheduled_date DESC NULLS LAST
+ LIMIT 1) AS latest_scheduled_revision_id
+```
+2. a subquery that returns count of scheduled/confirmed revisions for ambiguity handling:
+```sql
+(SELECT COUNT(*)
+ FROM revisions rev
+ WHERE rev.customer_id = c.id
+   AND rev.status IN ('scheduled', 'confirmed'))::bigint AS scheduled_revision_count
+```
+
+This gives `handleUnschedule` deterministic revision resolution without an extra backend call.
+
+**Test (Red)**: Adapter test:
+1. InboxItem with `latestScheduledRevisionId: 'rev-1'` and `scheduledRevisionCount: 1` → mapped fields preserved.
+2. InboxItem with `latestScheduledRevisionId: null` and `scheduledRevisionCount: 0` → mapped fields preserved.
+3. InboxItem with `scheduledRevisionCount: 2` → ambiguity path tested in `handleUnschedule`.
+
+**Green**: Add subqueries, Rust/TS fields, and adapter mapping.
+
+---
+
+#### P7-08 `[F]` Detached panel: authoritative schedule snapshot propagation
+
+**File**: `apps/web/src/panels/InboxListPanel.tsx`, `apps/web/src/contexts/PanelStateContext.tsx`
+
+**What**:
+1. Introduce a dedicated schedule signal (`SCHEDULE_SNAPSHOT`) carrying the **full** `scheduledCustomerIds` set from source-of-truth window.
+2. Emit `SCHEDULE_SNAPSHOT`:
+   - on detached panel snapshot/bootstrap,
+   - after schedule/unschedule actions.
+3. Detached panel replaces `remoteScheduledIds` from incoming snapshot payload (no accumulate/union logic).
+4. Keep `ROUTE_DATA_CHANGED` focused on route membership/route data only.
+
+**Test (Red)**: Detach test:
+1. Detach panel with a scheduled candidate.
+2. Unschedule in main window.
+3. Assert visit icon disappears in detached panel.
+4. Re-schedule candidate in main window.
+5. Assert visit icon appears again in detached panel.
+6. Ensure route icon toggles independently from visit icon.
+
+**Green**: Implement signal propagation.
+
+---
+
+### 8.5 Ticket Summary
+
+| Ticket | Layer | Description |
+|--------|-------|-------------|
+| P7-01 | Backend | Finish handler registration in `mod.rs` |
+| P7-02 | Backend | Rust unit test for `unschedule_revision` query |
+| P7-03 | Frontend | `unscheduleRevision` service function |
+| P7-04 | Frontend | i18n keys (cs/en/sk) |
+| P7-05 | Frontend | "Zrušit termín" button in `CandidateDetail.tsx` |
+| P7-06 | Frontend | `handleUnschedule` in `PlanningInbox.tsx` |
+| P7-07 | Full-stack | `latestScheduledRevisionId` + `scheduledRevisionCount` in inbox query + types + adapter |
+| P7-08 | Frontend | Authoritative schedule snapshot propagation for detached panels |
+
+**Dependency order**: P7-01 → P7-02 → P7-03 → P7-04 → P7-07 → P7-05 → P7-06 → P7-08
+
+---
+
+## 9. Glossary
 
 | Term | Definition |
 |---|---|
+| **Unschedule** | Reverting a scheduled/confirmed revision to `upcoming` by clearing all scheduling fields. The revision (obligation) still exists; only the appointment is removed. The customer returns to the inbox for later handling. |
 | **Planned action** | A scheduled unit in the dispatcher queue (due date, status, snooze, note), linked to exactly one `action_target`. |
 | **Lifecycle state** | Classification of where a customer sits: untouched, needs_action, active, abandoned, deleted. Stored (abandoned, deleted) or computed from communications and planned_actions. |
 | **Inbox** | The dispatcher's work queue. Shows customers ordered by urgency, filtered by lifecycle state and action due dates. |
