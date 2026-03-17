@@ -105,7 +105,7 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
   const { isConnected } = useNatsStore();
 
   // #region agent log
-  fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2ba648'},body:JSON.stringify({sessionId:'2ba648',location:'InboxListPanel.tsx:mount',message:'InboxListPanel render',data:{stateRouteStopsLen:state.routeStops.length,cacheRawLen:_cache.rawCandidates.length,routeStopsSample:state.routeStops.slice(0,3).map(s=>({cid:s.customerId,schedStart:s.scheduledTimeStart,revStatus:s.revisionStatus}))},timestamp:Date.now()})}).catch(()=>{});
+  console.log('[DBG-2ba648] InboxListPanel render',JSON.stringify({stateRouteStopsLen:state.routeStops.length,cacheRawLen:_cache.rawCandidates.length,routeStopsSample:state.routeStops.slice(0,3).map(s=>({cid:s.customerId,schedStart:s.scheduledTimeStart,revStatus:s.revisionStatus}))}));
   // #endregion
 
   const [rawCandidates, setRawCandidatesState] = useState<CallQueueItem[]>(_cache.rawCandidates);
@@ -216,7 +216,7 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
          s.revisionStatus === 'confirmed'));
       const ids = new Set<string>(matching.map((s) => s.customerId as string));
       // #region agent log
-      fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2ba648'},body:JSON.stringify({sessionId:'2ba648',location:'InboxListPanel.tsx:scheduledIds',message:'scheduledIds computed',data:{routeStopsLen:routeStops.length,matchingLen:matching.length,scheduledIdsArr:[...ids],allStopsSchedulingInfo:routeStops.map(s=>({cid:s.customerId,schedStart:s.scheduledTimeStart,schedEnd:s.scheduledTimeEnd,revStatus:s.revisionStatus}))},timestamp:Date.now()})}).catch(()=>{});
+      console.log('[DBG-2ba648] scheduledIds computed',JSON.stringify({routeStopsLen:routeStops.length,matchingLen:matching.length,scheduledIdsArr:[...ids],allStopsSchedulingInfo:routeStops.map(s=>({cid:s.customerId,schedStart:s.scheduledTimeStart,schedEnd:s.scheduledTimeEnd,revStatus:s.revisionStatus}))}));
       // #endregion
       return ids;
     },
@@ -248,7 +248,7 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
     // #region agent log
     const scheduledCandidates = mapped.filter(c => c.isScheduled);
     const inRouteCandidates = mapped.filter(c => c.isInRoute);
-    fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2ba648'},body:JSON.stringify({sessionId:'2ba648',location:'InboxListPanel.tsx:filteredSorted',message:'filteredSorted enrichment',data:{rawLen:rawCandidates.length,filteredLen:filtered.length,mappedLen:mapped.length,scheduledCount:scheduledCandidates.length,inRouteCount:inRouteCandidates.length,scheduledNames:scheduledCandidates.map(c=>({id:c.id,name:c.customerName})),inRouteNames:inRouteCandidates.map(c=>({id:c.id,name:c.customerName})),scheduledIdsArr:[...scheduledIds],inRouteIdsArr:[...inRouteIds]},timestamp:Date.now()})}).catch(()=>{});
+    console.log('[DBG-2ba648] filteredSorted enrichment',JSON.stringify({rawLen:rawCandidates.length,filteredLen:filtered.length,mappedLen:mapped.length,scheduledCount:scheduledCandidates.length,inRouteCount:inRouteCandidates.length,scheduledNames:scheduledCandidates.map(c=>({id:c.id,name:c.customerName})),inRouteNames:inRouteCandidates.map(c=>({id:c.id,name:c.customerName})),scheduledIdsArr:[...scheduledIds],inRouteIdsArr:[...inRouteIds]}));
     // #endregion
     return sortCandidates(mapped);
   }, [rawCandidates, filters, inRouteIds, scheduledIds, state.selectedCustomerId]);
