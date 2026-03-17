@@ -3,6 +3,7 @@
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  container-type: inline-size;
 }
 
 /* Loading state */
@@ -579,7 +580,11 @@
   color: var(--color-primary);
   cursor: pointer;
   transition: all 0.15s;
-  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  white-space: nowrap;
 }
 
 .snoozePrimaryButtonCompact:hover {
@@ -1034,28 +1039,94 @@
   background: var(--color-danger-bg, #fef2f2);
 }
 
-.unscheduleButton {
-  display: inline-flex;
-  align-items: center;
-  margin-top: 0.375rem;
-  padding: 0.25rem 0.625rem;
-  font-size: 0.8rem;
-  font-weight: 500;
-  color: var(--color-danger, #dc2626);
-  background: transparent;
-  border: 1px solid var(--color-danger-border, #fca5a5);
-  border-radius: 4px;
+/* Schedule/Unschedule split button (mirrors snooze split pattern) */
+.scheduleButtonWrapper {
+  position: relative;
+  flex: 1;
+  display: flex;
+  gap: 0;
+}
+
+.schedulePrimaryButtonCompact {
+  flex: 1;
+  padding: 0.5rem 0.625rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  background-color: rgba(59, 130, 246, 0.08);
+  border: 1px solid var(--color-primary);
+  border-right: none;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+  color: var(--color-primary);
   cursor: pointer;
-  transition: background 0.15s;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  white-space: nowrap;
 }
 
-.unscheduleButton:hover:not(:disabled) {
-  background: var(--color-danger-bg, #fef2f2);
+.schedulePrimaryButtonCompact:hover {
+  background-color: var(--color-primary);
+  color: white;
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.3);
 }
 
-.unscheduleButton:disabled {
+.unscheduleToggle {
+  padding: 0.5rem 0.5rem;
+  font-size: 0.875rem;
+  background-color: transparent;
+  border: 1px solid var(--color-primary);
+  border-left: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  color: var(--color-danger, #dc2626);
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+}
+
+.unscheduleToggle:hover:not(:disabled) {
+  background-color: var(--color-danger-bg, #fef2f2);
+  border-color: var(--color-danger-border, #fca5a5);
+  border-left-color: var(--color-danger-border, #fca5a5);
+}
+
+.unscheduleToggle:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Action button text label — hidden in icon-only mode */
+.actionLabel {
+  /* visible by default; hidden via container query below */
+}
+
+/* Narrow container: icon-only action buttons */
+@container (max-width: 420px) {
+  .actionLabel {
+    display: none;
+  }
+
+  .actionButtonCompact {
+    flex: 1;
+    padding: 0.5rem;
+  }
+
+  .schedulePrimaryButtonCompact {
+    flex: 1;
+    padding: 0.5rem;
+    justify-content: center;
+  }
+
+  .snoozePrimaryButtonCompact {
+    flex: 1;
+    padding: 0.5rem;
+    text-align: center;
+    justify-content: center;
+  }
 }
 
 /* ── Score chip + breakdown ──────────────────────────────────────────────── */

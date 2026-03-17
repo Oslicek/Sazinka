@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, Calendar, Clock, Pencil, Phone, Mail, ClipboardCopy, Check, FileText, Plus, Info } from 'lucide-react';
+import { AlertTriangle, Calendar, Clock, Pencil, Phone, Mail, ClipboardCopy, Check, FileText, Plus, X, Info } from 'lucide-react';
 import type { ScoreBreakdownItem } from '@shared/scoring';
 import { formatDate } from '@/i18n/formatters';
 import { listDevices } from '@/services/deviceService';
@@ -428,26 +428,6 @@ export function CandidateDetail({
                 </span>
               )}
             </div>
-            {/* Unschedule (cancel appointment) button */}
-            {onUnschedule && (
-              <button
-                type="button"
-                className={styles.unscheduleButton}
-                disabled={isUnscheduling}
-                onClick={async () => {
-                  if (window.confirm(t('candidate_cancel_appointment_confirm'))) {
-                    setIsUnscheduling(true);
-                    try {
-                      await onUnschedule(candidate.id);
-                    } finally {
-                      setIsUnscheduling(false);
-                    }
-                  }
-                }}
-              >
-                {t('candidate_cancel_appointment')}
-              </button>
-            )}
             {/* Flexible window: editable duration input on its own row */}
             {windowInfo?.isFlexible && (
               <div className={styles.serviceDurationInline}>
@@ -573,20 +553,58 @@ export function CandidateDetail({
       {/* Actions — compact buttons */}
       {!isScheduling && (
         <div className={styles.actionsCompact} data-testid="candidate-actions">
-          <button
-            type="button"
-            className={styles.actionButtonCompact}
-            onClick={() => setIsScheduling(true)}
-          >
-            <Calendar size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> {candidate.isScheduled ? t('candidate_change_appointment') : t('candidate_make_appointment')}
-          </button>
+          {candidate.isScheduled && onUnschedule ? (
+            <div className={styles.scheduleButtonWrapper}>
+              <button
+                type="button"
+                className={styles.schedulePrimaryButtonCompact}
+                onClick={() => setIsScheduling(true)}
+                title={t('candidate_change_appointment')}
+              >
+                <Calendar size={14} />
+                <span className={styles.actionLabel}>{t('candidate_change_appointment')}</span>
+              </button>
+              <button
+                type="button"
+                className={styles.unscheduleToggle}
+                disabled={isUnscheduling}
+                onClick={async () => {
+                  if (window.confirm(t('candidate_cancel_appointment_confirm'))) {
+                    setIsUnscheduling(true);
+                    try {
+                      await onUnschedule(candidate.id);
+                    } finally {
+                      setIsUnscheduling(false);
+                    }
+                  }
+                }}
+                title={t('candidate_cancel_appointment')}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className={styles.actionButtonCompact}
+              onClick={() => setIsScheduling(true)}
+              title={candidate.isScheduled ? t('candidate_change_appointment') : t('candidate_make_appointment')}
+            >
+              <Calendar size={14} />
+              <span className={styles.actionLabel}>
+                {candidate.isScheduled ? t('candidate_change_appointment') : t('candidate_make_appointment')}
+              </span>
+            </button>
+          )}
           {isInRoute ? (
             <button
               type="button"
               className={styles.actionButtonCompact}
               onClick={() => onRemoveFromRoute?.(candidate.customerId)}
+              title={t('candidate_remove_from_route')}
             >
-              &times; {t('candidate_remove_from_route')}
+              <X size={14} />
+              <span className={styles.actionLabel}>{t('candidate_remove_from_route')}</span>
             </button>
           ) : (
             <button
@@ -594,9 +612,10 @@ export function CandidateDetail({
               className={`${styles.actionButtonCompact} ${candidate.hasCoordinates === false ? styles.disabledAction : ''}`}
               onClick={() => onAddToRoute?.(candidate.id, windowInfo?.isFlexible ? serviceDurationMinutes : undefined)}
               disabled={candidate.hasCoordinates === false}
-              title={candidate.hasCoordinates === false ? t('candidate_fix_address_first') : undefined}
+              title={candidate.hasCoordinates === false ? t('candidate_fix_address_first') : t('candidate_add_to_route')}
             >
-              <Plus size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> {t('candidate_add_to_route')}
+              <Plus size={14} />
+              <span className={styles.actionLabel}>{t('candidate_add_to_route')}</span>
             </button>
           )}
           <div className={styles.snoozeButtonWrapper}>
@@ -606,7 +625,8 @@ export function CandidateDetail({
               onClick={() => handleSnoozeSelect(defaultSnoozeDays)}
               title={t('candidate_snooze', { duration: getSnoozeDurationLabel(defaultSnoozeDays) })}
             >
-              <Clock size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} /> {t('candidate_snooze', { duration: getSnoozeDurationLabel(defaultSnoozeDays) })}
+              <Clock size={14} />
+              <span className={styles.actionLabel}>{t('candidate_snooze', { duration: getSnoozeDurationLabel(defaultSnoozeDays) })}</span>
             </button>
             <button
               type="button"

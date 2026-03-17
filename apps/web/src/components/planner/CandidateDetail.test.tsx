@@ -54,7 +54,7 @@ describe('CandidateDetail', () => {
   });
 
   describe('Action Buttons Position', () => {
-    it('should render action buttons above customer name', () => {
+    it('should render action buttons below state flags and above appointment sections', () => {
       const { container } = render(
         <CandidateDetail
           candidate={mockCandidate}
@@ -64,16 +64,18 @@ describe('CandidateDetail', () => {
 
       const actions = container.querySelector('[data-testid="candidate-actions"]');
       const header = container.querySelector('[data-testid="candidate-header"]');
+      const stateFlags = container.querySelector('[data-testid="state-flags"]');
 
       expect(actions).toBeInTheDocument();
       expect(header).toBeInTheDocument();
+      expect(stateFlags).toBeInTheDocument();
 
-      // Actions should come before header in DOM order (both are siblings under the same parent)
+      // Actual DOM order: header → state-flags → ... → candidate-actions
       const parent = actions?.parentElement;
       expect(parent).toBeTruthy();
       const actionsIndex = Array.from(parent!.children).indexOf(actions!);
-      const headerIndex = Array.from(parent!.children).indexOf(header!);
-      expect(actionsIndex).toBeLessThan(headerIndex);
+      const stateFlagsIndex = Array.from(parent!.children).indexOf(stateFlags!);
+      expect(stateFlagsIndex).toBeLessThan(actionsIndex);
     });
 
     it('should render all three action buttons', () => {
@@ -263,7 +265,7 @@ describe('CandidateDetail', () => {
   });
 
   describe('Integration', () => {
-    it('should render all components in correct order: flags, actions, then header', () => {
+    it('should render all components in correct order: header, flags, then actions', () => {
       const { container } = render(
         <CandidateDetail
           candidate={mockCandidate}
@@ -281,8 +283,9 @@ describe('CandidateDetail', () => {
       const actionsIndex = elements.indexOf(actions!);
       const headerIndex = elements.indexOf(header!);
 
+      // Actual DOM order: candidate-header → state-flags → ... → candidate-actions
+      expect(headerIndex).toBeLessThan(stateFlagsIndex);
       expect(stateFlagsIndex).toBeLessThan(actionsIndex);
-      expect(actionsIndex).toBeLessThan(headerIndex);
     });
   });
 
