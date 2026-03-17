@@ -359,7 +359,13 @@ function PlanningInboxInner() {
     const prev = prevBridgeRef.current;
     const a = actionsRef.current;
 
-    if (prev.routeStops !== routeStops) a.setRouteStops(routeStops);
+    if (prev.routeStops !== routeStops) {
+      // #region agent log
+      const sample = routeStops.slice(0,3).map(s=>({cid:s.customerId,schedStart:s.scheduledTimeStart,revStatus:s.revisionStatus}));
+      console.log('[DBG-2ba648] BRIDGE setRouteStops',JSON.stringify({len:routeStops.length,sample,trace:new Error().stack?.split('\n').slice(1,5).map(l=>l.trim())}));
+      // #endregion
+      a.setRouteStops(routeStops);
+    }
     if (prev.context !== context) a.setRouteContext(context);
     if (prev.routeGeometry !== routeGeometry) a.setRouteGeometry(routeGeometry);
     if (prev.returnToDepotLeg !== returnToDepotLeg) {
@@ -822,6 +828,9 @@ function PlanningInboxInner() {
     if (!isConnected || !context?.date) return;
     
     const dateToLoad = context.date;
+    // #region agent log
+    console.log('[DBG-2ba648] loadRoute effect FIRED',JSON.stringify({dateToLoad,isConnected}));
+    // #endregion
     
     async function loadRoute() {
       setIsLoadingRoute(true);
@@ -830,6 +839,10 @@ function PlanningInboxInner() {
         setLoadedRouteId(response.route?.id ?? null);
         
         if (response.route && response.stops.length > 0) {
+          // #region agent log
+          const sample = response.stops.slice(0,3).map((s: SavedRouteStop)=>({cid:s.customerId,schedStart:s.scheduledTimeStart,revStatus:s.revisionStatus}));
+          console.log('[DBG-2ba648] loadRoute setRouteStops(response.stops)',JSON.stringify({len:response.stops.length,sample}));
+          // #endregion
           setRouteStops(response.stops);
           setReturnToDepotLeg(
             response.route.returnToDepotDistanceKm != null || response.route.returnToDepotDurationMinutes != null
@@ -1382,7 +1395,6 @@ function PlanningInboxInner() {
         const updated = prev.map((stop) => {
           const recalced = resultMap.get(stop.id);
           if (!recalced) return stop;
-          // Clear needsReschedule once we have real recalculated times
           return {
             ...stop,
             estimatedArrival: recalced.estimatedArrival,
@@ -1393,6 +1405,10 @@ function PlanningInboxInner() {
             needsReschedule: false,
           };
         });
+        // #region agent log
+        const sample = updated.slice(0,3).map(s=>({cid:s.customerId,schedStart:s.scheduledTimeStart,revStatus:s.revisionStatus}));
+        console.log('[DBG-2ba648] triggerRecalculate merge',JSON.stringify({prevLen:prev.length,updatedLen:updated.length,sample}));
+        // #endregion
         return updated;
       });
 
@@ -1440,7 +1456,10 @@ function PlanningInboxInner() {
     const notInitialLoad = prev.start !== null || prev.end !== null || prev.depotId !== null;
 
     if (routeStops.length > 0 && currentDepot && paramsChanged && notInitialLoad) {
-      // Use the current routeStops snapshot
+      // #region agent log
+      const sample = routeStops.slice(0,3).map(s=>({cid:s.customerId,schedStart:s.scheduledTimeStart,revStatus:s.revisionStatus}));
+      console.log('[DBG-2ba648] workingHours recalc triggered',JSON.stringify({sample,prevStart:prev.start,currStart:curr.start}));
+      // #endregion
       const stopsSnapshot = [...routeStops];
       triggerRecalculate(stopsSnapshot);
     }
@@ -1452,6 +1471,10 @@ function PlanningInboxInner() {
   useEffect(() => {
     const pending = pendingRecalcStopsRef.current;
     if (pending && pending.length > 0 && currentDepot) {
+      // #region agent log
+      const sample = pending.slice(0,3).map(s=>({cid:s.customerId,schedStart:s.scheduledTimeStart,revStatus:s.revisionStatus}));
+      console.log('[DBG-2ba648] pendingRecalc triggered',JSON.stringify({len:pending.length,sample}));
+      // #endregion
       pendingRecalcStopsRef.current = null;
       triggerRecalculate(pending);
     }
