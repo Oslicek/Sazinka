@@ -80,9 +80,6 @@ export function PanelStateProvider({
         });
         break;
       case 'CONTEXT_SNAPSHOT':
-        // #region agent log
-        console.log('[DBG-2ba648] CONTEXT_SNAPSHOT received', { inRouteCustomerIds: signal.inRouteCustomerIds, scheduledCustomerIds: signal.scheduledCustomerIds });
-        // #endregion
         setState(s => ({
           ...s,
           selectedCustomerId: signal.selectedCustomerId,
@@ -96,9 +93,6 @@ export function PanelStateProvider({
         }));
         break;
       case 'ROUTE_DATA_CHANGED': {
-        // #region agent log
-        console.log('[DBG-2ba648] ROUTE_DATA_CHANGED received', { inRouteCustomerIds: signal.inRouteCustomerIds, scheduledCustomerIds: signal.scheduledCustomerIds });
-        // #endregion
         setState(s => {
           const prev = s.remoteScheduledIds ?? [];
           const merged = new Set([...prev, ...signal.scheduledCustomerIds]);

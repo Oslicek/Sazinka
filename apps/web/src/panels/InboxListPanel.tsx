@@ -207,13 +207,6 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
   const remoteInRouteIds = state.remoteInRouteIds;
   const remoteScheduledIds = state.remoteScheduledIds;
 
-  // #region agent log
-  useEffect(() => {
-    const stopsSnapshot = routeStops.slice(0, 5).map(s => ({ cid: s.customerId, schedStart: s.scheduledTimeStart, revStatus: s.revisionStatus }));
-    console.log('[DBG-2ba648] routeStops & remote IDs', { routeStopsCount: routeStops.length, stopsSnapshot, remoteInRouteIds: remoteInRouteIds ?? null, remoteScheduledIds: remoteScheduledIds ?? null, routeDataVersion: state.routeDataVersion ?? 0, selfFetchedCount: selfFetchedStops.length, bridgeStopsCount: state.routeStops.length });
-  }, [routeStops, remoteInRouteIds, remoteScheduledIds, state.routeDataVersion, selfFetchedStops, state.routeStops.length]);
-  // #endregion
-
   const inRouteIds = useMemo(() => {
     if (remoteInRouteIds) return new Set<string>(remoteInRouteIds);
     return new Set<string>(routeStops.map((s) => s.customerId).filter((id): id is string => id !== null));
@@ -221,9 +214,6 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
 
   const scheduledIds = useMemo(() => {
     if (remoteScheduledIds && remoteScheduledIds.length > 0) {
-      // #region agent log
-      console.log('[DBG-2ba648] scheduledIds result', { scheduledIdsArr: remoteScheduledIds, source: 'remote', remoteScheduledIds });
-      // #endregion
       return new Set<string>(remoteScheduledIds);
     }
     const matching = routeStops.filter((s) =>
@@ -231,11 +221,7 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
       (s.scheduledTimeStart !== null ||
        s.revisionStatus === 'scheduled' ||
        s.revisionStatus === 'confirmed'));
-    const ids = new Set<string>(matching.map((s) => s.customerId as string));
-    // #region agent log
-    console.log('[DBG-2ba648] scheduledIds result', { scheduledIdsArr: [...ids], source: 'routeStops', matchingCount: matching.length });
-    // #endregion
-    return ids;
+    return new Set<string>(matching.map((s) => s.customerId as string));
   }, [routeStops, remoteScheduledIds]);
 
   // Persist filter expression to sessionStorage
@@ -257,14 +243,7 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
     const mapped = filtered.map((item) => {
       const candidate = mapCallQueueItemToCandidate(item);
       candidate.isInRoute = inRouteIds.has(candidate.id);
-      const fromCandidate = candidate.isScheduled;
-      const fromScheduledIds = scheduledIds.has(candidate.id);
-      candidate.isScheduled = fromCandidate || fromScheduledIds;
-      // #region agent log
-      if (candidate.isInRoute || fromCandidate || fromScheduledIds) {
-        console.log('[DBG-2ba648] candidate flags', { id: candidate.id, name: candidate.customerName, status: item.status, isInRoute: candidate.isInRoute, fromCandidate, fromScheduledIds, finalIsScheduled: candidate.isScheduled });
-      }
-      // #endregion
+      candidate.isScheduled = candidate.isScheduled || scheduledIds.has(candidate.id);
       return candidate;
     });
     return sortCandidates(mapped);

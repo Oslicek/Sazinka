@@ -49,10 +49,6 @@ export function inboxItemToCallQueueItem(item: InboxItem): CallQueueItem {
 }
 
 export function inboxResponseToCallQueueResponse(resp: InboxResponse): CallQueueResponse {
-  // #region agent log
-  const scheduled = resp.items.filter(i => i.revisionStatus === 'scheduled' || i.revisionStatus === 'confirmed');
-  console.log('[DBG-2ba648] inbox response', { totalItems: resp.items.length, scheduledCount: scheduled.length, sampleStatuses: resp.items.slice(0, 3).map(i => ({ id: i.id, revStatus: i.revisionStatus })) });
-  // #endregion
   return {
     items: resp.items.map(inboxItemToCallQueueItem),
     total: resp.total,
