@@ -204,23 +204,25 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
     return () => { cancelled = true; };
   }, [isConnected, routeContext?.date, state.routeStops.length, routeDataVersion]);
 
-  const inRouteIds = useMemo(
-    () => new Set<string>(routeStops.map((s) => s.customerId).filter((id): id is string => id !== null)),
-    [routeStops],
-  );
+  const remoteInRouteIds = state.remoteInRouteIds;
+  const remoteScheduledIds = state.remoteScheduledIds;
 
-  const scheduledIds = useMemo(
-    () => {
-      const matching = routeStops.filter((s) =>
-        s.customerId !== null &&
-        (s.scheduledTimeStart !== null ||
-         s.revisionStatus === 'scheduled' ||
-         s.revisionStatus === 'confirmed'));
-      const ids = new Set<string>(matching.map((s) => s.customerId as string));
-      return ids;
-    },
-    [routeStops],
-  );
+  const inRouteIds = useMemo(() => {
+    const ids = new Set<string>(routeStops.map((s) => s.customerId).filter((id): id is string => id !== null));
+    if (remoteInRouteIds) remoteInRouteIds.forEach((id) => ids.add(id));
+    return ids;
+  }, [routeStops, remoteInRouteIds]);
+
+  const scheduledIds = useMemo(() => {
+    const matching = routeStops.filter((s) =>
+      s.customerId !== null &&
+      (s.scheduledTimeStart !== null ||
+       s.revisionStatus === 'scheduled' ||
+       s.revisionStatus === 'confirmed'));
+    const ids = new Set<string>(matching.map((s) => s.customerId as string));
+    if (remoteScheduledIds) remoteScheduledIds.forEach((id) => ids.add(id));
+    return ids;
+  }, [routeStops, remoteScheduledIds]);
 
   // Persist filter expression to sessionStorage
   useEffect(() => {

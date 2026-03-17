@@ -42,6 +42,10 @@ export interface PanelState {
   routeBufferFixedMinutes: number;
   /** Incremented when route data changes remotely (triggers re-fetch in detached panels) */
   routeDataVersion?: number;
+  /** In-route customer IDs received via ROUTE_DATA_CHANGED signal (detached panels) */
+  remoteInRouteIds?: string[];
+  /** Scheduled customer IDs received via ROUTE_DATA_CHANGED signal (detached panels) */
+  remoteScheduledIds?: string[];
 }
 
 export interface PanelActions {

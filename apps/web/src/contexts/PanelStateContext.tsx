@@ -91,7 +91,12 @@ export function PanelStateProvider({
         }));
         break;
       case 'ROUTE_DATA_CHANGED':
-        setState(s => ({ ...s, routeDataVersion: (s.routeDataVersion ?? 0) + 1 }));
+        setState(s => ({
+          ...s,
+          routeDataVersion: (s.routeDataVersion ?? 0) + 1,
+          remoteInRouteIds: signal.inRouteCustomerIds,
+          remoteScheduledIds: signal.scheduledCustomerIds,
+        }));
         break;
       default:
         break;
@@ -142,7 +147,17 @@ export function PanelStateProvider({
     setState(s => {
       if (s.routeStops === stops) return s;
       if (isSourceOfTruth && enableChannel) {
-        sendSignalRef.current({ type: 'ROUTE_DATA_CHANGED' });
+        const inRouteCustomerIds = stops
+          .map(st => st.customerId)
+          .filter((id): id is string => id !== null);
+        const scheduledCustomerIds = stops
+          .filter(st =>
+            st.customerId !== null &&
+            (st.scheduledTimeStart !== null ||
+             st.revisionStatus === 'scheduled' ||
+             st.revisionStatus === 'confirmed'))
+          .map(st => st.customerId as string);
+        sendSignalRef.current({ type: 'ROUTE_DATA_CHANGED', inRouteCustomerIds, scheduledCustomerIds });
       }
       return { ...s, routeStops: stops };
     });
