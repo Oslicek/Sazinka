@@ -136,10 +136,6 @@ export function PanelStateProvider({
   }, []);
 
   const setRouteStops = useCallback((stops: SavedRouteStop[]) => {
-    // #region agent log
-    const sample = stops.slice(0,3).map(s=>({cid:s.customerId,schedStart:s.scheduledTimeStart,revStatus:s.revisionStatus}));
-    console.log('[DBG-2ba648] PanelState.setRouteStops called',JSON.stringify({len:stops.length,sample,trace:new Error().stack?.split('\n').slice(1,5).map(l=>l.trim())}));
-    // #endregion
     setState(s => s.routeStops === stops ? s : { ...s, routeStops: stops });
   }, []);
 

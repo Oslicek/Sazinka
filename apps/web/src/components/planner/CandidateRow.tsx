@@ -85,11 +85,6 @@ export function CandidateRow({
   const { t } = useTranslation('planner');
   const daysOverdue = candidate.daysUntilDue < 0 ? Math.abs(candidate.daysUntilDue) : 0;
   const hasProblems = !candidate.hasPhone || !candidate.hasValidAddress;
-  // #region agent log
-  if (isInRoute || candidate.isInRoute || isScheduled || candidate.isScheduled) {
-    console.log('[DBG-2ba648] CandidateRow flags',JSON.stringify({id:candidate.id,name:candidate.customerName,isInRouteProp:isInRoute,candidateIsInRoute:candidate.isInRoute,isScheduledProp:isScheduled,candidateIsScheduled:candidate.isScheduled,willShowCar:isInRoute||candidate.isInRoute,willShowCalendar:isScheduled||candidate.isScheduled}));
-  }
-  // #endregion
 
   return (
     <button

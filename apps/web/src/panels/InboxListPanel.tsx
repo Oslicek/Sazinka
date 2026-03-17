@@ -100,23 +100,9 @@ interface InboxListPanelProps {
   isLoading?: boolean;
 }
 
-const _dbgPrevStopsRef = { current: null as unknown[] | null };
 export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadingProp }: InboxListPanelProps) {
   const { state, actions } = usePanelState();
   const { isConnected } = useNatsStore();
-
-  // #region agent log
-  if (_dbgPrevStopsRef.current && _dbgPrevStopsRef.current === state.routeStops) {
-    const prevSnap = (_dbgPrevStopsRef.current as SavedRouteStop[]).slice(0,3).map(s=>({cid:s.customerId,schedStart:s.scheduledTimeStart,revStatus:s.revisionStatus}));
-    console.log('[DBG-2ba648] SAME_REF mutation check',JSON.stringify({prevSnap}));
-  }
-  _dbgPrevStopsRef.current = state.routeStops;
-  // #endregion
-
-  // #region agent log
-  const _snap = state.routeStops.slice(0,3).map(s=>({cid:s.customerId,schedStart:s.scheduledTimeStart,revStatus:s.revisionStatus}));
-  console.log('[DBG-2ba648] InboxListPanel render',JSON.stringify({stateRouteStopsLen:state.routeStops.length,cacheRawLen:_cache.rawCandidates.length,routeStopsSample:_snap,stateRouteStopsRef:state.routeStops === (_dbgPrevStopsRef?.current) ? 'SAME_REF' : 'NEW_REF'}));
-  // #endregion
 
   const [rawCandidates, setRawCandidatesState] = useState<CallQueueItem[]>(_cache.rawCandidates);
   const [candidates, setCandidates] = useState<CandidateRowData[]>([]);
@@ -225,9 +211,6 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
          s.revisionStatus === 'scheduled' ||
          s.revisionStatus === 'confirmed'));
       const ids = new Set<string>(matching.map((s) => s.customerId as string));
-      // #region agent log
-      console.log('[DBG-2ba648] scheduledIds computed',JSON.stringify({routeStopsLen:routeStops.length,matchingLen:matching.length,scheduledIdsArr:[...ids],allStopsSchedulingInfo:routeStops.map(s=>({cid:s.customerId,schedStart:s.scheduledTimeStart,schedEnd:s.scheduledTimeEnd,revStatus:s.revisionStatus}))}));
-      // #endregion
       return ids;
     },
     [routeStops],
@@ -255,11 +238,6 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
       candidate.isScheduled = candidate.isScheduled || scheduledIds.has(candidate.id);
       return candidate;
     });
-    // #region agent log
-    const scheduledCandidates = mapped.filter(c => c.isScheduled);
-    const inRouteCandidates = mapped.filter(c => c.isInRoute);
-    console.log('[DBG-2ba648] filteredSorted enrichment',JSON.stringify({rawLen:rawCandidates.length,filteredLen:filtered.length,mappedLen:mapped.length,scheduledCount:scheduledCandidates.length,inRouteCount:inRouteCandidates.length,scheduledNames:scheduledCandidates.map(c=>({id:c.id,name:c.customerName})),inRouteNames:inRouteCandidates.map(c=>({id:c.id,name:c.customerName})),scheduledIdsArr:[...scheduledIds],inRouteIdsArr:[...inRouteIds]}));
-    // #endregion
     return sortCandidates(mapped);
   }, [rawCandidates, filters, inRouteIds, scheduledIds, state.selectedCustomerId]);
 
