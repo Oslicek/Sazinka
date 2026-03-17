@@ -104,6 +104,10 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
   const { state, actions } = usePanelState();
   const { isConnected } = useNatsStore();
 
+  // #region agent log
+  fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2ba648'},body:JSON.stringify({sessionId:'2ba648',location:'InboxListPanel.tsx:mount',message:'InboxListPanel render',data:{stateRouteStopsLen:state.routeStops.length,cacheRawLen:_cache.rawCandidates.length,routeStopsSample:state.routeStops.slice(0,3).map(s=>({cid:s.customerId,schedStart:s.scheduledTimeStart,revStatus:s.revisionStatus}))},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+
   const [rawCandidates, setRawCandidatesState] = useState<CallQueueItem[]>(_cache.rawCandidates);
   const [candidates, setCandidates] = useState<CandidateRowData[]>([]);
   const [isLoadingCandidates, setIsLoadingCandidates] = useState(_cache.rawCandidates.length === 0);
@@ -204,15 +208,18 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
   );
 
   const scheduledIds = useMemo(
-    () => new Set<string>(
-      routeStops
-        .filter((s) =>
-          s.customerId !== null &&
-          (s.scheduledTimeStart !== null ||
-           s.revisionStatus === 'scheduled' ||
-           s.revisionStatus === 'confirmed'))
-        .map((s) => s.customerId as string)
-    ),
+    () => {
+      const matching = routeStops.filter((s) =>
+        s.customerId !== null &&
+        (s.scheduledTimeStart !== null ||
+         s.revisionStatus === 'scheduled' ||
+         s.revisionStatus === 'confirmed'));
+      const ids = new Set<string>(matching.map((s) => s.customerId as string));
+      // #region agent log
+      fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2ba648'},body:JSON.stringify({sessionId:'2ba648',location:'InboxListPanel.tsx:scheduledIds',message:'scheduledIds computed',data:{routeStopsLen:routeStops.length,matchingLen:matching.length,scheduledIdsArr:[...ids],allStopsSchedulingInfo:routeStops.map(s=>({cid:s.customerId,schedStart:s.scheduledTimeStart,schedEnd:s.scheduledTimeEnd,revStatus:s.revisionStatus}))},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      return ids;
+    },
     [routeStops],
   );
 
@@ -238,6 +245,11 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
       candidate.isScheduled = candidate.isScheduled || scheduledIds.has(candidate.id);
       return candidate;
     });
+    // #region agent log
+    const scheduledCandidates = mapped.filter(c => c.isScheduled);
+    const inRouteCandidates = mapped.filter(c => c.isInRoute);
+    fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2ba648'},body:JSON.stringify({sessionId:'2ba648',location:'InboxListPanel.tsx:filteredSorted',message:'filteredSorted enrichment',data:{rawLen:rawCandidates.length,filteredLen:filtered.length,mappedLen:mapped.length,scheduledCount:scheduledCandidates.length,inRouteCount:inRouteCandidates.length,scheduledNames:scheduledCandidates.map(c=>({id:c.id,name:c.customerName})),inRouteNames:inRouteCandidates.map(c=>({id:c.id,name:c.customerName})),scheduledIdsArr:[...scheduledIds],inRouteIdsArr:[...inRouteIds]},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     return sortCandidates(mapped);
   }, [rawCandidates, filters, inRouteIds, scheduledIds, state.selectedCustomerId]);
 
