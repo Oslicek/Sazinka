@@ -248,6 +248,7 @@ sazinka/
 │       │   │   └── uiStore.ts
 │       │   ├── services/
 │       │   │   ├── nats.ts         # NATS WebSocket client
+│       │   │   ├── inboxAdapter.ts # InboxItem → CallQueueItem bridge
 │       │   │   └── nominatim.ts    # Geocoding service
 │       │   ├── routes/             # TanStack Router pages
 │       │   │   ├── index.tsx       # Dashboard
@@ -1529,6 +1530,16 @@ cargo test
 - MVP focuses on core CRM + route planning
 - Email notifications deferred to later phase
 - Invoicing/billing architecture prepared but not implemented
+
+## Recent Changes (v0.19.4)
+
+- **Inbox email & street plumbing:**
+  - Added `email` and `street` fields to Rust `InboxItem` struct (`worker/src/types/inbox.rs`)
+  - Extended inbox SQL query (`get_customer_inbox`) to SELECT `c.email, c.street` from the customers table
+  - Added `email: string | null` and `street: string | null` to shared TypeScript `InboxItem` type (`packages/shared-types/src/inbox.ts`)
+  - Fixed `inboxAdapter.ts`: `customerEmail` now maps from `item.email` (was hardcoded `null`), `customerStreet` maps from `item.street` (was hardcoded `''`)
+  - `CandidateDetail` contact section now correctly shows customer email/street instead of always displaying "missing email"
+  - New test file `inboxAdapter.test.ts` (7 tests) covers email, street, phone, and basic field mapping
 
 ## Recent Changes (v0.19.3)
 

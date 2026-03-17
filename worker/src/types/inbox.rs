@@ -31,6 +31,8 @@ pub struct InboxItem {
     pub id: Uuid,
     pub name: Option<String>,
     pub phone: Option<String>,
+    pub email: Option<String>,
+    pub street: Option<String>,
     pub city: Option<String>,
     pub postal_code: Option<String>,
     pub lat: Option<f64>,

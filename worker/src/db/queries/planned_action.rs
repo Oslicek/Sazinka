@@ -356,7 +356,7 @@ pub async fn get_customer_inbox(
     let query = format!(
         r#"
         SELECT
-            c.id, c.name, c.phone, c.city, c.postal_code,
+            c.id, c.name, c.phone, c.email, c.street, c.city, c.postal_code,
             c.lat, c.lng, c.geocode_status::text AS geocode_status,
             c.created_at AS customer_created_at,
             -- Lifecycle state

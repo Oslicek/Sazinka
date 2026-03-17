@@ -14,6 +14,8 @@ export interface InboxItem {
   id: string;
   name: string | null;
   phone: string | null;
+  email: string | null;
+  street: string | null;
   city: string | null;
   postalCode: string | null;
   lat: number | null;

@@ -822,7 +822,7 @@ Implements the Phase 2 query from Section 4.1. This is the core inbox query repl
 
 **TDD** (unit):
 1. RED: Deserialize `InboxRequest` from JSON with `limit`, `offset` → succeeds.
-2. RED: Serialize `InboxItem` → JSON has `lifecycleState`, `lifecycleRank`, `nextActionDue`, `nextActionNote`, `totalCommunications`, `lastContactAt`.
+2. RED: Serialize `InboxItem` → JSON has `lifecycleState`, `lifecycleRank`, `nextActionDue`, `nextActionNote`, `totalCommunications`, `lastContactAt`, `email`, `street`.
 3. GREEN: Define structs.
 
 ---
