@@ -26,17 +26,22 @@ export function RouteMapPanel() {
 
   const geometryUnsubRef = useRef<(() => void) | null>(null);
 
-  // Fetch route stops for current context
+  // Fetch route stops only when PanelState has none (detached windows).
+  // When used inside PlanningInbox the bridge keeps PanelState up-to-date,
+  // so an independent fetch would overwrite locally-modified scheduling data.
   useEffect(() => {
-    if (!isConnected || !routeContext?.date) return;
+    if (!isConnected || !routeContext?.date || routeStops.length > 0) return;
+    let cancelled = false;
     routeService
       .getRoute({ date: routeContext.date })
       .then((res) => {
+        if (cancelled) return;
         const stops = (res as { route: unknown; stops: SavedRouteStop[] }).stops ?? [];
         actions.setRouteStops(stops);
       })
-      .catch(() => actions.setRouteStops([]));
-  }, [isConnected, routeContext?.date, actions]);
+      .catch(() => { if (!cancelled) actions.setRouteStops([]); });
+    return () => { cancelled = true; };
+  }, [isConnected, routeContext?.date, actions, routeStops.length]);
 
   // Fetch geometry when stops change
   const fetchGeometry = useCallback(async (stops: SavedRouteStop[]) => {
