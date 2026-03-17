@@ -9,6 +9,7 @@ import {
   getUpcomingRevisions,
   getRevisionStats,
   getSuggestedRevisions,
+  unscheduleRevision,
   type RevisionServiceDeps,
 } from './revisionService';
 import type { Revision } from '@shared/revision';
@@ -419,6 +420,46 @@ describe('revisionService', () => {
       });
 
       await expect(getSuggestedRevisions('2026-02-05', 50, [], mockDeps)).rejects.toThrow('Query failed');
+    });
+  });
+
+  describe('unscheduleRevision', () => {
+    const unscheduledRevision = {
+      ...mockRevision,
+      status: 'upcoming',
+      scheduledDate: null,
+      scheduledTimeStart: null,
+      scheduledTimeEnd: null,
+    };
+
+    it('should call sazinka.revision.unschedule with revision id', async () => {
+      mockRequest.mockResolvedValueOnce({ payload: unscheduledRevision });
+
+      await unscheduleRevision({ id: 'rev-1' }, mockDeps);
+
+      expect(mockRequest).toHaveBeenCalledWith(
+        'sazinka.revision.unschedule',
+        expect.objectContaining({ payload: { id: 'rev-1' } })
+      );
+    });
+
+    it('should return the updated revision with upcoming status', async () => {
+      mockRequest.mockResolvedValueOnce({ payload: unscheduledRevision });
+
+      const result = await unscheduleRevision({ id: 'rev-1' }, mockDeps);
+
+      expect(result.status).toBe('upcoming');
+      expect(result.scheduledDate).toBeNull();
+    });
+
+    it('should throw when backend returns NOT_FOUND', async () => {
+      mockRequest.mockResolvedValueOnce({
+        error: { code: 'NOT_FOUND', message: 'Revision not found or not currently scheduled' },
+      });
+
+      await expect(unscheduleRevision({ id: 'rev-1' }, mockDeps)).rejects.toThrow(
+        'Revision not found or not currently scheduled'
+      );
     });
   });
 });

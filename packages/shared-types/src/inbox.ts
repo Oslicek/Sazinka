@@ -41,6 +41,12 @@ export interface InboxItem {
   // Revision scheduling status ('scheduled' or 'confirmed' if visit agreed, else null)
   revisionStatus: string | null;
 
+  // ID of the latest scheduled/confirmed revision (for unschedule action)
+  latestScheduledRevisionId: string | null;
+
+  // Count of scheduled/confirmed revisions (for ambiguity guard in unschedule)
+  scheduledRevisionCount: number;
+
   // Urgency scoring (Phase 4+; 0 when scoring disabled)
   urgencyScore: number;
   /** Per-factor breakdown for the score explanation UI */

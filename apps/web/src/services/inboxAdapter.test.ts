@@ -26,6 +26,8 @@ function makeInboxItem(overrides: Partial<InboxItem> = {}): InboxItem {
     lastContactAt: '2026-03-01T10:00:00Z',
     urgencyScore: 42,
     revisionStatus: null,
+    latestScheduledRevisionId: null,
+    scheduledRevisionCount: 0,
     ...overrides,
   };
 }
@@ -80,6 +82,29 @@ describe('inboxItemToCallQueueItem', () => {
   it('maps confirmed revisionStatus to status', () => {
     const result = inboxItemToCallQueueItem(makeInboxItem({ revisionStatus: 'confirmed' }));
     expect(result.status).toBe('confirmed');
+  });
+
+  it('maps latestScheduledRevisionId when present', () => {
+    const result = inboxItemToCallQueueItem(makeInboxItem({ latestScheduledRevisionId: 'rev-abc' }));
+    expect(result.latestScheduledRevisionId).toBe('rev-abc');
+  });
+
+  it('maps null latestScheduledRevisionId to null', () => {
+    const result = inboxItemToCallQueueItem(makeInboxItem({ latestScheduledRevisionId: null }));
+    expect(result.latestScheduledRevisionId).toBeNull();
+  });
+
+  it('maps scheduledRevisionCount correctly', () => {
+    const result = inboxItemToCallQueueItem(makeInboxItem({ scheduledRevisionCount: 2 }));
+    expect(result.scheduledRevisionCount).toBe(2);
+  });
+
+  it('defaults scheduledRevisionCount to 0 when absent', () => {
+    const item = makeInboxItem();
+    // Cast to simulate missing field from older backend response
+    (item as Partial<typeof item>).scheduledRevisionCount = undefined;
+    const result = inboxItemToCallQueueItem(item as typeof item);
+    expect(result.scheduledRevisionCount).toBe(0);
   });
 });
 

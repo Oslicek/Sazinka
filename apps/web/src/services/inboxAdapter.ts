@@ -45,6 +45,8 @@ export function inboxItemToCallQueueItem(item: InboxItem): CallQueueItem {
     priority: computePriority(daysUntilDue),
     lastContactAt: item.lastContactAt,
     contactAttempts: item.totalCommunications,
+    latestScheduledRevisionId: item.latestScheduledRevisionId ?? null,
+    scheduledRevisionCount: item.scheduledRevisionCount ?? 0,
   };
 }
 

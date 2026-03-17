@@ -171,6 +171,10 @@ export interface CallQueueItem {
   priority: 'overdue' | 'due_this_week' | 'due_soon' | 'upcoming';
   lastContactAt: string | null;
   contactAttempts: number;
+  /** ID of the latest scheduled/confirmed revision for this customer (for unschedule). */
+  latestScheduledRevisionId: string | null;
+  /** Count of scheduled/confirmed revisions — used to guard against ambiguous unschedule. */
+  scheduledRevisionCount: number;
 }
 
 export interface CallQueueResponse {
@@ -184,6 +188,10 @@ export interface SnoozeRevisionRequest {
   id: string;
   snoozeUntil: string;
   reason?: string;
+}
+
+export interface UnscheduleRevisionRequest {
+  id: string;
 }
 
 export interface ScheduleRevisionRequest {
@@ -432,6 +440,27 @@ export async function snoozeRevision(
 
   const response = await deps.request<typeof request, NatsResponse<Revision>>(
     'sazinka.revision.snooze',
+    request
+  );
+
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+
+  return response.payload;
+}
+
+/**
+ * Unschedule a revision — clear all scheduling fields and revert to 'upcoming'
+ */
+export async function unscheduleRevision(
+  data: UnscheduleRevisionRequest,
+  deps: RevisionServiceDeps = getDefaultDeps()
+): Promise<Revision> {
+  const request = createRequest(getToken(), data);
+
+  const response = await deps.request<typeof request, NatsResponse<Revision>>(
+    'sazinka.revision.unschedule',
     request
   );
 
