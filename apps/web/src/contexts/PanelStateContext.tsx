@@ -93,16 +93,18 @@ export function PanelStateProvider({
         }));
         break;
       case 'ROUTE_DATA_CHANGED': {
-        setState(s => {
-          const prev = s.remoteScheduledIds ?? [];
-          const merged = new Set([...prev, ...signal.scheduledCustomerIds]);
-          return {
-            ...s,
-            routeDataVersion: (s.routeDataVersion ?? 0) + 1,
-            remoteInRouteIds: signal.inRouteCustomerIds,
-            remoteScheduledIds: [...merged],
-          };
-        });
+        setState(s => ({
+          ...s,
+          routeDataVersion: (s.routeDataVersion ?? 0) + 1,
+          remoteInRouteIds: signal.inRouteCustomerIds,
+        }));
+        break;
+      }
+      case 'SCHEDULE_SNAPSHOT': {
+        setState(s => ({
+          ...s,
+          remoteScheduledIds: signal.scheduledCustomerIds,
+        }));
         break;
       }
       default:
@@ -170,17 +172,16 @@ export function PanelStateProvider({
         const inRouteCustomerIds = stops
           .map(st => st.customerId)
           .filter((id): id is string => id !== null);
-        const scheduledCustomerIds = stops
-          .filter(st =>
-            st.customerId !== null &&
-            (st.scheduledTimeStart !== null ||
-             st.revisionStatus === 'scheduled' ||
-             st.revisionStatus === 'confirmed'))
-          .map(st => st.customerId as string);
-        sendSignalRef.current({ type: 'ROUTE_DATA_CHANGED', inRouteCustomerIds, scheduledCustomerIds });
+        sendSignalRef.current({ type: 'ROUTE_DATA_CHANGED', inRouteCustomerIds });
       }
       return { ...s, routeStops: stops };
     });
+  }, [isSourceOfTruth, enableChannel]);
+
+  const sendScheduleSnapshot = useCallback((scheduledCustomerIds: string[]) => {
+    if (isSourceOfTruth && enableChannel) {
+      sendSignalRef.current({ type: 'SCHEDULE_SNAPSHOT', scheduledCustomerIds });
+    }
   }, [isSourceOfTruth, enableChannel]);
 
   const highlightSegment = useCallback((idx: number | null) => {
@@ -230,6 +231,7 @@ export function PanelStateProvider({
     selectRoute,
     setRouteContext,
     setRouteStops,
+    sendScheduleSnapshot,
     highlightSegment,
     setInsertionPreview,
     setRouteGeometry,
@@ -240,7 +242,7 @@ export function PanelStateProvider({
     setMetrics,
     setRouteBuffer,
   }), [
-    selectCustomer, selectRoute, setRouteContext, setRouteStops, highlightSegment,
+    selectCustomer, selectRoute, setRouteContext, setRouteStops, sendScheduleSnapshot, highlightSegment,
     setInsertionPreview, setRouteGeometry, setReturnToDepotLeg, setDepotDeparture,
     setRouteWarnings, setBreakWarnings, setMetrics, setRouteBuffer,
   ]);

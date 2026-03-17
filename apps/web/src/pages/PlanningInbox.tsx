@@ -1511,12 +1511,21 @@ function PlanningInboxInner() {
       
       // Invalidate route cache since route changed
       incrementRouteVersion();
+
+      // Broadcast authoritative scheduled set to detached panels
+      const newScheduledCustomerIds = candidates
+        .filter((c) => c._scheduled || c.status === 'scheduled' || c.status === 'confirmed')
+        .map((c) => c.customerId);
+      if (!newScheduledCustomerIds.includes(candidate.customerId)) {
+        newScheduledCustomerIds.push(candidate.customerId);
+      }
+      actions.sendScheduleSnapshot(newScheduledCustomerIds);
       
       setHasChanges(true);
     } catch (err) {
       logger.error('Failed to schedule:', err);
     }
-  }, [candidates, incrementRouteVersion, loadDayOverview, triggerRecalculate]);
+  }, [candidates, actions, incrementRouteVersion, loadDayOverview, triggerRecalculate]);
   
   // Dismiss confirmation and move on to next candidate
   const handleDismissConfirmation = useCallback(() => {
@@ -1593,6 +1602,12 @@ function PlanningInboxInner() {
       setReturnToDepotLeg(null);
       incrementRouteVersion();
 
+      // Broadcast authoritative scheduled set to detached panels
+      const newScheduledCustomerIds = candidates
+        .filter((c) => c.id !== candidate.id && (c._scheduled || c.status === 'scheduled' || c.status === 'confirmed'))
+        .map((c) => c.customerId);
+      actions.sendScheduleSnapshot(newScheduledCustomerIds);
+
       if (remainingStops.length > 0) {
         triggerRecalculate(remainingStops);
       }
@@ -1600,7 +1615,7 @@ function PlanningInboxInner() {
     } catch (err) {
       logger.error('Failed to unschedule revision:', err);
     }
-  }, [candidates, routeStops, incrementRouteVersion, triggerRecalculate]);
+  }, [candidates, routeStops, actions, incrementRouteVersion, triggerRecalculate]);
 
   const handleSnooze = useCallback(async (candidateId: string, days: number) => {
     const candidate = candidates.find((c) => c.id === candidateId || c.customerId === candidateId);

@@ -53,6 +53,8 @@ export interface PanelActions {
   selectRoute(id: string | null): void;
   setRouteContext(ctx: RouteContext | null): void;
   setRouteStops(stops: SavedRouteStop[]): void;
+  /** Broadcast the authoritative scheduled-customer set to all detached panels. */
+  sendScheduleSnapshot(scheduledCustomerIds: string[]): void;
   highlightSegment(idx: number | null): void;
   setInsertionPreview(preview: MapInsertionPreview | null): void;
   setRouteGeometry(geo: [number, number][]): void;

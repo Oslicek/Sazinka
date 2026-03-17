@@ -213,7 +213,9 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
   }, [routeStops, remoteInRouteIds]);
 
   const scheduledIds = useMemo(() => {
-    if (remoteScheduledIds && remoteScheduledIds.length > 0) {
+    // When a SCHEDULE_SNAPSHOT has been received (remoteScheduledIds is defined),
+    // use it as the sole source of truth — even if the array is empty.
+    if (remoteScheduledIds !== undefined) {
       return new Set<string>(remoteScheduledIds);
     }
     const matching = routeStops.filter((s) =>
