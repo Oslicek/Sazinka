@@ -38,6 +38,9 @@ export interface InboxItem {
   totalCommunications: number;
   lastContactAt: string | null;
 
+  // Revision scheduling status ('scheduled' or 'confirmed' if visit agreed, else null)
+  revisionStatus: string | null;
+
   // Urgency scoring (Phase 4+; 0 when scoring disabled)
   urgencyScore: number;
   /** Per-factor breakdown for the score explanation UI */

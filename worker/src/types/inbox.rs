@@ -55,6 +55,9 @@ pub struct InboxItem {
     pub total_communications: i64,
     pub last_contact_at: Option<DateTime<Utc>>,
 
+    // Revision scheduling status ('scheduled' or 'confirmed' if agreed, else null)
+    pub revision_status: Option<String>,
+
     // Urgency score (Phase 4+; 0 when scoring disabled)
     pub urgency_score: f64,
 

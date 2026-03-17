@@ -392,6 +392,13 @@ pub async fn get_customer_inbox(
             -- Contact history
             (SELECT COUNT(*) FROM communications cm WHERE cm.customer_id = c.id)::bigint AS total_communications,
             (SELECT MAX(created_at) FROM communications cm WHERE cm.customer_id = c.id) AS last_contact_at,
+            -- Revision scheduling status (scheduled/confirmed or NULL)
+            (SELECT rev.status::text
+             FROM revisions rev
+             WHERE rev.customer_id = c.id
+               AND rev.status IN ('scheduled', 'confirmed')
+             ORDER BY rev.scheduled_date DESC NULLS LAST
+             LIMIT 1) AS revision_status,
             -- Urgency score placeholder (overwritten in Rust below)
             0.0::float8 AS urgency_score
         FROM customers c

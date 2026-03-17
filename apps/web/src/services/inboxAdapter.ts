@@ -24,7 +24,7 @@ export function inboxItemToCallQueueItem(item: InboxItem): CallQueueItem {
     deviceId: item.deviceId ?? '',
     customerId: item.id,
     userId: '',
-    status: 'upcoming',
+    status: item.revisionStatus ?? 'upcoming',
     dueDate: item.nextActionDue ?? '',
     scheduledDate: null,
     scheduledTimeStart: null,

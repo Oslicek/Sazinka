@@ -25,6 +25,7 @@ function makeInboxItem(overrides: Partial<InboxItem> = {}): InboxItem {
     totalCommunications: 3,
     lastContactAt: '2026-03-01T10:00:00Z',
     urgencyScore: 42,
+    revisionStatus: null,
     ...overrides,
   };
 }
@@ -64,6 +65,21 @@ describe('inboxItemToCallQueueItem', () => {
     expect(result.customerPostalCode).toBe('11000');
     expect(result.customerLat).toBe(50.08);
     expect(result.customerLng).toBe(14.43);
+  });
+
+  it('defaults status to upcoming when revisionStatus is null', () => {
+    const result = inboxItemToCallQueueItem(makeInboxItem({ revisionStatus: null }));
+    expect(result.status).toBe('upcoming');
+  });
+
+  it('maps scheduled revisionStatus to status', () => {
+    const result = inboxItemToCallQueueItem(makeInboxItem({ revisionStatus: 'scheduled' }));
+    expect(result.status).toBe('scheduled');
+  });
+
+  it('maps confirmed revisionStatus to status', () => {
+    const result = inboxItemToCallQueueItem(makeInboxItem({ revisionStatus: 'confirmed' }));
+    expect(result.status).toBe('confirmed');
   });
 });
 
