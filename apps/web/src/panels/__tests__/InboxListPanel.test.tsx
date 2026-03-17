@@ -33,7 +33,7 @@ vi.mock('@/components/planner', () => ({
           <button
             key={c.id}
             data-testid={`candidate-${c.id}`}
-            data-in-route={String(inRouteIds?.has(c.id) ?? false)}
+            data-in-route={String(c.isInRoute || (inRouteIds?.has(c.id) ?? false))}
             data-has-phone={String(c.hasPhone)}
             data-has-valid-address={String(c.hasValidAddress)}
             data-city={c.city}
@@ -469,5 +469,87 @@ describe('InboxListPanel – filter integration', () => {
       expect(items[0]).toHaveAttribute('data-testid', 'candidate-c-overdue');
       expect(items[1]).toHaveAttribute('data-testid', 'candidate-c-week');
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Route stop enrichment — isInRoute + isScheduled from PanelState
+// ---------------------------------------------------------------------------
+
+describe('InboxListPanel – route stop enrichment', () => {
+  beforeEach(() => {
+    lastFilterBarProps = null;
+  });
+
+  it('marks candidate as isInRoute when PanelState routeStops contains matching customerId', async () => {
+    const item = { ...rawCallQueueItem, customerId: 'c1', daysUntilDue: 3, priority: 'due_this_week' as const };
+    mockGetInbox.mockResolvedValue(makeInboxResponse([item]));
+    mockInboxResponseToCallQueueResponse.mockReturnValue({ items: [item] });
+
+    let capturedActions: ReturnType<typeof usePanelState>['actions'] | null = null;
+    function ActionCapture() {
+      const { actions } = usePanelState();
+      capturedActions = actions;
+      return null;
+    }
+
+    render(
+      <PanelStateProvider activePageContext="inbox" enableChannel={false} initialRouteContext={mockRouteContext}>
+        <ActionCapture />
+        <InboxListPanel />
+      </PanelStateProvider>
+    );
+
+    await waitFor(() => expect(screen.getByTestId('candidate-c1')).toBeInTheDocument());
+
+    // Simulate PlanningInbox bridge writing route stops to PanelState
+    act(() => {
+      capturedActions!.setRouteStops([{
+        ...mockStop,
+        customerId: 'c1',
+      }]);
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('candidate-c1')).toHaveAttribute('data-in-route', 'true')
+    );
+  });
+
+  it('marks candidate as isScheduled when route stop has scheduledTimeStart', async () => {
+    const item = { ...rawCallQueueItem, customerId: 'c1', daysUntilDue: 3, priority: 'due_this_week' as const };
+    mockGetInbox.mockResolvedValue(makeInboxResponse([item]));
+    mockInboxResponseToCallQueueResponse.mockReturnValue({ items: [item] });
+
+    let capturedActions: ReturnType<typeof usePanelState>['actions'] | null = null;
+    function ActionCapture() {
+      const { actions } = usePanelState();
+      capturedActions = actions;
+      return null;
+    }
+
+    render(
+      <PanelStateProvider activePageContext="inbox" enableChannel={false} initialRouteContext={mockRouteContext}>
+        <ActionCapture />
+        <InboxListPanel />
+      </PanelStateProvider>
+    );
+
+    await waitFor(() => expect(screen.getByTestId('candidate-c1')).toBeInTheDocument());
+    // Initially not scheduled
+    expect(screen.getByTestId('candidate-c1')).toHaveAttribute('data-is-scheduled', 'false');
+
+    // Simulate bridge writing route stop with an agreed visit time
+    act(() => {
+      capturedActions!.setRouteStops([{
+        ...mockStop,
+        customerId: 'c1',
+        scheduledTimeStart: '09:00',
+        scheduledTimeEnd: '10:00',
+      }]);
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('candidate-c1')).toHaveAttribute('data-is-scheduled', 'true')
+    );
   });
 });

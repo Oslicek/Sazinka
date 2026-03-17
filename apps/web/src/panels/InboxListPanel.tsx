@@ -91,7 +91,7 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
   const [rawCandidates, setRawCandidates] = useState<CallQueueItem[]>([]);
   const [candidates, setCandidates] = useState<CandidateRowData[]>([]);
   const [isLoadingCandidates, setIsLoadingCandidates] = useState(false);
-  const [routeStops, setRouteStops] = useState<SavedRouteStop[]>([]);
+  const [selfFetchedStops, setSelfFetchedStops] = useState<SavedRouteStop[]>([]);
   const [ruleSets, setRuleSets] = useState<ScoringRuleSet[]>([]);
   const [selectedRuleSetId, setSelectedRuleSetId] = useState<string | null>(null);
   const [filters, setFilters] = useState<InboxFilterExpression>(loadPersistedFilters);
@@ -99,6 +99,9 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
   const inboxStateLoadedRef = useRef(false);
 
   const routeContext = state.routeContext;
+  // Prefer route stops from PanelState (synced by PlanningInbox bridge);
+  // fall back to self-fetched stops (for detached windows)
+  const routeStops = state.routeStops.length > 0 ? state.routeStops : selfFetchedStops;
 
   useEffect(() => {
     if (!isConnected) return;
@@ -151,22 +154,29 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
     loadCandidates();
   }, [loadCandidates]);
 
+  // Self-fetch route stops as fallback (detached windows where no bridge exists)
   useEffect(() => {
     if (!isConnected || !routeContext?.date) return;
+    if (state.routeStops.length > 0) return; // PanelState already has data from bridge
     routeService
       .getRoute({ date: routeContext.date })
       .then((res) => {
-        setRouteStops((res as { route: unknown; stops: SavedRouteStop[] }).stops ?? []);
+        setSelfFetchedStops((res as { route: unknown; stops: SavedRouteStop[] }).stops ?? []);
       })
-      .catch(() => setRouteStops([]));
-  }, [isConnected, routeContext?.date]);
-
-  useEffect(() => {
-    actions.setRouteStops(routeStops);
-  }, [routeStops, actions]);
+      .catch(() => setSelfFetchedStops([]));
+  }, [isConnected, routeContext?.date, state.routeStops.length]);
 
   const inRouteIds = useMemo(
     () => new Set<string>(routeStops.map((s) => s.customerId).filter((id): id is string => id !== null)),
+    [routeStops],
+  );
+
+  const scheduledIds = useMemo(
+    () => new Set<string>(
+      routeStops
+        .filter((s) => s.customerId !== null && s.scheduledTimeStart !== null)
+        .map((s) => s.customerId as string)
+    ),
     [routeStops],
   );
 
@@ -175,7 +185,7 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
     try { sessionStorage.setItem(SESSION_KEY_FILTERS, JSON.stringify(filters)); } catch { /* noop */ }
   }, [filters]);
 
-  // Apply client-side filters + sorting
+  // Apply client-side filters + sorting, then enrich with route stop info
   const filteredSorted = useMemo(() => {
     const filtered = applyInboxFilters(rawCandidates, filters, inRouteIds) as CallQueueItem[];
 
@@ -186,9 +196,14 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
       if (selected) filtered.push(selected);
     }
 
-    const mapped = filtered.map(mapCallQueueItemToCandidate);
+    const mapped = filtered.map((item) => {
+      const candidate = mapCallQueueItemToCandidate(item);
+      candidate.isInRoute = inRouteIds.has(candidate.id);
+      candidate.isScheduled = candidate.isScheduled || scheduledIds.has(candidate.id);
+      return candidate;
+    });
     return sortCandidates(mapped);
-  }, [rawCandidates, filters, inRouteIds, state.selectedCustomerId]);
+  }, [rawCandidates, filters, inRouteIds, scheduledIds, state.selectedCustomerId]);
 
   const handlePresetChange = useCallback((presetId: FilterPresetId) => {
     setFilters((prev) => applyFilterPreset(presetId, prev));
