@@ -281,6 +281,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let revision_queue_sub = client.subscribe("sazinka.revision.queue").await?;
     let revision_snooze_sub = client.subscribe("sazinka.revision.snooze").await?;
     let revision_schedule_sub = client.subscribe("sazinka.revision.schedule").await?;
+    let revision_unschedule_sub = client.subscribe("sazinka.revision.unschedule").await?;
     
     // Slots subjects
     let slots_suggest_sub = client.subscribe("sazinka.slots.suggest").await?;
@@ -401,6 +402,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let client_revision_queue = client.clone();
     let client_revision_snooze = client.clone();
     let client_revision_schedule = client.clone();
+    let client_revision_unschedule = client.clone();
     let client_slots_suggest = client.clone();
     let client_slots_suggest_v2 = client.clone();
     let client_slots_validate = client.clone();
@@ -461,6 +463,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_revision_queue = pool.clone();
     let pool_revision_snooze = pool.clone();
     let pool_revision_schedule = pool.clone();
+    let pool_revision_unschedule = pool.clone();
     let pool_slots_suggest = pool.clone();
     let pool_slots_suggest_v2 = pool.clone();
     let pool_slots_validate = pool.clone();
@@ -637,6 +640,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let jwt_secret_revision_queue = Arc::clone(&jwt_secret);
     let jwt_secret_revision_snooze = Arc::clone(&jwt_secret);
     let jwt_secret_revision_schedule = Arc::clone(&jwt_secret);
+    let jwt_secret_revision_unschedule = Arc::clone(&jwt_secret);
     
     // JWT secret clones for slots handler
     let jwt_secret_slots_suggest = Arc::clone(&jwt_secret);
@@ -1098,6 +1102,10 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     
     let revision_schedule_handle = tokio::spawn(async move {
         revision::handle_schedule(client_revision_schedule, revision_schedule_sub, pool_revision_schedule, jwt_secret_revision_schedule).await
+    });
+    
+    let revision_unschedule_handle = tokio::spawn(async move {
+        revision::handle_unschedule(client_revision_unschedule, revision_unschedule_sub, pool_revision_unschedule, jwt_secret_revision_unschedule).await
     });
     
     // Slots handlers
@@ -1920,6 +1928,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         revision_queue_handle.boxed(),
         revision_snooze_handle.boxed(),
         revision_schedule_handle.boxed(),
+        revision_unschedule_handle.boxed(),
         slots_suggest_handle.boxed(),
         slots_suggest_v2_handle.boxed(),
         slots_validate_handle.boxed(),

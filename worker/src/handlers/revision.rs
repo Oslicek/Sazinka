@@ -781,6 +781,73 @@ pub async fn handle_snooze(
     Ok(())
 }
 
+/// Handle revision.unschedule messages - clear scheduling and revert to 'upcoming'
+pub async fn handle_unschedule(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+    jwt_secret: Arc<String>,
+) -> Result<()> {
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct UnscheduleRequest {
+        id: Uuid,
+    }
+
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received revision.unschedule message");
+
+        let reply = match msg.reply {
+            Some(ref reply) => reply.clone(),
+            None => {
+                warn!("Message without reply subject");
+                continue;
+            }
+        };
+
+        let request: Request<UnscheduleRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                error!("Failed to parse request: {}", e);
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        info!("Unscheduling revision {} for user {}", request.payload.id, user_id);
+
+        match queries::revision::unschedule_revision(&pool, user_id, request.payload.id).await {
+            Ok(Some(revision)) => {
+                info!("Successfully unscheduled revision {}", revision.id);
+                let response = SuccessResponse::new(request.id, revision);
+                let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+            }
+            Ok(None) => {
+                warn!("Revision {} not found or not in scheduled/confirmed state", request.payload.id);
+                let error = ErrorResponse::new(request.id, "NOT_FOUND", "Revision not found or not currently scheduled");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+            Err(e) => {
+                error!("Failed to unschedule revision: {}", e);
+                let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Handle revision.schedule messages - schedule a revision
 pub async fn handle_schedule(
     client: Client,

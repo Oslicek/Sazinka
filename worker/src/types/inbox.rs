@@ -58,6 +58,12 @@ pub struct InboxItem {
     // Revision scheduling status ('scheduled' or 'confirmed' if agreed, else null)
     pub revision_status: Option<String>,
 
+    // ID of the latest scheduled/confirmed revision (for unschedule action)
+    pub latest_scheduled_revision_id: Option<Uuid>,
+
+    // Count of scheduled/confirmed revisions (for ambiguity guard in unschedule)
+    pub scheduled_revision_count: i64,
+
     // Urgency score (Phase 4+; 0 when scoring disabled)
     pub urgency_score: f64,
 

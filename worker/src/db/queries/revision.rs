@@ -745,6 +745,72 @@ pub async fn schedule_revision(
     Ok(revision)
 }
 
+/// Build the SQL for `unschedule_revision` (extracted for testability).
+fn build_unschedule_revision_sql() -> String {
+    format!(
+        r#"
+        UPDATE revisions
+        SET scheduled_date = NULL, scheduled_time_start = NULL, scheduled_time_end = NULL,
+            assigned_crew_id = NULL, status = 'upcoming', updated_at = NOW()
+        WHERE id = $1 AND user_id = $2 AND status IN ('scheduled', 'confirmed')
+        RETURNING {}
+        "#,
+        REVISION_COLS_SIMPLE
+    )
+}
+
+/// Unschedule a revision — clear scheduling fields and revert to 'upcoming'.
+pub async fn unschedule_revision(
+    pool: &PgPool,
+    user_id: Uuid,
+    revision_id: Uuid,
+) -> Result<Option<Revision>> {
+    let query = build_unschedule_revision_sql();
+
+    let revision = sqlx::query_as::<_, Revision>(&query)
+    .bind(revision_id).bind(user_id)
+    .fetch_optional(pool).await?;
+
+    Ok(revision)
+}
+
+#[cfg(test)]
+mod unschedule_tests {
+    use super::build_unschedule_revision_sql;
+
+    #[test]
+    fn unschedule_sql_clears_all_scheduling_fields() {
+        let sql = build_unschedule_revision_sql();
+        assert!(sql.contains("scheduled_date = NULL"), "must clear scheduled_date");
+        assert!(sql.contains("scheduled_time_start = NULL"), "must clear scheduled_time_start");
+        assert!(sql.contains("scheduled_time_end = NULL"), "must clear scheduled_time_end");
+        assert!(sql.contains("assigned_crew_id = NULL"), "must clear assigned_crew_id");
+        assert!(sql.contains("status = 'upcoming'"), "must revert status to upcoming");
+    }
+
+    #[test]
+    fn unschedule_sql_has_status_guard() {
+        let sql = build_unschedule_revision_sql();
+        assert!(
+            sql.contains("status IN ('scheduled', 'confirmed')"),
+            "must guard against non-scheduled revisions"
+        );
+    }
+
+    #[test]
+    fn unschedule_sql_scoped_to_user_and_revision() {
+        let sql = build_unschedule_revision_sql();
+        assert!(sql.contains("id = $1"), "must bind revision id");
+        assert!(sql.contains("user_id = $2"), "must bind user_id");
+    }
+
+    #[test]
+    fn unschedule_sql_returns_all_cols() {
+        let sql = build_unschedule_revision_sql();
+        assert!(sql.contains("RETURNING"), "must return updated row");
+    }
+}
+
 /// Get scheduled time window for a customer on a specific date.
 /// Returns the time window from the first matching scheduled/upcoming revision.
 pub async fn get_scheduled_time_window(
