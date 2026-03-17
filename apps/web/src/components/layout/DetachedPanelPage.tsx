@@ -125,7 +125,7 @@ export function DetachedPanelPage({
           {panel === 'map' ? 'Map' : 'List'} — detached
           {!snapshotTimedOut && !snapshotReceived && ' (syncing…)'}
         </div>
-        <div style={{ flex: 1, overflow: 'hidden' }}>
+        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           {isValidPanel ? <PanelSwitch panel={panel} /> : null}
         </div>
       </div>
