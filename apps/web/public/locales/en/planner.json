@@ -143,6 +143,8 @@
   "candidate_planned_duration": "Planned duration: {{minutes}} min",
   "candidate_window_info": "Window {{window}} min, need {{service}} min",
   "candidate_change_appointment": "Change appointment",
+  "candidate_cancel_appointment": "Cancel appointment",
+  "candidate_cancel_appointment_confirm": "Really cancel the agreed appointment?",
   "candidate_make_appointment": "Make appointment",
   "candidate_remove_from_route": "Remove from route",
   "candidate_add_to_route": "Add to route",

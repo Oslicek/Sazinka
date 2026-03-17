@@ -144,6 +144,8 @@
   "candidate_planned_duration": "Plánované trvání: {{minutes}} min",
   "candidate_window_info": "Okno {{window}} min, potřeba {{service}} min",
   "candidate_change_appointment": "Změnit termín",
+  "candidate_cancel_appointment": "Zrušit termín",
+  "candidate_cancel_appointment_confirm": "Opravdu zrušit domluvený termín?",
   "candidate_make_appointment": "Domluvit termín",
   "candidate_remove_from_route": "Odebrat z trasy",
   "candidate_add_to_route": "Přidat do trasy",
