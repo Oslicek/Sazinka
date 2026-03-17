@@ -80,6 +80,8 @@ interface CandidateDetailProps {
   onCreatePlannedAction?: (customerId: string, dueDate: string, note: string) => Promise<void>;
   /** Abandon this customer (remove from inbox) */
   onAbandon?: (customerId: string) => Promise<void>;
+  /** Cancel (unschedule) the agreed appointment, reverting the revision to 'upcoming' */
+  onUnschedule?: (candidateId: string) => void;
 }
 
 export function CandidateDetail({
@@ -96,6 +98,7 @@ export function CandidateDetail({
   defaultServiceDurationMinutes = 60,
   onCreatePlannedAction,
   onAbandon,
+  onUnschedule,
 }: CandidateDetailProps) {
   const { t } = useTranslation('planner');
   // Inline scheduling form state
@@ -422,6 +425,20 @@ export function CandidateDetail({
                 </span>
               )}
             </div>
+            {/* Unschedule (cancel appointment) button */}
+            {onUnschedule && (
+              <button
+                type="button"
+                className={styles.unscheduleButton}
+                onClick={() => {
+                  if (window.confirm(t('candidate_cancel_appointment_confirm'))) {
+                    onUnschedule(candidate.id);
+                  }
+                }}
+              >
+                {t('candidate_cancel_appointment')}
+              </button>
+            )}
             {/* Flexible window: editable duration input on its own row */}
             {windowInfo?.isFlexible && (
               <div className={styles.serviceDurationInline}>

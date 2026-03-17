@@ -9,6 +9,23 @@ vi.mock('@tanstack/react-router', () => ({
   ),
 }));
 
+vi.mock('@/stores/natsStore', () => ({
+  useNatsStore: vi.fn((selector: (s: { isConnected: boolean }) => unknown) =>
+    selector({ isConnected: false })
+  ),
+}));
+
+vi.mock('@/services/deviceService', () => ({
+  listDevices: vi.fn(() => Promise.resolve({ items: [] })),
+}));
+
+vi.mock('@/services/visitService', () => ({
+  listVisits: vi.fn(() => Promise.resolve({ visits: [], total: 0 })),
+  getVisit: vi.fn(() => Promise.resolve({ visit: {}, workItems: [] })),
+  getVisitStatusLabel: vi.fn(() => ''),
+  getVisitResultLabel: vi.fn(() => ''),
+}));
+
 describe('CandidateDetail', () => {
   const mockCandidate: CandidateDetailData = {
     id: 'rev-1',
@@ -266,6 +283,81 @@ describe('CandidateDetail', () => {
 
       expect(stateFlagsIndex).toBeLessThan(actionsIndex);
       expect(actionsIndex).toBeLessThan(headerIndex);
+    });
+  });
+
+  describe('Unschedule (Zrušit termín)', () => {
+    const scheduledCandidate: CandidateDetailData = {
+      ...mockCandidate,
+      isScheduled: true,
+      scheduledDate: '2026-04-10',
+      scheduledTimeStart: '09:00',
+      scheduledTimeEnd: '10:00',
+    };
+
+    it('renders "Zrušit termín" button when candidate is scheduled and onUnschedule is provided', () => {
+      render(
+        <CandidateDetail
+          candidate={scheduledCandidate}
+          onUnschedule={vi.fn()}
+          {...mockHandlers}
+        />
+      );
+      expect(screen.getByRole('button', { name: /candidate_cancel_appointment/i })).toBeInTheDocument();
+    });
+
+    it('does NOT render "Zrušit termín" button when candidate is not scheduled', () => {
+      render(
+        <CandidateDetail
+          candidate={{ ...mockCandidate, isScheduled: false }}
+          onUnschedule={vi.fn()}
+          {...mockHandlers}
+        />
+      );
+      expect(screen.queryByRole('button', { name: /candidate_cancel_appointment/i })).not.toBeInTheDocument();
+    });
+
+    it('does NOT render "Zrušit termín" button when onUnschedule is not provided', () => {
+      render(
+        <CandidateDetail
+          candidate={scheduledCandidate}
+          {...mockHandlers}
+        />
+      );
+      expect(screen.queryByRole('button', { name: /candidate_cancel_appointment/i })).not.toBeInTheDocument();
+    });
+
+    it('calls onUnschedule with candidate id after confirm dialog is accepted', () => {
+      const onUnschedule = vi.fn();
+      vi.spyOn(window, 'confirm').mockReturnValueOnce(true);
+
+      render(
+        <CandidateDetail
+          candidate={scheduledCandidate}
+          onUnschedule={onUnschedule}
+          {...mockHandlers}
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: /candidate_cancel_appointment/i }));
+      expect(window.confirm).toHaveBeenCalled();
+      expect(onUnschedule).toHaveBeenCalledWith(scheduledCandidate.id);
+    });
+
+    it('does NOT call onUnschedule when confirm dialog is rejected', () => {
+      const onUnschedule = vi.fn();
+      vi.spyOn(window, 'confirm').mockReturnValueOnce(false);
+
+      render(
+        <CandidateDetail
+          candidate={scheduledCandidate}
+          onUnschedule={onUnschedule}
+          {...mockHandlers}
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: /candidate_cancel_appointment/i }));
+      expect(onUnschedule).not.toHaveBeenCalled();
     });
   });
 });

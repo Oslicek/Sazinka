@@ -49,7 +49,7 @@ import * as crewService from '../services/crewService';
 import * as routeService from '../services/routeService';
 import * as insertionService from '../services/insertionService';
 import * as geometryService from '../services/geometryService';
-import { type CallQueueItem } from '../services/revisionService';
+import { type CallQueueItem, unscheduleRevision } from '../services/revisionService';
 import { getInbox, listPlannedActions, updatePlannedAction } from '../services/inboxService';
 import { inboxResponseToCallQueueResponse } from '../services/inboxAdapter';
 import type { InboxItem } from '@shared/inbox';
@@ -1542,6 +1542,66 @@ function PlanningInboxInner() {
     }
   }, [scheduledConfirmation, selectNextCandidate]);
 
+  const handleUnschedule = useCallback(async (candidateId: string) => {
+    const candidate = candidates.find((c) => c.id === candidateId || c.customerId === candidateId);
+    if (!candidate) return;
+
+    // Resolve the revision ID to unschedule:
+    // 1. Route stop's revisionId takes priority
+    // 2. latestScheduledRevisionId only when scheduledRevisionCount === 1
+    // 3. Otherwise block (ambiguous — multiple scheduled revisions)
+    const routeStop = routeStops.find((s) => s.customerId === candidate.customerId);
+    let revisionId: string | null = routeStop?.revisionId ?? null;
+
+    if (!revisionId) {
+      if (candidate.scheduledRevisionCount === 1 && candidate.latestScheduledRevisionId) {
+        revisionId = candidate.latestScheduledRevisionId;
+      } else if (candidate.scheduledRevisionCount > 1) {
+        logger.error('Cannot unschedule: multiple scheduled revisions for this customer', { customerId: candidate.customerId });
+        return;
+      } else {
+        // No revision to unschedule — clear local state only (e.g. only locally scheduled)
+        logger.warn('No backend revision ID found; clearing local schedule state only', { candidateId });
+      }
+    }
+
+    try {
+      if (revisionId) {
+        await unscheduleRevision({ id: revisionId });
+      }
+
+      // Clear local candidate scheduling state
+      setCandidates((prev) =>
+        prev.map((c) =>
+          c.id === candidate.id
+            ? {
+                ...c,
+                _scheduled: false,
+                status: 'upcoming',
+                _scheduledDate: undefined,
+                _scheduledTimeStart: undefined,
+                _scheduledTimeEnd: undefined,
+              } as InboxCandidate
+            : c
+        )
+      );
+
+      // Remove from route stops if present
+      const customerId = candidate.customerId;
+      const remainingStops = routeStops.filter((s) => s.customerId !== customerId).map((s, i) => ({ ...s, stopOrder: i + 1 }));
+      setRouteStops(remainingStops);
+      setReturnToDepotLeg(null);
+      incrementRouteVersion();
+
+      if (remainingStops.length > 0) {
+        triggerRecalculate(remainingStops);
+      }
+      setHasChanges(true);
+    } catch (err) {
+      logger.error('Failed to unschedule revision:', err);
+    }
+  }, [candidates, routeStops, incrementRouteVersion, triggerRecalculate]);
+
   const handleSnooze = useCallback(async (candidateId: string, days: number) => {
     const candidate = candidates.find((c) => c.id === candidateId || c.customerId === candidateId);
     if (!candidate) return;
@@ -2898,6 +2958,7 @@ function PlanningInboxInner() {
             handleAddToRoute(candidateId, serviceDurationMinutes)
           }
           onRemoveFromRoute={handleRemoveFromRoute}
+          onUnschedule={handleUnschedule}
           isInRoute={selectedCandidateId ? inRouteIds.has(selectedCandidateId) : false}
           needsReschedule={selectedCandidateId ? needsRescheduleIds.has(selectedCandidateId) : false}
           routeDate={context?.date}
