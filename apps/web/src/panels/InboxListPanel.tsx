@@ -215,21 +215,25 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
   // #endregion
 
   const inRouteIds = useMemo(() => {
-    const ids = new Set<string>(routeStops.map((s) => s.customerId).filter((id): id is string => id !== null));
-    if (remoteInRouteIds) remoteInRouteIds.forEach((id) => ids.add(id));
-    return ids;
+    if (remoteInRouteIds) return new Set<string>(remoteInRouteIds);
+    return new Set<string>(routeStops.map((s) => s.customerId).filter((id): id is string => id !== null));
   }, [routeStops, remoteInRouteIds]);
 
   const scheduledIds = useMemo(() => {
+    if (remoteScheduledIds && remoteScheduledIds.length > 0) {
+      // #region agent log
+      console.log('[DBG-2ba648] scheduledIds result', { scheduledIdsArr: remoteScheduledIds, source: 'remote', remoteScheduledIds });
+      // #endregion
+      return new Set<string>(remoteScheduledIds);
+    }
     const matching = routeStops.filter((s) =>
       s.customerId !== null &&
       (s.scheduledTimeStart !== null ||
        s.revisionStatus === 'scheduled' ||
        s.revisionStatus === 'confirmed'));
     const ids = new Set<string>(matching.map((s) => s.customerId as string));
-    if (remoteScheduledIds) remoteScheduledIds.forEach((id) => ids.add(id));
     // #region agent log
-    console.log('[DBG-2ba648] scheduledIds result', { scheduledIdsArr: [...ids], matchingCount: matching.length, remoteScheduledIds: remoteScheduledIds ?? null });
+    console.log('[DBG-2ba648] scheduledIds result', { scheduledIdsArr: [...ids], source: 'routeStops', matchingCount: matching.length });
     // #endregion
     return ids;
   }, [routeStops, remoteScheduledIds]);
