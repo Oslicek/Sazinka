@@ -100,12 +100,22 @@ interface InboxListPanelProps {
   isLoading?: boolean;
 }
 
+const _dbgPrevStopsRef = { current: null as unknown[] | null };
 export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadingProp }: InboxListPanelProps) {
   const { state, actions } = usePanelState();
   const { isConnected } = useNatsStore();
 
   // #region agent log
-  console.log('[DBG-2ba648] InboxListPanel render',JSON.stringify({stateRouteStopsLen:state.routeStops.length,cacheRawLen:_cache.rawCandidates.length,routeStopsSample:state.routeStops.slice(0,3).map(s=>({cid:s.customerId,schedStart:s.scheduledTimeStart,revStatus:s.revisionStatus}))}));
+  if (_dbgPrevStopsRef.current && _dbgPrevStopsRef.current === state.routeStops) {
+    const prevSnap = (_dbgPrevStopsRef.current as SavedRouteStop[]).slice(0,3).map(s=>({cid:s.customerId,schedStart:s.scheduledTimeStart,revStatus:s.revisionStatus}));
+    console.log('[DBG-2ba648] SAME_REF mutation check',JSON.stringify({prevSnap}));
+  }
+  _dbgPrevStopsRef.current = state.routeStops;
+  // #endregion
+
+  // #region agent log
+  const _snap = state.routeStops.slice(0,3).map(s=>({cid:s.customerId,schedStart:s.scheduledTimeStart,revStatus:s.revisionStatus}));
+  console.log('[DBG-2ba648] InboxListPanel render',JSON.stringify({stateRouteStopsLen:state.routeStops.length,cacheRawLen:_cache.rawCandidates.length,routeStopsSample:_snap,stateRouteStopsRef:state.routeStops === (_dbgPrevStopsRef?.current) ? 'SAME_REF' : 'NEW_REF'}));
   // #endregion
 
   const [rawCandidates, setRawCandidatesState] = useState<CallQueueItem[]>(_cache.rawCandidates);
