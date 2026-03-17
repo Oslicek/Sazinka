@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import React from 'react';
 import { PanelStateProvider } from '../../contexts/PanelStateContext';
-import { InboxListPanel, mapCallQueueItemToCandidate } from '../InboxListPanel';
+import { InboxListPanel, mapCallQueueItemToCandidate, resetInboxListCache } from '../InboxListPanel';
 import { usePanelState } from '@/hooks/usePanelState';
 import type { CandidateRowData } from '@/components/planner';
 import type { SavedRouteStop } from '@/services/routeService';
@@ -185,6 +185,7 @@ function wrapper({ children }: { children: React.ReactNode }) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetInboxListCache();
   mockGetInbox.mockResolvedValue(makeInboxResponse([]));
   mockInboxResponseToCallQueueResponse.mockImplementation((r: ReturnType<typeof makeInboxResponse>) => ({
     items: r.items,

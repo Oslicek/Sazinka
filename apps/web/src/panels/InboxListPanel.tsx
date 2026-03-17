@@ -79,6 +79,22 @@ function loadPersistedFilters(): InboxFilterExpression {
   }
 }
 
+// Module-level cache: survives component remounts caused by layout changes
+// (React unmounts/remounts InboxListPanel when its tree position changes)
+const _cache = {
+  rawCandidates: [] as CallQueueItem[],
+  ruleSets: [] as ScoringRuleSet[],
+  selectedRuleSetId: null as string | null,
+  inboxStateLoaded: false,
+};
+
+export function resetInboxListCache(): void {
+  _cache.rawCandidates = [];
+  _cache.ruleSets = [];
+  _cache.selectedRuleSetId = null;
+  _cache.inboxStateLoaded = false;
+}
+
 interface InboxListPanelProps {
   candidates?: CandidateRowData[];
   isLoading?: boolean;
@@ -88,15 +104,30 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
   const { state, actions } = usePanelState();
   const { isConnected } = useNatsStore();
 
-  const [rawCandidates, setRawCandidates] = useState<CallQueueItem[]>([]);
+  const [rawCandidates, setRawCandidatesState] = useState<CallQueueItem[]>(_cache.rawCandidates);
   const [candidates, setCandidates] = useState<CandidateRowData[]>([]);
-  const [isLoadingCandidates, setIsLoadingCandidates] = useState(false);
+  const [isLoadingCandidates, setIsLoadingCandidates] = useState(_cache.rawCandidates.length === 0);
   const [selfFetchedStops, setSelfFetchedStops] = useState<SavedRouteStop[]>([]);
-  const [ruleSets, setRuleSets] = useState<ScoringRuleSet[]>([]);
-  const [selectedRuleSetId, setSelectedRuleSetId] = useState<string | null>(null);
+  const [ruleSets, setRuleSetsState] = useState<ScoringRuleSet[]>(_cache.ruleSets);
+  const [selectedRuleSetId, setSelectedRuleSetIdState] = useState<string | null>(_cache.selectedRuleSetId);
   const [filters, setFilters] = useState<InboxFilterExpression>(loadPersistedFilters);
   const [activePresetId, setActivePresetId] = useState<FilterPresetId | null>(null);
-  const inboxStateLoadedRef = useRef(false);
+  const inboxStateLoadedRef = useRef(_cache.inboxStateLoaded);
+
+  const setRawCandidates = useCallback((items: CallQueueItem[]) => {
+    _cache.rawCandidates = items;
+    setRawCandidatesState(items);
+  }, []);
+
+  const setRuleSets = useCallback((sets: ScoringRuleSet[]) => {
+    _cache.ruleSets = sets;
+    setRuleSetsState(sets);
+  }, []);
+
+  const setSelectedRuleSetId = useCallback((id: string | null) => {
+    _cache.selectedRuleSetId = id;
+    setSelectedRuleSetIdState(id);
+  }, []);
 
   const routeContext = state.routeContext;
   // Prefer route stops from PanelState (synced by PlanningInbox bridge);
@@ -114,6 +145,7 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
         setRuleSets(activeSets);
         if (!inboxStateLoadedRef.current) {
           inboxStateLoadedRef.current = true;
+          _cache.inboxStateLoaded = true;
           if (savedState?.selectedRuleSetId) {
             setSelectedRuleSetId(savedState.selectedRuleSetId);
           } else {
@@ -123,7 +155,7 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
         }
       })
       .catch(() => setRuleSets([]));
-  }, [isConnected]);
+  }, [isConnected, setRuleSets, setSelectedRuleSetId]);
 
   useEffect(() => {
     if (!isConnected || !inboxStateLoadedRef.current) return;
@@ -148,7 +180,7 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
       setIsLoadingCandidates(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isConnected, selectedRuleSetId, routeContext?.date]);
+  }, [isConnected, selectedRuleSetId, routeContext?.date, setRawCandidates]);
 
   useEffect(() => {
     loadCandidates();
