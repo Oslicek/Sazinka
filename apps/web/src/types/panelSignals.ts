@@ -10,6 +10,8 @@ export type PanelSignal =
       selectedCustomerId: string | null;
       selectedRouteId: string | null;
       highlightedSegment: number | null;
+      inRouteCustomerIds?: string[];
+      scheduledCustomerIds?: string[];
     }
   | { type: 'ROUTE_DATA_CHANGED'; inRouteCustomerIds: string[]; scheduledCustomerIds: string[] }
   | { type: 'PANEL_DETACHED'; panel: 'map' | 'list'; page: 'inbox' | 'plan' }

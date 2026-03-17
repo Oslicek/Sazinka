@@ -80,6 +80,9 @@ export function PanelStateProvider({
         });
         break;
       case 'CONTEXT_SNAPSHOT':
+        // #region agent log
+        console.log('[DBG-2ba648] CONTEXT_SNAPSHOT received', { inRouteCustomerIds: signal.inRouteCustomerIds, scheduledCustomerIds: signal.scheduledCustomerIds });
+        // #endregion
         setState(s => ({
           ...s,
           selectedCustomerId: signal.selectedCustomerId,
@@ -88,6 +91,8 @@ export function PanelStateProvider({
           routeContext: signal.routeContext
             ? { ...signal.routeContext, crewName: s.routeContext?.crewName ?? '', depotName: s.routeContext?.depotName ?? '' }
             : s.routeContext,
+          remoteInRouteIds: signal.inRouteCustomerIds ?? s.remoteInRouteIds,
+          remoteScheduledIds: signal.scheduledCustomerIds ?? s.remoteScheduledIds,
         }));
         break;
       case 'ROUTE_DATA_CHANGED':
@@ -108,6 +113,17 @@ export function PanelStateProvider({
 
   const getSnapshot = useCallback(() => {
     const s = stateRef.current;
+    const stops = s.routeStops;
+    const inRouteCustomerIds = stops
+      .map(st => st.customerId)
+      .filter((id): id is string => id !== null);
+    const scheduledCustomerIds = stops
+      .filter(st =>
+        st.customerId !== null &&
+        (st.scheduledTimeStart !== null ||
+         st.revisionStatus === 'scheduled' ||
+         st.revisionStatus === 'confirmed'))
+      .map(st => st.customerId as string);
     return {
       routeContext: s.routeContext
         ? { date: s.routeContext.date, crewId: s.routeContext.crewId, depotId: s.routeContext.depotId }
@@ -115,6 +131,8 @@ export function PanelStateProvider({
       selectedCustomerId: s.selectedCustomerId,
       selectedRouteId: s.selectedRouteId,
       highlightedSegment: s.highlightedSegment,
+      inRouteCustomerIds,
+      scheduledCustomerIds,
     };
   }, []);
 
