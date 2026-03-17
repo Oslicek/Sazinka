@@ -19,11 +19,13 @@ vi.mock('@/components/planner', () => ({
     onCandidateSelect,
     isLoading,
     inRouteIds,
+    scheduledIds,
   }: {
     candidates: CandidateRowData[];
     onCandidateSelect: (id: string) => void;
     isLoading?: boolean;
     inRouteIds?: Set<string>;
+    scheduledIds?: Set<string>;
   }) => {
     if (isLoading) return <div data-testid="inbox-loading">Loading</div>;
     if (candidates.length === 0) return <div data-testid="inbox-empty">Empty</div>;
@@ -38,7 +40,7 @@ vi.mock('@/components/planner', () => ({
             data-has-valid-address={String(c.hasValidAddress)}
             data-city={c.city}
             data-priority={c.priority}
-            data-is-scheduled={String(!!c.isScheduled)}
+            data-is-scheduled={String(c.isScheduled || (scheduledIds?.has(c.id) ?? false))}
             data-disable-checkbox={String(!!c.disableCheckbox)}
             onClick={() => onCandidateSelect(c.id)}
           >
@@ -545,6 +547,41 @@ describe('InboxListPanel – route stop enrichment', () => {
         customerId: 'c1',
         scheduledTimeStart: '09:00',
         scheduledTimeEnd: '10:00',
+      }]);
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('candidate-c1')).toHaveAttribute('data-is-scheduled', 'true')
+    );
+  });
+
+  it('marks candidate as isScheduled when route stop has revisionStatus=scheduled (no scheduledTimeStart)', async () => {
+    const item = { ...rawCallQueueItem, customerId: 'c1', daysUntilDue: 3, priority: 'due_this_week' as const };
+    mockGetInbox.mockResolvedValue(makeInboxResponse([item]));
+    mockInboxResponseToCallQueueResponse.mockReturnValue({ items: [item] });
+
+    let capturedActions: ReturnType<typeof usePanelState>['actions'] | null = null;
+    function ActionCapture() {
+      const { actions } = usePanelState();
+      capturedActions = actions;
+      return null;
+    }
+
+    render(
+      <PanelStateProvider activePageContext="inbox" enableChannel={false} initialRouteContext={mockRouteContext}>
+        <ActionCapture />
+        <InboxListPanel />
+      </PanelStateProvider>
+    );
+
+    await waitFor(() => expect(screen.getByTestId('candidate-c1')).toBeInTheDocument());
+
+    act(() => {
+      capturedActions!.setRouteStops([{
+        ...mockStop,
+        customerId: 'c1',
+        scheduledTimeStart: null,
+        revisionStatus: 'scheduled',
       }]);
     });
 

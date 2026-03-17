@@ -21,6 +21,8 @@ interface VirtualizedInboxListProps {
   onSelectionChange?: (id: string, selected: boolean) => void;
   /** Candidate IDs already added to the route */
   inRouteIds?: Set<string>;
+  /** Candidate IDs with an agreed visit (scheduled/confirmed) */
+  scheduledIds?: Set<string>;
 }
 
 export interface VirtualizedInboxListRef {
@@ -43,6 +45,7 @@ export const VirtualizedInboxList = forwardRef<VirtualizedInboxListRef, Virtuali
       selectedIds,
       onSelectionChange,
       inRouteIds,
+      scheduledIds,
     },
     ref
   ) {
@@ -110,10 +113,11 @@ export const VirtualizedInboxList = forwardRef<VirtualizedInboxListRef, Virtuali
             checked={selectedIds?.has(candidate.id) ?? false}
             onCheckChange={onSelectionChange ? (checked) => onSelectionChange(candidate.id, checked) : undefined}
             isInRoute={inRouteIds?.has(candidate.id) ?? false}
+            isScheduled={scheduledIds?.has(candidate.id) ?? false}
           />
         </div>
       ),
-      [selectedCandidateId, onCandidateSelect, handleKeyDown, selectable, selectedIds, onSelectionChange, inRouteIds]
+      [selectedCandidateId, onCandidateSelect, handleKeyDown, selectable, selectedIds, onSelectionChange, inRouteIds, scheduledIds]
     );
 
     // Footer component (loading / load more)

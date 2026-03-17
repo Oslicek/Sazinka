@@ -43,6 +43,8 @@ interface CandidateRowProps {
   onCheckChange?: (checked: boolean) => void;
   /** Whether this candidate is already in the route */
   isInRoute?: boolean;
+  /** Whether this candidate has an agreed visit (scheduled/confirmed) */
+  isScheduled?: boolean;
 }
 
 function getStatusIcon(status?: SlotStatus): ReactNode {
@@ -78,6 +80,7 @@ export function CandidateRow({
   checked = false,
   onCheckChange,
   isInRoute = false,
+  isScheduled = false,
 }: CandidateRowProps) {
   const { t } = useTranslation('planner');
   const daysOverdue = candidate.daysUntilDue < 0 ? Math.abs(candidate.daysUntilDue) : 0;
@@ -109,7 +112,7 @@ export function CandidateRow({
         {candidate.needsReschedule && (
           <span title={t('candidate_row_needs_reschedule', { defaultValue: 'Need to arrange new time' })}><AlertTriangle size={14} className={`${styles.stateIcon} ${styles.rescheduleIcon}`} /></span>
         )}
-        {candidate.isScheduled && (
+        {(isScheduled || candidate.isScheduled) && (
           <span title={t('candidate_row_has_appointment')}><Calendar size={14} className={styles.stateIcon} /></span>
         )}
         {(isInRoute || candidate.isInRoute) && (

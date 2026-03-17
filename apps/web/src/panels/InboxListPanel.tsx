@@ -174,7 +174,11 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
   const scheduledIds = useMemo(
     () => new Set<string>(
       routeStops
-        .filter((s) => s.customerId !== null && s.scheduledTimeStart !== null)
+        .filter((s) =>
+          s.customerId !== null &&
+          (s.scheduledTimeStart !== null ||
+           s.revisionStatus === 'scheduled' ||
+           s.revisionStatus === 'confirmed'))
         .map((s) => s.customerId as string)
     ),
     [routeStops],
@@ -237,6 +241,7 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
         onCandidateSelect={(id) => actions.selectCustomer(id)}
         isLoading={resolvedIsLoading}
         inRouteIds={inRouteIds}
+        scheduledIds={scheduledIds}
         selectedIds={new Set<string>()}
       />
     </>
