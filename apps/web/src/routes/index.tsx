@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
 import {
   createRootRoute,
   createRoute,
@@ -9,34 +9,38 @@ import {
 import { Layout } from '@/components/Layout';
 import { PageLoader } from '@/components/PageLoader';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
+import { lazyWithRetry } from '@/lib/lazyWithRetry';
 
 // --- Eager imports (needed immediately) ---
 import { Login } from '@/pages/Login';
 import { Calendar } from '@/pages/Calendar';
 
 // --- Lazy imports (loaded on navigate) ---
-const Register = lazy(() =>
+// Uses lazyWithRetry to handle Cloudflare Access session expiry: if a chunk
+// fetch is redirected to the login page (MIME mismatch), the import is retried
+// once and, if still failing, the page reloads to re-authenticate.
+const Register = lazyWithRetry(() =>
   import('@/components/onboarding/OnboardingWizard').then(m => ({ default: m.OnboardingWizard }))
 );
-const VerifyEmailCallback = lazy(() =>
+const VerifyEmailCallback = lazyWithRetry(() =>
   import('@/pages/VerifyEmailCallback').then(m => ({ default: m.VerifyEmailCallback }))
 );
-const Dashboard = lazy(() => import('@/pages/Dashboard').then(m => ({ default: m.Dashboard })));
-const Customers = lazy(() => import('@/pages/Customers').then(m => ({ default: m.Customers })));
-const CustomerDetail = lazy(() => import('@/pages/CustomerDetail').then(m => ({ default: m.CustomerDetail })));
-const CustomerSummary = lazy(() => import('@/pages/CustomerSummary').then(m => ({ default: m.CustomerSummary })));
-const Plan = lazy(() => import('@/pages/Plan').then(m => ({ default: m.Plan })));
-const PlanningInbox = lazy(() => import('@/pages/PlanningInbox').then(m => ({ default: m.PlanningInbox })));
-const Admin = lazy(() => import('@/pages/Admin').then(m => ({ default: m.Admin })));
-const Settings = lazy(() => import('@/pages/Settings').then(m => ({ default: m.Settings })));
-const RevisionDetail = lazy(() => import('@/pages/RevisionDetail').then(m => ({ default: m.RevisionDetail })));
-const VisitDetail = lazy(() => import('@/pages/VisitDetail').then(m => ({ default: m.VisitDetail })));
-const WorkItemDetail = lazy(() => import('@/pages/WorkItemDetail').then(m => ({ default: m.WorkItemDetail })));
-const Jobs = lazy(() => import('@/pages/Jobs').then(m => ({ default: m.Jobs })));
-const WorkLog = lazy(() => import('@/pages/WorkLog').then(m => ({ default: m.WorkLog })));
-const RoutesPage = lazy(() => import('@/pages/Routes').then(m => ({ default: m.Routes })));
-const About = lazy(() => import('@/pages/About').then(m => ({ default: m.About })));
-const DetachedPanelPage = lazy(() =>
+const Dashboard = lazyWithRetry(() => import('@/pages/Dashboard').then(m => ({ default: m.Dashboard })));
+const Customers = lazyWithRetry(() => import('@/pages/Customers').then(m => ({ default: m.Customers })));
+const CustomerDetail = lazyWithRetry(() => import('@/pages/CustomerDetail').then(m => ({ default: m.CustomerDetail })));
+const CustomerSummary = lazyWithRetry(() => import('@/pages/CustomerSummary').then(m => ({ default: m.CustomerSummary })));
+const Plan = lazyWithRetry(() => import('@/pages/Plan').then(m => ({ default: m.Plan })));
+const PlanningInbox = lazyWithRetry(() => import('@/pages/PlanningInbox').then(m => ({ default: m.PlanningInbox })));
+const Admin = lazyWithRetry(() => import('@/pages/Admin').then(m => ({ default: m.Admin })));
+const Settings = lazyWithRetry(() => import('@/pages/Settings').then(m => ({ default: m.Settings })));
+const RevisionDetail = lazyWithRetry(() => import('@/pages/RevisionDetail').then(m => ({ default: m.RevisionDetail })));
+const VisitDetail = lazyWithRetry(() => import('@/pages/VisitDetail').then(m => ({ default: m.VisitDetail })));
+const WorkItemDetail = lazyWithRetry(() => import('@/pages/WorkItemDetail').then(m => ({ default: m.WorkItemDetail })));
+const Jobs = lazyWithRetry(() => import('@/pages/Jobs').then(m => ({ default: m.Jobs })));
+const WorkLog = lazyWithRetry(() => import('@/pages/WorkLog').then(m => ({ default: m.WorkLog })));
+const RoutesPage = lazyWithRetry(() => import('@/pages/Routes').then(m => ({ default: m.Routes })));
+const About = lazyWithRetry(() => import('@/pages/About').then(m => ({ default: m.About })));
+const DetachedPanelPage = lazyWithRetry(() =>
   import('@/components/layout/DetachedPanelPage').then(m => ({ default: m.DetachedPanelPage }))
 );
 

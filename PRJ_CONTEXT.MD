@@ -1533,6 +1533,14 @@ cargo test
 
 ## Recent Changes (v0.19.4)
 
+- **Chunk load resilience (Cloudflare Access session expiry):**
+  - Created `lazyWithRetry` utility (`apps/web/src/lib/lazyWithRetry.ts`) — wraps `React.lazy()` with a single retry and guarded page reload when dynamic imports fail due to CF Access session expiry (MIME mismatch: HTML login page returned instead of JS)
+  - Replaced all `lazy()` calls in `routes/index.tsx` with `lazyWithRetry()` — affects all lazy-loaded pages (Inbox, Plan, Customers, etc.)
+  - Added global `vite:preloadError` handler in `main.tsx` — catches Vite's `<link rel="modulepreload">` failures as a safety net
+  - Enhanced `ErrorBoundary` to detect chunk load errors and auto-reload before showing the generic error UI
+  - SessionStorage-based counter prevents infinite reload loops (max 1 reload attempt per failure; counter cleared on successful app mount)
+  - New test file `lazyWithRetry.test.ts` (10 tests)
+
 - **Inbox email & street plumbing:**
   - Added `email` and `street` fields to Rust `InboxItem` struct (`worker/src/types/inbox.rs`)
   - Extended inbox SQL query (`get_customer_inbox`) to SELECT `c.email, c.street` from the customers table

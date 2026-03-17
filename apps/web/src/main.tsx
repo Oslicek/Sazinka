@@ -8,8 +8,15 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { useAuthStore } from './stores/authStore';
 import { useNatsStore } from './stores/natsStore';
 import { useTokenRefresh } from './hooks/useTokenRefresh';
+import { clearChunkReloadCounter } from './lib/lazyWithRetry';
 import './i18n'; // Initialize i18n before rendering
 import './index.css';
+
+// Vite emits this when a <link rel="modulepreload"> fails (e.g. CF Access
+// redirect returning HTML). Reload to re-authenticate.
+window.addEventListener('vite:preloadError', () => {
+  window.location.reload();
+});
 
 // Create router instance
 const router = createRouter({ routeTree });
@@ -34,6 +41,13 @@ const queryClient = new QueryClient({
 function App() {
   const verify = useAuthStore((s) => s.verify);
   const isConnected = useNatsStore((s) => s.isConnected);
+
+  // App mounted successfully — reset reload counters so future session
+  // expiries can trigger a reload again.
+  useEffect(() => {
+    clearChunkReloadCounter();
+    sessionStorage.removeItem('errorBoundaryReload');
+  }, []);
 
   // Verify token when NATS connects
   useEffect(() => {

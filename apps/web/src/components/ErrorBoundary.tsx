@@ -9,6 +9,19 @@ type ErrorBoundaryState = {
   hasError: boolean;
 };
 
+function isChunkLoadError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message.toLowerCase();
+  return (
+    msg.includes('dynamically imported module') ||
+    msg.includes('loading chunk') ||
+    msg.includes('loading css chunk') ||
+    msg.includes('failed to fetch')
+  );
+}
+
+const RELOAD_KEY = 'errorBoundaryReload';
+
 export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
@@ -20,8 +33,17 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
-    // Intentionally keep this as console.error for production diagnostics.
     console.error('Unhandled React render error:', error, errorInfo);
+
+    if (isChunkLoadError(error)) {
+      const attempts = Number(sessionStorage.getItem(RELOAD_KEY) || '0');
+      if (attempts < 1) {
+        sessionStorage.setItem(RELOAD_KEY, String(attempts + 1));
+        window.location.reload();
+        return;
+      }
+      sessionStorage.removeItem(RELOAD_KEY);
+    }
   }
 
   private readonly handleReload = (): void => {
