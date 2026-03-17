@@ -210,7 +210,7 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
   // #region agent log
   useEffect(() => {
     const stopsSnapshot = routeStops.slice(0, 5).map(s => ({ cid: s.customerId, schedStart: s.scheduledTimeStart, revStatus: s.revisionStatus }));
-    fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2ba648'},body:JSON.stringify({sessionId:'2ba648',location:'InboxListPanel.tsx:routeStops-debug',message:'routeStops & remote IDs',data:{routeStopsCount:routeStops.length,stopsSnapshot,remoteInRouteIds:remoteInRouteIds??null,remoteScheduledIds:remoteScheduledIds??null,routeDataVersion:state.routeDataVersion??0,selfFetchedCount:selfFetchedStops.length,bridgeStopsCount:state.routeStops.length},timestamp:Date.now(),hypothesisId:'B,C,D'})}).catch(()=>{});
+    console.log('[DBG-2ba648] routeStops & remote IDs', { routeStopsCount: routeStops.length, stopsSnapshot, remoteInRouteIds: remoteInRouteIds ?? null, remoteScheduledIds: remoteScheduledIds ?? null, routeDataVersion: state.routeDataVersion ?? 0, selfFetchedCount: selfFetchedStops.length, bridgeStopsCount: state.routeStops.length });
   }, [routeStops, remoteInRouteIds, remoteScheduledIds, state.routeDataVersion, selfFetchedStops, state.routeStops.length]);
   // #endregion
 
@@ -229,7 +229,7 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
     const ids = new Set<string>(matching.map((s) => s.customerId as string));
     if (remoteScheduledIds) remoteScheduledIds.forEach((id) => ids.add(id));
     // #region agent log
-    fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2ba648'},body:JSON.stringify({sessionId:'2ba648',location:'InboxListPanel.tsx:scheduledIds-computed',message:'scheduledIds result',data:{scheduledIdsArr:[...ids],matchingCount:matching.length,remoteScheduledIds:remoteScheduledIds??null},timestamp:Date.now(),hypothesisId:'C,D'})}).catch(()=>{});
+    console.log('[DBG-2ba648] scheduledIds result', { scheduledIdsArr: [...ids], matchingCount: matching.length, remoteScheduledIds: remoteScheduledIds ?? null });
     // #endregion
     return ids;
   }, [routeStops, remoteScheduledIds]);
@@ -258,7 +258,7 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
       candidate.isScheduled = fromCandidate || fromScheduledIds;
       // #region agent log
       if (candidate.isInRoute || fromCandidate || fromScheduledIds) {
-        fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2ba648'},body:JSON.stringify({sessionId:'2ba648',location:'InboxListPanel.tsx:candidate-merge',message:'candidate icon flags',data:{id:candidate.id,name:candidate.customerName,status:item.status,isInRoute:candidate.isInRoute,fromCandidate,fromScheduledIds,finalIsScheduled:candidate.isScheduled},timestamp:Date.now(),hypothesisId:'A,E'})}).catch(()=>{});
+        console.log('[DBG-2ba648] candidate flags', { id: candidate.id, name: candidate.customerName, status: item.status, isInRoute: candidate.isInRoute, fromCandidate, fromScheduledIds, finalIsScheduled: candidate.isScheduled });
       }
       // #endregion
       return candidate;
