@@ -1,19 +1,86 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { VirtualizedInboxList } from '@/components/planner';
+import { InboxFilterBar } from '@/components/planner/InboxFilterBar';
 import { usePanelState } from '@/hooks/usePanelState';
 import { useNatsStore } from '@/stores/natsStore';
 import { getInbox } from '@/services/inboxService';
 import { inboxResponseToCallQueueResponse } from '@/services/inboxAdapter';
 import { listRuleSets, getInboxState, saveInboxState } from '@/services/scoringService';
+import {
+  hasPhone,
+  hasValidAddress,
+  isScheduledCandidate,
+  applyInboxFilters,
+  applyFilterPreset,
+  normalizeExpression,
+  DEFAULT_FILTER_EXPRESSION,
+  type InboxFilterExpression,
+  type FilterPresetId,
+} from '@/pages/planningInboxFilters';
 import * as routeService from '@/services/routeService';
 import type { CandidateRowData } from '@/components/planner';
+import type { CallQueueItem } from '@/services/revisionService';
 import type { SavedRouteStop } from '@/services/routeService';
 import type { ScoringRuleSet } from '@/services/scoringService';
 
+export function mapCallQueueItemToCandidate(item: CallQueueItem): CandidateRowData {
+  const validAddress = hasValidAddress(item);
+  return {
+    id: item.customerId,
+    customerName: item.customerName,
+    city: item.customerCity ?? '',
+    deviceType: item.deviceType,
+    daysUntilDue: item.daysUntilDue,
+    hasPhone: hasPhone(item),
+    hasValidAddress: validAddress,
+    priority: item.priority as CandidateRowData['priority'],
+    isScheduled: isScheduledCandidate(item),
+    disableCheckbox: !validAddress,
+    deltaKm: undefined,
+    deltaMin: undefined,
+    slotStatus: undefined,
+    suggestedSlots: undefined,
+  };
+}
+
+function sortCandidates(items: CandidateRowData[]): CandidateRowData[] {
+  return [...items].sort((a, b) => {
+    if (a.hasValidAddress !== b.hasValidAddress) return a.hasValidAddress ? -1 : 1;
+
+    const aHasMetrics = a.deltaMin !== undefined;
+    const bHasMetrics = b.deltaMin !== undefined;
+    if (aHasMetrics !== bHasMetrics) return aHasMetrics ? -1 : 1;
+
+    if (a.slotStatus && b.slotStatus) {
+      const order = { ok: 0, tight: 1, conflict: 2 };
+      const diff = order[a.slotStatus] - order[b.slotStatus];
+      if (diff !== 0) return diff;
+    }
+
+    if (a.deltaMin !== undefined && b.deltaMin !== undefined) return a.deltaMin - b.deltaMin;
+
+    const aOverdue = Math.max(0, -a.daysUntilDue);
+    const bOverdue = Math.max(0, -b.daysUntilDue);
+    if (aOverdue !== bOverdue) return bOverdue - aOverdue;
+
+    return a.daysUntilDue - b.daysUntilDue;
+  });
+}
+
+const SESSION_KEY_FILTERS = 'planningInbox.filters';
+
+function loadPersistedFilters(): InboxFilterExpression {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY_FILTERS);
+    if (!raw) return DEFAULT_FILTER_EXPRESSION;
+    return normalizeExpression(JSON.parse(raw));
+  } catch {
+    return DEFAULT_FILTER_EXPRESSION;
+  }
+}
+
 interface InboxListPanelProps {
-  /** Override internal candidates — for tests */
   candidates?: CandidateRowData[];
-  /** Override internal loading state — for tests */
   isLoading?: boolean;
 }
 
@@ -21,16 +88,18 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
   const { state, actions } = usePanelState();
   const { isConnected } = useNatsStore();
 
+  const [rawCandidates, setRawCandidates] = useState<CallQueueItem[]>([]);
   const [candidates, setCandidates] = useState<CandidateRowData[]>([]);
   const [isLoadingCandidates, setIsLoadingCandidates] = useState(false);
   const [routeStops, setRouteStops] = useState<SavedRouteStop[]>([]);
-  const [_ruleSets, setRuleSets] = useState<ScoringRuleSet[]>([]);
+  const [ruleSets, setRuleSets] = useState<ScoringRuleSet[]>([]);
   const [selectedRuleSetId, setSelectedRuleSetId] = useState<string | null>(null);
+  const [filters, setFilters] = useState<InboxFilterExpression>(loadPersistedFilters);
+  const [activePresetId, setActivePresetId] = useState<FilterPresetId | null>(null);
   const inboxStateLoadedRef = useRef(false);
 
   const routeContext = state.routeContext;
 
-  // Load rule sets and persisted inbox state on connect
   useEffect(() => {
     if (!isConnected) return;
     Promise.all([
@@ -53,13 +122,11 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
       .catch(() => setRuleSets([]));
   }, [isConnected]);
 
-  // Persist selected rule set
   useEffect(() => {
     if (!isConnected || !inboxStateLoadedRef.current) return;
     saveInboxState({ selectedRuleSetId: selectedRuleSetId ?? null }).catch(() => {});
   }, [isConnected, selectedRuleSetId]);
 
-  // Fetch candidates when connected, rule set, or route context (date) changes
   const loadCandidates = useCallback(async () => {
     if (!isConnected) return;
     setIsLoadingCandidates(true);
@@ -69,20 +136,14 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
         selectedRuleSetId: selectedRuleSetId ?? undefined,
       });
       const response = inboxResponseToCallQueueResponse(inboxResponse);
-      const loaded: CandidateRowData[] = response.items.map((item) => ({
-        ...item,
-        deltaKm: undefined,
-        deltaMin: undefined,
-        slotStatus: undefined,
-        suggestedSlots: undefined,
-      }));
-      setCandidates(loaded);
+      setRawCandidates(response.items);
+      setCandidates(response.items.map(mapCallQueueItemToCandidate));
     } catch {
+      setRawCandidates([]);
       setCandidates([]);
     } finally {
       setIsLoadingCandidates(false);
     }
-  // routeContext?.date intentionally included — re-fetch when day changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected, selectedRuleSetId, routeContext?.date]);
 
@@ -90,7 +151,6 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
     loadCandidates();
   }, [loadCandidates]);
 
-  // Load route stops for current context to derive in-route set
   useEffect(() => {
     if (!isConnected || !routeContext?.date) return;
     routeService
@@ -101,26 +161,69 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
       .catch(() => setRouteStops([]));
   }, [isConnected, routeContext?.date]);
 
-  // Keep PanelState routeStops in sync (for other panels that read it)
   useEffect(() => {
     actions.setRouteStops(routeStops);
   }, [routeStops, actions]);
 
-  const inRouteIds = new Set<string>(
-    routeStops.map((s) => s.customerId).filter((id): id is string => id !== null)
+  const inRouteIds = useMemo(
+    () => new Set<string>(routeStops.map((s) => s.customerId).filter((id): id is string => id !== null)),
+    [routeStops],
   );
 
-  const resolvedCandidates = candidatesProp ?? candidates;
+  // Persist filter expression to sessionStorage
+  useEffect(() => {
+    try { sessionStorage.setItem(SESSION_KEY_FILTERS, JSON.stringify(filters)); } catch { /* noop */ }
+  }, [filters]);
+
+  // Apply client-side filters + sorting
+  const filteredSorted = useMemo(() => {
+    const filtered = applyInboxFilters(rawCandidates, filters, inRouteIds) as CallQueueItem[];
+
+    // Keep selected candidate visible even if filtered out
+    const selectedId = state.selectedCustomerId;
+    if (selectedId && !filtered.some((c) => c.customerId === selectedId)) {
+      const selected = rawCandidates.find((c) => c.customerId === selectedId);
+      if (selected) filtered.push(selected);
+    }
+
+    const mapped = filtered.map(mapCallQueueItemToCandidate);
+    return sortCandidates(mapped);
+  }, [rawCandidates, filters, inRouteIds, state.selectedCustomerId]);
+
+  const handlePresetChange = useCallback((presetId: FilterPresetId) => {
+    setFilters((prev) => applyFilterPreset(presetId, prev));
+    setActivePresetId(presetId);
+  }, []);
+
+  const handleFiltersChange = useCallback((next: InboxFilterExpression) => {
+    setFilters(next);
+    setActivePresetId(null);
+  }, []);
+
+  const resolvedCandidates = candidatesProp ?? filteredSorted;
   const resolvedIsLoading = isLoadingProp ?? isLoadingCandidates;
 
   return (
-    <VirtualizedInboxList
-      candidates={resolvedCandidates}
-      selectedCandidateId={state.selectedCustomerId}
-      onCandidateSelect={(id) => actions.selectCustomer(id)}
-      isLoading={resolvedIsLoading}
-      inRouteIds={inRouteIds}
-      selectedIds={new Set<string>()}
-    />
+    <>
+      <InboxFilterBar
+        filters={filters}
+        onFiltersChange={handleFiltersChange}
+        activePresetId={activePresetId}
+        onPresetChange={handlePresetChange}
+        selectedRuleSetId={selectedRuleSetId}
+        onRuleSetChange={setSelectedRuleSetId}
+        ruleSets={ruleSets}
+        isLoadingRuleSets={false}
+        candidateCount={filteredSorted.length}
+      />
+      <VirtualizedInboxList
+        candidates={resolvedCandidates}
+        selectedCandidateId={state.selectedCustomerId}
+        onCandidateSelect={(id) => actions.selectCustomer(id)}
+        isLoading={resolvedIsLoading}
+        inRouteIds={inRouteIds}
+        selectedIds={new Set<string>()}
+      />
+    </>
   );
 }

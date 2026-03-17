@@ -112,6 +112,22 @@ vi.mock('../components/planner', () => ({
 vi.mock('../components/planner/DraftModeBar', () => ({
   DraftModeBar: () => null,
 }));
+vi.mock('../components/planner/InboxFilterBar', () => ({
+  InboxFilterBar: () => null,
+}));
+vi.mock('../services/inboxService', () => ({
+  getInbox: vi.fn().mockResolvedValue({ items: [], total: 0, overdueCount: 0, dueSoonCount: 0 }),
+  listPlannedActions: vi.fn().mockResolvedValue({ items: [] }),
+  updatePlannedAction: vi.fn(),
+}));
+vi.mock('../services/inboxAdapter', () => ({
+  inboxResponseToCallQueueResponse: vi.fn().mockReturnValue({ items: [] }),
+}));
+vi.mock('../services/scoringService', () => ({
+  listRuleSets: vi.fn().mockResolvedValue([]),
+  getInboxState: vi.fn().mockResolvedValue(null),
+  saveInboxState: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock('../components/common', () => ({
   CollapseButton: () => null,
   ThreePanelLayout: ({ left, center, right }: { left: React.ReactNode; center: React.ReactNode; right: React.ReactNode }) => (

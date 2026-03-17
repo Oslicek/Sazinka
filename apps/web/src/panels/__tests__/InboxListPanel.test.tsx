@@ -2,10 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import React from 'react';
 import { PanelStateProvider } from '../../contexts/PanelStateContext';
-import { InboxListPanel } from '../InboxListPanel';
+import { InboxListPanel, mapCallQueueItemToCandidate } from '../InboxListPanel';
 import { usePanelState } from '@/hooks/usePanelState';
 import type { CandidateRowData } from '@/components/planner';
 import type { SavedRouteStop } from '@/services/routeService';
+import type { CallQueueItem } from '@/services/revisionService';
+import type { InboxFilterExpression, FilterPresetId } from '@/pages/planningInboxFilters';
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -32,6 +34,12 @@ vi.mock('@/components/planner', () => ({
             key={c.id}
             data-testid={`candidate-${c.id}`}
             data-in-route={String(inRouteIds?.has(c.id) ?? false)}
+            data-has-phone={String(c.hasPhone)}
+            data-has-valid-address={String(c.hasValidAddress)}
+            data-city={c.city}
+            data-priority={c.priority}
+            data-is-scheduled={String(!!c.isScheduled)}
+            data-disable-checkbox={String(!!c.disableCheckbox)}
             onClick={() => onCandidateSelect(c.id)}
           >
             {c.customerName}
@@ -69,18 +77,55 @@ vi.mock('@/stores/natsStore', () => ({
   useNatsStore: () => ({ isConnected: true }),
 }));
 
+let lastFilterBarProps: {
+  filters: InboxFilterExpression;
+  onFiltersChange: (f: InboxFilterExpression) => void;
+  activePresetId: FilterPresetId | null;
+  onPresetChange: (id: FilterPresetId) => void;
+  candidateCount: number;
+} | null = null;
+
+vi.mock('@/components/planner/InboxFilterBar', () => ({
+  InboxFilterBar: (props: typeof lastFilterBarProps) => {
+    lastFilterBarProps = props;
+    return (
+      <div data-testid="inbox-filter-bar" data-count={props?.candidateCount}>
+        FilterBar
+      </div>
+    );
+  },
+}));
+
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const mockCandidate: CandidateRowData = {
+const mockRawCandidate: CallQueueItem = {
   id: 'cand-1',
+  deviceId: 'dev-1',
+  customerId: 'cand-1',
+  userId: 'user-1',
+  status: 'upcoming',
+  dueDate: '2026-03-13',
+  scheduledDate: null,
+  scheduledTimeStart: null,
+  scheduledTimeEnd: null,
   customerName: 'Jana Novotná',
-  city: 'Brno',
+  customerPhone: '+420 111 222 333',
+  customerEmail: null,
+  customerStreet: 'Masarykova 1',
+  customerCity: 'Brno',
+  customerPostalCode: '60200',
+  customerLat: 49.19,
+  customerLng: 16.61,
+  customerGeocodeStatus: 'success',
+  deviceName: null,
+  deviceType: 'boiler',
+  deviceTypeDefaultDurationMinutes: null,
   daysUntilDue: 3,
-  hasPhone: true,
-  hasValidAddress: true,
   priority: 'due_soon',
+  lastContactAt: null,
+  contactAttempts: 0,
 };
 
 const mockStop: SavedRouteStop = {
@@ -115,14 +160,12 @@ const mockRouteContext = {
   depotName: 'Brno',
 };
 
-function makeInboxResponse(candidates: CandidateRowData[]) {
+function makeInboxResponse(items: CallQueueItem[]) {
   return {
-    items: candidates.map(c => ({
-      ...c,
-      scheduledDate: null,
-      scheduledTimeStart: null,
-      scheduledTimeEnd: null,
-    })),
+    items,
+    total: items.length,
+    overdueCount: 0,
+    dueSoonCount: 0,
   };
 }
 
@@ -159,8 +202,8 @@ describe('InboxListPanel (self-sufficient)', () => {
   });
 
   it('fetches candidates from NATS on mount', async () => {
-    mockGetInbox.mockResolvedValue(makeInboxResponse([mockCandidate]));
-    mockInboxResponseToCallQueueResponse.mockReturnValue({ items: [mockCandidate] });
+    mockGetInbox.mockResolvedValue(makeInboxResponse([mockRawCandidate]));
+    mockInboxResponseToCallQueueResponse.mockReturnValue({ items: [mockRawCandidate] });
 
     render(<InboxListPanel />, { wrapper });
 
@@ -169,8 +212,8 @@ describe('InboxListPanel (self-sufficient)', () => {
   });
 
   it('renders candidate rows after fetch', async () => {
-    mockGetInbox.mockResolvedValue(makeInboxResponse([mockCandidate]));
-    mockInboxResponseToCallQueueResponse.mockReturnValue({ items: [mockCandidate] });
+    mockGetInbox.mockResolvedValue(makeInboxResponse([mockRawCandidate]));
+    mockInboxResponseToCallQueueResponse.mockReturnValue({ items: [mockRawCandidate] });
 
     render(<InboxListPanel />, { wrapper });
 
@@ -179,20 +222,19 @@ describe('InboxListPanel (self-sufficient)', () => {
   });
 
   it('sends SELECT_CUSTOMER signal on row click', async () => {
-    mockGetInbox.mockResolvedValue(makeInboxResponse([mockCandidate]));
-    mockInboxResponseToCallQueueResponse.mockReturnValue({ items: [mockCandidate] });
+    mockGetInbox.mockResolvedValue(makeInboxResponse([mockRawCandidate]));
+    mockInboxResponseToCallQueueResponse.mockReturnValue({ items: [mockRawCandidate] });
 
     render(<InboxListPanel />, { wrapper });
 
     await waitFor(() => expect(screen.getByTestId('candidate-cand-1')).toBeInTheDocument());
     act(() => { fireEvent.click(screen.getByTestId('candidate-cand-1')); });
-    // After click, the list item should still be in the document (no crash)
     expect(screen.getByTestId('candidate-cand-1')).toBeInTheDocument();
   });
 
   it('loads route stops for current context and marks in-route candidates', async () => {
-    mockGetInbox.mockResolvedValue(makeInboxResponse([mockCandidate]));
-    mockInboxResponseToCallQueueResponse.mockReturnValue({ items: [mockCandidate] });
+    mockGetInbox.mockResolvedValue(makeInboxResponse([mockRawCandidate]));
+    mockInboxResponseToCallQueueResponse.mockReturnValue({ items: [mockRawCandidate] });
     mockGetRoute.mockResolvedValue({ route: { id: 'route-1' }, stops: [mockStop] });
 
     render(<InboxListPanel />, { wrapper });
@@ -246,5 +288,186 @@ describe('InboxListPanel (self-sufficient)', () => {
     });
 
     await waitFor(() => expect(mockGetInbox).toHaveBeenCalledTimes(2));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mapCallQueueItemToCandidate – pure unit tests
+// ---------------------------------------------------------------------------
+
+const rawCallQueueItem: CallQueueItem = {
+  id: 'cqi-1',
+  deviceId: 'dev-1',
+  customerId: 'cust-1',
+  userId: 'user-1',
+  status: 'upcoming',
+  dueDate: '2026-03-15',
+  scheduledDate: null,
+  scheduledTimeStart: null,
+  scheduledTimeEnd: null,
+  customerName: 'Karel Svoboda',
+  customerPhone: '+420 123 456 789',
+  customerEmail: null,
+  customerStreet: 'Hlavní 1',
+  customerCity: 'Praha',
+  customerPostalCode: '11000',
+  customerLat: 50.08,
+  customerLng: 14.42,
+  customerGeocodeStatus: 'success',
+  deviceName: 'Kotel XY',
+  deviceType: 'boiler',
+  deviceTypeDefaultDurationMinutes: 60,
+  daysUntilDue: 5,
+  priority: 'due_this_week',
+  lastContactAt: null,
+  contactAttempts: 0,
+};
+
+describe('mapCallQueueItemToCandidate', () => {
+  it('derives hasPhone=true from non-empty customerPhone', () => {
+    const result = mapCallQueueItemToCandidate(rawCallQueueItem);
+    expect(result.hasPhone).toBe(true);
+  });
+
+  it('derives hasPhone=false when customerPhone is null', () => {
+    const result = mapCallQueueItemToCandidate({ ...rawCallQueueItem, customerPhone: null });
+    expect(result.hasPhone).toBe(false);
+  });
+
+  it('derives hasPhone=false when customerPhone is empty string', () => {
+    const result = mapCallQueueItemToCandidate({ ...rawCallQueueItem, customerPhone: '  ' });
+    expect(result.hasPhone).toBe(false);
+  });
+
+  it('derives hasValidAddress=true from geocoded coordinates', () => {
+    const result = mapCallQueueItemToCandidate(rawCallQueueItem);
+    expect(result.hasValidAddress).toBe(true);
+  });
+
+  it('derives hasValidAddress=false when geocode failed', () => {
+    const result = mapCallQueueItemToCandidate({
+      ...rawCallQueueItem,
+      customerGeocodeStatus: 'failed',
+      customerLat: null,
+      customerLng: null,
+    });
+    expect(result.hasValidAddress).toBe(false);
+  });
+
+  it('maps customerCity to city, defaulting to empty string', () => {
+    expect(mapCallQueueItemToCandidate(rawCallQueueItem).city).toBe('Praha');
+    expect(mapCallQueueItemToCandidate({ ...rawCallQueueItem, customerCity: '' }).city).toBe('');
+  });
+
+  it('uses customerId as id', () => {
+    expect(mapCallQueueItemToCandidate(rawCallQueueItem).id).toBe('cust-1');
+  });
+
+  it('preserves priority from CallQueueItem', () => {
+    const result = mapCallQueueItemToCandidate({ ...rawCallQueueItem, priority: 'overdue', daysUntilDue: -3 });
+    expect(result.priority).toBe('overdue');
+  });
+
+  it('sets disableCheckbox=true when address is invalid', () => {
+    const result = mapCallQueueItemToCandidate({
+      ...rawCallQueueItem,
+      customerGeocodeStatus: 'failed',
+      customerLat: null,
+      customerLng: null,
+    });
+    expect(result.disableCheckbox).toBe(true);
+  });
+
+  it('derives isScheduled from scheduled/confirmed status', () => {
+    expect(mapCallQueueItemToCandidate({ ...rawCallQueueItem, status: 'scheduled' }).isScheduled).toBe(true);
+    expect(mapCallQueueItemToCandidate({ ...rawCallQueueItem, status: 'confirmed' }).isScheduled).toBe(true);
+    expect(mapCallQueueItemToCandidate({ ...rawCallQueueItem, status: 'upcoming' }).isScheduled).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Filter integration tests
+// ---------------------------------------------------------------------------
+
+describe('InboxListPanel – filter integration', () => {
+  beforeEach(() => {
+    lastFilterBarProps = null;
+  });
+
+  it('renders InboxFilterBar above the list', async () => {
+    mockGetInbox.mockResolvedValue(makeInboxResponse([mockRawCandidate]));
+    mockInboxResponseToCallQueueResponse.mockReturnValue({ items: [mockRawCandidate] });
+
+    render(<InboxListPanel />, { wrapper });
+
+    await waitFor(() => expect(screen.getByTestId('inbox-filter-bar')).toBeInTheDocument());
+  });
+
+  it('passes filtered candidate count to InboxFilterBar', async () => {
+    const due3 = { ...rawCallQueueItem, customerId: 'c1', daysUntilDue: 3, priority: 'due_this_week' as const };
+    const due60 = { ...rawCallQueueItem, customerId: 'c2', daysUntilDue: 60, priority: 'upcoming' as const };
+    mockGetInbox.mockResolvedValue(makeInboxResponse([due3, due60]));
+    mockInboxResponseToCallQueueResponse.mockReturnValue({ items: [due3, due60] });
+
+    render(<InboxListPanel />, { wrapper });
+
+    // Default filter is DUE_IN_7_DAYS, so only due3 should pass
+    await waitFor(() => {
+      expect(lastFilterBarProps).not.toBeNull();
+      expect(lastFilterBarProps!.candidateCount).toBe(1);
+    });
+  });
+
+  it('filters candidates through applyInboxFilters with default expression', async () => {
+    const due3 = { ...rawCallQueueItem, customerId: 'c1', daysUntilDue: 3, priority: 'due_this_week' as const };
+    const due60 = { ...rawCallQueueItem, customerId: 'c2', daysUntilDue: 60, priority: 'upcoming' as const };
+    mockGetInbox.mockResolvedValue(makeInboxResponse([due3, due60]));
+    mockInboxResponseToCallQueueResponse.mockReturnValue({ items: [due3, due60] });
+
+    render(<InboxListPanel />, { wrapper });
+
+    // Default filter DUE_IN_7_DAYS: only due3 (daysUntilDue=3) passes
+    await waitFor(() => expect(screen.getByTestId('candidate-c1')).toBeInTheDocument());
+    expect(screen.queryByTestId('candidate-c2')).not.toBeInTheDocument();
+  });
+
+  it('shows all candidates when ALL preset is applied', async () => {
+    const due3 = { ...rawCallQueueItem, customerId: 'c1', daysUntilDue: 3, priority: 'due_this_week' as const };
+    const due60 = { ...rawCallQueueItem, customerId: 'c2', daysUntilDue: 60, priority: 'upcoming' as const };
+    mockGetInbox.mockResolvedValue(makeInboxResponse([due3, due60]));
+    mockInboxResponseToCallQueueResponse.mockReturnValue({ items: [due3, due60] });
+
+    render(<InboxListPanel />, { wrapper });
+
+    await waitFor(() => expect(lastFilterBarProps).not.toBeNull());
+
+    // Simulate applying ALL preset via the callback
+    act(() => {
+      lastFilterBarProps!.onPresetChange('ALL');
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('candidate-c1')).toBeInTheDocument();
+      expect(screen.getByTestId('candidate-c2')).toBeInTheDocument();
+    });
+  });
+
+  it('sorts candidates: valid address first, then overdue before upcoming', async () => {
+    const overdue = { ...rawCallQueueItem, customerId: 'c-overdue', daysUntilDue: -5, priority: 'overdue' as const };
+    const dueThisWeek = { ...rawCallQueueItem, customerId: 'c-week', daysUntilDue: 3, priority: 'due_this_week' as const };
+    mockGetInbox.mockResolvedValue(makeInboxResponse([dueThisWeek, overdue]));
+    mockInboxResponseToCallQueueResponse.mockReturnValue({ items: [dueThisWeek, overdue] });
+
+    render(<InboxListPanel />, { wrapper });
+
+    // Apply ALL preset to see both
+    await waitFor(() => expect(lastFilterBarProps).not.toBeNull());
+    act(() => { lastFilterBarProps!.onPresetChange('ALL'); });
+
+    await waitFor(() => {
+      const items = screen.getAllByTestId(/^candidate-/);
+      expect(items[0]).toHaveAttribute('data-testid', 'candidate-c-overdue');
+      expect(items[1]).toHaveAttribute('data-testid', 'candidate-c-week');
+    });
   });
 });
