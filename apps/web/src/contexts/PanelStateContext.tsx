@@ -95,17 +95,22 @@ export function PanelStateProvider({
           remoteScheduledIds: signal.scheduledCustomerIds ?? s.remoteScheduledIds,
         }));
         break;
-      case 'ROUTE_DATA_CHANGED':
+      case 'ROUTE_DATA_CHANGED': {
         // #region agent log
         console.log('[DBG-2ba648] ROUTE_DATA_CHANGED received', { inRouteCustomerIds: signal.inRouteCustomerIds, scheduledCustomerIds: signal.scheduledCustomerIds });
         // #endregion
-        setState(s => ({
-          ...s,
-          routeDataVersion: (s.routeDataVersion ?? 0) + 1,
-          remoteInRouteIds: signal.inRouteCustomerIds,
-          remoteScheduledIds: signal.scheduledCustomerIds,
-        }));
+        setState(s => {
+          const prev = s.remoteScheduledIds ?? [];
+          const merged = new Set([...prev, ...signal.scheduledCustomerIds]);
+          return {
+            ...s,
+            routeDataVersion: (s.routeDataVersion ?? 0) + 1,
+            remoteInRouteIds: signal.inRouteCustomerIds,
+            remoteScheduledIds: [...merged],
+          };
+        });
         break;
+      }
       default:
         break;
     }
