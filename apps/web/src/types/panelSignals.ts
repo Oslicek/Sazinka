@@ -11,6 +11,7 @@ export type PanelSignal =
       selectedRouteId: string | null;
       highlightedSegment: number | null;
     }
+  | { type: 'ROUTE_DATA_CHANGED' }
   | { type: 'PANEL_DETACHED'; panel: 'map' | 'list'; page: 'inbox' | 'plan' }
   | { type: 'PANEL_REATTACHED'; panel: 'map' | 'list'; page: 'inbox' | 'plan' };
 

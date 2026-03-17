@@ -186,17 +186,23 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
     loadCandidates();
   }, [loadCandidates]);
 
-  // Self-fetch route stops as fallback (detached windows where no bridge exists)
+  // Self-fetch route stops (detached windows where no bridge exists).
+  // Re-fetches when routeDataVersion increments (ROUTE_DATA_CHANGED signal from main window).
+  const routeDataVersion = state.routeDataVersion ?? 0;
   useEffect(() => {
     if (!isConnected || !routeContext?.date) return;
-    if (state.routeStops.length > 0) return; // PanelState already has data from bridge
+    if (state.routeStops.length > 0 && routeDataVersion === 0) return;
+    let cancelled = false;
     routeService
       .getRoute({ date: routeContext.date })
       .then((res) => {
-        setSelfFetchedStops((res as { route: unknown; stops: SavedRouteStop[] }).stops ?? []);
+        if (!cancelled) {
+          setSelfFetchedStops((res as { route: unknown; stops: SavedRouteStop[] }).stops ?? []);
+        }
       })
-      .catch(() => setSelfFetchedStops([]));
-  }, [isConnected, routeContext?.date, state.routeStops.length]);
+      .catch(() => { if (!cancelled) setSelfFetchedStops([]); });
+    return () => { cancelled = true; };
+  }, [isConnected, routeContext?.date, state.routeStops.length, routeDataVersion]);
 
   const inRouteIds = useMemo(
     () => new Set<string>(routeStops.map((s) => s.customerId).filter((id): id is string => id !== null)),

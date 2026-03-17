@@ -50,14 +50,21 @@ export function DetachedPanelPage({
   snapshotTimeoutMs = DEFAULT_SNAPSHOT_TIMEOUT,
 }: DetachedPanelPageProps) {
   const [routeContext, setRouteContext] = useState<RouteContext | null>(() => {
-    if (!urlSeed) return null;
-    return {
-      date: urlSeed.date,
-      crewId: urlSeed.crewId,
-      depotId: urlSeed.depotId,
-      crewName: '',
-      depotName: '',
-    };
+    if (urlSeed) {
+      return {
+        date: urlSeed.date,
+        crewId: urlSeed.crewId,
+        depotId: urlSeed.depotId,
+        crewName: '',
+        depotName: '',
+      };
+    }
+    // Fall back to date-only seed so panels can self-fetch route data
+    const dateParam = new URLSearchParams(window.location.search).get('date');
+    if (dateParam) {
+      return { date: dateParam, crewId: '', depotId: '', crewName: '', depotName: '' };
+    }
+    return null;
   });
 
   const [snapshotReceived, setSnapshotReceived] = useState(false);

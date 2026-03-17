@@ -40,6 +40,8 @@ export interface PanelState {
   routeBufferPercent: number;
   /** Arrival buffer as fixed minutes */
   routeBufferFixedMinutes: number;
+  /** Incremented when route data changes remotely (triggers re-fetch in detached panels) */
+  routeDataVersion?: number;
 }
 
 export interface PanelActions {

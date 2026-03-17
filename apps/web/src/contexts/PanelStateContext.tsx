@@ -90,6 +90,9 @@ export function PanelStateProvider({
             : s.routeContext,
         }));
         break;
+      case 'ROUTE_DATA_CHANGED':
+        setState(s => ({ ...s, routeDataVersion: (s.routeDataVersion ?? 0) + 1 }));
+        break;
       default:
         break;
     }
@@ -136,8 +139,14 @@ export function PanelStateProvider({
   }, []);
 
   const setRouteStops = useCallback((stops: SavedRouteStop[]) => {
-    setState(s => s.routeStops === stops ? s : { ...s, routeStops: stops });
-  }, []);
+    setState(s => {
+      if (s.routeStops === stops) return s;
+      if (isSourceOfTruth && enableChannel) {
+        sendSignalRef.current({ type: 'ROUTE_DATA_CHANGED' });
+      }
+      return { ...s, routeStops: stops };
+    });
+  }, [isSourceOfTruth, enableChannel]);
 
   const highlightSegment = useCallback((idx: number | null) => {
     setState(s => s.highlightedSegment === idx ? s : { ...s, highlightedSegment: idx });
