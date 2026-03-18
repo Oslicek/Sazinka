@@ -96,22 +96,22 @@
 
 /* Selected candidate marker (before adding to route) */
 .selectedCandidateMarker {
-  width: 28px;
-  height: 28px;
+  width: 14px;
+  height: 14px;
   background-color: #f59e0b;
-  border: 3px solid white;
+  border: 2px solid white;
   border-radius: 50%;
-  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.35), 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.35), 0 1px 4px rgba(0, 0, 0, 0.3);
   animation: candidatePulse 2s ease-in-out infinite;
   cursor: pointer;
 }
 
 @keyframes candidatePulse {
   0%, 100% {
-    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.35), 0 2px 8px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.35), 0 1px 4px rgba(0, 0, 0, 0.3);
   }
   50% {
-    box-shadow: 0 0 0 8px rgba(245, 158, 11, 0.15), 0 4px 16px rgba(245, 158, 11, 0.4);
+    box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.15), 0 2px 8px rgba(245, 158, 11, 0.4);
   }
 }
 

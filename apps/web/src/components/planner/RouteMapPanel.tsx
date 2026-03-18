@@ -307,8 +307,8 @@ export function RouteMapPanel({
     el.className = styles.selectedCandidateMarker;
 
     // Use 'top-left' with fixed pixel offset to avoid CSS-timing dependency.
-    // Circle marker is 28×28px; center is at (14, 14).
-    selectedCandidateMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'top-left', offset: [-14, -14] })
+    // Circle marker is 14×14px; center is at (7, 7).
+    selectedCandidateMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'top-left', offset: [-7, -7] })
       .setLngLat([lng, lat])
       .setPopup(
         new maplibregl.Popup({ offset: 25 }).setHTML(
