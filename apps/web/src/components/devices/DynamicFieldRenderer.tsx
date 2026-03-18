@@ -148,5 +148,3 @@ export function DynamicFieldRenderer({
     </div>
   );
 }
-
-export default DynamicFieldRenderer;

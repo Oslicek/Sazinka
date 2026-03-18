@@ -128,16 +128,6 @@ export async function restoreRuleSetDefaults(
   return response.payload;
 }
 
-export async function getRuleSetFactors(
-  _ruleSetId: string,
-  _deps: ServiceDeps = getDefaultDeps()
-): Promise<ScoringRuleFactor[]> {
-  // Factors are embedded in the rule set list response; this is a client-side helper
-  // that extracts factors from a previously fetched rule set.
-  // If a dedicated NATS subject is added later, update this function.
-  return [];
-}
-
 // ============================================================================
 // Inbox state
 // ============================================================================

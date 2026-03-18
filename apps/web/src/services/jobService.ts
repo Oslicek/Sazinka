@@ -9,7 +9,7 @@
 
 import { useNatsStore } from '../stores/natsStore';
 import { createRequest, type SuccessResponse, type ErrorResponse } from '@shared/messages';
-import type { JobType, JobStatusUpdate } from '../types/jobStatus';
+import type { JobType } from '../types/jobStatus';
 import { getToken } from '@/utils/auth';
 
 /**
@@ -110,23 +110,3 @@ export async function retryJob(jobId: string, jobType: JobType): Promise<JobActi
   return response.payload;
 }
 
-/** Subscribe to all job status updates for a user */
-export async function subscribeToAllJobUpdates(
-  userId: string,
-  onUpdate: (jobType: JobType, update: JobStatusUpdate) => void
-): Promise<() => void> {
-  const { subscribe } = useNatsStore.getState();
-  
-  // Subscribe to wildcard pattern for all job types
-  // Note: This requires the backend to publish to this subject
-  const unsubscribe = await subscribe<JobStatusUpdate & { jobType: JobType }>(
-    `sazinka.user.${userId}.jobs.>`,
-    (update) => {
-      // Extract job type from the update or subject
-      const jobType = (update as any).jobType || 'unknown';
-      onUpdate(jobType as JobType, update);
-    }
-  );
-  
-  return unsubscribe;
-}

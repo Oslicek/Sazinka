@@ -4,10 +4,7 @@
 
 import type {
   VisitWorkItem,
-  CreateWorkItemRequest,
   CompleteWorkItemRequest,
-  ListWorkItemsRequest,
-  ListWorkItemsResponse,
   WorkType,
   WorkResult,
 } from '@shared/workItem';
@@ -36,47 +33,6 @@ export async function getWorkItem(
   const request = createRequest(getToken(), { id });
   const response = await deps.request<{ payload: VisitWorkItem }>(
     'sazinka.work_item.get',
-    request
-  );
-  return response.payload;
-}
-
-/**
- * List work items with filters
- */
-export async function listWorkItems(
-  filters: ListWorkItemsRequest,
-  deps = getDefaultDeps()
-): Promise<ListWorkItemsResponse> {
-  const request = createRequest(getToken(), filters);
-  const response = await deps.request<{ payload: ListWorkItemsResponse }>(
-    'sazinka.work_item.list',
-    request
-  );
-  return response.payload;
-}
-
-/**
- * List work items for a specific visit
- */
-export async function listWorkItemsForVisit(
-  visitId: string,
-  deps = getDefaultDeps()
-): Promise<VisitWorkItem[]> {
-  const response = await listWorkItems({ visitId }, deps);
-  return response.items;
-}
-
-/**
- * Create a new work item
- */
-export async function createWorkItem(
-  data: CreateWorkItemRequest,
-  deps = getDefaultDeps()
-): Promise<VisitWorkItem> {
-  const request = createRequest(getToken(), data);
-  const response = await deps.request<{ payload: VisitWorkItem }>(
-    'sazinka.work_item.create',
     request
   );
   return response.payload;

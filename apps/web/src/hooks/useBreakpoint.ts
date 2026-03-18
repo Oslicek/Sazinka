@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 // CSS equivalent lives in index.css (see "Canonical breakpoints" comment block).
 export const BP_PHONE_MAX = 639;   // max-width: 639px  → phone
 export const BP_TABLET_MAX = 1023; // max-width: 1023px → tablet (mobile UX)
-export const BP_DESKTOP_MIN = 1024; // min-width: 1024px → desktop
+const BP_DESKTOP_MIN = 1024; // min-width: 1024px → desktop
 
 export type Breakpoint = 'phone' | 'tablet' | 'desktop';
 

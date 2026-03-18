@@ -25,16 +25,6 @@ export interface UpdateRoleRequest {
   permissions?: string[];
 }
 
-export interface AssignRoleRequest {
-  userId: string;
-  roleId: string;
-}
-
-export interface UnassignRoleRequest {
-  userId: string;
-  roleId: string;
-}
-
 export interface SetUserRolesRequest {
   userId: string;
   roleIds: string[];
@@ -42,10 +32,6 @@ export interface SetUserRolesRequest {
 
 export interface ListRolesResponse {
   roles: RoleWithPermissions[];
-}
-
-export interface GetRoleResponse {
-  role: RoleWithPermissions;
 }
 
 export interface UserRolesResponse {
@@ -96,25 +82,6 @@ export async function listRoles(
 }
 
 /**
- * Get a single role by ID
- */
-export async function getRole(
-  roleId: string,
-  deps?: RoleServiceDeps
-): Promise<RoleWithPermissions> {
-  const nats = deps?.request || useNatsStore.getState().request;
-  const request = createRequest(getToken(), roleId);
-
-  const response = await nats<GetRoleResponse>('sazinka.role.get', request, 5000);
-
-  if (isErrorResponse(response)) {
-    throw new Error(response.error.message || 'Failed to get role');
-  }
-
-  return response.payload.role;
-}
-
-/**
  * Update an existing role
  */
 export async function updateRole(
@@ -147,40 +114,6 @@ export async function deleteRole(
 
   if (isErrorResponse(response)) {
     throw new Error(response.error.message || 'Failed to delete role');
-  }
-}
-
-/**
- * Assign a role to a user
- */
-export async function assignRole(
-  payload: AssignRoleRequest,
-  deps?: RoleServiceDeps
-): Promise<void> {
-  const nats = deps?.request || useNatsStore.getState().request;
-  const request = createRequest(getToken(), payload);
-
-  const response = await nats<void>('sazinka.role.assign', request, 5000);
-
-  if (isErrorResponse(response)) {
-    throw new Error(response.error.message || 'Failed to assign role');
-  }
-}
-
-/**
- * Unassign a role from a user
- */
-export async function unassignRole(
-  payload: UnassignRoleRequest,
-  deps?: RoleServiceDeps
-): Promise<void> {
-  const nats = deps?.request || useNatsStore.getState().request;
-  const request = createRequest(getToken(), payload);
-
-  const response = await nats<void>('sazinka.role.unassign', request, 5000);
-
-  if (isErrorResponse(response)) {
-    throw new Error(response.error.message || 'Failed to unassign role');
   }
 }
 

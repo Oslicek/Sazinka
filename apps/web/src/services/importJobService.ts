@@ -3,22 +3,16 @@
  */
 import type { 
   CustomerImportJobRequest, 
-  CustomerImportJobStatusUpdate,
   CustomerImportJobSubmitResponse,
   DeviceImportJobRequest,
-  DeviceImportJobStatusUpdate,
   DeviceImportJobSubmitResponse,
   RevisionImportJobRequest,
-  RevisionImportJobStatusUpdate,
   RevisionImportJobSubmitResponse,
   CommunicationImportJobRequest,
-  CommunicationImportJobStatusUpdate,
   CommunicationImportJobSubmitResponse,
   WorkLogImportJobRequest,
-  WorkLogImportJobStatusUpdate,
   WorkLogImportJobSubmitResponse,
   ZipImportJobRequest,
-  ZipImportJobStatusUpdate,
   ZipImportJobSubmitResponse,
 } from '@shared/import';
 import type { SuccessResponse, ErrorResponse } from '@shared/messages';
@@ -59,7 +53,6 @@ const SUBJECTS = {
  */
 export interface ImportJobServiceDeps {
   request: <TReq, TRes>(subject: string, payload: TReq) => Promise<TRes>;
-  subscribe?: <T>(subject: string, callback: (msg: T) => void) => Promise<() => void>;
 }
 
 /**
@@ -68,7 +61,6 @@ export interface ImportJobServiceDeps {
 function getDefaultDeps(): ImportJobServiceDeps {
   return {
     request: useNatsStore.getState().request,
-    subscribe: useNatsStore.getState().subscribe,
   };
 }
 
@@ -116,22 +108,6 @@ export async function submitCustomerImportJob(
   return response.payload;
 }
 
-/**
- * Subscribe to status updates for a specific customer import job
- */
-export async function subscribeToCustomerImportJobStatus(
-  jobId: string,
-  callback: (update: CustomerImportJobStatusUpdate) => void,
-  deps: ImportJobServiceDeps = getDefaultDeps()
-): Promise<() => void> {
-  if (!deps.subscribe) {
-    throw new Error('Subscribe function not available');
-  }
-  
-  const subject = `${SUBJECTS.customer.status}.${jobId}`;
-  return deps.subscribe<CustomerImportJobStatusUpdate>(subject, callback);
-}
-
 // =============================================================================
 // DEVICE IMPORT
 // =============================================================================
@@ -161,22 +137,6 @@ export async function submitDeviceImportJob(
   }
 
   return response.payload;
-}
-
-/**
- * Subscribe to status updates for a specific device import job
- */
-export async function subscribeToDeviceImportJobStatus(
-  jobId: string,
-  callback: (update: DeviceImportJobStatusUpdate) => void,
-  deps: ImportJobServiceDeps = getDefaultDeps()
-): Promise<() => void> {
-  if (!deps.subscribe) {
-    throw new Error('Subscribe function not available');
-  }
-  
-  const subject = `${SUBJECTS.device.status}.${jobId}`;
-  return deps.subscribe<DeviceImportJobStatusUpdate>(subject, callback);
 }
 
 // =============================================================================
@@ -210,22 +170,6 @@ export async function submitRevisionImportJob(
   return response.payload;
 }
 
-/**
- * Subscribe to status updates for a specific revision import job
- */
-export async function subscribeToRevisionImportJobStatus(
-  jobId: string,
-  callback: (update: RevisionImportJobStatusUpdate) => void,
-  deps: ImportJobServiceDeps = getDefaultDeps()
-): Promise<() => void> {
-  if (!deps.subscribe) {
-    throw new Error('Subscribe function not available');
-  }
-  
-  const subject = `${SUBJECTS.revision.status}.${jobId}`;
-  return deps.subscribe<RevisionImportJobStatusUpdate>(subject, callback);
-}
-
 // =============================================================================
 // COMMUNICATION IMPORT
 // =============================================================================
@@ -255,22 +199,6 @@ export async function submitCommunicationImportJob(
   }
 
   return response.payload;
-}
-
-/**
- * Subscribe to status updates for a specific communication import job
- */
-export async function subscribeToCommunicationImportJobStatus(
-  jobId: string,
-  callback: (update: CommunicationImportJobStatusUpdate) => void,
-  deps: ImportJobServiceDeps = getDefaultDeps()
-): Promise<() => void> {
-  if (!deps.subscribe) {
-    throw new Error('Subscribe function not available');
-  }
-  
-  const subject = `${SUBJECTS.communication.status}.${jobId}`;
-  return deps.subscribe<CommunicationImportJobStatusUpdate>(subject, callback);
 }
 
 // =============================================================================
@@ -304,22 +232,6 @@ export async function submitWorkLogImportJob(
   return response.payload;
 }
 
-/**
- * Subscribe to status updates for a specific work log import job
- */
-export async function subscribeToWorkLogImportJobStatus(
-  jobId: string,
-  callback: (update: WorkLogImportJobStatusUpdate) => void,
-  deps: ImportJobServiceDeps = getDefaultDeps()
-): Promise<() => void> {
-  if (!deps.subscribe) {
-    throw new Error('Subscribe function not available');
-  }
-  
-  const subject = `${SUBJECTS.visit.status}.${jobId}`;
-  return deps.subscribe<WorkLogImportJobStatusUpdate>(subject, callback);
-}
-
 // =============================================================================
 // ZIP IMPORT
 // =============================================================================
@@ -351,55 +263,3 @@ export async function submitZipImportJob(
 
   return response.payload;
 }
-
-/**
- * Subscribe to status updates for a specific ZIP import job
- */
-export async function subscribeToZipImportJobStatus(
-  jobId: string,
-  callback: (update: ZipImportJobStatusUpdate) => void,
-  deps: ImportJobServiceDeps = getDefaultDeps()
-): Promise<() => void> {
-  if (!deps.subscribe) {
-    throw new Error('Subscribe function not available');
-  }
-  
-  const subject = `${SUBJECTS.zip.status}.${jobId}`;
-  return deps.subscribe<ZipImportJobStatusUpdate>(subject, callback);
-}
-
-// =============================================================================
-// LEGACY ALIASES (for backward compatibility)
-// =============================================================================
-
-/**
- * @deprecated Use subscribeToCustomerImportJobStatus instead
- */
-export const subscribeToImportJobStatus = subscribeToCustomerImportJobStatus;
-
-/**
- * Subscribe to all import job statuses (all types)
- * Useful for global job monitoring
- * Returns an array of unsubscribe functions
- */
-export async function subscribeToAllImportJobStatuses(
-  callback: (update: CustomerImportJobStatusUpdate | DeviceImportJobStatusUpdate | RevisionImportJobStatusUpdate | CommunicationImportJobStatusUpdate | WorkLogImportJobStatusUpdate | ZipImportJobStatusUpdate) => void,
-  deps: ImportJobServiceDeps = getDefaultDeps()
-): Promise<(() => void)[]> {
-  if (!deps.subscribe) {
-    throw new Error('Subscribe function not available');
-  }
-  
-  // Subscribe to all job status updates for all types
-  const unsubscribeFunctions: (() => void)[] = [];
-  
-  for (const type of Object.keys(SUBJECTS) as (keyof typeof SUBJECTS)[]) {
-    const unsub = await deps.subscribe(`${SUBJECTS[type].status}.*`, callback);
-    unsubscribeFunctions.push(unsub);
-  }
-  
-  return unsubscribeFunctions;
-}
-
-// Export subjects for use in other modules
-export { SUBJECTS as IMPORT_JOB_SUBJECTS };

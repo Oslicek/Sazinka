@@ -137,21 +137,6 @@ export async function completeVisit(
 }
 
 /**
- * Delete a visit
- */
-export async function deleteVisit(
-  id: string,
-  deps = getDefaultDeps()
-): Promise<boolean> {
-  const request = createRequest(getToken(), { id });
-  const response = await deps.request<{ payload: { deleted: boolean } }>(
-    'sazinka.visit.delete',
-    request
-  );
-  return response.payload.deleted;
-}
-
-/**
  * Get visit status label
  */
 export function getVisitStatusLabel(status: string): string {

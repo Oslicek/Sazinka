@@ -2061,5 +2061,3 @@ function WorkersManager({ workers, onUpdate }: WorkersManagerProps) {
     </div>
   );
 }
-
-export default Settings;

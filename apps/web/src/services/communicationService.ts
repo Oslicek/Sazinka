@@ -5,7 +5,6 @@
 import type {
   Communication,
   CreateCommunicationRequest,
-  UpdateCommunicationRequest,
   ListCommunicationsRequest,
   ListCommunicationsResponse,
 } from '@shared/communication';
@@ -64,36 +63,6 @@ export async function listCustomerCommunications(
 ): Promise<Communication[]> {
   const response = await listCommunications({ customerId, limit }, deps);
   return response.communications;
-}
-
-/**
- * Update a communication
- */
-export async function updateCommunication(
-  data: UpdateCommunicationRequest,
-  deps = getDefaultDeps()
-): Promise<Communication> {
-  const request = createRequest(getToken(), data);
-  const response = await deps.request<{ payload: Communication }>(
-    'sazinka.communication.update',
-    request
-  );
-  return response.payload;
-}
-
-/**
- * Delete a communication
- */
-export async function deleteCommunication(
-  id: string,
-  deps = getDefaultDeps()
-): Promise<boolean> {
-  const request = createRequest(getToken(), { id });
-  const response = await deps.request<{ payload: { deleted: boolean } }>(
-    'sazinka.communication.delete',
-    request
-  );
-  return response.payload.deleted;
 }
 
 /**

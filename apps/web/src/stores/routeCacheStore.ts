@@ -173,37 +173,3 @@ export const useRouteCacheStore = create<RouteCacheState>((set, get) => ({
   }),
 }));
 
-/**
- * Hook to get cached insertion result or trigger calculation
- */
-export function useCachedInsertion(
-  candidateId: string,
-  calculate: () => Promise<InsertionResult>
-): InsertionResult | null {
-  const {
-    getCachedInsertion,
-    setCachedInsertion,
-    markPending,
-    unmarkPending,
-    isPending,
-  } = useRouteCacheStore();
-
-  // Check cache first
-  const cached = getCachedInsertion(candidateId);
-  if (cached) return cached;
-
-  // If already pending, return null
-  if (isPending(candidateId)) return null;
-
-  // Trigger calculation
-  markPending(candidateId);
-  calculate()
-    .then((result) => {
-      setCachedInsertion(result);
-    })
-    .finally(() => {
-      unmarkPending(candidateId);
-    });
-
-  return null;
-}

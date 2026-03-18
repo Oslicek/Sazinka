@@ -468,5 +468,3 @@ function AddVisitForm({
     </form>
   );
 }
-
-export default CustomerTimeline;

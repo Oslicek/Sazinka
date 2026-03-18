@@ -21,7 +21,7 @@ interface UseKeyboardShortcutsOptions {
 /**
  * Hook for managing keyboard shortcuts in the planner
  */
-export function useKeyboardShortcuts(
+function useKeyboardShortcuts(
   shortcuts: KeyboardShortcut[],
   options: UseKeyboardShortcutsOptions = {}
 ) {
@@ -199,7 +199,7 @@ export function usePlannerShortcuts({
 /**
  * Component to display available keyboard shortcuts
  */
-export function getShortcutLabel(shortcut: KeyboardShortcut): string {
+function getShortcutLabel(shortcut: KeyboardShortcut): string {
   const parts: string[] = [];
   
   if (shortcut.ctrl) parts.push('Ctrl');

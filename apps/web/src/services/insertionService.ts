@@ -158,27 +158,3 @@ export async function calculateBatchInsertion(
   return response.payload;
 }
 
-/**
- * Format insertion delta for display
- */
-export function formatInsertionDelta(deltaMin: number, deltaKm: number): string {
-  const minSign = deltaMin >= 0 ? '+' : '';
-  const kmSign = deltaKm >= 0 ? '+' : '';
-  return `${minSign}${Math.round(deltaMin)}min / ${kmSign}${deltaKm.toFixed(1)}km`;
-}
-
-
-/**
- * Sort batch results by best insertion cost
- */
-export function sortByInsertionCost(results: BatchInsertionResult[]): BatchInsertionResult[] {
-  return [...results].sort((a, b) => {
-    // Feasible first
-    if (a.isFeasible !== b.isFeasible) return a.isFeasible ? -1 : 1;
-    // Then by status (ok > tight > conflict)
-    const statusOrder = { ok: 0, tight: 1, conflict: 2 };
-    if (a.status !== b.status) return statusOrder[a.status] - statusOrder[b.status];
-    // Then by delta time
-    return a.bestDeltaMin - b.bestDeltaMin;
-  });
-}

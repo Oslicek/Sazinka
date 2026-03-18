@@ -576,5 +576,3 @@ export function Admin() {
     </div>
   );
 }
-
-export default Admin;

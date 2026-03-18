@@ -409,27 +409,6 @@ export async function getSuggestedRevisions(
 // ============================================================================
 
 /**
- * Get the call queue - revisions needing customer contact
- */
-export async function getCallQueue(
-  filters: CallQueueRequest = {},
-  deps: RevisionServiceDeps = getDefaultDeps()
-): Promise<CallQueueResponse> {
-  const request = createRequest(getToken(), filters);
-
-  const response = await deps.request<typeof request, NatsResponse<CallQueueResponse>>(
-    'sazinka.revision.queue',
-    request
-  );
-
-  if (isErrorResponse(response)) {
-    throw new Error(response.error.message);
-  }
-
-  return response.payload;
-}
-
-/**
  * Snooze a revision - postpone contact until a future date
  */
 export async function snoozeRevision(

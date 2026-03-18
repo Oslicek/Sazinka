@@ -376,4 +376,3 @@ function DeletingStep({ t, level }: DeletingStepProps) {
   );
 }
 
-export default DeleteAccountDialog;

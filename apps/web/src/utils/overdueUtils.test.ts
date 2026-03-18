@@ -14,9 +14,8 @@ vi.mock('@/i18n', () => ({
 }));
 
 import { 
-  formatOverdueDuration, 
+  formatOverdueDuration,
   calculateOverdueInfo,
-  type DeviceOverdueInfo 
 } from './overdueUtils';
 
 describe('formatOverdueDuration', () => {

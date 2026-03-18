@@ -275,5 +275,3 @@ export function ImportReportDialog({ report, onClose }: ImportReportDialogProps)
     </div>
   );
 }
-
-export default ImportReportDialog;

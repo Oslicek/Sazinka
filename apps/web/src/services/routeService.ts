@@ -7,7 +7,7 @@
 
 import { useNatsStore } from '../stores/natsStore';
 import { createRequest, type SuccessResponse, type ErrorResponse } from '@shared/messages';
-import type { PlannedRouteStop, Coordinates, RoutePlanResponse } from '@shared/route';
+import type { Coordinates, RoutePlanResponse } from '@shared/route';
 import { getToken } from '@/utils/auth';
 
 /**
@@ -128,40 +128,6 @@ export interface GetRouteResponse {
 }
 
 /**
- * Convert PlannedRouteStop to SaveRouteStop format
- */
-export function toSaveRouteStop(stop: PlannedRouteStop, revisionId?: string): SaveRouteStop {
-  return {
-    customerId: stop.customerId,
-    revisionId,
-    order: stop.order,
-    eta: stop.eta,
-    etd: stop.etd,
-    stopType: 'customer',
-  };
-}
-
-/**
- * Convert SavedRouteStop to PlannedRouteStop format for display
- */
-export function toPlannedRouteStop(stop: SavedRouteStop): PlannedRouteStop {
-  return {
-    customerId: stop.customerId ?? '',
-    customerName: stop.customerName ?? (stop.stopType === 'break' ? 'Pauza' : ''),
-    address: stop.address ?? '',
-    coordinates: {
-      lat: stop.customerLat ?? 0,
-      lng: stop.customerLng ?? 0,
-    },
-    order: stop.stopOrder,
-    eta: stop.estimatedArrival ?? '08:00',
-    etd: stop.estimatedDeparture ?? '08:30',
-    serviceDurationMinutes: stop.serviceDurationMinutes ?? 30,
-    timeWindow: undefined,
-  };
-}
-
-/**
  * Save a route to the backend
  */
 export async function saveRoute(
@@ -244,17 +210,6 @@ export async function updateRoute(
   }
 
   return response.payload;
-}
-
-/**
- * Check if a saved route exists for a date
- */
-export async function hasRouteForDate(
-  date: string,
-  deps = { request: useNatsStore.getState().request }
-): Promise<boolean> {
-  const response = await getRoute({ date }, deps);
-  return response.route !== null;
 }
 
 export interface ListRoutesForDateResponse {

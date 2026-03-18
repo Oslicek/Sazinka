@@ -790,5 +790,3 @@ export function DeviceTypeConfigManager({ onUpdate }: DeviceTypeConfigManagerPro
     </div>
   );
 }
-
-export default DeviceTypeConfigManager;

@@ -42,7 +42,7 @@ const JOB_TYPE_KEYS: Record<JobType, string> = {
 };
 
 /** Get translated job type name */
-export function getJobTypeName(type: JobType): string {
+function getJobTypeName(type: JobType): string {
   return i18n.t(JOB_TYPE_KEYS[type]);
 }
 

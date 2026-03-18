@@ -230,7 +230,7 @@ export async function importCustomersBatch(
 /**
  * Get customers pending geocoding (without coordinates)
  */
-export interface PendingGeocodeCustomer {
+interface PendingGeocodeCustomer {
   id: string;
   name: string;
   address: string;
@@ -241,7 +241,7 @@ export interface PendingGeocodeResponse {
   customers: PendingGeocodeCustomer[];
 }
 
-export async function getCustomersPendingGeocode(
+async function getCustomersPendingGeocode(
   deps: CustomerServiceDeps = getDefaultDeps()
 ): Promise<PendingGeocodeResponse> {
   const request = createRequest(getToken(), {});

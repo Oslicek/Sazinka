@@ -146,11 +146,6 @@ export function isFailed(status: JobStatus | null): status is JobStatusFailed {
   return status !== null && status.type === 'failed';
 }
 
-/** Type guard for JobStatusCancelled */
-export function isCancelled(status: JobStatus | null): status is JobStatusCancelled {
-  return status !== null && status.type === 'cancelled';
-}
-
 /** Check if job is in a terminal state (completed, failed, or cancelled) */
 export function isTerminal(status: JobStatus | null): boolean {
   return status !== null && (status.type === 'completed' || status.type === 'failed' || status.type === 'cancelled');
