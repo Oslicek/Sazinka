@@ -1,8 +1,9 @@
 import type { RouteContext, RouteMetrics, MapInsertionPreview } from '@/components/planner';
 import type { SavedRouteStop } from '@/services/routeService';
 import type { RouteWarning } from '@shared/route';
+import type { SelectedCandidateForMap } from './panelSignals';
 
-export type { RouteContext, RouteMetrics, MapInsertionPreview, SavedRouteStop, RouteWarning };
+export type { RouteContext, RouteMetrics, MapInsertionPreview, SavedRouteStop, RouteWarning, SelectedCandidateForMap };
 
 export interface ReturnToDepotLeg {
   distanceKm: number;
@@ -48,6 +49,8 @@ export interface PanelState {
   remoteScheduledIds?: string[];
   /** Last-known authoritative scheduled IDs (set by source-of-truth window for getSnapshot) */
   lastScheduledSnapshot?: string[];
+  /** Selected inbox candidate for map marker (broadcast to detached map) */
+  selectedCandidateForMap?: SelectedCandidateForMap | null;
 }
 
 export interface PanelActions {
@@ -66,6 +69,8 @@ export interface PanelActions {
   setBreakWarnings(warnings: string[]): void;
   setMetrics(metrics: RouteMetrics | null): void;
   setRouteBuffer(percent: number, fixedMinutes: number): void;
+  /** Set the selected candidate for map display and broadcast to detached panels */
+  setSelectedCandidateForMap(candidate: SelectedCandidateForMap | null): void;
 }
 
 export interface PanelStateContextValue {

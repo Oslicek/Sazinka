@@ -1124,6 +1124,10 @@ function PlanningInboxInner() {
     return null;
   }, [selectedCandidate, routeStops]);
 
+  useEffect(() => {
+    actions.setSelectedCandidateForMap(selectedCandidateForMap);
+  }, [selectedCandidateForMap, actions]);
+
   // Insertion preview for map (dashed line showing where candidate will be inserted)
   // Only shown for candidates NOT yet in the route
   const insertionPreviewForMap: InsertionPreview | null = useMemo(() => {

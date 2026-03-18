@@ -10,6 +10,7 @@ import type {
   ReturnToDepotLeg,
   RouteWarning,
   RouteMetrics,
+  SelectedCandidateForMap,
 } from '../types/panelState';
 import { usePanelSignals } from '../hooks/usePanelSignals';
 import type { PanelSignal } from '../types/panelSignals';
@@ -66,6 +67,9 @@ export function PanelStateProvider({
       case 'SELECT_CUSTOMER':
         setState(s => s.selectedCustomerId === signal.customerId ? s : { ...s, selectedCustomerId: signal.customerId });
         break;
+      case 'SELECT_CANDIDATE_MAP':
+        setState(s => ({ ...s, selectedCandidateForMap: signal.candidate }));
+        break;
       case 'SELECT_ROUTE':
         setState(s => s.selectedRouteId === signal.routeId ? s : { ...s, selectedRouteId: signal.routeId });
         break;
@@ -90,6 +94,7 @@ export function PanelStateProvider({
             : s.routeContext,
           remoteInRouteIds: signal.inRouteCustomerIds ?? s.remoteInRouteIds,
           remoteScheduledIds: signal.scheduledCustomerIds ?? s.remoteScheduledIds,
+          selectedCandidateForMap: signal.selectedCandidateForMap ?? s.selectedCandidateForMap,
         }));
         break;
       case 'ROUTE_DATA_CHANGED': {
@@ -136,6 +141,7 @@ export function PanelStateProvider({
       highlightedSegment: s.highlightedSegment,
       inRouteCustomerIds,
       scheduledCustomerIds,
+      selectedCandidateForMap: s.selectedCandidateForMap ?? null,
     };
   }, []);
 
@@ -229,6 +235,11 @@ export function PanelStateProvider({
     setState(s => s.routeBufferPercent === percent && s.routeBufferFixedMinutes === fixedMinutes ? s : { ...s, routeBufferPercent: percent, routeBufferFixedMinutes: fixedMinutes });
   }, []);
 
+  const setSelectedCandidateForMap = useCallback((candidate: SelectedCandidateForMap | null) => {
+    setState(s => ({ ...s, selectedCandidateForMap: candidate }));
+    sendSignalRef.current({ type: 'SELECT_CANDIDATE_MAP', candidate });
+  }, []);
+
   const actions: PanelActions = useMemo(() => ({
     selectCustomer,
     selectRoute,
@@ -244,10 +255,11 @@ export function PanelStateProvider({
     setBreakWarnings,
     setMetrics,
     setRouteBuffer,
+    setSelectedCandidateForMap,
   }), [
     selectCustomer, selectRoute, setRouteContext, setRouteStops, sendScheduleSnapshot, highlightSegment,
     setInsertionPreview, setRouteGeometry, setReturnToDepotLeg, setDepotDeparture,
-    setRouteWarnings, setBreakWarnings, setMetrics, setRouteBuffer,
+    setRouteWarnings, setBreakWarnings, setMetrics, setRouteBuffer, setSelectedCandidateForMap,
   ]);
 
   const value = useMemo(() => ({ state, actions }), [state, actions]);

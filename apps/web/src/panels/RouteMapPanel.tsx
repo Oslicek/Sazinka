@@ -32,10 +32,12 @@ export function RouteMapPanel({ selectedCandidate, insertionPreview: propInserti
     routeContext,
   } = state;
 
+  const effectiveCandidate = selectedCandidate ?? state.selectedCandidateForMap ?? null;
+
   // #region agent log
   useEffect(() => {
-    console.log('[DBG-2ba648] RouteMapPanel state', { isConnected, hasRouteContext: !!routeContext, routeContextDate: routeContext?.date, routeContextCrewId: routeContext?.crewId, routeContextDepotId: routeContext?.depotId, routeStopsCount: routeStops.length, routeGeometryCount: routeGeometry.length, selectedCustomerId, selectedCandidateId: selectedCandidate?.id ?? null, selectedCandidateName: selectedCandidate?.name ?? null, selectedCandidateCoords: selectedCandidate?.coordinates ?? null, propInsertionPreview: !!propInsertionPreview, ctxInsertionPreview: !!insertionPreview });
-  }, [isConnected, routeContext, routeStops.length, routeGeometry.length, selectedCustomerId, selectedCandidate]);
+    console.log('[DBG-2ba648] RouteMapPanel state', { isConnected, routeStopsCount: routeStops.length, routeGeometryCount: routeGeometry.length, selectedCustomerId, propCandidateId: selectedCandidate?.id ?? null, ctxCandidateId: state.selectedCandidateForMap?.id ?? null, effectiveCandidateId: effectiveCandidate?.id ?? null, effectiveCandidateCoords: effectiveCandidate?.coordinates ?? null });
+  }, [isConnected, routeStops.length, routeGeometry.length, selectedCustomerId, selectedCandidate, state.selectedCandidateForMap, effectiveCandidate]);
   // #endregion
 
   const geometryUnsubRef = useRef<(() => void) | null>(null);
@@ -143,7 +145,7 @@ export function RouteMapPanel({ selectedCandidate, insertionPreview: propInserti
       highlightedSegment={highlightedSegment}
       insertionPreview={propInsertionPreview ?? insertionPreview}
       highlightedStopId={selectedCustomerId}
-      selectedCandidate={selectedCandidate}
+      selectedCandidate={effectiveCandidate}
       onSegmentHighlight={actions.highlightSegment}
       onStopClick={actions.selectCustomer}
     />
