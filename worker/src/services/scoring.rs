@@ -34,6 +34,7 @@ pub mod factor_keys {
 
 /// Compute urgency score for a customer given a set of weighted factors.
 /// Returns 0.0 if factors is empty.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn compute_urgency(input: &CustomerScoringInput, factors: &[ScoringRuleFactor]) -> f64 {
     compute_urgency_with_breakdown(input, factors).0
 }

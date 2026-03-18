@@ -58,10 +58,12 @@ impl EmailSender for LogEmailSender {
 
 /// Collects sent messages in memory for assertion in tests.
 #[derive(Default)]
+#[cfg_attr(not(test), allow(dead_code))]
 pub struct FakeEmailSender {
     pub sent: Mutex<Vec<EmailMessage>>,
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 impl FakeEmailSender {
     pub fn new() -> Self {
         Self::default()

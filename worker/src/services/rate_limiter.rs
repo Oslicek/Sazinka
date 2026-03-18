@@ -60,6 +60,7 @@ impl RateLimiter {
     }
 
     /// Remove entries that have expired (call periodically to free memory).
+    #[allow(dead_code)]
     pub fn cleanup(&self) {
         let mut attempts = self.attempts.lock();
         let now = Instant::now();
@@ -107,6 +108,7 @@ impl MultiRateLimiter {
         }
     }
 
+    #[allow(dead_code)]
     pub fn cleanup_all(&self) {
         for l in self.limiters.values() {
             l.cleanup();
