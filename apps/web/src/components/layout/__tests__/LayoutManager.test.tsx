@@ -57,56 +57,56 @@ describe('LayoutManager', () => {
 
   it('renders layout mode buttons on tablet', () => {
     mockUseBreakpoint.mockReturnValue(tabletState());
-    render(<LayoutManager mode="split" onModeChange={vi.fn()} />);
-    expect(screen.getByRole('button', { name: /split/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /tiles/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /classic/i })).not.toBeInTheDocument();
+    render(<LayoutManager mode="dual" onModeChange={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /dual/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /grid/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /wide/i })).not.toBeInTheDocument();
   });
 
   it('renders layout mode buttons on desktop', () => {
     mockUseBreakpoint.mockReturnValue(desktopState());
-    render(<LayoutManager mode="classic" onModeChange={vi.fn()} />);
-    expect(screen.getByRole('button', { name: /split/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /tiles/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /classic/i })).toBeInTheDocument();
+    render(<LayoutManager mode="wide" onModeChange={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /dual/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /grid/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /wide/i })).toBeInTheDocument();
   });
 
   it('highlights the active layout mode button', () => {
     mockUseBreakpoint.mockReturnValue(desktopState());
-    render(<LayoutManager mode="tiles" onModeChange={vi.fn()} />);
-    expect(screen.getByRole('button', { name: /tiles/i })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: /split/i })).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.getByRole('button', { name: /classic/i })).toHaveAttribute('aria-pressed', 'false');
+    render(<LayoutManager mode="grid" onModeChange={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /grid/i })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: /dual/i })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: /wide/i })).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('calls onModeChange when a mode button is clicked', () => {
     mockUseBreakpoint.mockReturnValue(tabletState());
     const onModeChange = vi.fn();
-    render(<LayoutManager mode="split" onModeChange={onModeChange} />);
-    fireEvent.click(screen.getByRole('button', { name: /tiles/i }));
-    expect(onModeChange).toHaveBeenCalledWith('tiles');
+    render(<LayoutManager mode="dual" onModeChange={onModeChange} />);
+    fireEvent.click(screen.getByRole('button', { name: /grid/i }));
+    expect(onModeChange).toHaveBeenCalledWith('grid');
   });
 
   it('persists mode to localStorage when changed', () => {
     mockUseBreakpoint.mockReturnValue(tabletState());
-    render(<LayoutManager mode="split" onModeChange={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: /tiles/i }));
+    render(<LayoutManager mode="dual" onModeChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /grid/i }));
     expect(mockSetLocal).toHaveBeenCalledWith(
-      expect.objectContaining({ mode: 'tiles' })
+      expect.objectContaining({ mode: 'grid' })
     );
   });
 
   it('restores mode from localStorage on mount', () => {
     mockUseBreakpoint.mockReturnValue(desktopState());
-    mockGetLocal.mockReturnValue({ mode: 'tiles', updatedAt: 1000 });
-    render(<LayoutManager mode="tiles" onModeChange={vi.fn()} />);
-    expect(screen.getByRole('button', { name: /tiles/i })).toHaveAttribute('aria-pressed', 'true');
+    mockGetLocal.mockReturnValue({ mode: 'grid', updatedAt: 1000 });
+    render(<LayoutManager mode="grid" onModeChange={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /grid/i })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('debounces DB sync (does not call syncToDb immediately on change)', () => {
     mockUseBreakpoint.mockReturnValue(tabletState());
-    render(<LayoutManager mode="split" onModeChange={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: /tiles/i }));
+    render(<LayoutManager mode="dual" onModeChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /grid/i }));
     expect(mockSyncDb).not.toHaveBeenCalled();
     vi.advanceTimersByTime(5000);
     expect(mockSyncDb).toHaveBeenCalledTimes(1);
