@@ -12,7 +12,15 @@ import type { SavedRouteStop } from '@/services/routeService';
  * segment-highlight and stop-selection actions, and independently
  * fetches route stops + geometry via NATS when a routeContext is available.
  */
-export function RouteMapPanel() {
+import type { SelectedCandidate } from '@/components/planner/RouteMapPanel';
+import type { InsertionPreview } from '@/components/planner/RouteMapPanel';
+
+interface RouteMapPanelProps {
+  selectedCandidate?: SelectedCandidate | null;
+  insertionPreview?: InsertionPreview | null;
+}
+
+export function RouteMapPanel({ selectedCandidate, insertionPreview: propInsertionPreview }: RouteMapPanelProps = {}) {
   const { state, actions } = usePanelState();
   const { isConnected } = useNatsStore();
   const {
@@ -113,8 +121,9 @@ export function RouteMapPanel() {
       depot={null}
       routeGeometry={routeGeometry}
       highlightedSegment={highlightedSegment}
-      insertionPreview={insertionPreview}
+      insertionPreview={propInsertionPreview ?? insertionPreview}
       highlightedStopId={selectedCustomerId}
+      selectedCandidate={selectedCandidate}
       onSegmentHighlight={actions.highlightSegment}
       onStopClick={actions.selectCustomer}
     />

@@ -3236,7 +3236,10 @@ function PlanningInboxInner() {
           onDetach={() => detach('map')}
         />
       )}
-      <RouteMapPanelSelfSufficient />
+      <RouteMapPanelSelfSufficient 
+        selectedCandidate={selectedCandidateForMap} 
+        insertionPreview={insertionPreviewForMap}
+      />
     </div>
   ) : null;
 
