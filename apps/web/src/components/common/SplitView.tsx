@@ -83,18 +83,19 @@ export function SplitView({
     if (!containerRef.current) return;
     const c = containerRef.current;
     const cRect = c.getBoundingClientRect();
-    const resizers = c.querySelectorAll('[data-dbg-resizer]');
-    const resizerData = Array.from(resizers).map((r, i) => {
+    const resizers = c.querySelectorAll(':scope > [data-dbg-resizer]');
+    const panelEls = c.querySelectorAll(':scope > [data-dbg-panel]');
+    const ids = panels.map(p=>p.id).join(',');
+    for (const r of Array.from(resizers)) {
       const rect = (r as HTMLElement).getBoundingClientRect();
       const cs = window.getComputedStyle(r as HTMLElement);
-      return { i, w: rect.width, h: rect.height, display: cs.display, pointerEvents: cs.pointerEvents };
-    });
-    const panelEls = c.querySelectorAll(':scope > [data-dbg-panel]');
-    const panelData = Array.from(panelEls).map((p, i) => {
+      console.log(`[DBG-2ba648] resizer in ${direction} [${ids}]: w=${rect.width} h=${rect.height} pointer=${cs.pointerEvents} cursor=${cs.cursor} display=${cs.display} zIndex=${cs.zIndex}`);
+    }
+    for (const p of Array.from(panelEls)) {
       const rect = (p as HTMLElement).getBoundingClientRect();
-      return { i, id: (p as HTMLElement).dataset.dbgPanel, w: rect.width, h: rect.height };
-    });
-    console.log('[DBG-2ba648] SplitView mount', { direction, panelIds: panels.map(p=>p.id), containerW: cRect.width, containerH: cRect.height, resizerCount: resizers.length, resizers: resizerData, panels: panelData, childCount: c.children.length });
+      console.log(`[DBG-2ba648] panel ${(p as HTMLElement).dataset.dbgPanel} in ${direction} [${ids}]: w=${rect.width} h=${rect.height}`);
+    }
+    console.log(`[DBG-2ba648] container ${direction} [${ids}]: w=${cRect.width} h=${cRect.height} children=${c.children.length}`);
   }, [direction, panels.length]);
   // #endregion
 
