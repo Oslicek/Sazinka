@@ -203,7 +203,7 @@ export function SplitView({
           key={`resizer-${i}`}
           data-dbg-resizer={i}
           className={styles.resizer}
-          style={isHoriz ? { width: 6, cursor: 'col-resize', alignSelf: 'stretch' } : { height: 4, cursor: 'row-resize' }}
+          style={isHoriz ? { width: 6, height: '100%', cursor: 'col-resize', alignSelf: 'stretch' } : { height: 4, width: '100%', cursor: 'row-resize' }}
           onMouseDown={handleResizeStart(i)}
           onTouchStart={handleTouchStart(i)}
         />
