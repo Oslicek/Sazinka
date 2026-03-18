@@ -18,13 +18,14 @@
 }
 
 .panel {
-  overflow: auto;
+  overflow: hidden;
   height: 100%;
 }
 
 .vertical .panel {
   width: 100%;
   height: auto;
+  min-height: 0;
 }
 
 /* Resizer */
