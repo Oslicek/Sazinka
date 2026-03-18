@@ -1876,11 +1876,46 @@ function PlanningInboxInner() {
                 // Append unassigned stops with warning status
                 if (unassignedIds.size > 0) {
                   let order = optimizedStops.length;
+                  const appendedIds = new Set<string>();
+
+                  // First: re-append existing route stops that were unassigned
                   for (const origStop of currentRouteStops) {
                     if (origStop.customerId && unassignedIds.has(origStop.customerId)) {
                       order++;
+                      appendedIds.add(origStop.customerId);
                       optimizedStops.push({ ...origStop, stopOrder: order, estimatedArrival: null, estimatedDeparture: null, distanceFromPreviousKm: null, durationFromPreviousMinutes: null, status: 'unassigned' });
                     }
+                  }
+
+                  // Second: append newly-selected candidates that the optimizer couldn't assign
+                  for (const id of unassignedIds) {
+                    if (appendedIds.has(id)) continue;
+                    const cand = currentCandidates.find(c => c.customerId === id);
+                    if (!cand) continue;
+                    order++;
+                    optimizedStops.push({
+                      id: crypto.randomUUID(),
+                      routeId: '',
+                      revisionId: null,
+                      stopOrder: order,
+                      estimatedArrival: null,
+                      estimatedDeparture: null,
+                      distanceFromPreviousKm: null,
+                      durationFromPreviousMinutes: null,
+                      status: 'unassigned',
+                      stopType: 'customer',
+                      customerId: cand.customerId,
+                      customerName: cand.customerName,
+                      address: `${cand.customerStreet ?? ''}, ${cand.customerCity ?? ''}`.replace(/^, |, $/g, ''),
+                      customerLat: cand.customerLat,
+                      customerLng: cand.customerLng,
+                      customerPhone: cand.customerPhone ?? null,
+                      customerEmail: cand.customerEmail ?? null,
+                      scheduledDate: cand.scheduledDate ?? null,
+                      scheduledTimeStart: cand.scheduledTimeStart ?? null,
+                      scheduledTimeEnd: cand.scheduledTimeEnd ?? null,
+                      revisionStatus: cand.status ?? null,
+                    });
                   }
                 }
 
