@@ -80,6 +80,7 @@ export function SplitView({
 
   const handleResizeStart = useCallback(
     (index: number) => (e: React.MouseEvent) => {
+      console.log('[SplitView] mousedown on resizer', { index, direction, resizable, hasContainer: !!containerRef.current });
       if (!resizable || !containerRef.current) return;
 
       e.preventDefault();
@@ -99,6 +100,7 @@ export function SplitView({
         const { newLeftWidth, newRightWidth } = calcResize(
           leftPanel, rightPanel, startLeftWidth, startRightWidth, startPos, currentPos, containerSize
         );
+        console.log('[SplitView] mousemove', { direction, containerSize, leftId: leftPanel.id, newLeftWidth, newRightWidth });
         setPanelWidths((prev) => ({
           ...prev,
           [leftPanel.id]: newLeftWidth,
