@@ -44,6 +44,7 @@ import { insertStopAtPosition, findChronologicalPosition } from '../components/p
 import * as settingsService from '../services/settingsService';
 import { calculateBreakPosition, createBreakStop } from '../utils/breakUtils';
 import { resolveRevisionDuration } from '../utils/resolveRevisionDuration';
+import { toggleMapSelectedId, mergeMapSelectedIds } from '../utils/mapSelection';
 import { logger } from '../utils/logger';
 import * as crewService from '../services/crewService';
 import * as routeService from '../services/routeService';
@@ -139,6 +140,13 @@ function toPriority(item: CallQueueItem): CandidateRowData['priority'] {
   if (item.daysUntilDue <= 7) return 'due_this_week';
   if (item.daysUntilDue <= 30) return 'due_soon';
   return 'upcoming';
+}
+
+function sumServiceMinutes(stops: SavedRouteStop[], fallback: number): number {
+  return stops.reduce((sum, s) => {
+    if (s.stopType !== 'customer') return sum;
+    return sum + (s.serviceDurationMinutes ?? fallback);
+  }, 0);
 }
 
 function PlanningInboxInner() {
@@ -874,7 +882,7 @@ function PlanningInboxInner() {
           );
           
           const totalMin = response.route.totalDurationMinutes ?? 0;
-          const serviceMin = response.stops.length * 30;
+          const serviceMin = sumServiceMinutes(response.stops, defaultServiceDurationMinutes);
           const travelMin = totalMin - serviceMin;
           const workingDayMin = 9 * 60;
           
@@ -1747,17 +1755,11 @@ function PlanningInboxInner() {
 
   // Map sub-selection handlers (Story 2)
   const handleCandidateToggle = useCallback((candidateId: string) => {
-    const current = state.mapSelectedIds ?? [];
-    const next = current.includes(candidateId)
-      ? current.filter(id => id !== candidateId)
-      : [...current, candidateId];
-    actions.setMapSelectedIds(next);
+    actions.setMapSelectedIds(toggleMapSelectedId(state.mapSelectedIds ?? [], candidateId));
   }, [state.mapSelectedIds, actions]);
 
   const handleCandidateRectSelect = useCallback((candidateIds: string[]) => {
-    const current = new Set(state.mapSelectedIds ?? []);
-    for (const id of candidateIds) current.add(id);
-    actions.setMapSelectedIds([...current]);
+    actions.setMapSelectedIds(mergeMapSelectedIds(state.mapSelectedIds ?? [], candidateIds));
   }, [state.mapSelectedIds, actions]);
 
   // Route building: add selected candidates to route via VRP optimizer
@@ -1943,7 +1945,7 @@ function PlanningInboxInner() {
                 }
 
                 const totalMin = result.totalDurationMinutes ?? 0;
-                const serviceMin = optimizedStops.length * 30;
+                const serviceMin = sumServiceMinutes(optimizedStops, defaultServiceDurationMinutes);
                 const workingDayMin = 9 * 60;
                 setMetrics({
                   distanceKm: result.totalDistanceKm ?? 0,
@@ -2292,7 +2294,7 @@ function PlanningInboxInner() {
 
                 // Update metrics
                 const totalMin = result.totalDurationMinutes ?? 0;
-                const serviceMin = optimizedStops.length * 30;
+                const serviceMin = sumServiceMinutes(optimizedStops, defaultServiceDurationMinutes);
                 const travelMin = totalMin - serviceMin;
                 const workingDayMin = 9 * 60;
 

@@ -14,6 +14,7 @@ import type { SavedRouteStop } from '@/services/routeService';
  */
 import type { SelectedCandidate } from '@/components/planner/RouteMapPanel';
 import type { InsertionPreview } from '@/components/planner/RouteMapPanel';
+import { toggleMapSelectedId, mergeMapSelectedIds } from '@/utils/mapSelection';
 
 interface RouteMapPanelProps {
   selectedCandidate?: SelectedCandidate | null;
@@ -132,15 +133,8 @@ export function RouteMapPanel({ selectedCandidate, insertionPreview: propInserti
       selectedCandidates={effectiveCandidates}
       mapSelectionMode={mapSelectionMode}
       mapSelectedIds={mapSelectedIds}
-      onCandidateToggle={(id) => actions.setMapSelectedIds(
-        mapSelectedIds.includes(id)
-          ? mapSelectedIds.filter(x => x !== id)
-          : [...mapSelectedIds, id]
-      )}
-      onCandidateRectSelect={(ids) => {
-        const next = new Set([...mapSelectedIds, ...ids]);
-        actions.setMapSelectedIds([...next]);
-      }}
+      onCandidateToggle={(id) => actions.setMapSelectedIds(toggleMapSelectedId(mapSelectedIds, id))}
+      onCandidateRectSelect={(ids) => actions.setMapSelectedIds(mergeMapSelectedIds(mapSelectedIds, ids))}
       onSegmentHighlight={actions.highlightSegment}
       onStopClick={actions.selectCustomer}
     />
