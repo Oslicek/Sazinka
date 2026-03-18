@@ -162,31 +162,38 @@ export function SplitView({
     [direction, panels, resizable]
   );
 
+  const elements: React.ReactNode[] = [];
+  for (let i = 0; i < panels.length; i++) {
+    elements.push(
+      <div
+        key={panels[i].id}
+        className={styles.panel}
+        style={{
+          [direction === 'horizontal' ? 'width' : 'height']:
+            `${panelWidths[panels[i].id]}%`,
+        }}
+      >
+        {panels[i].content}
+      </div>
+    );
+    if (resizable && i < panels.length - 1) {
+      elements.push(
+        <div
+          key={`resizer-${i}`}
+          className={styles.resizer}
+          onMouseDown={handleResizeStart(i)}
+          onTouchStart={handleTouchStart(i)}
+        />
+      );
+    }
+  }
+
   return (
     <div
       ref={containerRef}
       className={`${styles.container} ${styles[direction]} ${className ?? ''}`}
     >
-      {panels.map((panel, index) => (
-        <div key={panel.id} className={styles.panelWrapper}>
-          <div
-            className={styles.panel}
-            style={{
-              [direction === 'horizontal' ? 'width' : 'height']:
-                `${panelWidths[panel.id]}%`,
-            }}
-          >
-            {panel.content}
-          </div>
-          {resizable && index < panels.length - 1 && (
-            <div
-              className={styles.resizer}
-              onMouseDown={handleResizeStart(index)}
-              onTouchStart={handleTouchStart(index)}
-            />
-          )}
-        </div>
-      ))}
+      {elements}
     </div>
   );
 }

@@ -13,10 +13,6 @@
   flex-direction: column;
 }
 
-.panelWrapper {
-  display: contents;
-}
-
 .panel {
   overflow: hidden;
   height: 100%;
