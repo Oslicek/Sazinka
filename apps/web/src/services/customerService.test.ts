@@ -112,14 +112,15 @@ describe('customerService', () => {
       );
     });
 
-    it('should use camelCase userId field for backend compatibility', async () => {
+    it('should include JWT token (not userId) in request envelope', async () => {
       mockRequest.mockResolvedValueOnce({ payload: mockCustomerResponse });
 
       await createCustomer(validCustomerData, mockDeps);
 
       const callArgs = mockRequest.mock.calls[0][1];
-      // Verify camelCase is used (not snake_case user_id)
-      expect(callArgs).toHaveProperty('userId');
+      // Auth is now token-based — request envelope has `token`, not `userId`
+      expect(callArgs).toHaveProperty('token');
+      expect(callArgs).not.toHaveProperty('userId');
       expect(callArgs).not.toHaveProperty('user_id');
     });
   });
@@ -164,7 +165,7 @@ describe('customerService', () => {
       expect(mockRequest).toHaveBeenCalledWith(
         'sazinka.customer.list',
         expect.objectContaining({
-          userId: expect.any(String),
+          token: expect.any(String),
         })
       );
     });

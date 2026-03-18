@@ -95,12 +95,13 @@ describe('DeviceTypeConfigManager', () => {
       expect(screen.queryByText('Starý typ')).not.toBeInTheDocument();
     });
 
-    it('shows inactive configs when toggle is checked', async () => {
+    it('shows inactive configs when toggle button is clicked', async () => {
       render(<DeviceTypeConfigManager />);
       await waitFor(() => {
         expect(screen.getByText('Plynoměr')).toBeInTheDocument();
       });
-      const toggle = screen.getByRole('checkbox', { name: 'dt_show_inactive' });
+      // UI uses a button, not a checkbox
+      const toggle = screen.getByRole('button', { name: /dt_show_inactive/ });
       fireEvent.click(toggle);
       await waitFor(() => {
         expect(screen.getByText('Starý typ')).toBeInTheDocument();
@@ -136,9 +137,9 @@ describe('DeviceTypeConfigManager', () => {
       fireEvent.click(deactivateButtons[0]);
 
       await waitFor(() => {
-        expect(service.updateDeviceTypeConfig).toHaveBeenCalledWith('config-1', {
-          isActive: false,
-        });
+        expect(service.updateDeviceTypeConfig).toHaveBeenCalledWith(
+          expect.objectContaining({ id: 'config-1', isActive: false })
+        );
       });
     });
 
@@ -183,8 +184,7 @@ describe('DeviceTypeConfigManager', () => {
 
       await waitFor(() => {
         expect(service.updateDeviceTypeConfig).toHaveBeenCalledWith(
-          'config-1',
-          expect.objectContaining({ label: 'Nový název' })
+          expect.objectContaining({ id: 'config-1', label: 'Nový název' })
         );
       });
     });
@@ -281,7 +281,9 @@ describe('DeviceTypeConfigManager', () => {
       fireEvent.click(deactivateBtns[deactivateBtns.length - 1]);
 
       await waitFor(() => {
-        expect(service.setFieldActive).toHaveBeenCalledWith('field-1', false);
+        expect(service.setFieldActive).toHaveBeenCalledWith(
+          expect.objectContaining({ id: 'field-1', isActive: false })
+        );
       });
     });
   });
@@ -312,7 +314,9 @@ describe('DeviceTypeConfigManager', () => {
       fireEvent.click(moveUpButtons[1]);
 
       await waitFor(() => {
-        expect(service.reorderFields).toHaveBeenCalledWith('config-1', ['field-2', 'field-1']);
+        expect(service.reorderFields).toHaveBeenCalledWith(
+          expect.objectContaining({ deviceTypeConfigId: 'config-1', fieldIds: ['field-2', 'field-1'] })
+        );
       });
     });
   });

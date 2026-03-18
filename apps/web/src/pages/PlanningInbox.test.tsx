@@ -130,11 +130,19 @@ vi.mock('../services/scoringService', () => ({
 }));
 vi.mock('../components/common', () => ({
   CollapseButton: () => null,
+  SplitView: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   ThreePanelLayout: ({ left, center, right }: { left: React.ReactNode; center: React.ReactNode; right: React.ReactNode }) => (
     <div data-testid="three-panel-layout">
       <div>{left}</div><div>{center}</div><div>{right}</div>
     </div>
   ),
+}));
+vi.mock('../components/layout', () => ({
+  SplitLayout: ({ left, right }: { left: React.ReactNode; right: React.ReactNode }) => (
+    <div data-testid="split-layout"><div>{left}</div><div>{right}</div></div>
+  ),
+  LayoutManager: () => null,
+  DetachButton: () => null,
 }));
 
 import { PlanningInbox } from './PlanningInbox';
@@ -157,12 +165,11 @@ describe('PlanningInbox mobile', () => {
       });
     });
 
-    it('renders MobileTabBar with List/Map/Detail tabs', () => {
+    it('renders Map button in header (no tab bar)', () => {
       render(<PlanningInbox />);
-      expect(screen.getByRole('tablist')).toBeInTheDocument();
-      expect(screen.getByRole('tab', { name: 'tab_list' })).toBeInTheDocument();
-      expect(screen.getByRole('tab', { name: 'tab_map' })).toBeInTheDocument();
-      expect(screen.getByRole('tab', { name: 'tab_detail' })).toBeInTheDocument();
+      // Mobile layout uses a Map button in the header, not a tab bar
+      expect(screen.getByRole('button', { name: 'tab_map' })).toBeInTheDocument();
+      expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
     });
 
     it('shows inbox list when List tab is active (default)', () => {
@@ -172,12 +179,11 @@ describe('PlanningInbox mobile', () => {
       expect(screen.queryByTestId('candidate-detail')).not.toBeInTheDocument();
     });
 
-    it('shows map panel when Map tab is clicked', async () => {
+    it('shows map overlay when Map button is clicked', async () => {
       render(<PlanningInbox />);
-      await userEvent.click(screen.getByRole('tab', { name: 'tab_map' }));
-      expect(mockNavigate).toHaveBeenCalledWith(
-        expect.objectContaining({ search: expect.any(Function) }),
-      );
+      await userEvent.click(screen.getByRole('button', { name: 'tab_map' }));
+      // Map overlay appears — it contains the mocked map-panel
+      expect(screen.getByTestId('map-panel')).toBeInTheDocument();
     });
 
     it('does NOT render ThreePanelLayout on phone', () => {
@@ -198,9 +204,10 @@ describe('PlanningInbox mobile', () => {
       });
     });
 
-    it('also renders MobileTabBar on tablet (isMobileUi=true)', () => {
+    it('also renders Map button (not tab bar) on tablet (isMobileUi=true)', () => {
       render(<PlanningInbox />);
-      expect(screen.getByRole('tablist')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'tab_map' })).toBeInTheDocument();
+      expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
     });
   });
 

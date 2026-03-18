@@ -90,12 +90,14 @@ mod tests {
     fn test_config_valhalla_url_some_when_set() {
         std::env::set_var("VALHALLA_URL", "http://localhost:8002");
         std::env::set_var("DATABASE_URL", "postgres://test");
+        std::env::set_var("JWT_SECRET", "test-secret-that-is-at-least-32-bytes-long!!");
         
         let config = Config::from_env().unwrap();
         assert_eq!(config.valhalla_url, Some("http://localhost:8002".to_string()));
         
         // Cleanup
         std::env::remove_var("VALHALLA_URL");
+        std::env::remove_var("JWT_SECRET");
     }
 
     #[test]
@@ -112,11 +114,13 @@ mod tests {
     fn test_config_nominatim_url_uses_local_when_set() {
         std::env::set_var("NOMINATIM_URL", "http://localhost:8080");
         std::env::set_var("DATABASE_URL", "postgres://test");
+        std::env::set_var("JWT_SECRET", "test-secret-that-is-at-least-32-bytes-long!!");
         
         let config = Config::from_env().unwrap();
         assert_eq!(config.nominatim_url, "http://localhost:8080");
         
         // Cleanup
         std::env::remove_var("NOMINATIM_URL");
+        std::env::remove_var("JWT_SECRET");
     }
 }
