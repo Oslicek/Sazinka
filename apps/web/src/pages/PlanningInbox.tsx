@@ -33,7 +33,7 @@ import {
   ArrivalBufferBar,
 } from '../components/planner';
 import { DraftModeBar } from '../components/planner/DraftModeBar';
-import { CollapseButton, ThreePanelLayout } from '../components/common';
+import { CollapseButton, SplitView, ThreePanelLayout } from '../components/common';
 import { SplitLayout, LayoutManager, DetachButton } from '../components/layout';
 import { useLayoutMode } from '../hooks/useLayoutMode';
 import { Map as MapIcon } from 'lucide-react';
@@ -155,6 +155,34 @@ function PlanningInboxInner() {
   const { mode: layoutMode, setMode: setLayoutMode } = useLayoutMode();
   const [isMapOverlayOpen, setIsMapOverlayOpen] = useState(false);
   const { isDetached, detach, canDetach } = useDetachState();
+  const [isTimelineCollapsed, setIsTimelineCollapsed] = useState(() =>
+    localStorage.getItem('sazinka.inbox.timelineCollapsed') === 'true'
+  );
+  const [isMapCollapsed, setIsMapCollapsed] = useState(() =>
+    localStorage.getItem('sazinka.inbox.mapCollapsed') === 'true'
+  );
+  const toggleTimelineCollapsed = useCallback(() => {
+    setIsTimelineCollapsed(prev => {
+      const next = !prev;
+      localStorage.setItem('sazinka.inbox.timelineCollapsed', String(next));
+      if (next && isMapCollapsed) {
+        setIsMapCollapsed(false);
+        localStorage.setItem('sazinka.inbox.mapCollapsed', 'false');
+      }
+      return next;
+    });
+  }, [isMapCollapsed]);
+  const toggleMapCollapsed = useCallback(() => {
+    setIsMapCollapsed(prev => {
+      const next = !prev;
+      localStorage.setItem('sazinka.inbox.mapCollapsed', String(next));
+      if (next && isTimelineCollapsed) {
+        setIsTimelineCollapsed(false);
+        localStorage.setItem('sazinka.inbox.timelineCollapsed', 'false');
+      }
+      return next;
+    });
+  }, [isTimelineCollapsed]);
   // ──────────────────────────────────────────────────────────────────────────
   
   // Route cache store
@@ -3212,6 +3240,68 @@ function PlanningInboxInner() {
     </div>
   ) : null;
 
+  const mapAndTimelineContent = (() => {
+    const mapSection = (
+      <div className={styles.rightPanelSection}>
+        <div className={styles.rightPanelSectionHeader}>
+          <span>{t('panel_map', 'Mapa')}</span>
+          <button
+            type="button"
+            className={styles.rightPanelCollapseBtn}
+            onClick={toggleMapCollapsed}
+            title={isMapCollapsed ? t('expand', 'Rozbalit') : t('collapse', 'Sbalit')}
+          >
+            {isMapCollapsed ? '▼' : '▲'}
+          </button>
+        </div>
+        {!isMapCollapsed && (
+          <div className={styles.rightPanelSectionContent}>
+            {mapPanelContent ?? <div />}
+          </div>
+        )}
+      </div>
+    );
+
+    const timelineSection = (
+      <div className={styles.rightPanelSection}>
+        <div className={styles.rightPanelSectionHeader}>
+          <span>{t('panel_timeline', 'Časová osa')}</span>
+          <button
+            type="button"
+            className={styles.rightPanelCollapseBtn}
+            onClick={toggleTimelineCollapsed}
+            title={isTimelineCollapsed ? t('expand', 'Rozbalit') : t('collapse', 'Sbalit')}
+          >
+            {isTimelineCollapsed ? '▼' : '▲'}
+          </button>
+        </div>
+        {!isTimelineCollapsed && (
+          <div className={styles.rightPanelSectionContent}>
+            {renderRouteTimelineOnly()}
+          </div>
+        )}
+      </div>
+    );
+
+    if (isMapCollapsed) {
+      return <div className={styles.rightPanelStack}>{mapSection}{timelineSection}</div>;
+    }
+    if (isTimelineCollapsed) {
+      return <div className={styles.rightPanelStack}>{mapSection}{timelineSection}</div>;
+    }
+    return (
+      <SplitLayout
+        direction="vertical"
+        left={mapSection}
+        right={timelineSection}
+        leftWidth={50}
+        minLeftWidth={20}
+        maxLeftWidth={80}
+        className={styles.rightPanelSplit}
+      />
+    );
+  })();
+
   // ── Mobile / tablet: list + inline detail split layout ─────────────────────
   if (isMobileUi) {
     const hasDetail = !!selectedCandidateId;
@@ -3290,7 +3380,7 @@ function PlanningInboxInner() {
                 <div className={styles.splitLeftBottom}>{renderDetailPanel()}</div>
               </div>
             }
-            right={mapPanelContent ?? renderDetailPanel()}
+            right={mapAndTimelineContent}
             leftWidth={40}
             minLeftWidth={25}
             maxLeftWidth={65}
@@ -3302,40 +3392,47 @@ function PlanningInboxInner() {
   }
 
   if (layoutMode === 'tiles') {
+    const tileCell = (header: string, content: React.ReactNode) => (
+      <div className={styles.tilesCell}>
+        <div className={styles.tilesCellHeader}>
+          <span>{header}</span>
+        </div>
+        <div className={styles.tilesCellContent}>{content}</div>
+      </div>
+    );
+
+    const topRow = (
+      <SplitView
+        panels={[
+          { id: 'list', content: tileCell(t('panel_list', 'Seznam'), listPanelContent ?? <div />), defaultWidth: 50, minWidth: 20, maxWidth: 80 },
+          { id: 'detail', content: tileCell(t('panel_detail', 'Detail'), renderDetailPanel()), defaultWidth: 50, minWidth: 20, maxWidth: 80 },
+        ]}
+        className={styles.tilesRow}
+      />
+    );
+
+    const bottomRow = (
+      <SplitView
+        panels={[
+          { id: 'map', content: tileCell(t('panel_map', 'Mapa'), mapPanelContent ?? <div />), defaultWidth: 50, minWidth: 20, maxWidth: 80 },
+          { id: 'timeline', content: tileCell(t('panel_timeline', 'Časová osa'), renderRouteTimelineOnly()), defaultWidth: 50, minWidth: 20, maxWidth: 80 },
+        ]}
+        className={styles.tilesRow}
+      />
+    );
+
     return (
       <div className={styles.page}>
         {pageHeader}
         {breakWarningBanner}
-        <div className={styles.tilesGrid}>
-          {listPanelContent && (
-            <div className={styles.tilesCell}>
-              <div className={styles.tilesCellHeader}>
-                <span>{t('panel_list', 'Seznam')}</span>
-              </div>
-              <div className={styles.tilesCellContent}>{listPanelContent}</div>
-            </div>
-          )}
-          <div className={styles.tilesCell}>
-            <div className={styles.tilesCellHeader}>
-              <span>{t('panel_detail', 'Detail')}</span>
-            </div>
-            <div className={styles.tilesCellContent}>{renderDetailPanel()}</div>
-          </div>
-          {mapPanelContent && (
-            <div className={styles.tilesCell}>
-              <div className={styles.tilesCellHeader}>
-                <span>{t('panel_map', 'Mapa')}</span>
-              </div>
-              <div className={styles.tilesCellContent}>{mapPanelContent}</div>
-            </div>
-          )}
-          <div className={styles.tilesCell}>
-            <div className={styles.tilesCellHeader}>
-              <span>{t('panel_timeline', 'Časová osa')}</span>
-            </div>
-            <div className={styles.tilesCellContent}>{renderRouteTimelineOnly()}</div>
-          </div>
-        </div>
+        <SplitView
+          direction="vertical"
+          panels={[
+            { id: 'top', content: topRow, defaultWidth: 50, minWidth: 20, maxWidth: 80 },
+            { id: 'bottom', content: bottomRow, defaultWidth: 50, minWidth: 20, maxWidth: 80 },
+          ]}
+          className={styles.tilesOuter}
+        />
       </div>
     );
   }
@@ -3349,7 +3446,7 @@ function PlanningInboxInner() {
         <ThreePanelLayout
           left={listPanelContent ?? <div />}
           center={renderDetailPanel()}
-          right={mapPanelContent ?? renderDetailPanel()}
+          right={mapAndTimelineContent}
           leftWidth={22}
           centerWidth={33}
           rightWidth={45}

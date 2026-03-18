@@ -68,11 +68,14 @@ vi.mock('@/components/planner/DraftModeBar', () => ({
 vi.mock('@/components/common', () => ({
   CollapseButton: () => null,
   ThreePanelLayout: ({ children }: { children: React.ReactNode }) => <div data-testid="three-panel">{children}</div>,
+  SplitView: ({ panels }: { panels: { id: string; content: React.ReactNode }[] }) => (
+    <div data-testid="split-view">{panels.map(p => <div key={p.id}>{p.content}</div>)}</div>
+  ),
 }));
 
 vi.mock('@/components/layout', () => ({
-  SplitLayout: ({ first, second }: { first: React.ReactNode; second: React.ReactNode }) => (
-    <div data-testid="split-layout">{first}{second}</div>
+  SplitLayout: ({ left, right }: { left: React.ReactNode; right: React.ReactNode }) => (
+    <div data-testid="split-layout">{left}{right}</div>
   ),
   LayoutManager: () => <div data-testid="layout-manager">LayoutManager</div>,
   DetachButton: ({ onDetach, 'data-testid': testId }: { onDetach: () => void; 'data-testid'?: string }) => (

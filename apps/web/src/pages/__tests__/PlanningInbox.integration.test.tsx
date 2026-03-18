@@ -174,6 +174,9 @@ vi.mock('@/components/common', () => ({
       <div data-testid="panel-right">{right}</div>
     </div>
   ),
+  SplitView: ({ panels }: { panels: { id: string; content: React.ReactNode }[] }) => (
+    <div data-testid="split-view">{panels.map((p: { id: string; content: React.ReactNode }) => <div key={p.id}>{p.content}</div>)}</div>
+  ),
 }));
 
 import { PlanningInbox } from '../PlanningInbox';
