@@ -34,21 +34,12 @@ export function RouteMapPanel({ selectedCandidate, insertionPreview: propInserti
 
   const effectiveCandidate = selectedCandidate ?? state.selectedCandidateForMap ?? null;
 
-  // #region agent log
-  useEffect(() => {
-    console.log('[DBG-2ba648] RouteMapPanel state', { isConnected, routeStopsCount: routeStops.length, routeGeometryCount: routeGeometry.length, selectedCustomerId, propCandidateId: selectedCandidate?.id ?? null, ctxCandidateId: state.selectedCandidateForMap?.id ?? null, effectiveCandidateId: effectiveCandidate?.id ?? null, effectiveCandidateCoords: effectiveCandidate?.coordinates ?? null });
-  }, [isConnected, routeStops.length, routeGeometry.length, selectedCustomerId, selectedCandidate, state.selectedCandidateForMap, effectiveCandidate]);
-  // #endregion
-
   const geometryUnsubRef = useRef<(() => void) | null>(null);
 
   // Fetch route stops only when PanelState has none (detached windows).
   // When used inside PlanningInbox the bridge keeps PanelState up-to-date,
   // so an independent fetch would overwrite locally-modified scheduling data.
   useEffect(() => {
-    // #region agent log
-    console.log('[DBG-2ba648] route fetch guard', { isConnected, hasDate: !!routeContext?.date, routeStopsLen: routeStops.length, willFetch: isConnected && !!routeContext?.date && routeStops.length === 0 });
-    // #endregion
     if (!isConnected || !routeContext?.date || routeStops.length > 0) return;
     let cancelled = false;
     routeService
@@ -56,17 +47,9 @@ export function RouteMapPanel({ selectedCandidate, insertionPreview: propInserti
       .then((res) => {
         if (cancelled) return;
         const stops = (res as { route: unknown; stops: SavedRouteStop[] }).stops ?? [];
-        // #region agent log
-        console.log('[DBG-2ba648] route fetch result', { stopsCount: stops.length, firstStop: stops[0] ? { id: stops[0].id, customerId: stops[0].customerId } : null });
-        // #endregion
         actions.setRouteStops(stops);
       })
-      .catch((err) => {
-        // #region agent log
-        console.log('[DBG-2ba648] route fetch error', { error: String(err) });
-        // #endregion
-        if (!cancelled) actions.setRouteStops([]);
-      });
+      .catch(() => { if (!cancelled) actions.setRouteStops([]); });
     return () => { cancelled = true; };
   }, [isConnected, routeContext?.date, actions, routeStops.length]);
 
@@ -119,9 +102,6 @@ export function RouteMapPanel({ selectedCandidate, insertionPreview: propInserti
     .join('|');
 
   useEffect(() => {
-    // #region agent log
-    console.log('[DBG-2ba648] geometry effect', { isConnected, routeStopsLen: routeStops.length, geometryKey: geometryKey.substring(0, 60) });
-    // #endregion
     if (!isConnected || routeStops.length === 0) {
       actions.setRouteGeometry([]);
       return;
