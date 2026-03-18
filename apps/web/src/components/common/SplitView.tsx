@@ -197,11 +197,13 @@ export function SplitView({
       </div>
     );
     if (resizable && i < panels.length - 1) {
+      const isHoriz = direction === 'horizontal';
       elements.push(
         <div
           key={`resizer-${i}`}
           data-dbg-resizer={i}
           className={styles.resizer}
+          style={isHoriz ? { width: 6, cursor: 'col-resize', alignSelf: 'stretch' } : { height: 4, cursor: 'row-resize' }}
           onMouseDown={handleResizeStart(i)}
           onTouchStart={handleTouchStart(i)}
         />
