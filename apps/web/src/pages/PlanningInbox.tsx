@@ -1741,118 +1741,196 @@ function PlanningInboxInner() {
     });
   }, []);
 
-  // For batch insertion, use default service duration (no per-candidate override)
-  // For single-candidate insertion from detail panel, the override comes via handleAddToRoute arg.
+  // Route building: add selected candidates to route via VRP optimizer
+  const handleAddSelectedToRoute = useCallback(async () => {
+    if (selectedIds.size === 0 || isOptimizing) return;
 
-  // Route building: add selected candidates to route
-  const handleAddSelectedToRoute = useCallback(() => {
-    if (selectedIds.size === 0) return;
+    // Guard: depot is required for the optimizer startLocation
+    const depot = depots.find(d => d.id === context?.depotId);
+    if (!depot) {
+      setRouteJobProgress(t('batch_no_depot'));
+      setTimeout(() => setRouteJobProgress(null), 5000);
+      return;
+    }
 
-    const newStops: SavedRouteStop[] = [];
-    selectedIds.forEach((customerId) => {
-      // Skip if already in route
-      if (inRouteIds.has(customerId)) return;
+    // Snapshot current data to avoid stale closure in async callback
+    const currentCandidates = candidates;
+    const currentRouteStops = routeStops;
+    const currentSelectedIds = selectedIds;
 
-      const candidate = candidates.find((c) => c.customerId === customerId);
-      if (!candidate || !candidate.customerLat || !candidate.customerLng) return;
+    // Build unique union: existing customer IDs + new selected IDs
+    const existingIds = currentRouteStops
+      .filter(s => s.stopType === 'customer' && s.customerId)
+      .map(s => s.customerId as string);
+    const newIds = Array.from(currentSelectedIds).filter(id => !inRouteIds.has(id));
+    const allIds = [...new Set([...existingIds, ...newIds])];
+    if (allIds.length === 0) return;
 
-      newStops.push({
-        id: crypto.randomUUID(),
-        routeId: '',
-        revisionId: null,
-        stopOrder: routeStops.length + newStops.length + 1,
-        estimatedArrival: null,
-        estimatedDeparture: null,
-        distanceFromPreviousKm: null,
-        durationFromPreviousMinutes: null,
-        status: 'draft',
-        stopType: 'customer',
-        customerId: candidate.customerId,
-        customerName: candidate.customerName,
-        address: `${candidate.customerStreet ?? ''}, ${candidate.customerCity ?? ''}`.replace(/^, |, $/g, ''),
-        customerLat: candidate.customerLat,
-        customerLng: candidate.customerLng,
-        customerPhone: candidate.customerPhone ?? null,
-        customerEmail: candidate.customerEmail ?? null,
-        // Use slot-picker override first, then fall back to already-agreed appointment
-        scheduledDate: candidate._scheduledDate ?? candidate.scheduledDate ?? null,
-        scheduledTimeStart: candidate._scheduledTimeStart ?? candidate.scheduledTimeStart ?? null,
-        scheduledTimeEnd: candidate._scheduledTimeEnd ?? candidate.scheduledTimeEnd ?? null,
-        serviceDurationMinutes: defaultServiceDurationMinutes,
-        revisionStatus: candidate.status ?? null,
+    // Build time windows from existing agreed stops + selected candidates with agreed times
+    const timeWindowMap = new Map<string, { start: string; end: string }>();
+    for (const stop of currentRouteStops) {
+      if (stop.customerId && stop.scheduledTimeStart && stop.scheduledTimeEnd) {
+        timeWindowMap.set(stop.customerId, { start: stop.scheduledTimeStart, end: stop.scheduledTimeEnd });
+      }
+    }
+    for (const id of currentSelectedIds) {
+      if (timeWindowMap.has(id)) continue;
+      const cand = currentCandidates.find(c => c.customerId === id);
+      if (cand?.scheduledTimeStart && cand?.scheduledTimeEnd) {
+        timeWindowMap.set(id, { start: cand.scheduledTimeStart, end: cand.scheduledTimeEnd });
+      }
+    }
+    const timeWindows = Array.from(timeWindowMap.entries()).map(([customerId, tw]) => ({
+      customerId,
+      start: tw.start,
+      end: tw.end,
+    }));
+
+    setIsOptimizing(true);
+    setRouteJobProgress(t('optimizer_sending'));
+
+    try {
+      const jobResponse = await routeService.submitRoutePlanJob({
+        customerIds: allIds,
+        date: context!.date,
+        startLocation: { lat: depot.lat, lng: depot.lng },
+        crewId: context!.crewId || undefined,
+        timeWindows: timeWindows.length > 0 ? timeWindows : undefined,
+        arrivalBufferPercent: routeBufferPercent,
+        arrivalBufferFixedMinutes: routeBufferFixedMinutes,
       });
-    });
 
-    if (newStops.length > 0) {
-      setRouteStops((prev) => {
-        // Merge new stops into existing list in chronological order
-        // First, strip any existing break – we'll recalculate its position
-        const prevCustomers = prev.filter(s => s.stopType === 'customer');
+      setRouteJobProgress(t('optimizer_queued'));
 
-        // Sort all customer stops (existing + new) by scheduledTimeStart
-        const allCustomers = [...prevCustomers, ...newStops].sort((a, b) => {
-          const aMin = a.scheduledTimeStart ? parseTimeMins(a.scheduledTimeStart) : Infinity;
-          const bMin = b.scheduledTimeStart ? parseTimeMins(b.scheduledTimeStart) : Infinity;
-          return aMin - bMin;
-        });
+      const unsubscribe = await routeService.subscribeToRouteJobStatus(
+        jobResponse.jobId,
+        (update) => {
+          switch (update.status.type) {
+            case 'queued':
+              setRouteJobProgress(t('optimizer_queued_position', { position: update.status.position }));
+              break;
+            case 'processing':
+              setRouteJobProgress(t('optimizer_progress', { progress: update.status.progress }));
+              break;
+            case 'completed': {
+              const result = update.status.result;
+              if (result.stops && result.stops.length > 0) {
+                const unassignedIds = new Set(result.unassigned ?? []);
 
-        // Auto-insert / reposition break if enabled and enough customer stops
-        if (breakSettings?.breakEnabled && allCustomers.length >= 2) {
-          const effectiveBreakSettings: BreakSettings = {
-            ...breakSettings,
-            breakDurationMinutes: enforceDrivingBreakRule
-              ? Math.max(breakSettings.breakDurationMinutes, 45)
-              : breakSettings.breakDurationMinutes,
-          };
-          const breakResult = calculateBreakPosition(
-            allCustomers,
-            effectiveBreakSettings,
-            routeStartTime || '08:00',
-            {
-              enforceDrivingBreakRule,
-              maxDrivingMinutes: 270,
-              requiredBreakMinutes: 45,
+                const optimizedStops: SavedRouteStop[] = result.stops.map((s, i) => {
+                  const isBreak = s.stopType === 'break';
+                  const original = isBreak
+                    ? currentRouteStops.find(rs => rs.stopType === 'break')
+                    : currentRouteStops.find(rs => rs.customerId === s.customerId);
+                  const cand = isBreak ? null : currentCandidates.find(c => c.customerId === s.customerId);
+                  return {
+                    id: original?.id ?? crypto.randomUUID(),
+                    routeId: original?.routeId ?? '',
+                    revisionId: original?.revisionId ?? null,
+                    stopOrder: i + 1,
+                    estimatedArrival: s.eta,
+                    estimatedDeparture: s.etd,
+                    distanceFromPreviousKm: s.distanceFromPreviousKm ?? null,
+                    durationFromPreviousMinutes: s.durationFromPreviousMinutes ?? null,
+                    status: original?.status ?? 'draft',
+                    stopType: isBreak ? 'break' : 'customer',
+                    customerId: isBreak ? null : s.customerId,
+                    customerName: isBreak ? t('timeline_break') : s.customerName,
+                    address: isBreak ? '' : s.address,
+                    customerLat: isBreak ? null : s.coordinates.lat,
+                    customerLng: isBreak ? null : s.coordinates.lng,
+                    customerPhone: original?.customerPhone ?? cand?.customerPhone ?? null,
+                    customerEmail: original?.customerEmail ?? cand?.customerEmail ?? null,
+                    scheduledDate: original?.scheduledDate ?? cand?.scheduledDate ?? null,
+                    scheduledTimeStart: original?.scheduledTimeStart ?? cand?.scheduledTimeStart ?? null,
+                    scheduledTimeEnd: original?.scheduledTimeEnd ?? cand?.scheduledTimeEnd ?? null,
+                    revisionStatus: original?.revisionStatus ?? cand?.status ?? null,
+                    breakDurationMinutes: isBreak ? (s.breakDurationMinutes ?? 30) : undefined,
+                    breakTimeStart: isBreak ? (s.breakTimeStart ?? s.eta) : undefined,
+                  };
+                });
+
+                // Append unassigned stops with warning status
+                if (unassignedIds.size > 0) {
+                  let order = optimizedStops.length;
+                  for (const origStop of currentRouteStops) {
+                    if (origStop.customerId && unassignedIds.has(origStop.customerId)) {
+                      order++;
+                      optimizedStops.push({ ...origStop, stopOrder: order, estimatedArrival: null, estimatedDeparture: null, distanceFromPreviousKm: null, durationFromPreviousMinutes: null, status: 'unassigned' });
+                    }
+                  }
+                }
+
+                setRouteStops(optimizedStops);
+                setReturnToDepotLeg({
+                  distanceKm: result.returnToDepotDistanceKm ?? null,
+                  durationMinutes: result.returnToDepotDurationMinutes ?? null,
+                });
+
+                const allWarnings = [...(result.warnings ?? [])];
+                if (unassignedIds.size > 0) {
+                  const names = allIds
+                    .filter(id => unassignedIds.has(id))
+                    .map(id => {
+                      const r = currentRouteStops.find(s => s.customerId === id) ?? currentCandidates.find(c => c.customerId === id);
+                      return r ? ('customerName' in r ? r.customerName : r.customerName) : id;
+                    })
+                    .join(', ');
+                  allWarnings.push({ warningType: 'UNASSIGNED_STOPS', message: t('optimizer_unassigned', { names }), stopIndex: null });
+                }
+                setRouteWarnings(allWarnings);
+
+                if (result.geometry && result.geometry.length > 0) {
+                  setRouteGeometry(result.geometry);
+                }
+
+                const totalMin = result.totalDurationMinutes ?? 0;
+                const serviceMin = optimizedStops.length * 30;
+                const workingDayMin = 9 * 60;
+                setMetrics({
+                  distanceKm: result.totalDistanceKm ?? 0,
+                  travelTimeMin: Math.max(0, totalMin - serviceMin),
+                  serviceTimeMin: serviceMin,
+                  loadPercent: Math.round((totalMin / workingDayMin) * 100),
+                  slackMin: Math.max(0, workingDayMin - totalMin),
+                  stopCount: optimizedStops.length,
+                });
+
+                // Clear only assigned IDs from selection; keep unassigned for user review
+                setSelectedIds(prev => {
+                  const next = new Set(prev);
+                  for (const id of prev) {
+                    if (!unassignedIds.has(id)) next.delete(id);
+                  }
+                  return next;
+                });
+              }
+              setRouteJobProgress(null);
+              setIsOptimizing(false);
+              setHasChanges(true);
+              incrementRouteVersion();
+              unsubscribe();
+              break;
             }
-          );
-
-          setBreakWarnings(breakResult.warnings);
-          setIsBreakManuallyAdjusted(false);
-
-          const existingBreak = prev.find(s => s.stopType === 'break');
-          const breakStop: SavedRouteStop = {
-            ...createBreakStop('', breakResult.position + 1, effectiveBreakSettings, breakResult.estimatedTime, { floating: true }),
-            id: existingBreak?.id ?? crypto.randomUUID(),
-          };
-
-          const withBreak = [
-            ...allCustomers.slice(0, breakResult.position),
-            breakStop,
-            ...allCustomers.slice(breakResult.position),
-          ];
-
-          return withBreak.map((s, i) => ({ ...s, stopOrder: i + 1 }));
-        }
-
-        return allCustomers.map((s, i) => ({ ...s, stopOrder: i + 1 }));
-      });
-      setReturnToDepotLeg(null);
-      setSelectedIds(new Set());
-      setHasChanges(true);
-      incrementRouteVersion();
-
-      // Trigger recalculation for the new stops
-      setRouteStops((current) => {
-        if (current.length > 0) {
-          if (currentDepot) {
-            triggerRecalculate(current);
-          } else {
-            pendingRecalcStopsRef.current = current;
+            case 'failed':
+              setRouteJobProgress(t('optimizer_failed', { detail: update.status.error }));
+              setIsOptimizing(false);
+              setTimeout(() => setRouteJobProgress(null), 5000);
+              unsubscribe();
+              break;
           }
         }
-        return current; // no mutation, just read
-      });
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error('Batch optimize failed:', message, err);
+      setRouteJobProgress(t('optimizer_failed', { detail: message }));
+      setIsOptimizing(false);
+      setTimeout(() => setRouteJobProgress(null), 8000);
     }
-  }, [selectedIds, inRouteIds, candidates, routeStops.length, breakSettings, context, enforceDrivingBreakRule, incrementRouteVersion, triggerRecalculate, currentDepot, defaultServiceDurationMinutes]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedIds, isOptimizing, depots, context, candidates, routeStops, inRouteIds, routeBufferPercent, routeBufferFixedMinutes, t, incrementRouteVersion]);
+
 
   // Route building: add single candidate from detail panel
   const handleAddToRoute = useCallback((candidateId: string, serviceDurationOverride?: number, insertAfterIndex?: number) => {
@@ -2693,21 +2771,30 @@ function PlanningInboxInner() {
         />
       )}
       
-      {/* Add to route toolbar */}
+      {/* Batch selection toolbar */}
       {selectedIds.size > 0 && (
         <div className={styles.selectionToolbar}>
           <span className={styles.selectionCount}>{t('selected_count', { count: selectedIds.size })}</span>
+          {routeJobProgress && isOptimizing && (
+            <span className={styles.batchProgress}>{routeJobProgress}</span>
+          )}
+          {routeJobProgress && !isOptimizing && (
+            <span className={styles.batchError}>{routeJobProgress}</span>
+          )}
           <button
             type="button"
             className={styles.addSelectedButton}
             onClick={handleAddSelectedToRoute}
+            disabled={isOptimizing || !context?.depotId}
+            title={!context?.depotId ? t('batch_no_depot') : undefined}
           >
-            <Plus size={14} /> {t('add_to_route')}
+            <Plus size={14} /> {isOptimizing ? t('optimizer_running') : t('add_to_route_optimize')}
           </button>
           <button
             type="button"
             className={styles.clearSelectionButton}
             onClick={() => setSelectedIds(new Set())}
+            disabled={isOptimizing}
           >
             {t('cancel_selection')}
           </button>

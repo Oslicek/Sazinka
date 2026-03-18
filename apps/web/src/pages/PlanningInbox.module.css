@@ -650,6 +650,26 @@
   border-color: var(--color-text-secondary);
 }
 
+.addSelectedButton:disabled,
+.clearSelectionButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.batchProgress {
+  font-size: 0.7rem;
+  color: var(--color-primary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.batchError {
+  font-size: 0.7rem;
+  color: var(--color-error, #dc2626);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 /* Map Panel */
 .mapPanel {
   height: 100%;

@@ -51,7 +51,10 @@
 
   "selected_count": "{{count}} selected",
   "add_to_route": "Add to route",
+  "add_to_route_optimize": "Add to route & optimize",
   "cancel_selection": "Cancel selection",
+  "batch_no_depot": "Select a depot to optimize the route",
+  "batch_unassigned": "Could not assign: {{names}}. Remaining in selection.",
   "empty_filtered": "No candidates for selected filters",
 
   "optimizer_sending": "Sending to optimizer...",
