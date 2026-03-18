@@ -78,27 +78,6 @@ export function SplitView({
     return { newLeftWidth, newRightWidth };
   }
 
-  // #region agent log
-  useEffect(() => {
-    if (!containerRef.current) return;
-    const c = containerRef.current;
-    const cRect = c.getBoundingClientRect();
-    const resizers = c.querySelectorAll(':scope > [data-dbg-resizer]');
-    const panelEls = c.querySelectorAll(':scope > [data-dbg-panel]');
-    const ids = panels.map(p=>p.id).join(',');
-    for (const r of Array.from(resizers)) {
-      const rect = (r as HTMLElement).getBoundingClientRect();
-      const cs = window.getComputedStyle(r as HTMLElement);
-      console.log(`[DBG-2ba648] resizer in ${direction} [${ids}]: w=${rect.width} h=${rect.height} pointer=${cs.pointerEvents} cursor=${cs.cursor} display=${cs.display} zIndex=${cs.zIndex}`);
-    }
-    for (const p of Array.from(panelEls)) {
-      const rect = (p as HTMLElement).getBoundingClientRect();
-      console.log(`[DBG-2ba648] panel ${(p as HTMLElement).dataset.dbgPanel} in ${direction} [${ids}]: w=${rect.width} h=${rect.height}`);
-    }
-    console.log(`[DBG-2ba648] container ${direction} [${ids}]: w=${cRect.width} h=${cRect.height} children=${c.children.length}`);
-  }, [direction, panels.length]);
-  // #endregion
-
   const handleResizeStart = useCallback(
     (index: number) => (e: React.MouseEvent) => {
       if (!resizable || !containerRef.current) return;
@@ -186,7 +165,6 @@ export function SplitView({
     elements.push(
       <div
         key={panels[i].id}
-        data-dbg-panel={panels[i].id}
         className={styles.panel}
         style={{
           [direction === 'horizontal' ? 'width' : 'height']:
@@ -201,7 +179,6 @@ export function SplitView({
       elements.push(
         <div
           key={`resizer-${i}`}
-          data-dbg-resizer={i}
           className={styles.resizer}
           style={isHoriz ? { width: 6, height: '100%', cursor: 'col-resize', alignSelf: 'stretch' } : { height: 4, width: '100%', cursor: 'row-resize' }}
           onMouseDown={handleResizeStart(i)}
