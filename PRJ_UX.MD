@@ -4018,7 +4018,7 @@ UI manager v headeru inboxu umožní:
 ┌──────────────────────────────────────────────────────────────┐
 │ Plánovací inbox   [Den ▾] [Posádka ▾]   Layout: [≡] [⊞] [↗]│
 │                                          ≡ = stack (phone)   │
-│                                          ⊞ = tiles (tablet+) │
+│                                          ⊞ = grid (tablet+)  │
 │                                          ↗ = detach panel    │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -4035,7 +4035,7 @@ UI manager v headeru inboxu umožní:
 
 **Na telefonu:**
 - Výchozí: Stack (list full-screen + bottom sheet detail)
-- Volitelně: 2 pruhy (list nahoře, detail/map dole — 50/50 split)
+- Volitelně: 2 pruhy (list nahoře, detail/map dole — 50/50 dual)
 
 **Na tabletu:**
 - Výchozí: Split (list + detail vedle sebe)
@@ -4452,24 +4452,24 @@ Legend:
 
 ---
 
-#### C — Tablet layout: split view (WAVE 3 — parallel with E)
+#### C — Tablet layout: dual view (WAVE 3 — parallel with E)
 
 > **Agent instruction:** Launch as parallel child agent. Depends on A.8 complete.
 
 **TDD:**
 
 1. **RED:** Napsat testy:
-   - `it('renders 2 panels side by side on tablet viewport')` — resize to tablet, verify split
+   - `it('renders 2 panels side by side on tablet viewport')` — resize to tablet, verify dual
    - `it('allows choosing which 2 panels to show')` — select List+Map, verify
    - `it('falls back to stack on phone')` — resize to phone, verify stack
-   - `it('maintains classic layout on desktop')` — verify no regression
+   - `it('maintains wide layout on desktop')` — verify no regression
 
 2. **GREEN:** Implementovat:
    - `components/layout/SplitLayout.tsx` — 2-panel side-by-side
    - Integrate into PlanningInbox.tsx and Plan.tsx for tablet breakpoint
    - Panel selector dropdown
 
-3. **REFACTOR:** CSS modules for split layout.
+3. **REFACTOR:** CSS modules for dual layout.
 
 **Soubory:**
 - `apps/web/src/components/layout/SplitLayout.tsx` (nový)
@@ -4541,7 +4541,7 @@ Spustit 2 paralelní agenty:
 ```
 Spustit 2 paralelní agenty:
 - Agent 1: "BroadcastChannel sync" — prompt s instrukcemi E
-- Agent 2: "Tablet split layout" — prompt s instrukcemi C
+- Agent 2: "Tablet dual layout" — prompt s instrukcemi C
 ```
 
 **D, F:** Sekvenčně, jeden agent.
@@ -4551,7 +4551,7 @@ Spustit 2 paralelní agenty:
 1. **Persistence layoutu** — ✅ ROZHODNUTO: Hybrid. localStorage pro okamžitou odezvu, debounce-sync do DB (5s po poslední změně) pro cross-device. Při načtení stránky: fetch z DB, merge s localStorage (DB wins pokud novější). Tabulka `dispatcher_preferences` nebo sloupec v existující tabulce.
 2. **NATS reconnect v detached oknech** — ✅ ROZHODNUTO: Nezávislé spojení. Každé okno má vlastní NATS connection a reconnectuje se samostatně. Jednodušší, drobný gap při reconnectu je akceptovatelný. BroadcastChannel zajišťuje UI synchronizaci i během NATS výpadku.
 3. **Drag-and-drop across windows** — ✅ ROZHODNUTO: Oba způsoby. (a) Tlačítko "Přidat do trasy" v Detail panelu (současný stav). (b) Klávesová zkratka (např. Ctrl+Enter) pro vložení vybraného kandidáta na optimální pozici — funguje cross-window přes BroadcastChannel. Nativní drag-and-drop pouze v rámci jednoho okna.
-4. **Phone bottom sheet vs. horizontal split** — ✅ ROZHODNUTO: Stack (bottom sheet) jako výchozí a jediný režim na telefonu. Full-screen list + bottom sheet pro detail. Horizontal split se na telefonu neimplementuje — příliš stísněný na malých obrazovkách.
+4. **Phone bottom sheet vs. horizontal dual** — ✅ ROZHODNUTO: Stack (bottom sheet) jako výchozí a jediný režim na telefonu. Full-screen list + bottom sheet pro detail. Horizontal dual se na telefonu neimplementuje — příliš stísněný na malých obrazovkách.
 
 ---
 
@@ -4575,7 +4575,7 @@ Spustit 2 paralelní agenty:
 3. **Coordination signals only** — BroadcastChannel carries lightweight IDs/indices: `selectedCustomerId`, `highlightedSegment`, `selectedRouteId`, `routeContext` (day/crew/depot). Never arrays or objects with many items.
 4. **Main page = menu host** — the original page always keeps the navigation bar. Panel-specific UI (filters, map controls) travels with the panel.
 5. **Last panel can't detach** — when only one panel group remains on the main page, its detach button is hidden.
-6. **Detach in all views** — Map and List can be detached from every layout mode (`stack`, `split`, `tiles`, `classic`) whenever those panels are visible.
+6. **Detach in all views** — Map and List can be detached from every layout mode (`stack`, `dual`, `grid`, `wide`) whenever those panels are visible.
 7. **TDD** — every step follows RED → GREEN → REFACTOR.
 
 ### 20.2 Architecture Overview
@@ -5037,7 +5037,7 @@ G.1 (Signal-only BroadcastChannel)
 
 ### 20.10 Decision Note — Detach in All Views
 
-**Decision:** Keep detach available for Map and List in all layout modes (`stack`, `split`, `tiles`, `classic`), not only in Tiles.
+**Decision:** Keep detach available for Map and List in all layout modes (`stack`, `dual`, `grid`, `wide`), not only in Grid.
 **Comparison baseline:** The pros/cons below compare this decision against the alternative **"detach allowed only in Tiles mode."**
 
 **Complexity impact:** Medium (UI wiring + tests), not architectural heavy. The detach core (`window.open`, panel lifecycle, BroadcastChannel signals) stays the same.

@@ -369,5 +369,15 @@
   "score_breakdown_value": "Hodnota",
   "score_breakdown_weight": "Váha",
   "score_breakdown_contribution": "Příspěvek",
-  "score_breakdown_total": "Celkové skóre"
+  "score_breakdown_total": "Celkové skóre",
+
+  "layout_stack": "Stack",
+  "layout_dual": "Dual",
+  "layout_grid": "Grid",
+  "layout_wide": "Wide",
+
+  "panel_list": "Seznam",
+  "panel_detail": "Detail",
+  "panel_map": "Mapa",
+  "panel_timeline": "Časová osa"
 }

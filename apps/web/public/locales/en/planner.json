@@ -368,5 +368,15 @@
   "score_breakdown_value": "Value",
   "score_breakdown_weight": "Weight",
   "score_breakdown_contribution": "Result",
-  "score_breakdown_total": "Total score"
+  "score_breakdown_total": "Total score",
+
+  "layout_stack": "Stack",
+  "layout_dual": "Dual",
+  "layout_grid": "Grid",
+  "layout_wide": "Wide",
+
+  "panel_list": "List",
+  "panel_detail": "Detail",
+  "panel_map": "Map",
+  "panel_timeline": "Timeline"
 }

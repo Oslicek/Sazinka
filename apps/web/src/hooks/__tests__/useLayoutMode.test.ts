@@ -46,7 +46,7 @@ describe('useLayoutMode', () => {
     expect(result.current.mode).toBe('stack');
   });
 
-  it('returns split default on tablet', () => {
+  it('returns dual default on tablet', () => {
     mockUseBreakpoint.mockReturnValue({
       breakpoint: 'tablet',
       isPhone: false,
@@ -54,10 +54,10 @@ describe('useLayoutMode', () => {
       isTouch: true,
     });
     const { result } = renderHook(() => useLayoutMode());
-    expect(result.current.mode).toBe('split');
+    expect(result.current.mode).toBe('dual');
   });
 
-  it('returns classic default on desktop', () => {
+  it('returns wide default on desktop', () => {
     mockUseBreakpoint.mockReturnValue({
       breakpoint: 'desktop',
       isPhone: false,
@@ -65,7 +65,7 @@ describe('useLayoutMode', () => {
       isTouch: false,
     });
     const { result } = renderHook(() => useLayoutMode());
-    expect(result.current.mode).toBe('classic');
+    expect(result.current.mode).toBe('wide');
   });
 
   it('returns persisted mode from localStorage if available', () => {
@@ -75,9 +75,9 @@ describe('useLayoutMode', () => {
       isMobileUi: false,
       isTouch: false,
     });
-    mockGetLocal.mockReturnValue({ mode: 'tiles', updatedAt: 1000 });
+    mockGetLocal.mockReturnValue({ mode: 'grid', updatedAt: 1000 });
     const { result } = renderHook(() => useLayoutMode());
-    expect(result.current.mode).toBe('tiles');
+    expect(result.current.mode).toBe('grid');
   });
 
   it('calls setLocalLayoutPreference when mode changes', () => {
@@ -90,11 +90,11 @@ describe('useLayoutMode', () => {
     const { result } = renderHook(() => useLayoutMode());
 
     act(() => {
-      result.current.setMode('tiles');
+      result.current.setMode('grid');
     });
 
     expect(mockSetLocal).toHaveBeenCalledWith(
-      expect.objectContaining({ mode: 'tiles' })
+      expect.objectContaining({ mode: 'grid' })
     );
   });
 
@@ -108,7 +108,7 @@ describe('useLayoutMode', () => {
     const { result } = renderHook(() => useLayoutMode());
 
     act(() => {
-      result.current.setMode('split');
+      result.current.setMode('dual');
     });
 
     expect(mockSyncDb).not.toHaveBeenCalled();

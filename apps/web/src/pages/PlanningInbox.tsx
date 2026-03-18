@@ -3370,7 +3370,7 @@ function PlanningInboxInner() {
 
   // ── Desktop layouts based on layoutMode ─────────────────────────────────
 
-  if (layoutMode === 'split') {
+  if (layoutMode === 'dual') {
     return (
       <div className={styles.page}>
         {pageHeader}
@@ -3394,7 +3394,7 @@ function PlanningInboxInner() {
     );
   }
 
-  if (layoutMode === 'tiles') {
+  if (layoutMode === 'grid') {
     const tileCell = (header: string, content: React.ReactNode) => (
       <div className={styles.tilesCell}>
         <div className={styles.tilesCellHeader}>
@@ -3440,7 +3440,7 @@ function PlanningInboxInner() {
     );
   }
 
-  // classic (default) — existing three-panel layout
+  // wide (default) — existing three-panel layout
   return (
     <div className={styles.page}>
       {pageHeader}

@@ -9,8 +9,8 @@ import type { LayoutMode } from '@/components/layout/LayoutManager';
 
 function defaultModeForBreakpoint(bp: Breakpoint): LayoutMode {
   if (bp === 'phone') return 'stack';
-  if (bp === 'tablet') return 'split';
-  return 'classic';
+  if (bp === 'tablet') return 'dual';
+  return 'wide';
 }
 
 export function useLayoutMode(): { mode: LayoutMode; setMode: (m: LayoutMode) => void } {

@@ -113,7 +113,7 @@ vi.mock('@/hooks/useDetachState', () => ({
 }));
 
 vi.mock('@/hooks/useLayoutMode', () => ({
-  useLayoutMode: () => ({ mode: 'classic', setMode: vi.fn() }),
+  useLayoutMode: () => ({ mode: 'wide', setMode: vi.fn() }),
 }));
 
 // ── Panel mocks (self-sufficient panels) ──────────────────────────────────────

@@ -32,7 +32,7 @@ vi.mock('@/hooks/useBreakpoint', () => ({
 }));
 
 vi.mock('@/hooks/useLayoutMode', () => ({
-  useLayoutMode: () => ({ mode: 'tiles', setMode: vi.fn() }),
+  useLayoutMode: () => ({ mode: 'grid', setMode: vi.fn() }),
 }));
 
 vi.mock('@/hooks/useKeyboardShortcuts', () => ({

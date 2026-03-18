@@ -19,7 +19,7 @@ vi.mock('@/hooks/useBreakpoint', () => ({
 }));
 
 vi.mock('@/hooks/useLayoutMode', () => ({
-  useLayoutMode: () => ({ mode: 'classic', setMode: vi.fn() }),
+  useLayoutMode: () => ({ mode: 'wide', setMode: vi.fn() }),
 }));
 
 vi.mock('@/panels/RouteMapPanel', () => ({
