@@ -384,6 +384,111 @@ describe('panels/RouteMapPanel', () => {
     expect((mockProps.current.selectedCandidates as unknown[]).length).toBe(1);
   });
 
+  it('passes mapSelectionMode from state to map component', () => {
+    const { ref, ActionsCapture } = makeActionsCapture();
+
+    render(
+      <PanelStateProvider>
+        <ActionsCapture />
+        <RouteMapPanel />
+      </PanelStateProvider>,
+    );
+
+    act(() => {
+      ref.actions!.setMapSelectionMode(true);
+    });
+
+    expect(mockProps.current.mapSelectionMode).toBe(true);
+  });
+
+  it('passes mapSelectedIds from state to map component', () => {
+    const { ref, ActionsCapture } = makeActionsCapture();
+
+    render(
+      <PanelStateProvider>
+        <ActionsCapture />
+        <RouteMapPanel />
+      </PanelStateProvider>,
+    );
+
+    act(() => {
+      ref.actions!.setMapSelectedIds(['id-1', 'id-2']);
+    });
+
+    expect(mockProps.current.mapSelectedIds).toEqual(['id-1', 'id-2']);
+  });
+
+  it('onCandidateToggle adds ID when not selected', () => {
+    const { ref, ActionsCapture } = makeActionsCapture();
+
+    render(
+      <PanelStateProvider>
+        <ActionsCapture />
+        <RouteMapPanel />
+      </PanelStateProvider>,
+    );
+
+    act(() => {
+      ref.actions!.setMapSelectedIds(['existing-id']);
+    });
+
+    const onCandidateToggle = mockProps.current.onCandidateToggle as (id: string) => void;
+    act(() => {
+      onCandidateToggle('new-id');
+    });
+
+    expect(mockProps.current.mapSelectedIds).toContain('existing-id');
+    expect(mockProps.current.mapSelectedIds).toContain('new-id');
+  });
+
+  it('onCandidateToggle removes ID when already selected', () => {
+    const { ref, ActionsCapture } = makeActionsCapture();
+
+    render(
+      <PanelStateProvider>
+        <ActionsCapture />
+        <RouteMapPanel />
+      </PanelStateProvider>,
+    );
+
+    act(() => {
+      ref.actions!.setMapSelectedIds(['id-a', 'id-b']);
+    });
+
+    const onCandidateToggle = mockProps.current.onCandidateToggle as (id: string) => void;
+    act(() => {
+      onCandidateToggle('id-a');
+    });
+
+    expect(mockProps.current.mapSelectedIds).not.toContain('id-a');
+    expect(mockProps.current.mapSelectedIds).toContain('id-b');
+  });
+
+  it('onCandidateRectSelect adds multiple IDs from rectangle', () => {
+    const { ref, ActionsCapture } = makeActionsCapture();
+
+    render(
+      <PanelStateProvider>
+        <ActionsCapture />
+        <RouteMapPanel />
+      </PanelStateProvider>,
+    );
+
+    act(() => {
+      ref.actions!.setMapSelectedIds(['pre-existing']);
+    });
+
+    const onCandidateRectSelect = mockProps.current.onCandidateRectSelect as (ids: string[]) => void;
+    act(() => {
+      onCandidateRectSelect(['rect-1', 'rect-2']);
+    });
+
+    const ids = mockProps.current.mapSelectedIds as string[];
+    expect(ids).toContain('pre-existing');
+    expect(ids).toContain('rect-1');
+    expect(ids).toContain('rect-2');
+  });
+
   it('shows loading state while fetching', async () => {
     // Never resolves
     mockGetRoute.mockReturnValue(new Promise(() => {}));

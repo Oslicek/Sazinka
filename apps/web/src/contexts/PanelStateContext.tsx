@@ -77,6 +77,39 @@ export function PanelStateProvider({
       case 'SELECT_CANDIDATES_MAP':
         setState(s => ({ ...s, selectedCandidatesForMap: signal.candidates }));
         break;
+      case 'MAP_SELECTION_MODE':
+        setState(s => ({ ...s, mapSelectionMode: signal.active }));
+        break;
+      case 'MAP_SUB_SELECTION_SYNC':
+        setState(s => ({ ...s, mapSelectedIds: signal.mapSelectedIds }));
+        break;
+      case 'MAP_SUB_SELECT': {
+        const addIds = new Set(signal.candidateIds);
+        setState(s => {
+          const next = [...new Set([...(s.mapSelectedIds ?? []), ...addIds])];
+          return { ...s, mapSelectedIds: next };
+        });
+        break;
+      }
+      case 'MAP_SUB_DESELECT': {
+        const removeIds = new Set(signal.candidateIds);
+        setState(s => ({
+          ...s,
+          mapSelectedIds: (s.mapSelectedIds ?? []).filter(id => !removeIds.has(id)),
+        }));
+        break;
+      }
+      case 'MAP_SUB_SELECT_TOGGLE': {
+        const toggleId = signal.candidateId;
+        setState(s => {
+          const current = s.mapSelectedIds ?? [];
+          const next = current.includes(toggleId)
+            ? current.filter(id => id !== toggleId)
+            : [...current, toggleId];
+          return { ...s, mapSelectedIds: next };
+        });
+        break;
+      }
       case 'SELECT_ROUTE':
         setState(s => s.selectedRouteId === signal.routeId ? s : { ...s, selectedRouteId: signal.routeId });
         break;
@@ -103,6 +136,8 @@ export function PanelStateProvider({
           remoteScheduledIds: signal.scheduledCustomerIds ?? s.remoteScheduledIds,
           selectedCandidateForMap: signal.selectedCandidateForMap ?? s.selectedCandidateForMap,
           selectedCandidatesForMap: signal.selectedCandidatesForMap ?? s.selectedCandidatesForMap,
+          mapSelectionMode: signal.mapSelectionMode ?? s.mapSelectionMode,
+          mapSelectedIds: signal.mapSelectedIds ?? s.mapSelectedIds,
         }));
         break;
       case 'ROUTE_DATA_CHANGED': {
@@ -151,6 +186,8 @@ export function PanelStateProvider({
       scheduledCustomerIds,
       selectedCandidateForMap: s.selectedCandidateForMap ?? null,
       selectedCandidatesForMap: s.selectedCandidatesForMap ?? [],
+      mapSelectionMode: s.mapSelectionMode ?? false,
+      mapSelectedIds: s.mapSelectedIds ?? [],
     };
   }, []);
 
@@ -255,6 +292,16 @@ export function PanelStateProvider({
     sendSignalRef.current({ type: 'SELECT_CANDIDATES_MAP', candidates });
   }, []);
 
+  const setMapSelectionMode = useCallback((active: boolean) => {
+    setState(s => ({ ...s, mapSelectionMode: active }));
+    sendSignalRef.current({ type: 'MAP_SELECTION_MODE', active });
+  }, []);
+
+  const setMapSelectedIds = useCallback((ids: string[]) => {
+    setState(s => ({ ...s, mapSelectedIds: ids }));
+    sendSignalRef.current({ type: 'MAP_SUB_SELECTION_SYNC', mapSelectedIds: ids });
+  }, []);
+
   const actions: PanelActions = useMemo(() => ({
     selectCustomer,
     selectRoute,
@@ -272,11 +319,13 @@ export function PanelStateProvider({
     setRouteBuffer,
     setSelectedCandidateForMap,
     setSelectedCandidatesForMap,
+    setMapSelectionMode,
+    setMapSelectedIds,
   }), [
     selectCustomer, selectRoute, setRouteContext, setRouteStops, sendScheduleSnapshot, highlightSegment,
     setInsertionPreview, setRouteGeometry, setReturnToDepotLeg, setDepotDeparture,
     setRouteWarnings, setBreakWarnings, setMetrics, setRouteBuffer, setSelectedCandidateForMap,
-    setSelectedCandidatesForMap,
+    setSelectedCandidatesForMap, setMapSelectionMode, setMapSelectedIds,
   ]);
 
   const value = useMemo(() => ({ state, actions }), [state, actions]);

@@ -312,6 +312,45 @@ describe('PanelStateProvider', () => {
     expect(result.current.state.selectedCandidatesForMap).toEqual([]);
   });
 
+  it('setMapSelectionMode stores boolean in state', () => {
+    const { result } = renderHook(() => usePanelState(), { wrapper });
+
+    act(() => {
+      result.current.actions.setMapSelectionMode(true);
+    });
+
+    expect(result.current.state.mapSelectionMode).toBe(true);
+
+    act(() => {
+      result.current.actions.setMapSelectionMode(false);
+    });
+
+    expect(result.current.state.mapSelectionMode).toBe(false);
+  });
+
+  it('setMapSelectedIds stores IDs in state', () => {
+    const { result } = renderHook(() => usePanelState(), { wrapper });
+
+    act(() => {
+      result.current.actions.setMapSelectedIds(['a', 'b', 'c']);
+    });
+
+    expect(result.current.state.mapSelectedIds).toEqual(['a', 'b', 'c']);
+  });
+
+  it('setMapSelectedIds with empty array clears sub-selection', () => {
+    const { result } = renderHook(() => usePanelState(), { wrapper });
+
+    act(() => {
+      result.current.actions.setMapSelectedIds(['x', 'y']);
+    });
+    act(() => {
+      result.current.actions.setMapSelectedIds([]);
+    });
+
+    expect(result.current.state.mapSelectedIds).toEqual([]);
+  });
+
   it('throws when usePanelState used outside provider', () => {
     const consoleError = console.error;
     console.error = () => {};

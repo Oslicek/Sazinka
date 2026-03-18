@@ -40,6 +40,14 @@ interface RouteMapPanelProps {
   selectedCandidate?: SelectedCandidate | null;
   /** Show multiple batch-selected candidates as static pins */
   selectedCandidates?: SelectedCandidate[];
+  /** Whether map sub-selection mode is active (enables click-toggle on batch pins) */
+  mapSelectionMode?: boolean;
+  /** IDs that have been sub-selected on the map */
+  mapSelectedIds?: string[];
+  /** Called when a batch candidate pin is clicked to toggle its sub-selection */
+  onCandidateToggle?: (candidateId: string) => void;
+  /** Called when a rectangle draw selects a set of candidates */
+  onCandidateRectSelect?: (candidateIds: string[]) => void;
   insertionPreview?: InsertionPreview | null;
   onStopClick?: (stopId: string) => void;
   isLoading?: boolean;
@@ -61,6 +69,10 @@ export function RouteMapPanel({
   highlightedStopId,
   selectedCandidate,
   selectedCandidates,
+  mapSelectionMode = false,
+  mapSelectedIds = [],
+  onCandidateToggle,
+  onCandidateRectSelect,
   insertionPreview,
   onStopClick,
   isLoading,
@@ -79,6 +91,8 @@ export function RouteMapPanel({
   const previewMarkerRef = useRef<maplibregl.Marker | null>(null);
   const selectedCandidateMarkerRef = useRef<maplibregl.Marker | null>(null);
   const batchCandidateMarkersRef = useRef<maplibregl.Marker[]>([]);
+  const rectStartRef = useRef<{ x: number; y: number } | null>(null);
+  const rectOverlayRef = useRef<HTMLDivElement | null>(null);
 
   // Event handler refs for proper cleanup
   const segmentClickHandlerRef = useRef<((e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => void) | null>(null);
@@ -322,7 +336,7 @@ export function RouteMapPanel({
       .addTo(mapRef.current);
   }, [selectedCandidate, stops]);
 
-  // Show batch-selected candidates as static orange pins
+  // Show batch-selected candidates as static orange pins (with sub-selection highlight)
   useEffect(() => {
     if (!mapRef.current) return;
 
@@ -332,17 +346,28 @@ export function RouteMapPanel({
 
     if (!selectedCandidates || selectedCandidates.length === 0) return;
 
+    const subSelectedSet = new Set(mapSelectedIds);
+
     for (const candidate of selectedCandidates) {
       const { lat, lng } = candidate.coordinates;
       if (!lat || !lng) continue;
-      // Skip if this candidate already has a numbered stop marker
       if (stops.some(s => s.customerId === candidate.id)) continue;
-      // Skip if the single selected candidate marker covers this one
       if (selectedCandidate?.id === candidate.id) continue;
 
+      const isSubSelected = subSelectedSet.has(candidate.id);
       const el = document.createElement('div');
-      el.className = styles.batchCandidateMarker;
+      el.className = isSubSelected
+        ? `${styles.batchCandidateMarker} ${styles.batchCandidateMarkerSelected}`
+        : styles.batchCandidateMarker;
       el.title = candidate.name;
+
+      if (mapSelectionMode && onCandidateToggle) {
+        el.style.cursor = 'pointer';
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          onCandidateToggle(candidate.id);
+        });
+      }
 
       const marker = new maplibregl.Marker({ element: el, anchor: 'top-left', offset: [-6, -6] })
         .setLngLat([lng, lat])
@@ -351,7 +376,107 @@ export function RouteMapPanel({
 
       batchCandidateMarkersRef.current.push(marker);
     }
-  }, [selectedCandidates, selectedCandidate, stops]);
+  }, [selectedCandidates, selectedCandidate, stops, mapSelectionMode, mapSelectedIds, onCandidateToggle]);
+
+  // Rectangle selection (drag on map to select batch candidates in the drawn area)
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !mapRef.current || !mapSelectionMode || !onCandidateRectSelect) return;
+
+    let overlay: HTMLDivElement | null = null;
+    let startX = 0;
+    let startY = 0;
+    let isDragging = false;
+
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      const rect = container.getBoundingClientRect();
+      startX = e.clientX - rect.left;
+      startY = e.clientY - rect.top;
+      isDragging = true;
+
+      overlay = document.createElement('div');
+      overlay.className = styles.selectionRect;
+      overlay.style.left = `${startX}px`;
+      overlay.style.top = `${startY}px`;
+      overlay.style.width = '0';
+      overlay.style.height = '0';
+      container.appendChild(overlay);
+      rectOverlayRef.current = overlay;
+
+      // Disable map drag during rectangle draw
+      mapRef.current!.dragPan.disable();
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDragging || !overlay) return;
+      const rect = container.getBoundingClientRect();
+      const curX = e.clientX - rect.left;
+      const curY = e.clientY - rect.top;
+      const x = Math.min(startX, curX);
+      const y = Math.min(startY, curY);
+      const w = Math.abs(curX - startX);
+      const h = Math.abs(curY - startY);
+      overlay.style.left = `${x}px`;
+      overlay.style.top = `${y}px`;
+      overlay.style.width = `${w}px`;
+      overlay.style.height = `${h}px`;
+    };
+
+    const onMouseUp = (e: MouseEvent) => {
+      if (!isDragging) return;
+      isDragging = false;
+
+      if (overlay) {
+        overlay.remove();
+        rectOverlayRef.current = null;
+      }
+
+      mapRef.current!.dragPan.enable();
+
+      const containerRect = container.getBoundingClientRect();
+      const curX = e.clientX - containerRect.left;
+      const curY = e.clientY - containerRect.top;
+
+      // Ignore tiny drags (treat as click, not rectangle)
+      if (Math.abs(curX - startX) < 5 && Math.abs(curY - startY) < 5) return;
+
+      const map = mapRef.current!;
+      const x1 = Math.min(startX, curX);
+      const y1 = Math.min(startY, curY);
+      const x2 = Math.max(startX, curX);
+      const y2 = Math.max(startY, curY);
+
+      // Project map bounding box from pixel coords
+      const sw = map.unproject([x1, y2]);
+      const ne = map.unproject([x2, y1]);
+
+      // Find which candidates fall within the box
+      const inBox = (selectedCandidates ?? []).filter(c => {
+        const { lat, lng } = c.coordinates;
+        return lat >= sw.lat && lat <= ne.lat && lng >= sw.lng && lng <= ne.lng;
+      });
+
+      if (inBox.length > 0) {
+        onCandidateRectSelect(inBox.map(c => c.id));
+      }
+    };
+
+    container.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+
+    return () => {
+      container.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      mapRef.current?.dragPan.enable();
+      if (rectOverlayRef.current) {
+        rectOverlayRef.current.remove();
+        rectOverlayRef.current = null;
+      }
+    };
+  }, [mapSelectionMode, selectedCandidates, onCandidateRectSelect]);
 
   // Fit map bounds whenever relevant points change:
   // - No candidate, no route: center on depot

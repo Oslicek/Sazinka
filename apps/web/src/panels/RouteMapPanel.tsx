@@ -34,6 +34,8 @@ export function RouteMapPanel({ selectedCandidate, insertionPreview: propInserti
 
   const effectiveCandidate = selectedCandidate ?? state.selectedCandidateForMap ?? null;
   const effectiveCandidates = state.selectedCandidatesForMap ?? [];
+  const mapSelectionMode = state.mapSelectionMode ?? false;
+  const mapSelectedIds = state.mapSelectedIds ?? [];
 
   const geometryUnsubRef = useRef<(() => void) | null>(null);
 
@@ -128,6 +130,17 @@ export function RouteMapPanel({ selectedCandidate, insertionPreview: propInserti
       highlightedStopId={selectedCustomerId}
       selectedCandidate={effectiveCandidate}
       selectedCandidates={effectiveCandidates}
+      mapSelectionMode={mapSelectionMode}
+      mapSelectedIds={mapSelectedIds}
+      onCandidateToggle={(id) => actions.setMapSelectedIds(
+        mapSelectedIds.includes(id)
+          ? mapSelectedIds.filter(x => x !== id)
+          : [...mapSelectedIds, id]
+      )}
+      onCandidateRectSelect={(ids) => {
+        const next = new Set([...mapSelectedIds, ...ids]);
+        actions.setMapSelectedIds([...next]);
+      }}
       onSegmentHighlight={actions.highlightSegment}
       onStopClick={actions.selectCustomer}
     />

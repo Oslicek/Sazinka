@@ -656,6 +656,33 @@
   cursor: not-allowed;
 }
 
+.mapSelectToggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.mapSelectToggle:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.mapSelectToggleActive {
+  background-color: rgba(37, 99, 235, 0.1);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
 .batchProgress {
   font-size: 0.7rem;
   color: var(--color-primary);

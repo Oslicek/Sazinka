@@ -55,6 +55,8 @@
   "cancel_selection": "Cancel selection",
   "batch_no_depot": "Select a depot to optimize the route",
   "batch_unassigned": "Could not assign: {{names}}. Remaining in selection.",
+  "map_select_mode_toggle": "Select on map",
+  "map_selected_count": "{{count}} of {{total}} on map",
   "empty_filtered": "No candidates for selected filters",
 
   "optimizer_sending": "Sending to optimizer...",

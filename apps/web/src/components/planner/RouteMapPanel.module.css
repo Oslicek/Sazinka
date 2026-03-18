@@ -125,6 +125,24 @@
   box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25), 0 1px 3px rgba(0, 0, 0, 0.3);
   cursor: default;
   opacity: 0.85;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+/* Sub-selected marker (highlighted ring) */
+.batchCandidateMarkerSelected {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.45), 0 1px 4px rgba(0, 0, 0, 0.35);
+  transform: scale(1.25);
+  opacity: 1;
+}
+
+/* Rectangle selection overlay drawn during drag */
+.selectionRect {
+  position: absolute;
+  border: 2px solid #2563eb;
+  background-color: rgba(37, 99, 235, 0.1);
+  pointer-events: none;
+  z-index: 20;
 }
 
 /* Selection counter badge */
