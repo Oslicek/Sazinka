@@ -78,9 +78,28 @@ export function SplitView({
     return { newLeftWidth, newRightWidth };
   }
 
+  // #region agent log
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const c = containerRef.current;
+    const cRect = c.getBoundingClientRect();
+    const resizers = c.querySelectorAll('[data-dbg-resizer]');
+    const resizerData = Array.from(resizers).map((r, i) => {
+      const rect = (r as HTMLElement).getBoundingClientRect();
+      const cs = window.getComputedStyle(r as HTMLElement);
+      return { i, w: rect.width, h: rect.height, display: cs.display, pointerEvents: cs.pointerEvents };
+    });
+    const panelEls = c.querySelectorAll(':scope > [data-dbg-panel]');
+    const panelData = Array.from(panelEls).map((p, i) => {
+      const rect = (p as HTMLElement).getBoundingClientRect();
+      return { i, id: (p as HTMLElement).dataset.dbgPanel, w: rect.width, h: rect.height };
+    });
+    console.log('[DBG-2ba648] SplitView mount', { direction, panelIds: panels.map(p=>p.id), containerW: cRect.width, containerH: cRect.height, resizerCount: resizers.length, resizers: resizerData, panels: panelData, childCount: c.children.length });
+  }, [direction, panels.length]);
+  // #endregion
+
   const handleResizeStart = useCallback(
     (index: number) => (e: React.MouseEvent) => {
-      console.log('[SplitView] mousedown on resizer', { index, direction, resizable, hasContainer: !!containerRef.current });
       if (!resizable || !containerRef.current) return;
 
       e.preventDefault();
@@ -100,7 +119,6 @@ export function SplitView({
         const { newLeftWidth, newRightWidth } = calcResize(
           leftPanel, rightPanel, startLeftWidth, startRightWidth, startPos, currentPos, containerSize
         );
-        console.log('[SplitView] mousemove', { direction, containerSize, leftId: leftPanel.id, newLeftWidth, newRightWidth });
         setPanelWidths((prev) => ({
           ...prev,
           [leftPanel.id]: newLeftWidth,
@@ -167,6 +185,7 @@ export function SplitView({
     elements.push(
       <div
         key={panels[i].id}
+        data-dbg-panel={panels[i].id}
         className={styles.panel}
         style={{
           [direction === 'horizontal' ? 'width' : 'height']:
@@ -180,6 +199,7 @@ export function SplitView({
       elements.push(
         <div
           key={`resizer-${i}`}
+          data-dbg-resizer={i}
           className={styles.resizer}
           onMouseDown={handleResizeStart(i)}
           onTouchStart={handleTouchStart(i)}
