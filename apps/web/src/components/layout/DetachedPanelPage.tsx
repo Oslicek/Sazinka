@@ -89,6 +89,7 @@ export function DetachedPanelPage({
     enabled: true,
     isSourceOfTruth: false,
     onSignal,
+    channelName: `sazinka-panels-${pageContext}`,
   });
 
   const sendSignalRef = useRef(sendSignal);
@@ -123,6 +124,7 @@ export function DetachedPanelPage({
       isSourceOfTruth={false}
       activePageContext={pageContext}
       initialRouteContext={routeContext}
+      channelName={`sazinka-panels-${pageContext}`}
     >
       <div
         data-testid="detached-panel-chrome"

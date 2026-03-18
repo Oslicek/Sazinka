@@ -321,3 +321,118 @@ describe('usePanelSignals', () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// Channel scoping tests
+// ---------------------------------------------------------------------------
+
+describe('usePanelSignals – channel scoping', () => {
+  it('opens channel with provided channelName', () => {
+    renderHook(() =>
+      usePanelSignals({ enabled: true, isSourceOfTruth: false, onSignal: vi.fn(), channelName: 'sazinka-panels-inbox' })
+    );
+    expect(MockBroadcastChannel.instances).toHaveLength(1);
+    expect(MockBroadcastChannel.instances[0].name).toBe('sazinka-panels-inbox');
+  });
+
+  it('defaults to sazinka-panels when no channelName provided', () => {
+    renderHook(() =>
+      usePanelSignals({ enabled: true, isSourceOfTruth: false, onSignal: vi.fn() })
+    );
+    expect(MockBroadcastChannel.instances[0].name).toBe('sazinka-panels');
+  });
+
+  it('inbox channel does not receive signals from plan channel', () => {
+    const onInbox = vi.fn();
+    const onPlan = vi.fn();
+    renderHook(() =>
+      usePanelSignals({ enabled: true, isSourceOfTruth: false, onSignal: onInbox, channelName: 'sazinka-panels-inbox' })
+    );
+    renderHook(() =>
+      usePanelSignals({ enabled: true, isSourceOfTruth: false, onSignal: onPlan, channelName: 'sazinka-panels-plan' })
+    );
+    // Send from the plan channel instance
+    const planChannel = MockBroadcastChannel.instances.find(c => c.name === 'sazinka-panels-plan')!;
+    act(() => {
+      planChannel.simulateReceive(foreignEnvelope({ type: 'SELECT_CUSTOMER', customerId: 'plan-cust' }));
+    });
+    expect(onInbox).not.toHaveBeenCalled();
+    expect(onPlan).toHaveBeenCalledWith({ type: 'SELECT_CUSTOMER', customerId: 'plan-cust' });
+  });
+
+  it('plan channel does not receive signals from inbox channel', () => {
+    const onInbox = vi.fn();
+    const onPlan = vi.fn();
+    renderHook(() =>
+      usePanelSignals({ enabled: true, isSourceOfTruth: false, onSignal: onInbox, channelName: 'sazinka-panels-inbox' })
+    );
+    renderHook(() =>
+      usePanelSignals({ enabled: true, isSourceOfTruth: false, onSignal: onPlan, channelName: 'sazinka-panels-plan' })
+    );
+    const inboxChannel = MockBroadcastChannel.instances.find(c => c.name === 'sazinka-panels-inbox')!;
+    act(() => {
+      inboxChannel.simulateReceive(foreignEnvelope({ type: 'SELECT_CUSTOMER', customerId: 'inbox-cust' }));
+    });
+    expect(onPlan).not.toHaveBeenCalled();
+    expect(onInbox).toHaveBeenCalledWith({ type: 'SELECT_CUSTOMER', customerId: 'inbox-cust' });
+  });
+
+  it('same-page channels communicate normally', () => {
+    const onA = vi.fn();
+    const onB = vi.fn();
+    renderHook(() =>
+      usePanelSignals({ enabled: true, isSourceOfTruth: false, onSignal: onA, channelName: 'sazinka-panels-inbox' })
+    );
+    renderHook(() =>
+      usePanelSignals({ enabled: true, isSourceOfTruth: false, onSignal: onB, channelName: 'sazinka-panels-inbox' })
+    );
+    const [chA, chB] = MockBroadcastChannel.instances.filter(c => c.name === 'sazinka-panels-inbox');
+    act(() => {
+      chA.simulateReceive(foreignEnvelope({ type: 'SELECT_CUSTOMER', customerId: 'shared' }));
+    });
+    expect(onA).toHaveBeenCalledWith({ type: 'SELECT_CUSTOMER', customerId: 'shared' });
+    act(() => {
+      chB.simulateReceive(foreignEnvelope({ type: 'SELECT_CUSTOMER', customerId: 'shared-b' }));
+    });
+    expect(onB).toHaveBeenCalledWith({ type: 'SELECT_CUSTOMER', customerId: 'shared-b' });
+  });
+
+  it('REQUEST_CONTEXT_SNAPSHOT only answered on matching channel', () => {
+    const getSnapshot = vi.fn().mockReturnValue({
+      routeContext: null,
+      selectedCustomerId: null,
+      selectedRouteId: null,
+      highlightedSegment: null,
+    });
+    renderHook(() =>
+      usePanelSignals({ enabled: true, isSourceOfTruth: true, onSignal: vi.fn(), getSnapshot, channelName: 'sazinka-panels-inbox' })
+    );
+    renderHook(() =>
+      usePanelSignals({ enabled: true, isSourceOfTruth: false, onSignal: vi.fn(), channelName: 'sazinka-panels-plan' })
+    );
+    const planChannel = MockBroadcastChannel.instances.find(c => c.name === 'sazinka-panels-plan')!;
+    act(() => {
+      planChannel.simulateReceive(foreignEnvelope({ type: 'REQUEST_CONTEXT_SNAPSHOT' }));
+    });
+    // The inbox source-of-truth must NOT respond to plan channel's request
+    const inboxChannel = MockBroadcastChannel.instances.find(c => c.name === 'sazinka-panels-inbox')!;
+    expect(inboxChannel.postedMessages).toHaveLength(0);
+  });
+
+  it('PANEL_DETACHED only reaches same-page listeners', () => {
+    const onInbox = vi.fn();
+    const onPlan = vi.fn();
+    renderHook(() =>
+      usePanelSignals({ enabled: true, isSourceOfTruth: false, onSignal: onInbox, channelName: 'sazinka-panels-inbox' })
+    );
+    renderHook(() =>
+      usePanelSignals({ enabled: true, isSourceOfTruth: false, onSignal: onPlan, channelName: 'sazinka-panels-plan' })
+    );
+    const inboxCh = MockBroadcastChannel.instances.find(c => c.name === 'sazinka-panels-inbox')!;
+    act(() => {
+      inboxCh.simulateReceive(foreignEnvelope({ type: 'PANEL_DETACHED', panel: 'map', page: 'inbox' }));
+    });
+    expect(onInbox).toHaveBeenCalledWith(expect.objectContaining({ type: 'PANEL_DETACHED' }));
+    expect(onPlan).not.toHaveBeenCalled();
+  });
+});

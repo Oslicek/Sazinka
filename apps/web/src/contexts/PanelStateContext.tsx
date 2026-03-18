@@ -43,6 +43,8 @@ interface PanelStateProviderProps {
   isSourceOfTruth?: boolean;
   /** Detached windows pass the URL-seeded context here for immediate load */
   initialRouteContext?: RouteContext | null;
+  /** Override channel name — defaults to sazinka-panels-{activePageContext} */
+  channelName?: string;
 }
 
 export function PanelStateProvider({
@@ -51,7 +53,9 @@ export function PanelStateProvider({
   enableChannel = false,
   isSourceOfTruth = false,
   initialRouteContext,
+  channelName,
 }: PanelStateProviderProps) {
+  const resolvedChannelName = channelName ?? `sazinka-panels-${activePageContext}`;
   const [state, setState] = useState<PanelState>(() => ({
     ...DEFAULT_STATE,
     activePageContext,
@@ -150,6 +154,7 @@ export function PanelStateProvider({
     isSourceOfTruth,
     onSignal,
     getSnapshot: isSourceOfTruth ? getSnapshot : undefined,
+    channelName: resolvedChannelName,
   });
 
   // Expose sendSignal via context so panels can emit signals

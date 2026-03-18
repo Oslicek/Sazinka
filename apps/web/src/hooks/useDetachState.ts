@@ -65,6 +65,7 @@ export function useDetachState(): DetachStateReturn {
     enabled: true,
     isSourceOfTruth: false,
     onSignal,
+    channelName: `sazinka-panels-${activePageContext}`,
   });
 
   const sendSignalRef = useRef(sendSignal);

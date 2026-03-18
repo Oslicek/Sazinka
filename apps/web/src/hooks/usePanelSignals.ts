@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { PanelSignal, PanelSignalEnvelope } from '../types/panelSignals';
 
-const CHANNEL_NAME = 'sazinka-panels';
+const DEFAULT_CHANNEL_NAME = 'sazinka-panels';
 
 export interface UsePanelSignalsOptions {
   enabled: boolean;
@@ -11,6 +11,8 @@ export interface UsePanelSignalsOptions {
   onSignal: (signal: PanelSignal) => void;
   /** Required when isSourceOfTruth=true — returns current state for snapshot */
   getSnapshot?: () => Omit<Extract<PanelSignal, { type: 'CONTEXT_SNAPSHOT' }>, 'type'>;
+  /** BroadcastChannel name — defaults to 'sazinka-panels' for backward compat */
+  channelName?: string;
 }
 
 export interface UsePanelSignalsReturn {
@@ -22,6 +24,7 @@ export function usePanelSignals({
   isSourceOfTruth,
   onSignal,
   getSnapshot,
+  channelName = DEFAULT_CHANNEL_NAME,
 }: UsePanelSignalsOptions): UsePanelSignalsReturn {
   const senderIdRef = useRef(crypto.randomUUID());
   const channelRef = useRef<BroadcastChannel | null>(null);
@@ -33,7 +36,7 @@ export function usePanelSignals({
   useEffect(() => {
     if (!enabled || typeof BroadcastChannel === 'undefined') return;
 
-    const channel = new BroadcastChannel(CHANNEL_NAME);
+    const channel = new BroadcastChannel(channelName);
     channelRef.current = channel;
 
     channel.onmessage = (e: MessageEvent) => {
@@ -62,7 +65,7 @@ export function usePanelSignals({
       channel.close();
       channelRef.current = null;
     };
-  }, [enabled, isSourceOfTruth]);
+  }, [enabled, isSourceOfTruth, channelName]);
 
   const sendSignal = (signal: PanelSignal) => {
     if (!channelRef.current) return;
