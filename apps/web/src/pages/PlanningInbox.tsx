@@ -1159,6 +1159,25 @@ function PlanningInboxInner() {
     return new Set(routeStops.map((s) => s.customerId));
   }, [routeStops]);
 
+  // Batch-selected candidates for map (shown as static orange pins when selectedIds > 0)
+  const selectedCandidatesForMap: SelectedCandidate[] = useMemo(() => {
+    if (selectedIds.size === 0) return [];
+    return Array.from(selectedIds)
+      .map(id => candidates.find(c => c.customerId === id))
+      .filter((c): c is NonNullable<typeof c> => c != null)
+      .filter(c => !!c.customerLat && !!c.customerLng)
+      .filter(c => !inRouteIds.has(c.customerId))
+      .map(c => ({
+        id: c.customerId,
+        name: c.customerName,
+        coordinates: { lat: c.customerLat!, lng: c.customerLng! },
+      }));
+  }, [selectedIds, candidates, inRouteIds]);
+
+  useEffect(() => {
+    actions.setSelectedCandidatesForMap(selectedCandidatesForMap);
+  }, [selectedCandidatesForMap, actions]);
+
   // Compute set of customer IDs whose stops have late arrivals (need rescheduling)
   const needsRescheduleIds = useMemo(() => {
     if (routeStops.length === 0) return new Set<string>();

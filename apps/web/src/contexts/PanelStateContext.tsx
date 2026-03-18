@@ -74,6 +74,9 @@ export function PanelStateProvider({
       case 'SELECT_CANDIDATE_MAP':
         setState(s => ({ ...s, selectedCandidateForMap: signal.candidate }));
         break;
+      case 'SELECT_CANDIDATES_MAP':
+        setState(s => ({ ...s, selectedCandidatesForMap: signal.candidates }));
+        break;
       case 'SELECT_ROUTE':
         setState(s => s.selectedRouteId === signal.routeId ? s : { ...s, selectedRouteId: signal.routeId });
         break;
@@ -99,6 +102,7 @@ export function PanelStateProvider({
           remoteInRouteIds: signal.inRouteCustomerIds ?? s.remoteInRouteIds,
           remoteScheduledIds: signal.scheduledCustomerIds ?? s.remoteScheduledIds,
           selectedCandidateForMap: signal.selectedCandidateForMap ?? s.selectedCandidateForMap,
+          selectedCandidatesForMap: signal.selectedCandidatesForMap ?? s.selectedCandidatesForMap,
         }));
         break;
       case 'ROUTE_DATA_CHANGED': {
@@ -146,6 +150,7 @@ export function PanelStateProvider({
       inRouteCustomerIds,
       scheduledCustomerIds,
       selectedCandidateForMap: s.selectedCandidateForMap ?? null,
+      selectedCandidatesForMap: s.selectedCandidatesForMap ?? [],
     };
   }, []);
 
@@ -245,6 +250,11 @@ export function PanelStateProvider({
     sendSignalRef.current({ type: 'SELECT_CANDIDATE_MAP', candidate });
   }, []);
 
+  const setSelectedCandidatesForMap = useCallback((candidates: SelectedCandidateForMap[]) => {
+    setState(s => ({ ...s, selectedCandidatesForMap: candidates }));
+    sendSignalRef.current({ type: 'SELECT_CANDIDATES_MAP', candidates });
+  }, []);
+
   const actions: PanelActions = useMemo(() => ({
     selectCustomer,
     selectRoute,
@@ -261,10 +271,12 @@ export function PanelStateProvider({
     setMetrics,
     setRouteBuffer,
     setSelectedCandidateForMap,
+    setSelectedCandidatesForMap,
   }), [
     selectCustomer, selectRoute, setRouteContext, setRouteStops, sendScheduleSnapshot, highlightSegment,
     setInsertionPreview, setRouteGeometry, setReturnToDepotLeg, setDepotDeparture,
     setRouteWarnings, setBreakWarnings, setMetrics, setRouteBuffer, setSelectedCandidateForMap,
+    setSelectedCandidatesForMap,
   ]);
 
   const value = useMemo(() => ({ state, actions }), [state, actions]);

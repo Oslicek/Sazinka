@@ -282,6 +282,36 @@ describe('PanelStateProvider', () => {
     expect(result.current.state.activePageContext).toBe('plan');
   });
 
+  it('setSelectedCandidatesForMap stores an array in state', () => {
+    const { result } = renderHook(() => usePanelState(), { wrapper });
+
+    const candidates = [
+      { id: 'c1', name: 'Alice', coordinates: { lat: 50.1, lng: 14.1 } },
+      { id: 'c2', name: 'Bob',   coordinates: { lat: 50.2, lng: 14.2 } },
+    ];
+
+    act(() => {
+      result.current.actions.setSelectedCandidatesForMap(candidates);
+    });
+
+    expect(result.current.state.selectedCandidatesForMap).toEqual(candidates);
+  });
+
+  it('setSelectedCandidatesForMap with empty array clears state', () => {
+    const { result } = renderHook(() => usePanelState(), { wrapper });
+
+    act(() => {
+      result.current.actions.setSelectedCandidatesForMap([
+        { id: 'c1', name: 'Alice', coordinates: { lat: 50.1, lng: 14.1 } },
+      ]);
+    });
+    act(() => {
+      result.current.actions.setSelectedCandidatesForMap([]);
+    });
+
+    expect(result.current.state.selectedCandidatesForMap).toEqual([]);
+  });
+
   it('throws when usePanelState used outside provider', () => {
     const consoleError = console.error;
     console.error = () => {};

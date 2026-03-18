@@ -33,6 +33,7 @@ export function RouteMapPanel({ selectedCandidate, insertionPreview: propInserti
   } = state;
 
   const effectiveCandidate = selectedCandidate ?? state.selectedCandidateForMap ?? null;
+  const effectiveCandidates = state.selectedCandidatesForMap ?? [];
 
   const geometryUnsubRef = useRef<(() => void) | null>(null);
 
@@ -126,6 +127,7 @@ export function RouteMapPanel({ selectedCandidate, insertionPreview: propInserti
       insertionPreview={propInsertionPreview ?? insertionPreview}
       highlightedStopId={selectedCustomerId}
       selectedCandidate={effectiveCandidate}
+      selectedCandidates={effectiveCandidates}
       onSegmentHighlight={actions.highlightSegment}
       onStopClick={actions.selectCustomer}
     />

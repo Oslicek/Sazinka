@@ -51,6 +51,8 @@ export interface PanelState {
   lastScheduledSnapshot?: string[];
   /** Selected inbox candidate for map marker (broadcast to detached map) */
   selectedCandidateForMap?: SelectedCandidateForMap | null;
+  /** Batch-selected inbox candidates shown as static pins on the map */
+  selectedCandidatesForMap?: SelectedCandidateForMap[];
 }
 
 export interface PanelActions {
@@ -71,6 +73,8 @@ export interface PanelActions {
   setRouteBuffer(percent: number, fixedMinutes: number): void;
   /** Set the selected candidate for map display and broadcast to detached panels */
   setSelectedCandidateForMap(candidate: SelectedCandidateForMap | null): void;
+  /** Set the batch-selected candidates for map display and broadcast to detached panels */
+  setSelectedCandidatesForMap(candidates: SelectedCandidateForMap[]): void;
 }
 
 export interface PanelStateContextValue {

@@ -7,6 +7,7 @@ export interface SelectedCandidateForMap {
 export type PanelSignal =
   | { type: 'SELECT_CUSTOMER'; customerId: string | null }
   | { type: 'SELECT_CANDIDATE_MAP'; candidate: SelectedCandidateForMap | null }
+  | { type: 'SELECT_CANDIDATES_MAP'; candidates: SelectedCandidateForMap[] }
   | { type: 'HIGHLIGHT_SEGMENT'; segmentIndex: number | null }
   | { type: 'ROUTE_CONTEXT'; date: string; crewId: string; depotId: string }
   | { type: 'SELECT_ROUTE'; routeId: string | null }
@@ -20,6 +21,7 @@ export type PanelSignal =
       inRouteCustomerIds?: string[];
       scheduledCustomerIds?: string[];
       selectedCandidateForMap?: SelectedCandidateForMap | null;
+      selectedCandidatesForMap?: SelectedCandidateForMap[];
     }
   | { type: 'ROUTE_DATA_CHANGED'; inRouteCustomerIds: string[] }
   | { type: 'SCHEDULE_SNAPSHOT'; scheduledCustomerIds: string[] }

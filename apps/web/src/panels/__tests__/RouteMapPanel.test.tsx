@@ -333,6 +333,57 @@ describe('panels/RouteMapPanel', () => {
     expect(mockProps.current.highlightedSegment).toBe(7);
   });
 
+  it('passes selectedCandidates from state to map component', () => {
+    const { ref, ActionsCapture } = makeActionsCapture();
+
+    render(
+      <PanelStateProvider>
+        <ActionsCapture />
+        <RouteMapPanel />
+      </PanelStateProvider>,
+    );
+
+    const candidates = [
+      { id: 'c1', name: 'Alice', coordinates: { lat: 50.1, lng: 14.1 } },
+      { id: 'c2', name: 'Bob',   coordinates: { lat: 50.2, lng: 14.2 } },
+    ];
+
+    act(() => {
+      ref.actions!.setSelectedCandidatesForMap(candidates);
+    });
+
+    expect(mockProps.current.selectedCandidates).toEqual(candidates);
+  });
+
+  it('passes empty array when no batch candidates are set', () => {
+    render(
+      <PanelStateProvider>
+        <RouteMapPanel />
+      </PanelStateProvider>,
+    );
+    // selectedCandidates defaults to [] (empty array)
+    expect(mockProps.current.selectedCandidates).toEqual([]);
+  });
+
+  it('SELECT_CANDIDATES_MAP signal updates selectedCandidates prop', () => {
+    const { ref, ActionsCapture } = makeActionsCapture();
+
+    render(
+      <PanelStateProvider>
+        <ActionsCapture />
+        <RouteMapPanel />
+      </PanelStateProvider>,
+    );
+
+    act(() => {
+      ref.actions!.setSelectedCandidatesForMap([
+        { id: 'x1', name: 'X', coordinates: { lat: 49.0, lng: 16.0 } },
+      ]);
+    });
+
+    expect((mockProps.current.selectedCandidates as unknown[]).length).toBe(1);
+  });
+
   it('shows loading state while fetching', async () => {
     // Never resolves
     mockGetRoute.mockReturnValue(new Promise(() => {}));

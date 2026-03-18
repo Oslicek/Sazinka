@@ -38,6 +38,8 @@ interface RouteMapPanelProps {
   highlightedStopId?: string | null;
   /** Show a candidate's location on the map before it is added to the route */
   selectedCandidate?: SelectedCandidate | null;
+  /** Show multiple batch-selected candidates as static pins */
+  selectedCandidates?: SelectedCandidate[];
   insertionPreview?: InsertionPreview | null;
   onStopClick?: (stopId: string) => void;
   isLoading?: boolean;
@@ -58,6 +60,7 @@ export function RouteMapPanel({
   routeGeometry,
   highlightedStopId,
   selectedCandidate,
+  selectedCandidates,
   insertionPreview,
   onStopClick,
   isLoading,
@@ -75,6 +78,7 @@ export function RouteMapPanel({
   const depotMarkerRef = useRef<maplibregl.Marker | null>(null);
   const previewMarkerRef = useRef<maplibregl.Marker | null>(null);
   const selectedCandidateMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const batchCandidateMarkersRef = useRef<maplibregl.Marker[]>([]);
 
   // Event handler refs for proper cleanup
   const segmentClickHandlerRef = useRef<((e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => void) | null>(null);
@@ -318,6 +322,37 @@ export function RouteMapPanel({
       .addTo(mapRef.current);
   }, [selectedCandidate, stops]);
 
+  // Show batch-selected candidates as static orange pins
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    // Remove old batch markers
+    batchCandidateMarkersRef.current.forEach(m => m.remove());
+    batchCandidateMarkersRef.current = [];
+
+    if (!selectedCandidates || selectedCandidates.length === 0) return;
+
+    for (const candidate of selectedCandidates) {
+      const { lat, lng } = candidate.coordinates;
+      if (!lat || !lng) continue;
+      // Skip if this candidate already has a numbered stop marker
+      if (stops.some(s => s.customerId === candidate.id)) continue;
+      // Skip if the single selected candidate marker covers this one
+      if (selectedCandidate?.id === candidate.id) continue;
+
+      const el = document.createElement('div');
+      el.className = styles.batchCandidateMarker;
+      el.title = candidate.name;
+
+      const marker = new maplibregl.Marker({ element: el, anchor: 'top-left', offset: [-6, -6] })
+        .setLngLat([lng, lat])
+        .setPopup(new maplibregl.Popup({ offset: 20 }).setHTML(`<strong>${candidate.name}</strong>`))
+        .addTo(mapRef.current!);
+
+      batchCandidateMarkersRef.current.push(marker);
+    }
+  }, [selectedCandidates, selectedCandidate, stops]);
+
   // Fit map bounds whenever relevant points change:
   // - No candidate, no route: center on depot
   // - Candidate selected, no route: fit depot + candidate
@@ -363,8 +398,17 @@ export function RouteMapPanel({
       bounds.extend([candidateCoord.lng, candidateCoord.lat]);
     }
 
+    // Include batch selected candidates
+    if (selectedCandidates && selectedCandidates.length > 0) {
+      for (const c of selectedCandidates) {
+        if (c.coordinates.lat && c.coordinates.lng) {
+          bounds.extend([c.coordinates.lng, c.coordinates.lat]);
+        }
+      }
+    }
+
     mapRef.current.fitBounds(bounds, { padding: 60, duration: 500, maxZoom: 14 });
-  }, [selectedCandidate, stops, depot]);
+  }, [selectedCandidate, selectedCandidates, stops, depot]);
 
   // Update route line as segmented GeoJSON with highlight support
   useEffect(() => {
@@ -655,7 +699,12 @@ export function RouteMapPanel({
       )}
       <div ref={containerRef} className={styles.map} />
       <div className={styles.zoomLevel}>Z {zoomLevel.toFixed(1)}</div>
-      {stops.length === 0 && !isLoading && !selectedCandidate && (
+      {selectedCandidates && selectedCandidates.length > 0 && (
+        <div className={`${styles.selectionCountBadge}${selectedCandidates.length > 25 ? ` ${styles.overLimit}` : ''}`}>
+          {selectedCandidates.length}
+        </div>
+      )}
+      {stops.length === 0 && !isLoading && !selectedCandidate && !(selectedCandidates && selectedCandidates.length > 0) && (
         <div className={styles.emptyHint}>{t('map_empty_hint')}</div>
       )}
       {segmentInfo && (
