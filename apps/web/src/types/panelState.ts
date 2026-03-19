@@ -53,6 +53,8 @@ export interface PanelState {
   selectedCandidateForMap?: SelectedCandidateForMap | null;
   /** Batch-selected inbox candidates shown as static pins on the map */
   selectedCandidatesForMap?: SelectedCandidateForMap[];
+  /** Depot location for map display */
+  mapDepot?: { lat: number; lng: number; name?: string } | null;
   /** Active map selection tool: 'click' for single-pin toggle, 'rect' for rectangle draw, null/undefined for none */
   mapSelectionTool?: 'click' | 'rect' | null;
   /** IDs sub-selected directly on the map (subset of selectedCandidatesForMap) */
@@ -79,6 +81,8 @@ export interface PanelActions {
   setSelectedCandidateForMap(candidate: SelectedCandidateForMap | null): void;
   /** Set the batch-selected candidates for map display and broadcast to detached panels */
   setSelectedCandidatesForMap(candidates: SelectedCandidateForMap[]): void;
+  /** Set the depot location for map display */
+  setMapDepot(depot: { lat: number; lng: number; name?: string } | null): void;
   /** Set the active map selection tool (click, rect, or null to deactivate) */
   setMapSelectionTool(tool: 'click' | 'rect' | null): void;
   /** Update the sub-selected candidate IDs from map interaction */

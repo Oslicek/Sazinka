@@ -115,6 +115,41 @@
   }
 }
 
+/* Depot marker — always visible, distinct green */
+.depotMarker {
+  width: 28px;
+  height: 34px;
+  position: relative;
+  cursor: pointer;
+}
+
+.depotMarker::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #16a34a;
+  border: 3px solid #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+.depotMarker::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  width: 10px;
+  height: 10px;
+  background: #16a34a;
+  border-right: 3px solid #fff;
+  border-bottom: 3px solid #fff;
+  box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+}
+
 /* Batch candidate marker (static, no pulse — for multi-select) */
 .batchCandidateMarker {
   width: 12px;
@@ -165,7 +200,11 @@
   background: rgba(239, 68, 68, 0.9);
 }
 
-/* Crosshair cursor for rectangle draw mode */
+/* Selection mode cursor overrides */
+.mapClickSelect {
+  cursor: pointer !important;
+}
+
 .mapCrosshair {
   cursor: crosshair !important;
 }
@@ -173,49 +212,69 @@
 /* Floating selection mode toolbar */
 .mapSelectionToolbar {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: 10px;
+  right: 10px;
   display: flex;
-  gap: 4px;
-  padding: 4px;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md, 8px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-  z-index: 10;
+  gap: 2px;
+  padding: 3px;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 20;
+  pointer-events: auto;
 }
 
 .mapToolBtn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm, 4px);
-  background: transparent;
-  color: var(--color-text-secondary);
+  width: 34px;
+  height: 34px;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background: #f8fafc;
   cursor: pointer;
   transition: all 0.15s;
+  padding: 0;
 }
 
 .mapToolBtn:hover {
-  background: var(--color-bg-secondary, #f1f5f9);
-  color: var(--color-text);
-  border-color: var(--color-border);
+  background: #e2e8f0;
+  border-color: #94a3b8;
 }
 
 .mapToolBtnActive {
-  background: var(--color-primary, #2563eb);
-  color: white;
-  border-color: var(--color-primary, #2563eb);
+  background: #2563eb;
+  border-color: #2563eb;
+  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.4);
 }
 
 .mapToolBtnActive:hover {
-  background: var(--color-primary, #2563eb);
-  color: white;
-  border-color: var(--color-primary, #2563eb);
-  opacity: 0.9;
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+/* SVG icons inside tool buttons */
+.mapToolBtn svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.mapToolBtn svg path,
+.mapToolBtn svg rect,
+.mapToolBtn svg line,
+.mapToolBtn svg circle {
+  stroke: #475569;
+  fill: none;
+}
+
+.mapToolBtnActive svg path,
+.mapToolBtnActive svg rect,
+.mapToolBtnActive svg line,
+.mapToolBtnActive svg circle {
+  stroke: #fff;
 }
 
 /* Loading overlay */

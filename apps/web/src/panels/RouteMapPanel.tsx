@@ -124,7 +124,7 @@ export function RouteMapPanel({ selectedCandidate, insertionPreview: propInserti
   return (
     <RouteMapPanelUI
       stops={routeStops}
-      depot={null}
+      depot={state.mapDepot ?? null}
       routeGeometry={routeGeometry}
       highlightedSegment={highlightedSegment}
       insertionPreview={propInsertionPreview ?? insertionPreview}

@@ -22,6 +22,7 @@ export type PanelSignal =
       scheduledCustomerIds?: string[];
       selectedCandidateForMap?: SelectedCandidateForMap | null;
       selectedCandidatesForMap?: SelectedCandidateForMap[];
+      mapDepot?: { lat: number; lng: number; name?: string } | null;
       mapSelectionTool?: 'click' | 'rect' | null;
       mapSelectedIds?: string[];
     }
@@ -29,6 +30,7 @@ export type PanelSignal =
   | { type: 'SCHEDULE_SNAPSHOT'; scheduledCustomerIds: string[] }
   | { type: 'PANEL_DETACHED'; panel: 'map' | 'list'; page: 'inbox' | 'plan' }
   | { type: 'PANEL_REATTACHED'; panel: 'map' | 'list'; page: 'inbox' | 'plan' }
+  | { type: 'MAP_DEPOT'; depot: { lat: number; lng: number; name?: string } | null }
   | { type: 'MAP_SELECTION_TOOL'; tool: 'click' | 'rect' | null }
   | { type: 'MAP_SUB_SELECT'; candidateIds: string[] }
   | { type: 'MAP_SUB_DESELECT'; candidateIds: string[] }

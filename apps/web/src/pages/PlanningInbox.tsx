@@ -1190,6 +1190,10 @@ function PlanningInboxInner() {
     actions.setSelectedCandidatesForMap(selectedCandidatesForMap);
   }, [selectedCandidatesForMap, actions]);
 
+  useEffect(() => {
+    actions.setMapDepot(currentDepot);
+  }, [currentDepot, actions]);
+
   // Compute set of customer IDs whose stops have late arrivals (need rescheduling)
   const needsRescheduleIds = useMemo(() => {
     if (routeStops.length === 0) return new Set<string>();

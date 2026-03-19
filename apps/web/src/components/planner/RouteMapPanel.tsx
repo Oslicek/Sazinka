@@ -182,16 +182,22 @@ export function RouteMapPanel({
 
   // Update depot marker
   useEffect(() => {
-    if (!mapRef.current || !depot) return;
+    if (!mapRef.current) return;
 
     if (depotMarkerRef.current) {
-      depotMarkerRef.current.setLngLat([depot.lng, depot.lat]);
-    } else {
-      depotMarkerRef.current = new maplibregl.Marker({ color: '#22c55e' })
-        .setLngLat([depot.lng, depot.lat])
-        .setPopup(new maplibregl.Popup().setHTML(`<strong>${t('map_depot_popup')}</strong><br/>${depot.name || t('map_depot_default')}`))
-        .addTo(mapRef.current);
+      depotMarkerRef.current.remove();
+      depotMarkerRef.current = null;
     }
+
+    if (!depot) return;
+
+    const el = document.createElement('div');
+    el.className = styles.depotMarker;
+
+    depotMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+      .setLngLat([depot.lng, depot.lat])
+      .setPopup(new maplibregl.Popup({ offset: 25 }).setHTML(`<strong>${t('map_depot_popup')}</strong><br/>${depot.name || t('map_depot_default')}`))
+      .addTo(mapRef.current);
   }, [depot, t]);
 
   // Clear all stop markers and route layers
@@ -825,7 +831,7 @@ export function RouteMapPanel({
           <div className={styles.spinner} />
         </div>
       )}
-      <div ref={containerRef} className={`${styles.map}${mapSelectionTool === 'rect' ? ` ${styles.mapCrosshair}` : ''}`} />
+      <div ref={containerRef} className={`${styles.map}${mapSelectionTool === 'rect' ? ` ${styles.mapCrosshair}` : mapSelectionTool === 'click' ? ` ${styles.mapClickSelect}` : ''}`} />
       <div className={styles.zoomLevel}>Z {zoomLevel.toFixed(1)}</div>
       {selectedCandidates && selectedCandidates.length > 0 && (
         <div className={`${styles.selectionCountBadge}${selectedCandidates.length > 25 ? ` ${styles.overLimit}` : ''}`}>
@@ -836,26 +842,27 @@ export function RouteMapPanel({
       )}
       {/* Floating toolbar for map selection modes */}
       {selectedCandidates && selectedCandidates.length > 0 && onMapSelectionToolChange && (
-        <div className={styles.mapSelectionToolbar}>
+        <div className={styles.mapSelectionToolbar} onMouseDown={(e) => e.stopPropagation()}>
           <button
             type="button"
             className={`${styles.mapToolBtn}${mapSelectionTool === 'click' ? ` ${styles.mapToolBtnActive}` : ''}`}
-            onClick={() => onMapSelectionToolChange(mapSelectionTool === 'click' ? null : 'click')}
+            onClick={(e) => { e.stopPropagation(); onMapSelectionToolChange(mapSelectionTool === 'click' ? null : 'click'); }}
             title={t('map_tool_click', 'Click pins to select')}
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 2l2.5 12 2.5-5 5-2.5L3 2z" />
-              <path d="M8.5 8.5l4 4" />
+            {/* Cursor / pointer icon */}
+            <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M3.5 1.5L6 13.5L8.5 8.5L13.5 6L3.5 1.5Z" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
           <button
             type="button"
             className={`${styles.mapToolBtn}${mapSelectionTool === 'rect' ? ` ${styles.mapToolBtnActive}` : ''}`}
-            onClick={() => onMapSelectionToolChange(mapSelectionTool === 'rect' ? null : 'rect')}
+            onClick={(e) => { e.stopPropagation(); onMapSelectionToolChange(mapSelectionTool === 'rect' ? null : 'rect'); }}
             title={t('map_tool_rect', 'Draw rectangle to select')}
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="2" y="2" width="12" height="12" rx="1" strokeDasharray="3 2" />
+            {/* Dashed rectangle icon */}
+            <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="2" y="2" width="12" height="12" rx="1.5" strokeWidth="1.5" strokeDasharray="3 2" />
             </svg>
           </button>
         </div>
