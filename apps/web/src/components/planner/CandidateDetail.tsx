@@ -5,7 +5,7 @@ import { AlertTriangle, Calendar, Clock, Pencil, Phone, Mail, ClipboardCopy, Che
 import type { ScoreBreakdownItem } from '@shared/scoring';
 import { formatDate } from '@/i18n/formatters';
 import { listDevices } from '@/services/deviceService';
-import { listVisits, getVisit, getVisitStatusLabel, getVisitResultLabel } from '@/services/visitService';
+import { listVisits, getVisit } from '@/services/visitService';
 import { DEVICE_TYPE_KEYS, type Device } from '@shared/device';
 import type { Visit } from '@shared/visit';
 import { useNatsStore } from '@/stores/natsStore';
@@ -364,33 +364,44 @@ export function CandidateDetail({
 
   return (
     <div className={styles.container}>
-      {/* Header */}
-      <div className={styles.header} data-testid="candidate-header">
-        <h3 className={styles.name}>{candidate.customerName}</h3>
-        <div className={styles.badges}>
+      {/* Header & Meta - Compact */}
+      <div className={styles.compactHeader} data-testid="candidate-header">
+        <div className={styles.titleRow}>
+          <h3 className={styles.name}>{candidate.customerName}</h3>
           {candidate.priority === 'overdue' && (
             <span className={styles.overdueBadge}>{t('candidate_overdue_badge', { days: daysOverdue })}</span>
           )}
         </div>
-      </div>
 
-      {/* Ordering score */}
-      {candidate.urgencyScore !== undefined && (
-        <ScoreChip
-          score={candidate.urgencyScore}
-          breakdown={candidate.scoreBreakdown}
-        />
-      )}
+        <div className={styles.metaRow}>
+          {candidate.urgencyScore !== undefined && (
+            <ScoreChip
+              score={candidate.urgencyScore}
+              breakdown={candidate.scoreBreakdown}
+            />
+          )}
 
-      {/* State Flags */}
-      <div className={styles.stateFlags} data-testid="state-flags">
-        <div className={`${styles.stateFlag} ${candidate.isScheduled ? styles.stateFlagYes : styles.stateFlagNo}`}>
-          <span className={styles.stateFlagLabel}>{t('candidate_state_appointment')}</span>
-          <span className={styles.stateFlagValue}>{candidate.isScheduled ? t('candidate_state_yes') : t('candidate_state_no')}</span>
-        </div>
-        <div className={`${styles.stateFlag} ${isInRoute ? styles.stateFlagYes : styles.stateFlagNo}`}>
-          <span className={styles.stateFlagLabel}>{t('candidate_state_in_route')}</span>
-          <span className={styles.stateFlagValue}>{isInRoute ? t('candidate_state_yes') : t('candidate_state_no')}</span>
+          <div className={`${styles.stateFlag} ${candidate.isScheduled ? styles.stateFlagYes : styles.stateFlagNo}`}>
+            <span className={styles.stateFlagLabel}>{t('candidate_state_appointment')}</span>
+            <span className={styles.stateFlagValue}>{candidate.isScheduled ? t('candidate_state_yes') : t('candidate_state_no')}</span>
+          </div>
+
+          <div className={`${styles.stateFlag} ${isInRoute ? styles.stateFlagYes : styles.stateFlagNo}`}>
+            <span className={styles.stateFlagLabel}>{t('candidate_state_in_route')}</span>
+            <span className={styles.stateFlagValue}>{isInRoute ? t('candidate_state_yes') : t('candidate_state_no')}</span>
+          </div>
+
+          <div className={styles.dueDateBadge}>
+            <span className={styles.dueDateLabel}>{t('candidate_due_date')}:</span>
+            <span className={`${styles.dueDateValue} ${candidate.priority === 'overdue' ? styles.overdueText : ''}`}>
+              {dueDateFormatted}
+            </span>
+            {candidate.daysUntilDue > 0 && (
+              <span className={styles.daysRemaining}>
+                ({t('candidate_days_remaining', { days: candidate.daysUntilDue })})
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -455,21 +466,6 @@ export function CandidateDetail({
           </div>
         </section>
       )}
-
-      {/* Revize nejpozději */}
-      <section className={styles.section}>
-        <h4 className={styles.sectionTitle}>{t('candidate_due_date')}</h4>
-        <p className={styles.dueDate}>
-          <span className={candidate.priority === 'overdue' ? styles.overdueText : ''}>
-            {dueDateFormatted}
-          </span>
-          {candidate.daysUntilDue > 0 && (
-            <span className={styles.daysRemaining}>
-              {t('candidate_days_remaining', { days: candidate.daysUntilDue })}
-            </span>
-          )}
-        </p>
-      </section>
 
       {/* Inline scheduling form — appears right after due date */}
       {isScheduling && (
@@ -1008,7 +1004,7 @@ function ScoreChip({ score, breakdown }: ScoreChipProps) {
   const displayed = Number.isFinite(score) ? score.toFixed(1) : '—';
 
   return (
-    <div className={styles.scoreChipWrapper}>
+    <div className={styles.scoreChipContainer}>
       <div className={styles.scoreChip}>
         <span className={styles.scoreChipLabel}>{tp('score_label')}</span>
         <span className={styles.scoreChipValue}>{displayed}</span>
