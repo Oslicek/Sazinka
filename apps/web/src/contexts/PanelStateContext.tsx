@@ -77,8 +77,8 @@ export function PanelStateProvider({
       case 'SELECT_CANDIDATES_MAP':
         setState(s => ({ ...s, selectedCandidatesForMap: signal.candidates }));
         break;
-      case 'MAP_SELECTION_MODE':
-        setState(s => ({ ...s, mapSelectionMode: signal.active }));
+      case 'MAP_SELECTION_TOOL':
+        setState(s => ({ ...s, mapSelectionTool: signal.tool }));
         break;
       case 'MAP_SUB_SELECTION_SYNC':
         setState(s => ({ ...s, mapSelectedIds: signal.mapSelectedIds }));
@@ -136,7 +136,7 @@ export function PanelStateProvider({
           remoteScheduledIds: signal.scheduledCustomerIds ?? s.remoteScheduledIds,
           selectedCandidateForMap: signal.selectedCandidateForMap ?? s.selectedCandidateForMap,
           selectedCandidatesForMap: signal.selectedCandidatesForMap ?? s.selectedCandidatesForMap,
-          mapSelectionMode: signal.mapSelectionMode ?? s.mapSelectionMode,
+          mapSelectionTool: signal.mapSelectionTool ?? s.mapSelectionTool,
           mapSelectedIds: signal.mapSelectedIds ?? s.mapSelectedIds,
         }));
         break;
@@ -186,7 +186,7 @@ export function PanelStateProvider({
       scheduledCustomerIds,
       selectedCandidateForMap: s.selectedCandidateForMap ?? null,
       selectedCandidatesForMap: s.selectedCandidatesForMap ?? [],
-      mapSelectionMode: s.mapSelectionMode ?? false,
+      mapSelectionTool: s.mapSelectionTool ?? null,
       mapSelectedIds: s.mapSelectedIds ?? [],
     };
   }, []);
@@ -292,9 +292,9 @@ export function PanelStateProvider({
     sendSignalRef.current({ type: 'SELECT_CANDIDATES_MAP', candidates });
   }, []);
 
-  const setMapSelectionMode = useCallback((active: boolean) => {
-    setState(s => ({ ...s, mapSelectionMode: active }));
-    sendSignalRef.current({ type: 'MAP_SELECTION_MODE', active });
+  const setMapSelectionTool = useCallback((tool: 'click' | 'rect' | null) => {
+    setState(s => ({ ...s, mapSelectionTool: tool }));
+    sendSignalRef.current({ type: 'MAP_SELECTION_TOOL', tool });
   }, []);
 
   const setMapSelectedIds = useCallback((ids: string[]) => {
@@ -319,13 +319,13 @@ export function PanelStateProvider({
     setRouteBuffer,
     setSelectedCandidateForMap,
     setSelectedCandidatesForMap,
-    setMapSelectionMode,
+    setMapSelectionTool,
     setMapSelectedIds,
   }), [
     selectCustomer, selectRoute, setRouteContext, setRouteStops, sendScheduleSnapshot, highlightSegment,
     setInsertionPreview, setRouteGeometry, setReturnToDepotLeg, setDepotDeparture,
     setRouteWarnings, setBreakWarnings, setMetrics, setRouteBuffer, setSelectedCandidateForMap,
-    setSelectedCandidatesForMap, setMapSelectionMode, setMapSelectedIds,
+    setSelectedCandidatesForMap, setMapSelectionTool, setMapSelectedIds,
   ]);
 
   const value = useMemo(() => ({ state, actions }), [state, actions]);

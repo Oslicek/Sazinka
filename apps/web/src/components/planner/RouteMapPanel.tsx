@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import maplibregl from 'maplibre-gl';
 import {
@@ -40,8 +40,10 @@ interface RouteMapPanelProps {
   selectedCandidate?: SelectedCandidate | null;
   /** Show multiple batch-selected candidates as static pins */
   selectedCandidates?: SelectedCandidate[];
-  /** Whether map sub-selection mode is active (enables click-toggle on batch pins) */
-  mapSelectionMode?: boolean;
+  /** Active selection tool: 'click' for single-pin toggle, 'rect' for rectangle draw, null for none */
+  mapSelectionTool?: 'click' | 'rect' | null;
+  /** Setter so the map toolbar can change the active tool */
+  onMapSelectionToolChange?: (tool: 'click' | 'rect' | null) => void;
   /** IDs that have been sub-selected on the map */
   mapSelectedIds?: string[];
   /** Called when a batch candidate pin is clicked to toggle its sub-selection */
@@ -69,7 +71,8 @@ export function RouteMapPanel({
   highlightedStopId,
   selectedCandidate,
   selectedCandidates,
-  mapSelectionMode = false,
+  mapSelectionTool = null,
+  onMapSelectionToolChange,
   mapSelectedIds = [],
   onCandidateToggle,
   onCandidateRectSelect,
@@ -361,7 +364,7 @@ export function RouteMapPanel({
         : styles.batchCandidateMarker;
       el.title = candidate.name;
 
-      if (mapSelectionMode && onCandidateToggle) {
+      if (mapSelectionTool === 'click' && onCandidateToggle) {
         el.style.cursor = 'pointer';
         el.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -376,12 +379,12 @@ export function RouteMapPanel({
 
       batchCandidateMarkersRef.current.push(marker);
     }
-  }, [selectedCandidates, selectedCandidate, stops, mapSelectionMode, mapSelectedIds, onCandidateToggle]);
+  }, [selectedCandidates, selectedCandidate, stops, mapSelectionTool, mapSelectedIds, onCandidateToggle]);
 
   // Rectangle selection (drag on map to select batch candidates in the drawn area)
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || !mapRef.current || !mapSelectionMode || !onCandidateRectSelect) return;
+    if (!container || !mapRef.current || mapSelectionTool !== 'rect' || !onCandidateRectSelect) return;
 
     let overlay: HTMLDivElement | null = null;
     let startX = 0;
@@ -476,7 +479,7 @@ export function RouteMapPanel({
         rectOverlayRef.current = null;
       }
     };
-  }, [mapSelectionMode, selectedCandidates, onCandidateRectSelect]);
+  }, [mapSelectionTool, selectedCandidates, onCandidateRectSelect]);
 
   // Fit map bounds whenever relevant points change:
   // - No candidate, no route: center on depot
@@ -822,11 +825,39 @@ export function RouteMapPanel({
           <div className={styles.spinner} />
         </div>
       )}
-      <div ref={containerRef} className={styles.map} />
+      <div ref={containerRef} className={`${styles.map}${mapSelectionTool === 'rect' ? ` ${styles.mapCrosshair}` : ''}`} />
       <div className={styles.zoomLevel}>Z {zoomLevel.toFixed(1)}</div>
       {selectedCandidates && selectedCandidates.length > 0 && (
         <div className={`${styles.selectionCountBadge}${selectedCandidates.length > 25 ? ` ${styles.overLimit}` : ''}`}>
-          {selectedCandidates.length}
+          {mapSelectedIds.length > 0
+            ? `${mapSelectedIds.length} / ${selectedCandidates.length}`
+            : selectedCandidates.length}
+        </div>
+      )}
+      {/* Floating toolbar for map selection modes */}
+      {selectedCandidates && selectedCandidates.length > 0 && onMapSelectionToolChange && (
+        <div className={styles.mapSelectionToolbar}>
+          <button
+            type="button"
+            className={`${styles.mapToolBtn}${mapSelectionTool === 'click' ? ` ${styles.mapToolBtnActive}` : ''}`}
+            onClick={() => onMapSelectionToolChange(mapSelectionTool === 'click' ? null : 'click')}
+            title={t('map_tool_click', 'Click pins to select')}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 2l2.5 12 2.5-5 5-2.5L3 2z" />
+              <path d="M8.5 8.5l4 4" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className={`${styles.mapToolBtn}${mapSelectionTool === 'rect' ? ` ${styles.mapToolBtnActive}` : ''}`}
+            onClick={() => onMapSelectionToolChange(mapSelectionTool === 'rect' ? null : 'rect')}
+            title={t('map_tool_rect', 'Draw rectangle to select')}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="2" width="12" height="12" rx="1" strokeDasharray="3 2" />
+            </svg>
+          </button>
         </div>
       )}
       {stops.length === 0 && !isLoading && !selectedCandidate && !(selectedCandidates && selectedCandidates.length > 0) && (

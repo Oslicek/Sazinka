@@ -384,7 +384,7 @@ describe('panels/RouteMapPanel', () => {
     expect((mockProps.current.selectedCandidates as unknown[]).length).toBe(1);
   });
 
-  it('passes mapSelectionMode from state to map component', () => {
+  it('passes mapSelectionTool from state to map component', () => {
     const { ref, ActionsCapture } = makeActionsCapture();
 
     render(
@@ -395,10 +395,10 @@ describe('panels/RouteMapPanel', () => {
     );
 
     act(() => {
-      ref.actions!.setMapSelectionMode(true);
+      ref.actions!.setMapSelectionTool('click');
     });
 
-    expect(mockProps.current.mapSelectionMode).toBe(true);
+    expect(mockProps.current.mapSelectionTool).toBe('click');
   });
 
   it('passes mapSelectedIds from state to map component', () => {

@@ -57,6 +57,8 @@
   "batch_unassigned": "Nelze přiřadit: {{names}}. Zůstávají ve výběru.",
   "map_select_mode_toggle": "Vybrat na mapě",
   "map_selected_count": "{{count}} z {{total}} na mapě",
+  "map_tool_click": "Kliknutím na špendlík vybrat",
+  "map_tool_rect": "Tažením obdélníku vybrat",
   "empty_filtered": "Žádní kandidáti pro vybrané filtry",
 
   "optimizer_sending": "Odesílám do optimalizátoru...",

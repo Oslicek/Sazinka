@@ -22,14 +22,14 @@ export type PanelSignal =
       scheduledCustomerIds?: string[];
       selectedCandidateForMap?: SelectedCandidateForMap | null;
       selectedCandidatesForMap?: SelectedCandidateForMap[];
-      mapSelectionMode?: boolean;
+      mapSelectionTool?: 'click' | 'rect' | null;
       mapSelectedIds?: string[];
     }
   | { type: 'ROUTE_DATA_CHANGED'; inRouteCustomerIds: string[] }
   | { type: 'SCHEDULE_SNAPSHOT'; scheduledCustomerIds: string[] }
   | { type: 'PANEL_DETACHED'; panel: 'map' | 'list'; page: 'inbox' | 'plan' }
   | { type: 'PANEL_REATTACHED'; panel: 'map' | 'list'; page: 'inbox' | 'plan' }
-  | { type: 'MAP_SELECTION_MODE'; active: boolean }
+  | { type: 'MAP_SELECTION_TOOL'; tool: 'click' | 'rect' | null }
   | { type: 'MAP_SUB_SELECT'; candidateIds: string[] }
   | { type: 'MAP_SUB_DESELECT'; candidateIds: string[] }
   | { type: 'MAP_SUB_SELECT_TOGGLE'; candidateId: string }

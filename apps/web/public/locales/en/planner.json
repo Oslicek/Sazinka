@@ -57,6 +57,8 @@
   "batch_unassigned": "Could not assign: {{names}}. Remaining in selection.",
   "map_select_mode_toggle": "Select on map",
   "map_selected_count": "{{count}} of {{total}} on map",
+  "map_tool_click": "Click pins to select",
+  "map_tool_rect": "Draw rectangle to select",
   "empty_filtered": "No candidates for selected filters",
 
   "optimizer_sending": "Sending to optimizer...",

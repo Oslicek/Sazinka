@@ -35,7 +35,7 @@ export function RouteMapPanel({ selectedCandidate, insertionPreview: propInserti
 
   const effectiveCandidate = selectedCandidate ?? state.selectedCandidateForMap ?? null;
   const effectiveCandidates = state.selectedCandidatesForMap ?? [];
-  const mapSelectionMode = state.mapSelectionMode ?? false;
+  const mapSelectionTool = state.mapSelectionTool ?? null;
   const mapSelectedIds = state.mapSelectedIds ?? [];
 
   const geometryUnsubRef = useRef<(() => void) | null>(null);
@@ -131,7 +131,8 @@ export function RouteMapPanel({ selectedCandidate, insertionPreview: propInserti
       highlightedStopId={selectedCustomerId}
       selectedCandidate={effectiveCandidate}
       selectedCandidates={effectiveCandidates}
-      mapSelectionMode={mapSelectionMode}
+      mapSelectionTool={mapSelectionTool}
+      onMapSelectionToolChange={actions.setMapSelectionTool}
       mapSelectedIds={mapSelectedIds}
       onCandidateToggle={(id) => actions.setMapSelectedIds(toggleMapSelectedId(mapSelectedIds, id))}
       onCandidateRectSelect={(ids) => actions.setMapSelectedIds(mergeMapSelectedIds(mapSelectedIds, ids))}

@@ -301,7 +301,7 @@ function PlanningInboxInner() {
   const [routeJobProgress, setRouteJobProgress] = useState<string | null>(null);
 
   // Map sub-selection state (Story 2: select candidates directly on the map)
-  const mapSelectionMode = state.mapSelectionMode ?? false;
+  const mapSelectionTool = state.mapSelectionTool ?? null;
   const mapSelectedIds = state.mapSelectedIds ?? [];
   const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState(false);
   const [activePresetId, setActivePresetId] = useState<FilterPresetId | null>(null);
@@ -1765,7 +1765,7 @@ function PlanningInboxInner() {
   // Route building: add selected candidates to route via VRP optimizer
   const handleAddSelectedToRoute = useCallback(async () => {
     // In map sub-selection mode, use mapSelectedIds as the active batch; else use selectedIds
-    const activeIds = mapSelectionMode
+    const activeIds = mapSelectionTool
       ? new Set(state.mapSelectedIds ?? [])
       : selectedIds;
     if (activeIds.size === 0 || isOptimizing) return;
@@ -1989,7 +1989,7 @@ function PlanningInboxInner() {
       setTimeout(() => setRouteJobProgress(null), 8000);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedIds, mapSelectionMode, state.mapSelectedIds, isOptimizing, depots, context, candidates, routeStops, inRouteIds, routeBufferPercent, routeBufferFixedMinutes, t, incrementRouteVersion]);
+  }, [selectedIds, mapSelectionTool, state.mapSelectedIds, isOptimizing, depots, context, candidates, routeStops, inRouteIds, routeBufferPercent, routeBufferFixedMinutes, t, incrementRouteVersion]);
 
 
   // Route building: add single candidate from detail panel
@@ -2771,7 +2771,8 @@ function PlanningInboxInner() {
               debugRouteId={loadedRouteId}
               selectedCandidate={selectedCandidateForMap}
               selectedCandidates={selectedCandidatesForMap}
-              mapSelectionMode={mapSelectionMode}
+              mapSelectionTool={mapSelectionTool}
+              onMapSelectionToolChange={actions.setMapSelectionTool}
               mapSelectedIds={mapSelectedIds}
               onCandidateToggle={handleCandidateToggle}
               onCandidateRectSelect={handleCandidateRectSelect}
@@ -3186,7 +3187,7 @@ function PlanningInboxInner() {
       {selectedIds.size > 0 && (
         <div className={styles.selectionToolbar}>
           <span className={styles.selectionCount}>
-            {mapSelectionMode && mapSelectedIds.length > 0
+            {mapSelectionTool && mapSelectedIds.length > 0
               ? t('map_selected_count', { count: mapSelectedIds.length, total: selectedIds.size })
               : t('selected_count', { count: selectedIds.size })}
           </span>
@@ -3198,23 +3199,9 @@ function PlanningInboxInner() {
           )}
           <button
             type="button"
-            className={`${styles.mapSelectToggle}${mapSelectionMode ? ` ${styles.mapSelectToggleActive}` : ''}`}
-            onClick={() => {
-              actions.setMapSelectionMode(!mapSelectionMode);
-              if (mapSelectionMode) actions.setMapSelectedIds([]);
-            }}
-            title={t('map_select_mode_toggle')}
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <rect x="1" y="1" width="12" height="12" rx="1" strokeDasharray="3 2" />
-              <circle cx="7" cy="7" r="2.5" fill="currentColor" stroke="none" />
-            </svg>
-          </button>
-          <button
-            type="button"
             className={styles.addSelectedButton}
             onClick={handleAddSelectedToRoute}
-            disabled={isOptimizing || !context?.depotId || (mapSelectionMode && mapSelectedIds.length === 0)}
+            disabled={isOptimizing || !context?.depotId || (mapSelectionTool != null && mapSelectedIds.length === 0)}
             title={!context?.depotId ? t('batch_no_depot') : undefined}
           >
             <Plus size={14} /> {isOptimizing ? t('optimizer_running') : t('add_to_route_optimize')}
@@ -3224,7 +3211,7 @@ function PlanningInboxInner() {
             className={styles.clearSelectionButton}
             onClick={() => {
               setSelectedIds(new Set());
-              actions.setMapSelectionMode(false);
+              actions.setMapSelectionTool(null);
               actions.setMapSelectedIds([]);
             }}
             disabled={isOptimizing}

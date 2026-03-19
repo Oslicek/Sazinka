@@ -312,20 +312,26 @@ describe('PanelStateProvider', () => {
     expect(result.current.state.selectedCandidatesForMap).toEqual([]);
   });
 
-  it('setMapSelectionMode stores boolean in state', () => {
+  it('setMapSelectionTool stores tool in state', () => {
     const { result } = renderHook(() => usePanelState(), { wrapper });
 
     act(() => {
-      result.current.actions.setMapSelectionMode(true);
+      result.current.actions.setMapSelectionTool('click');
     });
 
-    expect(result.current.state.mapSelectionMode).toBe(true);
+    expect(result.current.state.mapSelectionTool).toBe('click');
 
     act(() => {
-      result.current.actions.setMapSelectionMode(false);
+      result.current.actions.setMapSelectionTool('rect');
     });
 
-    expect(result.current.state.mapSelectionMode).toBe(false);
+    expect(result.current.state.mapSelectionTool).toBe('rect');
+
+    act(() => {
+      result.current.actions.setMapSelectionTool(null);
+    });
+
+    expect(result.current.state.mapSelectionTool).toBeNull();
   });
 
   it('setMapSelectedIds stores IDs in state', () => {
