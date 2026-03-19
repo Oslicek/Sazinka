@@ -2662,244 +2662,6 @@ function PlanningInboxInner() {
   const filterSummary = buildFilterSummary(filters);
   const hasAdvancedActive = hasAdvancedCriteria(filters);
 
-  // Render inbox list panel
-  const renderInboxList = () => (
-    <div className={styles.inboxPanel}>
-      <div className={styles.filterPanel}>
-        {/* Always-visible row: presets + count + reset + expand toggle */}
-        <div className={styles.filterPanelHeader}>
-          <div className={styles.filterPresets}>
-            {FILTER_PRESETS.map((preset) => (
-              <button
-                key={preset.id}
-                type="button"
-                className={`${styles.filterChip} ${activePresetId === preset.id ? styles.active : ''}`}
-                onClick={() => applyPreset(preset.id)}
-              >
-                {t(preset.label)}
-              </button>
-            ))}
-          </div>
-          <div className={styles.scoringSelector}>
-            <label className={styles.scoringSelectorLabel}>{t('scoring_selector_label')}:</label>
-            <select
-              className={styles.scoringSelectorSelect}
-              value={selectedRuleSetId ?? ''}
-              onChange={(e) => setSelectedRuleSetId(e.target.value || null)}
-              disabled={isLoadingRuleSets}
-            >
-              {ruleSets.map((rs) => (
-                <option key={rs.id} value={rs.id}>
-                  {rs.isDefault ? `${t('scoring_default_marker')} ` : ''}{rs.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <span className={styles.filterResults}>
-            {sortedCandidates.length}
-            {activeFilterCount > 0 && !isAdvancedFiltersOpen && hasAdvancedActive && (
-              <span className={styles.advancedHint} title={t('filter_advanced_hint')}>*</span>
-            )}
-          </span>
-          <button
-            type="button"
-            className={styles.filterResetButton}
-            onClick={clearFilters}
-            disabled={activeFilterCount === 0}
-            title={t('filter_reset')}
-          >
-            Reset
-          </button>
-          <CollapseButton
-            collapsed={!isAdvancedFiltersOpen}
-            onClick={() => setIsAdvancedFiltersOpen((prev) => !prev)}
-            title={isAdvancedFiltersOpen ? t('filter_collapse') : t('filter_expand')}
-          />
-        </div>
-
-        {/* Expandable section: detailed filters */}
-        {isAdvancedFiltersOpen && (
-          <div className={styles.filterExpandedSection}>
-            <div className={styles.filterGroup}>
-              <span className={styles.filterGroupLabel}>{t('filter_new_revision')}</span>
-              <div className={styles.filterChips}>
-                <button type="button" className={`${styles.filterChip} ${filters.groups.time.selected.includes('OVERDUE') ? styles.active : ''}`} onClick={() => toggleTimeFilter('OVERDUE')}>{t('filter_overdue')}</button>
-                <button type="button" className={`${styles.filterChip} ${filters.groups.time.selected.includes('DUE_IN_7_DAYS') ? styles.active : ''}`} onClick={() => toggleTimeFilter('DUE_IN_7_DAYS')}>{t('filter_due_7_days')}</button>
-                <button type="button" className={`${styles.filterChip} ${filters.groups.time.selected.includes('DUE_IN_30_DAYS') ? styles.active : ''}`} onClick={() => toggleTimeFilter('DUE_IN_30_DAYS')}>{t('filter_due_30_days')}</button>
-                <button type="button" className={`${styles.filterChip} ${filters.groups.time.selected.length === 0 ? styles.active : ''}`} onClick={() => clearTimeFilters()}>{t('filter_anytime')}</button>
-              </div>
-            </div>
-
-            <div className={styles.filterGroup}>
-              <span className={styles.filterGroupLabel}>{t('filter_appointment')}</span>
-              <div className={styles.filterTriState}>
-                <button type="button" className={`${styles.filterChip} ${filters.groups.hasTerm === 'ANY' ? styles.active : ''}`} onClick={() => setTriState('hasTerm', 'ANY')}>{t('filter_any')}</button>
-                <button type="button" className={`${styles.filterChip} ${filters.groups.hasTerm === 'YES' ? styles.active : ''}`} onClick={() => setTriState('hasTerm', 'YES')}>{t('filter_has_term')}</button>
-                <button type="button" className={`${styles.filterChip} ${filters.groups.hasTerm === 'NO' ? styles.active : ''}`} onClick={() => setTriState('hasTerm', 'NO')}>{t('filter_no_appointment')}</button>
-              </div>
-            </div>
-
-            <div className={styles.filterGroup}>
-              <span className={styles.filterGroupLabel}>{t('filter_route')}</span>
-              <div className={styles.filterTriState}>
-                <button type="button" className={`${styles.filterChip} ${filters.groups.inRoute === 'ANY' ? styles.active : ''}`} onClick={() => setTriState('inRoute', 'ANY')}>{t('filter_any')}</button>
-                <button type="button" className={`${styles.filterChip} ${filters.groups.inRoute === 'YES' ? styles.active : ''}`} onClick={() => setTriState('inRoute', 'YES')}>{t('filter_in_route')}</button>
-                <button type="button" className={`${styles.filterChip} ${filters.groups.inRoute === 'NO' ? styles.active : ''}`} onClick={() => setTriState('inRoute', 'NO')}>{t('filter_not_in_route')}</button>
-              </div>
-            </div>
-
-            <div className={styles.advancedPanel}>
-              <div className={styles.advancedPanelHeader}>{t('filter_advanced')}</div>
-
-              <div className={styles.advancedRow}>
-                <span className={styles.filterGroupLabel}>{t('filter_group_logic')}</span>
-                <div className={styles.rootOperatorSwitch}>
-                  <button
-                    type="button"
-                    className={`${styles.operatorButton} ${filters.rootOperator === 'AND' ? styles.active : ''}`}
-                    onClick={() => setRootOperator('AND')}
-                  >
-                    AND
-                  </button>
-                  <button
-                    type="button"
-                    className={`${styles.operatorButton} ${filters.rootOperator === 'OR' ? styles.active : ''}`}
-                    onClick={() => setRootOperator('OR')}
-                  >
-                    OR
-                  </button>
-                </div>
-              </div>
-
-              <div className={styles.advancedRow}>
-                <span className={styles.filterGroupLabel}>{t('filter_revision_logic')}</span>
-                <div className={styles.groupOperatorSwitch}>
-                  <button
-                    type="button"
-                    className={`${styles.operatorButton} ${filters.groups.time.operator === 'OR' ? styles.active : ''}`}
-                    onClick={() => setGroupOperator('time', 'OR')}
-                  >
-                    OR
-                  </button>
-                  <button
-                    type="button"
-                    className={`${styles.operatorButton} ${filters.groups.time.operator === 'AND' ? styles.active : ''}`}
-                    onClick={() => setGroupOperator('time', 'AND')}
-                  >
-                    AND
-                  </button>
-                </div>
-              </div>
-
-              <div className={styles.filterGroup}>
-                <span className={styles.filterGroupLabel}>{t('filter_problems_label')}</span>
-                <div className={styles.groupOperatorSwitch}>
-                  <button
-                    type="button"
-                    className={`${styles.operatorButton} ${filters.groups.problems.operator === 'OR' ? styles.active : ''}`}
-                    onClick={() => setGroupOperator('problems', 'OR')}
-                  >
-                    OR
-                  </button>
-                  <button
-                    type="button"
-                    className={`${styles.operatorButton} ${filters.groups.problems.operator === 'AND' ? styles.active : ''}`}
-                    onClick={() => setGroupOperator('problems', 'AND')}
-                  >
-                    AND
-                  </button>
-                </div>
-                <div className={styles.filterChips}>
-                  <button type="button" className={`${styles.filterChip} ${filters.groups.problems.selected.includes('MISSING_PHONE') ? styles.active : ''}`} onClick={() => toggleProblemFilter('MISSING_PHONE')}>{t('filter_missing_phone')}</button>
-                  <button type="button" className={`${styles.filterChip} ${filters.groups.problems.selected.includes('ADDRESS_ISSUE') ? styles.active : ''}`} onClick={() => toggleProblemFilter('ADDRESS_ISSUE')}>{t('filter_address_issue')}</button>
-                  <button type="button" className={`${styles.filterChip} ${filters.groups.problems.selected.includes('GEOCODE_FAILED') ? styles.active : ''}`} onClick={() => toggleProblemFilter('GEOCODE_FAILED')}>{t('filter_geocode_failed')}</button>
-                </div>
-              </div>
-
-              <div className={styles.filterSummaryText}>{filterSummary}</div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Multi-crew tip */}
-      {crewComparisons.length > 0 && (
-        <MultiCrewTip
-          currentCrew={context?.crewName ?? ''}
-          comparisons={crewComparisons}
-          onSwitchCrew={(crewId) => handleCrewChange(crewId)}
-        />
-      )}
-      
-      {/* Batch selection toolbar */}
-      {selectedIds.size > 0 && (
-        <div className={styles.selectionToolbar}>
-          <span className={styles.selectionCount}>
-            {mapSelectionMode && mapSelectedIds.length > 0
-              ? t('map_selected_count', { count: mapSelectedIds.length, total: selectedIds.size })
-              : t('selected_count', { count: selectedIds.size })}
-          </span>
-          {routeJobProgress && isOptimizing && (
-            <span className={styles.batchProgress}>{routeJobProgress}</span>
-          )}
-          {routeJobProgress && !isOptimizing && (
-            <span className={styles.batchError}>{routeJobProgress}</span>
-          )}
-          <button
-            type="button"
-            className={`${styles.mapSelectToggle}${mapSelectionMode ? ` ${styles.mapSelectToggleActive}` : ''}`}
-            onClick={() => {
-              actions.setMapSelectionMode(!mapSelectionMode);
-              if (mapSelectionMode) actions.setMapSelectedIds([]);
-            }}
-            title={t('map_select_mode_toggle')}
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <rect x="1" y="1" width="12" height="12" rx="1" strokeDasharray="3 2" />
-              <circle cx="7" cy="7" r="2.5" fill="currentColor" stroke="none" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            className={styles.addSelectedButton}
-            onClick={handleAddSelectedToRoute}
-            disabled={isOptimizing || !context?.depotId || (mapSelectionMode && mapSelectedIds.length === 0)}
-            title={!context?.depotId ? t('batch_no_depot') : undefined}
-          >
-            <Plus size={14} /> {isOptimizing ? t('optimizer_running') : t('add_to_route_optimize')}
-          </button>
-          <button
-            type="button"
-            className={styles.clearSelectionButton}
-            onClick={() => {
-              setSelectedIds(new Set());
-              actions.setMapSelectionMode(false);
-              actions.setMapSelectedIds([]);
-            }}
-            disabled={isOptimizing}
-          >
-            {t('cancel_selection')}
-          </button>
-        </div>
-      )}
-      
-      {/* Virtualized candidate list */}
-      <VirtualizedInboxList
-        ref={listRef}
-        candidates={candidateRowData}
-        selectedCandidateId={selectedCandidateId}
-        onCandidateSelect={handleCandidateSelect}
-        isLoading={isLoadingCandidates}
-        emptyMessage={t('empty_filtered')}
-        className={styles.candidateList}
-        selectable={true}
-        selectedIds={selectedIds}
-        onSelectionChange={handleSelectionChange}
-        inRouteIds={inRouteIds}
-      />
-    </div>
-  );
-
   // Render map panel with route stop list below
   const renderMapPanel = () => {
     // When we have a day overview (after scheduling), show day overview instead
@@ -3421,7 +3183,61 @@ function PlanningInboxInner() {
           onDetach={() => detach('list')}
         />
       )}
-      <InboxListPanel />
+      {selectedIds.size > 0 && (
+        <div className={styles.selectionToolbar}>
+          <span className={styles.selectionCount}>
+            {mapSelectionMode && mapSelectedIds.length > 0
+              ? t('map_selected_count', { count: mapSelectedIds.length, total: selectedIds.size })
+              : t('selected_count', { count: selectedIds.size })}
+          </span>
+          {routeJobProgress && isOptimizing && (
+            <span className={styles.batchProgress}>{routeJobProgress}</span>
+          )}
+          {routeJobProgress && !isOptimizing && (
+            <span className={styles.batchError}>{routeJobProgress}</span>
+          )}
+          <button
+            type="button"
+            className={`${styles.mapSelectToggle}${mapSelectionMode ? ` ${styles.mapSelectToggleActive}` : ''}`}
+            onClick={() => {
+              actions.setMapSelectionMode(!mapSelectionMode);
+              if (mapSelectionMode) actions.setMapSelectedIds([]);
+            }}
+            title={t('map_select_mode_toggle')}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <rect x="1" y="1" width="12" height="12" rx="1" strokeDasharray="3 2" />
+              <circle cx="7" cy="7" r="2.5" fill="currentColor" stroke="none" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className={styles.addSelectedButton}
+            onClick={handleAddSelectedToRoute}
+            disabled={isOptimizing || !context?.depotId || (mapSelectionMode && mapSelectedIds.length === 0)}
+            title={!context?.depotId ? t('batch_no_depot') : undefined}
+          >
+            <Plus size={14} /> {isOptimizing ? t('optimizer_running') : t('add_to_route_optimize')}
+          </button>
+          <button
+            type="button"
+            className={styles.clearSelectionButton}
+            onClick={() => {
+              setSelectedIds(new Set());
+              actions.setMapSelectionMode(false);
+              actions.setMapSelectedIds([]);
+            }}
+            disabled={isOptimizing}
+          >
+            {t('cancel_selection')}
+          </button>
+        </div>
+      )}
+      <InboxListPanel
+        selectable
+        selectedIds={selectedIds}
+        onSelectionChange={handleSelectionChange}
+      />
     </div>
   ) : null;
 

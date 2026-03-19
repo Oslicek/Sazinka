@@ -98,9 +98,12 @@ export function resetInboxListCache(): void {
 interface InboxListPanelProps {
   candidates?: CandidateRowData[];
   isLoading?: boolean;
+  selectable?: boolean;
+  selectedIds?: Set<string>;
+  onSelectionChange?: (id: string, selected: boolean) => void;
 }
 
-export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadingProp }: InboxListPanelProps) {
+export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadingProp, selectable = false, selectedIds, onSelectionChange }: InboxListPanelProps) {
   const { state, actions } = usePanelState();
   const { isConnected } = useNatsStore();
 
@@ -284,7 +287,9 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
         isLoading={resolvedIsLoading}
         inRouteIds={inRouteIds}
         scheduledIds={scheduledIds}
-        selectedIds={new Set<string>()}
+        selectable={selectable}
+        selectedIds={selectedIds}
+        onSelectionChange={onSelectionChange}
       />
     </>
   );
