@@ -264,7 +264,7 @@
 .rightPanelSectionContent {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 /* Self-sufficient panel wrappers (detachable panels) */

@@ -139,6 +139,8 @@ function SortableStopCard({
   item,
   stopIndex,
   isSelected,
+  isExpanded,
+  onToggleExpand,
   onStopClick,
   onRemoveStop,
   onUpdateBreak,
@@ -148,6 +150,8 @@ function SortableStopCard({
   item: TimelineItem;
   stopIndex: number;
   isSelected: boolean;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
   onStopClick: (customerId: string, index: number) => void;
   onRemoveStop?: (stopId: string) => void;
   onUpdateBreak?: (stopId: string, patch: { breakTimeStart?: string; breakDurationMinutes?: number }) => void;
@@ -173,9 +177,11 @@ function SortableStopCard({
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    ...(hasLateWarning
+    ...(!isExpanded && hasLateWarning
       ? { minHeight: proportionalHeight }
-      : { height: proportionalHeight, minHeight: MIN_STOP_HEIGHT }),
+      : !isExpanded
+        ? { height: proportionalHeight, minHeight: MIN_STOP_HEIGHT }
+        : {}),
     opacity: isDragging ? 0.3 : 1,
   };
 
@@ -183,8 +189,11 @@ function SortableStopCard({
     <div
       ref={setNodeRef}
       style={style}
-      className={`${isBreak ? styles.breakCard : styles.stopCard} ${isSelected ? styles.selected : ''} ${isDragging ? styles.dragging : ''} ${hasAgreedWindowOverlay ? styles.hasAgreedWindow : ''}`}
-      onClick={() => !isBreak && stop.customerId && onStopClick(stop.customerId, stopIndex)}
+      className={`${isBreak ? styles.breakCard : styles.stopCard} ${isSelected ? styles.selected : ''} ${isDragging ? styles.dragging : ''} ${hasAgreedWindowOverlay ? styles.hasAgreedWindow : ''} ${isExpanded ? styles.expanded : ''}`}
+      onClick={() => {
+        onToggleExpand();
+        if (!isBreak && stop.customerId) onStopClick(stop.customerId, stopIndex);
+      }}
       {...attributes}
     >
       {hasAgreedWindowOverlay && (
@@ -448,6 +457,8 @@ export function PlanningTimeline({
   const depotName = depot?.name ?? 'Depo';
   const workdayStart = routeStartTime ?? '08:00';
   const workdayEnd = routeEndTime ?? '16:00';
+
+  const [expandedStopId, setExpandedStopId] = useState<string | null>(null);
 
   // Pending DnD warning
   const [pendingReorder, setPendingReorder] = useState<{
@@ -843,6 +854,8 @@ export function PlanningTimeline({
                       item={item}
                       stopIndex={currentStopIndex}
                       isSelected={item.stop?.customerId === selectedStopId}
+                      isExpanded={expandedStopId === item.id}
+                      onToggleExpand={() => setExpandedStopId(prev => prev === item.id ? null : item.id)}
                       onStopClick={onStopClick}
                       onRemoveStop={onRemoveStop}
                       onUpdateBreak={onUpdateBreak}

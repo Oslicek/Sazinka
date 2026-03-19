@@ -1,7 +1,8 @@
 .container {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -265,6 +266,9 @@
   border-left-color: var(--color-primary);
   background: linear-gradient(135deg, #c7d9f7 0%, #dbeafe 100%);
   box-shadow: 0 3px 10px rgba(37, 99, 235, 0.18), 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.stopCard.expanded {
   overflow: visible;
   height: auto !important;
   min-height: auto;
@@ -298,11 +302,14 @@
 }
 
 .breakCard:hover {
+  box-shadow: 0 3px 10px rgba(245, 158, 11, 0.2), 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.breakCard.expanded {
   overflow: visible;
   height: auto !important;
   min-height: auto;
   z-index: 5;
-  box-shadow: 0 3px 10px rgba(245, 158, 11, 0.2), 0 1px 4px rgba(0, 0, 0, 0.08);
 }
 
 .breakCard.dragging {

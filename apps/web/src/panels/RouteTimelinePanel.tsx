@@ -72,7 +72,7 @@ export function RouteTimelinePanel({ onOptimize }: RouteTimelinePanelProps) {
   };
 
   return (
-    <div>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflow: 'hidden' }}>
       {breakWarnings.length > 0 && (
         <div role="alert">
           {breakWarnings.map((w, i) => (
