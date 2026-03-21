@@ -2506,11 +2506,24 @@ function PlanningInboxInner() {
     // If we have a saved route, delete it from the backend
     if (loadedRouteId) {
       try {
+        // #region agent log
+        _log('handleClearRoute: calling deleteRoute', { loadedRouteId }, 'H6a');
+        // #endregion
         await routeService.deleteRoute(loadedRouteId);
+        // #region agent log
+        _log('handleClearRoute: deleteRoute succeeded', { loadedRouteId }, 'H6a');
+        // #endregion
         setLoadedRouteId(null);
       } catch (err) {
+        // #region agent log
+        _log('handleClearRoute: deleteRoute FAILED', { loadedRouteId, error: String(err) }, 'H6b');
+        // #endregion
         logger.error('Failed to delete route:', err);
       }
+    } else {
+      // #region agent log
+      _log('handleClearRoute: no loadedRouteId, skipping backend delete', {}, 'H6c');
+      // #endregion
     }
     // #region agent log
     _log('handleClearRoute: setting routeStops to empty', {}, 'H1a');
