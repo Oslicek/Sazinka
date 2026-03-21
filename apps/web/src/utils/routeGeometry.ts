@@ -91,7 +91,12 @@ export function splitGeometryIntoSegments(
       // #endregion
       
       waypointIndices.push(minIdx);
-      searchStart = minIdx;
+      // DO NOT set searchStart = minIdx here. 
+      // If the depot is slightly "further" along the geometry line than the first stop,
+      // setting searchStart = minIdx forces the first stop to be found AFTER the depot,
+      // which can cause the first segment to be empty or inverted.
+      // We always want to start searching for the first stop from the beginning of the geometry.
+      searchStart = 0;
       continue;
     }
     if (wpIndex === waypoints.length - 1) {
@@ -120,7 +125,12 @@ export function splitGeometryIntoSegments(
     let minDist = Infinity;
     let minIdx = searchStart;
 
-    for (let i = searchStart; i <= searchEnd; i++) {
+    // For the first stop (wpIndex === 1), we should search from the very beginning of the geometry,
+    // not from where the depot was found, because the Valhalla geometry might start slightly
+    // "after" the depot in terms of distance, causing the first stop to snap to the depot's location.
+    const actualSearchStart = wpIndex === 1 ? 0 : searchStart;
+
+    for (let i = actualSearchStart; i <= searchEnd; i++) {
       const dx = geometry[i][0] - wp[0];
       const dy = geometry[i][1] - wp[1];
       const dist = dx * dx + dy * dy;
@@ -134,7 +144,7 @@ export function splitGeometryIntoSegments(
     if (wpIndex === 1) {
       _log('splitGeometryIntoSegments: finding first stop', { 
         stop: wp, 
-        searchStart,
+        actualSearchStart,
         searchEnd, 
         minIdx, 
         minDist,
@@ -144,14 +154,24 @@ export function splitGeometryIntoSegments(
     // #endregion
 
     waypointIndices.push(minIdx);
+    // Ensure monotonicity for subsequent stops
     searchStart = Math.min(lastGeometryIndex, Math.max(searchStart, minIdx + 1));
   }
 
   // Slice geometry into segments
   const segments: [number, number][][] = [];
   for (let i = 0; i < waypointIndices.length - 1; i++) {
-    const start = waypointIndices[i];
-    const end = waypointIndices[i + 1];
+    let start = waypointIndices[i];
+    let end = waypointIndices[i + 1];
+    
+    // If the depot was found "after" the first stop (due to geometry quirks),
+    // swap them so we still get a valid segment.
+    if (i === 0 && start > end) {
+      const temp = start;
+      start = end;
+      end = temp;
+    }
+    
     if (end > start) {
       segments.push(geometry.slice(start, end + 1));
     } else {
