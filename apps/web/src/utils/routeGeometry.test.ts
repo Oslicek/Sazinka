@@ -77,6 +77,31 @@ describe('splitGeometryIntoSegments', () => {
     }
   });
 
+  it('Valhalla geometry (with depot legs) produces multi-point first segment', () => {
+    // Regression: Valhalla geometry that starts/ends at depot should produce
+    // rich road geometry for depot legs, not 2-point straight lines.
+    const geometry: [number, number][] = [];
+    // Simulate Valhalla road geometry: depot → stop → depot (~100 points)
+    for (let i = 0; i <= 50; i++) {
+      geometry.push([14.0 + i * 0.01, 50.0 + i * 0.005]);
+    }
+    for (let i = 50; i >= 0; i--) {
+      geometry.push([14.0 + i * 0.01, 50.0 + i * 0.005 + 0.001]);
+    }
+
+    const stops: RouteWaypoint[] = [
+      { coordinates: { lat: 50.25, lng: 14.5 } },
+    ];
+    const depot = { lat: 50.0, lng: 14.0 };
+
+    const segments = splitGeometryIntoSegments(geometry, stops, depot);
+
+    expect(segments.length).toBe(2);
+    // Depot-to-stop segment should have many road points, NOT just 2
+    expect(segments[0].length).toBeGreaterThan(10);
+    expect(segments[1].length).toBeGreaterThan(10);
+  });
+
   it('anchors first and last segment to geometry endpoints', () => {
     const geometry: [number, number][] = [
       [14.0, 50.0],
@@ -130,6 +155,52 @@ describe('splitVrpGeometryWithDepotLegs', () => {
   it('returns empty array when no stops', () => {
     expect(splitVrpGeometryWithDepotLegs([[1, 1]], [], { lat: 0, lng: 0 })).toEqual([]);
   });
+
+  it('middle segments preserve original road geometry points', () => {
+    const geometry: [number, number][] = [
+      [16.08, 48.93], [16.10, 48.95], [16.15, 49.00],
+      [16.20, 49.05], [16.30, 49.10],
+      [16.20, 49.05], [16.15, 49.00], [16.10, 48.95], [16.08, 48.93],
+    ];
+    const stops: RouteWaypoint[] = [
+      { coordinates: { lat: 48.93, lng: 16.08 } },
+      { coordinates: { lat: 49.10, lng: 16.30 } },
+    ];
+    const depot = { lat: 49.22, lng: 16.51 };
+
+    const segments = splitVrpGeometryWithDepotLegs(geometry, stops, depot);
+
+    expect(segments.length).toBe(3);
+    // First segment is a straight line from depot to geometry start
+    expect(segments[0]).toEqual([[16.51, 49.22], geometry[0]]);
+    // Middle segment has multiple road points (not just 2-point straight line)
+    expect(segments[1].length).toBeGreaterThan(2);
+    // Last segment is a straight line from geometry end to depot
+    expect(segments[2][segments[2].length - 1]).toEqual([16.51, 49.22]);
+  });
+
+  it('only depot legs are straight lines, not stop-to-stop segments', () => {
+    const geometry: [number, number][] = [
+      [1, 1], [1.2, 1.1], [1.5, 1.3], [2, 2],
+      [2.2, 2.1], [2.5, 2.3], [3, 3],
+    ];
+    const stops: RouteWaypoint[] = [
+      { coordinates: { lat: 1, lng: 1 } },
+      { coordinates: { lat: 2, lng: 2 } },
+      { coordinates: { lat: 3, lng: 3 } },
+    ];
+    const depot = { lat: 0, lng: 0 };
+
+    const segments = splitVrpGeometryWithDepotLegs(geometry, stops, depot);
+
+    // Depot legs are exactly 2 points (straight lines)
+    expect(segments[0].length).toBe(2);
+    expect(segments[segments.length - 1].length).toBe(2);
+    // Stop-to-stop segments should have road geometry (> 2 points)
+    for (let i = 1; i < segments.length - 1; i++) {
+      expect(segments[i].length).toBeGreaterThanOrEqual(2);
+    }
+  });
 });
 
 describe('geometryIncludesDepotLegs', () => {
@@ -163,6 +234,34 @@ describe('geometryIncludesDepotLegs', () => {
 
   it('returns false for empty geometry', () => {
     expect(geometryIncludesDepotLegs([], { lat: 49.22, lng: 16.51 })).toBe(false);
+  });
+
+  it('returns false when only start is far from depot', () => {
+    const geometry: [number, number][] = [
+      [16.08, 48.93],
+      [16.20, 49.00],
+      [16.51, 49.22],
+    ];
+    expect(geometryIncludesDepotLegs(geometry, { lat: 49.22, lng: 16.51 })).toBe(false);
+  });
+
+  it('returns false when only end is far from depot', () => {
+    const geometry: [number, number][] = [
+      [16.51, 49.22],
+      [16.20, 49.00],
+      [16.08, 48.93],
+    ];
+    expect(geometryIncludesDepotLegs(geometry, { lat: 49.22, lng: 16.51 })).toBe(false);
+  });
+
+  it('tolerates Valhalla road-snap offset of ~1-2km', () => {
+    // Valhalla snaps depot to nearest road, typically within 1-2km
+    const geometry: [number, number][] = [
+      [16.52, 49.21],
+      [16.30, 49.00],
+      [16.50, 49.23],
+    ];
+    expect(geometryIncludesDepotLegs(geometry, { lat: 49.22, lng: 16.51 })).toBe(true);
   });
 });
 

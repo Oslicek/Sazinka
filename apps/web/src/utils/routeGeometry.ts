@@ -34,21 +34,12 @@ export function splitGeometryIntoSegments(
   stops: RouteWaypoint[],
   depot: DepotCoord,
 ): [number, number][][] {
-  // #region agent log
-  const _log = (msg: string, data: any, hyp: string) => {
-    console.log(`[DEBUG] ${msg}`, data);
-    fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2ba648'},body:JSON.stringify({sessionId:'2ba648',location:'routeGeometry.ts',message:msg,data,timestamp:Date.now(),runId:'run1',hypothesisId:hyp})}).catch(()=>{});
-  };
-  // #endregion
-
   // Build waypoints: depot → stops → depot
   const waypoints: [number, number][] = [
     [depot.lng, depot.lat],
     ...stops.map((s) => [s.coordinates.lng, s.coordinates.lat] as [number, number]),
     [depot.lng, depot.lat],
   ];
-
-  _log('splitGeometryIntoSegments called', { geometryLen: geometry.length, waypointsLen: waypoints.length, depot }, 'H2a,H2c');
 
   if (geometry.length === 0 || waypoints.length < 2) return [];
 
@@ -103,18 +94,6 @@ export function splitGeometryIntoSegments(
       ]);
     }
   }
-
-  // #region agent log
-  _log('splitGeometryIntoSegments result', { 
-    waypointIndices, 
-    segmentsLen: segments.length,
-    firstSegmentLen: segments[0]?.length,
-    firstSegmentStart: segments[0]?.[0],
-    firstSegmentEnd: segments[0]?.[segments[0]?.length - 1],
-    depot,
-    firstStop: waypoints[1]
-  }, 'H2a,H2d');
-  // #endregion
 
   return segments;
 }

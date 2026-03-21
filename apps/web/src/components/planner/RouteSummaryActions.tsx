@@ -43,13 +43,7 @@ export function RouteSummaryActions({
         </button>
       )}
       {onDeleteRoute && (
-        <button type="button" className={styles.summaryDeleteBtn} onClick={() => {
-          // #region agent log
-          console.log('[DEBUG] Delete route button clicked');
-          fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2ba648'},body:JSON.stringify({sessionId:'2ba648',location:'RouteSummaryActions.tsx:click',message:'Delete route button clicked',data:{},timestamp:Date.now(),runId:'run1',hypothesisId:'H6d'})}).catch(()=>{});
-          // #endregion
-          onDeleteRoute();
-        }}>
+        <button type="button" className={styles.summaryDeleteBtn} onClick={onDeleteRoute}>
           {deleteLabel ?? t('actions_delete_route')}
         </button>
       )}

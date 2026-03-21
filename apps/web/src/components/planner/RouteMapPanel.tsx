@@ -208,13 +208,6 @@ export function RouteMapPanel({
       .addTo(mapRef.current);
   }, [depot, t]);
 
-  // #region agent log
-  const _log = useCallback((msg: string, data: any, hyp: string) => {
-    console.log(`[DEBUG] ${msg}`, data);
-    fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2ba648'},body:JSON.stringify({sessionId:'2ba648',location:'RouteMapPanel.tsx',message:msg,data,timestamp:Date.now(),runId:'run1',hypothesisId:hyp})}).catch(()=>{});
-  }, []);
-  // #endregion
-
   // Clear all stop markers and route layers
   const clearMarkers = useCallback(() => {
     markersRef.current.forEach((marker) => marker.remove());
@@ -223,10 +216,6 @@ export function RouteMapPanel({
 
   const clearRouteLayers = useCallback(() => {
     if (!mapRef.current) return;
-
-    // #region agent log
-    _log('clearRouteLayers called', { hasRouteLine: !!mapRef.current.getLayer('route-line') }, 'H1c');
-    // #endregion
 
     // Remove event handlers
     if (segmentClickHandlerRef.current) {
@@ -583,10 +572,6 @@ export function RouteMapPanel({
 
   // Update route line as segmented GeoJSON with highlight support
   useEffect(() => {
-    // #region agent log
-    _log('Route effect triggered', { stopsLen: stops.length, mapLoaded, hasMapRef: !!mapRef.current }, 'H1b,H1d');
-    // #endregion
-
     if (!mapRef.current || !mapLoaded) return;
 
     // Always clear stale layers first, regardless of style-load state.
@@ -594,9 +579,6 @@ export function RouteMapPanel({
 
     // If there are no stops, we're done (route is deleted/empty)
     if (stops.length === 0) {
-      // #region agent log
-      _log('Route effect returning early (no stops)', {}, 'H1b');
-      // #endregion
       return;
     }
 
@@ -650,26 +632,11 @@ export function RouteMapPanel({
       segments = buildStraightLineSegments(waypoints, depot ? effectiveDepot : null);
     }
 
-    // #region agent log
-    _log('RouteMapPanel rendering route', { 
-      stopsLen: stops.length, 
-      routeGeometryLen: routeGeometry?.length || 0, 
-      depot: !!depot,
-      hasFirstSegment: segments.length > 0,
-      firstSegmentLen: segments[0]?.length
-    }, 'H2e');
-    // #endregion
-
     if (segments.length === 0) return;
 
 
     // Build GeoJSON FeatureCollection with segmentIndex property
-    const features = segments.map((coords, index) => {
-      // #region agent log
-      if (index === 0) {
-        _log('Building GeoJSON for segment 0', { coordsLen: coords.length }, 'H2f');
-      }
-      // #endregion
+    const features = segments.map((coords) => {
       return {
         type: 'Feature' as const,
         properties: { segmentIndex: index },

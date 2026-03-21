@@ -451,12 +451,6 @@ function PlanningInboxInner() {
 
   // Listen for changes from detached panels
   useEffect(() => {
-    // #region agent log
-    if (state.routeStops !== routeStops) {
-      _log('PanelState bridge: state.routeStops changed', { stateStopsLen: state.routeStops.length, localStopsLen: routeStops.length }, 'H1f');
-    }
-    // #endregion
-    
     // Check against prevBridgeRef to avoid infinite loops with the outgoing sync effect
     if (state.routeStops !== prevBridgeRef.current.routeStops) {
       // Accept all updates from detached panels, including empty arrays (route deletions)
@@ -886,10 +880,6 @@ function PlanningInboxInner() {
   // Load saved route for selected day
   useEffect(() => {
     if (!isConnected || !context?.date) return;
-    
-    // #region agent log
-    _log('loadRoute effect triggered', { date: context.date }, 'H1e');
-    // #endregion
 
     const dateToLoad = context.date;
 
@@ -897,9 +887,6 @@ function PlanningInboxInner() {
       setIsLoadingRoute(true);
       try {
         const response = await routeService.getRoute({ date: dateToLoad });
-        // #region agent log
-        _log('loadRoute response received', { date: dateToLoad, hasRoute: !!response.route, stopsLen: response.stops?.length }, 'H1e');
-        // #endregion
         setLoadedRouteId(response.route?.id ?? null);
         
         if (response.route && response.stops.length > 0) {
@@ -2168,9 +2155,6 @@ function PlanningInboxInner() {
     setRouteStops((prev) => {
       const filtered = prev.filter((s) => s.id !== stopId && s.customerId !== stopId);
       remaining = filtered.map((s, i) => ({ ...s, stopOrder: i + 1 }));
-      // #region agent log
-      _log('handleRemoveFromRoute: updating routeStops', { prevLen: prev.length, remainingLen: remaining.length }, 'H1a');
-      // #endregion
       return remaining;
     });
     setReturnToDepotLeg(null);
@@ -2178,9 +2162,6 @@ function PlanningInboxInner() {
 
     // If no stops remain, delete the route from backend instead of relying on auto-save
     if (remaining.length === 0 && loadedRouteId) {
-      // #region agent log
-      _log('handleRemoveFromRoute: last stop removed, deleting route', { loadedRouteId }, 'H1a');
-      // #endregion
       setRouteGeometry([]);
       setBreakWarnings([]);
       setMetrics(null);
@@ -2495,44 +2476,17 @@ function PlanningInboxInner() {
     setHasChanges(true);
   }, [triggerRecalculate]);
 
-  // #region agent log
-  const _log = useCallback((msg: string, data: any, hyp: string) => {
-    console.log(`[DEBUG] ${msg}`, data);
-    fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2ba648'},body:JSON.stringify({sessionId:'2ba648',location:'PlanningInbox.tsx',message:msg,data,timestamp:Date.now(),runId:'run1',hypothesisId:hyp})}).catch(()=>{});
-  }, []);
-  // #endregion
-
   // Route building: clear all stops and delete route from backend
   const handleClearRoute = useCallback(async () => {
-    // #region agent log
-    _log('handleClearRoute called', { loadedRouteId }, 'H1a');
-    // #endregion
-    
     // If we have a saved route, delete it from the backend
     if (loadedRouteId) {
       try {
-        // #region agent log
-        _log('handleClearRoute: calling deleteRoute', { loadedRouteId }, 'H6a');
-        // #endregion
         await routeService.deleteRoute(loadedRouteId);
-        // #region agent log
-        _log('handleClearRoute: deleteRoute succeeded', { loadedRouteId }, 'H6a');
-        // #endregion
         setLoadedRouteId(null);
       } catch (err) {
-        // #region agent log
-        _log('handleClearRoute: deleteRoute FAILED', { loadedRouteId, error: String(err) }, 'H6b');
-        // #endregion
         logger.error('Failed to delete route:', err);
       }
-    } else {
-      // #region agent log
-      _log('handleClearRoute: no loadedRouteId, skipping backend delete', {}, 'H6c');
-      // #endregion
     }
-    // #region agent log
-    _log('handleClearRoute: setting routeStops to empty', {}, 'H1a');
-    // #endregion
     setRouteStops([]);
     setReturnToDepotLeg(null);
     setBreakWarnings([]);

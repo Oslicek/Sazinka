@@ -248,6 +248,63 @@ describe('panels/RouteMapPanel', () => {
     await waitFor(() => expect(mockSubmitGeometryJob).toHaveBeenCalled());
   });
 
+  it('includes depot in geometry fetch when mapDepot is set', async () => {
+    const stop = makeStop();
+    mockGetRoute.mockResolvedValue({ route: { id: 'route-1' }, stops: [stop] });
+    const { ref, ActionsCapture } = makeActionsCapture();
+
+    render(
+      <PanelStateProvider activePageContext="inbox" enableChannel={false} initialRouteContext={mockRouteContext}>
+        <ActionsCapture />
+        <RouteMapPanel />
+      </PanelStateProvider>
+    );
+
+    // Set depot before geometry fetch triggers
+    act(() => {
+      ref.actions!.setMapDepot({ lat: 49.22, lng: 16.51, name: 'Brno' });
+    });
+
+    await waitFor(() => expect(mockSubmitGeometryJob).toHaveBeenCalled());
+
+    // The geometry job should include depot as first and last location
+    const lastCall = mockSubmitGeometryJob.mock.calls[mockSubmitGeometryJob.mock.calls.length - 1];
+    const locations = lastCall[0] as Array<{ lat: number; lng: number }>;
+    expect(locations[0]).toEqual({ lat: 49.22, lng: 16.51 });
+    expect(locations[locations.length - 1]).toEqual({ lat: 49.22, lng: 16.51 });
+    expect(locations.length).toBe(3); // depot, stop, depot
+  });
+
+  it('does not re-fetch from backend after route is deleted', async () => {
+    const stop = makeStop();
+    mockGetRoute.mockResolvedValue({ route: { id: 'route-1' }, stops: [stop] });
+
+    const { ref, ActionsCapture } = makeActionsCapture();
+
+    render(
+      <PanelStateProvider activePageContext="inbox" enableChannel={false} initialRouteContext={mockRouteContext}>
+        <ActionsCapture />
+        <RouteMapPanel />
+      </PanelStateProvider>
+    );
+
+    await waitFor(() => expect(mockProps.current.stops).toEqual([stop]));
+    const callCountAfterLoad = mockGetRoute.mock.calls.length;
+
+    // Simulate route deletion: clear stops, backend returns empty
+    mockGetRoute.mockResolvedValue({ route: null, stops: [] });
+    act(() => {
+      ref.actions!.setRouteStops([]);
+    });
+
+    await waitFor(() => expect(mockProps.current.stops).toEqual([]));
+
+    // Wrapper re-fetches since stops are empty, but backend returns 0 stops
+    await waitFor(() => expect(mockGetRoute.mock.calls.length).toBeGreaterThan(callCountAfterLoad));
+    // Stops should remain empty (not restored from backend)
+    expect(mockProps.current.stops).toEqual([]);
+  });
+
   it('re-fetches when ROUTE_CONTEXT signal changes day', async () => {
     mockGetRoute.mockResolvedValue({ route: null, stops: [] });
 
