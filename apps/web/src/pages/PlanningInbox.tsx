@@ -641,8 +641,8 @@ function PlanningInboxInner() {
   // Trigger geometry fetch whenever route stop locations or depot change.
   // Wait for depot to be available when a depotId is configured, so we
   // don't submit a geometry job without depot legs that gets overwritten.
-  const currentDepot = depots.find((d) => d.id === context?.depotId) ?? null;
-  const depotReady = !context?.depotId || currentDepot != null;
+  const geomDepot = depots.find((d) => d.id === context?.depotId) ?? null;
+  const depotReady = !context?.depotId || geomDepot != null;
 
   useEffect(() => {
     if (!isConnected || routeStops.length === 0) {
@@ -651,7 +651,7 @@ function PlanningInboxInner() {
     }
     if (!depotReady) return;
 
-    fetchRouteGeometry(routeStops, currentDepot);
+    fetchRouteGeometry(routeStops, geomDepot);
 
     return () => {
       if (geometryUnsubRef.current) {
@@ -659,7 +659,7 @@ function PlanningInboxInner() {
         geometryUnsubRef.current = null;
       }
     };
-  }, [isConnected, geometryKey, depotReady, currentDepot, fetchRouteGeometry]);
+  }, [isConnected, geometryKey, depotReady, geomDepot, fetchRouteGeometry]);
 
   // Cleanup day overview geometry subscription on unmount
   useEffect(() => {
