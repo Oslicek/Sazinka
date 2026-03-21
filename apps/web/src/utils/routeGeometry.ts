@@ -139,7 +139,15 @@ export function splitGeometryIntoSegments(
   }
 
   // #region agent log
-  _log('splitGeometryIntoSegments result', { waypointIndices, segmentsLen: segments.length }, 'H2a,H2d');
+  _log('splitGeometryIntoSegments result', { 
+    waypointIndices, 
+    segmentsLen: segments.length,
+    firstSegmentLen: segments[0]?.length,
+    firstSegmentStart: segments[0]?.[0],
+    firstSegmentEnd: segments[0]?.[segments[0]?.length - 1],
+    depot,
+    firstStop: waypoints[1]
+  }, 'H2a,H2d');
   // #endregion
 
   return segments;

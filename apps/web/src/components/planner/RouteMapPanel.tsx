@@ -645,18 +645,35 @@ export function RouteMapPanel({
       segments = buildStraightLineSegments(waypoints, depot ? effectiveDepot : null);
     }
 
+    // #region agent log
+    _log('RouteMapPanel rendering route', { 
+      stopsLen: stops.length, 
+      routeGeometryLen: routeGeometry?.length || 0, 
+      depot: !!depot,
+      hasFirstSegment: segments.length > 0,
+      firstSegmentLen: segments[0]?.length
+    }, 'H2e');
+    // #endregion
+
     if (segments.length === 0) return;
 
 
     // Build GeoJSON FeatureCollection with segmentIndex property
-    const features = segments.map((coords, index) => ({
-      type: 'Feature' as const,
-      properties: { segmentIndex: index },
-      geometry: {
-        type: 'LineString' as const,
-        coordinates: coords,
-      },
-    }));
+    const features = segments.map((coords, index) => {
+      // #region agent log
+      if (index === 0) {
+        _log('Building GeoJSON for segment 0', { coordsLen: coords.length }, 'H2f');
+      }
+      // #endregion
+      return {
+        type: 'Feature' as const,
+        properties: { segmentIndex: index },
+        geometry: {
+          type: 'LineString' as const,
+          coordinates: coords,
+        },
+      };
+    });
 
     mapRef.current.addSource('route-segments', {
       type: 'geojson',
