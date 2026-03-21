@@ -2139,6 +2139,9 @@ function PlanningInboxInner() {
     setRouteStops((prev) => {
       const filtered = prev.filter((s) => s.id !== stopId && s.customerId !== stopId);
       remaining = filtered.map((s, i) => ({ ...s, stopOrder: i + 1 }));
+      // #region agent log
+      _log('handleRemoveFromRoute: updating routeStops', { prevLen: prev.length, remainingLen: remaining.length }, 'H1a');
+      // #endregion
       return remaining;
     });
     setReturnToDepotLeg(null);
@@ -2146,6 +2149,9 @@ function PlanningInboxInner() {
 
     // If no stops remain, delete the route from backend instead of relying on auto-save
     if (remaining.length === 0 && loadedRouteId) {
+      // #region agent log
+      _log('handleRemoveFromRoute: last stop removed, deleting route', { loadedRouteId }, 'H1a');
+      // #endregion
       setRouteGeometry([]);
       setBreakWarnings([]);
       setMetrics(null);
@@ -2460,8 +2466,19 @@ function PlanningInboxInner() {
     setHasChanges(true);
   }, [triggerRecalculate]);
 
+  // #region agent log
+  const _log = useCallback((msg: string, data: any, hyp: string) => {
+    console.log(`[DEBUG] ${msg}`, data);
+    fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2ba648'},body:JSON.stringify({sessionId:'2ba648',location:'PlanningInbox.tsx',message:msg,data,timestamp:Date.now(),runId:'run1',hypothesisId:hyp})}).catch(()=>{});
+  }, []);
+  // #endregion
+
   // Route building: clear all stops and delete route from backend
   const handleClearRoute = useCallback(async () => {
+    // #region agent log
+    _log('handleClearRoute called', { loadedRouteId }, 'H1a');
+    // #endregion
+    
     // If we have a saved route, delete it from the backend
     if (loadedRouteId) {
       try {
@@ -2471,6 +2488,9 @@ function PlanningInboxInner() {
         logger.error('Failed to delete route:', err);
       }
     }
+    // #region agent log
+    _log('handleClearRoute: setting routeStops to empty', {}, 'H1a');
+    // #endregion
     setRouteStops([]);
     setReturnToDepotLeg(null);
     setBreakWarnings([]);
