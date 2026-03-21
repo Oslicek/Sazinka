@@ -16,6 +16,13 @@ import type { SelectedCandidate } from '@/components/planner/RouteMapPanel';
 import type { InsertionPreview } from '@/components/planner/RouteMapPanel';
 import { toggleMapSelectedId, mergeMapSelectedIds } from '@/utils/mapSelection';
 
+// #region agent log
+const _log = (msg: string, data: any, hyp: string) => {
+  console.log(`[DEBUG] ${msg}`, data);
+  fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2ba648'},body:JSON.stringify({sessionId:'2ba648',location:'panels/RouteMapPanel.tsx',message:msg,data,timestamp:Date.now(),runId:'run1',hypothesisId:hyp})}).catch(()=>{});
+};
+// #endregion
+
 interface RouteMapPanelProps {
   selectedCandidate?: SelectedCandidate | null;
   insertionPreview?: InsertionPreview | null;
@@ -44,6 +51,9 @@ export function RouteMapPanel({ selectedCandidate, insertionPreview: propInserti
   // When used inside PlanningInbox the bridge keeps PanelState up-to-date,
   // so an independent fetch would overwrite locally-modified scheduling data.
   useEffect(() => {
+    // #region agent log
+    _log('RouteMapPanel wrapper fetch effect', { isConnected, date: routeContext?.date, stopsLen: routeStops.length }, 'H1f');
+    // #endregion
     if (!isConnected || !routeContext?.date || routeStops.length > 0) return;
     let cancelled = false;
     routeService
@@ -51,6 +61,9 @@ export function RouteMapPanel({ selectedCandidate, insertionPreview: propInserti
       .then((res) => {
         if (cancelled) return;
         const stops = (res as { route: unknown; stops: SavedRouteStop[] }).stops ?? [];
+        // #region agent log
+        _log('RouteMapPanel wrapper fetch success', { fetchedStopsLen: stops.length }, 'H1f');
+        // #endregion
         actions.setRouteStops(stops);
       })
       .catch(() => { if (!cancelled) actions.setRouteStops([]); });

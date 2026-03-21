@@ -447,6 +447,19 @@ function PlanningInboxInner() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.highlightedSegment]);
+
+  // Sync route stops from detached panels back to local state
+  useEffect(() => {
+    if (state.routeStops !== prevBridgeRef.current.routeStops && state.routeStops.length > 0) {
+      // #region agent log
+      _log('PanelState bridge: syncing state.routeStops to local', { stateStopsLen: state.routeStops.length }, 'H1f');
+      // #endregion
+      setRouteStops(state.routeStops);
+      setHasChanges(true);
+      prevBridgeRef.current = { ...prevBridgeRef.current, routeStops: state.routeStops };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.routeStops]);
   // ─────────────────────────────────────────────────────────────────────────
 
   // Load settings (crews, depots)
@@ -865,12 +878,19 @@ function PlanningInboxInner() {
   useEffect(() => {
     if (!isConnected || !context?.date) return;
     
+    // #region agent log
+    _log('loadRoute effect triggered', { date: context.date }, 'H1e');
+    // #endregion
+
     const dateToLoad = context.date;
 
     async function loadRoute() {
       setIsLoadingRoute(true);
       try {
         const response = await routeService.getRoute({ date: dateToLoad });
+        // #region agent log
+        _log('loadRoute response received', { date: dateToLoad, hasRoute: !!response.route, stopsLen: response.stops?.length }, 'H1e');
+        // #endregion
         setLoadedRouteId(response.route?.id ?? null);
         
         if (response.route && response.stops.length > 0) {
