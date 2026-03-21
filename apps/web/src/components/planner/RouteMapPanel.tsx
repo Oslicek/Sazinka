@@ -4,6 +4,7 @@ import maplibregl from 'maplibre-gl';
 import {
   splitGeometryIntoSegments,
   buildStraightLineSegments,
+  geometryIncludesDepotLegs,
   getSegmentLabel,
 } from '../../utils/routeGeometry';
 import { logger } from '../../utils/logger';
@@ -630,18 +631,16 @@ export function RouteMapPanel({
     const effectiveDepot = depot ?? { lat: stops[0].customerLat!, lng: stops[0].customerLng! };
 
     let segments: [number, number][][];
-    if (routeGeometry && routeGeometry.length > 0) {
-      logger.info('[RouteMapPanel] Using Valhalla geometry');
+    if (routeGeometry && routeGeometry.length > 0 && geometryIncludesDepotLegs(routeGeometry, effectiveDepot)) {
+      logger.info('[RouteMapPanel] Using Valhalla geometry (includes depot legs)');
       segments = splitGeometryIntoSegments(routeGeometry, waypoints, effectiveDepot);
-      
-      // Fallback to straight lines if splitting fails to produce enough segments
-      // (e.g. if waypoints are too far from the geometry)
+
       if (segments.length === 0 || segments.length < waypoints.length + 1) {
         logger.warn(`[RouteMapPanel] Geometry splitting produced ${segments.length} segments for ${waypoints.length} waypoints, falling back to straight lines`);
         segments = buildStraightLineSegments(waypoints, depot ? effectiveDepot : null);
       }
     } else {
-      logger.info('[RouteMapPanel] Using straight line segments (no Valhalla geometry)');
+      logger.info('[RouteMapPanel] Using straight line segments (no geometry or geometry missing depot legs)');
       segments = buildStraightLineSegments(waypoints, depot ? effectiveDepot : null);
     }
 

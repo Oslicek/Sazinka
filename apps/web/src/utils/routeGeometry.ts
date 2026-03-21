@@ -52,25 +52,6 @@ export function splitGeometryIntoSegments(
 
   if (geometry.length === 0 || waypoints.length < 2) return [];
 
-  // Threshold: if the geometry start/end is more than ~500m from the depot,
-  // the geometry is missing the depot legs (e.g. VRP geometry without depot routing).
-  const DEPOT_DISTANCE_THRESHOLD = 0.005; // ~500m in degrees
-
-  const depotWp = waypoints[0];
-  const geomStart = geometry[0];
-  const geomEnd = geometry[geometry.length - 1];
-  const startDistSq = (geomStart[0] - depotWp[0]) ** 2 + (geomStart[1] - depotWp[1]) ** 2;
-  const endDistSq = (geomEnd[0] - depotWp[0]) ** 2 + (geomEnd[1] - depotWp[1]) ** 2;
-  const startFarFromDepot = startDistSq > DEPOT_DISTANCE_THRESHOLD ** 2;
-  const endFarFromDepot = endDistSq > DEPOT_DISTANCE_THRESHOLD ** 2;
-
-  // #region agent log
-  _log('splitGeometryIntoSegments: depot distance check', {
-    startDistSq, endDistSq, startFarFromDepot, endFarFromDepot,
-    depotWp, geomStart, geomEnd
-  }, 'H5a');
-  // #endregion
-
   // For each waypoint, find closest geometry point index (monotonically forward).
   // Anchor depot to geometry boundaries (index 0 and last index).
   const waypointIndices: number[] = [];
@@ -89,7 +70,6 @@ export function splitGeometryIntoSegments(
       continue;
     }
 
-    // Keep enough points for remaining waypoints to preserve monotonicity.
     const remainingWaypoints = waypoints.length - 1 - wpIndex;
     const searchEnd = Math.max(searchStart, lastGeometryIndex - remainingWaypoints);
     let minDist = Infinity;
@@ -124,20 +104,6 @@ export function splitGeometryIntoSegments(
     }
   }
 
-  // If geometry doesn't start near the depot, prepend a straight line
-  // from the depot to the geometry start as segment 0 (depot → first stop).
-  if (startFarFromDepot && segments.length > 0) {
-    const depotCoord: [number, number] = [depotWp[0], depotWp[1]];
-    segments[0] = [depotCoord, ...segments[0]];
-  }
-
-  // Similarly, if geometry doesn't end near the depot, append a straight line
-  // from the geometry end to the depot as the last segment.
-  if (endFarFromDepot && segments.length > 0) {
-    const depotCoord: [number, number] = [depotWp[0], depotWp[1]];
-    segments[segments.length - 1] = [...segments[segments.length - 1], depotCoord];
-  }
-
   // #region agent log
   _log('splitGeometryIntoSegments result', { 
     waypointIndices, 
@@ -151,6 +117,29 @@ export function splitGeometryIntoSegments(
   // #endregion
 
   return segments;
+}
+
+/**
+ * Check whether the geometry includes depot legs by measuring the distance
+ * from the geometry start/end to the depot coordinate. VRP optimizer geometry
+ * typically omits depot→first-stop and last-stop→depot road segments, while
+ * Valhalla geometry includes them.
+ *
+ * @returns true if geometry appears to include depot legs (starts/ends near depot)
+ */
+export function geometryIncludesDepotLegs(
+  geometry: [number, number][],
+  depot: DepotCoord,
+): boolean {
+  if (geometry.length < 2) return false;
+  // ~5 km threshold — Valhalla road-snaps are typically <1km,
+  // while VRP geometry starts at the first stop (often 10+ km away).
+  const THRESHOLD_SQ = 0.05 ** 2; // 0.05 degrees ≈ 5 km
+  const depotLng = depot.lng;
+  const depotLat = depot.lat;
+  const startDist = (geometry[0][0] - depotLng) ** 2 + (geometry[0][1] - depotLat) ** 2;
+  const endDist = (geometry[geometry.length - 1][0] - depotLng) ** 2 + (geometry[geometry.length - 1][1] - depotLat) ** 2;
+  return startDist <= THRESHOLD_SQ && endDist <= THRESHOLD_SQ;
 }
 
 /**

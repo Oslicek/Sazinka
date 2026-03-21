@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   splitGeometryIntoSegments,
+  geometryIncludesDepotLegs,
   getSegmentLabel,
   buildStraightLineSegments,
   type RouteWaypoint,
@@ -94,38 +95,43 @@ describe('splitGeometryIntoSegments', () => {
 
     expect(segments.length).toBe(3);
     expect(segments[0][0]).toEqual(geometry[0]);
-    // Geometry end [14.5, 50.25] is far from depot [14.0, 50.0],
-    // so a straight line back to depot is appended.
     expect(segments[segments.length - 1][segments[segments.length - 1].length - 1]).toEqual(
-      [14.0, 50.0]
+      geometry[geometry.length - 1]
     );
   });
+});
 
-  it('prepends straight line from depot when geometry starts far from depot', () => {
-    // Geometry starts at stop 1, not at the depot — simulates VRP geometry without depot legs
+describe('geometryIncludesDepotLegs', () => {
+  it('returns true when geometry starts and ends near the depot', () => {
+    const geometry: [number, number][] = [
+      [16.51, 49.22],
+      [16.40, 49.15],
+      [16.30, 49.10],
+      [16.51, 49.22],
+    ];
+    expect(geometryIncludesDepotLegs(geometry, { lat: 49.22, lng: 16.51 })).toBe(true);
+  });
+
+  it('returns true when geometry starts/ends within ~5km of depot (road snap)', () => {
+    const geometry: [number, number][] = [
+      [16.52, 49.23],
+      [16.40, 49.15],
+      [16.49, 49.21],
+    ];
+    expect(geometryIncludesDepotLegs(geometry, { lat: 49.22, lng: 16.51 })).toBe(true);
+  });
+
+  it('returns false when geometry starts far from depot (VRP geometry)', () => {
     const geometry: [number, number][] = [
       [16.08, 48.93],
-      [16.10, 48.95],
       [16.20, 49.00],
-      [16.30, 49.05],
-      [16.10, 48.95],
       [16.08, 48.93],
     ];
-    const stops: RouteWaypoint[] = [
-      { coordinates: { lat: 48.93, lng: 16.08 } },
-      { coordinates: { lat: 49.05, lng: 16.30 } },
-    ];
-    const depot = { lat: 49.22, lng: 16.51 };
+    expect(geometryIncludesDepotLegs(geometry, { lat: 49.22, lng: 16.51 })).toBe(false);
+  });
 
-    const segments = splitGeometryIntoSegments(geometry, stops, depot);
-
-    expect(segments.length).toBe(3);
-    // First segment should start with depot coordinate (prepended straight line)
-    expect(segments[0][0]).toEqual([16.51, 49.22]);
-    // Then continue with the geometry
-    expect(segments[0][1]).toEqual([16.08, 48.93]);
-    // Last segment should end with depot coordinate (appended straight line)
-    expect(segments[2][segments[2].length - 1]).toEqual([16.51, 49.22]);
+  it('returns false for empty geometry', () => {
+    expect(geometryIncludesDepotLegs([], { lat: 49.22, lng: 16.51 })).toBe(false);
   });
 });
 
