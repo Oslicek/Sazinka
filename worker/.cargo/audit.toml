@@ -4,7 +4,13 @@
 # RUSTSEC-2025-0134: rustls-pemfile — unmaintained (INFO, no CVE).
 #   Transitive dep via async-nats. No patched version; migration requires async-nats to
 #   switch to rustls-pki-types directly. Revisit when async-nats drops the dep.
+# RUSTSEC-2026-0049: rustls-webpki CRL matching logic.
+#   We upgraded direct TLS stack to rustls-webpki 0.103.10 where possible.
+#   Remaining vulnerable copy (0.102.x) is pinned transitively by async-nats.
+#   Upstream async-nats currently depends on rustls-webpki = "0.102" in all released versions.
+#   Remove this ignore once async-nats migrates to >=0.103.10.
 ignore = [
     "RUSTSEC-2023-0071",
     "RUSTSEC-2025-0134",
+    "RUSTSEC-2026-0049",
 ]
