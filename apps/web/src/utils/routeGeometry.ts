@@ -72,7 +72,10 @@ export function splitGeometryIntoSegments(
       for (let i = 0; i <= searchEnd; i++) {
         const dx = geometry[i][0] - wp[0];
         const dy = geometry[i][1] - wp[1];
-        const dist = dx * dx + dy * dy;
+        const latRad = wp[1] * Math.PI / 180;
+        const cosLat = Math.cos(latRad);
+        const dxWeighted = dx * cosLat;
+        const dist = dxWeighted * dxWeighted + dy * dy;
         if (dist < minDist) {
           minDist = dist;
           minIdx = i;
@@ -87,7 +90,7 @@ export function splitGeometryIntoSegments(
         minDist,
         firstGeomPoint: geometry[0],
         foundGeomPoint: geometry[minIdx]
-      }, 'H3a');
+      }, 'H4a');
       // #endregion
       
       waypointIndices.push(minIdx);
@@ -108,7 +111,10 @@ export function splitGeometryIntoSegments(
       for (let i = searchStartEnd; i <= lastGeometryIndex; i++) {
         const dx = geometry[i][0] - wp[0];
         const dy = geometry[i][1] - wp[1];
-        const dist = dx * dx + dy * dy;
+        const latRad = wp[1] * Math.PI / 180;
+        const cosLat = Math.cos(latRad);
+        const dxWeighted = dx * cosLat;
+        const dist = dxWeighted * dxWeighted + dy * dy;
         if (dist < minDist) {
           minDist = dist;
           minIdx = i;
@@ -133,7 +139,12 @@ export function splitGeometryIntoSegments(
     for (let i = actualSearchStart; i <= searchEnd; i++) {
       const dx = geometry[i][0] - wp[0];
       const dy = geometry[i][1] - wp[1];
-      const dist = dx * dx + dy * dy;
+      // Haversine-like weighting: scale longitude diff by cos(latitude) to avoid distortion
+      // since 1 degree longitude is much smaller than 1 degree latitude in Czechia (~50°N)
+      const latRad = wp[1] * Math.PI / 180;
+      const cosLat = Math.cos(latRad);
+      const dxWeighted = dx * cosLat;
+      const dist = dxWeighted * dxWeighted + dy * dy;
       if (dist < minDist) {
         minDist = dist;
         minIdx = i;
@@ -149,7 +160,7 @@ export function splitGeometryIntoSegments(
         minIdx, 
         minDist,
         foundGeomPoint: geometry[minIdx]
-      }, 'H3a');
+      }, 'H4a');
     }
     // #endregion
 
