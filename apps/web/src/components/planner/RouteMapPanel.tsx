@@ -563,6 +563,11 @@ export function RouteMapPanel({
   useEffect(() => {
     if (!mapRef.current || !mapLoaded) return;
 
+    // Always clear stale layers first, regardless of style-load state.
+    clearRouteLayers();
+
+    if (stops.length === 0) return;
+
     // Guard: style may not be fully ready despite 'load' having fired
     if (!mapRef.current.isStyleLoaded()) {
       const map = mapRef.current;
@@ -576,6 +581,7 @@ export function RouteMapPanel({
     function renderRoute() {
     if (!mapRef.current) return;
 
+    // Clear again in the deferred (style.load) path to avoid stale layers
     clearRouteLayers();
 
     if (stops.length === 0) return;

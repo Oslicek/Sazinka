@@ -2146,6 +2146,9 @@ function PlanningInboxInner() {
 
     // If no stops remain, delete the route from backend instead of relying on auto-save
     if (remaining.length === 0 && loadedRouteId) {
+      setRouteGeometry([]);
+      setBreakWarnings([]);
+      setMetrics(null);
       try {
         await routeService.deleteRoute(loadedRouteId);
         setLoadedRouteId(null);
