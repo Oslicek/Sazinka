@@ -52,9 +52,27 @@ export function splitGeometryIntoSegments(
 
   if (geometry.length === 0 || waypoints.length < 2) return [];
 
+  // Threshold: if the geometry start/end is more than ~500m from the depot,
+  // the geometry is missing the depot legs (e.g. VRP geometry without depot routing).
+  const DEPOT_DISTANCE_THRESHOLD = 0.005; // ~500m in degrees
+
+  const depotWp = waypoints[0];
+  const geomStart = geometry[0];
+  const geomEnd = geometry[geometry.length - 1];
+  const startDistSq = (geomStart[0] - depotWp[0]) ** 2 + (geomStart[1] - depotWp[1]) ** 2;
+  const endDistSq = (geomEnd[0] - depotWp[0]) ** 2 + (geomEnd[1] - depotWp[1]) ** 2;
+  const startFarFromDepot = startDistSq > DEPOT_DISTANCE_THRESHOLD ** 2;
+  const endFarFromDepot = endDistSq > DEPOT_DISTANCE_THRESHOLD ** 2;
+
+  // #region agent log
+  _log('splitGeometryIntoSegments: depot distance check', {
+    startDistSq, endDistSq, startFarFromDepot, endFarFromDepot,
+    depotWp, geomStart, geomEnd
+  }, 'H5a');
+  // #endregion
+
   // For each waypoint, find closest geometry point index (monotonically forward).
-  // Force first/last waypoint to geometry boundaries so the route always starts
-  // and ends exactly at the rendered geometry endpoints.
+  // Anchor depot to geometry boundaries (index 0 and last index).
   const waypointIndices: number[] = [];
   let searchStart = 0;
   const lastGeometryIndex = geometry.length - 1;
@@ -62,66 +80,12 @@ export function splitGeometryIntoSegments(
   for (let wpIndex = 0; wpIndex < waypoints.length; wpIndex += 1) {
     const wp = waypoints[wpIndex];
     if (wpIndex === 0) {
-      // Find the actual closest point for the depot near the start of the geometry
-      // Don't just blindly use 0, as the route might start slightly off the exact depot coordinate
-      let minDist = Infinity;
-      let minIdx = 0;
-      // Search the first 20% of the route for the start point
-      // Ensure we search at least a few points even for very short routes
-      const searchEnd = Math.max(1, Math.min(lastGeometryIndex, Math.floor(geometry.length * 0.2)));
-      for (let i = 0; i <= searchEnd; i++) {
-        const dx = geometry[i][0] - wp[0];
-        const dy = geometry[i][1] - wp[1];
-        const latRad = wp[1] * Math.PI / 180;
-        const cosLat = Math.cos(latRad);
-        const dxWeighted = dx * cosLat;
-        const dist = dxWeighted * dxWeighted + dy * dy;
-        if (dist < minDist) {
-          minDist = dist;
-          minIdx = i;
-        }
-      }
-      
-      // #region agent log
-      _log('splitGeometryIntoSegments: finding start point', { 
-        depot: wp, 
-        searchEnd, 
-        minIdx, 
-        minDist,
-        firstGeomPoint: geometry[0],
-        foundGeomPoint: geometry[minIdx]
-      }, 'H4a');
-      // #endregion
-      
-      waypointIndices.push(minIdx);
-      // DO NOT set searchStart = minIdx here. 
-      // If the depot is slightly "further" along the geometry line than the first stop,
-      // setting searchStart = minIdx forces the first stop to be found AFTER the depot,
-      // which can cause the first segment to be empty or inverted.
-      // We always want to start searching for the first stop from the beginning of the geometry.
+      waypointIndices.push(0);
       searchStart = 0;
       continue;
     }
     if (wpIndex === waypoints.length - 1) {
-      // Find the actual closest point for the depot near the end of the geometry
-      let minDist = Infinity;
-      let minIdx = lastGeometryIndex;
-      // Search the last 20% of the route for the end point
-      const searchStartEnd = Math.min(lastGeometryIndex - 1, Math.max(searchStart, Math.floor(geometry.length * 0.8)));
-      for (let i = searchStartEnd; i <= lastGeometryIndex; i++) {
-        const dx = geometry[i][0] - wp[0];
-        const dy = geometry[i][1] - wp[1];
-        const latRad = wp[1] * Math.PI / 180;
-        const cosLat = Math.cos(latRad);
-        const dxWeighted = dx * cosLat;
-        const dist = dxWeighted * dxWeighted + dy * dy;
-        if (dist < minDist) {
-          minDist = dist;
-          minIdx = i;
-        }
-      }
-      waypointIndices.push(minIdx);
-      searchStart = minIdx;
+      waypointIndices.push(lastGeometryIndex);
       continue;
     }
 
@@ -131,67 +95,47 @@ export function splitGeometryIntoSegments(
     let minDist = Infinity;
     let minIdx = searchStart;
 
-    // For the first stop (wpIndex === 1), we should search from the very beginning of the geometry,
-    // not from where the depot was found, because the Valhalla geometry might start slightly
-    // "after" the depot in terms of distance, causing the first stop to snap to the depot's location.
-    const actualSearchStart = wpIndex === 1 ? 0 : searchStart;
-
-    for (let i = actualSearchStart; i <= searchEnd; i++) {
+    for (let i = searchStart; i <= searchEnd; i++) {
       const dx = geometry[i][0] - wp[0];
       const dy = geometry[i][1] - wp[1];
-      // Haversine-like weighting: scale longitude diff by cos(latitude) to avoid distortion
-      // since 1 degree longitude is much smaller than 1 degree latitude in Czechia (~50°N)
-      const latRad = wp[1] * Math.PI / 180;
-      const cosLat = Math.cos(latRad);
-      const dxWeighted = dx * cosLat;
-      const dist = dxWeighted * dxWeighted + dy * dy;
+      const dist = dx * dx + dy * dy;
       if (dist < minDist) {
         minDist = dist;
         minIdx = i;
       }
     }
 
-    // #region agent log
-    if (wpIndex === 1) {
-      _log('splitGeometryIntoSegments: finding first stop', { 
-        stop: wp, 
-        actualSearchStart,
-        searchEnd, 
-        minIdx, 
-        minDist,
-        foundGeomPoint: geometry[minIdx]
-      }, 'H4a');
-    }
-    // #endregion
-
     waypointIndices.push(minIdx);
-    // Ensure monotonicity for subsequent stops
     searchStart = Math.min(lastGeometryIndex, Math.max(searchStart, minIdx + 1));
   }
 
   // Slice geometry into segments
   const segments: [number, number][][] = [];
   for (let i = 0; i < waypointIndices.length - 1; i++) {
-    let start = waypointIndices[i];
-    let end = waypointIndices[i + 1];
-    
-    // If the depot was found "after" the first stop (due to geometry quirks),
-    // swap them so we still get a valid segment.
-    if (i === 0 && start > end) {
-      const temp = start;
-      start = end;
-      end = temp;
-    }
-    
+    const start = waypointIndices[i];
+    const end = waypointIndices[i + 1];
     if (end > start) {
       segments.push(geometry.slice(start, end + 1));
     } else {
-      // Same index → create a minimal 2-point segment
       segments.push([
         geometry[start],
         geometry[Math.min(start + 1, geometry.length - 1)],
       ]);
     }
+  }
+
+  // If geometry doesn't start near the depot, prepend a straight line
+  // from the depot to the geometry start as segment 0 (depot → first stop).
+  if (startFarFromDepot && segments.length > 0) {
+    const depotCoord: [number, number] = [depotWp[0], depotWp[1]];
+    segments[0] = [depotCoord, ...segments[0]];
+  }
+
+  // Similarly, if geometry doesn't end near the depot, append a straight line
+  // from the geometry end to the depot as the last segment.
+  if (endFarFromDepot && segments.length > 0) {
+    const depotCoord: [number, number] = [depotWp[0], depotWp[1]];
+    segments[segments.length - 1] = [...segments[segments.length - 1], depotCoord];
   }
 
   // #region agent log

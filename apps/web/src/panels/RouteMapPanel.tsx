@@ -64,9 +64,16 @@ export function RouteMapPanel({ selectedCandidate, insertionPreview: propInserti
         // #region agent log
         _log('RouteMapPanel wrapper fetch success', { fetchedStopsLen: stops.length }, 'H1f');
         // #endregion
-        actions.setRouteStops(stops);
+        // ONLY set stops if we actually got some from the backend.
+        // If we got 0 stops, it means the route was deleted or doesn't exist,
+        // and we shouldn't broadcast an empty array that might overwrite local state.
+        if (stops.length > 0) {
+          actions.setRouteStops(stops);
+        }
       })
-      .catch(() => { if (!cancelled) actions.setRouteStops([]); });
+      .catch(() => {
+        // Do not broadcast empty array on error either
+      });
     return () => { cancelled = true; };
   }, [isConnected, routeContext?.date, actions, routeStops.length]);
 
