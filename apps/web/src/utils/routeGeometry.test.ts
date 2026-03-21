@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   splitGeometryIntoSegments,
+  splitVrpGeometryWithDepotLegs,
   geometryIncludesDepotLegs,
   getSegmentLabel,
   buildStraightLineSegments,
@@ -98,6 +99,36 @@ describe('splitGeometryIntoSegments', () => {
     expect(segments[segments.length - 1][segments[segments.length - 1].length - 1]).toEqual(
       geometry[geometry.length - 1]
     );
+  });
+});
+
+describe('splitVrpGeometryWithDepotLegs', () => {
+  it('adds straight-line depot legs and splits road geometry between stops', () => {
+    // VRP geometry covers stop1 → stop2 → stop3 (no depot legs)
+    const geometry: [number, number][] = [
+      [1, 1], [1.5, 1.2], [2, 2], [2.5, 2.3], [3, 3], [2.5, 2.3], [2, 2], [1.5, 1.2], [1, 1],
+    ];
+    const stops: RouteWaypoint[] = [
+      { coordinates: { lat: 1, lng: 1 } },
+      { coordinates: { lat: 2, lng: 2 } },
+      { coordinates: { lat: 3, lng: 3 } },
+    ];
+    const depot = { lat: 0, lng: 0 };
+
+    const segments = splitVrpGeometryWithDepotLegs(geometry, stops, depot);
+
+    // depot→s1, s1→s2, s2→s3, s3→depot = 4 segments
+    expect(segments.length).toBe(4);
+    // First segment: straight line from depot to first geometry point near stop1
+    expect(segments[0][0]).toEqual([0, 0]);
+    // Last segment ends at depot
+    expect(segments[3][segments[3].length - 1]).toEqual([0, 0]);
+    // Middle segments use road geometry (more than 2 points)
+    expect(segments[1].length).toBeGreaterThan(2);
+  });
+
+  it('returns empty array when no stops', () => {
+    expect(splitVrpGeometryWithDepotLegs([[1, 1]], [], { lat: 0, lng: 0 })).toEqual([]);
   });
 });
 

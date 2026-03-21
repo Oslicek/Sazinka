@@ -373,6 +373,7 @@ function PlanningInboxInner() {
       arrivalBufferPercent: routeBufferPercent,
       arrivalBufferFixedMinutes: routeBufferFixedMinutes,
     });
+    if (saveResult.routeId) setLoadedRouteId(saveResult.routeId);
     setHasChanges(false);
   }, [routeStops, context, metrics, returnToDepotLeg, routeBufferPercent, routeBufferFixedMinutes]);
 

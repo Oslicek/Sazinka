@@ -120,6 +120,67 @@ export function splitGeometryIntoSegments(
 }
 
 /**
+ * Split VRP geometry that lacks depot legs: use the road geometry for
+ * stop-to-stop segments, and prepend/append straight-line depot legs.
+ *
+ * VRP geometry typically covers stop₁ → stop₂ → … → stopN (round trip
+ * between stops only). This function splits that geometry between stop
+ * waypoints, then adds straight lines for depot → stop₁ and stopN → depot.
+ */
+export function splitVrpGeometryWithDepotLegs(
+  geometry: [number, number][],
+  stops: RouteWaypoint[],
+  depot: DepotCoord,
+): [number, number][][] {
+  if (geometry.length === 0 || stops.length === 0) return [];
+
+  const depotCoord: [number, number] = [depot.lng, depot.lat];
+  const stopCoords = stops.map((s) => [s.coordinates.lng, s.coordinates.lat] as [number, number]);
+
+  // Find closest geometry point for each stop (monotonic forward search)
+  const stopIndices: number[] = [];
+  let searchStart = 0;
+  const lastIdx = geometry.length - 1;
+
+  for (let si = 0; si < stopCoords.length; si++) {
+    const wp = stopCoords[si];
+    const remaining = stopCoords.length - 1 - si;
+    const searchEnd = Math.max(searchStart, lastIdx - remaining);
+    let minDist = Infinity;
+    let minIdx = searchStart;
+    for (let i = searchStart; i <= searchEnd; i++) {
+      const dx = geometry[i][0] - wp[0];
+      const dy = geometry[i][1] - wp[1];
+      const dist = dx * dx + dy * dy;
+      if (dist < minDist) { minDist = dist; minIdx = i; }
+    }
+    stopIndices.push(minIdx);
+    searchStart = Math.min(lastIdx, Math.max(searchStart, minIdx + 1));
+  }
+
+  const segments: [number, number][][] = [];
+
+  // Segment 0: straight line from depot to first stop
+  segments.push([depotCoord, geometry[stopIndices[0]]]);
+
+  // Middle segments: road geometry between consecutive stops
+  for (let i = 0; i < stopIndices.length - 1; i++) {
+    const start = stopIndices[i];
+    const end = stopIndices[i + 1];
+    if (end > start) {
+      segments.push(geometry.slice(start, end + 1));
+    } else {
+      segments.push([geometry[start], geometry[Math.min(start + 1, lastIdx)]]);
+    }
+  }
+
+  // Last segment: straight line from last stop to depot
+  segments.push([geometry[stopIndices[stopIndices.length - 1]], depotCoord]);
+
+  return segments;
+}
+
+/**
  * Check whether the geometry includes depot legs by measuring the distance
  * from the geometry start/end to the depot coordinate. VRP optimizer geometry
  * typically omits depot→first-stop and last-stop→depot road segments, while
