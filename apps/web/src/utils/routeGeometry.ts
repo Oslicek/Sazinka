@@ -53,13 +53,42 @@ export function splitGeometryIntoSegments(
   for (let wpIndex = 0; wpIndex < waypoints.length; wpIndex += 1) {
     const wp = waypoints[wpIndex];
     if (wpIndex === 0) {
-      waypointIndices.push(0);
-      searchStart = 0;
+      // Find the actual closest point for the depot near the start of the geometry
+      // Don't just blindly use 0, as the route might start slightly off the exact depot coordinate
+      let minDist = Infinity;
+      let minIdx = 0;
+      // Search the first 20% of the route for the start point
+      const searchEnd = Math.min(lastGeometryIndex, Math.floor(geometry.length * 0.2));
+      for (let i = 0; i <= searchEnd; i++) {
+        const dx = geometry[i][0] - wp[0];
+        const dy = geometry[i][1] - wp[1];
+        const dist = dx * dx + dy * dy;
+        if (dist < minDist) {
+          minDist = dist;
+          minIdx = i;
+        }
+      }
+      waypointIndices.push(minIdx);
+      searchStart = minIdx;
       continue;
     }
     if (wpIndex === waypoints.length - 1) {
-      waypointIndices.push(lastGeometryIndex);
-      searchStart = lastGeometryIndex;
+      // Find the actual closest point for the depot near the end of the geometry
+      let minDist = Infinity;
+      let minIdx = lastGeometryIndex;
+      // Search the last 20% of the route for the end point
+      const searchStartEnd = Math.max(searchStart, Math.floor(geometry.length * 0.8));
+      for (let i = searchStartEnd; i <= lastGeometryIndex; i++) {
+        const dx = geometry[i][0] - wp[0];
+        const dy = geometry[i][1] - wp[1];
+        const dist = dx * dx + dy * dy;
+        if (dist < minDist) {
+          minDist = dist;
+          minIdx = i;
+        }
+      }
+      waypointIndices.push(minIdx);
+      searchStart = minIdx;
       continue;
     }
 

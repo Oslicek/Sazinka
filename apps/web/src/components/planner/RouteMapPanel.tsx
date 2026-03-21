@@ -242,7 +242,11 @@ export function RouteMapPanel({
     if (mapRef.current.getSource('route')) {
       mapRef.current.removeSource('route');
     }
-
+    
+    // Clear MapLibre's internal style cache for these layers/sources to ensure they are fully gone
+    if (mapRef.current.style) {
+      mapRef.current.triggerRepaint();
+    }
   }, []);
 
   // Update stop markers
@@ -566,6 +570,7 @@ export function RouteMapPanel({
     // Always clear stale layers first, regardless of style-load state.
     clearRouteLayers();
 
+    // If there are no stops, we're done (route is deleted/empty)
     if (stops.length === 0) return;
 
     // Guard: style may not be fully ready despite 'load' having fired
@@ -603,6 +608,13 @@ export function RouteMapPanel({
     if (routeGeometry && routeGeometry.length > 0) {
       logger.info('[RouteMapPanel] Using Valhalla geometry');
       segments = splitGeometryIntoSegments(routeGeometry, waypoints, effectiveDepot);
+      
+      // Fallback to straight lines if splitting fails to produce enough segments
+      // (e.g. if waypoints are too far from the geometry)
+      if (segments.length === 0 || segments.length < waypoints.length + 1) {
+        logger.warn(`[RouteMapPanel] Geometry splitting produced ${segments.length} segments for ${waypoints.length} waypoints, falling back to straight lines`);
+        segments = buildStraightLineSegments(waypoints, depot ? effectiveDepot : null);
+      }
     } else {
       logger.info('[RouteMapPanel] Using straight line segments (no Valhalla geometry)');
       segments = buildStraightLineSegments(waypoints, depot ? effectiveDepot : null);
