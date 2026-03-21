@@ -66,5 +66,10 @@ describe('resolveRevisionDuration', () => {
     it('stopOverride = 1 is a valid (minimal) override', () => {
       expect(resolveRevisionDuration(1, 60, globalDefault)).toBe(1);
     });
+
+    it('ignores negative overrides and falls back by priority', () => {
+      expect(resolveRevisionDuration(-10, 45, globalDefault)).toBe(45);
+      expect(resolveRevisionDuration(-10, -5, globalDefault)).toBe(globalDefault);
+    });
   });
 });

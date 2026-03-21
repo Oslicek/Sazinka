@@ -810,4 +810,14 @@ mod tests {
         let attempts = limiter.attempts.lock();
         assert!(attempts.is_empty() || attempts.get("test@example.com").map(|v| v.is_empty()).unwrap_or(true));
     }
+
+    #[test]
+    fn test_rate_limiter_allows_again_after_window_expires() {
+        let limiter = RateLimiter::new(1, 1);
+        assert!(limiter.check_and_record("test@example.com"));
+        assert!(!limiter.check_and_record("test@example.com"));
+
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        assert!(limiter.check_and_record("test@example.com"));
+    }
 }

@@ -187,6 +187,39 @@ mod tests {
         assert_eq!(sender.sent_messages().len(), 3);
     }
 
+    #[test]
+    fn fake_sender_last_message_none_when_empty() {
+        let sender = FakeEmailSender::new();
+        assert!(sender.last_message().is_none());
+    }
+
+    #[tokio::test]
+    async fn fake_sender_last_message_returns_most_recent() {
+        let sender = FakeEmailSender::new();
+        sender
+            .send(EmailMessage {
+                to: "a@example.com".into(),
+                subject: "First".into(),
+                html: "<p>First</p>".into(),
+                text: "First".into(),
+            })
+            .await
+            .unwrap();
+        sender
+            .send(EmailMessage {
+                to: "b@example.com".into(),
+                subject: "Second".into(),
+                html: "<p>Second</p>".into(),
+                text: "Second".into(),
+            })
+            .await
+            .unwrap();
+
+        let last = sender.last_message().expect("last message");
+        assert_eq!(last.to, "b@example.com");
+        assert_eq!(last.subject, "Second");
+    }
+
     #[tokio::test]
     async fn log_sender_does_not_error() {
         let sender = LogEmailSender;
@@ -199,5 +232,31 @@ mod tests {
             })
             .await
             .unwrap();
+    }
+
+    #[test]
+    fn resend_from_env_returns_none_without_api_key() {
+        std::env::remove_var("RESEND_API_KEY");
+        std::env::remove_var("EMAIL_FROM_ADDRESS");
+        assert!(ResendEmailSender::from_env().is_none());
+    }
+
+    #[test]
+    fn resend_from_env_uses_default_from_address() {
+        std::env::set_var("RESEND_API_KEY", "test-api-key");
+        std::env::remove_var("EMAIL_FROM_ADDRESS");
+        let sender = ResendEmailSender::from_env().expect("sender from env");
+        assert_eq!(sender.from, "noreply@ariadline.cz");
+        std::env::remove_var("RESEND_API_KEY");
+    }
+
+    #[test]
+    fn resend_from_env_uses_custom_from_address() {
+        std::env::set_var("RESEND_API_KEY", "test-api-key");
+        std::env::set_var("EMAIL_FROM_ADDRESS", "team@example.com");
+        let sender = ResendEmailSender::from_env().expect("sender from env");
+        assert_eq!(sender.from, "team@example.com");
+        std::env::remove_var("RESEND_API_KEY");
+        std::env::remove_var("EMAIL_FROM_ADDRESS");
     }
 }

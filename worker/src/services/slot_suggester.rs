@@ -604,4 +604,26 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_ceil_quarter_hour_keeps_aligned_times() {
+        assert_eq!(ceil_quarter_hour(make_time(8, 15)), make_time(8, 15));
+        assert_eq!(ceil_quarter_hour(make_time(12, 30)), make_time(12, 30));
+    }
+
+    #[test]
+    fn test_ceil_quarter_hour_rounds_up_and_clamps_late_times() {
+        assert_eq!(
+            ceil_quarter_hour(NaiveTime::from_hms_opt(8, 1, 1).unwrap()),
+            make_time(8, 15)
+        );
+        // Rounded value would be midnight+24:00, function clamps to 23:45
+        assert_eq!(ceil_quarter_hour(make_time(23, 50)), make_time(23, 45));
+    }
+
+    #[test]
+    fn test_minutes_between_can_return_negative() {
+        assert_eq!(minutes_between(make_time(10, 0), make_time(9, 30)), -30);
+        assert_eq!(minutes_between(make_time(9, 0), make_time(9, 30)), 30);
+    }
 }

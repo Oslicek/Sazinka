@@ -148,9 +148,101 @@ pub struct ReverseGeocodeOutput {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+    use tokio::sync::oneshot;
+
+    async fn spawn_single_response_server(
+        status_line: &str,
+        body: &str,
+    ) -> (String, oneshot::Receiver<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (tx, rx) = oneshot::channel::<String>();
+        let response = format!(
+            "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            status_line,
+            body.len(),
+            body
+        );
+
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 4096];
+            let read = stream.read(&mut buf).await.unwrap_or(0);
+            let req = String::from_utf8_lossy(&buf[..read]).to_string();
+            let _ = tx.send(req);
+            let _ = stream.write_all(response.as_bytes()).await;
+            let _ = stream.shutdown().await;
+        });
+
+        (format!("http://{}", addr), rx)
+    }
 
     // Note: These tests require network access and hit the public Nominatim API
     // They are marked as ignored by default
+
+    #[tokio::test]
+    async fn geocode_builds_query_without_postal_code() {
+        let (base_url, request_rx) = spawn_single_response_server("200 OK", "[]").await;
+        let client = NominatimClient::new(&base_url);
+
+        let result = client.geocode("Main 1", "Prague", "   ").await.unwrap();
+        assert!(result.is_none());
+
+        let req = request_rx.await.unwrap();
+        assert!(req.contains("GET /search?q=Main%201%2C%20Prague%2C%20Czech%20Republic"));
+    }
+
+    #[tokio::test]
+    async fn geocode_builds_query_with_postal_code() {
+        let (base_url, request_rx) = spawn_single_response_server("200 OK", "[]").await;
+        let client = NominatimClient::new(&base_url);
+
+        let result = client.geocode("Main 1", "Prague", "11000").await.unwrap();
+        assert!(result.is_none());
+
+        let req = request_rx.await.unwrap();
+        assert!(req.contains("GET /search?q=Main%201%2C%2011000%2C%20Prague%2C%20Czech%20Republic"));
+    }
+
+    #[tokio::test]
+    async fn reverse_geocode_assembles_street_and_city_with_fallbacks() {
+        let payload = r#"{
+            "display_name":"Some Place",
+            "address":{
+                "road":"Main",
+                "house_number":"15",
+                "town":"Brno",
+                "postcode":"60200"
+            }
+        }"#;
+        let (base_url, _request_rx) = spawn_single_response_server("200 OK", payload).await;
+        let client = NominatimClient::new(&base_url);
+
+        let result = client.reverse_geocode(49.2, 16.6).await.unwrap().unwrap();
+        assert_eq!(result.street, "Main 15");
+        assert_eq!(result.city, "Brno");
+        assert_eq!(result.postal_code, "60200");
+        assert_eq!(result.display_name, "Some Place");
+    }
+
+    #[tokio::test]
+    async fn reverse_geocode_handles_missing_road_and_city() {
+        let payload = r#"{
+            "display_name":"Unknown Place",
+            "address":{
+                "village":"Lhota"
+            }
+        }"#;
+        let (base_url, _request_rx) = spawn_single_response_server("200 OK", payload).await;
+        let client = NominatimClient::new(&base_url);
+
+        let result = client.reverse_geocode(49.0, 15.0).await.unwrap().unwrap();
+        assert_eq!(result.street, "");
+        assert_eq!(result.city, "Lhota");
+        assert_eq!(result.postal_code, "");
+    }
 
     #[tokio::test]
     #[ignore]

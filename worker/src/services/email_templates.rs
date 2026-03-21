@@ -182,6 +182,8 @@ mod tests {
         .render();
         assert!(email.subject.contains("Ověřte"));
         assert!(email.html.contains("ověříte"));
+        assert!(email.text.contains("24 hodin"));
+        assert!(email.html.contains("<a href=\"https://app.sazinka.cz/verify?token=abc123\">"));
     }
 
     #[test]
@@ -194,6 +196,7 @@ mod tests {
         .render();
         assert!(email.subject.contains("Overte"));
         assert!(email.html.contains("overíte"));
+        assert!(email.text.contains("24 hodín"));
     }
 
     #[test]
@@ -244,5 +247,19 @@ mod tests {
         }
         .render();
         assert!(email.subject.contains("zaregistrovaný"));
+        assert!(email.text.contains("https://app.sazinka.cz/login"));
+        assert!(email.html.contains("<a href=\"https://app.sazinka.cz/login\">"));
+    }
+
+    #[test]
+    fn already_registered_email_unknown_locale_falls_back_to_en() {
+        let email = AlreadyRegisteredEmail {
+            to: "existing@example.com",
+            login_url: "https://app.sazinka.cz/login",
+            locale: "de",
+        }
+        .render();
+        assert!(email.subject.contains("already registered"));
+        assert!(email.text.contains("https://app.sazinka.cz/login"));
     }
 }

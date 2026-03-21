@@ -5,6 +5,7 @@ import {
   getWeekDays,
   groupItemsByDay,
   getItemCountClass,
+  getEstimatedMinutes,
 } from './calendarUtils';
 import type { CalendarItem } from '@shared/calendar';
 
@@ -141,6 +142,45 @@ describe('calendarUtils', () => {
     it('should return "high" for 6+ items', () => {
       expect(getItemCountClass(6)).toBe('high');
       expect(getItemCountClass(10)).toBe('high');
+    });
+  });
+
+  describe('getEstimatedMinutes', () => {
+    it('uses explicit time range when valid', () => {
+      const item: CalendarItem = {
+        id: '1',
+        type: 'visit',
+        date: '2026-01-15',
+        status: 'scheduled',
+        title: 'Visit',
+        timeStart: '09:00',
+        timeEnd: '10:30',
+      };
+      expect(getEstimatedMinutes(item)).toBe(90);
+    });
+
+    it('falls back to type default when time range is invalid', () => {
+      const item: CalendarItem = {
+        id: '2',
+        type: 'visit',
+        date: '2026-01-15',
+        status: 'scheduled',
+        title: 'Visit',
+        timeStart: '11:00',
+        timeEnd: '10:00',
+      };
+      expect(getEstimatedMinutes(item)).toBe(60);
+    });
+
+    it('returns 15 minutes for tasks without explicit duration', () => {
+      const item: CalendarItem = {
+        id: '3',
+        type: 'task',
+        date: '2026-01-15',
+        status: 'pending',
+        title: 'Task',
+      };
+      expect(getEstimatedMinutes(item)).toBe(15);
     });
   });
 });

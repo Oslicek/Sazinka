@@ -939,6 +939,70 @@ mod tests {
         let parts = build_call_queue_sql_parts(&req);
         assert!(parts.where_clause.contains("c.geocode_status::text = 'success'"));
     }
+
+    #[test]
+    fn call_queue_sql_handles_priority_filters() {
+        let overdue = build_call_queue_sql_parts(&CallQueueRequest {
+            priority_filter: Some("overdue".to_string()),
+            ..Default::default()
+        });
+        assert!(overdue.where_clause.contains("r.due_date < $2"));
+
+        let due_soon = build_call_queue_sql_parts(&CallQueueRequest {
+            priority_filter: Some("due_soon".to_string()),
+            ..Default::default()
+        });
+        assert!(due_soon.where_clause.contains("r.due_date BETWEEN $2 AND $2 + INTERVAL '7 days'"));
+
+        let upcoming = build_call_queue_sql_parts(&CallQueueRequest {
+            priority_filter: Some("upcoming".to_string()),
+            ..Default::default()
+        });
+        assert!(upcoming.where_clause.contains("r.due_date > $2 + INTERVAL '7 days'"));
+    }
+
+    #[test]
+    fn call_queue_sql_ignores_unknown_priority_filter() {
+        let parts = build_call_queue_sql_parts(&CallQueueRequest {
+            priority_filter: Some("custom".to_string()),
+            ..Default::default()
+        });
+        assert!(!parts.where_clause.contains("r.due_date < $2"));
+        assert!(!parts.where_clause.contains("r.due_date BETWEEN $2 AND $2 + INTERVAL '7 days'"));
+        assert!(!parts.where_clause.contains("r.due_date > $2 + INTERVAL '7 days'"));
+    }
+
+    #[test]
+    fn call_queue_sql_area_only_uses_parameter_five() {
+        let req = CallQueueRequest {
+            area: Some("120".to_string()),
+            ..Default::default()
+        };
+        let parts = build_call_queue_sql_parts(&req);
+        assert!(parts.where_clause.contains("c.postal_code LIKE $5"));
+        assert!(!parts.where_clause.contains("d.device_type::text = $6"));
+    }
+
+    #[test]
+    fn call_queue_sql_device_only_uses_parameter_five() {
+        let req = CallQueueRequest {
+            device_type: Some("powder".to_string()),
+            ..Default::default()
+        };
+        let parts = build_call_queue_sql_parts(&req);
+        assert!(parts.where_clause.contains("d.device_type::text = $5"));
+        assert!(parts.has_device_type);
+    }
+
+    #[test]
+    fn call_queue_sql_does_not_add_geocode_condition_when_false() {
+        let req = CallQueueRequest {
+            geocoded_only: Some(false),
+            ..Default::default()
+        };
+        let parts = build_call_queue_sql_parts(&req);
+        assert!(!parts.where_clause.contains("c.geocode_status::text = 'success'"));
+    }
 }
 
 // ─── Auto-create initial revisions for devices without one ──────────────────

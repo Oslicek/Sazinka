@@ -1391,4 +1391,26 @@ mod tests {
         assert_eq!(s.service_duration_minutes, 30);
         assert_eq!(s.estimated_departure, hm(8, 40));
     }
+
+    #[test]
+    fn apply_travel_buffer_keeps_raw_seconds_when_buffer_zero() {
+        assert_eq!(apply_travel_buffer(3600, 0.0, 0.0), 3600);
+        assert_eq!(apply_travel_buffer(1, 0.0, 0.0), 1);
+    }
+
+    #[test]
+    fn apply_travel_buffer_handles_fractional_fixed_minutes() {
+        // 10m (600s) + 0.5m (30s)
+        assert_eq!(apply_travel_buffer(600, 0.0, 0.5), 630);
+        // Ceil behavior preserved on non-integer intermediates
+        assert_eq!(apply_travel_buffer(601, 0.0, 0.5), 631);
+    }
+
+    #[test]
+    fn apply_travel_buffer_applies_percent_then_ceils() {
+        // 1000s +10% => 1100
+        assert_eq!(apply_travel_buffer(1000, 10.0, 0.0), 1100);
+        // 999s +10% => 1098.9 => ceil 1099
+        assert_eq!(apply_travel_buffer(999, 10.0, 0.0), 1099);
+    }
 }

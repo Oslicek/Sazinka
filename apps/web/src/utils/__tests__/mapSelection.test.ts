@@ -41,4 +41,8 @@ describe('mergeMapSelectedIds', () => {
     expect(result.indexOf('a')).toBeLessThan(result.indexOf('b'));
     expect(result.indexOf('b')).toBeLessThan(result.indexOf('c'));
   });
+
+  it('deduplicates repeated ids from incoming list', () => {
+    expect(mergeMapSelectedIds(['a'], ['b', 'b', 'a', 'c', 'c'])).toEqual(['a', 'b', 'c']);
+  });
 });

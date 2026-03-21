@@ -254,6 +254,53 @@ describe('planningInboxFilters', () => {
     expect(request.geocodedOnly).toBe(true);
   });
 
+  it('maps due_in_7_days to due_soon for backend v1 request', () => {
+    const request = mapExpressionToCallQueueRequestV1(
+      {
+        ...DEFAULT_FILTER_EXPRESSION,
+        groups: {
+          ...DEFAULT_FILTER_EXPRESSION.groups,
+          time: { enabled: true, operator: 'OR', selected: ['DUE_IN_7_DAYS'] },
+        },
+      },
+      false,
+    );
+
+    expect(request.priorityFilter).toBe('due_soon');
+    expect(request.geocodedOnly).toBe(false);
+  });
+
+  it('maps multiple selected time tokens conservatively to all', () => {
+    const request = mapExpressionToCallQueueRequestV1(
+      {
+        ...DEFAULT_FILTER_EXPRESSION,
+        groups: {
+          ...DEFAULT_FILTER_EXPRESSION.groups,
+          time: { enabled: true, operator: 'OR', selected: ['OVERDUE', 'DUE_IN_7_DAYS'] },
+        },
+      },
+      true,
+    );
+
+    expect(request.priorityFilter).toBe('all');
+    expect(request.geocodedOnly).toBe(true);
+  });
+
+  it('maps disabled time group to all', () => {
+    const request = mapExpressionToCallQueueRequestV1(
+      {
+        ...DEFAULT_FILTER_EXPRESSION,
+        groups: {
+          ...DEFAULT_FILTER_EXPRESSION.groups,
+          time: { enabled: false, operator: 'OR', selected: ['OVERDUE'] },
+        },
+      },
+      false,
+    );
+
+    expect(request.priorityFilter).toBe('all');
+  });
+
   it('exposes expected quick filter presets', () => {
     expect(FILTER_PRESETS.map((p) => p.id)).toEqual([
       'ALL',
@@ -278,6 +325,38 @@ describe('planningInboxFilters', () => {
     expect(expression).toEqual(empty);
   });
 
+  it('applies this_week preset', () => {
+    const expression = applyFilterPreset('THIS_WEEK', DEFAULT_FILTER_EXPRESSION);
+    expect(expression.groups.time.enabled).toBe(true);
+    expect(expression.groups.time.selected).toEqual(['DUE_IN_7_DAYS']);
+    expect(expression.groups.problems.enabled).toBe(false);
+  });
+
+  it('applies this_month preset', () => {
+    const expression = applyFilterPreset('THIS_MONTH', DEFAULT_FILTER_EXPRESSION);
+    expect(expression.groups.time.enabled).toBe(true);
+    expect(expression.groups.time.selected).toEqual(['DUE_IN_30_DAYS']);
+    expect(expression.groups.problems.enabled).toBe(false);
+  });
+
+  it('applies has_term preset', () => {
+    const expression = applyFilterPreset('HAS_TERM', DEFAULT_FILTER_EXPRESSION);
+    expect(expression.groups.hasTerm).toBe('YES');
+    expect(expression.groups.time.enabled).toBe(false);
+    expect(expression.groups.time.selected).toEqual([]);
+  });
+
+  it('applies problems preset', () => {
+    const expression = applyFilterPreset('PROBLEMS', DEFAULT_FILTER_EXPRESSION);
+    expect(expression.groups.problems.enabled).toBe(true);
+    expect(expression.groups.problems.selected).toEqual([
+      'MISSING_PHONE',
+      'ADDRESS_ISSUE',
+      'GEOCODE_FAILED',
+    ]);
+    expect(expression.groups.time.enabled).toBe(false);
+  });
+
   it('detects advanced criteria usage', () => {
     const withRootOr: InboxFilterExpression = {
       ...DEFAULT_FILTER_EXPRESSION,
@@ -286,5 +365,17 @@ describe('planningInboxFilters', () => {
 
     expect(hasAdvancedCriteria(DEFAULT_FILTER_EXPRESSION)).toBe(false);
     expect(hasAdvancedCriteria(withRootOr)).toBe(true);
+  });
+
+  it('normalizes invalid operators to safe defaults', () => {
+    const expression = normalizeExpression({
+      rootOperator: 'XOR' as unknown as InboxFilterExpression['rootOperator'],
+      groups: {
+        time: { enabled: true, operator: 'XOR' as unknown as 'AND' | 'OR', selected: ['OVERDUE'] },
+      } as Partial<InboxFilterExpression['groups']>,
+    });
+
+    expect(expression.rootOperator).toBe('AND');
+    expect(expression.groups.time.operator).toBe('OR');
   });
 });

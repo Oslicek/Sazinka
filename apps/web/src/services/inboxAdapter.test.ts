@@ -106,6 +106,33 @@ describe('inboxItemToCallQueueItem', () => {
     const result = inboxItemToCallQueueItem(item as typeof item);
     expect(result.scheduledRevisionCount).toBe(0);
   });
+
+  it('uses fallback values when nextActionDue is null', () => {
+    const result = inboxItemToCallQueueItem(makeInboxItem({ nextActionDue: null }));
+    expect(result.daysUntilDue).toBe(999);
+    expect(result.priority).toBe('upcoming');
+    expect(result.dueDate).toBe('');
+  });
+
+  it('maps due date boundaries to expected priority buckets', () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dateForOffset = (days: number) => {
+      const d = new Date(today);
+      d.setDate(d.getDate() + days);
+      return d.toISOString().slice(0, 10);
+    };
+
+    const overdue = inboxItemToCallQueueItem(makeInboxItem({ nextActionDue: dateForOffset(-1) }));
+    const dueThisWeek = inboxItemToCallQueueItem(makeInboxItem({ nextActionDue: dateForOffset(7) }));
+    const dueSoon = inboxItemToCallQueueItem(makeInboxItem({ nextActionDue: dateForOffset(14) }));
+    const upcoming = inboxItemToCallQueueItem(makeInboxItem({ nextActionDue: dateForOffset(15) }));
+
+    expect(overdue.priority).toBe('overdue');
+    expect(dueThisWeek.priority).toBe('due_this_week');
+    expect(dueSoon.priority).toBe('due_soon');
+    expect(upcoming.priority).toBe('upcoming');
+  });
 });
 
 describe('inboxResponseToCallQueueResponse', () => {

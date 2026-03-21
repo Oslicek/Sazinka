@@ -487,6 +487,34 @@ mod tests {
         assert!(geometry.coordinates.is_empty());
     }
 
+    #[test]
+    fn test_decode_polyline_google_sample_precision_5() {
+        // Canonical sample polyline from Google's algorithm docs.
+        let encoded = "_p~iF~ps|U_ulLnnqC_mqNvxq`@";
+        let decoded = decode_polyline(encoded, 5).unwrap();
+
+        assert_eq!(decoded.len(), 3);
+        // GeoJSON order is [lng, lat]
+        assert!((decoded[0][0] - (-120.2)).abs() < 0.00001);
+        assert!((decoded[0][1] - 38.5).abs() < 0.00001);
+        assert!((decoded[1][0] - (-120.95)).abs() < 0.00001);
+        assert!((decoded[1][1] - 40.7).abs() < 0.00001);
+        assert!((decoded[2][0] - (-126.453)).abs() < 0.00001);
+        assert!((decoded[2][1] - 43.252).abs() < 0.00001);
+    }
+
+    #[test]
+    fn test_decode_polyline_empty_string() {
+        let decoded = decode_polyline("", 6).unwrap();
+        assert!(decoded.is_empty());
+    }
+
+    #[test]
+    fn test_decode_polyline_rejects_truncated_input() {
+        let err = decode_polyline("_p~iF", 5).unwrap_err();
+        assert!(err.to_string().contains("Invalid polyline encoding"));
+    }
+
     #[tokio::test]
     #[ignore = "Requires running Valhalla server"]
     async fn test_valhalla_route_geometry_prague_brno() {

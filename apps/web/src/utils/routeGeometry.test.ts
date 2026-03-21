@@ -131,6 +131,11 @@ describe('getSegmentLabel', () => {
     const label = getSegmentLabel(0, [], 'Depo');
     expect(label).toEqual({ fromName: 'Depo', toName: 'Depo' });
   });
+
+  it('uses fallback point labels when stop names are missing', () => {
+    const label = getSegmentLabel(1, [{}, {}], 'Depo');
+    expect(label).toEqual({ fromName: 'Bod 1', toName: 'Bod 2' });
+  });
 });
 
 describe('buildStraightLineSegments', () => {
@@ -176,5 +181,19 @@ describe('buildStraightLineSegments', () => {
     expect(segments[1]).toEqual([[1, 1], [2, 2]]);
     // stop2 -> depot
     expect(segments[2]).toEqual([[2, 2], [0, 0]]);
+  });
+
+  it('returns only stop-to-stop segments when depot is null', () => {
+    const stops: RouteWaypoint[] = [
+      { coordinates: { lat: 1, lng: 1 } },
+      { coordinates: { lat: 2, lng: 2 } },
+      { coordinates: { lat: 3, lng: 3 } },
+    ];
+
+    const segments = buildStraightLineSegments(stops, null);
+    expect(segments).toEqual([
+      [[1, 1], [2, 2]],
+      [[2, 2], [3, 3]],
+    ]);
   });
 });

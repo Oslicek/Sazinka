@@ -233,6 +233,48 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("circuit breaker"));
     }
+
+    #[tokio::test]
+    async fn mock_geocoder_reverse_geocode_returns_mock_payload() {
+        let geocoder = MockGeocoder::new();
+        let result = geocoder.reverse_geocode(50.0, 14.0).await.unwrap().unwrap();
+        assert_eq!(result.street, "Mock Street 1");
+        assert_eq!(result.city, "Mock City");
+        assert_eq!(result.postal_code, "10000");
+    }
+
+    #[tokio::test]
+    async fn nominatim_reverse_geocode_rejects_when_circuit_breaker_open() {
+        let geocoder = NominatimGeocoder::with_config(
+            "https://nominatim.openstreetmap.org",
+            1,
+            std::time::Duration::from_secs(300),
+        );
+        geocoder.circuit_breaker.record_failure();
+        assert!(geocoder.circuit_breaker.is_open());
+
+        let result = geocoder.reverse_geocode(50.0, 14.0).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("circuit breaker"));
+    }
+
+    #[test]
+    fn create_geocoder_uses_nominatim_backend_when_requested() {
+        std::env::set_var("GEOCODER_BACKEND", "nominatim");
+        std::env::set_var("NOMINATIM_URL", "http://localhost:18080");
+        let geocoder = create_geocoder();
+        assert_eq!(geocoder.name(), "nominatim");
+        std::env::remove_var("GEOCODER_BACKEND");
+        std::env::remove_var("NOMINATIM_URL");
+    }
+
+    #[test]
+    fn create_geocoder_falls_back_to_mock_for_unknown_backend() {
+        std::env::set_var("GEOCODER_BACKEND", "unknown-backend");
+        let geocoder = create_geocoder();
+        assert_eq!(geocoder.name(), "mock");
+        std::env::remove_var("GEOCODER_BACKEND");
+    }
 }
 
 // ==========================================================================
