@@ -455,12 +455,15 @@ function PlanningInboxInner() {
       _log('PanelState bridge: state.routeStops changed', { stateStopsLen: state.routeStops.length, localStopsLen: routeStops.length }, 'H1f');
     }
     // #endregion
-    if (state.routeStops !== routeStops) {
+    
+    // Check against prevBridgeRef to avoid infinite loops with the outgoing sync effect
+    if (state.routeStops !== prevBridgeRef.current.routeStops) {
       // Accept all updates from detached panels, including empty arrays (route deletions)
       setRouteStops(state.routeStops);
       setHasChanges(true);
+      prevBridgeRef.current = { ...prevBridgeRef.current, routeStops: state.routeStops };
     }
-  }, [state.routeStops, routeStops]);
+  }, [state.routeStops]);
   // ─────────────────────────────────────────────────────────────────────────
 
   // Load settings (crews, depots)
