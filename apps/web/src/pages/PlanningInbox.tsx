@@ -3077,6 +3077,12 @@ function PlanningInboxInner() {
         debugSource="inbox-main"
         debugRouteId={loadedRouteId}
         selectedCandidate={selectedCandidateForMap}
+        selectedCandidates={selectedCandidatesForMap}
+        mapSelectionTool={mapSelectionTool}
+        onMapSelectionToolChange={actions.setMapSelectionTool}
+        mapSelectedIds={mapSelectedIds}
+        onCandidateToggle={handleCandidateToggle}
+        onCandidateRectSelect={handleCandidateRectSelect}
         insertionPreview={insertionPreviewForMap}
         onSegmentHighlight={setHighlightedSegment}
         isLoading={isLoadingRoute}

@@ -97,6 +97,12 @@ export function RouteMapPanel({
   const rectStartRef = useRef<{ x: number; y: number } | null>(null);
   const rectOverlayRef = useRef<HTMLDivElement | null>(null);
 
+  // Keep latest callback and tool in refs so DOM click handlers always see current values
+  const mapSelectionToolRef = useRef(mapSelectionTool);
+  mapSelectionToolRef.current = mapSelectionTool;
+  const onCandidateToggleRef = useRef(onCandidateToggle);
+  onCandidateToggleRef.current = onCandidateToggle;
+
   // Event handler refs for proper cleanup
   const segmentClickHandlerRef = useRef<((e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => void) | null>(null);
   const segmentEnterHandlerRef = useRef<(() => void) | null>(null);
@@ -370,13 +376,12 @@ export function RouteMapPanel({
         : styles.batchCandidateMarker;
       el.title = candidate.name;
 
-      if (mapSelectionTool === 'click' && onCandidateToggle) {
-        el.style.cursor = 'pointer';
-        el.addEventListener('click', (e) => {
-          e.stopPropagation();
-          onCandidateToggle(candidate.id);
-        });
-      }
+      el.style.cursor = mapSelectionToolRef.current === 'click' ? 'pointer' : 'default';
+      el.addEventListener('click', (e) => {
+        if (mapSelectionToolRef.current !== 'click') return;
+        e.stopPropagation();
+        onCandidateToggleRef.current?.(candidate.id);
+      });
 
       const marker = new maplibregl.Marker({ element: el, anchor: 'top-left', offset: [-6, -6] })
         .setLngLat([lng, lat])
@@ -385,7 +390,15 @@ export function RouteMapPanel({
 
       batchCandidateMarkersRef.current.push(marker);
     }
-  }, [selectedCandidates, selectedCandidate, stops, mapSelectionTool, mapSelectedIds, onCandidateToggle]);
+  }, [selectedCandidates, selectedCandidate, stops, mapSelectedIds]);
+
+  // Update cursor on batch markers when tool changes (without recreating markers)
+  useEffect(() => {
+    for (const marker of batchCandidateMarkersRef.current) {
+      const el = marker.getElement();
+      el.style.cursor = mapSelectionTool === 'click' ? 'pointer' : 'default';
+    }
+  }, [mapSelectionTool]);
 
   // Rectangle selection (drag on map to select batch candidates in the drawn area)
   useEffect(() => {
@@ -500,8 +513,10 @@ export function RouteMapPanel({
       ? selectedCandidate.coordinates
       : null;
 
-    if (stops.length === 0 && !candidateCoord) {
-      // No route, no candidate → center on depot
+    const hasBatchCandidates = selectedCandidates && selectedCandidates.length > 0;
+
+    if (stops.length === 0 && !candidateCoord && !hasBatchCandidates) {
+      // No route, no candidate, no batch candidates → center on depot
       if (depot) {
         mapRef.current.flyTo({
           center: [depot.lng, depot.lat],
