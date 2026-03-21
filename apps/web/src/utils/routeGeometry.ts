@@ -78,6 +78,18 @@ export function splitGeometryIntoSegments(
           minIdx = i;
         }
       }
+      
+      // #region agent log
+      _log('splitGeometryIntoSegments: finding start point', { 
+        depot: wp, 
+        searchEnd, 
+        minIdx, 
+        minDist,
+        firstGeomPoint: geometry[0],
+        foundGeomPoint: geometry[minIdx]
+      }, 'H3a');
+      // #endregion
+      
       waypointIndices.push(minIdx);
       searchStart = minIdx;
       continue;
@@ -117,6 +129,19 @@ export function splitGeometryIntoSegments(
         minIdx = i;
       }
     }
+
+    // #region agent log
+    if (wpIndex === 1) {
+      _log('splitGeometryIntoSegments: finding first stop', { 
+        stop: wp, 
+        searchStart,
+        searchEnd, 
+        minIdx, 
+        minDist,
+        foundGeomPoint: geometry[minIdx]
+      }, 'H3a');
+    }
+    // #endregion
 
     waypointIndices.push(minIdx);
     searchStart = Math.min(lastGeometryIndex, Math.max(searchStart, minIdx + 1));
