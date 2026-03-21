@@ -448,18 +448,19 @@ function PlanningInboxInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.highlightedSegment]);
 
-  // Sync route stops from detached panels back to local state
+  // Listen for changes from detached panels
   useEffect(() => {
-    if (state.routeStops !== prevBridgeRef.current.routeStops && state.routeStops.length > 0) {
-      // #region agent log
-      _log('PanelState bridge: syncing state.routeStops to local', { stateStopsLen: state.routeStops.length }, 'H1f');
-      // #endregion
+    // #region agent log
+    if (state.routeStops !== routeStops) {
+      _log('PanelState bridge: state.routeStops changed', { stateStopsLen: state.routeStops.length, localStopsLen: routeStops.length }, 'H1f');
+    }
+    // #endregion
+    if (state.routeStops !== routeStops) {
+      // Accept all updates from detached panels, including empty arrays (route deletions)
       setRouteStops(state.routeStops);
       setHasChanges(true);
-      prevBridgeRef.current = { ...prevBridgeRef.current, routeStops: state.routeStops };
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.routeStops]);
+  }, [state.routeStops, routeStops]);
   // ─────────────────────────────────────────────────────────────────────────
 
   // Load settings (crews, depots)

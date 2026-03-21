@@ -67,7 +67,8 @@ export function splitGeometryIntoSegments(
       let minDist = Infinity;
       let minIdx = 0;
       // Search the first 20% of the route for the start point
-      const searchEnd = Math.min(lastGeometryIndex, Math.floor(geometry.length * 0.2));
+      // Ensure we search at least a few points even for very short routes
+      const searchEnd = Math.max(1, Math.min(lastGeometryIndex, Math.floor(geometry.length * 0.2)));
       for (let i = 0; i <= searchEnd; i++) {
         const dx = geometry[i][0] - wp[0];
         const dy = geometry[i][1] - wp[1];
@@ -86,7 +87,7 @@ export function splitGeometryIntoSegments(
       let minDist = Infinity;
       let minIdx = lastGeometryIndex;
       // Search the last 20% of the route for the end point
-      const searchStartEnd = Math.max(searchStart, Math.floor(geometry.length * 0.8));
+      const searchStartEnd = Math.min(lastGeometryIndex - 1, Math.max(searchStart, Math.floor(geometry.length * 0.8)));
       for (let i = searchStartEnd; i <= lastGeometryIndex; i++) {
         const dx = geometry[i][0] - wp[0];
         const dy = geometry[i][1] - wp[1];

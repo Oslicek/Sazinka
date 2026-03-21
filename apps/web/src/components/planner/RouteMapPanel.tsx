@@ -241,21 +241,26 @@ export function RouteMapPanel({
     }
 
     // Remove layers and sources
+    let needsRepaint = false;
     for (const layerId of ['route-highlight', 'route-hit-area', 'route-line']) {
       if (mapRef.current.getLayer(layerId)) {
         mapRef.current.removeLayer(layerId);
+        needsRepaint = true;
       }
     }
     if (mapRef.current.getSource('route-segments')) {
       mapRef.current.removeSource('route-segments');
+      needsRepaint = true;
     }
     // Legacy single-line source
     if (mapRef.current.getSource('route')) {
       mapRef.current.removeSource('route');
+      needsRepaint = true;
     }
     
     // Clear MapLibre's internal style cache for these layers/sources to ensure they are fully gone
-    if (mapRef.current.style) {
+    // Force a style update if we actually removed something
+    if (needsRepaint && mapRef.current.style) {
       mapRef.current.triggerRepaint();
     }
   }, []);
