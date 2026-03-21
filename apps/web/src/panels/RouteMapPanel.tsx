@@ -77,8 +77,9 @@ export function RouteMapPanel({ selectedCandidate, insertionPreview: propInserti
     return () => { cancelled = true; };
   }, [isConnected, routeContext?.date, actions, routeStops.length]);
 
-  // Fetch geometry when stops change
-  const fetchGeometry = useCallback(async (stops: SavedRouteStop[]) => {
+  // Fetch geometry when stops change (includes depot for full road geometry)
+  const depot = state.mapDepot ?? null;
+  const fetchGeometry = useCallback(async (stops: SavedRouteStop[], depotCoord: { lat: number; lng: number } | null) => {
     const routableStops = stops.filter(
       (s) => s.stopType !== 'break' && s.customerLat != null && s.customerLng != null
     );
@@ -88,7 +89,10 @@ export function RouteMapPanel({ selectedCandidate, insertionPreview: propInserti
       return;
     }
 
-    const locations = routableStops.map((s) => ({ lat: s.customerLat!, lng: s.customerLng! }));
+    const stopLocations = routableStops.map((s) => ({ lat: s.customerLat!, lng: s.customerLng! }));
+    const locations = depotCoord
+      ? [{ lat: depotCoord.lat, lng: depotCoord.lng }, ...stopLocations, { lat: depotCoord.lat, lng: depotCoord.lng }]
+      : stopLocations;
 
     try {
       if (geometryUnsubRef.current) {
@@ -130,7 +134,7 @@ export function RouteMapPanel({ selectedCandidate, insertionPreview: propInserti
       actions.setRouteGeometry([]);
       return;
     }
-    fetchGeometry(routeStops);
+    fetchGeometry(routeStops, depot);
 
     return () => {
       if (geometryUnsubRef.current) {
@@ -139,7 +143,7 @@ export function RouteMapPanel({ selectedCandidate, insertionPreview: propInserti
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isConnected, geometryKey, fetchGeometry]);
+  }, [isConnected, geometryKey, fetchGeometry, depot]);
 
   return (
     <RouteMapPanelUI
