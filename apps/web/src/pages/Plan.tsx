@@ -618,7 +618,8 @@ function PlanInner() {
 
   const handleStopClick = useCallback((customerId: string, _index: number) => {
     setHighlightedStopId(customerId);
-  }, []);
+    actions.selectCustomer(customerId);
+  }, [actions]);
 
   const handleSegmentClick = useCallback((segmentIndex: number) => {
     setHighlightedSegment((prev) => (prev === segmentIndex ? null : segmentIndex));
@@ -827,6 +828,10 @@ function PlanInner() {
     if (depot) return { lat: depot.lat, lng: depot.lng, name: depot.name || 'Depo' };
     return null;
   }, [selectedRoute?.crewId, crews, depots, depot]);
+
+  useEffect(() => {
+    actions.setMapDepot(selectedRouteDepot);
+  }, [selectedRouteDepot, actions]);
 
   const selectedRouteCrew = selectedRoute?.crewId ? crews.find((c) => c.id === selectedRoute.crewId) : null;
   const routeStartTime = (selectedRouteCrew?.workingHoursStart ?? defaultWorkingHoursStart)?.slice(0, 5) ?? null;
