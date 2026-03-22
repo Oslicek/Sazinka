@@ -74,7 +74,7 @@
 ## BUG-4: Route lines intermittently not visible after page load/reload
 
 **Reported:** 2026-03-10
-**Status:** INVESTIGATING
+**Status:** FIXED (2026-03-10)
 **Page:** Both Inbox (`/inbox`) and Plan (`/plan`)
 
 **Steps to reproduce:**
@@ -84,4 +84,9 @@
 **Expected:** Route segment lines are always visible on the map alongside stop markers.
 **Actual:** In roughly 50% of reloads, stop markers appear but route segment lines do not render. No consistent pattern — same data, same page, different outcome on each reload.
 
-**Likely cause:** Race condition between map initialization (`load` / `style.load` events) and the route rendering effect.
+**Root cause:** MapLibre's `isStyleLoaded()` returns false not only when the style definition isn't loaded, but also when any raster tile source is still fetching. The route rendering effect used `isStyleLoaded()` as a guard after the `load` event. When it returned false (tiles still loading), the code deferred rendering to a `map.once('style.load', ...)` callback. But `style.load` fires *before* `load` and never re-fires, so the deferred callback was permanently lost. Whether tiles were cached or not on each reload determined the ~50% success rate.
+
+**Fix:** Removed the `isStyleLoaded()` guard and the `style.load` fallback entirely. The `mapLoaded` state (from the `load` event) already guarantees the map is ready to accept `addSource`/`addLayer` calls. Also removed a second `isStyleLoaded()` check in the insertion preview effect.
+
+**Regression tests:**
+- `RouteMapPanel.test.tsx` (component) — "BUG-4: renders route even when isStyleLoaded() returns false after load"
