@@ -635,17 +635,14 @@ export function RouteMapPanel({
     if (segments.length === 0) return;
 
 
-    // Build GeoJSON FeatureCollection with segmentIndex property
-    const features = segments.map((coords, index) => {
-      return {
-        type: 'Feature' as const,
-        properties: { segmentIndex: index },
-        geometry: {
-          type: 'LineString' as const,
-          coordinates: coords,
-        },
-      };
-    });
+    const features = segments.map((coords, index) => ({
+      type: 'Feature' as const,
+      properties: { segmentIndex: index },
+      geometry: {
+        type: 'LineString' as const,
+        coordinates: coords,
+      },
+    }));
 
     mapRef.current.addSource('route-segments', {
       type: 'geojson',
