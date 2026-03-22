@@ -69,13 +69,14 @@ describe('CandidateDetail', () => {
       expect(actions).toBeInTheDocument();
       expect(header).toBeInTheDocument();
       expect(stateFlags).toBeInTheDocument();
+      expect(header!.contains(stateFlags!)).toBe(true);
 
-      // Actual DOM order: header → state-flags → ... → candidate-actions
-      const parent = actions?.parentElement;
-      expect(parent).toBeTruthy();
-      const actionsIndex = Array.from(parent!.children).indexOf(actions!);
-      const stateFlagsIndex = Array.from(parent!.children).indexOf(stateFlags!);
-      expect(stateFlagsIndex).toBeLessThan(actionsIndex);
+      // Root order: compact header (contains flags) comes before action row
+      const root = container.firstElementChild as HTMLElement;
+      const children = Array.from(root.children);
+      const headerIndex = children.indexOf(header!);
+      const actionsIndex = children.indexOf(actions!);
+      expect(headerIndex).toBeLessThan(actionsIndex);
     });
 
     it('should render all three action buttons', () => {
@@ -274,18 +275,22 @@ describe('CandidateDetail', () => {
         />
       );
 
-      const elements = Array.from(container.firstChild?.childNodes || []);
-      const stateFlags = elements.find((el: any) => el.getAttribute?.('data-testid') === 'state-flags');
-      const actions = elements.find((el: any) => el.getAttribute?.('data-testid') === 'candidate-actions');
-      const header = elements.find((el: any) => el.getAttribute?.('data-testid') === 'candidate-header');
+      const root = container.firstElementChild as HTMLElement;
+      const children = Array.from(root.children);
+      const header = container.querySelector('[data-testid="candidate-header"]');
+      const actions = container.querySelector('[data-testid="candidate-actions"]');
+      const stateFlags = container.querySelector('[data-testid="state-flags"]');
 
-      const stateFlagsIndex = elements.indexOf(stateFlags!);
-      const actionsIndex = elements.indexOf(actions!);
-      const headerIndex = elements.indexOf(header!);
+      expect(header).toBeTruthy();
+      expect(stateFlags).toBeTruthy();
+      expect(actions).toBeTruthy();
+      expect(header!.contains(stateFlags!)).toBe(true);
 
-      // Actual DOM order: candidate-header → state-flags → ... → candidate-actions
-      expect(headerIndex).toBeLessThan(stateFlagsIndex);
-      expect(stateFlagsIndex).toBeLessThan(actionsIndex);
+      const headerIndex = children.indexOf(header!);
+      const actionsIndex = children.indexOf(actions!);
+      expect(headerIndex).toBeGreaterThanOrEqual(0);
+      expect(actionsIndex).toBeGreaterThanOrEqual(0);
+      expect(headerIndex).toBeLessThan(actionsIndex);
     });
   });
 

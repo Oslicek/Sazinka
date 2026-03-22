@@ -61,6 +61,11 @@
 }
 
 /* State Flags */
+/* Wrapper for test IDs and grouping; display:contents keeps metaRow flex layout unchanged */
+.stateFlags {
+  display: contents;
+}
+
 .stateFlag {
   display: flex;
   align-items: center;

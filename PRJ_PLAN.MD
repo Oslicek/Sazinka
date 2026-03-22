@@ -398,3 +398,171 @@ Both the **list toolbar** and the **map overlay** display a persistent counter s
 - **Map overlay:** A small badge/chip in the map corner showing "12" or "12 / 25" (selected / soft limit) when candidates are checked.
 - **Map selection mode (Story 2):** The counter updates to show the sub-selection: "5 of 12 on map" — how many are sub-selected out of the total checked.
 - **Soft limit warning:** When optimization payload size > 25, the counter turns orange/amber and shows a tooltip: "Large batch — optimization may take longer."
+
+---
+
+## Inbox UI Test Coverage Overhaul
+
+### Goal
+
+Radically improve frontend test coverage around the Inbox UI to reduce regressions in scheduling, route building, selection, and map interactions.  
+Stack: **Vitest + React Testing Library** (unit + integration at component/page boundary).
+
+### Why this is needed
+
+- `PlanningInbox.tsx` is a large orchestration page (state + services + routing + map + timeline) and currently has only narrow layout-focused tests.
+- Most production regressions happened in UI wiring (selection, scheduling, state merge, route updates), not in isolated utility functions.
+- Existing utility tests are already strong in some areas (`planningInboxFilters`, `inboxAdapter`, `useAutoSave`), so the highest ROI is page/flow coverage.
+
+### Current baseline (reviewed)
+
+- Good coverage already:
+  - `planningInboxFilters.test.ts`
+  - `inboxAdapter.test.ts`
+  - `useAutoSave.test.ts`
+  - `InboxFilterBar.test.tsx`
+  - `InboxListPanel.test.tsx`
+- Partial coverage:
+  - `CandidateDetail.test.tsx` (snooze/unschedule paths mostly covered)
+- Major gaps:
+  - `PlanningInbox.test.tsx` (mostly responsive layout checks)
+  - `PlanningTimeline.tsx` (complex interactions, no direct tests)
+  - `VirtualizedInboxList.tsx` (keyboard and selection behavior not directly tested)
+  - `RouteSummaryStats.tsx`, `ArrivalBufferBar.tsx`, `TimelineViewToggle.tsx` (low/zero direct tests)
+
+### Scope and phases
+
+#### Phase 0 - Shared test harness
+
+Create reusable helpers to avoid brittle one-off mocks in every test:
+
+- `apps/web/src/test/factories/inbox.ts`
+  - candidate, route stop, route context, slot suggestion builders
+- `apps/web/src/test/factories/services.ts`
+  - consistent service mocks (`inbox`, `route`, `insertion`, `scoring`, `settings`, `calendar`)
+- `apps/web/src/test/helpers/renderPlanningInbox.tsx`
+  - common render wrapper with router/store defaults and override hooks
+
+#### Phase 1 - PlanningInbox page integration tests (highest priority)
+
+Expand `apps/web/src/pages/PlanningInbox.test.tsx` to cover real user flows:
+
+- Data loading and empty states
+- Candidate selection/deselection and detail panel sync
+- Scheduling and unscheduling visual state updates
+- Batch selection toolbar behavior
+- Guardrails (disabled actions when depot missing / optimizing)
+- Route operations that update timeline/list states
+- Filter interactions affecting visible candidates
+
+Primary rule: mock network/service boundaries, but keep real page logic and real child wiring where practical.
+
+#### Phase 2 - Candidate detail interaction tests
+
+Expand `apps/web/src/components/planner/CandidateDetail.test.tsx`:
+
+- Schedule form open/confirm/cancel
+- Slot suggestion selection callback contract
+- Contact and address edit-save paths
+- Callback note flow and action state transitions
+- State flag rendering assertions aligned with current DOM
+
+#### Phase 3 - Map/timeline child coverage
+
+Add/expand tests for components with meaningful interaction logic:
+
+- `RouteMapPanel` (planner component): selection badge, click/rect mode toggles, callbacks
+- `PlanningTimeline`: gap insertion callbacks, key timeline rendering branches
+- `VirtualizedInboxList`: keyboard navigation + selection callback behavior
+- `ArrivalBufferBar`: edit/save/cancel flows
+- `RouteSummaryStats`: fallback and explicit time calculations
+- `TimelineViewToggle`: controlled toggle behavior
+
+Note: full drag-and-drop fidelity is better suited for browser/E2E; here we verify event contracts and state transitions.
+
+#### Phase 4 - Extract pure logic from PlanningInbox for deterministic unit tests
+
+Create `apps/web/src/pages/planningInboxUtils.ts` and unit tests in `planningInboxUtils.test.ts` for pure computations currently embedded in `PlanningInbox.tsx` (key builders, route-end calculations, candidate detail merge helpers, etc.).
+
+### Execution order
+
+1. Phase 0 (harness)
+2. Phase 1 (page flows)
+3. Phase 2 + Phase 3 (parallel)
+4. Phase 4 (small extraction/refactor after flow coverage is stable)
+
+### Testing principles for this work
+
+- Prefer behavior assertions over snapshots.
+- Prefer role/text queries over implementation details.
+- Keep tests deterministic (fake timers only where necessary).
+- Avoid over-mocking internal component behavior when integration value is needed.
+- Keep each test focused on one user-visible outcome.
+
+### Risks and mitigations (review)
+
+- **Risk:** brittle tests due to heavy global mocks.  
+  **Mitigation:** centralize factories/harness and reuse defaults.
+- **Risk:** map interactions in jsdom can be flaky.  
+  **Mitigation:** assert callback contracts and rendered state, not WebGL internals.
+- **Risk:** tests becoming obsolete after UI copy/layout tweaks.  
+  **Mitigation:** target stable semantics (roles, states, callbacks), avoid CSS-class assertions unless intentional.
+- **Risk:** long-running suites.  
+  **Mitigation:** keep page integration tests focused and push pure logic to unit tests.
+
+### Definition of done
+
+- Inbox-focused tests added across page + critical child components.
+- Existing tests remain green.
+- New tests cover previously failing regression paths (especially scheduling/detail synchronization).
+- Frontend coverage improves meaningfully in Inbox-related files and remains maintainable.
+
+### Measurable coverage targets (added)
+
+To avoid "more tests, same risk" outcomes, track explicit thresholds:
+
+- **Baseline capture (before work):**
+  - Run `npx vitest run --coverage` in `apps/web` and save the coverage summary as baseline.
+  - Record current values for lines/functions/branches/statements.
+
+- **Inbox-critical surface target (after Phases 1-3):**
+  - File group: `PlanningInbox.tsx`, `CandidateDetail.tsx`, `RouteMapPanel.tsx`, `PlanningTimeline.tsx`, `VirtualizedInboxList.tsx`, `InboxListPanel.tsx`.
+  - Minimum aggregated target for this group:
+    - lines >= 60%
+    - functions >= 65%
+    - branches >= 50%
+
+- **Extracted pure helpers target (Phase 4):**
+  - `planningInboxUtils.ts` (and similar extracted pure modules):
+    - lines >= 90%
+    - functions >= 90%
+    - branches >= 85%
+
+- **Frontend-wide guardrail:**
+  - No overall frontend coverage metric may decrease from baseline.
+  - At least one overall metric (preferably lines/branches) must improve by >= 2 percentage points.
+
+### CI acceptance checklist (added)
+
+Before considering this initiative complete, all of the following must pass:
+
+- **Core test gate**
+  - `npx vitest run --coverage` passes in `apps/web`.
+  - No `.only` tests and no newly added skipped tests without explicit TODO rationale.
+
+- **Inbox regression gate**
+  - `PlanningInbox.test.tsx`, `CandidateDetail.test.tsx`, `InboxListPanel.test.tsx`, and new Inbox child tests all pass in one run.
+  - Scheduling regression path is explicitly covered by at least one page-level test (confirming detail/list state synchronization after scheduling).
+
+- **Flakiness gate**
+  - Run Inbox-focused test set 3 times back-to-back; all 3 runs must pass.
+  - If any run fails intermittently, treat as blocker and fix test determinism before merge.
+
+- **Runtime sanity gate**
+  - Inbox-focused subset should remain fast enough for local iteration (target: under 90 seconds on standard dev machine).
+
+- **Review gate**
+  - PR description includes:
+    - baseline coverage snapshot,
+    - post-change coverage snapshot,
+    - list of newly covered high-risk Inbox flows.

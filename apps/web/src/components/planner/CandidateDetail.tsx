@@ -381,14 +381,16 @@ export function CandidateDetail({
             />
           )}
 
-          <div className={`${styles.stateFlag} ${candidate.isScheduled ? styles.stateFlagYes : styles.stateFlagNo}`}>
-            <span className={styles.stateFlagLabel}>{t('candidate_state_appointment')}</span>
-            <span className={styles.stateFlagValue}>{candidate.isScheduled ? t('candidate_state_yes') : t('candidate_state_no')}</span>
-          </div>
+          <div className={styles.stateFlags} data-testid="state-flags">
+            <div className={`${styles.stateFlag} ${candidate.isScheduled ? styles.stateFlagYes : styles.stateFlagNo}`}>
+              <span className={styles.stateFlagLabel}>{t('candidate_state_appointment')}</span>
+              <span className={styles.stateFlagValue}>{candidate.isScheduled ? t('candidate_state_yes') : t('candidate_state_no')}</span>
+            </div>
 
-          <div className={`${styles.stateFlag} ${isInRoute ? styles.stateFlagYes : styles.stateFlagNo}`}>
-            <span className={styles.stateFlagLabel}>{t('candidate_state_in_route')}</span>
-            <span className={styles.stateFlagValue}>{isInRoute ? t('candidate_state_yes') : t('candidate_state_no')}</span>
+            <div className={`${styles.stateFlag} ${isInRoute ? styles.stateFlagYes : styles.stateFlagNo}`}>
+              <span className={styles.stateFlagLabel}>{t('candidate_state_in_route')}</span>
+              <span className={styles.stateFlagValue}>{isInRoute ? t('candidate_state_yes') : t('candidate_state_no')}</span>
+            </div>
           </div>
 
           <div className={styles.dueDateBadge}>

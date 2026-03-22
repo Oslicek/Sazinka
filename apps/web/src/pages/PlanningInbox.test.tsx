@@ -7,7 +7,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { mockMatchMedia, setViewport, VIEWPORTS } from '../test/utils/responsive';
+import {
+  setupPlanningInboxDesktop,
+  setupPlanningInboxPhone,
+  setupPlanningInboxTablet,
+} from '../test/helpers/renderPlanningInbox';
 
 // ── Router mock ───────────────────────────────────────────────────────────────
 const mockNavigate = vi.fn();
@@ -155,14 +159,7 @@ describe('PlanningInbox mobile', () => {
 
   describe('phone layout', () => {
     beforeEach(() => {
-      mockMatchMedia(VIEWPORTS.phone.width);
-      setViewport(VIEWPORTS.phone.width, VIEWPORTS.phone.height);
-      mockUseBreakpoint.mockReturnValue({
-        breakpoint: 'phone',
-        isPhone: true,
-        isMobileUi: true,
-        isTouch: true,
-      });
+      setupPlanningInboxPhone(mockUseBreakpoint);
     });
 
     it('renders Map button in header (no tab bar)', () => {
@@ -194,14 +191,7 @@ describe('PlanningInbox mobile', () => {
 
   describe('tablet layout', () => {
     beforeEach(() => {
-      mockMatchMedia(VIEWPORTS.tablet.width);
-      setViewport(VIEWPORTS.tablet.width, VIEWPORTS.tablet.height);
-      mockUseBreakpoint.mockReturnValue({
-        breakpoint: 'tablet',
-        isPhone: false,
-        isMobileUi: true,
-        isTouch: true,
-      });
+      setupPlanningInboxTablet(mockUseBreakpoint);
     });
 
     it('also renders Map button (not tab bar) on tablet (isMobileUi=true)', () => {
@@ -213,14 +203,7 @@ describe('PlanningInbox mobile', () => {
 
   describe('desktop layout', () => {
     beforeEach(() => {
-      mockMatchMedia(VIEWPORTS.desktop.width);
-      setViewport(VIEWPORTS.desktop.width, VIEWPORTS.desktop.height);
-      mockUseBreakpoint.mockReturnValue({
-        breakpoint: 'desktop',
-        isPhone: false,
-        isMobileUi: false,
-        isTouch: false,
-      });
+      setupPlanningInboxDesktop(mockUseBreakpoint);
     });
 
     it('renders ThreePanelLayout on desktop (unchanged)', () => {
