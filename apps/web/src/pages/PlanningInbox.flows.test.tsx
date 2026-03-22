@@ -1,15 +1,22 @@
 /**
  * PlanningInbox flow tests — batch toolbar, depot guard, selection wiring.
  * Uses mock InboxListPanel to drive selection without full list virtualization.
+ * Filter AST / applyInboxFilters are covered in planningInboxFilters.test.ts.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
+import type { RouteJobStatusUpdate } from '../services/routeService';
 import {
   createInboxResponseWithOneCandidate,
   defaultCrewList,
   defaultPlanningInboxSettings,
 } from '../test/factories/services';
 import { renderPlanningInbox, setupPlanningInboxDesktop } from '../test/helpers/renderPlanningInbox';
+
+const { mockSubmitRoutePlanJob, mockSubscribeToRouteJobStatus } = vi.hoisted(() => ({
+  mockSubmitRoutePlanJob: vi.fn(),
+  mockSubscribeToRouteJobStatus: vi.fn(),
+}));
 
 const mockNavigate = vi.fn();
 vi.mock('@tanstack/react-router', () => ({
@@ -65,8 +72,8 @@ vi.mock('../services/routeService', () => ({
   getRoute: vi.fn().mockResolvedValue({ route: null, stops: [] }),
   saveRoute: vi.fn().mockResolvedValue({}),
   deleteRoute: vi.fn().mockResolvedValue(undefined),
-  submitRoutePlanJob: vi.fn().mockResolvedValue({ jobId: 'flow-job' }),
-  subscribeToRouteJobStatus: vi.fn().mockResolvedValue(vi.fn()),
+  submitRoutePlanJob: (...args: unknown[]) => mockSubmitRoutePlanJob(...args),
+  subscribeToRouteJobStatus: (...args: unknown[]) => mockSubscribeToRouteJobStatus(...args),
 }));
 
 vi.mock('../services/settingsService', () => ({
@@ -197,6 +204,38 @@ vi.mock('../components/layout', () => ({
 
 import { PlanningInbox } from './PlanningInbox';
 
+function completedBatchOptimizeUpdate(jobId: string): RouteJobStatusUpdate {
+  return {
+    jobId,
+    timestamp: new Date().toISOString(),
+    status: {
+      type: 'completed',
+      result: {
+        stops: [
+          {
+            customerId: 'cust-flow-1',
+            customerName: 'Flow Customer',
+            address: 'Test 1, Prague',
+            coordinates: { lat: 50.0755, lng: 14.4378 },
+            order: 1,
+            eta: '09:00',
+            etd: '09:30',
+            serviceDurationMinutes: 30,
+          },
+        ],
+        totalDistanceKm: 5,
+        totalDurationMinutes: 60,
+        algorithm: 'test',
+        solveTimeMs: 1,
+        solverLog: [],
+        optimizationScore: 90,
+        warnings: [],
+        unassigned: [],
+      },
+    },
+  };
+}
+
 describe('PlanningInbox flows (desktop)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -204,6 +243,12 @@ describe('PlanningInbox flows (desktop)', () => {
     sessionStorage.clear();
     mockGetSettings.mockResolvedValue(defaultPlanningInboxSettings());
     mockListCrews.mockResolvedValue(defaultCrewList());
+    mockSubmitRoutePlanJob.mockResolvedValue({
+      jobId: 'flow-job',
+      position: 0,
+      estimatedWaitSeconds: 0,
+    });
+    mockSubscribeToRouteJobStatus.mockResolvedValue(() => {});
   });
 
   it('enables Add to Route & Optimize after selection when depot is configured', async () => {
@@ -247,5 +292,40 @@ describe('PlanningInbox flows (desktop)', () => {
 
     expect(screen.queryByRole('button', { name: 'add_to_route_optimize' })).not.toBeInTheDocument();
     expect(screen.queryByText('selected_count')).not.toBeInTheDocument();
+  });
+
+  it('submits batch route plan job with depot start location when Add to Route & Optimize is clicked', async () => {
+    mockSubscribeToRouteJobStatus.mockImplementationOnce(async (jobId: string, callback: (u: RouteJobStatusUpdate) => void) => {
+      queueMicrotask(() => {
+        callback(completedBatchOptimizeUpdate(jobId));
+      });
+      return () => {};
+    });
+
+    setupPlanningInboxDesktop(mockUseBreakpoint);
+
+    const { user } = renderPlanningInbox(<PlanningInbox />);
+
+    await user.click(screen.getByTestId('mock-select-one-candidate'));
+
+    const addBtn = await screen.findByRole('button', { name: 'add_to_route_optimize' });
+    await waitFor(() => {
+      expect(addBtn).not.toBeDisabled();
+    });
+
+    await user.click(addBtn);
+
+    await waitFor(() => {
+      expect(mockSubmitRoutePlanJob).toHaveBeenCalled();
+    });
+
+    expect(mockSubmitRoutePlanJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerIds: expect.arrayContaining(['cust-flow-1']),
+        startLocation: { lat: 50.1, lng: 14.3 },
+        crewId: 'crew-1',
+      }),
+    );
+    expect(mockSubscribeToRouteJobStatus).toHaveBeenCalledWith('flow-job', expect.any(Function));
   });
 });

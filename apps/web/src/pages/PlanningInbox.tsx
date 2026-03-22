@@ -1821,7 +1821,9 @@ function PlanningInboxInner() {
 
       setRouteJobProgress(t('optimizer_queued'));
 
-      const unsubscribe = await routeService.subscribeToRouteJobStatus(
+      // `let` + assign after await: callback must not reference `const` before init if invoked early (microtasks).
+      let unsubscribe: (() => void) | undefined;
+      unsubscribe = await routeService.subscribeToRouteJobStatus(
         jobResponse.jobId,
         (update) => {
           switch (update.status.type) {
@@ -1963,14 +1965,14 @@ function PlanningInboxInner() {
               setIsOptimizing(false);
               setHasChanges(true);
               incrementRouteVersion();
-              unsubscribe();
+              unsubscribe?.();
               break;
             }
             case 'failed':
               setRouteJobProgress(t('optimizer_failed', { detail: update.status.error }));
               setIsOptimizing(false);
               setTimeout(() => setRouteJobProgress(null), 5000);
-              unsubscribe();
+              unsubscribe?.();
               break;
           }
         }
@@ -2196,8 +2198,9 @@ function PlanningInboxInner() {
 
       setRouteJobProgress(t('optimizer_queued'));
 
-      // Subscribe to status updates
-      const unsubscribe = await routeService.subscribeToRouteJobStatus(
+      // Subscribe to status updates (`let` — see batch optimize handler).
+      let unsubscribe: (() => void) | undefined;
+      unsubscribe = await routeService.subscribeToRouteJobStatus(
         jobResponse.jobId,
         (update) => {
           switch (update.status.type) {
@@ -2307,14 +2310,14 @@ function PlanningInboxInner() {
               setRouteJobProgress(null);
               setIsOptimizing(false);
               setHasChanges(true);
-              unsubscribe();
+              unsubscribe?.();
               break;
             }
             case 'failed':
               setRouteJobProgress(`Chyba: ${update.status.error}`);
               setIsOptimizing(false);
               setTimeout(() => setRouteJobProgress(null), 5000);
-              unsubscribe();
+              unsubscribe?.();
               break;
           }
         }
