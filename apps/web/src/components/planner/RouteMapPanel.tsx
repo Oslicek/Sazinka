@@ -582,23 +582,11 @@ export function RouteMapPanel({
       return;
     }
 
-    // Guard: style may not be fully ready despite 'load' having fired
-    if (!mapRef.current.isStyleLoaded()) {
-      const map = mapRef.current;
-      const onReady = () => renderRoute();
-      map.once('style.load', onReady);
-      return () => { map.off('style.load', onReady); };
-    }
-
-    renderRoute();
-
-    function renderRoute() {
-    if (!mapRef.current) return;
-
-    // Clear again in the deferred (style.load) path to avoid stale layers
-    clearRouteLayers();
-
-    if (stops.length === 0) return;
+    // NOTE: We do NOT check isStyleLoaded() here. MapLibre's isStyleLoaded()
+    // returns false while tiles are still loading (not just style definition),
+    // but the 'load' event (gated by mapLoaded) guarantees the style is ready
+    // to accept addSource/addLayer. Deferring to 'style.load' is a dead end
+    // because that event fires BEFORE 'load' and will never re-fire.
 
     logger.info('[RouteMapPanel] Rendering route with', stops.length, 'stops, routeGeometry length:', routeGeometry?.length || 0, 'depot:', !!depot);
 
@@ -727,7 +715,6 @@ export function RouteMapPanel({
     };
     mapRef.current.on('mouseenter', 'route-hit-area', segmentEnterHandlerRef.current);
     mapRef.current.on('mouseleave', 'route-hit-area', segmentLeaveHandlerRef.current);
-    } // end renderRoute
   }, [stops, depot, routeGeometry, clearRouteLayers, mapLoaded, setHighlightedSegment]);
 
   // Update highlight filter when highlightedSegment changes
@@ -745,7 +732,6 @@ export function RouteMapPanel({
   // Update insertion preview marker
   useEffect(() => {
     if (!mapRef.current || !mapLoaded) return;
-    if (!mapRef.current.isStyleLoaded()) return;
 
     // Remove existing preview marker
     if (previewMarkerRef.current) {

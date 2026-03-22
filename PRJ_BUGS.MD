@@ -68,3 +68,20 @@
 **Regression tests:**
 - `Plan.mapBugs.test.tsx` — "BUG-3: clicking a stop in the timeline sets selectedCustomerId in PanelState"
 - `RouteMapPanel.test.tsx` (panels) — "highlights stop when SELECT_CUSTOMER signal received"
+
+---
+
+## BUG-4: Route lines intermittently not visible after page load/reload
+
+**Reported:** 2026-03-10
+**Status:** INVESTIGATING
+**Page:** Both Inbox (`/inbox`) and Plan (`/plan`)
+
+**Steps to reproduce:**
+1. Open Inbox or Plan page with an existing route.
+2. Reload the page repeatedly.
+
+**Expected:** Route segment lines are always visible on the map alongside stop markers.
+**Actual:** In roughly 50% of reloads, stop markers appear but route segment lines do not render. No consistent pattern — same data, same page, different outcome on each reload.
+
+**Likely cause:** Race condition between map initialization (`load` / `style.load` events) and the route rendering effect.

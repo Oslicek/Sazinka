@@ -132,11 +132,48 @@ function makeStop(id: string, lat: number, lng: number): SavedRouteStop {
 describe('RouteMapPanel — segment feature indexing', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    isStyleLoadedSpy.mockReturnValue(true);
+    getSourceSpy.mockReturnValue(null);
+    getLayerSpy.mockReturnValue(null);
     vi.useFakeTimers();
   });
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('BUG-4: renders route even when isStyleLoaded() returns false after load', async () => {
+    // Simulate the race condition: map fires 'load' but isStyleLoaded() returns
+    // false (tiles still loading). The route must still render — it must NOT
+    // defer to a style.load listener that will never fire.
+    isStyleLoadedSpy.mockReturnValue(false);
+
+    const { RouteMapPanel } = await import('./RouteMapPanel');
+
+    const stops = [
+      makeStop('s1', 50.0, 14.0),
+      makeStop('s2', 50.1, 14.1),
+    ];
+
+    const depot = { lat: 49.9, lng: 13.9, name: 'Depot' };
+
+    render(
+      <RouteMapPanel
+        stops={stops}
+        depot={depot}
+        routeGeometry={undefined}
+      />,
+    );
+
+    await act(async () => {
+      vi.runAllTimers();
+    });
+
+    const routeSourceCall = addSourceSpy.mock.calls.find(
+      ([name]: [string]) => name === 'route-segments',
+    );
+
+    expect(routeSourceCall).toBeDefined();
   });
 
   it('each route segment feature has a sequential segmentIndex (0, 1, …, N)', async () => {
