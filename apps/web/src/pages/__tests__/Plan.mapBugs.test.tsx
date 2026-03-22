@@ -264,5 +264,43 @@ describe('Plan page — map bugs', () => {
     });
 
     expect(capturedPanelState!.selectedCustomerId).toBe('cust-s1');
+
+    // Clicking a different stop updates the selection
+    act(() => {
+      onStopClick('cust-s2', 1);
+    });
+
+    expect(capturedPanelState!.selectedCustomerId).toBe('cust-s2');
+  });
+
+  it('BUG-1: mapDepot includes depot name', async () => {
+    vi.mocked(settingsService.getSettings).mockResolvedValue({
+      depots: [mockDepot],
+      breakSettings: null,
+      workConstraints: null,
+      preferences: null,
+    } as unknown as Awaited<ReturnType<typeof settingsService.getSettings>>);
+
+    vi.mocked(routeService.listRoutes).mockResolvedValue(
+      { routes: [mockRoute] } as unknown as Awaited<ReturnType<typeof routeService.listRoutes>>,
+    );
+
+    const stops = [makeStop('s1', 1)];
+    vi.mocked(routeService.getRoute).mockResolvedValue(
+      { route: mockRoute, stops } as unknown as Awaited<ReturnType<typeof routeService.getRoute>>,
+    );
+
+    const { listCrews } = await import('../../services/crewService');
+    vi.mocked(listCrews).mockResolvedValue(
+      [mockCrew] as unknown as Awaited<ReturnType<typeof listCrews>>,
+    );
+
+    render(<Plan />);
+
+    await waitFor(() => {
+      expect(capturedPanelState!.mapDepot).toEqual(
+        expect.objectContaining({ name: mockDepot.name }),
+      );
+    }, { timeout: 3000 });
   });
 });

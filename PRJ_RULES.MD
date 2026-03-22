@@ -525,6 +525,70 @@ sazinka/
 - [ ] Documentation updated (if needed)
 - [ ] NATS message schemas documented
 
+### PanelState Sync (Plan ↔ Map)
+
+When a page (Inbox, Plan) manages local state that the map panel needs, every
+relevant piece of data must be bridged into `PanelStateContext` via the
+corresponding `actions.*` call. The map panel wrapper (`panels/RouteMapPanel`)
+reads exclusively from context — it has no props from the host page.
+
+Checklist for adding a new page or route that uses the map panel:
+- [ ] `actions.setRouteStops(stops)` — route stops
+- [ ] `actions.setRouteGeometry(geo)` — decoded polyline
+- [ ] `actions.setMapDepot(depot)` — depot coordinates and name
+- [ ] `actions.selectCustomer(id)` — stop/customer highlight (bidirectional with map)
+- [ ] `actions.highlightSegment(idx)` — segment highlight (bidirectional with map)
+- [ ] `actions.setRouteContext(ctx)` — date, crew, depot IDs
+
+---
+
+## Bug-Bashing Process
+
+When investigating and fixing bugs, follow this disciplined process:
+
+### 1. Document
+- Record the bug in `PRJ_BUGS.MD` with: page, steps to reproduce, expected vs
+  actual behavior, and screenshots if available.
+- Do not start fixing until the bug is clearly described.
+
+### 2. Red — write a failing test
+- Write one or more tests that **detect** the bug (the test must fail before
+  the fix and pass after).
+- Prefer the narrowest scope that still catches the bug:
+  - **Pure utility** → unit test in the same `*.test.ts` file.
+  - **State sync / prop forwarding** → integration test that renders the page
+    or panel wrapper and asserts on captured `PanelState` or mock-component
+    props.
+  - **Visual / MapLibre** → component test with a mocked MapLibre `Map` that
+    captures `addSource`/`addLayer` calls.
+
+### 3. Green — fix the bug
+- Write the minimum code change that makes all tests pass.
+- Run the full affected test suite (`vitest run <file>`) to confirm no
+  regressions.
+
+### 4. Manual verification
+- Deploy (commit and push) so the fix can be tested in production.
+- Let the reporter verify the fix before closing.
+
+### 5. Guard
+- After manual confirmation, evaluate whether additional edge-case or
+  integration tests are needed to prevent the bug from recurring.
+- Update `PRJ_BUGS.MD` with: root cause, fix description, list of regression
+  test names and files.
+- All tests created during bug-bashing are **permanent regression guards**, not
+  throwaway instrumentation.
+
+### Anti-patterns
+- **No extraction for testability alone.** Do not extract trivial inline code
+  (e.g., a `.map()` callback) into a named utility just to unit-test it.
+  Prefer testing at the component/integration level.
+- **No debug instrumentation in commits.** Console logs, fetch wrappers, or
+  `_log` helpers used during investigation must be removed before the final
+  commit. If production logging is needed, use the project's `logger` utility.
+
+---
+
 ### Docker / Deployment
 
 Source: [Docker Best Practices for Production](https://www.youtube.com/watch?v=ueTe-VQaD7c&t=5s)

@@ -248,6 +248,25 @@ describe('panels/RouteMapPanel', () => {
     await waitFor(() => expect(mockSubmitGeometryJob).toHaveBeenCalled());
   });
 
+  it('forwards mapDepot as depot prop to the map UI component', () => {
+    const { ref, ActionsCapture } = makeActionsCapture();
+
+    render(
+      <PanelStateProvider>
+        <ActionsCapture />
+        <RouteMapPanel />
+      </PanelStateProvider>,
+    );
+
+    expect(mockProps.current.depot).toBeNull();
+
+    act(() => {
+      ref.actions!.setMapDepot({ lat: 49.22, lng: 16.51, name: 'Brno' });
+    });
+
+    expect(mockProps.current.depot).toEqual({ lat: 49.22, lng: 16.51, name: 'Brno' });
+  });
+
   it('includes depot in geometry fetch when mapDepot is set', async () => {
     const stop = makeStop();
     mockGetRoute.mockResolvedValue({ route: { id: 'route-1' }, stops: [stop] });
