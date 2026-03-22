@@ -90,6 +90,13 @@ import { useDetachState } from '../hooks/useDetachState';
 import { InboxListPanel } from '../panels/InboxListPanel';
 import { RouteMapPanel as RouteMapPanelSelfSufficient } from '../panels/RouteMapPanel';
 import styles from './PlanningInbox.module.css';
+import {
+  buildGeometryKey,
+  buildInRouteIds,
+  buildRouteShapeKey,
+  buildSelectedCandidatesForMap,
+  computeActualRouteEnd,
+} from './planningInboxUtils';
 
 /** Parse "HH:MM" or "HH:MM:SS" to total minutes from midnight. */
 function parseTimeMins(t: string): number {
@@ -624,13 +631,7 @@ function PlanningInboxInner() {
   }, []);
 
   // Stable key: only changes when stop locations change (not ETAs)
-  const geometryKey = useMemo(
-    () => routeStops
-      .filter(s => s.stopType !== 'break' && s.customerLat != null && s.customerLng != null)
-      .map(s => `${s.customerLat},${s.customerLng}`)
-      .join('|'),
-    [routeStops],
-  );
+  const geometryKey = useMemo(() => buildGeometryKey(routeStops), [routeStops]);
 
   // Trigger geometry fetch whenever route stop locations or depot change.
   // Wait for depot to be available when a depotId is configured, so we
@@ -674,13 +675,7 @@ function PlanningInboxInner() {
 
   // Stable key: only changes when stop IDs or locations change (not ETAs).
   // Declared early because both single-candidate and batch insertion effects depend on it.
-  const routeShapeKey = useMemo(
-    () => routeStops
-      .filter(s => s.stopType === 'customer' && s.customerLat && s.customerLng)
-      .map(s => `${s.id}:${s.customerLat},${s.customerLng}`)
-      .join('|'),
-    [routeStops],
-  );
+  const routeShapeKey = useMemo(() => buildRouteShapeKey(routeStops), [routeStops]);
 
   // Calculate insertion when candidate is selected
   useEffect(() => {
@@ -1040,20 +1035,10 @@ function PlanningInboxInner() {
 
   // Actual route start/end derived from timeline data
   const actualRouteStart = depotDeparture?.slice(0, 5) ?? routeStartTime;
-  const actualRouteEnd = useMemo(() => {
-    if (routeStops.length === 0) return routeEndTime;
-    const lastStop = routeStops[routeStops.length - 1];
-    const lastDeparture = lastStop.estimatedDeparture ?? lastStop.estimatedArrival;
-    if (!lastDeparture) return routeEndTime;
-    const returnMin = returnToDepotLeg?.durationMinutes ?? 0;
-    if (returnMin <= 0) return lastDeparture.slice(0, 5);
-    // Parse HH:MM and add return travel time
-    const [hh, mm] = lastDeparture.slice(0, 5).split(':').map(Number);
-    const totalMin = hh * 60 + mm + Math.round(returnMin);
-    const endH = Math.floor(totalMin / 60) % 24;
-    const endM = totalMin % 60;
-    return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
-  }, [routeStops, returnToDepotLeg, routeEndTime]);
+  const actualRouteEnd = useMemo(
+    () => computeActualRouteEnd(routeStops, returnToDepotLeg, routeEndTime),
+    [routeStops, returnToDepotLeg, routeEndTime],
+  );
 
   // Selected candidate (from candidates list or fallback from route stops)
   const selectedCandidate = useMemo(() => 
@@ -1183,24 +1168,13 @@ function PlanningInboxInner() {
   const candidateForInsertion: CandidateForInsertion | null = null;
 
   // Compute set of customer IDs that are currently in the route
-  const inRouteIds = useMemo(() => {
-    return new Set(routeStops.map((s) => s.customerId));
-  }, [routeStops]);
+  const inRouteIds = useMemo(() => buildInRouteIds(routeStops), [routeStops]);
 
   // Batch-selected candidates for map (shown as static orange pins when selectedIds > 0)
-  const selectedCandidatesForMap: SelectedCandidate[] = useMemo(() => {
-    if (selectedIds.size === 0) return [];
-    return Array.from(selectedIds)
-      .map(id => candidates.find(c => c.customerId === id))
-      .filter((c): c is NonNullable<typeof c> => c != null)
-      .filter(c => !!c.customerLat && !!c.customerLng)
-      .filter(c => !inRouteIds.has(c.customerId))
-      .map(c => ({
-        id: c.customerId,
-        name: c.customerName,
-        coordinates: { lat: c.customerLat!, lng: c.customerLng! },
-      }));
-  }, [selectedIds, candidates, inRouteIds]);
+  const selectedCandidatesForMap: SelectedCandidate[] = useMemo(
+    () => buildSelectedCandidatesForMap(selectedIds, candidates, inRouteIds),
+    [selectedIds, candidates, inRouteIds],
+  );
 
   useEffect(() => {
     actions.setSelectedCandidatesForMap(selectedCandidatesForMap);
