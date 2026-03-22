@@ -3292,6 +3292,12 @@ function PlanningInboxInner() {
       </div>
     );
 
+    // When map is detached, reclaim its space: skip the map section entirely
+    // and give the timeline the full height of the right panel.
+    if (isDetached('map')) {
+      return timelineSection;
+    }
+
     if (isMapCollapsed) {
       return <div className={styles.rightPanelStack}>{mapSection}{timelineSection}</div>;
     }
@@ -3410,24 +3416,22 @@ function PlanningInboxInner() {
       </div>
     );
 
+    const topPanels = [
+      ...(!isDetached('list') ? [{ id: 'list', content: tileCell(t('panel_list', 'Seznam'), listPanelContent!), defaultWidth: 50, minWidth: 20, maxWidth: 80 }] : []),
+      { id: 'detail', content: tileCell(t('panel_detail', 'Detail'), renderDetailPanel()), defaultWidth: 50, minWidth: 20, maxWidth: 80 },
+    ];
+
+    const bottomPanels = [
+      ...(!isDetached('map') ? [{ id: 'map', content: tileCell(t('panel_map', 'Mapa'), mapPanelContent!), defaultWidth: 50, minWidth: 20, maxWidth: 80 }] : []),
+      { id: 'timeline', content: tileCell(t('panel_timeline', 'Časová osa'), renderRouteTimelineOnly()), defaultWidth: 50, minWidth: 20, maxWidth: 80 },
+    ];
+
     const topRow = (
-      <SplitView
-        panels={[
-          { id: 'list', content: tileCell(t('panel_list', 'Seznam'), listPanelContent ?? <div />), defaultWidth: 50, minWidth: 20, maxWidth: 80 },
-          { id: 'detail', content: tileCell(t('panel_detail', 'Detail'), renderDetailPanel()), defaultWidth: 50, minWidth: 20, maxWidth: 80 },
-        ]}
-        className={styles.tilesRow}
-      />
+      <SplitView panels={topPanels} className={styles.tilesRow} />
     );
 
     const bottomRow = (
-      <SplitView
-        panels={[
-          { id: 'map', content: tileCell(t('panel_map', 'Mapa'), mapPanelContent ?? <div />), defaultWidth: 50, minWidth: 20, maxWidth: 80 },
-          { id: 'timeline', content: tileCell(t('panel_timeline', 'Časová osa'), renderRouteTimelineOnly()), defaultWidth: 50, minWidth: 20, maxWidth: 80 },
-        ]}
-        className={styles.tilesRow}
-      />
+      <SplitView panels={bottomPanels} className={styles.tilesRow} />
     );
 
     return (
@@ -3446,21 +3450,31 @@ function PlanningInboxInner() {
     );
   }
 
-  // wide (default) — existing three-panel layout
+  // wide (default) — three-panel, or two-panel when list is detached
   return (
     <div className={styles.page}>
       {pageHeader}
       {breakWarningBanner}
       <div className={styles.content}>
-        <ThreePanelLayout
-          left={listPanelContent ?? <div />}
-          center={renderDetailPanel()}
-          right={mapAndTimelineContent}
-          leftWidth={22}
-          centerWidth={33}
-          rightWidth={45}
-          className={styles.splitLayout}
-        />
+        {isDetached('list') ? (
+          <SplitView
+            panels={[
+              { id: 'center', content: renderDetailPanel(), defaultWidth: 42, minWidth: 25, maxWidth: 65 },
+              { id: 'right', content: mapAndTimelineContent, defaultWidth: 58, minWidth: 30, maxWidth: 75 },
+            ]}
+            className={styles.splitLayout}
+          />
+        ) : (
+          <ThreePanelLayout
+            left={listPanelContent!}
+            center={renderDetailPanel()}
+            right={mapAndTimelineContent}
+            leftWidth={22}
+            centerWidth={33}
+            rightWidth={45}
+            className={styles.splitLayout}
+          />
+        )}
       </div>
     </div>
   );
