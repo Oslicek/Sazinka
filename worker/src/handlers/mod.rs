@@ -3,6 +3,8 @@
 pub mod admin;
 pub mod auth;
 pub mod communication;
+#[cfg(test)]
+pub mod import_tests;
 pub mod inbox;
 pub mod planned_action;
 pub mod scoring;

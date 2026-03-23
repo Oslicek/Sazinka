@@ -86,7 +86,7 @@ pub async fn resolve_device_ref(pool: &PgPool, _user_id: Uuid, customer_id: Uuid
 // TYPE PARSING
 // =============================================================================
 
-fn parse_device_type(s: &str) -> Option<DeviceType> {
+pub(crate) fn parse_device_type(s: &str) -> Option<DeviceType> {
     match s.to_lowercase().as_str() {
         "gas_boiler" | "kotel" | "plynový kotel" | "plynovy kotel" => Some(DeviceType::GasBoiler),
         "gas_water_heater" | "ohřívač" | "ohrivac" | "bojler" => Some(DeviceType::GasWaterHeater),
@@ -98,7 +98,7 @@ fn parse_device_type(s: &str) -> Option<DeviceType> {
     }
 }
 
-fn parse_revision_status(s: &str) -> Option<RevisionStatus> {
+pub(crate) fn parse_revision_status(s: &str) -> Option<RevisionStatus> {
     match s.to_lowercase().as_str() {
         "upcoming" | "nadcházející" | "nadchazejici" | "budoucí" | "budouci" | "plánovaná" | "planovana" => Some(RevisionStatus::Upcoming),
         "scheduled" | "naplánováno" | "naplanovano" | "plánováno" | "planovano" => Some(RevisionStatus::Scheduled),
@@ -109,7 +109,7 @@ fn parse_revision_status(s: &str) -> Option<RevisionStatus> {
     }
 }
 
-fn parse_revision_result(s: &str) -> Option<RevisionResult> {
+pub(crate) fn parse_revision_result(s: &str) -> Option<RevisionResult> {
     match s.to_lowercase().as_str() {
         "passed" | "ok" | "v pořádku" | "v poradku" | "bez závad" | "bez zavad" => Some(RevisionResult::Passed),
         "conditional" | "s výhradami" | "s vyhradami" | "podmíněně" | "podminene" => Some(RevisionResult::Conditional),
@@ -118,7 +118,7 @@ fn parse_revision_result(s: &str) -> Option<RevisionResult> {
     }
 }
 
-fn parse_communication_type(s: &str) -> Option<CommunicationType> {
+pub(crate) fn parse_communication_type(s: &str) -> Option<CommunicationType> {
     match s.to_lowercase().as_str() {
         "call" | "hovor" | "telefon" | "telefonát" | "telefonat" => Some(CommunicationType::Call),
         "email_sent" | "email" | "mail" | "odeslaný email" | "odeslany email" => Some(CommunicationType::EmailSent),
@@ -129,7 +129,7 @@ fn parse_communication_type(s: &str) -> Option<CommunicationType> {
     }
 }
 
-fn parse_communication_direction(s: &str) -> Option<CommunicationDirection> {
+pub(crate) fn parse_communication_direction(s: &str) -> Option<CommunicationDirection> {
     match s.to_lowercase().as_str() {
         "outbound" | "odchozí" | "odchozi" | "ven" | "out" => Some(CommunicationDirection::Outbound),
         "inbound" | "příchozí" | "prichozi" | "dovnitř" | "dovnitr" | "in" => Some(CommunicationDirection::Inbound),
@@ -137,7 +137,7 @@ fn parse_communication_direction(s: &str) -> Option<CommunicationDirection> {
     }
 }
 
-fn parse_visit_type(s: &str) -> Option<VisitType> {
+pub(crate) fn parse_visit_type(s: &str) -> Option<VisitType> {
     match s.to_lowercase().as_str() {
         "revision" | "revize" | "kontrola" => Some(VisitType::Revision),
         "installation" | "instalace" | "montáž" | "montaz" => Some(VisitType::Installation),
@@ -148,7 +148,7 @@ fn parse_visit_type(s: &str) -> Option<VisitType> {
     }
 }
 
-fn parse_visit_status(s: &str) -> Option<VisitStatus> {
+pub(crate) fn parse_visit_status(s: &str) -> Option<VisitStatus> {
     match s.to_lowercase().as_str() {
         "planned" | "naplánováno" | "naplanovano" | "plánováno" | "planovano" => Some(VisitStatus::Planned),
         "in_progress" | "probíhá" | "probiha" => Some(VisitStatus::InProgress),
@@ -159,7 +159,7 @@ fn parse_visit_status(s: &str) -> Option<VisitStatus> {
     }
 }
 
-fn parse_visit_result(s: &str) -> Option<VisitResult> {
+pub(crate) fn parse_visit_result(s: &str) -> Option<VisitResult> {
     match s.to_lowercase().as_str() {
         "successful" | "úspěšná" | "uspesna" | "ok" => Some(VisitResult::Successful),
         "partial" | "částečná" | "castecna" | "částečně" | "castecne" => Some(VisitResult::Partial),
@@ -170,7 +170,7 @@ fn parse_visit_result(s: &str) -> Option<VisitResult> {
     }
 }
 
-fn parse_work_type(s: &str) -> Option<WorkType> {
+pub(crate) fn parse_work_type(s: &str) -> Option<WorkType> {
     match s.to_lowercase().as_str() {
         "revision" | "revize" | "kontrola" => Some(WorkType::Revision),
         "repair" | "oprava" | "servis" => Some(WorkType::Repair),
@@ -181,7 +181,7 @@ fn parse_work_type(s: &str) -> Option<WorkType> {
     }
 }
 
-fn parse_work_result(s: &str) -> Option<WorkResult> {
+pub(crate) fn parse_work_result(s: &str) -> Option<WorkResult> {
     match s.to_lowercase().as_str() {
         "successful" | "úspěšná" | "uspesna" | "ok" => Some(WorkResult::Successful),
         "partial" | "částečná" | "castecna" => Some(WorkResult::Partial),
@@ -192,7 +192,7 @@ fn parse_work_result(s: &str) -> Option<WorkResult> {
     }
 }
 
-fn parse_date(s: &str) -> Option<NaiveDate> {
+pub(crate) fn parse_date(s: &str) -> Option<NaiveDate> {
     // Try YYYY-MM-DD
     if let Ok(date) = NaiveDate::parse_from_str(s, "%Y-%m-%d") {
         return Some(date);
@@ -204,7 +204,7 @@ fn parse_date(s: &str) -> Option<NaiveDate> {
     None
 }
 
-fn parse_time(s: &str) -> Option<NaiveTime> {
+pub(crate) fn parse_time(s: &str) -> Option<NaiveTime> {
     // Try HH:MM
     if let Ok(time) = NaiveTime::parse_from_str(s, "%H:%M") {
         return Some(time);
@@ -989,10 +989,10 @@ pub async fn handle_work_log_import(
 // =============================================================================
 
 // Stream and consumer names for customer import
-const CUSTOMER_IMPORT_STREAM: &str = "SAZINKA_CUSTOMER_IMPORT_JOBS";
-const CUSTOMER_IMPORT_CONSUMER: &str = "customer_import_workers";
-const CUSTOMER_IMPORT_SUBJECT: &str = "sazinka.jobs.import.customer";
-const CUSTOMER_IMPORT_STATUS_PREFIX: &str = "sazinka.job.import.status";
+pub(crate) const CUSTOMER_IMPORT_STREAM: &str = "SAZINKA_CUSTOMER_IMPORT_JOBS";
+pub(crate) const CUSTOMER_IMPORT_CONSUMER: &str = "customer_import_workers";
+pub(crate) const CUSTOMER_IMPORT_SUBJECT: &str = "sazinka.jobs.import.customer";
+pub(crate) const CUSTOMER_IMPORT_STATUS_PREFIX: &str = "sazinka.job.import.status";
 
 /// Processor for customer import jobs
 pub struct CustomerImportProcessor {

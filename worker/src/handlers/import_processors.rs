@@ -235,10 +235,10 @@ struct CsvVisitRow {
 // DEVICE IMPORT PROCESSOR
 // =============================================================================
 
-const DEVICE_IMPORT_STREAM: &str = "SAZINKA_DEVICE_IMPORT_JOBS";
-const DEVICE_IMPORT_CONSUMER: &str = "device_import_workers";
-const DEVICE_IMPORT_SUBJECT: &str = "sazinka.jobs.import.device";
-const DEVICE_IMPORT_STATUS_PREFIX: &str = "sazinka.job.import.device.status";
+pub(crate) const DEVICE_IMPORT_STREAM: &str = "SAZINKA_DEVICE_IMPORT_JOBS";
+pub(crate) const DEVICE_IMPORT_CONSUMER: &str = "device_import_workers";
+pub(crate) const DEVICE_IMPORT_SUBJECT: &str = "sazinka.jobs.import.device";
+pub(crate) const DEVICE_IMPORT_STATUS_PREFIX: &str = "sazinka.job.import.device.status";
 
 pub struct DeviceImportProcessor {
     client: Client,
@@ -565,10 +565,10 @@ pub async fn handle_device_import_submit(
 // REVISION IMPORT PROCESSOR
 // =============================================================================
 
-const REVISION_IMPORT_STREAM: &str = "SAZINKA_REVISION_IMPORT_JOBS";
-const REVISION_IMPORT_CONSUMER: &str = "revision_import_workers";
-const REVISION_IMPORT_SUBJECT: &str = "sazinka.jobs.import.revision";
-const REVISION_IMPORT_STATUS_PREFIX: &str = "sazinka.job.import.revision.status";
+pub(crate) const REVISION_IMPORT_STREAM: &str = "SAZINKA_REVISION_IMPORT_JOBS";
+pub(crate) const REVISION_IMPORT_CONSUMER: &str = "revision_import_workers";
+pub(crate) const REVISION_IMPORT_SUBJECT: &str = "sazinka.jobs.import.revision";
+pub(crate) const REVISION_IMPORT_STATUS_PREFIX: &str = "sazinka.job.import.revision.status";
 
 pub struct RevisionImportProcessor {
     client: Client,
@@ -925,10 +925,10 @@ pub async fn handle_revision_import_submit(
 // COMMUNICATION IMPORT PROCESSOR
 // =============================================================================
 
-const COMMUNICATION_IMPORT_STREAM: &str = "SAZINKA_COMMUNICATION_IMPORT_JOBS";
-const COMMUNICATION_IMPORT_CONSUMER: &str = "communication_import_workers";
-const COMMUNICATION_IMPORT_SUBJECT: &str = "sazinka.jobs.import.communication";
-const COMMUNICATION_IMPORT_STATUS_PREFIX: &str = "sazinka.job.import.communication.status";
+pub(crate) const COMMUNICATION_IMPORT_STREAM: &str = "SAZINKA_COMMUNICATION_IMPORT_JOBS";
+pub(crate) const COMMUNICATION_IMPORT_CONSUMER: &str = "communication_import_workers";
+pub(crate) const COMMUNICATION_IMPORT_SUBJECT: &str = "sazinka.jobs.import.communication";
+pub(crate) const COMMUNICATION_IMPORT_STATUS_PREFIX: &str = "sazinka.job.import.communication.status";
 
 pub struct CommunicationImportProcessor {
     client: Client,
@@ -1233,10 +1233,10 @@ pub async fn handle_communication_import_submit(
 // VISIT IMPORT PROCESSOR
 // =============================================================================
 
-const VISIT_IMPORT_STREAM: &str = "SAZINKA_VISIT_IMPORT_JOBS";
-const VISIT_IMPORT_CONSUMER: &str = "visit_import_workers";
-const VISIT_IMPORT_SUBJECT: &str = "sazinka.jobs.import.visit";
-const VISIT_IMPORT_STATUS_PREFIX: &str = "sazinka.job.import.visit.status";
+pub(crate) const WORK_LOG_IMPORT_STREAM: &str = "SAZINKA_VISIT_IMPORT_JOBS";
+pub(crate) const WORK_LOG_IMPORT_CONSUMER: &str = "visit_import_workers";
+pub(crate) const WORK_LOG_IMPORT_SUBJECT: &str = "sazinka.jobs.import.visit";
+pub(crate) const WORK_LOG_IMPORT_STATUS_PREFIX: &str = "sazinka.job.import.visit.status";
 
 pub struct WorkLogImportProcessor {
     client: Client,
@@ -1250,8 +1250,8 @@ impl WorkLogImportProcessor {
         let js = jetstream::new(client.clone());
         
         let stream_config = jetstream::stream::Config {
-            name: VISIT_IMPORT_STREAM.to_string(),
-            subjects: vec![VISIT_IMPORT_SUBJECT.to_string()],
+            name: WORK_LOG_IMPORT_STREAM.to_string(),
+            subjects: vec![WORK_LOG_IMPORT_SUBJECT.to_string()],
             max_messages: 1_000,
             max_bytes: 500 * 1024 * 1024,
             retention: jetstream::stream::RetentionPolicy::WorkQueue,
@@ -1259,7 +1259,7 @@ impl WorkLogImportProcessor {
         };
         
         js.get_or_create_stream(stream_config).await?;
-        info!("JetStream visit import stream '{}' ready", VISIT_IMPORT_STREAM);
+        info!("JetStream visit import stream '{}' ready", WORK_LOG_IMPORT_STREAM);
         
         Ok(Self {
             client,
@@ -1274,7 +1274,7 @@ impl WorkLogImportProcessor {
         let job_id = job.id;
         
         let payload = serde_json::to_vec(&job)?;
-        self.js.publish(VISIT_IMPORT_SUBJECT, payload.into()).await?.await?;
+        self.js.publish(WORK_LOG_IMPORT_SUBJECT, payload.into()).await?.await?;
         
         let pending = self.pending_count.fetch_add(1, Ordering::Relaxed) + 1;
         
@@ -1290,24 +1290,24 @@ impl WorkLogImportProcessor {
     
     pub async fn publish_status(&self, job_id: Uuid, status: WorkLogImportJobStatus) -> Result<()> {
         let update = WorkLogImportJobStatusUpdate::new(job_id, status);
-        let subject = format!("{}.{}", VISIT_IMPORT_STATUS_PREFIX, job_id);
+        let subject = format!("{}.{}", WORK_LOG_IMPORT_STATUS_PREFIX, job_id);
         let payload = serde_json::to_vec(&update)?;
         self.client.publish(subject, payload.into()).await?;
         Ok(())
     }
     
     pub async fn start_processing(self: Arc<Self>) -> Result<()> {
-        let stream = self.js.get_stream(VISIT_IMPORT_STREAM).await?;
+        let stream = self.js.get_stream(WORK_LOG_IMPORT_STREAM).await?;
         
         let consumer_config = jetstream::consumer::pull::Config {
-            durable_name: Some(VISIT_IMPORT_CONSUMER.to_string()),
+            durable_name: Some(WORK_LOG_IMPORT_CONSUMER.to_string()),
             ack_policy: jetstream::consumer::AckPolicy::Explicit,
             max_deliver: 3,
             ..Default::default()
         };
         
-        let consumer = stream.get_or_create_consumer(VISIT_IMPORT_CONSUMER, consumer_config).await?;
-        info!("JetStream visit import consumer '{}' ready", VISIT_IMPORT_CONSUMER);
+        let consumer = stream.get_or_create_consumer(WORK_LOG_IMPORT_CONSUMER, consumer_config).await?;
+        info!("JetStream visit import consumer '{}' ready", WORK_LOG_IMPORT_CONSUMER);
         
         let mut messages = consumer.messages().await?;
         
@@ -1553,10 +1553,10 @@ pub async fn handle_work_log_import_submit(
 // ZIP IMPORT PROCESSOR
 // =============================================================================
 
-const ZIP_IMPORT_STREAM: &str = "SAZINKA_ZIP_IMPORT_JOBS";
-const ZIP_IMPORT_CONSUMER: &str = "zip_import_workers";
-const ZIP_IMPORT_SUBJECT: &str = "sazinka.jobs.import.zip";
-const ZIP_IMPORT_STATUS_PREFIX: &str = "sazinka.job.import.zip.status";
+pub(crate) const ZIP_IMPORT_STREAM: &str = "SAZINKA_ZIP_IMPORT_JOBS";
+pub(crate) const ZIP_IMPORT_CONSUMER: &str = "zip_import_workers";
+pub(crate) const ZIP_IMPORT_SUBJECT: &str = "sazinka.jobs.import.zip";
+pub(crate) const ZIP_IMPORT_STATUS_PREFIX: &str = "sazinka.job.import.zip.status";
 
 pub struct ZipImportProcessor {
     client: Client,

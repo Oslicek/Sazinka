@@ -566,3 +566,954 @@ Before considering this initiative complete, all of the following must pass:
     - baseline coverage snapshot,
     - post-change coverage snapshot,
     - list of newly covered high-risk Inbox flows.
+
+---
+
+# Collapse Detached Panel Space in Inbox
+
+## Problem
+
+When a panel (map or candidate list) is detached in the Inbox, the container
+that held it still occupies significant screen space — an empty `<div />`
+inside a percentage-based layout. The user cannot use this space for the
+remaining panels.
+
+**Affected layouts:** Dual, Grid, Wide (all three desktop modes).
+**Affected panels:** Map, Candidate list.
+
+## Goal
+
+When a panel is detached, its space must be **reclaimed** by the remaining
+panels. The empty placeholder must be removed entirely (zero space) or reduced
+to a minimal indicator (e.g., a thin "reattach" strip). All existing
+functionality must be preserved.
+
+---
+
+## Current Behavior
+
+| Layout | Detached panel | What happens |
+|--------|---------------|--------------|
+| **Dual** | List | `splitLeftTop` div not rendered; `splitLeftBottom` (detail) expands to full left height. **Already good.** |
+| **Dual** | Map | `mapAndTimelineContent` renders the map section header + empty `<div />`; takes ~50% of the right side via `SplitLayout`. |
+| **Grid** | List | `tilesCell` with header + empty content occupies 50% of top row. |
+| **Grid** | Map | `tilesCell` with header + empty content occupies 50% of bottom row. |
+| **Wide** | List | Left panel in `ThreePanelLayout` renders empty `<div />`; occupies ~22% width. |
+| **Wide** | Map | Same as Dual — map section header + empty content in right panel. |
+
+## Target Behavior
+
+| Layout | Detached panel | Target |
+|--------|---------------|--------|
+| **Dual** | List | *(Already works — no change needed.)* |
+| **Dual** | Map | Timeline takes full right-side height; map section not rendered. |
+| **Grid** | List | Top row: only the detail tile, full width (single panel, no split). |
+| **Grid** | Map | Bottom row: only the timeline tile, full width (single panel, no split). |
+| **Wide** | List | Switch from `ThreePanelLayout` (3 panels) to 2-panel `SplitView` (center + right). |
+| **Wide** | Map | Timeline takes full right-side height; map section not rendered. |
+
+---
+
+## Design
+
+### Key Insight
+
+All changes are in `PlanningInbox.tsx` layout rendering logic. No changes
+needed to `SplitLayout`, `SplitView`, or `ThreePanelLayout` components — the
+caller simply adjusts what it passes based on `isDetached()`.
+
+### Change 1: `mapAndTimelineContent` — skip map section when detached
+
+The `mapAndTimelineContent` IIFE builds `mapSection` and `timelineSection` and
+combines them via `SplitLayout`. When `isDetached('map')`:
+
+- **Do not render `mapSection` at all** (no header, no collapse button, no
+  empty div).
+- **Return `timelineSection` directly** (no `SplitLayout` needed — timeline
+  gets full height).
+
+This fixes Dual and Wide layouts for detached map in one place.
+
+### Change 2: Grid layout — filter out detached panels
+
+Instead of always rendering a 2-panel `SplitView` per row with
+`listPanelContent ?? <div />`, conditionally build the panels array:
+
+- **Top row:** If list is detached, render only `[detail]` panel (full width).
+  If not, render `[list, detail]`.
+- **Bottom row:** If map is detached, render only `[timeline]` panel (full
+  width). If not, render `[map, timeline]`.
+
+When a `SplitView` receives a single-panel array, it renders that panel at
+100% width. *(Verify this works or handle the edge case.)*
+
+### Change 3: Wide layout — switch to 2-panel when list detached
+
+When `isDetached('list')`:
+
+- Replace `ThreePanelLayout` with a 2-panel `SplitView` containing only
+  `center` (detail) and `right` (map+timeline), with adjusted default widths.
+
+When list is attached, use the existing `ThreePanelLayout` as today.
+
+---
+
+## Implementation Plan (TDD)
+
+### Phase 1: Tests (Red)
+
+Write tests **before** any production code changes. All tests must fail
+initially.
+
+**File:** `apps/web/src/pages/__tests__/PlanningInbox.detachLayout.test.tsx`
+
+The test approach: render `PlanningInbox` with mocked services and mocked
+planner components (same pattern as existing inbox tests), then simulate
+detach and assert on the DOM structure.
+
+Since the layout components are mocked, the tests will verify:
+- What JSX is passed to `SplitLayout`, `SplitView`, `ThreePanelLayout`
+- Whether detached panel containers exist in the DOM
+
+#### Test cases
+
+**Group A: Dual layout + detached map**
+
+1. `dual + map detached: map section header is NOT in the DOM`
+2. `dual + map detached: timeline section takes full height (no SplitLayout
+   wrapper)`
+3. `dual + map detached: timeline content is rendered`
+4. `dual + map detached: list panel is still rendered`
+
+**Group B: Grid layout + detached list**
+
+5. `grid + list detached: top row has only 1 panel (detail), not 2`
+6. `grid + list detached: detail panel is rendered`
+
+**Group C: Grid layout + detached map**
+
+7. `grid + map detached: bottom row has only 1 panel (timeline), not 2`
+8. `grid + map detached: timeline panel is rendered`
+
+**Group D: Wide layout + detached list**
+
+9. `wide + list detached: layout uses 2-panel SplitView, not
+    ThreePanelLayout`
+10. `wide + list detached: center (detail) and right (map+timeline) are
+    rendered`
+
+**Group E: Wide layout + detached map**
+
+11. `wide + map detached: map section header is NOT in the DOM`
+12. `wide + map detached: timeline takes full right-panel height`
+
+**Group F: Both detached (corner cases)**
+
+13. `dual + both detached: only detail panel and timeline visible`
+14. `grid + both detached: top row has 1 panel, bottom row has 1 panel`
+15. `wide + both detached: 2-panel layout with center (detail) and right
+    (timeline only)`
+
+**Group G: Functional preservation**
+
+16. `detached map: route timeline still renders stop cards`
+17. `detached list: detail panel still renders candidate info`
+
+### Phase 2: Implementation (Green)
+
+#### Step 2a: Modify `mapAndTimelineContent` (fixes Dual + Wide map-detached)
+
+In the `mapAndTimelineContent` IIFE:
+
+```typescript
+// If map is detached, skip the map section entirely
+if (isDetached('map')) {
+  return timelineSection;
+}
+```
+
+Insert this before the `if (isMapCollapsed)` checks. `timelineSection` already
+includes its header and collapse button, so it works standalone.
+
+#### Step 2b: Modify Grid layout (fixes Grid list-detached + map-detached)
+
+Build the `panels` arrays conditionally:
+
+```typescript
+const topPanels = [
+  ...(!isDetached('list') ? [{ id: 'list', content: tileCell(..., listPanelContent), ... }] : []),
+  { id: 'detail', content: tileCell(..., renderDetailPanel()), ... },
+];
+
+const bottomPanels = [
+  ...(!isDetached('map') ? [{ id: 'map', content: tileCell(..., mapPanelContent), ... }] : []),
+  { id: 'timeline', content: tileCell(..., renderRouteTimelineOnly()), ... },
+];
+```
+
+If `SplitView` doesn't handle single-panel arrays gracefully, add a guard:
+when the array has 1 panel, render the content directly without `SplitView`.
+
+#### Step 2c: Modify Wide layout (fixes Wide list-detached)
+
+```typescript
+if (layoutMode === 'wide' || !layoutMode) {
+  if (isDetached('list')) {
+    return (
+      <div className={styles.page}>
+        {pageHeader}
+        {breakWarningBanner}
+        <div className={styles.content}>
+          <SplitView
+            panels={[
+              { id: 'center', content: renderDetailPanel(), defaultWidth: 40, minWidth: 25, maxWidth: 60 },
+              { id: 'right', content: mapAndTimelineContent, defaultWidth: 60, minWidth: 30, maxWidth: 75 },
+            ]}
+            className={styles.splitLayout}
+          />
+        </div>
+      </div>
+    );
+  }
+  // ... existing ThreePanelLayout ...
+}
+```
+
+### Phase 3: Verify (Green)
+
+1. Run all new tests — must pass.
+2. Run all existing PlanningInbox tests — must pass without modification.
+3. Run production build.
+4. Manual verification in all three layouts:
+   - Detach map → verify space is reclaimed.
+   - Detach list → verify space is reclaimed.
+   - Detach both → verify layout is usable.
+   - Reattach → verify layout returns to normal.
+
+### Phase 4: Refactor
+
+- Review CSS — remove any dead styles that were only used for detached
+  placeholders.
+- Ensure no regressions in mobile layout (mobile doesn't use detach).
+
+---
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|------|-----------|
+| `SplitView` with 1 panel | Test this edge case; add guard if needed |
+| Existing tests depend on detached panel structure | No pre-existing tests will be modified (per project rule) — new tests only |
+| Mobile layout affected | Mobile doesn't use `isDetached` — not affected |
+| Reattach loses panel state | Panel state lives in `PanelStateContext`, not in DOM — reattach picks it up |
+
+---
+
+# Plan Page: Print Route & Export to Google Maps
+
+## Overview
+
+Two new features for the Plan page that allow users to produce outputs from a
+planned route:
+
+1. **Print** — one-click print of the map snapshot and route timeline.
+2. **Export to Google Maps** — open the route as turn-by-turn directions in
+   Google Maps (new browser tab).
+
+Both features are added as buttons in the existing `RouteSummaryActions` bar,
+next to Optimize / Break / Delete.
+
+### Decisions (locked)
+
+| Topic | Decision |
+|--------|----------|
+| **Scope** | **Plan page only** for this release. Inbox wiring is a **follow-up** (not in initial implementation). |
+| **Map detachment + print** | **Not applicable on Plan today** — there is no map detach on Plan. Implement **`captureMap()` from the single in-page map** only. **Future:** if Plan gains detach or Inbox gets print, revisit cross-window capture / print-without-map fallback. |
+| **Warnings UX** | **Inline non-blocking banner** near the route summary / actions (`role="status"` for export messages). Optional **auto-dismiss** (e.g. 6–8 s) + dismiss control. **No** toast library for now. **Print-only caveats** (e.g. map snapshot missing) may also appear as a **short note inside `buildPrintHtml`** so the PDF/paper is self-explanatory. |
+| **`canPrint` / `canExport`** | **`canPrint` is explicitly controlled in Plan** and must be `selectedRouteStops.length > 0 && mapReady` (Print disabled until the map is ready). `canExport` may default to `true` if omitted, but Plan should pass explicit `canExport` based on route data quality (at least one customer stop with coordinates). |
+
+---
+
+## Feature 1: Print Map + Route Timeline
+
+### Problem
+
+Users need a paper or PDF copy of the planned route — the map showing the path
+and stops, plus the timeline with ETAs, addresses, and durations — to hand to a
+driver or keep as a record.
+
+### Design
+
+#### Approach: Capture-and-Print
+
+1. **Capture the map canvas** — MapLibre renders to WebGL canvas. To read pixels
+   from it we need `preserveDrawingBuffer: true` on the Map constructor. Then
+   `map.getCanvas().toDataURL('image/png')` returns a data-URL of the current
+   viewport.
+
+2. **Build a print document** — Open a new browser window with a minimal HTML
+   page containing:
+   - Route header: date, crew name, depot name, summary stats.
+   - Map image (`<img>` from the data-URL).
+   - Timeline table: stop order, customer name, address, ETA, ETD, service
+     duration, travel time/distance to next stop.
+   - Footer: generated timestamp.
+
+3. **Trigger print** — Call `window.print()` in the new window. **Do not**
+   `win.close()` immediately after `print()` — some browsers finish the print
+   dialog asynchronously; closing too early can cancel preview. Prefer:
+   **`print()` then leave the window open** for the user to close, **or** use
+   `setTimeout(() => win.close(), 0)` / `afterprint` event only after manual QA
+   on target browsers.
+
+#### Why not `@media print` CSS?
+
+The Plan page layout is complex (resizable sidebar, WebGL canvas, drag-and-drop
+timeline). Trying to restyle all of that for print is fragile, hard to test, and
+couples print layout to runtime layout. A separate print document is isolated,
+fully testable, and gives total control over the print layout.
+
+### Files Changed
+
+**Map implementation (two different files — do not confuse):**
+
+| File | Role |
+|------|------|
+| `apps/web/src/components/planner/RouteMapPanel.tsx` | **Map UI** — MapLibre `Map` constructor: add `preserveDrawingBuffer: true`; register `registerMapCapture` callback here (this is where `mapRef` lives). |
+| `apps/web/src/panels/RouteMapPanel.tsx` | **Smart panel wrapper** — forwards panel state; only needs changes if capture must be bridged from this layer (usually the UI component registers directly with context). |
+
+| File | Change |
+|------|--------|
+| `apps/web/src/utils/routePrint.ts` | **New** — `buildPrintHtml(params): string` pure function |
+| `apps/web/src/utils/routePrint.test.ts` | **New** — unit tests for `buildPrintHtml` |
+| `apps/web/src/components/planner/RouteSummaryActions.tsx` | Add optional `onPrint`, `onExportGoogleMaps`, `canPrint`, `canExport` + buttons |
+| `apps/web/src/components/planner/RouteSummaryActions.test.tsx` | **New** (no pre-existing file) — button wiring tests |
+| `apps/web/src/pages/Plan.tsx` | `handlePrint`, `handleExportGoogleMaps`, inline warning banner state, wire actions |
+| `apps/web/src/types/panelState.ts`, `PanelStateContext.tsx` | `registerMapCapture` / `captureMap` |
+| `public/locales/{en,cs,sk}/planner.json` | `actions_print`, `actions_export_gmaps`, warning strings |
+
+### HTML escaping (security & robustness)
+
+All **dynamic** text embedded in `buildPrintHtml` (names, addresses, title,
+stats, times) must pass through a small **`escapeHtml(s: string): string`**
+helper (`&`, `<`, `>`, `"`, `'`) so user content cannot break markup or inject
+scripts. Add **unit tests** that prove `<script>` and `&` in a customer name are
+escaped to safe text nodes.
+
+### `buildPrintHtml` — Pure Function Signature
+
+```typescript
+interface PrintRouteParams {
+  title: string;               // e.g. "P1 · D1 · 2026-03-21"
+  mapImageDataUrl: string;     // from canvas.toDataURL()
+  stops: Array<{
+    order: number;
+    name: string;
+    address: string;
+    eta: string | null;
+    etd: string | null;
+    serviceDuration: string | null;
+    stopType: 'customer' | 'break';
+  }>;
+  depot: { name: string } | null;
+  depotDeparture: string | null;
+  returnTime: string | null;
+  stats: {
+    totalTime: string | null;
+    workTime: string | null;
+    travelTime: string | null;
+    distance: string | null;
+    stopCount: number;
+  };
+}
+
+function buildPrintHtml(params: PrintRouteParams): string;
+```
+
+Returns a self-contained HTML string with inline CSS. No external dependencies.
+
+### `handlePrint` Handler (Plan.tsx)
+
+```
+1. Guard: selectedRouteStops.length === 0 → return early (or rely on disabled Print button).
+2. const dataUrl = actions.captureMap() — registered by components/planner/RouteMapPanel.
+3. const html = buildPrintHtml({ ... mapImageDataUrl: dataUrl ?? '' ... });
+4. const win = window.open('', '_blank');  // synchronous, in same turn as click
+5. win.document.write(html);
+6. win.document.close();
+7. win.onload = () => { win.print(); };  // avoid immediate win.close() — see "Trigger print" above
+```
+
+**Popup blockers:** If `handlePrint` becomes `async` (e.g. `await` before `open`),
+browsers may block the popup. Prefer: **`window.open` first** (user gesture), then
+fill `document` if any async work is added later.
+
+### Map Canvas Access Design
+
+On **Plan**, the map is shown inline (no detach). Add:
+
+- `PanelActions.registerMapCapture(fn: () => string | null): () => void` — map UI
+  registers on mount; returns unregister on unmount.
+- `PanelActions.captureMap: () => string | null` — calls the registered function.
+
+**Fallback:** If `captureMap()` returns `null` (unexpected readback failure even
+when `mapReady` is true), `buildPrintHtml` omits `<img>` and may include a
+**short i18n note** in the print document body (`print_map_unavailable` or
+similar).
+
+**Future (out of scope for this release):** Plan map detach or print from Inbox
+with detached map → consider panel signals + cross-window capture or
+timeline-only print; document when that work is scheduled.
+
+---
+
+## Feature 2: Export Route to Google Maps
+
+### Problem
+
+After planning a route, the driver needs turn-by-turn navigation. Google Maps
+is the most common navigation tool. The user wants one click to open the full
+route (depot → stops → depot) in Google Maps.
+
+### Design
+
+#### Google Maps Directions URL Format
+
+```
+https://www.google.com/maps/dir/?api=1
+  &origin=LAT,LNG
+  &destination=LAT,LNG
+  &waypoints=LAT1,LNG1|LAT2,LNG2|...
+  &travelmode=driving
+```
+
+- **origin**: depot coordinates (start)
+- **destination**: depot coordinates (return to depot)
+- **waypoints**: customer stops in route order, pipe-separated
+- **travelmode**: `driving`
+
+#### Limitations
+
+- Google’s public **directions URL** limits the number of intermediate
+  **waypoints** (often cited as **23–25** depending on product/version). **Before
+  implementation**, confirm the current documented limit and set the constant in
+  `routeExport.ts` accordingly (e.g. `MAX_WAYPOINTS = 23` vs `25`).
+- Breaks (`stopType === 'break'`) must be filtered out — they are not locations.
+- If the route exceeds the limit, truncate and surface messages via the **inline
+  banner** (see **Decisions**).
+
+#### Pure Function
+
+```typescript
+interface GoogleMapsExportParams {
+  depot: { lat: number; lng: number } | null;
+  stops: Array<{
+    customerLat: number | null;
+    customerLng: number | null;
+    stopType: 'customer' | 'break';
+  }>;
+}
+
+type GoogleMapsWarningCode = 'TRUNCATED' | 'SKIPPED_NO_COORDS' | 'NO_STOPS' | 'NO_DEPOT';
+
+interface GoogleMapsExportResult {
+  url: string;
+  warnings: GoogleMapsWarningCode[];
+  includedStopCount: number;
+  totalCustomerStops: number;
+}
+
+function buildGoogleMapsUrl(params: GoogleMapsExportParams): GoogleMapsExportResult;
+```
+
+Edge cases handled:
+- No depot → use first stop as origin, last stop as destination
+- No stops → return empty string + warning
+- Stops with null coordinates → skip + add warning
+- More than `MAX_WAYPOINTS` customer stops → truncate + warning
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `apps/web/src/utils/routeExport.ts` | **New** — `buildGoogleMapsUrl` pure function |
+| `apps/web/src/utils/routeExport.test.ts` | **New** — unit tests |
+| `apps/web/src/components/planner/RouteSummaryActions.tsx` | Export button (shared with Feature 1 table above) |
+| `apps/web/src/pages/Plan.tsx` | `handleExportGoogleMaps` |
+| `public/locales/{en,cs,sk}/planner.json` | `actions_export_gmaps`, `export_gmaps_truncated`, banner strings |
+
+---
+
+## TDD Implementation Plan
+
+### Phase 1: Google Maps Export (Red → Green)
+
+Pure logic, no UI dependencies. Fastest to TDD.
+
+#### Tests (`utils/routeExport.test.ts`)
+
+| # | Test | Asserts |
+|---|------|---------|
+| 1 | depot + 3 customer stops → valid URL | URL contains `origin=depotLat,depotLng`, `destination=depotLat,depotLng`, 3 pipe-separated waypoints, `travelmode=driving` |
+| 2 | breaks are excluded from waypoints | Given 2 customers + 1 break → only 2 waypoints in URL |
+| 3 | stops with null coordinates are skipped | Given 3 stops (1 with null lat) → 2 waypoints + `'SKIPPED_NO_COORDS'` in warnings |
+| 4 | no depot → first stop as origin, last as destination | URL `origin` = first stop coords, `destination` = last stop coords, remaining stops as waypoints |
+| 5 | no stops → empty URL + warning | `url === ''`, `warnings` includes `'NO_STOPS'` |
+| 6 | single customer stop + depot → **one** waypoint (depot→stop→depot) | `origin`/`destination` = depot; `waypoints` contains **exactly** the one customer `lat,lng` (not “zero waypoints”) |
+| 7 | 30 customer stops → truncated to max + warning | waypoints count === `MAX_WAYPOINTS`, `'TRUNCATED'` in warnings |
+| 8 | exactly `MAX_WAYPOINTS` customer stops → no truncation warning | `'TRUNCATED'` NOT in warnings |
+| 9 | coordinates use max 6 decimal places | No excessive precision in URL |
+| 10 | no depot AND no stops → combined edge | `url === ''`, warnings include both `'NO_STOPS'` and `'NO_DEPOT'` |
+| 11 | no depot AND single stop → stop is both origin and destination | `origin` = `destination` = stop coords, no `waypoints` param |
+| 12 | no depot → `'NO_DEPOT'` warning code is present | Ensures the code path fires (type exists but no earlier test covers it) |
+| 13 | all stops are breaks (zero customer stops after filtering) | Same result as "no stops": `url === ''`, `'NO_STOPS'` in warnings |
+| 14 | depot present but ALL stops have null coords | URL has `origin`/`destination` = depot only, no `waypoints`, `'SKIPPED_NO_COORDS'` in warnings |
+| 15 | mixed: breaks + null coords + valid stops in one call | Combined filtering produces correct waypoints and correct warning codes |
+| 16 | negative coordinates (e.g. `-33.8688,151.2093`) | Minus signs preserved in URL; URL is valid |
+| 17 | coordinate at `0,0` (lat=0, lng=0) is NOT treated as null | `customerLat: 0` must not be skipped — classic JS falsy bug guard |
+
+#### Implementation (`utils/routeExport.ts`)
+
+Write the `buildGoogleMapsUrl` function. Pure, no side effects.
+
+#### Phase 1 Commit: `feat: add buildGoogleMapsUrl utility with tests`
+
+---
+
+### Phase 2: Print HTML Builder (Red → Green)
+
+Pure logic, no DOM/canvas dependencies.
+
+#### Tests (`utils/routePrint.test.ts`)
+
+| # | Test | Asserts |
+|---|------|---------|
+| 1 | returns valid HTML string with doctype | Starts with `<!DOCTYPE html>`, contains `<html>`, `</html>` |
+| 2 | includes map image when dataUrl provided | Contains `<img` with the data URL as `src` |
+| 3 | omits map image when dataUrl is empty string | No `<img` tag in output |
+| 4 | renders all customer stops in order | For 3 stops, output contains all 3 names in sequence |
+| 5 | skips break stops from the table | Given 2 customers + 1 break → only 2 rows with customer names |
+| 6 | includes depot name in header | Contains depot name string |
+| 7 | includes title in header | Contains the title string |
+| 8 | includes stats (total time, distance, stop count) | Contains all stat values |
+| 9 | includes depot departure time | Contains `depotDeparture` value |
+| 10 | includes return time | Contains `returnTime` value |
+| 11 | handles null ETAs gracefully | Stop with null `eta` → renders `—` or empty cell, no crash |
+| 12 | HTML is self-contained (inline styles, no external refs) | No `<link>`, no `<script src=`, no external URLs except the data-URL image |
+| 13 | dangerous characters escaped | Input name `"Foo & Bar <script>"` appears escaped in output, not raw HTML |
+| 14 | empty stops array → no crash, renders table with no rows or "no stops" note | Zero-stop edge case |
+| 15 | depot is `null` → header gracefully omits depot name, no crash | Null depot path |
+| 16 | all stats fields are `null` → renders `—` or equivalent, no crash | All-null stats edge |
+| 17 | unicode in names (e.g. `Říčany`, `Břeclav`) → renders correctly | i18n / encoding correctness |
+| 18 | stop order is preserved: index of name1 < index of name2 < name3 in output | Explicitly assert relative positions, not just "all present" |
+| 19 | `escapeHtml` handles all 5 characters individually (`&`, `<`, `>`, `"`, `'`) | Each mapped to its HTML entity |
+| 20 | `depotDeparture` is `null` → no crash, renders `—` or omits | Null departure path |
+
+#### Implementation (`utils/routePrint.ts`)
+
+Write `escapeHtml` + `buildPrintHtml`. Returns HTML string.
+
+#### Phase 2 Commit: `feat: add buildPrintHtml utility with tests`
+
+---
+
+### Phase 3: RouteSummaryActions — New Buttons (Red → Green)
+
+#### Tests (new file `RouteSummaryActions.test.tsx` — none exists today)
+
+| # | Test | Asserts |
+|---|------|---------|
+| 1 | renders print button when `onPrint` is provided | Button with `actions_print` text is in DOM |
+| 2 | does not render print button when `onPrint` is undefined | No print button |
+| 3 | calls `onPrint` on click | `onPrint` mock called once |
+| 4 | renders Google Maps export button when `onExportGoogleMaps` is provided | Button with `actions_export_gmaps` text |
+| 5 | does not render export button when `onExportGoogleMaps` is undefined | No export button |
+| 6 | calls `onExportGoogleMaps` on click | Mock called once |
+| 7 | export disabled when `canExport` is false | `disabled` on export button |
+| 8 | print disabled when `canPrint` is false | `disabled` on print button (symmetric with export) |
+| 9 | existing buttons (Optimize, Break, Delete) still render when new props added | Regression: all three original buttons present alongside new ones |
+| 10 | both `onPrint` AND `onExportGoogleMaps` provided → both buttons render | Combinatorial: two new buttons coexist |
+| 11 | neither `onPrint` nor `onExportGoogleMaps` provided → zero new buttons | Baseline: no leakage of print/export UI |
+| 12 | disabled print button does not fire `onPrint` on click | `onPrint` mock NOT called when `canPrint = false` |
+| 13 | `canPrint` omitted + `onPrint` provided → button is enabled (default `true`) | Tests the documented default behavior |
+
+#### Implementation
+
+Add optional `onPrint`, `onExportGoogleMaps`, `canPrint`, `canExport`. **Defaults:**
+if `onPrint` / `onExportGoogleMaps` is provided and `canPrint` / `canExport` is
+omitted, treat as **`true`**. Add two buttons with **`title` / `aria-label`**
+attributes for icon-only or compact layouts later.
+
+#### Phase 3 Commit: `feat: add Print and Export buttons to RouteSummaryActions`
+
+---
+
+### Phase 4: Map Canvas Capture Infrastructure
+
+#### Changes
+
+1. **`apps/web/src/components/planner/RouteMapPanel.tsx`** — `preserveDrawingBuffer: true`; register/unregister capture in `useEffect`; call `actions.setMapReady(true)` in existing `map.on('load')` handler.
+2. **`apps/web/src/types/panelState.ts`** — add `mapReady: boolean` to `PanelState`; add `registerMapCapture`, `captureMap`, `setMapReady` to `PanelActions`.
+3. **`apps/web/src/contexts/PanelStateContext.tsx`** — capture registry + `setMapReady` reducer.
+
+#### Tests
+
+| # | Test | Asserts |
+|---|------|---------|
+| 1 | `captureMap()` returns null when no map registered | `actions.captureMap() === null` |
+| 2 | `captureMap()` returns data URL after map registers | Returns string starting with `data:image/png` |
+| 3 | `captureMap()` returns null after map unmounts | Register → unregister → `null` |
+| 4 | `state.mapReady` is false initially | Default state `mapReady === false` |
+| 5 | `state.mapReady` becomes true after `actions.setMapReady(true)` | State updated |
+| 6 | `state.mapReady` resets to false after map unmounts / re-registers | Simulates remount → `mapReady` starts `false` again until next `load` |
+
+#### Phase 4 Commit: `feat: add map canvas capture to PanelStateContext`
+
+---
+
+### Phase 5: Wire Handlers in `Plan.tsx` Only
+
+#### Plan.tsx
+
+- **Export:** `buildGoogleMapsUrl` → if `url` non-empty,
+  `window.open(url, '_blank', 'noopener,noreferrer')`. Map `result.warnings` to
+  i18n strings and set **inline banner** state (`role="status"`). Clear banner
+  on next successful action or dismiss.
+- **Print:** `captureMap()` → `buildPrintHtml` → `window.open` → write →
+  `print()` (see popup/async notes above). If capture unexpectedly returns null,
+  map image is omitted and a print-note may appear in HTML.
+- **`canPrint` (locked):** `selectedRouteStops.length > 0 && state.mapReady`
+  (strict gate: Print button stays disabled until the map fires `load`).
+  `mapReady` is a **new boolean in `PanelState`**, set by the map UI component
+  via `actions.setMapReady(true)` when `mapLoaded` becomes true (existing
+  `map.on('load', ...)` handler).
+- **`canExport`:** e.g. at least one customer stop with coordinates.
+
+**Banner UI:** A slim row **below** `routeSummaryBar` (or between stats and
+actions — pick one consistent slot), non-blocking, optional auto-dismiss.
+
+#### Tests (integration-level, e.g. `Plan.printExport.test.tsx`)
+
+| # | Test | Asserts |
+|---|------|---------|
+| 1 | Print flow opens window and writes document | `window.open` spy; `document.write` or equivalent |
+| 2 | Export opens Google Maps URL | `window.open` with `google.com/maps/dir` |
+| 3 | Export disabled when `canExport` false | per props |
+| 4 | Print disabled when `mapReady` is false | `canPrint = false` → button disabled |
+| 4b | Print enabled when `mapReady` is true and stops exist | `canPrint = true` → button enabled |
+| 5 | Export warning banner appears on truncation/skip warnings | Inline banner rendered with mapped i18n warning text |
+| 6 | Export warning banner dismiss/clear behavior | Dismiss hides banner; successful export without warnings clears stale banner |
+| 7 | Print fallback note path works when capture returns null unexpectedly | Printed HTML omits map `<img>` and includes `print_map_unavailable` note |
+| 8 | Export with zero warnings → no banner shown | Happy-path: banner element absent from DOM |
+| 9 | Print succeeds with map capture → written HTML contains `<img` | Happy-path: verify map image is in the printed document |
+| 10 | All stops are breaks → `canExport` is false | Edge: no exportable customer stops → button disabled |
+| 11 | Banner auto-dismiss clears after timeout (if enabled) | Fake timer: banner disappears after configured interval |
+
+Mock `window.open` to return a stub `document` for assertions. Use fake timers
+if auto-dismiss is enabled for banner tests.
+
+#### Phase 5 Commit: `feat: wire Print and Export handlers on Plan page`
+
+---
+
+### Phase 6: Localization + Manual Verification
+
+- **Actions:** `actions_print`, `actions_export_gmaps`.
+- **Warnings / banner:** `export_gmaps_truncated`, `export_gmaps_skipped_no_coords`,
+  etc.
+- **Print HTML:** `print_map_unavailable` (or similar) when snapshot omitted.
+- Manual test:
+  - Plan a route with 3+ stops.
+  - Print (map ready) → preview shows map image + timeline.
+  - Export → Google Maps route order matches app.
+  - Many stops / invalid coords → **inline banner** shows warning text.
+  - Map not ready → Print button is disabled; click does not open popup.
+  - Forced capture failure (dev mock) → print opens without map image and shows
+    `print_map_unavailable` note.
+
+#### Phase 6 Commit: `feat: add i18n keys for Print and Export actions`
+
+---
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|------|-----------|
+| `preserveDrawingBuffer: true` has minor perf cost | Negligible for our map usage; no constant re-rendering |
+| XSS / broken print layout from raw names | `escapeHtml` on all dynamic strings + test #13 |
+| Google waypoint limit changes | Verify docs at implementation time; central `MAX_WAYPOINTS` constant |
+| Future: cross-window map capture | Out of scope; see **Decisions** |
+| User-visible warnings | **Inline banner** + optional print HTML note (locked) |
+| Print window blocked by popup blocker | `window.open` synchronously in click handler; avoid `async` before `open` |
+| Map not loaded when print clicked | `canPrint` is strictly gated by `mapReady` (button disabled until ready) |
+| `win.close()` vs print dialog | Prefer leave window open or use `afterprint` after QA |
+| Large routes / long HTML | Table-only content; acceptable for typical routes |
+
+---
+
+# Import/Export Overhaul — TDD Plan
+
+> **Status:** Phase 0 COMPLETE — test suite built (RED). Phase 1 in progress.  
+> **Context:** Align CSV import/export with code and DB; no backwards compatibility required; DB may be recreated from scratch (admin user preserved).  
+> **Constraint from owner:** Build the **complete test suite first**, before production code changes.
+
+---
+
+## Execution contract (strict tests-first + strict TDD)
+
+1. **Test-suite-first gate:** No production-code changes until the full import/export/NATS/frontend test suite from this plan exists and runs (expected RED).
+2. **Then strict TDD slices:** for each fix, run targeted tests RED -> implement minimum GREEN -> refactor while GREEN.
+3. **No scope drift:** legacy sync import path decision is locked in this plan (see Cross-cutting F).
+
+---
+
+## Definition of “complete” test coverage
+
+“100%” means:
+
+1. **Every case listed in this plan** exists as an automated test.
+2. **Coverage gates on touched modules**:
+   - **Rust (`cargo llvm-cov`)**
+     - `worker/src/handlers/import.rs`
+     - `worker/src/handlers/import_processors.rs`
+     - `worker/src/services/export_processor.rs`
+     - `worker/src/db/queries/import.rs` (if touched)
+   - **TypeScript (Vitest coverage)**
+     - `apps/web/src/services/import/importService.ts`
+     - `apps/web/src/services/importJobService.ts`
+     - `apps/web/src/services/exportPlusService.ts`
+     - `apps/web/src/components/import/ImportModal.tsx`
+     - `apps/web/src/components/customers/ImportCustomersModal.tsx`
+     - `apps/web/src/components/shared/ExportPlusPanel.tsx`
+     - `apps/web/src/components/import/ImportReportDialog.tsx`
+   - **Gate:** at least **85% branch coverage** on touched files; CI fails below.
+3. **NATS coverage:** submit/status/download subjects used by import and export are all exercised by tests.
+
+---
+
+## Cross-cutting design decisions (locked)
+
+### A. Parser consolidation
+
+`import.rs` and `import_processors.rs` currently duplicate parsing. Final design:
+
+- Move shared parsing into one module (e.g. `worker/src/services/csv_import_parse.rs`), used by both paths.
+- Add parity tests proving same output for same inputs.
+
+### B. Dual header support
+
+- Canonical export/docs headers are **snake_case**.
+- Import accepts both **snake_case** and existing **camelCase** aliases.
+
+### C. Work log deterministic grouping
+
+For grouping by `(customer_ref, scheduled_date)`:
+
+- Keep original file order within each group.
+- Visit-level fields use deterministic conflict rule: first non-empty wins.
+
+### D. Export row model for `work_log.csv`
+
+- Export will emit **one row per work item** (not one row per visit).
+- `load_dataset` must load `visit_work_items` (batch by `visit_id`) and join to visit/customer/device context.
+
+### E. Round-trip-safe fallback references
+
+To avoid non-reimportable UUID fallbacks:
+
+- `customer_ref` export priority: ICO -> email -> phone -> `customer_uuid:<uuid>`.
+- `device_ref` export priority: serial_number -> device_name -> device_type (if unique) -> `device_uuid:<uuid>`.
+- Import resolvers must recognize `customer_uuid:` and `device_uuid:` prefixes before normal heuristics.
+
+### F. Legacy import path scope
+
+- No backwards compatibility required.
+- Legacy sync batch handlers in `import.rs` marked dead code are **out of target runtime path**.
+- Plan includes explicit cleanup step after parity: remove or isolate legacy path to avoid dual behavior.
+
+### G. NATS subject consistency is mandatory
+
+Known mismatch must be fixed and covered:
+
+- Backend customer status prefix currently `sazinka.job.import.status`.
+- Frontend listens on `sazinka.job.import.customer.status`.
+- Final subject contract must be single and documented.
+
+### H. Route export strategy
+
+- No “uuid or label” ambiguity.
+- Route-related refs are exported as stable UUID strings (or documented explicit prefixed refs), consistently.
+
+### I. CI prerequisites
+
+- CI job must run with Postgres and NATS services for mandatory test suites.
+- No “optional CI” for core contract tests.
+
+### J. Edge/stress bucket
+
+| Case | Expectation |
+|------|-------------|
+| UTF-8 BOM | Header parsed correctly |
+| Empty ZIP / missing required files | Graceful error |
+| Unknown ZIP files | Ignored or warned (defined behavior) |
+| Header-only CSV | `totalRows=0` correct report |
+| Quoted semicolon values | Preserved round-trip |
+| Near 20k rows | Bounded runtime and memory |
+| Concurrent imports same user | Defined queue/lock behavior |
+
+---
+
+## Problems addressed
+
+| # | Severity | Issue | Planned fix |
+|---|----------|-------|-------------|
+| 1 | CRITICAL | `device_name` missing in JetStream device CSV struct | Add field and wire through create/update |
+| 2 | CRITICAL | `device_type_config_id` omitted in `create_device_import` | Resolve and bind config ID like `device::create_device` |
+| 3 | CRITICAL | Communication `date` parsed but not persisted | Pass and store as created timestamp |
+| 4 | CRITICAL | Work log `visit_type` vs `work_type` inconsistency | Unify to `work_type` across Rust/TS/export/docs |
+| 5 | CRITICAL | Work log `duration_minutes`/`findings` dropped | Parse and persist to work items |
+| 6 | CRITICAL | Work log `device_ref` ignored | Resolve and attach `device_id` |
+| 7 | MODERATE | Customer `type` missing in Rust CSV row | Add + aliases + behavior tests |
+| 8 | MODERATE | Work log grouping absent | Implement deterministic grouping logic |
+| 9 | MODERATE | Export pseudo IDs break round-trip | Replace with real refs + prefixed UUID fallback |
+| 10 | MODERATE | Device export lacks `device_name` | Add canonical column |
+| 11 | MODERATE | Customer import status subject mismatch FE/BE | Fix contract and tests |
+| 12 | MODERATE | Frontend tests miss import/export UI flows | Add modal/panel/component tests |
+| 13 | MINOR | Czech aliases undocumented | Update `PRJ_IMPORT.MD` |
+| 14 | MINOR | Wrong NATS/Web Worker docs | Update `PRJ_IMPORT.MD` |
+| 15 | MINOR | Legacy sync path ambiguity | Remove/isolate after parity |
+
+---
+
+## Canonical CSV formats
+
+Delimiter: `;`, UTF-8.
+
+| File | Header columns (order) |
+|------|-------------------------|
+| `customers.csv` | `type`, `name`, `contact_person`, `ico`, `dic`, `street`, `city`, `postal_code`, `country`, `phone`, `email`, `notes` |
+| `devices.csv` | `customer_ref`, `device_type`, `device_name`, `manufacturer`, `model`, `serial_number`, `installation_date`, `revision_interval_months`, `notes` |
+| `revisions.csv` | `device_ref`, `customer_ref`, `due_date`, `status`, `scheduled_date`, `scheduled_time_start`, `scheduled_time_end`, `completed_at`, `duration_minutes`, `result`, `findings` |
+| `communications.csv` | `customer_ref`, `date`, `comm_type`, `direction`, `subject`, `content`, `contact_name`, `contact_phone`, `duration_minutes` |
+| `work_log.csv` | `customer_ref`, `scheduled_date`, `scheduled_time_start`, `scheduled_time_end`, `device_ref`, `work_type`, `status`, `result`, `duration_minutes`, `result_notes`, `findings`, `requires_follow_up`, `follow_up_reason` |
+| `routes.csv` (export-only) | `route_id`, `date`, `status`, `crew_id`, `crew_name`, `depot_id`, `total_distance_km`, `total_duration_minutes`, `optimization_score`, `stops_count` |
+| `route_stops.csv` (export-only) | `route_id`, `stop_order`, `stop_type`, `customer_ref`, `revision_ref`, `customer_name`, `address`, `eta`, `etd`, `break_duration_minutes`, `break_time_start`, `scheduled_date`, `scheduled_time_start`, `scheduled_time_end`, `revision_status` |
+
+---
+
+## Phase 0 (tests only): build full suite before code changes
+
+### 0.1 Rust unit tests (parsers/helpers/reporting)
+- `parse_*` helpers EN/CS/invalid
+- `classify_error`
+- `build_import_report`
+
+### 0.2 Rust DB-backed tests (`#[sqlx::test]`)
+- `resolve_customer_ref` and `resolve_device_ref`
+- CRUD/update/dedup behavior per entity
+- Work log grouping expectations
+- `device_type_config_id` insertion requirements
+
+### 0.3 Rust processor tests
+- Customer/device/revision/communication/work log/zip process jobs
+- Status payload correctness
+- Subject constants contracts
+
+### 0.4 Rust export tests
+- Header and ordering snapshots
+- Real ref resolution rules including prefixed UUID fallback
+- Work item row model for work_log export
+- CSV escaping
+
+### 0.5 Frontend tests
+- `importService.test.ts` extension (headers, edge cases)
+- New `importJobService.test.ts`, `exportPlusService.test.ts`
+- New component tests:
+  - `ImportModal`
+  - `ImportCustomersModal`
+  - `ExportPlusPanel`
+  - `ImportReportDialog`
+
+### 0.6 NATS contract/integration tests
+- Submit -> status -> completed for each import type
+- Export submit -> status -> download
+- Auth and error paths
+- Mandatory in CI with NATS + Postgres services
+
+**Commit after Phase 0:** `test(import-export): complete baseline suite (expected red)` ✅ DONE
+
+---
+
+## Implementation phases (strict TDD slices)
+
+### Phase 1: Parser consolidation and subject contract
+- Make parser/shared-helper tests pass.
+- Fix customer status subject mismatch.
+- Keep all unrelated tests failing.
+- Commit: `fix(import): consolidate parsers and align customer status subject`
+
+### Phase 2: Customer + device import fixes
+- Add customer `type`.
+- Add device `device_name`.
+- Fix `device_type_config_id` insertion.
+- Commit: `fix(import): customer type and device config integrity`
+
+### Phase 3: Revision + communication fixes
+- Ensure date/time and duplicate handling.
+- Persist communication CSV `date`.
+- Commit: `fix(import): revisions and communication date persistence`
+
+### Phase 4: Work log correctness
+- Unify `work_type`.
+- Parse and persist duration/findings/device_ref.
+- Deterministic grouping into visit + work items.
+- Commit: `fix(import): work log schema and grouping`
+
+### Phase 5: ZIP pipeline alignment
+- Ensure ZIP imports use corrected entity logic and reports.
+- Commit: `fix(import): zip pipeline parity`
+
+### Phase 6: Export overhaul
+- Real refs + prefixed UUID fallback.
+- Add missing columns and work item-based work_log export.
+- Lock route/route_stops ref strategy.
+- Commit: `fix(export): canonical round-trip-safe csv output`
+
+### Phase 7: Frontend alignment
+- Header alias support and new tests.
+- Modal/panel/report behavior validation.
+- Commit: `fix(frontend): import-export contract and ui tests`
+
+### Phase 8: Legacy path cleanup + docs
+- Remove/isolate dead legacy sync import path.
+- Update `PRJ_IMPORT.MD` with final contracts, aliases, NATS subjects.
+- Commit: `docs+refactor(import): remove legacy ambiguity and update docs`
+
+---
+
+## Estimated effort
+
+| Phase | ~Hours |
+|-------|--------|
+| 0 (tests only) | 5 |
+| 1 | 2 |
+| 2 | 3 |
+| 3 | 2 |
+| 4 | 3 |
+| 5 | 1.5 |
+| 6 | 3 |
+| 7 | 2.5 |
+| 8 | 1 |
+| **Total** | **~23** |
+
+---
+
+## Risks and mitigations
+
+| Risk | Mitigation |
+|------|------------|
+| Test-suite-first increases early RED noise | Track failures by phase labels and fixed order |
+| Parser divergence returns later | Single shared parser module + parity tests |
+| Round-trip breaks on fallback refs | Prefixed UUID fallback with importer support |
+| CI instability | Dedicated services and deterministic fixtures |
+| Legacy path regressions | Explicit cleanup phase with scope lock |
