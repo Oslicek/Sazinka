@@ -164,6 +164,30 @@
   gap: 0.25rem;
 }
 
+.exportWarningBanner {
+  background: #fffbeb;
+  border: 1px solid #f59e0b;
+  color: #92400e;
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--radius-md);
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.8125rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.exportWarningBanner button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #92400e;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 0.25rem;
+}
+
 /* ── Section headers ── */
 
 .sectionHeader {

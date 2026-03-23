@@ -18,6 +18,8 @@ import type { BreakSettings, Depot } from '@shared/settings';
 import type { RouteWarning } from '@shared/route';
 import { validateBreak } from '../utils/breakUtils';
 import { logger } from '../utils/logger';
+import { buildGoogleMapsUrl } from '../utils/routeExport';
+import { buildPrintHtml } from '../utils/routePrint';
 import { RouteListPanel, RouteDetailTimeline, RouteMapPanel, type RouteMetrics, PlanningTimeline, TimelineViewToggle, type TimelineView, RouteSummaryStats, RouteSummaryActions, ArrivalBufferBar } from '../components/planner';
 import { PlannerFilters } from '../components/shared/PlannerFilters';
 import { AlertTriangle } from 'lucide-react';
@@ -220,6 +222,9 @@ function PlanInner() {
   // --- Arrival buffer (route-level) ---
   const [routeBufferPercent, setRouteBufferPercent] = useState(10);
   const [routeBufferFixedMinutes, setRouteBufferFixedMinutes] = useState(0);
+
+  // --- Print / Export ---
+  const [exportWarning, setExportWarning] = useState<string | null>(null);
 
   // ─── CustomerDetailPanel visibility ──────────────────────────────
 
@@ -854,6 +859,90 @@ function PlanInner() {
     return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
   }, [selectedRouteStops, returnToDepotLeg, routeEndTime]);
 
+  // ─── canPrint / canExport ─────────────────────────────────────────────────
+
+  const canPrint = selectedRouteStops.length > 0 && (state.mapReady === true);
+  const canExport = selectedRouteStops.some(
+    (s) => s.stopType === 'customer' && s.customerLat !== null && s.customerLng !== null,
+  );
+
+  // ─── Print handler ────────────────────────────────────────────────────────
+
+  const handlePrint = useCallback(() => {
+    if (selectedRouteStops.length === 0) return;
+    const dataUrl = actions.captureMap() ?? '';
+
+    const routeTitle = [selectedRoute?.date, selectedRouteDepot?.name]
+      .filter(Boolean)
+      .join(' · ');
+
+    const totalMin = metrics
+      ? metrics.travelTimeMin + metrics.serviceTimeMin
+      : null;
+
+    const html = buildPrintHtml({
+      title: routeTitle || t('print_route_title_fallback'),
+      mapImageDataUrl: dataUrl,
+      stops: selectedRouteStops.map((s, i) => ({
+        order: i + 1,
+        name: s.customerName ?? '',
+        address: s.address ?? '',
+        eta: s.estimatedArrival?.slice(0, 5) ?? null,
+        etd: s.estimatedDeparture?.slice(0, 5) ?? null,
+        serviceDuration: null,
+        stopType: s.stopType as 'customer' | 'break',
+      })),
+      depot: selectedRouteDepot ? { name: selectedRouteDepot.name } : null,
+      depotDeparture: depotDeparture,
+      returnTime: actualRouteEnd ?? null,
+      stats: {
+        totalTime: totalMin !== null
+          ? `${Math.floor(totalMin / 60)}h ${totalMin % 60}m`
+          : null,
+        workTime: metrics
+          ? `${Math.floor(metrics.serviceTimeMin / 60)}h ${metrics.serviceTimeMin % 60}m`
+          : null,
+        travelTime: metrics
+          ? `${Math.floor(metrics.travelTimeMin / 60)}h ${metrics.travelTimeMin % 60}m`
+          : null,
+        distance: metrics ? `${metrics.distanceKm.toFixed(1)} km` : null,
+        stopCount: selectedRouteStops.filter((s) => s.stopType !== 'break').length,
+      },
+    });
+
+    const win = window.open('', '_blank');
+    if (!win) return;
+    win.document.write(html);
+    win.document.close();
+    win.onload = () => { win.print(); };
+  }, [selectedRouteStops, selectedRouteDepot, selectedRoute, depotDeparture, actualRouteEnd, metrics, actions, t]);
+
+  // ─── Export to Google Maps handler ───────────────────────────────────────
+
+  const handleExportGoogleMaps = useCallback(() => {
+    const result = buildGoogleMapsUrl({
+      depot: selectedRouteDepot
+        ? { lat: selectedRouteDepot.lat, lng: selectedRouteDepot.lng }
+        : null,
+      stops: selectedRouteStops.map((s) => ({
+        customerLat: s.customerLat,
+        customerLng: s.customerLng,
+        stopType: s.stopType as 'customer' | 'break',
+      })),
+    });
+
+    if (result.url) {
+      window.open(result.url, '_blank', 'noopener,noreferrer');
+    }
+
+    if (result.warnings.length > 0) {
+      const msgs = result.warnings.map((w) => t(`export_gmaps_warning_${w.toLowerCase()}`));
+      setExportWarning(msgs.join(' '));
+    } else {
+      setExportWarning(null);
+    }
+  }, [selectedRouteStops, selectedRouteDepot, t]);
+
   const handleOptimizeRoute = useCallback(async () => {
     if (!selectedRoute || selectedRouteStops.length < 2) return;
 
@@ -1058,8 +1147,20 @@ function PlanInner() {
                 isOptimizing={isOptimizing}
                 canOptimize={selectedRouteStops.length >= 2}
                 deleteLabel="Smazat trasu"
+                onPrint={handlePrint}
+                onExportGoogleMaps={handleExportGoogleMaps}
+                canPrint={canPrint}
+                canExport={canExport}
               />
             </div>
+
+            {/* Export warning banner */}
+            {exportWarning && (
+              <div role="status" className={styles.exportWarningBanner}>
+                {exportWarning}
+                <button type="button" onClick={() => setExportWarning(null)}>×</button>
+              </div>
+            )}
 
             {/* Arrival buffer bar — between actions and timeline */}
             <ArrivalBufferBar

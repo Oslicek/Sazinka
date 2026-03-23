@@ -64,6 +64,17 @@ interface RouteMapPanelProps {
   debugSource?: string;
   /** Debug route id */
   debugRouteId?: string | null;
+  /**
+   * Called once the MapLibre 'load' event fires — use to gate Print until the map is ready.
+   * The callback should be stable (useCallback / from context actions).
+   */
+  onMapReady?: () => void;
+  /**
+   * Register a canvas-capture function.
+   * Called during map initialization with a function that returns a PNG data URL.
+   * Returns an unregister callback (called on unmount).
+   */
+  onRegisterCapture?: (fn: () => string | null) => (() => void);
 }
 
 export function RouteMapPanel({
@@ -86,6 +97,8 @@ export function RouteMapPanel({
   highlightedSegment: controlledHighlightedSegment,
   debugSource: _debugSource,
   debugRouteId: _debugRouteId,
+  onMapReady,
+  onRegisterCapture,
 }: RouteMapPanelProps) {
   const { t } = useTranslation('planner');
   const webglOk = isWebGLSupported();
@@ -167,12 +180,19 @@ export function RouteMapPanel({
       },
       center: initialCenter,
       zoom: 11,
+      preserveDrawingBuffer: true,
+    });
+
+    // Register canvas capture function so callers can get a PNG data URL
+    const unregisterCapture = onRegisterCapture?.(() => {
+      return mapRef.current?.getCanvas().toDataURL('image/png') ?? null;
     });
 
     mapRef.current.addControl(new maplibregl.NavigationControl(), 'top-right');
 
     mapRef.current.on('load', () => {
       setMapLoaded(true);
+      onMapReady?.();
     });
 
     mapRef.current.on('zoom', () => {
@@ -180,6 +200,7 @@ export function RouteMapPanel({
     });
 
     return () => {
+      unregisterCapture?.();
       mapRef.current?.remove();
       mapRef.current = null;
       setMapLoaded(false);

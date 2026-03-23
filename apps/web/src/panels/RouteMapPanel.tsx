@@ -149,6 +149,8 @@ export function RouteMapPanel({ selectedCandidate, insertionPreview: propInserti
       onCandidateRectSelect={(ids) => actions.setMapSelectedIds(mergeMapSelectedIds(mapSelectedIds, ids))}
       onSegmentHighlight={actions.highlightSegment}
       onStopClick={actions.selectCustomer}
+      onMapReady={() => actions.setMapReady(true)}
+      onRegisterCapture={actions.registerMapCapture}
     />
   );
 }
