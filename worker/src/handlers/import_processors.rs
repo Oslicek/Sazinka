@@ -2434,31 +2434,17 @@ impl ZipImportProcessor {
             .has_headers(true)
             .flexible(true)
             .from_reader(csv_content.as_bytes());
-        
-        let mut succeeded = 0u32;
-        let mut failed = 0u32;
+
+        let mut rows: Vec<CsvVisitRow> = Vec::new();
         let mut issues = Vec::new();
-        
+        let mut parse_failed = 0u32;
+
         for (idx, result) in reader.deserialize::<CsvVisitRow>().enumerate() {
             let row_num = (idx + 2) as i32;
             match result {
-                Ok(row) => {
-                    match self.create_visit_from_row(user_id, &row).await {
-                        Ok(_) => succeeded += 1,
-                        Err(e) => {
-                            failed += 1;
-                            let err_msg = e.to_string();
-                            let (code, field) = classify_error(&err_msg);
-                            issues.push(ImportIssue {
-                                row_number: row_num, level: ImportIssueLevel::Error,
-                                code, field: field.to_string(),
-                                message: err_msg, original_value: None,
-                            });
-                        }
-                    }
-                }
+                Ok(row) => rows.push(row),
                 Err(e) => {
-                    failed += 1;
+                    parse_failed += 1;
                     issues.push(ImportIssue {
                         row_number: row_num, level: ImportIssueLevel::Error,
                         code: ImportIssueCode::ParseError, field: String::new(),
@@ -2467,54 +2453,138 @@ impl ZipImportProcessor {
                 }
             }
         }
-        
+
+        // Group by (customer_ref, scheduled_date) — same logic as WorkLogImportProcessor
+        let mut group_order: Vec<(String, String)> = Vec::new();
+        let mut groups: std::collections::HashMap<(String, String), Vec<(usize, &CsvVisitRow)>> = std::collections::HashMap::new();
+        for (idx, row) in rows.iter().enumerate() {
+            let customer_key = row.customer_ref.clone().unwrap_or_default();
+            let date_key = row.scheduled_date.clone().unwrap_or_default();
+            let key = (customer_key, date_key);
+            if !groups.contains_key(&key) {
+                group_order.push(key.clone());
+            }
+            groups.entry(key).or_default().push((idx, row));
+        }
+
+        let mut succeeded = 0u32;
+        let mut failed = parse_failed;
+
+        for key in &group_order {
+            let group_rows = &groups[key];
+            // Reuse the same grouped logic as WorkLogImportProcessor
+            match self.create_zip_visit_with_work_items(user_id, group_rows, &mut issues).await {
+                Ok(items) => succeeded += items,
+                Err(e) => {
+                    failed += 1;
+                    let first_row_num = (group_rows[0].0 + 2) as i32;
+                    let err_msg = e.to_string();
+                    let (code, field) = classify_error(&err_msg);
+                    issues.push(ImportIssue {
+                        row_number: first_row_num, level: ImportIssueLevel::Error,
+                        code, field: field.to_string(),
+                        message: err_msg, original_value: None,
+                    });
+                }
+            }
+        }
+
         Ok((succeeded, failed, issues))
     }
-    
-    async fn create_visit_from_row(&self, user_id: Uuid, row: &CsvVisitRow) -> Result<Uuid> {
-        let customer_ref = row.customer_ref.as_ref()
+
+    async fn create_zip_visit_with_work_items(
+        &self,
+        user_id: Uuid,
+        group_rows: &[(usize, &CsvVisitRow)],
+        issues: &mut Vec<ImportIssue>,
+    ) -> Result<u32> {
+        let first = group_rows[0].1;
+
+        let customer_ref = first.customer_ref.as_ref()
             .ok_or_else(|| anyhow::anyhow!("import:missing_customer_ref"))?;
-        
         let customer_id = resolve_customer_ref(&self.pool, user_id, customer_ref).await?
             .ok_or_else(|| anyhow::anyhow!("import:customer_not_found_simple"))?;
-        
-        let device_id = match row.device_ref.as_ref() {
-            Some(dref) if !dref.trim().is_empty() => {
-                resolve_device_ref(&self.pool, user_id, customer_id, dref).await?.map(Some).unwrap_or(None)
-            }
-            _ => None,
-        };
-        
-        let scheduled_date_str = row.scheduled_date.as_ref()
+
+        let scheduled_date_str = first.scheduled_date.as_ref()
             .ok_or_else(|| anyhow::anyhow!("import:missing_date"))?;
         let scheduled_date = NaiveDate::parse_from_str(scheduled_date_str, "%Y-%m-%d")
             .or_else(|_| NaiveDate::parse_from_str(scheduled_date_str, "%d.%m.%Y"))?;
-        
-        let scheduled_time_start = row.scheduled_time_start.as_ref()
-            .and_then(|t| NaiveTime::parse_from_str(t, "%H:%M").ok());
-        
-        let scheduled_time_end = row.scheduled_time_end.as_ref()
-            .and_then(|t| NaiveTime::parse_from_str(t, "%H:%M").ok());
-        
-        let visit_type = parse_visit_type(row.work_type.as_deref().unwrap_or("revision"));
-        
-        let status = row.status.as_deref()
-            .and_then(parse_visit_status_str);
-        
-        let visit = queries::visit::create_visit(
-            &self.pool,
-            user_id,
-            customer_id,
-            None, // crew_id
-            device_id,
-            scheduled_date,
-            scheduled_time_start,
-            scheduled_time_end,
-            visit_type,
-            status,
+
+        let scheduled_time_start = group_rows.iter()
+            .find_map(|(_, r)| r.scheduled_time_start.as_ref())
+            .and_then(|t| NaiveTime::parse_from_str(t, "%H:%M").ok()
+                .or_else(|| NaiveTime::parse_from_str(t, "%H:%M:%S").ok()));
+
+        let scheduled_time_end = group_rows.iter()
+            .find_map(|(_, r)| r.scheduled_time_end.as_ref())
+            .and_then(|t| NaiveTime::parse_from_str(t, "%H:%M").ok()
+                .or_else(|| NaiveTime::parse_from_str(t, "%H:%M:%S").ok()));
+
+        let visit_type_raw = group_rows.iter()
+            .find_map(|(_, r)| r.work_type.as_deref())
+            .unwrap_or("revision");
+        let visit_type_str = parse_visit_type(visit_type_raw);
+
+        let status_str = group_rows.iter()
+            .find_map(|(_, r)| r.status.as_deref().and_then(parse_visit_status_str));
+        let visit_status = match status_str {
+            Some("planned") => crate::types::VisitStatus::Planned,
+            Some("in_progress") => crate::types::VisitStatus::InProgress,
+            Some("completed") => crate::types::VisitStatus::Completed,
+            Some("cancelled") => crate::types::VisitStatus::Cancelled,
+            Some("rescheduled") => crate::types::VisitStatus::Rescheduled,
+            _ => crate::types::VisitStatus::Planned,
+        };
+
+        let visit_id = queries::import::create_visit_from_work_log(
+            &self.pool, user_id, customer_id, None,
+            scheduled_date, scheduled_time_start, scheduled_time_end,
+            visit_status, visit_type_str,
         ).await?;
-        
-        Ok(visit.id)
+
+        let mut items_created = 0u32;
+        for (idx, row) in group_rows {
+            let row_num = (*idx + 2) as i32;
+            let device_id = if let Some(ref dref) = row.device_ref {
+                match resolve_device_ref(&self.pool, user_id, customer_id, dref).await {
+                    Ok(Some(id)) => Some(id),
+                    Ok(None) => {
+                        issues.push(ImportIssue {
+                            row_number: row_num, level: ImportIssueLevel::Warning,
+                            code: ImportIssueCode::DeviceNotFound, field: "device_ref".to_string(),
+                            message: json!({"key": "import:device_not_found", "params": {"name": dref}}).to_string(),
+                            original_value: Some(dref.clone()),
+                        });
+                        None
+                    }
+                    Err(_) => None,
+                }
+            } else { None };
+
+            let work_type = parse_work_type(row.work_type.as_deref().unwrap_or("revision"))
+                .unwrap_or(crate::types::work_item::WorkType::Revision);
+            let work_result = row.result.as_deref().and_then(parse_work_result);
+            let requires_follow_up = row.requires_follow_up.as_deref()
+                .map(|s| matches!(s.to_lowercase().as_str(), "true" | "yes" | "ano" | "1"))
+                .unwrap_or(false);
+
+            match queries::import::create_work_item_from_import(
+                &self.pool, visit_id, device_id, None, None,
+                work_type, row.duration_minutes, work_result,
+                row.result_notes.as_deref(), row.findings.as_deref(),
+                requires_follow_up, row.follow_up_reason.as_deref(),
+            ).await {
+                Ok(_) => items_created += 1,
+                Err(e) => {
+                    issues.push(ImportIssue {
+                        row_number: row_num, level: ImportIssueLevel::Error,
+                        code: ImportIssueCode::DbError, field: String::new(),
+                        message: e.to_string(), original_value: None,
+                    });
+                }
+            }
+        }
+        Ok(items_created)
     }
     
     /// Trigger geocoding for all pending customers after import

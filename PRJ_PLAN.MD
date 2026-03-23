@@ -1454,7 +1454,7 @@ if auto-dismiss is enabled for banner tests.
 
 # Import/Export Overhaul — TDD Plan
 
-> **Status:** Phase 4 COMPLETE — work log schema, grouping, and device_ref. Phase 5 in progress.  
+> **Status:** Phase 5 COMPLETE — ZIP pipeline uses corrected entity logic. Phase 6 in progress.  
 > **Context:** Align CSV import/export with code and DB; no backwards compatibility required; DB may be recreated from scratch (admin user preserved).  
 > **Constraint from owner:** Build the **complete test suite first**, before production code changes.
 
@@ -1672,7 +1672,7 @@ Delimiter: `;`, UTF-8.
 
 ### Phase 5: ZIP pipeline alignment
 - Ensure ZIP imports use corrected entity logic and reports.
-- Commit: `fix(import): zip pipeline parity`
+- Commit: `fix(import): zip pipeline parity` ✅ DONE
 
 ### Phase 6: Export overhaul
 - Real refs + prefixed UUID fallback.
