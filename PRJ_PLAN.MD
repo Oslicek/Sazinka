@@ -1685,7 +1685,7 @@ Delimiter: `;`, UTF-8.
 - Modal/panel/report behavior validation.
 - Commit: `fix(frontend): import-export contract and ui tests`
 
-### Phase 8: Legacy path cleanup + docs
+### Phase 8: Legacy path cleanup + docs ✅ DONE
 - Remove/isolate dead legacy sync import path.
 - Update `PRJ_IMPORT.MD` with final contracts, aliases, NATS subjects.
 - Commit: `docs+refactor(import): remove legacy ambiguity and update docs`

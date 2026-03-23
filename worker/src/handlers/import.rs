@@ -1,5 +1,19 @@
 #![allow(dead_code)]
 //! Import batch handlers for CSV import functionality
+//!
+//! # Legacy sync handlers (NOT in runtime path)
+//!
+//! The functions `handle_device_import`, `handle_revision_import`,
+//! `handle_communication_import`, and `handle_work_log_import` are legacy
+//! synchronous NATS request-reply handlers. They are **not registered** in
+//! `handlers/mod.rs` and are not part of the active runtime path.
+//!
+//! All active import processing uses the JetStream-based async processors in
+//! `handlers/import_processors.rs` (`handle_*_import_submit`).
+//!
+//! The shared parsing utilities (`parse_*`, `resolve_customer_ref`, etc.) and
+//! `CsvCustomerRow` / `CustomerImportProcessor` defined in this file ARE used
+//! by the active processors.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -217,7 +231,8 @@ pub(crate) fn parse_time(s: &str) -> Option<NaiveTime> {
 }
 
 // =============================================================================
-// DEVICE IMPORT HANDLER
+// LEGACY SYNC IMPORT HANDLERS (dead code — not registered in runtime path)
+// Active processing uses JetStream processors in import_processors.rs
 // =============================================================================
 
 pub async fn handle_device_import(

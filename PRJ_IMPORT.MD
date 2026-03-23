@@ -549,11 +549,19 @@ Report se zobrazuje v dialogovém okně `ImportReportDialog` (stránka Úlohy):
 5. **Agregace reportu** z odpovědí serveru
 6. **Zobrazení reportu** v modalu
 
-### 9.3 NATS Subject
+### 9.3 NATS Subjects (finální kontrakt)
 
-```
-sazinka.customer.import.batch   # Batch import zákazníků
-```
+Všechny importy jsou asynchronní přes JetStream. Formát:
+
+| Entita | Submit subject | Status prefix |
+|--------|---------------|---------------|
+| Zákazníci | `sazinka.import.customer.submit` | `sazinka.job.import.customer.status` |
+| Zařízení | `sazinka.import.device.submit` | `sazinka.job.import.device.status` |
+| Revize | `sazinka.import.revision.submit` | `sazinka.job.import.revision.status` |
+| Komunikace | `sazinka.import.communication.submit` | `sazinka.job.import.communication.status` |
+| Pracovní deník | `sazinka.import.worklog.submit` | `sazinka.job.import.worklog.status` |
+| ZIP | `sazinka.import.zip.submit` | `sazinka.job.import.zip.status` |
+| Export | `sazinka.export.submit` | `sazinka.job.export.status` |
 
 ### 9.4 Závislosti (frontend)
 
@@ -1593,13 +1601,22 @@ Export je zpracováván asynchronně na workeru přes JetStream, nikoliv synchro
 - Queue stream: `SAZINKA_EXPORT_JOBS`
 - Status topic: `sazinka.job.export.status.{jobId}`
 
+### 18.0 Formát exportních CSV
+
+- **Oddělovač:** středník `;` (stejný jako import)
+- **Kódování:** UTF-8
+- **Hlavičky:** snake_case (kanonický formát)
+- **Reference zákazníků** (`customer_ref`): IČO → email → telefon → `customer_uuid:<uuid>`
+- **Reference zařízení** (`device_ref`): výrobní číslo → název → `device_uuid:<uuid>`
+- **Pracovní deník:** jeden řádek na pracovní položku (ne na návštěvu)
+
 ### 18.1 Podporované exportní soubory
 
 - `customers.csv`
-- `devices.csv`
+- `devices.csv` (obsahuje `device_name`)
 - `revisions.csv`
 - `communications.csv`
-- `work_log.csv`
+- `work_log.csv` (jeden řádek na pracovní položku)
 - `routes.csv` (export-only)
 - (interně i `route_stops.csv` v ZIP podle scope)
 
