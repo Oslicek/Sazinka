@@ -2162,8 +2162,8 @@ Implements §1.9: replace Resend-oriented code paths with SES v2 + Sig v4. Can p
 | 9 | Add domain verification service (sender selection, validation, status) | 3 | ✅ |
 | 10 | Add NATS domain settings handlers (`setup/check/delete/get`) | 3 | ☐ |
 | 11 | Add verification poller + manual check flow | 3 | ☐ |
-| 12 | `resolve_confirmation_data` query | 4 | ☐ |
-| 13 | `resolve_reminder_data` query | 4 | ☐ |
+| 12 | `resolve_confirmation_data` query | 4 | ✅ |
+| 13 | `resolve_reminder_data` query | 4 | ✅ |
 | 14 | `EmailSendError` enum + `send_email` method | 5 | ☐ |
 | 15 | Dynamic sender selection (`verified domain` vs `Ariadline fallback`) | 5 | ☐ |
 | 16 | Wire `process_job` — confirmation path | 6 | ☐ |
