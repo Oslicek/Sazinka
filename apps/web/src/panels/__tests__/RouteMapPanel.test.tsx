@@ -578,4 +578,47 @@ describe('panels/RouteMapPanel', () => {
     // Map component should still render (not crash) while loading
     expect(mockProps.current).toBeDefined();
   });
+
+  it('passes onMapReady and onMapUnmount to the map UI component', () => {
+    render(
+      <PanelStateProvider activePageContext="inbox" enableChannel={false}>
+        <RouteMapPanel />
+      </PanelStateProvider>
+    );
+
+    expect(typeof mockProps.current.onMapReady).toBe('function');
+    expect(typeof mockProps.current.onMapUnmount).toBe('function');
+    expect(typeof mockProps.current.onRegisterCapture).toBe('function');
+  });
+
+  it('onMapReady sets mapReady to true, onMapUnmount resets it to false', () => {
+    let capturedState: unknown = null;
+    function StateCapture() {
+      const { state } = usePanelState();
+      capturedState = state;
+      return null;
+    }
+
+    render(
+      <PanelStateProvider activePageContext="inbox" enableChannel={false}>
+        <StateCapture />
+        <RouteMapPanel />
+      </PanelStateProvider>
+    );
+
+    // Initially false
+    expect((capturedState as { mapReady?: boolean }).mapReady).toBe(false);
+
+    // Simulate map load
+    act(() => {
+      (mockProps.current.onMapReady as () => void)();
+    });
+    expect((capturedState as { mapReady?: boolean }).mapReady).toBe(true);
+
+    // Simulate map unmount
+    act(() => {
+      (mockProps.current.onMapUnmount as () => void)();
+    });
+    expect((capturedState as { mapReady?: boolean }).mapReady).toBe(false);
+  });
 });

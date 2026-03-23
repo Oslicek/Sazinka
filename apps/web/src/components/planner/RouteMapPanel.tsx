@@ -69,6 +69,8 @@ interface RouteMapPanelProps {
    * The callback should be stable (useCallback / from context actions).
    */
   onMapReady?: () => void;
+  /** Called when the map component unmounts (resets mapReady to false). */
+  onMapUnmount?: () => void;
   /**
    * Register a canvas-capture function.
    * Called during map initialization with a function that returns a PNG data URL.
@@ -98,6 +100,7 @@ export function RouteMapPanel({
   debugSource: _debugSource,
   debugRouteId: _debugRouteId,
   onMapReady,
+  onMapUnmount,
   onRegisterCapture,
 }: RouteMapPanelProps) {
   const { t } = useTranslation('planner');
@@ -201,6 +204,7 @@ export function RouteMapPanel({
 
     return () => {
       unregisterCapture?.();
+      onMapUnmount?.();
       mapRef.current?.remove();
       mapRef.current = null;
       setMapLoaded(false);

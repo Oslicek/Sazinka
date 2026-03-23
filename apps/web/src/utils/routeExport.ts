@@ -28,8 +28,10 @@ export interface GoogleMapsExportParams {
 export interface GoogleMapsExportResult {
   url: string;
   warnings: GoogleMapsWarningCode[];
+  /** Number of stops actually included in the URL (may be capped by MAX_WAYPOINTS) */
   includedStopCount: number;
-  totalCustomerStops: number;
+  /** Number of customer stops with valid coordinates (before truncation) */
+  validStopCount: number;
 }
 
 function roundCoord(n: number): number {
@@ -52,7 +54,7 @@ export function buildGoogleMapsUrl(params: GoogleMapsExportParams): GoogleMapsEx
 
   if (rawCustomerCount === 0) {
     warnings.push('NO_STOPS');
-    return { url: '', warnings, includedStopCount: 0, totalCustomerStops: 0 };
+    return { url: '', warnings, includedStopCount: 0, validStopCount: 0 };
   }
 
   // Filter out null coords — note: 0 is a valid coordinate (explicit null check)
@@ -66,7 +68,7 @@ export function buildGoogleMapsUrl(params: GoogleMapsExportParams): GoogleMapsEx
 
   if (validStops.length === 0) {
     warnings.push('NO_STOPS');
-    return { url: '', warnings, includedStopCount: 0, totalCustomerStops: 0 };
+    return { url: '', warnings, includedStopCount: 0, validStopCount: 0 };
   }
 
   // Truncate to MAX_WAYPOINTS total customer stops included
@@ -107,6 +109,6 @@ export function buildGoogleMapsUrl(params: GoogleMapsExportParams): GoogleMapsEx
     url: base + '&' + parts.join('&'),
     warnings,
     includedStopCount: includedStops.length,
-    totalCustomerStops: validStops.length,
+    validStopCount: validStops.length,
   };
 }

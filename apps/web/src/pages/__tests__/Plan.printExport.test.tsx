@@ -264,19 +264,23 @@ function makeFakeWindow() {
 // ---------------------------------------------------------------------------
 
 describe('Plan page — Print & Export', () => {
+  let windowOpenSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
     vi.clearAllMocks();
     capturedPanelState = null;
     capturedPanelActions = null;
     capturedSummaryActions.current = {};
-    // Suppress jsdom "Not implemented: window.open" noise; individual tests override as needed
-    vi.spyOn(window, 'open').mockReturnValue(null);
+    if (windowOpenSpy) {
+      windowOpenSpy.mockRestore();
+    }
+    windowOpenSpy = vi.spyOn(window, 'open').mockReturnValue(null);
   });
 
   // #1 — Print flow opens window and writes document
   it('print flow opens window and writes HTML document', async () => {
     const fakeWin = makeFakeWindow();
-    const windowOpenSpy = vi.spyOn(window, 'open').mockReturnValue(fakeWin as unknown as Window);
+    windowOpenSpy.mockReturnValue(fakeWin as unknown as Window);
 
     await setupRouteAndWait();
 
@@ -301,19 +305,24 @@ describe('Plan page — Print & Export', () => {
 
   // #2 — Export opens Google Maps URL
   it('export opens Google Maps URL in new tab', async () => {
-    const windowOpenSpy = vi.spyOn(window, 'open').mockReturnValue(null);
 
     await setupRouteAndWait();
+
+    await waitFor(() => {
+      expect(capturedSummaryActions.current.canExport).toBe(true);
+    });
 
     act(() => {
       capturedSummaryActions.current.onExportGoogleMaps!();
     });
 
-    expect(windowOpenSpy).toHaveBeenCalledWith(
-      expect.stringContaining('google.com/maps/dir'),
-      '_blank',
-      'noopener,noreferrer',
-    );
+    await waitFor(() => {
+      expect(windowOpenSpy).toHaveBeenCalledWith(
+        expect.stringContaining('google.com/maps/dir'),
+        '_blank',
+        'noopener,noreferrer',
+      );
+    });
   });
 
   // #3 — Export disabled when canExport false (all breaks)
@@ -457,7 +466,7 @@ describe('Plan page — Print & Export', () => {
   // #7 — Print fallback when capture returns null
   it('print succeeds even when captureMap returns null — HTML omits <img>', async () => {
     const fakeWin = makeFakeWindow();
-    vi.spyOn(window, 'open').mockReturnValue(fakeWin as unknown as Window);
+    windowOpenSpy.mockReturnValue(fakeWin as unknown as Window);
 
     await setupRouteAndWait();
 
@@ -495,7 +504,7 @@ describe('Plan page — Print & Export', () => {
   // #9 — Print with map capture → HTML contains <img
   it('print with successful map capture → HTML contains map image', async () => {
     const fakeWin = makeFakeWindow();
-    vi.spyOn(window, 'open').mockReturnValue(fakeWin as unknown as Window);
+    windowOpenSpy.mockReturnValue(fakeWin as unknown as Window);
 
     await setupRouteAndWait();
 

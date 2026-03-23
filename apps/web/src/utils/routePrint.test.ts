@@ -216,4 +216,76 @@ describe('buildPrintHtml', () => {
     const html = buildPrintHtml(params);
     expect(html).toContain('<!DOCTYPE html');
   });
+
+  // #21 — default English labels when no labels provided
+  it('uses English default labels when labels param is omitted', () => {
+    const html = buildPrintHtml(BASE_PARAMS);
+    expect(html).toContain('Departure');
+    expect(html).toContain('Return');
+    expect(html).toContain('Total time');
+    expect(html).toContain('Distance');
+  });
+
+  // #22 — custom labels override defaults
+  it('uses custom labels when labels param is provided', () => {
+    const params: PrintRouteParams = {
+      ...BASE_PARAMS,
+      labels: {
+        depot: 'Depo',
+        departure: 'Odjezd',
+        return: 'Návrat',
+        totalTime: 'Celkový čas',
+        distance: 'Vzdálenost',
+        colName: 'Jméno',
+        colAddress: 'Adresa',
+        generated: 'Vygenerováno',
+      },
+    };
+    const html = buildPrintHtml(params);
+    expect(html).toContain('Depo');
+    expect(html).toContain('Odjezd');
+    expect(html).toContain('Návrat');
+    expect(html).toContain('Celkový čas');
+    expect(html).toContain('Vzdálenost');
+    expect(html).toContain('Jméno');
+    expect(html).toContain('Adresa');
+    expect(html).toContain('Vygenerováno');
+    // English defaults should not appear for overridden keys
+    expect(html).not.toContain('>Departure<');
+    expect(html).not.toContain('>Return<');
+  });
+
+  // #23 — partial labels: only some overridden, rest fall back to English
+  it('partial labels: overridden keys use custom values, others use English defaults', () => {
+    const params: PrintRouteParams = {
+      ...BASE_PARAMS,
+      labels: { depot: 'Depo' },
+    };
+    const html = buildPrintHtml(params);
+    expect(html).toContain('Depo');
+    // Non-overridden labels should still be English
+    expect(html).toContain('Departure');
+    expect(html).toContain('Distance');
+  });
+
+  // #24 — labels with dangerous characters are escaped
+  it('custom labels with HTML characters are escaped', () => {
+    const params: PrintRouteParams = {
+      ...BASE_PARAMS,
+      labels: { depot: '<b>Depot</b>' },
+    };
+    const html = buildPrintHtml(params);
+    expect(html).toContain('&lt;b&gt;Depot&lt;/b&gt;');
+    expect(html).not.toContain('<b>Depot</b>');
+  });
+
+  // #25 — serviceDuration is rendered when provided
+  it('renders service duration for stops when provided', () => {
+    const params: PrintRouteParams = {
+      ...BASE_PARAMS,
+      stops: [{ ...makeStop(1, 'TestStop'), serviceDuration: '45 min' }],
+    };
+    const html = buildPrintHtml(params);
+    expect(html).toContain('45 min');
+  });
 });

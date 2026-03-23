@@ -150,6 +150,7 @@ export function RouteMapPanel({ selectedCandidate, insertionPreview: propInserti
       onSegmentHighlight={actions.highlightSegment}
       onStopClick={actions.selectCustomer}
       onMapReady={() => actions.setMapReady(true)}
+      onMapUnmount={() => actions.setMapReady(false)}
       onRegisterCapture={actions.registerMapCapture}
     />
   );

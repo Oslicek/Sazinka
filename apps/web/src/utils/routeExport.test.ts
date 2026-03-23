@@ -175,4 +175,19 @@ describe('buildGoogleMapsUrl', () => {
     expect(r.warnings).not.toContain('SKIPPED_NO_COORDS');
     expect(r.url).toContain('waypoints=0,0');
   });
+
+  // #18 — validStopCount reflects post-filter, pre-truncation count
+  it('validStopCount equals valid stops before truncation', () => {
+    const stops = Array.from({ length: 30 }, (_, i) => makeStop(48 + i * 0.1, 16 + i * 0.1));
+    const r = buildGoogleMapsUrl({ depot: DEPOT, stops });
+    expect(r.validStopCount).toBe(30);
+    expect(r.includedStopCount).toBe(MAX_WAYPOINTS);
+  });
+
+  // #19 — validStopCount excludes null-coord stops
+  it('validStopCount excludes stops with null coordinates', () => {
+    const r = buildGoogleMapsUrl({ depot: DEPOT, stops: [S1, makeNullStop(), S2, makeNullStop()] });
+    expect(r.validStopCount).toBe(2);
+    expect(r.includedStopCount).toBe(2);
+  });
 });

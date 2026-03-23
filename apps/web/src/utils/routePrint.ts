@@ -5,6 +5,42 @@
  * All user-supplied strings pass through escapeHtml to prevent XSS.
  */
 
+export interface PrintLabels {
+  depot: string;
+  departure: string;
+  return: string;
+  totalTime: string;
+  workTime: string;
+  travelTime: string;
+  distance: string;
+  stops: string;
+  colOrder: string;
+  colName: string;
+  colAddress: string;
+  colEta: string;
+  colEtd: string;
+  colService: string;
+  generated: string;
+}
+
+const DEFAULT_LABELS: PrintLabels = {
+  depot: 'Depot',
+  departure: 'Departure',
+  return: 'Return',
+  totalTime: 'Total time',
+  workTime: 'Work time',
+  travelTime: 'Travel time',
+  distance: 'Distance',
+  stops: 'Stops',
+  colOrder: '#',
+  colName: 'Name',
+  colAddress: 'Address',
+  colEta: 'ETA',
+  colEtd: 'ETD',
+  colService: 'Service',
+  generated: 'Generated',
+};
+
 export interface PrintRouteParams {
   title: string;
   mapImageDataUrl: string;
@@ -27,6 +63,8 @@ export interface PrintRouteParams {
     distance: string | null;
     stopCount: number;
   };
+  /** Localized labels for the print document. Falls back to English defaults. */
+  labels?: Partial<PrintLabels>;
 }
 
 export function escapeHtml(s: string): string {
@@ -44,6 +82,7 @@ function dash(value: string | null | undefined): string {
 
 export function buildPrintHtml(params: PrintRouteParams): string {
   const { title, mapImageDataUrl, stops, depot, depotDeparture, returnTime, stats } = params;
+  const l: PrintLabels = { ...DEFAULT_LABELS, ...params.labels };
 
   const customerStops = stops.filter(s => s.stopType === 'customer');
 
@@ -52,15 +91,15 @@ export function buildPrintHtml(params: PrintRouteParams): string {
     : '';
 
   const depotRow = depot
-    ? `<tr><td class="label">Depot</td><td>${escapeHtml(depot.name)}</td></tr>`
+    ? `<tr><td class="label">${escapeHtml(l.depot)}</td><td>${escapeHtml(depot.name)}</td></tr>`
     : '';
-  const departureRow = `<tr><td class="label">Departure</td><td>${dash(depotDeparture)}</td></tr>`;
-  const returnRow = `<tr><td class="label">Return</td><td>${dash(returnTime)}</td></tr>`;
-  const totalRow = `<tr><td class="label">Total time</td><td>${dash(stats.totalTime)}</td></tr>`;
-  const workRow = `<tr><td class="label">Work time</td><td>${dash(stats.workTime)}</td></tr>`;
-  const travelRow = `<tr><td class="label">Travel time</td><td>${dash(stats.travelTime)}</td></tr>`;
-  const distRow = `<tr><td class="label">Distance</td><td>${dash(stats.distance)}</td></tr>`;
-  const stopsRow = `<tr><td class="label">Stops</td><td>${stats.stopCount}</td></tr>`;
+  const departureRow = `<tr><td class="label">${escapeHtml(l.departure)}</td><td>${dash(depotDeparture)}</td></tr>`;
+  const returnRow = `<tr><td class="label">${escapeHtml(l.return)}</td><td>${dash(returnTime)}</td></tr>`;
+  const totalRow = `<tr><td class="label">${escapeHtml(l.totalTime)}</td><td>${dash(stats.totalTime)}</td></tr>`;
+  const workRow = `<tr><td class="label">${escapeHtml(l.workTime)}</td><td>${dash(stats.workTime)}</td></tr>`;
+  const travelRow = `<tr><td class="label">${escapeHtml(l.travelTime)}</td><td>${dash(stats.travelTime)}</td></tr>`;
+  const distRow = `<tr><td class="label">${escapeHtml(l.distance)}</td><td>${dash(stats.distance)}</td></tr>`;
+  const stopsRow = `<tr><td class="label">${escapeHtml(l.stops)}</td><td>${stats.stopCount}</td></tr>`;
 
   const stopRows = customerStops
     .map(
@@ -115,19 +154,19 @@ export function buildPrintHtml(params: PrintRouteParams): string {
   <table class="stops-table">
     <thead>
       <tr>
-        <th>#</th>
-        <th>Name</th>
-        <th>Address</th>
-        <th>ETA</th>
-        <th>ETD</th>
-        <th>Service</th>
+        <th>${escapeHtml(l.colOrder)}</th>
+        <th>${escapeHtml(l.colName)}</th>
+        <th>${escapeHtml(l.colAddress)}</th>
+        <th>${escapeHtml(l.colEta)}</th>
+        <th>${escapeHtml(l.colEtd)}</th>
+        <th>${escapeHtml(l.colService)}</th>
       </tr>
     </thead>
     <tbody>
       ${stopRows}
     </tbody>
   </table>
-  <footer>Generated: ${generatedAt}</footer>
+  <footer>${escapeHtml(l.generated)}: ${generatedAt}</footer>
 </body>
 </html>`;
 }
