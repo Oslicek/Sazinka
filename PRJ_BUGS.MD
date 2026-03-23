@@ -90,3 +90,32 @@
 
 **Regression tests:**
 - `RouteMapPanel.test.tsx` (component) — "BUG-4: renders route even when isStyleLoaded() returns false after load"
+
+---
+
+## BUG-5: Plan page — summary stats omit return-to-depot distance and travel time
+
+**Reported:** 2026-03-10
+**Status:** FIXED (2026-03-10)
+**Page:** Plan (`/plan`)
+
+**Steps to reproduce:**
+1. Create a route with 3+ stops and a depot in Inbox (note total distance / driving time).
+2. Navigate to the Plan page.
+3. Select the same route.
+4. Compare the summary bar values (VZDÁLENOST, JÍZDA) with the Inbox values.
+
+**Expected:** Summary distance and driving time include the return-to-depot segment, matching the Inbox totals.
+**Actual:** Summary shows ~10-15% lower distance and driving time because the last-stop → depot segment is omitted.
+
+**Root cause:** `calculateMetrics()` in `Plan.tsx` sums per-stop `distanceFromPreviousKm` and `durationFromPreviousMinutes`, which cover depot→S1→S2→…→Sn but not the Sn→depot return leg. The return leg is stored in a separate `returnToDepotLeg` state that is never passed into `calculateMetrics()`. When per-stop sums are > 0, `calculateMetrics` prefers them over the `routeTotals` fallback (which would include the return), so the return leg is always lost.
+
+**Fix:** Extracted `calculateMetrics()` to `utils/routeMetrics.ts` (pure function, zero React deps). Added a third parameter `returnToDepotLeg?: ReturnToDepotLeg | null` and added its distance/duration to the per-stop sums. Updated both call sites in `Plan.tsx` to pass the return leg.
+
+**Regression tests:**
+- `Plan.metrics.test.ts` — "includes return-to-depot distance in total"
+- `Plan.metrics.test.ts` — "includes return-to-depot travel time in driving total"
+- `Plan.metrics.test.ts` — "works without return-to-depot (null)"
+- `Plan.metrics.test.ts` — "works without return-to-depot (undefined / not passed)"
+- `Plan.metrics.test.ts` — "handles return leg with null distance/duration"
+- `Plan.metrics.test.ts` — "return leg affects loadPercent (9h working day baseline)"

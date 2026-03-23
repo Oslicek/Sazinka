@@ -18,6 +18,7 @@ import type { BreakSettings, Depot } from '@shared/settings';
 import type { RouteWarning } from '@shared/route';
 import { validateBreak } from '../utils/breakUtils';
 import { logger } from '../utils/logger';
+import { calculateMetrics } from '../utils/routeMetrics';
 import { buildGoogleMapsUrl, buildMapyCzUrl } from '../utils/routeExport';
 import type { ExportTarget } from '../components/planner/RouteSummaryActions';
 import { buildPrintHtml } from '../utils/routePrint';
@@ -41,63 +42,6 @@ interface PlannerSearchParams {
   depot?: string;
 }
 
-function parseHm(time: string | null | undefined): number | null {
-  if (!time) return null;
-  const [h, m] = time.split(':').map(Number);
-  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
-  return h * 60 + m;
-}
-
-function calculateMetrics(
-  stops: SavedRouteStop[],
-  routeTotals?: { distanceKm?: number | null; durationMinutes?: number | null }
-): RouteMetrics | null {
-  if (stops.length === 0) return null;
-
-  const summedDistanceKm = stops.reduce((sum, stop) => sum + (stop.distanceFromPreviousKm ?? 0), 0);
-  const distanceKm =
-    summedDistanceKm > 0
-      ? summedDistanceKm
-      : Math.max(0, routeTotals?.distanceKm ?? 0);
-  const rawTravelTimeMin = stops.reduce((sum, stop) => sum + (stop.durationFromPreviousMinutes ?? 0), 0);
-  const breakMin = stops
-    .filter((s) => s.stopType === 'break')
-    .reduce((sum, s) => sum + (s.breakDurationMinutes ?? 0), 0);
-  const customerServiceMin = stops.filter((s) => s.stopType === 'customer').length * 30;
-  const nonTravelMin = customerServiceMin + breakMin;
-
-  const firstArrival = parseHm(stops[0].estimatedArrival);
-  const lastDeparture = parseHm(stops[stops.length - 1].estimatedDeparture);
-  let totalMin = 0;
-
-  // Prefer persisted route totals when available so Planner matches Inbox
-  // for the same saved route.
-  if ((routeTotals?.durationMinutes ?? 0) > 0) {
-    totalMin = routeTotals?.durationMinutes ?? 0;
-  } else if (firstArrival != null && lastDeparture != null) {
-    totalMin = lastDeparture - firstArrival;
-    if (totalMin < 0) totalMin += 24 * 60;
-  } else {
-    totalMin = rawTravelTimeMin + nonTravelMin;
-  }
-
-  // Saved/optimized routes can miss per-segment durations in UI model.
-  // In that case estimate driving as total minus non-driving blocks.
-  const travelTimeMin = rawTravelTimeMin > 0
-    ? rawTravelTimeMin
-    : Math.max(0, totalMin - nonTravelMin);
-  const serviceTimeMin = Math.max(0, totalMin - travelTimeMin);
-  const workingDayMin = 9 * 60;
-
-  return {
-    distanceKm,
-    travelTimeMin: Math.max(0, Math.round(travelTimeMin)),
-    serviceTimeMin: Math.max(0, Math.round(serviceTimeMin)),
-    loadPercent: Math.round((totalMin / workingDayMin) * 100),
-    slackMin: Math.max(0, workingDayMin - totalMin),
-    stopCount: stops.length,
-  };
-}
 
 export function Plan() {
   return (
@@ -436,11 +380,11 @@ function PlanInner() {
       try {
         const result = await routeService.getRoute({ routeId: selectedRouteId });
         setSelectedRouteStops(result.stops);
-        setReturnToDepotLeg(
+        const loadedReturnLeg =
           result.route?.returnToDepotDistanceKm != null || result.route?.returnToDepotDurationMinutes != null
             ? { distanceKm: result.route.returnToDepotDistanceKm ?? null, durationMinutes: result.route.returnToDepotDurationMinutes ?? null }
-            : null
-        );
+            : null;
+        setReturnToDepotLeg(loadedReturnLeg);
         // Compute depot departure from first stop's arrival minus travel time
         if (result.stops.length > 0) {
           const firstStop = result.stops[0];
@@ -460,7 +404,7 @@ function PlanInner() {
           calculateMetrics(result.stops, {
             distanceKm: result.route?.totalDistanceKm,
             durationMinutes: result.route?.totalDurationMinutes,
-          })
+          }, loadedReturnLeg)
         );
         setManuallyAdjustedBreakIds(new Set());
         setBreakWarnings([]);
@@ -764,9 +708,9 @@ function PlanInner() {
       calculateMetrics(selectedRouteStops, {
         distanceKm: selectedRoute?.totalDistanceKm ?? null,
         durationMinutes: selectedRoute?.totalDurationMinutes ?? null,
-      })
+      }, returnToDepotLeg)
     );
-  }, [selectedRouteStops, routes, selectedRouteId]);
+  }, [selectedRouteStops, routes, selectedRouteId, returnToDepotLeg]);
 
   // ─── Route selection ─────────────────────────────────────────────
 

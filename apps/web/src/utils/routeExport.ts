@@ -6,7 +6,7 @@
  *   Coordinates: lat,lng — waypoints pipe-separated — max 23 waypoints
  *
  * Mapy.cz Route URL:
- *   https://mapy.com/fnc/v1/route?start=…&end=…&waypoints=…&routeType=car_fast
+ *   https://mapy.com/fnc/v1/route?start=…&end=…&waypoints=…&routeType=car_fast_traffic
  *   Coordinates: lng,lat (reversed!) — waypoints semicolon-separated — max 15 waypoints
  */
 
@@ -147,7 +147,7 @@ export function buildMapyCzUrl(params: GoogleMapsExportParams): GoogleMapsExport
     }
   }
 
-  parts.push('routeType=car_fast');
+  parts.push('routeType=car_fast_traffic');
 
   return {
     url: 'https://mapy.com/fnc/v1/route?' + parts.join('&'),

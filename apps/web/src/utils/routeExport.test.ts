@@ -203,7 +203,7 @@ describe('buildMapyCzUrl', () => {
     expect(r.url).toContain('mapy.com/fnc/v1/route');
     expect(r.url).toContain('start=17,49');
     expect(r.url).toContain('end=17,49');
-    expect(r.url).toContain('routeType=car_fast');
+    expect(r.url).toContain('routeType=car_fast_traffic');
     const wpMatch = r.url.match(/waypoints=([^&]+)/);
     expect(wpMatch).not.toBeNull();
     const waypoints = wpMatch![1].split(';');
