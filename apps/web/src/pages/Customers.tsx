@@ -38,6 +38,8 @@ interface SearchParams {
   action?: string;
   geocodeStatus?: GeocodeStatus;
   hasOverdue?: boolean;
+  revisionFilter?: '' | 'overdue' | 'week' | 'month';
+  typeFilter?: 'company' | 'person' | '';
   sortBy?: ListCustomersRequest['sortBy'];
   sortOrder?: ListCustomersRequest['sortOrder'];
   view?: 'table' | 'cards';
@@ -74,7 +76,11 @@ export function Customers() {
   
   // Filters
   const [geocodeFilter, setGeocodeFilter] = useState<GeocodeStatus | ''>(searchParams?.geocodeStatus || '');
-  const [revisionFilter, setRevisionFilter] = useState<string>(searchParams?.hasOverdue ? 'overdue' : '');
+  const [revisionFilter, setRevisionFilter] = useState<string>(() => {
+    if (searchParams?.revisionFilter) return searchParams.revisionFilter as string;
+    if (searchParams?.hasOverdue) return 'overdue';
+    return '';
+  });
   const [typeFilter, setTypeFilter] = useState<'company' | 'person' | ''>('');
   const [sortBy, setSortBy] = useState<ListCustomersRequest['sortBy']>(searchParams?.sortBy || 'name');
   const [sortOrder, setSortOrder] = useState<ListCustomersRequest['sortOrder']>(searchParams?.sortOrder || 'asc');
@@ -105,9 +111,13 @@ export function Customers() {
     } else if (revisionFilter === 'month') {
       options.nextRevisionWithinDays = 30;
     }
+
+    if (typeFilter) {
+      options.customerType = typeFilter as 'company' | 'person';
+    }
     
     return options;
-  }, [search, geocodeFilter, revisionFilter, sortBy, sortOrder]);
+  }, [search, geocodeFilter, revisionFilter, typeFilter, sortBy, sortOrder]);
 
   // Load first page + summary when connected or filters change
   const loadCustomers = useCallback(async () => {
@@ -487,11 +497,22 @@ export function Customers() {
             <option value="week">{t('filter_revision_week')}</option>
             <option value="month">{t('filter_revision_month')}</option>
           </select>
+
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value as 'company' | 'person' | '')}
+            className={styles.filterSelect}
+          >
+            <option value="">{t('filter_type_all')}</option>
+            <option value="company">{t('filter_type_company')}</option>
+            <option value="person">{t('filter_type_person')}</option>
+          </select>
         </div>
         
         <div className={styles.viewToggle}>
           <button 
             type="button"
+            data-testid="view-table-btn"
             className={`${styles.viewButton} ${viewMode === 'table' ? styles.active : ''}`}
             onClick={() => setViewMode('table')}
             title={t('view_table')}
@@ -500,6 +521,7 @@ export function Customers() {
           </button>
           <button 
             type="button"
+            data-testid="view-cards-btn"
             className={`${styles.viewButton} ${viewMode === 'cards' ? styles.active : ''}`}
             onClick={() => setViewMode('cards')}
             title={t('view_cards')}
