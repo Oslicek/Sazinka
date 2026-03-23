@@ -41,7 +41,7 @@ use crate::types::{
 };
 use crate::services::job_history::JOB_HISTORY;
 
-use super::import::{resolve_customer_ref, resolve_device_ref};
+use super::import::{resolve_customer_ref, resolve_device_ref, parse_work_type, parse_work_result};
 
 // =============================================================================
 // IMPORT REPORT HELPERS
@@ -219,14 +219,18 @@ struct CsvVisitRow {
     scheduled_time_start: Option<String>,
     #[serde(alias = "cas_do", alias = "scheduled_time_end")]
     scheduled_time_end: Option<String>,
-    #[serde(alias = "typ", alias = "type", alias = "visit_type")]
-    visit_type: Option<String>,
+    #[serde(alias = "typ", alias = "type", alias = "visit_type", alias = "work_type")]
+    work_type: Option<String>,
     #[serde(alias = "stav", alias = "status")]
     status: Option<String>,
     #[serde(alias = "vysledek", alias = "result")]
     result: Option<String>,
     #[serde(alias = "poznamky", alias = "result_notes")]
     result_notes: Option<String>,
+    #[serde(alias = "trvani", alias = "duration", alias = "duration_minutes")]
+    duration_minutes: Option<i32>,
+    #[serde(alias = "nalezy", alias = "findings")]
+    findings: Option<String>,
     #[serde(alias = "vyzaduje_navstevu", alias = "requires_follow_up")]
     requires_follow_up: Option<String>,
     #[serde(alias = "duvod_navstevy", alias = "follow_up_reason")]
@@ -1384,7 +1388,7 @@ impl WorkLogImportProcessor {
         if total == 0 {
             let error_msg = "import:csv_empty".to_string();
             self.publish_status(job_id, WorkLogImportJobStatus::Failed { error: error_msg.clone() }).await?;
-            JOB_HISTORY.record_failed(job_id, "import.visit", user_id, started_at, error_msg);
+            JOB_HISTORY.record_failed(job_id, "import.worklog", user_id, started_at, error_msg);
             return Ok(());
         }
         
@@ -1393,34 +1397,49 @@ impl WorkLogImportProcessor {
         let mut succeeded = 0u32;
         let mut failed = 0u32;
         let mut issues: Vec<ImportIssue> = Vec::new();
-        
+
+        // Group rows by (customer_ref, scheduled_date) — preserving original order
+        let mut group_order: Vec<(String, String)> = Vec::new();
+        let mut groups: std::collections::HashMap<(String, String), Vec<(usize, &CsvVisitRow)>> = std::collections::HashMap::new();
         for (idx, row) in rows.iter().enumerate() {
-            let processed = (idx + 1) as u32;
-            
-            if idx % 50 == 0 && CANCELLATION.is_cancelled(&job_id) {
-                self.publish_status(job_id, WorkLogImportJobStatus::Cancelled { processed: idx as u32, total }).await?;
-                JOB_HISTORY.record_cancelled(job_id, "import.visit", user_id, started_at);
+            let customer_key = row.customer_ref.clone().unwrap_or_default();
+            let date_key = row.scheduled_date.clone().unwrap_or_default();
+            let key = (customer_key, date_key);
+            if !groups.contains_key(&key) {
+                group_order.push(key.clone());
+            }
+            groups.entry(key).or_default().push((idx, row));
+        }
+
+        let group_count = group_order.len() as u32;
+        for (group_idx, key) in group_order.iter().enumerate() {
+            let group_rows = &groups[key];
+            let processed = (group_idx + 1) as u32;
+
+            if group_idx % 10 == 0 && CANCELLATION.is_cancelled(&job_id) {
+                self.publish_status(job_id, WorkLogImportJobStatus::Cancelled { processed: group_idx as u32, total: group_count }).await?;
+                JOB_HISTORY.record_cancelled(job_id, "import.worklog", user_id, started_at);
                 return Ok(());
             }
-            
-            if processed % 10 == 0 || processed == total {
+
+            if processed % 5 == 0 || processed == group_count {
                 self.publish_status(job_id, WorkLogImportJobStatus::Importing {
                     processed,
-                    total,
+                    total: group_count,
                     succeeded,
                     failed,
                 }).await?;
             }
-            
-            match self.create_visit(user_id, row).await {
-                Ok(_) => succeeded += 1,
+
+            match self.create_visit_with_work_items(user_id, group_rows, &mut issues).await {
+                Ok(items_created) => succeeded += items_created,
                 Err(e) => {
                     failed += 1;
-                    let row_num = (idx + 2) as i32;
+                    let first_row_num = (group_rows[0].0 + 2) as i32;
                     let err_msg = e.to_string();
                     let (code, field) = classify_error(&err_msg);
                     issues.push(ImportIssue {
-                        row_number: row_num,
+                        row_number: first_row_num,
                         level: ImportIssueLevel::Error,
                         code,
                         field: field.to_string(),
@@ -1432,7 +1451,7 @@ impl WorkLogImportProcessor {
         }
         
         let report = build_import_report(
-            job_id, "import.visit", &job.request.filename,
+            job_id, "import.worklog", &job.request.filename,
             started_at, total, succeeded, failed, issues,
         );
         persist_report(&report);
@@ -1446,14 +1465,14 @@ impl WorkLogImportProcessor {
         
         JOB_HISTORY.record_completed_with_report(
             job_id,
-            "import.visit",
+            "import.worklog",
             user_id,
             started_at,
             Some(json!({"key": "import:completed_summary", "params": {"succeeded": succeeded, "total": total}}).to_string()),
             serde_json::to_value(&report).ok(),
         );
         
-        info!("Visit import job {} completed: {}/{} succeeded", job_id, succeeded, total);
+        info!("Work log import job {} completed: {}/{} rows succeeded", job_id, succeeded, total);
         
         Ok(())
     }
@@ -1472,47 +1491,147 @@ impl WorkLogImportProcessor {
         }
         Ok(rows)
     }
-    
-    async fn create_visit(&self, user_id: Uuid, row: &CsvVisitRow) -> Result<Uuid> {
-        let customer_ref = row.customer_ref.as_ref()
+
+    /// Create one visit for a group of rows sharing (customer_ref, scheduled_date),
+    /// then create one work item per row. Returns count of work items created.
+    async fn create_visit_with_work_items(
+        &self,
+        user_id: Uuid,
+        group_rows: &[(usize, &CsvVisitRow)],
+        issues: &mut Vec<ImportIssue>,
+    ) -> Result<u32> {
+        // Use first row for visit-level fields (first non-empty wins)
+        let first = group_rows[0].1;
+
+        let customer_ref = first.customer_ref.as_ref()
             .ok_or_else(|| anyhow::anyhow!("import:missing_customer_ref"))?;
-        
+
         let customer_id = resolve_customer_ref(&self.pool, user_id, customer_ref).await?
             .ok_or_else(|| anyhow::anyhow!("{}", json!({"key": "import:customer_not_found", "params": {"name": customer_ref}})))?;
-        
-        let scheduled_date_str = row.scheduled_date.as_ref()
+
+        let scheduled_date_str = first.scheduled_date.as_ref()
             .ok_or_else(|| anyhow::anyhow!("import:missing_visit_date"))?;
         let scheduled_date = NaiveDate::parse_from_str(scheduled_date_str, "%Y-%m-%d")
             .or_else(|_| NaiveDate::parse_from_str(scheduled_date_str, "%d.%m.%Y"))
             .map_err(|_| anyhow::anyhow!("{}", json!({"key": "import:invalid_date_format", "params": {"value": scheduled_date_str}})))?;
-        
-        let scheduled_time_start = row.scheduled_time_start.as_ref()
+
+        // First non-empty wins for visit-level time fields
+        let scheduled_time_start = group_rows.iter()
+            .find_map(|(_, r)| r.scheduled_time_start.as_ref())
             .and_then(|t| NaiveTime::parse_from_str(t, "%H:%M").ok()
                 .or_else(|| NaiveTime::parse_from_str(t, "%H:%M:%S").ok()));
-        
-        let scheduled_time_end = row.scheduled_time_end.as_ref()
+
+        let scheduled_time_end = group_rows.iter()
+            .find_map(|(_, r)| r.scheduled_time_end.as_ref())
             .and_then(|t| NaiveTime::parse_from_str(t, "%H:%M").ok()
                 .or_else(|| NaiveTime::parse_from_str(t, "%H:%M:%S").ok()));
-        
-        let visit_type = parse_visit_type(row.visit_type.as_deref().unwrap_or("revision"));
-        
-        let status = row.status.as_deref()
-            .and_then(parse_visit_status_str);
-        
-        let visit = queries::visit::create_visit(
+
+        // Determine visit_type from first row's work_type (default: revision)
+        let visit_type_raw = group_rows.iter()
+            .find_map(|(_, r)| r.work_type.as_deref())
+            .unwrap_or("revision");
+        let visit_type_str_val = parse_visit_type(visit_type_raw);
+
+        // Status: first non-empty wins
+        let status_str = group_rows.iter()
+            .find_map(|(_, r)| r.status.as_deref().and_then(parse_visit_status_str));
+
+        let visit_status = match status_str {
+            Some("planned") => crate::types::VisitStatus::Planned,
+            Some("in_progress") => crate::types::VisitStatus::InProgress,
+            Some("completed") => crate::types::VisitStatus::Completed,
+            Some("cancelled") => crate::types::VisitStatus::Cancelled,
+            Some("rescheduled") => crate::types::VisitStatus::Rescheduled,
+            _ => crate::types::VisitStatus::Planned,
+        };
+
+        // Create the visit
+        let visit_id = queries::import::create_visit_from_work_log(
             &self.pool,
             user_id,
             customer_id,
             None, // crew_id
-            None, // device_id
             scheduled_date,
             scheduled_time_start,
             scheduled_time_end,
-            visit_type,
-            status,
+            visit_status,
+            visit_type_str_val,
         ).await?;
-        
-        Ok(visit.id)
+
+        // Create one work item per row
+        let mut items_created = 0u32;
+        for (idx, row) in group_rows {
+            let row_num = (*idx + 2) as i32;
+
+            // Resolve device_ref if present
+            let device_id = if let Some(ref device_ref) = row.device_ref {
+                match resolve_device_ref(&self.pool, user_id, customer_id, device_ref).await {
+                    Ok(Some(id)) => Some(id),
+                    Ok(None) => {
+                        issues.push(ImportIssue {
+                            row_number: row_num,
+                            level: ImportIssueLevel::Warning,
+                            code: ImportIssueCode::DeviceNotFound,
+                            field: "device_ref".to_string(),
+                            message: json!({"key": "import:device_not_found", "params": {"name": device_ref}}).to_string(),
+                            original_value: Some(device_ref.clone()),
+                        });
+                        None
+                    }
+                    Err(e) => {
+                        issues.push(ImportIssue {
+                            row_number: row_num,
+                            level: ImportIssueLevel::Warning,
+                            code: ImportIssueCode::Unknown,
+                            field: "device_ref".to_string(),
+                            message: e.to_string(),
+                            original_value: Some(device_ref.clone()),
+                        });
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
+            let work_type = parse_work_type(row.work_type.as_deref().unwrap_or("revision"))
+                .unwrap_or(crate::types::work_item::WorkType::Revision);
+
+            let work_result = row.result.as_deref().and_then(parse_work_result);
+
+            let requires_follow_up = row.requires_follow_up.as_deref()
+                .map(|s| matches!(s.to_lowercase().as_str(), "true" | "yes" | "ano" | "1"))
+                .unwrap_or(false);
+
+            match queries::import::create_work_item_from_import(
+                &self.pool,
+                visit_id,
+                device_id,
+                None, // revision_id
+                None, // crew_id
+                work_type,
+                row.duration_minutes,
+                work_result,
+                row.result_notes.as_deref(),
+                row.findings.as_deref(),
+                requires_follow_up,
+                row.follow_up_reason.as_deref(),
+            ).await {
+                Ok(_) => items_created += 1,
+                Err(e) => {
+                    issues.push(ImportIssue {
+                        row_number: row_num,
+                        level: ImportIssueLevel::Error,
+                        code: ImportIssueCode::DbError,
+                        field: String::new(),
+                        message: e.to_string(),
+                        original_value: None,
+                    });
+                }
+            }
+        }
+
+        Ok(items_created)
     }
 }
 
@@ -2377,7 +2496,7 @@ impl ZipImportProcessor {
         let scheduled_time_end = row.scheduled_time_end.as_ref()
             .and_then(|t| NaiveTime::parse_from_str(t, "%H:%M").ok());
         
-        let visit_type = parse_visit_type(row.visit_type.as_deref().unwrap_or("revision"));
+        let visit_type = parse_visit_type(row.work_type.as_deref().unwrap_or("revision"));
         
         let status = row.status.as_deref()
             .and_then(parse_visit_status_str);

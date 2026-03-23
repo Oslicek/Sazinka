@@ -1454,7 +1454,7 @@ if auto-dismiss is enabled for banner tests.
 
 # Import/Export Overhaul — TDD Plan
 
-> **Status:** Phase 3 COMPLETE — revision duplicate handling + communication date persistence. Phase 4 in progress.  
+> **Status:** Phase 4 COMPLETE — work log schema, grouping, and device_ref. Phase 5 in progress.  
 > **Context:** Align CSV import/export with code and DB; no backwards compatibility required; DB may be recreated from scratch (admin user preserved).  
 > **Constraint from owner:** Build the **complete test suite first**, before production code changes.
 
@@ -1668,7 +1668,7 @@ Delimiter: `;`, UTF-8.
 - Unify `work_type`.
 - Parse and persist duration/findings/device_ref.
 - Deterministic grouping into visit + work items.
-- Commit: `fix(import): work log schema and grouping`
+- Commit: `fix(import): work log schema and grouping` ✅ DONE
 
 ### Phase 5: ZIP pipeline alignment
 - Ensure ZIP imports use corrected entity logic and reports.
