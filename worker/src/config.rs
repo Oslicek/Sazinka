@@ -23,6 +23,15 @@ pub struct Config {
     /// Base URL of the web app (e.g. "https://app.sazinka.cz").
     /// Used to build email verification links.
     pub app_base_url: String,
+
+    /// AWS region for SES (e.g. "eu-central-1"). None → email sending disabled.
+    pub ses_region: Option<String>,
+    /// Platform fallback sender address used when user has no verified domain.
+    pub ses_from_email: Option<String>,
+    /// Platform brand name for fallback display name composition.
+    pub ses_from_name: Option<String>,
+    /// Optional SES configuration set name for open/click/bounce tracking.
+    pub ses_configuration_set: Option<String>,
 }
 
 impl Config {
@@ -60,6 +69,11 @@ impl Config {
             tracing::warn!("⚠ JWT_SECRET matches a known default — change it for production!");
         }
 
+        let ses_region = std::env::var("SES_REGION").ok();
+        let ses_from_email = std::env::var("SES_FROM_EMAIL").ok();
+        let ses_from_name = std::env::var("SES_FROM_NAME").ok();
+        let ses_configuration_set = std::env::var("SES_CONFIGURATION_SET").ok();
+
         Ok(Self {
             nats_url,
             database_url,
@@ -67,6 +81,10 @@ impl Config {
             valhalla_url,
             jwt_secret,
             app_base_url,
+            ses_region,
+            ses_from_email,
+            ses_from_name,
+            ses_configuration_set,
         })
     }
 }
@@ -121,6 +139,54 @@ mod tests {
         
         // Cleanup
         std::env::remove_var("NOMINATIM_URL");
+        std::env::remove_var("JWT_SECRET");
+    }
+
+    #[test]
+    fn test_config_ses_region_some_when_set() {
+        std::env::set_var("SES_REGION", "eu-central-1");
+        std::env::set_var("SES_FROM_EMAIL", "noreply@ariadline.cz");
+        std::env::set_var("SES_FROM_NAME", "Ariadline");
+        std::env::set_var("DATABASE_URL", "postgres://test");
+        std::env::set_var("JWT_SECRET", "test-secret-that-is-at-least-32-bytes-long!!");
+
+        let config = Config::from_env().unwrap();
+        assert_eq!(config.ses_region, Some("eu-central-1".to_string()));
+        assert_eq!(config.ses_from_email, Some("noreply@ariadline.cz".to_string()));
+        assert_eq!(config.ses_from_name, Some("Ariadline".to_string()));
+
+        std::env::remove_var("SES_REGION");
+        std::env::remove_var("SES_FROM_EMAIL");
+        std::env::remove_var("SES_FROM_NAME");
+        std::env::remove_var("JWT_SECRET");
+    }
+
+    #[test]
+    #[ignore] // requires --test-threads=1 due to env var race
+    fn test_config_ses_region_none_when_not_set() {
+        std::env::remove_var("SES_REGION");
+        std::env::set_var("DATABASE_URL", "postgres://test");
+        std::env::set_var("JWT_SECRET", "test-secret-that-is-at-least-32-bytes-long!!");
+
+        let config = Config::from_env().unwrap();
+        assert!(config.ses_region.is_none());
+        assert!(config.ses_from_email.is_none());
+        assert!(config.ses_from_name.is_none());
+        assert!(config.ses_configuration_set.is_none());
+
+        std::env::remove_var("JWT_SECRET");
+    }
+
+    #[test]
+    fn test_config_ses_configuration_set_some_when_set() {
+        std::env::set_var("SES_CONFIGURATION_SET", "sazinka-tracking");
+        std::env::set_var("DATABASE_URL", "postgres://test");
+        std::env::set_var("JWT_SECRET", "test-secret-that-is-at-least-32-bytes-long!!");
+
+        let config = Config::from_env().unwrap();
+        assert_eq!(config.ses_configuration_set, Some("sazinka-tracking".to_string()));
+
+        std::env::remove_var("SES_CONFIGURATION_SET");
         std::env::remove_var("JWT_SECRET");
     }
 }

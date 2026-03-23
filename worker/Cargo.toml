@@ -54,6 +54,10 @@ rpassword = "7"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 urlencoding = "2.1"
 
+# Amazon SES v2 SDK
+aws-config = { version = "1", features = ["behavior-version-latest"] }
+aws-sdk-sesv2 = "1"
+
 # VRP solver: using simple nearest-neighbor heuristic for now
 vrp-pragmatic = "1.25"
 vrp-cli = "1.25"

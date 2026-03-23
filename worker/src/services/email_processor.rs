@@ -1,24 +1,18 @@
 #![allow(dead_code)]
-//! Email notification JetStream processor
+//! Email notification JetStream processor.
 //!
-//! Skeleton for future email notification implementation using Resend.
-//!
-//! ## Features (Future)
-//! - Revision reminder emails
-//! - Appointment confirmation emails
-//! - Custom transactional emails
-//!
-//! ## Provider
-//! Will use Resend (https://resend.com) for email delivery
+//! Processes email jobs from the `SAZINKA_EMAIL_JOBS` JetStream stream using
+//! Amazon SES v2 for delivery.
 //!
 //! ## Streams
-//! - `SAZINKA_EMAIL_JOBS` - All email types
+//! - `SAZINKA_EMAIL_JOBS` — All email types
 
 use std::sync::Arc;
 use anyhow::Result;
 use async_nats::Client;
 use async_nats::jetstream::{self, Context as JsContext};
 use futures::StreamExt;
+use sqlx::PgPool;
 use tracing::{info, warn, error};
 use uuid::Uuid;
 
@@ -33,52 +27,51 @@ const CONSUMER_NAME: &str = "email_workers";
 const SUBJECT: &str = "sazinka.jobs.email";
 const STATUS_PREFIX: &str = "sazinka.job.email.status";
 
-/// Email processor configuration
+// ============================================================================
+// Configuration
+// ============================================================================
+
+/// SES-specific email processor configuration.
 #[derive(Debug, Clone)]
-pub struct EmailConfig {
-    /// Resend API key
-    pub api_key: String,
-    /// Default sender email
+pub struct SesEmailConfig {
+    /// AWS region (e.g. "eu-central-1")
+    pub region: String,
+    /// Platform fallback sender address (e.g. "noreply@ariadline.cz")
     pub from_email: String,
-    /// Default sender name
+    /// Platform brand name used in fallback display name composition
     pub from_name: String,
+    /// Optional SES configuration set name for delivery tracking
+    pub configuration_set: Option<String>,
 }
 
-impl EmailConfig {
-    pub fn new(api_key: &str, from_email: &str, from_name: &str) -> Self {
-        Self {
-            api_key: api_key.to_string(),
-            from_email: from_email.to_string(),
-            from_name: from_name.to_string(),
-        }
-    }
-    
-    /// Create config from environment variables
-    pub fn from_env() -> Option<Self> {
-        let api_key = std::env::var("RESEND_API_KEY").ok()?;
-        let from_email = std::env::var("EMAIL_FROM_ADDRESS").unwrap_or_else(|_| "noreply@ariadline.cz".to_string());
-        let from_name = std::env::var("EMAIL_FROM_NAME").unwrap_or_else(|_| "Ariadline".to_string());
-        
-        Some(Self::new(&api_key, &from_email, &from_name))
-    }
-}
+// ============================================================================
+// EmailProcessor
+// ============================================================================
 
-/// Email job processor with JetStream integration
+/// Email job processor with JetStream integration and SES delivery.
 pub struct EmailProcessor {
     client: Client,
     js: JsContext,
-    config: Option<EmailConfig>,
+    ses_client: Option<aws_sdk_sesv2::Client>,
+    fallback_from_email: String,
+    fallback_from_name: String,
+    configuration_set: Option<String>,
+    pool: PgPool,
 }
 
 impl EmailProcessor {
-    /// Create a new email processor, initializing JetStream stream
-    pub async fn new(client: Client, config: Option<EmailConfig>) -> Result<Self> {
+    /// Create a new email processor, initializing JetStream stream.
+    pub async fn new(
+        client: Client,
+        pool: PgPool,
+        ses_config: Option<SesEmailConfig>,
+    ) -> Result<Self> {
         let js = jetstream::new(client.clone());
-        
+
         // Create email stream
         let stream_config = jetstream::stream::Config {
             name: STREAM_NAME.to_string(),
-            subjects: vec![format!("{}.*", SUBJECT)], // sazinka.jobs.email.*
+            subjects: vec![format!("{}.*", SUBJECT)],
             max_messages: 10_000,
             max_bytes: 50 * 1024 * 1024, // 50 MB
             retention: jetstream::stream::RetentionPolicy::WorkQueue,
@@ -86,15 +79,35 @@ impl EmailProcessor {
         };
         js.get_or_create_stream(stream_config).await?;
         info!("JetStream email stream '{}' ready", STREAM_NAME);
-        
-        if config.is_none() {
-            warn!("Email processor started without configuration - emails will not be sent");
-        }
-        
+
+        let (ses_client, fallback_from_email, fallback_from_name, configuration_set) =
+            match ses_config {
+                Some(cfg) => {
+                    let aws_cfg = aws_config::defaults(aws_config::BehaviorVersion::latest())
+                        .region(aws_config::Region::new(cfg.region))
+                        .load()
+                        .await;
+                    (
+                        Some(aws_sdk_sesv2::Client::new(&aws_cfg)),
+                        cfg.from_email,
+                        cfg.from_name,
+                        cfg.configuration_set,
+                    )
+                }
+                None => {
+                    warn!("SES not configured — emails will not be sent");
+                    (None, String::new(), String::new(), None)
+                }
+            };
+
         Ok(Self {
             client,
             js,
-            config,
+            ses_client,
+            fallback_from_email,
+            fallback_from_name,
+            configuration_set,
+            pool,
         })
     }
     
@@ -182,8 +195,8 @@ impl EmailProcessor {
         self.publish_status(job_id, EmailJobStatus::Sending).await?;
         
         // Check if we have configuration
-        if self.config.is_none() {
-            warn!("Email job {} skipped - no email configuration", job_id);
+        if self.ses_client.is_none() {
+            warn!("Email job {} skipped — SES not configured", job_id);
             self.publish_status(
                 job_id,
                 EmailJobStatus::Failed {
@@ -227,10 +240,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_email_config_creation() {
-        let config = EmailConfig::new("test-key", "test@example.com", "Test Sender");
-        assert_eq!(config.api_key, "test-key");
-        assert_eq!(config.from_email, "test@example.com");
+    fn test_ses_config_creation() {
+        let config = SesEmailConfig {
+            region: "eu-central-1".to_string(),
+            from_email: "noreply@ariadline.cz".to_string(),
+            from_name: "Ariadline".to_string(),
+            configuration_set: None,
+        };
+        assert_eq!(config.region, "eu-central-1");
+        assert_eq!(config.from_email, "noreply@ariadline.cz");
+        assert_eq!(config.from_name, "Ariadline");
+        assert!(config.configuration_set.is_none());
+    }
+
+    #[test]
+    fn test_ses_config_with_configuration_set() {
+        let config = SesEmailConfig {
+            region: "eu-central-1".to_string(),
+            from_email: "noreply@ariadline.cz".to_string(),
+            from_name: "Ariadline".to_string(),
+            configuration_set: Some("sazinka-tracking".to_string()),
+        };
+        assert_eq!(config.configuration_set, Some("sazinka-tracking".to_string()));
     }
 
     #[test]
