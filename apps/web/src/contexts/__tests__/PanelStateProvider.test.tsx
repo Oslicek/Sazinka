@@ -365,4 +365,63 @@ describe('PanelStateProvider', () => {
 
     console.error = consoleError;
   });
+
+  // Phase 4: map capture + mapReady tests
+
+  // #4 — mapReady initial state
+  it('state.mapReady is false initially', () => {
+    const { result } = renderHook(() => usePanelState(), { wrapper });
+    expect(result.current.state.mapReady).toBe(false);
+  });
+
+  // #5 — setMapReady
+  it('state.mapReady becomes true after actions.setMapReady(true)', () => {
+    const { result } = renderHook(() => usePanelState(), { wrapper });
+    act(() => {
+      result.current.actions.setMapReady(true);
+    });
+    expect(result.current.state.mapReady).toBe(true);
+  });
+
+  // #6 — mapReady resets
+  it('state.mapReady resets to false after setMapReady(false)', () => {
+    const { result } = renderHook(() => usePanelState(), { wrapper });
+    act(() => {
+      result.current.actions.setMapReady(true);
+    });
+    act(() => {
+      result.current.actions.setMapReady(false);
+    });
+    expect(result.current.state.mapReady).toBe(false);
+  });
+
+  // #1 — captureMap returns null when nothing registered
+  it('captureMap() returns null when no map capture is registered', () => {
+    const { result } = renderHook(() => usePanelState(), { wrapper });
+    expect(result.current.actions.captureMap()).toBeNull();
+  });
+
+  // #2 — captureMap returns data URL after registration
+  it('captureMap() returns data URL after map registers', () => {
+    const { result } = renderHook(() => usePanelState(), { wrapper });
+    const fakeFn = () => 'data:image/png;base64,AAAA';
+    act(() => {
+      result.current.actions.registerMapCapture(fakeFn);
+    });
+    expect(result.current.actions.captureMap()).toBe('data:image/png;base64,AAAA');
+  });
+
+  // #3 — captureMap returns null after unregister
+  it('captureMap() returns null after map unregisters', () => {
+    const { result } = renderHook(() => usePanelState(), { wrapper });
+    const fakeFn = () => 'data:image/png;base64,BBBB';
+    let unregister: () => void;
+    act(() => {
+      unregister = result.current.actions.registerMapCapture(fakeFn);
+    });
+    act(() => {
+      unregister();
+    });
+    expect(result.current.actions.captureMap()).toBeNull();
+  });
 });

@@ -59,6 +59,8 @@ export interface PanelState {
   mapSelectionTool?: 'click' | 'rect' | null;
   /** IDs sub-selected directly on the map (subset of selectedCandidatesForMap) */
   mapSelectedIds?: string[];
+  /** True after the map fires its 'load' event (used to gate the Print button) */
+  mapReady?: boolean;
 }
 
 export interface PanelActions {
@@ -87,6 +89,15 @@ export interface PanelActions {
   setMapSelectionTool(tool: 'click' | 'rect' | null): void;
   /** Update the sub-selected candidate IDs from map interaction */
   setMapSelectedIds(ids: string[]): void;
+  /** Mark the map as ready (called when MapLibre fires the 'load' event) */
+  setMapReady(ready: boolean): void;
+  /**
+   * Register a capture function from the map UI component.
+   * Returns an unregister callback to be called on unmount.
+   */
+  registerMapCapture(fn: () => string | null): () => void;
+  /** Capture the current map viewport as a PNG data URL, or null if unavailable */
+  captureMap(): string | null;
 }
 
 export interface PanelStateContextValue {

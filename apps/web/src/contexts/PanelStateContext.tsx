@@ -33,6 +33,7 @@ const DEFAULT_STATE: PanelState = {
   metrics: null,
   routeBufferPercent: 0,
   routeBufferFixedMinutes: 0,
+  mapReady: false,
 };
 
 interface PanelStateProviderProps {
@@ -312,6 +313,25 @@ export function PanelStateProvider({
     sendSignalRef.current({ type: 'MAP_SUB_SELECTION_SYNC', mapSelectedIds: ids });
   }, []);
 
+  const setMapReady = useCallback((ready: boolean) => {
+    setState(s => s.mapReady === ready ? s : { ...s, mapReady: ready });
+  }, []);
+
+  const mapCaptureFnRef = useRef<(() => string | null) | null>(null);
+
+  const registerMapCapture = useCallback((fn: () => string | null): (() => void) => {
+    mapCaptureFnRef.current = fn;
+    return () => {
+      if (mapCaptureFnRef.current === fn) {
+        mapCaptureFnRef.current = null;
+      }
+    };
+  }, []);
+
+  const captureMap = useCallback((): string | null => {
+    return mapCaptureFnRef.current ? mapCaptureFnRef.current() : null;
+  }, []);
+
   const actions: PanelActions = useMemo(() => ({
     selectCustomer,
     selectRoute,
@@ -332,11 +352,15 @@ export function PanelStateProvider({
     setMapDepot,
     setMapSelectionTool,
     setMapSelectedIds,
+    setMapReady,
+    registerMapCapture,
+    captureMap,
   }), [
     selectCustomer, selectRoute, setRouteContext, setRouteStops, sendScheduleSnapshot, highlightSegment,
     setInsertionPreview, setRouteGeometry, setReturnToDepotLeg, setDepotDeparture,
     setRouteWarnings, setBreakWarnings, setMetrics, setRouteBuffer, setSelectedCandidateForMap,
     setSelectedCandidatesForMap, setMapDepot, setMapSelectionTool, setMapSelectedIds,
+    setMapReady, registerMapCapture, captureMap,
   ]);
 
   const value = useMemo(() => ({ state, actions }), [state, actions]);
