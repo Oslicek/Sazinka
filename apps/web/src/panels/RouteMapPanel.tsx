@@ -30,6 +30,7 @@ export function RouteMapPanel({ selectedCandidate, insertionPreview: propInserti
     highlightedSegment,
     insertionPreview,
     selectedCustomerId,
+    selectedRouteId,
     routeContext,
   } = state;
 
@@ -43,17 +44,20 @@ export function RouteMapPanel({ selectedCandidate, insertionPreview: propInserti
   // Fetch route stops only when PanelState has none (detached windows).
   // When used inside PlanningInbox the bridge keeps PanelState up-to-date,
   // so an independent fetch would overwrite locally-modified scheduling data.
+  // Prefer selectedRouteId (Plan page selects routes by ID) over date-only
+  // lookup, which can miss the correct route when multiple routes share a date.
   useEffect(() => {
-    if (!isConnected || !routeContext?.date || routeStops.length > 0) return;
+    if (!isConnected || routeStops.length > 0) return;
+    if (!selectedRouteId && !routeContext?.date) return;
     let cancelled = false;
+    const params = selectedRouteId
+      ? { routeId: selectedRouteId }
+      : { date: routeContext!.date };
     routeService
-      .getRoute({ date: routeContext.date })
+      .getRoute(params)
       .then((res) => {
         if (cancelled) return;
         const stops = (res as { route: unknown; stops: SavedRouteStop[] }).stops ?? [];
-        // ONLY set stops if we actually got some from the backend.
-        // If we got 0 stops, it means the route was deleted or doesn't exist,
-        // and we shouldn't broadcast an empty array that might overwrite local state.
         if (stops.length > 0) {
           actions.setRouteStops(stops);
         }
@@ -62,7 +66,7 @@ export function RouteMapPanel({ selectedCandidate, insertionPreview: propInserti
         // Do not broadcast empty array on error either
       });
     return () => { cancelled = true; };
-  }, [isConnected, routeContext?.date, actions, routeStops.length]);
+  }, [isConnected, selectedRouteId, routeContext?.date, actions, routeStops.length]);
 
   // Fetch geometry when stops change (includes depot for full road geometry)
   const depot = state.mapDepot ?? null;
