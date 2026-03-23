@@ -33,7 +33,7 @@ pub enum ExportError {
 
 const STREAM_NAME: &str = "SAZINKA_EXPORT_JOBS";
 const CONSUMER_NAME: &str = "export_workers";
-const SUBJECT: &str = "sazinka.jobs.export";
+const SUBJECT: &str = "sazinka.export";
 const STATUS_PREFIX: &str = "sazinka.job.export.status";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -145,6 +145,7 @@ struct ExportDataSet {
     revisions: Vec<crate::types::Revision>,
     communications: Vec<crate::types::Communication>,
     visits: Vec<crate::types::VisitWithCustomer>,
+    work_items: Vec<crate::types::work_item::VisitWorkItem>,
     routes: Vec<queries::route::RouteWithCrewInfo>,
     route_stops: Vec<queries::route::RouteStopWithInfo>,
 }
@@ -543,12 +544,17 @@ impl ExportProcessor {
             );
         }
 
+        let work_items = queries::work_item::list_work_items_for_user(&self.pool, user_id)
+            .await
+            .unwrap_or_default();
+
         Ok(ExportDataSet {
             customers,
             devices,
             revisions,
             communications,
             visits,
+            work_items,
             routes,
             route_stops,
         })
@@ -705,9 +711,56 @@ fn pseudo_id(worker_uuid: Option<&str>, entity: &str, source_id: Uuid) -> String
     format!("{}_{}", entity, fnv1a(&format!("{}:{}:{}", worker, entity, source_id)))
 }
 
+/// Resolve a customer reference for export (round-trip safe).
+/// Priority: ICO -> email -> phone -> customer_uuid:<uuid>
+fn customer_ref(customer: &crate::types::Customer) -> String {
+    if let Some(ref ico) = customer.ico {
+        if !ico.is_empty() {
+            return ico.clone();
+        }
+    }
+    if let Some(ref email) = customer.email {
+        if !email.is_empty() {
+            return email.clone();
+        }
+    }
+    if let Some(ref phone) = customer.phone {
+        if !phone.is_empty() {
+            return phone.clone();
+        }
+    }
+    format!("customer_uuid:{}", customer.id)
+}
+
+/// Resolve a customer ref by ID from a lookup map.
+fn customer_ref_by_id(id: Uuid, lookup: &HashMap<Uuid, &crate::types::Customer>) -> String {
+    lookup.get(&id).map(|c| customer_ref(c)).unwrap_or_else(|| format!("customer_uuid:{}", id))
+}
+
+/// Resolve a device reference for export (round-trip safe).
+/// Priority: serial_number -> device_name -> device_uuid:<uuid>
+fn device_ref(device: &crate::types::Device) -> String {
+    if let Some(ref serial) = device.serial_number {
+        if !serial.is_empty() {
+            return serial.clone();
+        }
+    }
+    if let Some(ref name) = device.device_name {
+        if !name.is_empty() {
+            return name.clone();
+        }
+    }
+    format!("device_uuid:{}", device.id)
+}
+
+/// Resolve a device ref by ID from a lookup map.
+fn device_ref_by_id(id: Uuid, lookup: &HashMap<Uuid, &crate::types::Device>) -> String {
+    lookup.get(&id).map(|d| device_ref(d)).unwrap_or_else(|| format!("device_uuid:{}", id))
+}
+
 fn csv_escape(value: impl ToString) -> String {
     let mut text = value.to_string();
-    if text.contains(',') || text.contains('"') || text.contains('\n') {
+    if text.contains(';') || text.contains('"') || text.contains('\n') {
         text = text.replace('"', "\"\"");
         format!("\"{}\"", text)
     } else {
@@ -717,10 +770,10 @@ fn csv_escape(value: impl ToString) -> String {
 
 fn write_csv(headers: &[&str], rows: &[Vec<String>]) -> String {
     let mut out = String::new();
-    out.push_str(&headers.iter().map(csv_escape).collect::<Vec<_>>().join(","));
+    out.push_str(&headers.iter().map(csv_escape).collect::<Vec<_>>().join(";"));
     out.push('\n');
     for row in rows {
-        out.push_str(&row.iter().map(csv_escape).collect::<Vec<_>>().join(","));
+        out.push_str(&row.iter().map(csv_escape).collect::<Vec<_>>().join(";"));
         out.push('\n');
     }
     out
@@ -770,6 +823,7 @@ fn build_devices_csv(dataset: &ExportDataSet, worker: Option<&WorkerCtx>, includ
     let mut headers = vec![
         "customer_ref",
         "device_type",
+        "device_name",
         "manufacturer",
         "model",
         "serial_number",
@@ -781,14 +835,16 @@ fn build_devices_csv(dataset: &ExportDataSet, worker: Option<&WorkerCtx>, includ
         headers.insert(0, "worker_uuid");
     }
 
-    let worker_uuid = worker.map(|w| w.worker_uuid.as_str());
+    let customer_lookup: HashMap<Uuid, &crate::types::Customer> =
+        dataset.customers.iter().map(|c| (c.id, c)).collect();
     let rows = dataset
         .devices
         .iter()
         .map(|d| {
             let mut row = vec![
-                pseudo_id(worker_uuid, "customer", d.customer_id),
+                customer_ref_by_id(d.customer_id, &customer_lookup),
                 d.device_type.clone(),
+                d.device_name.clone().unwrap_or_default(),
                 d.manufacturer.clone().unwrap_or_default(),
                 d.model.clone().unwrap_or_default(),
                 d.serial_number.clone().unwrap_or_default(),
@@ -824,14 +880,17 @@ fn build_revisions_csv(dataset: &ExportDataSet, worker: Option<&WorkerCtx>, incl
         headers.insert(0, "worker_uuid");
     }
 
-    let worker_uuid = worker.map(|w| w.worker_uuid.as_str());
+    let customer_lookup: HashMap<Uuid, &crate::types::Customer> =
+        dataset.customers.iter().map(|c| (c.id, c)).collect();
+    let device_lookup: HashMap<Uuid, &crate::types::Device> =
+        dataset.devices.iter().map(|d| (d.id, d)).collect();
     let rows = dataset
         .revisions
         .iter()
         .map(|r| {
             let mut row = vec![
-                pseudo_id(worker_uuid, "device", r.device_id),
-                pseudo_id(worker_uuid, "customer", r.customer_id),
+                device_ref_by_id(r.device_id, &device_lookup),
+                customer_ref_by_id(r.customer_id, &customer_lookup),
                 r.due_date.to_string(),
                 r.status.clone(),
                 r.scheduled_date.map(|d| d.to_string()).unwrap_or_default(),
@@ -868,13 +927,14 @@ fn build_communications_csv(dataset: &ExportDataSet, worker: Option<&WorkerCtx>,
         headers.insert(0, "worker_uuid");
     }
 
-    let worker_uuid = worker.map(|w| w.worker_uuid.as_str());
+    let customer_lookup: HashMap<Uuid, &crate::types::Customer> =
+        dataset.customers.iter().map(|c| (c.id, c)).collect();
     let rows = dataset
         .communications
         .iter()
         .map(|c| {
             let mut row = vec![
-                pseudo_id(worker_uuid, "customer", c.customer_id),
+                customer_ref_by_id(c.customer_id, &customer_lookup),
                 c.created_at.date_naive().to_string(),
                 c.comm_type.clone(),
                 c.direction.clone(),
@@ -914,32 +974,41 @@ fn build_work_log_csv(dataset: &ExportDataSet, worker: Option<&WorkerCtx>, inclu
         headers.insert(0, "worker_uuid");
     }
 
-    let worker_uuid = worker.map(|w| w.worker_uuid.as_str());
+    // Build lookup maps for round-trip-safe refs
+    let customer_lookup: HashMap<Uuid, &crate::types::Customer> =
+        dataset.customers.iter().map(|c| (c.id, c)).collect();
+    let device_lookup: HashMap<Uuid, &crate::types::Device> =
+        dataset.devices.iter().map(|d| (d.id, d)).collect();
+    let visit_lookup: HashMap<Uuid, &crate::types::VisitWithCustomer> =
+        dataset.visits.iter().map(|v| (v.id, v)).collect();
+
+    // One row per work item (not per visit)
     let rows = dataset
-        .visits
+        .work_items
         .iter()
-        .map(|v| {
+        .filter_map(|wi| {
+            let visit = visit_lookup.get(&wi.visit_id)?;
             let mut row = vec![
-                pseudo_id(worker_uuid, "customer", v.customer_id),
-                v.scheduled_date.to_string(),
-                v.scheduled_time_start.map(|t| t.format("%H:%M").to_string()).unwrap_or_default(),
-                v.scheduled_time_end.map(|t| t.format("%H:%M").to_string()).unwrap_or_default(),
-                v.device_id
-                    .map(|id| pseudo_id(worker_uuid, "device", id))
+                customer_ref_by_id(visit.customer_id, &customer_lookup),
+                visit.scheduled_date.to_string(),
+                visit.scheduled_time_start.map(|t| t.format("%H:%M").to_string()).unwrap_or_default(),
+                visit.scheduled_time_end.map(|t| t.format("%H:%M").to_string()).unwrap_or_default(),
+                wi.device_id
+                    .map(|id| device_ref_by_id(id, &device_lookup))
                     .unwrap_or_default(),
-                v.visit_type.clone(),
-                v.status.clone(),
-                v.result.clone().unwrap_or_default(),
-                String::new(),
-                v.result_notes.clone().unwrap_or_default(),
-                String::new(),
-                v.requires_follow_up.unwrap_or(false).to_string(),
-                v.follow_up_reason.clone().unwrap_or_default(),
+                wi.work_type.as_str().to_string(),
+                visit.status.clone(),
+                wi.result.as_ref().map(|r: &crate::types::work_item::WorkResult| r.as_str().to_string()).unwrap_or_default(),
+                wi.duration_minutes.map(|d: i32| d.to_string()).unwrap_or_default(),
+                wi.result_notes.clone().unwrap_or_default(),
+                wi.findings.clone().unwrap_or_default(),
+                wi.requires_follow_up.to_string(),
+                wi.follow_up_reason.clone().unwrap_or_default(),
             ];
             if include_worker {
                 row.insert(0, worker.map(|w| w.worker_uuid.clone()).unwrap_or_default());
             }
-            row
+            Some(row)
         })
         .collect::<Vec<_>>();
 
@@ -1012,6 +1081,8 @@ fn build_route_stops_csv(dataset: &ExportDataSet, worker: Option<&WorkerCtx>, in
         headers.insert(0, "worker_uuid");
     }
 
+    let customer_lookup: HashMap<Uuid, &crate::types::Customer> =
+        dataset.customers.iter().map(|c| (c.id, c)).collect();
     let worker_uuid = worker.map(|w| w.worker_uuid.as_str());
     let rows = dataset
         .route_stops
@@ -1022,7 +1093,7 @@ fn build_route_stops_csv(dataset: &ExportDataSet, worker: Option<&WorkerCtx>, in
                 s.stop_order.to_string(),
                 s.stop_type.clone(),
                 s.customer_id
-                    .map(|id| pseudo_id(worker_uuid, "customer", id))
+                    .map(|id| customer_ref_by_id(id, &customer_lookup))
                     .unwrap_or_default(),
                 s.revision_id
                     .map(|id| pseudo_id(worker_uuid, "revision", id))

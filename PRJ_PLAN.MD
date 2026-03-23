@@ -1674,7 +1674,7 @@ Delimiter: `;`, UTF-8.
 - Ensure ZIP imports use corrected entity logic and reports.
 - Commit: `fix(import): zip pipeline parity` ✅ DONE
 
-### Phase 6: Export overhaul
+### Phase 6: Export overhaul ✅ DONE
 - Real refs + prefixed UUID fallback.
 - Add missing columns and work item-based work_log export.
 - Lock route/route_stops ref strategy.

@@ -158,6 +158,24 @@ pub async fn get_work_item(pool: &PgPool, user_id: Uuid, id: Uuid) -> Result<Opt
     Ok(item)
 }
 
+/// List all work items for a user (for export), ordered by scheduled date then creation date.
+pub async fn list_work_items_for_user(pool: &PgPool, user_id: Uuid) -> Result<Vec<VisitWorkItem>> {
+    let items = sqlx::query_as::<_, VisitWorkItem>(
+        r#"
+        SELECT wi.*
+        FROM visit_work_items wi
+        JOIN visits v ON wi.visit_id = v.id
+        WHERE v.user_id = $1
+        ORDER BY v.scheduled_date, wi.created_at
+        "#
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(items)
+}
+
 /// Fulfill a revision from a work item (denormalize result)
 pub async fn fulfill_revision(
     pool: &PgPool,
