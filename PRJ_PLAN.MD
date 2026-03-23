@@ -2084,3 +2084,695 @@ const [isDateRange, setIsDateRange] = useState(
 | TanStack Router search params lose type safety | Matches existing `useSearch({ strict: false })` pattern; typed validation is a separate initiative |
 | Stale URL params (e.g. deleted crew ID) | Graceful: filter applies but returns no data; user can clear; no crash |
 | `replace: true` vs `push` | All filter changes use `replace` to avoid polluting history with every click |
+
+---
+
+# Unified Persistence Platform (UPP) - Architecture + TDD Plan
+
+> Goal: one application-wide persistence mechanism with shared code, shared
+> classes, and plugin-like control behavior across pages.
+>
+> Critical constraint: current route persistence behavior in Inbox and Plan must
+> remain unchanged.
+
+## 0) Non-negotiable constraint (must be protected first)
+
+Before any architecture or migration work:
+
+1. Freeze current behavior with a mandatory non-regression gate.
+2. Run this gate before and after every phase.
+3. If any test in the gate fails, phase is blocked.
+
+### Mandatory route-persistence non-regression gate
+
+**Run before and after every phase** (local + CI):
+
+```bash
+cd apps/web && npx vitest run \
+  src/pages/__tests__/Plan.mapBugs.test.tsx \
+  src/pages/__tests__/Plan.detach.test.tsx \
+  src/pages/__tests__/Plan.integration.test.tsx \
+  src/pages/__tests__/Plan.printExport.test.tsx \
+  src/pages/__tests__/PlanningInbox.detach.test.tsx \
+  src/pages/__tests__/PlanningInbox.detachLayout.test.tsx \
+  src/pages/__tests__/PlanningInbox.integration.test.tsx \
+  src/pages/__tests__/PlanningInbox.batchOptimize.test.tsx \
+  src/panels/__tests__/RouteMapPanel.test.tsx \
+  src/panels/__tests__/RouteListPanel.test.tsx \
+  src/panels/__tests__/RouteTimelinePanel.test.tsx \
+  src/panels/__tests__/shared-panels.integration.test.tsx \
+  src/contexts/__tests__/PanelStateProvider.test.tsx \
+  src/hooks/__tests__/usePanelSignals.test.ts \
+  src/hooks/__tests__/useDetachState.test.ts \
+  src/panels/__tests__/InboxListPanel.test.tsx
+```
+
+After Phase 0, append the new guard files to the same command (or use a Vitest project / `test:upp-gate` script that lists them once).
+
+**Recommended:** add `package.json` script `test:upp-gate` in `apps/web` that runs the full gate list so CI and developers cannot drift.
+
+**Existing suites that must remain green** (same list as command above):
+
+| Area | File |
+|------|------|
+| Plan | `Plan.mapBugs.test.tsx`, `Plan.detach.test.tsx`, `Plan.integration.test.tsx`, `Plan.printExport.test.tsx` |
+| Inbox | `PlanningInbox.detach.test.tsx`, `PlanningInbox.detachLayout.test.tsx`, `PlanningInbox.integration.test.tsx`, `PlanningInbox.batchOptimize.test.tsx` |
+| Panels | `RouteMapPanel.test.tsx`, `RouteListPanel.test.tsx`, `RouteTimelinePanel.test.tsx`, `shared-panels.integration.test.tsx`, **`InboxListPanel.test.tsx`** |
+| Context / signals | `PanelStateProvider.test.tsx`, `usePanelSignals.test.ts`, `useDetachState.test.ts` |
+
+**Rationale:** `batchOptimize` and route list/timeline panels touch route + selection orchestration; including them closes a gap where UPP refactors could regress route UX without failing “map-only” tests. `InboxListPanel` independently persists filter state to `sessionStorage` — Phase 8 directly modifies this path.
+
+**Explicit exclusions** (documented — not required in gate unless UPP touches these files):
+
+| File | Reason |
+|------|--------|
+| `PlanningInbox.test.tsx` | Mostly layout/responsive; add to gate if Inbox page shell changes in UPP work. |
+| `PlanningInbox.flows.test.tsx` | Add if collapse/flow tests overlap changed persistence. |
+
+**Additional guard tests to add in Phase 0** (RED, then GREEN with no prod changes — names are contract targets):
+
+- `Plan.persistence.guard.test.tsx`: `it('Plan route selection survives page leave and return')`
+- `Plan.persistence.guard.test.tsx`: `it('Plan detached map rehydrates route stops via selectedRouteId after return')`
+- `PlanningInbox.persistence.guard.test.tsx`: `it('Inbox restores route context from persisted state without changing route loading behavior')`
+- `PlanningInbox.persistence.guard.test.tsx`: `it('Inbox selected candidate restore does not break route timeline rendering')`
+- `PlanningInbox.persistence.guard.test.tsx`: `it('corrupt planningInbox.context in sessionStorage falls back without breaking route load')`
+- `PlanningInbox.persistence.guard.test.tsx`: `it('missing crew/depot ids in saved context resolve to loaded crews/depots like today')`
+- `PlanningInbox.persistence.guard.test.tsx`: `it('Settings page enforceDrivingBreakRule write is compatible with Inbox read')`
+
+---
+
+## 1) Target architecture
+
+## 1.1 Core idea
+
+Introduce a single persistence platform called `UPP`:
+
+- Pages register **profiles** (what to persist, how).
+- Controls use **plugins** (date, enum, text debounce, complex JSON, etc.).
+- Storage is abstracted by **strategies/adapters** (URL, session, local, server).
+- Hydration uses a deterministic **precedence pipeline**.
+- React pages use shared hooks (`usePersistentControl`) instead of direct
+  `localStorage` / `sessionStorage` / ad-hoc URL logic.
+
+## 1.2 Design patterns
+
+- **Strategy**: storage adapters (`UrlAdapter`, `SessionAdapter`, `LocalAdapter`, `ServerPrefsAdapter`)
+- **Plugin/Registry**: control behavior modules (`DatePlugin`, `DateRangePlugin`, etc.)
+- **Chain of Responsibility**: hydration precedence (`url -> session -> local -> server -> default`)
+- **Facade**: `PersistenceOrchestrator` is one API for pages
+- **Specification/Validator**: control-level parse/validate/normalize rules
+- **Observer**: optional change subscription (storage events / channel sync)
+
+## 1.3 Proposed shared structure
+
+```text
+apps/web/src/persistence/
+  core/
+    PersistenceOrchestrator.ts
+    types.ts
+    errors.ts
+    precedence.ts
+  adapters/
+    UrlAdapter.ts
+    SessionStorageAdapter.ts
+    LocalStorageAdapter.ts
+    ServerPreferencesAdapter.ts
+    MemoryAdapter.ts                # tests
+  plugins/
+    DatePlugin.ts
+    DateRangePlugin.ts
+    EnumPlugin.ts
+    TextSearchPlugin.ts
+    BooleanPlugin.ts
+    JsonPlugin.ts
+  react/
+    PersistenceProvider.tsx
+    usePersistentProfile.ts
+    usePersistentControl.ts
+  profiles/
+    planProfile.ts
+    routesProfile.ts
+    customersProfile.ts
+    inboxProfile.ts
+```
+
+## 1.4 Core contracts (shared classes/interfaces)
+
+- `PersistenceOrchestrator`
+  - `hydrateProfile(profileId, ctx): HydratedState`
+  - `commit(controlId, value, ctx): void`
+  - `clear(controlId, ctx): void`
+  - `resetProfile(profileId, ctx): void`
+
+- `PersistenceProfile`
+  - `profileId` (e.g., `plan.filters`)
+  - `controls: ControlSpec[]`
+  - `readPriority: ChannelId[]`
+  - `writeTargets: ChannelId[]`
+
+- `ControlSpec<T>`
+  - `controlId`
+  - `pluginId`
+  - `defaultValue`
+  - `writeMode`: `immediate | debounced | onBlur`
+  - `debounceMs?`
+  - `validators[]`
+  - `sanitize(value)`
+
+- `PersistenceAdapter` (strategy)
+  - `read(key, ctx)`
+  - `write(key, envelope, ctx)`
+  - `remove(key, ctx)`
+  - `subscribe?(...)`
+
+- `ControlPlugin<T>`
+  - `encode(value)`
+  - `decode(raw)`
+  - `normalize(value)`
+  - `isEmpty(value)`
+  - `equals(a, b)`
+
+## 1.5 Intelligent plugin behavior
+
+Each control can specify:
+
+- where it reads from
+- where it writes to
+- precedence
+- migration aliases (legacy keys)
+- debounce policy
+- empty-value policy (`remove` vs `persist empty`)
+- validation fallback policy (`reject` vs `default`)
+
+### 1.6 Supplementary testing strategy (fills common gaps)
+
+**Map / WebGL boundary**
+
+- Do **not** assert MapLibre canvas pixels in Vitest.
+- Contract tests: `RouteMapPanel` smart wrapper + `PanelState` receive correct `stops`, `routeGeometry`, `selectedRouteId` / context props; detached hydration uses `getRoute({ routeId })` when expected.
+- Optional **manual smoke** checklist per release (document in `PROJECT_CONTEXT.MD`): detach map, verify stops + line on Plan/Inbox once.
+
+**Server preferences adapter (`ServerPreferencesAdapter`)**
+
+- Implement with **injected** `fetchPreferences(): Promise<Partial<Record<string, unknown>>>` (or NATS wrapper) — no static import of production service inside the adapter constructor.
+- Tests use a **fake** that resolves/rejects/timeouts; production wiring is a thin composition root.
+- Contract: on failure/timeout, orchestrator uses next channel in precedence **without throwing**.
+
+**Property-based and fuzz tests (codec hardening)**
+
+- Add in **Phase 3** (alongside plugin tests):
+  - `plugins/urlCodec.property.test.ts` — random ASCII strings for search params; round-trip or safe reject (no throw).
+  - `plugins/jsonPlugin.fuzz.test.ts` — random JSON-compatible objects for filter-shaped payloads; decode never throws; oversized payload bounded behavior.
+- Use **fast-check** or a minimal hand-rolled fuzz loop (100–1000 iterations) — choose one dependency policy in implementation; if `fast-check` is added, lock version in `package.json`.
+
+**Cross-tab / storage events**
+
+- Phase 2: implement `subscribe` on session/local adapters with **deterministic** debounce (e.g. 0ms in tests, 50ms in prod) and tests that N rapid synthetic `storage` events produce ≤M writes (no infinite loop).
+
+---
+
+## 2) Data and key strategy
+
+### 2.1 User-scoped namespacing
+
+All persisted data must be namespaced by user:
+
+`sazinka:persist:v1:user:<userId>:profile:<profileId>:control:<controlId>`
+
+### 2.2 Envelope format
+
+```typescript
+interface PersistenceEnvelope<T> {
+  v: 1;
+  ts: number; // epoch ms
+  value: T;
+  source: 'url' | 'session' | 'local' | 'server';
+}
+```
+
+### 2.3 Migration compatibility
+
+For Inbox and Plan safety:
+
+- Keep legacy read keys during migration:
+  - `planningInbox.filters`
+  - `planningInbox.context`
+  - `planningInbox.selectedId`
+  - `planningInbox.enforceDrivingBreakRule`
+- Dual-read and dual-write for one migration window.
+- Remove legacy writes only after all migration tests pass for 2 phases.
+
+---
+
+## 3) TDD-first implementation phases
+
+Rule for every phase:
+
+1. Write tests first (RED expected).
+2. Implement minimal code to GREEN.
+3. Refactor while GREEN.
+4. Run mandatory route-persistence non-regression gate.
+
+### Phase 0 - Safety baseline (tests only)
+
+Scope: lock existing route behavior in Inbox and Plan before new platform work.
+
+Tests to add:
+
+- `apps/web/src/pages/__tests__/Plan.persistence.guard.test.tsx`
+- `apps/web/src/pages/__tests__/PlanningInbox.persistence.guard.test.tsx`
+
+Cases:
+
+- Plan restore after nav away/back keeps selected route behavior.
+- Plan detach/reattach map keeps route lines + stops.
+- Inbox context restore keeps route loading stable.
+- Inbox selected candidate restore remains compatible with timeline/map.
+- Corrupt persisted Inbox context falls back safely, no crash.
+- Missing crew/depot in restored context falls back to available defaults.
+- Settings page writes `enforceDrivingBreakRule` to same key that Inbox reads; cross-page compatibility verified.
+
+Gate:
+
+- Existing mandatory route tests + new guard tests all green.
+
+---
+
+### Phase 1 - Core contracts + orchestrator (tests first)
+
+Scope: pure core (no page migration yet).
+
+Tests:
+
+- `PersistenceOrchestrator.test.ts`
+- `precedence.test.ts`
+- `types.contract.test.ts`
+
+Cases:
+
+- Deterministic precedence order.
+- Unknown channel ignored, no crash.
+- Invalid envelope version ignored with fallback.
+- Newest timestamp tie-breaker inside same channel priority.
+- Sanitizer and validator chain behavior.
+- Empty value policy (remove vs keep empty).
+- No-op writes when `equals(old, next)` is true.
+- `resetProfile` clears all controls for that profile only.
+- User namespace isolation (`userA` cannot read `userB` values).
+- **Conflict resolution:** URL valid + session valid + different values → URL wins (explicit golden cases).
+- **Deferred hydration:** `userId` null on first render, then set → single re-hydrate, no duplicate commits.
+- Optional: small **property test** for precedence function only (`precedence.property.test.ts`) with random channel payloads.
+
+---
+
+### Phase 2 - Adapter contract suite (tests first)
+
+Scope: storage/channel strategies.
+
+Test files:
+
+- `adapters/adapterContract.test.ts` (shared suite — run against every adapter implementation)
+- `adapters/UrlAdapter.test.ts`
+- `adapters/SessionStorageAdapter.test.ts`
+- `adapters/LocalStorageAdapter.test.ts`
+- `adapters/ServerPreferencesAdapter.test.ts` (must use **injected** fetch; see §1.6)
+- `adapters/crossTab.storage.test.ts` (session/local `subscribe` + storm simulation)
+
+Cases:
+
+- Read/write/remove contract identical across adapters.
+- Storage unavailable/throws (private mode, quota) handled gracefully.
+- Corrupt JSON payload returns `null` and logs warning, no throw.
+- URL adapter round-trip for scalar + arrays + booleans.
+- URL adapter removes params when value is empty.
+- Session/local adapters honor user/profile/control key namespace.
+- **Server adapter:** resolve → envelope applied; reject → fallback; timeout (AbortSignal) → fallback; no uncaught promise.
+- **Multi-tab:** rapid synthetic `storage` events do not cause unbounded writes or infinite subscribe loops (bounded counter assertion).
+- URL vs session conflict at orchestrator level deferred to Phase 1/4 integration tests; adapters remain side-effect safe in isolation.
+
+---
+
+### Phase 3 - Control plugin registry (tests first)
+
+Scope: plugin-like behavior for different control types.
+
+Test files:
+
+- `plugins/DatePlugin.test.ts`
+- `plugins/DateRangePlugin.test.ts`
+- `plugins/EnumPlugin.test.ts`
+- `plugins/TextSearchPlugin.test.ts`
+- `plugins/BooleanPlugin.test.ts`
+- `plugins/JsonPlugin.test.ts`
+- `plugins/registry.test.ts`
+- `plugins/urlCodec.property.test.ts` (optional dependency: fast-check — see §1.6)
+- `plugins/jsonPlugin.fuzz.test.ts` (hand-rolled or fast-check)
+
+Cases:
+
+- Date parse/format round-trip (`YYYY-MM-DD`), invalid date fallback.
+- DateRange plugin preserves equal-range vs single-date mode correctly.
+- Enum plugin rejects unknown values to default.
+- Text plugin debounce/cancel/restart behavior deterministic.
+- Text plugin trim policy and empty-to-remove behavior.
+- Boolean plugin encode/decode for `true`/`false`, string `"true"`/`"false"`, `null`, `undefined` round-trip.
+- Boolean plugin URL param encoding: `"1"` / `"0"` or `"true"` / `"false"` round-trip.
+- Boolean plugin `isEmpty` treats `null`/`undefined` as empty, `false` as non-empty.
+- JSON plugin handles large filter expressions and corrupt payload fallback.
+- Registry returns correct plugin by id and rejects duplicate ids.
+- **Property/fuzz:** URL encode/decode never throws; JSON decode never throws (returns default or `null` per contract).
+
+---
+
+### Phase 4 - React integration layer (tests first)
+
+Scope: shared hooks/provider for pages.
+
+Test files:
+
+- `react/PersistenceProvider.test.tsx`
+- `react/usePersistentControl.test.tsx`
+- `react/usePersistentProfile.test.tsx`
+
+Cases:
+
+- Hydrates once on mount, no double-apply loops.
+- Control update writes through orchestrator with correct channel targets.
+- Debounced control flushes on unmount.
+- Batched updates commit in deterministic order.
+- Controlled component rerenders do not lose persisted value.
+- Context updates do not trigger unrelated control writes.
+- Provider scope respects user id changes (logout/login switch).
+- **Identity:** `userId` transitions `A → null → B` clears or isolates profile state (no bleed).
+- **Two tabs (simulated):** second `MemoryStorage` / mocked `storage` event updates provider without duplicating commits (use `act` + bounded listener calls).
+- **Navigation race:** `commit` during simulated router transition does not lose last value or double-write (queue or cancel policy asserted).
+- **StrictMode:** double mount does not duplicate hydration side effects (ref-count or `didHydrate` guard — test must match chosen implementation).
+
+---
+
+### Phase 5 - Pilot migration: Customers only (tests first)
+
+Scope: first real page migration in lowest-risk page.
+
+**Controls to migrate** (complete inventory from `Customers.tsx`):
+
+| Control | Type | Current source | Plugin |
+|---------|------|----------------|--------|
+| `search` | text input | `useState('')`, no URL | `TextSearchPlugin` (debounced) |
+| `viewMode` | `'table' \| 'cards'` | URL `view` param | `EnumPlugin` |
+| `geocodeFilter` | `GeocodeStatus \| ''` | URL `geocodeStatus` param | `EnumPlugin` |
+| `revisionFilter` | `'overdue' \| 'week' \| 'month' \| ''` | URL `hasOverdue` boolean only (lossy) | `EnumPlugin` |
+| `typeFilter` | `'company' \| 'person' \| ''` | `useState('')`, no URL | `EnumPlugin` |
+| `sortBy` | enum | URL `sortBy` param | `EnumPlugin` |
+| `sortOrder` | `'asc' \| 'desc'` | URL `sortOrder` param | `EnumPlugin` |
+
+> **Note:** No existing `Customers.test.tsx` file exists. The new persistence test file is the primary coverage for this page.
+
+Tests:
+
+- New: `pages/__tests__/Customers.persistenceV2.test.tsx`
+
+Cases:
+
+- All 7 filter controls hydrate from UPP profile.
+- `search` text uses `TextSearchPlugin` with debounce; value survives navigation.
+- `typeFilter` persists across navigation (currently lost because no URL/storage sync).
+- `revisionFilter` full enum (`'' | 'overdue' | 'week' | 'month'`) round-trips in URL + storage (not just boolean `hasOverdue`).
+- `viewMode`, `sortBy`, `sortOrder` survive navigation and refresh.
+- URL deep-link still works and has precedence over session/local.
+- `geocodeFilter` unknown value (e.g., `?geocodeStatus=invalid`) falls back to `''`.
+- Clearing filters removes persisted URL params and storage values.
+- Corrupt persisted payload falls back to defaults without crash.
+- `search` debounce flushes on unmount (navigate away mid-typing).
+
+---
+
+### Phase 6 - Routes migration (tests first)
+
+Scope: migrate Routes filters to UPP profile.
+
+**Controls to migrate** (complete inventory from `Routes.tsx`):
+
+| Control | Type | Current source | Plugin |
+|---------|------|----------------|--------|
+| `dateFrom` | date string | URL `dateFrom` param, default `weekAgo` | `DatePlugin` |
+| `dateTo` | date string | URL `dateTo` param, default `weekAhead` | `DatePlugin` |
+| `isDateRange` | boolean | `useState(true)`, **not in URL** | `BooleanPlugin` |
+| `filterCrewId` | string | URL `crew` param | `EnumPlugin` |
+| `filterDepotId` | string | URL `depot` param | `EnumPlugin` |
+
+> **Note:** No existing `Routes.test.tsx` file exists.
+
+Tests:
+
+- New: `pages/__tests__/Routes.persistenceV2.test.tsx`
+
+Cases:
+
+- `dateFrom`/`dateTo`/`crew`/`depot` hydrate and persist correctly via URL + storage.
+- **`isDateRange`** persists across navigation (currently lost: defaults to `true` on re-mount).
+- `isDateRange=false` collapses range: `dateTo` set to `dateFrom` on toggle; persisted state reflects this.
+- URL with `dateFrom` but no `dateTo` treated as single-date mode.
+- URL precedence works over storage.
+- Clearing crew/depot removes URL + stored values.
+- Invalid date params (e.g., `?dateFrom=not-a-date`) fall back to defaults safely.
+- Default crew/depot from server preferences still apply when URL/storage absent.
+
+Mandatory gate after phase:
+
+- Full route-persistence non-regression suite must pass.
+
+---
+
+### Phase 7 - Plan migration (filters only) with strict safety (tests first)
+
+Scope: migrate Plan filters only. Route loading, selection, map detach logic stay untouched.
+
+Do not modify in this phase:
+
+- `PanelStateContext.tsx` behavior related to route synchronization
+- detach channel protocol
+- `RouteMapPanel` route hydration strategy
+
+**Controls to migrate** (complete inventory from `Plan.tsx`):
+
+| Control | Type | Current source | Plugin | Notes |
+|---------|------|----------------|--------|-------|
+| `dateFrom` | date string | URL `date` param, default `today` | `DatePlugin` | |
+| `dateTo` | date string | `useState(searchParams?.date \|\| today)`, **never written to URL** | `DatePlugin` | Currently lost on navigation |
+| `isDateRange` | boolean | `useState(false)`, **not in URL** | `BooleanPlugin` | Currently lost on navigation |
+| `filterCrewId` | string | URL `crew` param | `EnumPlugin` | |
+| `filterDepotId` | string | URL `depot` param | `EnumPlugin` | |
+
+**Layout preferences (explicitly deferred):**
+
+| Control | Type | Current source | Decision |
+|---------|------|----------------|----------|
+| `sidebarWidth` | number | `localStorage('planner.sidebarWidth')` | Keep as-is in Phase 7. Migrate in Phase 9 cleanup or leave as simple localStorage (low risk, no cross-page conflict). |
+| `routeListHeight` | number | `localStorage('planner.routeListHeight')` | Same as `sidebarWidth`. |
+| `timelineView` | `'planning' \| 'compact'` | `useState('planning')`, not persisted | Add to Plan UPP profile as `EnumPlugin`. Currently resets every mount. |
+
+Tests:
+
+- New: `pages/__tests__/Plan.persistenceV2.test.tsx`
+- Re-run all Plan/Inbox route guard tests.
+
+Cases:
+
+- Plan filter hydration/persistence behavior from UPP.
+- **`dateTo`** persists across navigation (currently lost because never written to URL).
+- **`isDateRange`** persists across navigation (currently lost: defaults to `false` on re-mount).
+- `isDateRange=false` with different `dateTo` in storage: `dateTo` coerced to `dateFrom` on hydration.
+- `timelineView` persists across navigation (currently resets to `'planning'`).
+- Preference fallback still applies when URL/storage absent.
+- URL deep-links still authoritative.
+- Filter writes do not alter selected route id/stops behavior.
+- Leaving and returning to Plan preserves filter state without affecting route map.
+- URL with only `?date=2025-03-01` (no `dateTo`, no `isDateRange`): single-date mode, `dateTo` = `dateFrom`.
+- `sidebarWidth` / `routeListHeight` continue to work from direct localStorage (no UPP regression).
+
+---
+
+### Phase 8 - Inbox migration with legacy compatibility bridge (tests first)
+
+Scope: move Inbox persistence calls to UPP while preserving exact current behavior.
+
+Approach:
+
+- Keep legacy keys as aliases in profile config.
+- Read legacy and new keys; prefer new key when both valid.
+- Dual-write both key formats during migration.
+
+**Controls to migrate** (complete inventory from `PlanningInbox.tsx` + `InboxListPanel.tsx`):
+
+| Control | Type | Current source | Plugin | Notes |
+|---------|------|----------------|--------|-------|
+| `filters` | `InboxFilterExpression` | sessionStorage `planningInbox.filters` | `JsonPlugin` | Complex filter expression, also independently persisted in `InboxListPanel` |
+| `selectedCandidateId` | `string \| null` | sessionStorage `planningInbox.selectedId` | `TextSearchPlugin` (no debounce) | |
+| `context` (date/crew/depot) | `RouteContext` | sessionStorage `planningInbox.context` | `JsonPlugin` | Validated against loaded crews/depots on restore |
+| `enforceDrivingBreakRule` | boolean | localStorage `planningInbox.enforceDrivingBreakRule` | `BooleanPlugin` | **Cross-page writer: `Settings.tsx` also writes this key** |
+
+**Explicitly deferred / excluded:**
+
+| Control | Type | Current source | Decision |
+|---------|------|----------------|----------|
+| `sazinka.snooze.defaultDays` | number | localStorage (CandidateDetail + PlanningInbox) | Keep as-is. Simple number preference used by CandidateDetail component, not a page filter. Migrate in Phase 9 cleanup or leave. |
+
+Tests:
+
+- New: `pages/__tests__/PlanningInbox.persistenceV2.test.tsx`
+- New: `panels/__tests__/InboxListPanel.persistenceV2.test.tsx`
+
+Cases:
+
+- Filters, selectedId, context hydrate exactly as today.
+- Corrupt legacy payload fallback.
+- Missing crew/depot in saved context fallback logic unchanged.
+- Dual-write writes both legacy and v2 keys.
+- Route rendering, timeline, detach behavior remain unchanged.
+- **Cross-page writer:** `Settings.tsx` writes `enforceDrivingBreakRule` via legacy key; Inbox reads via UPP dual-read; value consistent after Settings toggle.
+- **Cross-page writer:** `Settings.tsx` writes `enforceDrivingBreakRule` while Inbox is open in another tab; storage event propagates correctly (no stale value).
+- `InboxListPanel` filter persistence stays in sync with `PlanningInbox` filter persistence (both write same underlying key).
+- `sazinka.snooze.defaultDays` continues to work from direct localStorage (no UPP regression).
+
+---
+
+### Phase 9 - Cleanup and hardening (tests first)
+
+Scope: remove direct storage calls from pages that now use UPP.
+
+Tests:
+
+- **ESLint** (preferred): `no-restricted-globals` or custom rule scoped to
+  `apps/web/src/pages/**` and `apps/web/src/panels/**` forbidding `localStorage` /
+  `sessionStorage` except the explicit allowlist below.
+- Fallback if ESLint rule deferred: `scripts/check-no-raw-storage.mjs` run in CI
+  that greps migrated paths and fails on violations.
+- Full app persistence regression suite (`npx vitest run` in `apps/web`).
+
+**ESLint / CI allowlist** (files that legitimately use storage outside UPP):
+
+| File | Key(s) | Reason |
+|------|--------|--------|
+| `persistence/adapters/*` | all | UPP adapter implementations |
+| `stores/authStore.ts` | `sazinka.auth.token` | Auth token management, not user-preference data |
+| `components/ErrorBoundary.tsx` / `main.tsx` | `errorBoundaryReload` | Crash-recovery flag, ephemeral |
+| `lib/lazyWithRetry.ts` | `lazyRetry.*` | Chunk-load retry tracking, ephemeral |
+| `services/layoutPreferenceService.ts` | `sazinka.layoutPreference` | Layout preference service; migrate to UPP in Phase 9 or keep if decoupled |
+| `components/planner/CandidateDetail.tsx` | `sazinka.snooze.defaultDays` | Simple component-level preference (deferred from UPP scope) |
+
+**Deferred layout keys** (optional migration targets in this phase):
+
+| Key | Current location | Action |
+|-----|-----------------|--------|
+| `planner.sidebarWidth` | `Plan.tsx` | Migrate to UPP `NumberPlugin` or leave as-is. Test either way. |
+| `planner.routeListHeight` | `Plan.tsx` | Same as above. |
+| `sazinka.layoutPreference` | `layoutPreferenceService.ts` | Migrate to UPP or keep. If kept, add to allowlist. |
+| `sazinka.snooze.defaultDays` | `CandidateDetail.tsx`, `PlanningInbox.tsx` | Keep as-is, add to allowlist. |
+
+Cleanup:
+
+- Remove obsolete persistence helper code from page components.
+- Keep only UPP facade usage.
+- If deferred layout keys are migrated, remove direct `localStorage` calls and update allowlist.
+- Update docs (`PRJ_PLAN.MD`, `PROJECT_CONTEXT.MD`).
+
+---
+
+## 4) Corner-case matrix + traceability (every row mapped to tests)
+
+**Rule:** Each row below MUST have at least one automated test (named `it` or
+property test) before the phase that claims coverage is complete. “Manual only”
+is allowed **only** for true WebGL/canvas pixel checks — list them in
+`PROJECT_CONTEXT.MD` smoke checklist.
+
+### 4.1 Traceability table
+
+| # | Scenario | Phase | Primary test artifact |
+|---|----------|-------|------------------------|
+| C1 | Corrupt JSON in any channel | 2–3 | `adapterContract.test.ts`, `JsonPlugin.test.ts` |
+| C2 | Unknown enum / invalid union | 3 | `EnumPlugin.test.ts` |
+| C3 | Invalid date strings | 3 | `DatePlugin.test.ts`, `DateRangePlugin.test.ts` |
+| C4 | Missing mandatory object fields | 1, 3 | `PersistenceOrchestrator.test.ts`, `JsonPlugin.test.ts` |
+| C5 | Envelope version mismatch | 1 | `PersistenceOrchestrator.test.ts`, `types.contract.test.ts` |
+| C6 | Partial payload (`dateTo` without `dateFrom`) | 1, 3 | `DateRangePlugin.test.ts`, `precedence.test.ts` |
+| C7 | Logout/login same tab (user id change) | 4 | `PersistenceProvider.test.tsx`, `usePersistentProfile.test.tsx` |
+| C8 | Two users / isolation | 1, 4 | `PersistenceOrchestrator.test.ts`, provider tests with distinct user ids |
+| C9 | Missing user id at first paint (defer hydrate) | 4 | `PersistenceProvider.test.tsx` |
+| C10 | URL vs session vs local vs server conflict | 1 | `precedence.test.ts`, `PersistenceOrchestrator.test.ts` |
+| C11 | URL invalid, session valid | 1 | Golden cases in `PersistenceOrchestrator.test.ts` |
+| C12 | Same control updated in two tabs (storage events) | 2 | `crossTab.storage.test.ts` |
+| C13 | Rapid typing + debounce + navigate away | 3–4 | `TextSearchPlugin.test.ts`, `usePersistentControl.test.tsx` |
+| C14 | Unmount during pending debounce | 4 | `usePersistentControl.test.tsx` |
+| C15 | Router transition during commit | 4 | `usePersistentProfile.test.tsx` |
+| C16 | React StrictMode double mount | 4 | `PersistenceProvider.test.tsx` |
+| C17 | Quota exceeded / storage throws | 2 | `SessionStorageAdapter.test.ts`, `LocalStorageAdapter.test.ts` |
+| C18 | Storage access denied (sandbox) | 2 | `adapterContract.test.ts` with throwing mock |
+| C19 | Server prefs timeout/failure | 2 | `ServerPreferencesAdapter.test.ts` (injected fake) |
+| C20 | Storage event storm | 2 | `crossTab.storage.test.ts` |
+| C21 | Plan route stops + geometry unchanged | Gate | Mandatory gate + `RouteMapPanel.test.tsx`, `Plan.*` |
+| C22 | Plan detached map hydration (`routeId`) | Gate | `Plan.detach.test.tsx`, `RouteMapPanel.test.tsx`, Phase 0 guard |
+| C23 | Inbox route context + timeline unchanged | Gate | `PlanningInbox.*`, `RouteTimelinePanel.test.tsx`, Phase 0 guard |
+| C24 | Inbox selection restore unchanged | Gate | Phase 0 guard + `PlanningInbox.persistence.guard.test.tsx` |
+| C25 | URL codec random strings safe | 3 | `urlCodec.property.test.ts` |
+| C26 | Large filter JSON (Inbox-shaped) | 3 | `jsonPlugin.fuzz.test.ts` |
+| C27 | Legacy Inbox keys dual-read/write | 8 | `PlanningInbox.persistenceV2.test.tsx`, `InboxListPanel.persistenceV2.test.tsx` |
+| C28 | Customers revision week/month in URL | 5 | `Customers.persistenceV2.test.tsx` (encode `revision` not only `hasOverdue`) |
+| C29 | No raw storage in migrated pages | 9 | ESLint or `check-no-raw-storage.mjs` |
+| C30 | Customers `typeFilter` not persisted (currently lost on nav) | 5 | `Customers.persistenceV2.test.tsx` |
+| C31 | Customers `search` text not persisted (currently lost on nav) | 5 | `Customers.persistenceV2.test.tsx` |
+| C32 | Plan `dateTo` not in URL (currently lost on nav) | 7 | `Plan.persistenceV2.test.tsx` |
+| C33 | Plan `isDateRange` not persisted (defaults false on re-mount) | 7 | `Plan.persistenceV2.test.tsx` |
+| C34 | Routes `isDateRange` not persisted (defaults true on re-mount) | 6 | `Routes.persistenceV2.test.tsx` |
+| C35 | Plan `timelineView` not persisted (defaults 'planning' on re-mount) | 7 | `Plan.persistenceV2.test.tsx` |
+| C36 | Settings cross-page write of `enforceDrivingBreakRule` | 0, 8 | `PlanningInbox.persistence.guard.test.tsx`, `PlanningInbox.persistenceV2.test.tsx` |
+| C37 | `InboxListPanel` filter sync with `PlanningInbox` filters | 8 | `InboxListPanel.persistenceV2.test.tsx` |
+| C38 | Boolean plugin: string `"true"`/`"false"` from legacy storage | 3 | `BooleanPlugin.test.ts` |
+| C39 | `isDateRange=false` + stale `dateTo` in storage: coerce on hydration | 6, 7 | `Routes.persistenceV2.test.tsx`, `Plan.persistenceV2.test.tsx` |
+
+### 4.2 Category index (summary — details in §4.1)
+
+- **Data quality:** C1–C6, C38
+- **User / identity:** C7–C9
+- **Multi-source conflict:** C10–C12
+- **Timing / lifecycle:** C13–C16
+- **Storage failures:** C17–C20
+- **Domain safety (Inbox/Plan route):** C21–C24, **plus full mandatory gate**
+- **Codec stress:** C25–C26
+- **Migration:** C27–C29
+- **Missing persistence (new controls):** C30–C35
+- **Cross-page / cross-component writers:** C36–C37
+- **Plugin edge cases:** C38–C39
+
+---
+
+## 5) Definition of done
+
+- [ ] UPP core, adapters, plugins, and react facade implemented behind tests.
+- [ ] Every phase started with RED tests and finished GREEN.
+- [ ] Mandatory route-persistence non-regression gate passes in every phase (`test:upp-gate` or equivalent scripted command).
+- [ ] **Traceability:** every row in §4.1 table (C1–C39) has an implemented test (grep/audit checklist in PR).
+- [ ] Plan and Inbox route behavior unchanged from baseline.
+- [ ] Customers, Routes, Plan, Inbox use one shared persistence mechanism.
+- [ ] Legacy direct storage calls removed from migrated code paths (ESLint or CI script — §Phase 9).
+- [ ] ESLint/CI allowlist documented and enforced for legitimate non-UPP storage uses.
+- [ ] Every migrated page has a complete control inventory table (§Phase 5–8) matched against actual source code.
+- [ ] Cross-page writers (`Settings.tsx` → `enforceDrivingBreakRule`) covered by dual-read/write tests.
+- [ ] Documentation updated with architecture, migration notes, and **optional manual map smoke** checklist.
+- [ ] Server preferences adapter covered by injected fake (no untestable static NATS import in adapter core).
+
+## 6) Estimated effort
+
+| Phase | ~Hours |
+|------|-------:|
+| 0 - Safety baseline tests + gate script | 4 |
+| 1 - Core contracts/orchestrator + precedence property tests | 5 |
+| 2 - Adapters + cross-tab | 5 |
+| 3 - Plugins + property/fuzz (incl. BooleanPlugin) | 5 |
+| 4 - React integration (identity, StrictMode, races) | 4 |
+| 5 - Customers migration (7 controls: search, viewMode, geocodeFilter, revisionFilter, typeFilter, sortBy, sortOrder) | 3 |
+| 6 - Routes migration (5 controls incl. isDateRange) | 3 |
+| 7 - Plan migration (5 filter controls + timelineView, scoping layout prefs) | 4 |
+| 8 - Inbox migration + compatibility (cross-page enforceDrivingBreakRule) | 5 |
+| 9 - Cleanup, ESLint/CI guard, allowlist, docs | 3 |
+| **Total** | **41** |

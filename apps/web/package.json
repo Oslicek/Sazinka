@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:watch": "vitest --watch",
+    "test:upp-gate": "vitest run src/pages/__tests__/Plan.mapBugs.test.tsx src/pages/__tests__/Plan.detach.test.tsx src/pages/__tests__/Plan.integration.test.tsx src/pages/__tests__/Plan.printExport.test.tsx src/pages/__tests__/PlanningInbox.detach.test.tsx src/pages/__tests__/PlanningInbox.detachLayout.test.tsx src/pages/__tests__/PlanningInbox.integration.test.tsx src/pages/__tests__/PlanningInbox.batchOptimize.test.tsx src/panels/__tests__/RouteMapPanel.test.tsx src/panels/__tests__/RouteListPanel.test.tsx src/panels/__tests__/RouteTimelinePanel.test.tsx src/panels/__tests__/shared-panels.integration.test.tsx src/contexts/__tests__/PanelStateProvider.test.tsx src/hooks/__tests__/usePanelSignals.test.ts src/hooks/__tests__/useDetachState.test.ts src/panels/__tests__/InboxListPanel.test.tsx src/pages/__tests__/Plan.persistence.guard.test.tsx src/pages/__tests__/PlanningInbox.persistence.guard.test.tsx",
     "lint": "eslint src --ext ts,tsx",
     "typecheck": "tsc --noEmit"
   },
