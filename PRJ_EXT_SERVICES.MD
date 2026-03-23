@@ -2158,8 +2158,8 @@ Implements §1.9: replace Resend-oriented code paths with SES v2 + Sig v4. Can p
 | 5 | Add SES fields to `Config` + tests | 2 | ✅ |
 | 6 | Replace `EmailConfig` with `SesEmailConfig` | 2 | ✅ |
 | 7 | SES client init in `EmailProcessor::new` | 2 | ✅ |
-| 8 | Add `user_email_domains` migration (`is_active`, status, DKIM records) | 3 | ☐ |
-| 9 | Add domain verification service (`create/get/delete identity`) | 3 | ☐ |
+| 8 | Add `user_email_domains` migration (`is_active`, status, DKIM records) | 3 | ✅ |
+| 9 | Add domain verification service (sender selection, validation, status) | 3 | ✅ |
 | 10 | Add NATS domain settings handlers (`setup/check/delete/get`) | 3 | ☐ |
 | 11 | Add verification poller + manual check flow | 3 | ☐ |
 | 12 | `resolve_confirmation_data` query | 4 | ☐ |

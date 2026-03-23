@@ -1,6 +1,7 @@
 //! Business logic services
 
 pub mod cancellation;
+pub mod domain_verification;
 pub mod template_renderer;
 pub mod email_processor;
 pub mod email_sender;
