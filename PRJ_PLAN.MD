@@ -1680,7 +1680,7 @@ Delimiter: `;`, UTF-8.
 - Lock route/route_stops ref strategy.
 - Commit: `fix(export): canonical round-trip-safe csv output`
 
-### Phase 7: Frontend alignment
+### Phase 7: Frontend alignment ✅ DONE
 - Header alias support and new tests.
 - Modal/panel/report behavior validation.
 - Commit: `fix(frontend): import-export contract and ui tests`

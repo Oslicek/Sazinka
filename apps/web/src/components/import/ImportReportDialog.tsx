@@ -35,7 +35,7 @@ const JOB_TYPE_KEYS: Record<string, string> = {
   'import.device': 'report_job_device',
   'import.revision': 'report_job_revision',
   'import.communication': 'report_job_communication',
-  'import.visit': 'report_job_visit',
+  'import.work_log': 'report_job_work_log',
   'import.zip': 'report_job_zip',
 };
 
