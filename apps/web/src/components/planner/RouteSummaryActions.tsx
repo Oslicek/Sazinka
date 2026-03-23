@@ -14,6 +14,14 @@ export interface RouteSummaryActionsProps {
   canOptimize?: boolean;
   /** Label for delete button */
   deleteLabel?: string;
+  /** Handler for print action */
+  onPrint?: () => void;
+  /** Handler for Google Maps export action */
+  onExportGoogleMaps?: () => void;
+  /** Whether print is available (map ready + stops present). Defaults to true if onPrint provided. */
+  canPrint?: boolean;
+  /** Whether Google Maps export is available (stops have coords). Defaults to true if onExportGoogleMaps provided. */
+  canExport?: boolean;
 }
 
 export function RouteSummaryActions({
@@ -23,6 +31,10 @@ export function RouteSummaryActions({
   isOptimizing = false,
   canOptimize = true,
   deleteLabel,
+  onPrint,
+  onExportGoogleMaps,
+  canPrint = true,
+  canExport = true,
 }: RouteSummaryActionsProps) {
   const { t } = useTranslation('planner');
   return (
@@ -40,6 +52,30 @@ export function RouteSummaryActions({
       {onAddBreak && (
         <button type="button" className={styles.summaryActionBtn} onClick={onAddBreak}>
           {t('actions_break')}
+        </button>
+      )}
+      {onPrint && (
+        <button
+          type="button"
+          className={styles.summaryActionBtn}
+          onClick={onPrint}
+          disabled={!canPrint}
+          title={t('actions_print')}
+          aria-label={t('actions_print')}
+        >
+          {t('actions_print')}
+        </button>
+      )}
+      {onExportGoogleMaps && (
+        <button
+          type="button"
+          className={styles.summaryActionBtn}
+          onClick={onExportGoogleMaps}
+          disabled={!canExport}
+          title={t('actions_export_gmaps')}
+          aria-label={t('actions_export_gmaps')}
+        >
+          {t('actions_export_gmaps')}
         </button>
       )}
       {onDeleteRoute && (
