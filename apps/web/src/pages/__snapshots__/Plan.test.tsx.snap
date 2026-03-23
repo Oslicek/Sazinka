@@ -43,45 +43,60 @@ exports[`Plan page — mobile layout structure > desktop (1280px) > desktop layo
   <div
     class="_mapWrapper_00322f"
   >
-    <button
-      aria-label="Open in new window"
-      data-testid="detach-map-btn"
-      title="Open in new window"
-      type="button"
-    >
-      <svg
-        fill="none"
-        height="14"
-        stroke="currentColor"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        stroke-width="2.5"
-        viewBox="0 0 24 24"
-        width="14"
-      >
-        <path
-          d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"
-        />
-        <polyline
-          points="15 3 21 3 21 9"
-        />
-        <line
-          x1="10"
-          x2="21"
-          y1="14"
-          y2="3"
-        />
-      </svg>
-    </button>
     <div
-      class="_container_760b3b "
+      class="_shell_212bd0"
+      data-testid="map-panel-shell"
     >
       <div
-        class="_webglFallback_760b3b"
+        class="_controls_212bd0"
+        data-testid="map-panel-shell-controls"
       >
-        <p>
-          map_webgl_unavailable
-        </p>
+        <button
+          aria-label="Open in new window"
+          data-testid="detach-map-btn"
+          title="Open in new window"
+          type="button"
+        >
+          <svg
+            fill="none"
+            height="14"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2.5"
+            viewBox="0 0 24 24"
+            width="14"
+          >
+            <path
+              d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"
+            />
+            <polyline
+              points="15 3 21 3 21 9"
+            />
+            <line
+              x1="10"
+              x2="21"
+              y1="14"
+              y2="3"
+            />
+          </svg>
+        </button>
+      </div>
+      <div
+        class="_content_212bd0"
+        data-testid="map-panel-shell-content"
+      >
+        <div
+          class="_container_760b3b "
+        >
+          <div
+            class="_webglFallback_760b3b"
+          >
+            <p>
+              map_webgl_unavailable
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   </div>

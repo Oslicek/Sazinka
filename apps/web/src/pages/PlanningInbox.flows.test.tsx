@@ -200,6 +200,9 @@ vi.mock('../components/layout', () => ({
   ),
   LayoutManager: () => null,
   DetachButton: () => null,
+  MapPanelShell: ({ panelName, children }: { panelName: string; children: React.ReactNode }) => (
+    <div data-testid="map-panel-shell" data-panel={panelName}>{children}</div>
+  ),
 }));
 
 import { PlanningInbox } from './PlanningInbox';
@@ -327,5 +330,77 @@ describe('PlanningInbox flows (desktop)', () => {
       }),
     );
     expect(mockSubscribeToRouteJobStatus).toHaveBeenCalledWith('flow-job', expect.any(Function));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Collapse UI removed assertions
+// ---------------------------------------------------------------------------
+
+describe('PlanningInbox — collapse UI removed', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sessionStorage.clear();
+    mockGetSettings.mockResolvedValue(defaultPlanningInboxSettings());
+    mockListCrews.mockResolvedValue(defaultCrewList());
+    mockSubmitRoutePlanJob.mockResolvedValue({ jobId: 'flow-job', position: 0, estimatedWaitSeconds: 0 });
+    mockSubscribeToRouteJobStatus.mockResolvedValue(() => {});
+  });
+
+  it('has no section-header collapse/expand button for Map or Timeline panels', async () => {
+    setupPlanningInboxDesktop(mockUseBreakpoint);
+    renderPlanningInbox(<PlanningInbox />);
+
+    await waitFor(() => screen.getByTestId('inbox-list-panel-mock'));
+
+    expect(screen.queryByTitle(/Sbalit|Rozbalit|collapse|expand/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('▲')).not.toBeInTheDocument();
+    expect(screen.queryByText('▼')).not.toBeInTheDocument();
+  });
+
+  it('has no mapCollapsedBar element', async () => {
+    setupPlanningInboxDesktop(mockUseBreakpoint);
+    renderPlanningInbox(<PlanningInbox />);
+
+    await waitFor(() => screen.getByTestId('inbox-list-panel-mock'));
+
+    expect(screen.queryByTestId('map-collapsed-bar')).not.toBeInTheDocument();
+  });
+
+  it('does not read sazinka.inbox.timelineCollapsed from localStorage on mount', async () => {
+    const getSpy = vi.spyOn(Storage.prototype, 'getItem');
+
+    setupPlanningInboxDesktop(mockUseBreakpoint);
+    renderPlanningInbox(<PlanningInbox />);
+
+    await waitFor(() => screen.getByTestId('inbox-list-panel-mock'));
+
+    const collapseReads = getSpy.mock.calls.filter(
+      ([key]) => key === 'sazinka.inbox.timelineCollapsed',
+    );
+    expect(collapseReads).toHaveLength(0);
+  });
+
+  it('does not read sazinka.inbox.mapCollapsed from localStorage on mount', async () => {
+    const getSpy = vi.spyOn(Storage.prototype, 'getItem');
+
+    setupPlanningInboxDesktop(mockUseBreakpoint);
+    renderPlanningInbox(<PlanningInbox />);
+
+    await waitFor(() => screen.getByTestId('inbox-list-panel-mock'));
+
+    const collapseReads = getSpy.mock.calls.filter(
+      ([key]) => key === 'sazinka.inbox.mapCollapsed',
+    );
+    expect(collapseReads).toHaveLength(0);
+  });
+
+  it('Inbox map wrapper renders data-testid="map-panel-shell"', async () => {
+    setupPlanningInboxDesktop(mockUseBreakpoint);
+    renderPlanningInbox(<PlanningInbox />);
+
+    await waitFor(() => screen.getByTestId('inbox-list-panel-mock'));
+
+    expect(screen.getByTestId('map-panel-shell')).toBeInTheDocument();
   });
 });

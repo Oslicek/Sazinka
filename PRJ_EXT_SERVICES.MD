@@ -1,7 +1,7 @@
 # PRJ_EXT_SERVICES — External Services Integration
 
 > **Created:** 2026-02-23
-> **Status:** Analysis complete, implementation plan ready — no code changes yet
+> **Status:** Analysis complete; MVP decisions locked (custom domains, Ariadline fallback, reminder schedule, **site → SES**). Implementation not started in this file.
 
 ---
 
@@ -46,7 +46,7 @@ The codebase already has substantial scaffolding for email:
 | Email template settings UI | Settings page | Complete — subject/body per template type, company locale |
 | Communication CRM tracking | `worker/src/types/communication.rs` | Complete — `EmailStatus` enum (sent/delivered/opened/bounced/failed) |
 | Communication DB queries | `worker/src/db/queries/communication.rs` | Complete |
-| Resend spike (Cloudflare) | `apps/site/functions/__tests__/resend-spike.workers.test.ts` | Proof of concept for Workers runtime |
+| Resend spike (Cloudflare) | `apps/site/functions/__tests__/resend-spike.workers.test.ts` | Legacy PoC; **site → SES** per §1.9 / Phase 12 |
 | SOPS secrets pipeline | `Makefile`, `.sops.yaml`, `infra/secrets/` | Complete — ready to add new secrets |
 
 **Key finding:** The existing `EmailConfig` was designed around Resend (`api_key`, `from_email`, `from_name`).
@@ -59,7 +59,7 @@ Email needs to be sent from two different runtimes:
 | Context | Runtime | Use Cases | Current Plan |
 |---------|---------|-----------|--------------|
 | **Rust worker** | Tokio on a server/VPS | Revision reminders, appointment confirmations, custom transactional emails | `email_processor.rs` with JetStream queue |
-| **Cloudflare Workers** | `workerd` (edge) | Newsletter confirmation, contact form auto-reply | `apps/site/functions/` — currently no sending |
+| **Cloudflare Workers** | `workerd` (edge) | Newsletter confirmation, contact form auto-reply | `apps/site/functions/` — **planned: SES** (Sig v4), not Resend |
 
 Both can use the same SES account and verified domain. The integration approach differs:
 
@@ -68,6 +68,26 @@ Both can use the same SES account and verified domain. The integration approach 
 
 This analysis focuses on the **Rust worker** integration first. The Cloudflare Workers
 integration is a separate, smaller task documented in section 1.9.
+
+---
+
+### 1.3.1 Locked MVP Decisions (Confirmed)
+
+The following decisions were explicitly confirmed and are now treated as implementation requirements:
+
+1. **SES region:** Use `eu-central-1` for MVP. Design should remain extensible for future multi-region support.
+2. **Sender model:** Support one **active** customer domain per user in MVP.
+3. **DB strategy:** Keep schema forward-compatible for future multi-domain expansion (multiple rows + active flag model).
+4. **Identity type:** Domain identities only. Per-email identity fallback is out of scope.
+5. **Fallback sender:** Use shared platform address `noreply@ariadline.cz`.
+6. **Fallback display name:** `"<User business name> via Ariadline"`.
+7. **Fallback reply handling:** If customer domain is not verified, send from Ariadline domain and set `Reply-To` to user's business email.
+8. **Verification lifecycle:** Implement full SES identity lifecycle in-app for MVP: `CreateEmailIdentity`, `GetEmailIdentity`, `DeleteEmailIdentity`.
+9. **Verification checks:** Support both background polling and manual "Check now".
+10. **Rate limiting strategy:** Rely on SES throttling + JetStream retries in MVP.
+11. **UI scope:** Simple verification UI only (`pending` / `verified` / `failed`) plus manual "Check now" action.
+12. **Reminder send schedule:** One **per-company** send time (`users.email_reminder_send_time`, UI: “Čas automatického odeslání”) — user-configurable; **may** restrict the picker to **full hours** only. The worker still runs a **minimum hourly** scheduler tick; each tick evaluates which companies’ configured time matches the **current local wall-clock** slot and only then enqueues reminders for those users (not “once per day globally”).
+13. **Cloudflare site (`apps/site`):** Use **Amazon SES** for transactional mail (newsletter opt-in, contact form, etc.), not Resend. Implement **SES v2 HTTP API** from Workers with **AWS Signature Version 4** (e.g. `aws4fetch` or equivalent). Same **`eu-central-1`** region and AWS account as the Rust worker unless explicitly split for IAM reasons.
 
 ---
 
@@ -87,7 +107,7 @@ The `aws-config` crate handles credential resolution (env vars, profiles, IMDSv2
 `aws-sdk-sesv2` provides the `SendEmail` API.
 
 Both crates use `hyper` + `rustls` under the hood. Since the worker already uses `reqwest`
-with `native-tls`, there is no TLS stack conflict — `aws-sdk-*` brings its own HTTP client.
+with `rustls`, there is no TLS stack conflict — `aws-sdk-*` brings its own HTTP client.
 
 **Compilation impact:** The AWS SDK is modular (each service is a separate crate), so only
 SES + config are pulled in. Expect ~20-30s added to debug builds, ~1-2 min to release.
@@ -105,9 +125,9 @@ pub struct Config {
 
     /// AWS region for SES (e.g. "eu-central-1")
     pub ses_region: Option<String>,
-    /// Verified sender email address
+    /// Platform fallback sender email (shared sender for users without verified domain)
     pub ses_from_email: Option<String>,
-    /// Sender display name
+    /// Platform brand name used in fallback sender formatting
     pub ses_from_name: Option<String>,
 }
 ```
@@ -118,6 +138,11 @@ by `aws-config` from the environment — no need to store them in `Config`.
 The `Option<String>` pattern matches the existing approach: if `ses_region` is `None`,
 the email processor starts but logs a warning and skips sending (graceful degradation).
 
+In MVP, `ses_from_email` is the shared Ariadline sender (`noreply@ariadline.cz`) and **not**
+the primary sender for all users. The effective `From` address is selected dynamically per user:
+- verified custom domain → use customer's domain sender,
+- no/failed/pending custom domain → use Ariadline fallback sender.
+
 **File:** `worker/src/services/email_processor.rs`
 
 Replace `EmailConfig` entirely:
@@ -127,12 +152,15 @@ pub struct EmailProcessor {
     client: async_nats::Client,
     js: JsContext,
     ses_client: Option<aws_sdk_sesv2::Client>,
-    from_email: String,
-    from_name: String,
+    fallback_from_email: String, // shared: noreply@ariadline.cz
+    fallback_from_name: String,  // Ariadline
+    configuration_set: Option<String>,
+    pool: PgPool,
 }
 ```
 
 The `ses_client` is `None` when SES is not configured (dev mode without AWS credentials).
+`fallback_from_*` is used only when user domain is not verified.
 
 #### 1.4.3 SES Client Initialization
 
@@ -142,9 +170,11 @@ The `ses_client` is `None` when SES is not configured (dev mode without AWS cred
 impl EmailProcessor {
     pub async fn new(
         nats_client: async_nats::Client,
+        pool: PgPool,
         ses_region: Option<&str>,
-        from_email: &str,
-        from_name: &str,
+        fallback_from_email: &str,
+        fallback_from_name: &str,
+        configuration_set: Option<String>,
     ) -> Result<Self> {
         // ... existing JetStream stream setup ...
 
@@ -159,7 +189,15 @@ impl EmailProcessor {
             None
         };
 
-        Ok(Self { /* ... */ })
+        Ok(Self {
+            client: nats_client,
+            js,
+            ses_client,
+            fallback_from_email: fallback_from_email.to_string(),
+            fallback_from_name: fallback_from_name.to_string(),
+            configuration_set,
+            pool,
+        })
     }
 }
 ```
@@ -173,6 +211,7 @@ Replace the current TODO with actual SES sending:
 ```rust
 async fn send_email(
     &self,
+    user_id: Uuid,
     to: &str,
     subject: &str,
     body_html: &str,
@@ -181,10 +220,18 @@ async fn send_email(
     let ses = self.ses_client.as_ref()
         .ok_or_else(|| anyhow::anyhow!("SES client not configured"))?;
 
-    let from = format!("{} <{}>", self.from_name, self.from_email);
+    // Resolve user's domain status and choose sender dynamically.
+    // - verified domain: "Business Name <info@customer-domain>"
+    // - fallback:        "Business Name via Ariadline <noreply@ariadline.cz>" + Reply-To user email
+    let sender = domain_verification::select_from_address(
+        &self.pool,
+        user_id,
+        &self.fallback_from_email,
+        &self.fallback_from_name,
+    ).await?;
 
-    let result = ses.send_email()
-        .from_email_address(&from)
+    let mut req = ses.send_email()
+        .from_email_address(&sender.from)
         .destination(
             aws_sdk_sesv2::types::Destination::builder()
                 .to_addresses(to)
@@ -204,9 +251,16 @@ async fn send_email(
                         .build()
                 )
                 .build()
-        )
-        .send()
-        .await?;
+        );
+
+    if let Some(reply_to) = sender.reply_to.as_deref() {
+        req = req.reply_to_addresses(reply_to);
+    }
+    if let Some(cs) = self.configuration_set.as_deref() {
+        req = req.configuration_set_name(cs);
+    }
+
+    let result = req.send().await?;
 
     Ok(result.message_id().unwrap_or("unknown").to_string())
 }
@@ -248,33 +302,12 @@ convention in `settings.rs`.
 
 **File:** `worker/src/main.rs`
 
-The `EmailProcessor` needs to be created and its `start_processing` task spawned alongside
-the existing handler setup:
+The `EmailProcessor` needs to be created (with `SesEmailConfig` + `PgPool`) and its
+`start_processing` task spawned alongside the existing handler setup.
 
-```rust
-// In run_server(), after NATS connection:
-let email_processor = Arc::new(
-    services::email_processor::EmailProcessor::new(
-        nats_client.clone(),
-        config.ses_region.as_deref(),
-        config.ses_from_email.as_deref().unwrap_or("noreply@example.com"),
-        config.ses_from_name.as_deref().unwrap_or("Sazinka"),
-    ).await?
-);
-
-// Spawn email processor alongside handlers
-let email_handle = {
-    let processor = Arc::clone(&email_processor);
-    tokio::spawn(async move {
-        if let Err(e) = processor.start_processing().await {
-            error!("Email processor error: {}", e);
-        }
-    })
-};
-```
-
-The `email_processor` Arc also needs to be passed to handlers that submit email jobs
-(e.g. a future "send confirmation email" button in the UI).
+See **Phase 8** (§1.10) for the authoritative initialization snippet using the
+`SesEmailConfig` struct pattern (`region`, `from_email`, `from_name`,
+`configuration_set`) and `pool.clone()`.
 
 ---
 
@@ -286,9 +319,9 @@ The `email_processor` Arc also needs to be passed to handlers that submit email 
 |----------|----------|---------|------------|
 | `AWS_ACCESS_KEY_ID` | Yes (for SES) | `AKIA...` | `aws-config` auto-reads |
 | `AWS_SECRET_ACCESS_KEY` | Yes (for SES) | `wJal...` | `aws-config` auto-reads |
-| `AWS_REGION` or `SES_REGION` | Yes | `eu-central-1` | `Config::from_env()` |
-| `SES_FROM_EMAIL` | Yes | `noreply@ariadline.cz` | `Config::from_env()` |
-| `SES_FROM_NAME` | Yes | `Ariadline` | `Config::from_env()` |
+| `SES_REGION` | Yes | `eu-central-1` | `Config::from_env()` (locked MVP region) |
+| `SES_FROM_EMAIL` | Yes | `noreply@ariadline.cz` | Shared fallback sender |
+| `SES_FROM_NAME` | Yes | `Ariadline` | Base fallback branding |
 | `SES_CONFIGURATION_SET` | Optional | `sazinka-tracking` | For open/click/bounce tracking |
 
 #### 1.5.2 SOPS Integration
@@ -328,26 +361,41 @@ worker-env: secrets
 
 #### 1.5.3 AWS IAM Policy
 
-Create an IAM user `sazinka-ses-sender` with the minimum required permissions:
+Create an IAM user `sazinka-ses-sender` with permissions for:
+- sending from shared Ariadline fallback sender (`noreply@ariadline.cz`)
+- managing SES domain identities for customer domain onboarding
 
 ```json
 {
   "Version": "2012-10-17",
   "Statement": [
     {
+      "Sid": "SendFromAriadlineFallback",
       "Effect": "Allow",
       "Action": [
         "ses:SendEmail",
         "ses:SendRawEmail"
       ],
       "Resource": "arn:aws:ses:eu-central-1:ACCOUNT_ID:identity/ariadline.cz"
+    },
+    {
+      "Sid": "ManageCustomerDomainIdentities",
+      "Effect": "Allow",
+      "Action": [
+        "ses:CreateEmailIdentity",
+        "ses:GetEmailIdentity",
+        "ses:DeleteEmailIdentity",
+        "ses:SendEmail",
+        "ses:SendRawEmail"
+      ],
+      "Resource": "arn:aws:ses:eu-central-1:ACCOUNT_ID:identity/*"
     }
   ]
 }
 ```
 
-This restricts the credentials to sending email from the verified domain only — no
-ability to create/delete identities, read account settings, or manage SES configuration.
+This is the minimum practical policy for the locked MVP scope:
+domain onboarding is handled in-app, per-email identity onboarding is intentionally out of scope.
 
 #### 1.5.4 Domain Verification (One-Time Setup)
 
@@ -360,6 +408,12 @@ Before SES can send email from `@ariadline.cz`, the domain must be verified in t
 
 SES starts in **sandbox mode** — sending is limited to verified email addresses only.
 Request production access once the domain is verified and a few test emails are confirmed.
+
+For customer-owned domains, verification is handled in-app through Phase 3:
+- create identity via SES API,
+- show DKIM records in settings,
+- customer adds DNS records,
+- poll/manual check updates verification status.
 
 ---
 
@@ -389,7 +443,7 @@ The `EmailProcessor` needs access to the `PgPool` (currently it only has the NAT
 
 ---
 
-### 1.7 Delivery Status Tracking (Phase 2)
+### 1.7 Delivery Status Tracking (Future Phase 11)
 
 SES can report delivery events (delivered, opened, bounced, complained) via:
 - **SNS notifications** → an HTTP endpoint on the worker
@@ -422,33 +476,33 @@ is useful but not critical for MVP.
 
 ---
 
-### 1.9 Cloudflare Workers (apps/site) — Separate Integration
+### 1.9 Cloudflare Workers (apps/site) — SES (locked)
 
-The `apps/site` needs email for:
+**Decision (locked):** The marketing site sends mail via **Amazon SES** in **`eu-central-1`**, same provider as the Rust worker (§1.3.1 #13). **Resend is not** the target architecture for `apps/site`.
+
+**Use cases:**
 - Newsletter double-opt-in confirmation
 - Contact form auto-reply (future)
 
-**Options:**
+**Implementation approach:**
+- Call **SES v2** `SendEmail` over HTTPS; sign requests with **AWS Signature Version 4** (common pattern: [`aws4fetch`](https://github.com/mhart/aws4fetch) or maintained fork, or minimal custom signer).
+- **Secrets** in Cloudflare (Wrangler / dashboard): `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `SES_REGION` (`eu-central-1`), plus fixed `From` / configuration set for the site (verified identity in SES — typically the same platform domain as the worker).
+- **IAM:** Either reuse the worker IAM user (simplest ops) or a **dedicated** IAM user scoped to `ses:SendEmail` (and optionally `SendRawEmail`) on the site’s verified identities only — document in the DevOps runbook.
+- **Not used:** Routing site email through the Rust worker/NATS for MVP (optional future simplification if you want a single HTTP ingress).
 
-| Option | Effort | Notes |
-|--------|--------|-------|
-| **SES REST API + AWS Sig v4** | Medium | Must implement Sig v4 signing in Workers runtime. Libraries exist (`aws4fetch`) but add complexity. |
-| **Keep Resend for site only** | Small | Resend SDK works in Workers (proven by spike test). Separate provider for a separate deployment. |
-| **Route through Rust worker** | Small | Site POSTs to a Cloudflare Worker → Worker publishes to the Rust worker's email queue (via NATS or HTTP). Single email provider. |
+**Tests:** Unit-test the signer + request shape where pure; integration tests against SES sandbox as needed (consistent with low volume).
 
-**Recommendation:** Keep the Cloudflare site integration as a separate decision. The volume
-is tiny (newsletter confirmations) and the runtime constraints are different. Using SES from
-Workers requires `aws4fetch` for Sig v4 signing — doable but adds a dependency and complexity
-for a few emails per week. Resend remains a viable option here, or the site could route
-email requests to the main worker.
+See **Phase 12** in the implementation plan below.
 
 ---
 
 ### 1.10 Implementation Plan — Detailed TDD Steps
 
-> **Dependency order:** Phase 1 → 2 → 3 → 4 → 5 → 6 → 7. Phases 8 and 9 are independent follow-ups.
+> **Dependency order:** Phase 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9. Phases 10, 11, and 12 are independent follow-ups (12 can run in parallel with worker phases after SES account setup).
 >
 > Each step follows the project TDD cycle: Red → Green → Refactor → Update PROJECT_CONTEXT → Commit.
+> The goal for implementation is near-100% coverage on all new pure logic and service orchestration paths,
+> including corner cases (fallback sender, verification states, retry semantics, and template rendering edge cases).
 
 ---
 
@@ -679,8 +733,8 @@ pub struct EmailProcessor {
     nats_client: Client,
     js: JsContext,
     ses_client: Option<aws_sdk_sesv2::Client>,
-    from_email: String,
-    from_name: String,
+    fallback_from_email: String,
+    fallback_from_name: String,
     configuration_set: Option<String>,
     pool: PgPool,
 }
@@ -715,7 +769,7 @@ pub async fn new(
 ) -> Result<Self> {
     // ... existing JetStream stream setup ...
 
-    let (ses_client, from_email, from_name, configuration_set) = match ses_config {
+    let (ses_client, fallback_from_email, fallback_from_name, configuration_set) = match ses_config {
         Some(cfg) => {
             let aws_config = aws_config::defaults(aws_config::BehaviorVersion::latest())
                 .region(aws_config::Region::new(cfg.region))
@@ -723,8 +777,8 @@ pub async fn new(
                 .await;
             (
                 Some(aws_sdk_sesv2::Client::new(&aws_config)),
-                cfg.from_email,
-                cfg.from_name,
+                cfg.from_email, // shared Ariadline fallback sender
+                cfg.from_name,  // Ariadline brand
                 cfg.configuration_set,
             )
         }
@@ -738,8 +792,8 @@ pub async fn new(
         nats_client,
         js,
         ses_client,
-        from_email,
-        from_name,
+        fallback_from_email,
+        fallback_from_name,
         configuration_set,
         pool,
     })
@@ -751,14 +805,80 @@ the `ses_client.is_none()` path in `process_job`.
 
 ---
 
-#### Phase 3 — Email Data Resolution
+#### Phase 3 — Domain Identity Management (NEW)
+
+This phase implements sender identity lifecycle for customer-owned domains while preserving
+shared Ariadline fallback sending.
+
+**MVP constraints (locked):**
+- One active customer domain per user.
+- DB model is forward-compatible for future multi-domain support.
+- Domain identities only (no per-email identity fallback in MVP).
+- Verification state updates via background poller + manual "Check now".
+
+**Step 3.1 — Create forward-compatible domain table**
+
+**File:** new `worker/migrations/040_user_email_domains.sql`
+
+```sql
+CREATE TABLE user_email_domains (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    domain TEXT NOT NULL,
+    from_email TEXT NOT NULL,
+    from_name TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    verification_status TEXT NOT NULL DEFAULT 'pending',
+    dkim_tokens TEXT[] NOT NULL DEFAULT '{}',
+    dkim_records JSONB NOT NULL DEFAULT '[]'::jsonb,
+    verified_at TIMESTAMPTZ,
+    last_checked_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_user_email_domains_user ON user_email_domains(user_id);
+CREATE UNIQUE INDEX idx_user_email_domains_user_active
+    ON user_email_domains(user_id) WHERE is_active = true;
+```
+
+**File:** new `worker/src/services/domain_verification.rs`
+
+**Step 3.2 — Implement identity lifecycle and sender selection**
+
+Core operations:
+1. `create_identity(...)` → `ses:CreateEmailIdentity` (domain only)
+2. `check_identity(...)` → `ses:GetEmailIdentity`
+3. `delete_identity(...)` → `ses:DeleteEmailIdentity`
+4. `select_from_address(...)` → returns either:
+   - verified domain sender, or
+   - fallback sender + `Reply-To` to business email
+
+**Step 3.3 — Add settings-facing NATS subjects**
+
+**NATS subjects (settings domain flow):**
+- `sazinka.settings.domain.setup`
+- `sazinka.settings.domain.check`
+- `sazinka.settings.domain.delete`
+- `sazinka.settings.domain.get`
+
+**Step 3.4 — Add both verification update paths**
+
+**Verification checks:**
+- Poller every 10-15 minutes updates pending identities.
+- Manual "Check now" triggers an immediate one-off check.
+- UI state for MVP: `pending`, `verified`, `failed`.
+
+---
+
+#### Phase 4 — Email Data Resolution
 
 The `process_job` method needs to load customer, revision, device, and user settings
 from the database to build template variables. This is a new internal module.
 
 **File:** new `worker/src/services/email_data.rs`
 
-**Step 3.1 — `resolve_confirmation_data` query**
+**Step 4.1 — `resolve_confirmation_data` query**
 
 A single SQL query that joins `revisions`, `customers`, `devices`, and `users` to
 load everything the confirmation template needs:
@@ -800,7 +920,7 @@ Test: this is a DB query — tested via integration tests or manual QA (consiste
 testing conventions: "What NOT to Test — Third-party libraries (SQLx)"). The struct itself
 is tested via deserialization.
 
-**Step 3.2 — `resolve_reminder_data` query**
+**Step 4.2 — `resolve_reminder_data` query**
 
 Same pattern for reminders. Additionally loads `device.device_type` for the `{{device_type}}`
 placeholder and `revision.due_date` for `{{due_date}}`.
@@ -827,28 +947,29 @@ pub async fn resolve_reminder_data(
 ) -> Result<Option<ReminderData>> { /* ... */ }
 ```
 
-**Step 3.3 — Guard: skip if no recipient email**
+**Step 4.3 — Guard: skip if no recipient email**
 
 Test: `resolve_returns_none_when_customer_has_no_email`
 
 Both resolve functions return `None` if `customer.email IS NULL` — the caller logs a warning
 and marks the job as failed with `"Customer has no email address"`.
 
-**Step 3.4 — Register module**
+**Step 4.4 — Register module**
 
 **File:** `worker/src/services/mod.rs` — add `pub mod email_data;`
 
 ---
 
-#### Phase 4 — SES Send Function
+#### Phase 5 — SES Send Function
 
 **File:** `worker/src/services/email_processor.rs`
 
-**Step 4.1 — `send_email` method**
+**Step 5.1 — `send_email` method (domain-aware)**
 
 ```rust
 async fn send_email(
     &self,
+    user_id: Uuid,
     to: &str,
     subject: &str,
     body_html: &str,
@@ -857,10 +978,17 @@ async fn send_email(
     let ses = self.ses_client.as_ref()
         .ok_or(EmailSendError::NotConfigured)?;
 
-    let from = format!("{} <{}>", self.from_name, self.from_email);
+    // Dynamic sender: verified custom domain → user's domain sender;
+    // otherwise → "Business Name via Ariadline <noreply@ariadline.cz>" + Reply-To
+    let sender = domain_verification::select_from_address(
+        &self.pool,
+        user_id,
+        &self.fallback_from_email,
+        &self.fallback_from_name,
+    ).await.map_err(|e| EmailSendError::Permanent(e.to_string()))?;
 
     let mut req = ses.send_email()
-        .from_email_address(&from)
+        .from_email_address(&sender.from)
         .destination(
             Destination::builder().to_addresses(to).build()
         )
@@ -880,6 +1008,9 @@ async fn send_email(
                 .build()
         );
 
+    if let Some(reply_to) = sender.reply_to.as_deref() {
+        req = req.reply_to_addresses(reply_to);
+    }
     if let Some(ref cs) = self.configuration_set {
         req = req.configuration_set_name(cs);
     }
@@ -889,7 +1020,7 @@ async fn send_email(
 }
 ```
 
-**Step 4.2 — Error classification**
+**Step 5.2 — Error classification**
 
 **File:** `worker/src/services/email_processor.rs`
 
@@ -928,7 +1059,7 @@ The `process_job` method uses this to decide:
 
 ---
 
-#### Phase 5 — Wire `process_job` End-to-End
+#### Phase 6 — Wire `process_job` End-to-End
 
 **File:** `worker/src/services/email_processor.rs`
 
@@ -968,7 +1099,7 @@ async fn process_job(&self, msg: jetstream::Message) -> Result<()> {
             self.process_reminder(job.user_id, req).await
         }
         EmailJobRequest::Custom(req) => {
-            self.process_custom(req).await
+            self.process_custom(job.user_id, req).await
         }
     };
 
@@ -998,7 +1129,7 @@ async fn process_job(&self, msg: jetstream::Message) -> Result<()> {
 }
 ```
 
-**Step 5.1 — `process_confirmation` method**
+**Step 6.1 — `process_confirmation` method**
 
 ```rust
 async fn process_confirmation(
@@ -1023,7 +1154,7 @@ async fn process_confirmation(
 
     // 4. Send
     let message_id = self.send_email(
-        &data.recipient_email, &subject, &body_html, &body_text
+        user_id, &data.recipient_email, &subject, &body_html, &body_text
     ).await?;
 
     // 5. Log to CRM
@@ -1036,12 +1167,12 @@ async fn process_confirmation(
 }
 ```
 
-**Step 5.2 — `process_reminder` method**
+**Step 6.2 — `process_reminder` method**
 
 Same pattern as `process_confirmation` but uses `resolve_reminder_data` and
 `build_reminder_vars`.
 
-**Step 5.3 — `process_custom` method**
+**Step 6.3 — `process_custom` method**
 
 The `Custom` variant already carries `to`, `subject`, `body_html`, `body_text` —
 no DB lookup needed. Just send directly.
@@ -1049,10 +1180,11 @@ no DB lookup needed. Just send directly.
 ```rust
 async fn process_custom(
     &self,
+    user_id: Uuid,
     req: &CustomEmailRequest,
 ) -> Result<(String, String), EmailSendError> {
     let message_id = self.send_email(
-        &req.to, &req.subject, &req.body_html,
+        user_id, &req.to, &req.subject, &req.body_html,
         req.body_text.as_deref().unwrap_or(&req.body_html),
     ).await?;
 
@@ -1062,11 +1194,11 @@ async fn process_custom(
 
 ---
 
-#### Phase 6 — CRM Communication Logging
+#### Phase 7 — CRM Communication Logging
 
 **File:** `worker/src/services/email_processor.rs`
 
-**Step 6.1 — `log_communication` helper**
+**Step 7.1 — `log_communication` helper**
 
 ```rust
 async fn log_communication(
@@ -1091,7 +1223,6 @@ async fn log_communication(
         None,             // contact_name
         None,             // contact_phone
         None,             // duration_minutes
-        None,             // follow_up_date
     ).await {
         error!("Failed to log email communication: {}", e);
         // Non-fatal: the email was already sent successfully
@@ -1105,11 +1236,11 @@ defaults to `NULL` in the DB; a future migration could set it to `'sent'` on ins
 
 ---
 
-#### Phase 7 — Wire EmailProcessor into main.rs
+#### Phase 8 — Wire EmailProcessor into main.rs
 
 **File:** `worker/src/main.rs`
 
-**Step 7.1 — Initialize and spawn**
+**Step 8.1 — Initialize and spawn**
 
 In `run_server()`, after NATS connection and before `start_handlers`:
 
@@ -1147,7 +1278,7 @@ let email_handle = {
 };
 ```
 
-**Step 7.2 — Pass `email_processor` to handlers (optional)**
+**Step 8.2 — Pass `email_processor` to handlers (optional)**
 
 If any NATS handler needs to submit email jobs directly (e.g. a "Send confirmation"
 button handler), pass `Arc<EmailProcessor>` to `start_handlers`. This is deferred
@@ -1157,11 +1288,11 @@ For now, the `email_processor.submit_job()` API is available for future callers.
 
 ---
 
-#### Phase 8 — Secrets & Infrastructure
+#### Phase 9 — Secrets & Infrastructure
 
 Non-code changes. No TDD tests — these are operational steps.
 
-**Step 8.1 — Update `worker/.env.example`**
+**Step 9.1 — Update `worker/.env.example`**
 
 Add commented-out SES variables:
 
@@ -1175,7 +1306,7 @@ Add commented-out SES variables:
 # SES_CONFIGURATION_SET=sazinka-tracking
 ```
 
-**Step 8.2 — Update Makefile `worker-env` target**
+**Step 9.2 — Update Makefile `worker-env` target**
 
 **File:** `Makefile`
 
@@ -1185,7 +1316,7 @@ Add the new env var names to the grep pattern:
 AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|SES_REGION|SES_FROM_EMAIL|SES_FROM_NAME|SES_CONFIGURATION_SET
 ```
 
-**Step 8.3 — Add secrets to SOPS**
+**Step 9.3 — Add secrets to SOPS**
 
 ```bash
 make secrets-edit ENV=dev
@@ -1199,7 +1330,7 @@ make secrets-edit ENV=dev
 
 Repeat for staging and production with real credentials.
 
-**Step 8.4 — AWS account setup (manual, one-time)**
+**Step 9.4 — AWS account setup (manual, one-time)**
 
 1. Create IAM user `sazinka-ses-sender` with the policy from section 1.5.3
 2. Generate access key pair
@@ -1211,14 +1342,21 @@ Repeat for staging and production with real credentials.
 
 ---
 
-#### Phase 9 — Reminder Scheduler (Future)
+#### Phase 10 — Reminder Scheduler (Future)
 
-Runs as a background `tokio::spawn` task. Checks once daily for revisions
-approaching their due date and submits `RevisionReminder` email jobs.
+Runs as a background `tokio::spawn` task. Wakes **at least hourly**; on each tick,
+determines which users’ **local** send-time slot matches `email_reminder_send_time`
+(optional MVP: **full hours** only to simplify matching), then for those users only
+finds revisions approaching due date and submits `RevisionReminder` email jobs.
+
+**Scheduling rule (locked):** Per-company single time from settings (`email_reminder_send_time`);
+hourly checking is required so the worker can fire near the configured hour without
+sub-minute polling. Timezone for “local wall clock” must be defined in implementation
+(e.g. explicit `user` timezone field when added, or a single default region for MVP).
 
 **File:** new `worker/src/services/reminder_scheduler.rs`
 
-**Step 9.1 — Reminder query**
+**Step 10.1 — Reminder query**
 
 Test: `test_reminder_query_finds_due_revisions` (integration test, requires DB)
 
@@ -1226,12 +1364,14 @@ Test: `test_reminder_query_finds_due_revisions` (integration test, requires DB)
 pub async fn find_revisions_needing_reminder(
     pool: &PgPool,
     today: NaiveDate,
+    user_ids_in_send_window: &[Uuid], // users whose local time matches reminder_send_time this hour
 ) -> Result<Vec<ReminderCandidate>> {
     // SELECT r.id, r.customer_id, r.user_id, r.due_date,
     //        u.reminder_days_before
     // FROM revisions r
     // JOIN users u ON u.id = r.user_id
-    // WHERE r.status IN ('upcoming', 'scheduled')
+    // WHERE u.id = ANY($user_ids)  -- only companies in the current send window
+    //   AND r.status IN ('upcoming', 'scheduled')
     //   AND r.due_date - ANY(u.reminder_days_before) * INTERVAL '1 day' = $1
     //   AND NOT EXISTS (
     //       SELECT 1 FROM communications c
@@ -1245,18 +1385,19 @@ pub async fn find_revisions_needing_reminder(
 The `NOT EXISTS` subquery prevents sending duplicate reminders on the same day
 (idempotency — safe to replay if the scheduler runs multiple times).
 
-**Step 9.2 — Scheduler loop**
+**Step 10.2 — Scheduler loop**
 
 ```rust
 pub async fn run_reminder_scheduler(
     pool: PgPool,
     email_processor: Arc<EmailProcessor>,
 ) {
-    let mut interval = tokio::time::interval(Duration::from_secs(3600)); // hourly
+    let mut interval = tokio::time::interval(Duration::from_secs(3600)); // minimum: hourly
     loop {
         interval.tick().await;
+        let user_ids = users_in_reminder_send_window(&pool).await?; // local HH:MM matches email_reminder_send_time
         let today = Utc::now().date_naive();
-        match find_revisions_needing_reminder(&pool, today).await {
+        match find_revisions_needing_reminder(&pool, today, &user_ids).await {
             Ok(candidates) => {
                 for c in candidates {
                     let req = EmailJobRequest::RevisionReminder(RevisionReminderRequest {
@@ -1275,7 +1416,7 @@ pub async fn run_reminder_scheduler(
 }
 ```
 
-**Step 9.3 — Spawn in main.rs**
+**Step 10.3 — Spawn in main.rs**
 
 ```rust
 let reminder_handle = {
@@ -1289,7 +1430,7 @@ let reminder_handle = {
 
 ---
 
-#### Phase 10 — Delivery Status Tracking (Optional, Future)
+#### Phase 11 — Delivery Status Tracking (Optional, Future)
 
 Not needed for initial launch. Documented for completeness.
 
@@ -1305,6 +1446,19 @@ The `communications.email_status` column already exists with the right enum valu
 
 ---
 
+#### Phase 12 — `apps/site` SES from Cloudflare Workers
+
+Implements §1.9: replace Resend-oriented code paths with SES v2 + Sig v4. Can proceed in **parallel** with worker phases once SES identities and IAM exist; does not require NATS.
+
+| Step | File(s) | Description |
+|------|---------|-------------|
+| 1 | `apps/site/` | Add SES send helper (Sig v4 + `SendEmail` JSON body); `From` uses verified platform identity |
+| 2 | Wrangler / env docs | Document `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `SES_REGION`, `SES_FROM_*`, optional `SES_CONFIGURATION_SET` for site |
+| 3 | Newsletter / contact handlers | Call SES helper instead of Resend; remove `RESEND_API_KEY` usage |
+| 4 | Tests | Update/remove `resend-spike` tests; add tests for signer payload shape or mocked fetch |
+
+---
+
 ### 1.10.1 Implementation Checklist
 
 | # | Task | Phase | Status |
@@ -1316,20 +1470,26 @@ The `communications.email_status` column already exists with the right enum valu
 | 5 | Add SES fields to `Config` + tests | 2 | ☐ |
 | 6 | Replace `EmailConfig` with `SesEmailConfig` | 2 | ☐ |
 | 7 | SES client init in `EmailProcessor::new` | 2 | ☐ |
-| 8 | `resolve_confirmation_data` query | 3 | ☐ |
-| 9 | `resolve_reminder_data` query | 3 | ☐ |
-| 10 | `EmailSendError` enum + `send_email` method | 4 | ☐ |
-| 11 | Wire `process_job` — confirmation path | 5 | ☐ |
-| 12 | Wire `process_job` — reminder path | 5 | ☐ |
-| 13 | Wire `process_job` — custom path | 5 | ☐ |
-| 14 | `log_communication` helper | 6 | ☐ |
-| 15 | Initialize + spawn `EmailProcessor` in main.rs | 7 | ☐ |
-| 16 | Update `.env.example` | 8 | ☐ |
-| 17 | Update Makefile `worker-env` | 8 | ☐ |
-| 18 | Add secrets to SOPS | 8 | ☐ |
-| 19 | AWS IAM + domain verification | 8 | ☐ |
-| 20 | Reminder scheduler | 9 | ☐ |
-| 21 | SQS delivery status polling | 10 | ☐ |
+| 8 | Add `user_email_domains` migration (`is_active`, status, DKIM records) | 3 | ☐ |
+| 9 | Add domain verification service (`create/get/delete identity`) | 3 | ☐ |
+| 10 | Add NATS domain settings handlers (`setup/check/delete/get`) | 3 | ☐ |
+| 11 | Add verification poller + manual check flow | 3 | ☐ |
+| 12 | `resolve_confirmation_data` query | 4 | ☐ |
+| 13 | `resolve_reminder_data` query | 4 | ☐ |
+| 14 | `EmailSendError` enum + `send_email` method | 5 | ☐ |
+| 15 | Dynamic sender selection (`verified domain` vs `Ariadline fallback`) | 5 | ☐ |
+| 16 | Wire `process_job` — confirmation path | 6 | ☐ |
+| 17 | Wire `process_job` — reminder path | 6 | ☐ |
+| 18 | Wire `process_job` — custom path | 6 | ☐ |
+| 19 | `log_communication` helper | 7 | ☐ |
+| 20 | Initialize + spawn `EmailProcessor` in main.rs | 8 | ☐ |
+| 21 | Update `.env.example` | 9 | ☐ |
+| 22 | Update Makefile `worker-env` | 9 | ☐ |
+| 23 | Add secrets to SOPS | 9 | ☐ |
+| 24 | AWS IAM + domain verification | 9 | ☐ |
+| 25 | Reminder scheduler | 10 | ☐ |
+| 26 | SQS delivery status polling | 11 | ☐ |
+| 27 | `apps/site`: SES + Sig v4 from Workers; remove Resend | 12 | ☐ |
 
 ---
 
@@ -1338,11 +1498,11 @@ The `communications.email_status` column already exists with the right enum valu
 | Risk | Impact | Mitigation |
 |------|--------|------------|
 | **SES sandbox mode** limits sending to verified addresses only | Cannot send to real customers until production access is granted | Request production access early; use sandbox for dev/test |
-| **AWS credential leak** | Attacker can send email as the business | IAM policy restricts to `ses:SendEmail` only; credentials in SOPS; never in code |
-| **Bounce rate too high** → SES suspends account | No emails go out | Validate customer email format before sending; handle bounces (Phase 4); monitor SES reputation dashboard |
+| **AWS credential leak** | Attacker can send email as the business and manage identities | IAM policy is scoped to SES only (send + identity lifecycle), credentials in SOPS, rotate immediately on suspicion |
+| **Bounce rate too high** → SES suspends account | No emails go out | Validate customer email format before sending; handle bounces via delivery event tracking (Phase 11); monitor SES reputation dashboard |
 | **Template rendering XSS** | If email body is rendered as HTML, injected content could be unsafe | Sanitize/escape user-provided placeholder values before insertion; use plaintext alternative |
 | **`aws-sdk-sesv2` compile time** | Slows debug builds | The SDK is modular; only SES crate is pulled. Expected impact: +20-30s. Acceptable. |
-| **Cloudflare Workers can't use the Rust SDK** | Need a separate sending path for `apps/site` | Defer site email to Phase 5 (tiny volume, not urgent) |
+| **Cloudflare Workers can't use the Rust SDK** | Need Sig v4 + HTTPS to SES for `apps/site` | Use `aws4fetch` (or equivalent) per §1.9 / Phase 12; scope IAM for site-only send if desired |
 
 ---
 
@@ -1414,8 +1574,9 @@ This pattern provides:
 | **PostgreSQL** | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `DATABASE_URL` | In SOPS |
 | **JWT** | `JWT_SECRET` | In SOPS |
 | **Nominatim** | `NOMINATIM_PASSWORD` | In SOPS |
-| **Amazon SES** | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | To add |
-| **Cloudflare (site)** | `RESEND_API_KEY`, `TURNSTILE_SECRET_KEY` | In SOPS (Cloudflare env) |
+| **Amazon SES (worker)** | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `SES_REGION`, `SES_FROM_EMAIL`, `SES_FROM_NAME`, `SES_CONFIGURATION_SET` | To add (SOPS) |
+| **Amazon SES (site)** | Same AWS/SES vars as above (or dedicated IAM user) | To add (Wrangler secrets) |
+| **Cloudflare (site)** | `TURNSTILE_SECRET_KEY` | In SOPS (Cloudflare env) |
 | **Twilio SMS** (future) | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` | Not yet |
 
 ---
@@ -1425,32 +1586,46 @@ This pattern provides:
 | File | Change | Phase |
 |------|--------|-------|
 | New: `worker/src/services/template_renderer.rs` | `render_template`, `render_template_html`, `build_*_vars` functions + tests | 1 |
-| `worker/src/services/mod.rs` | Add `pub mod template_renderer;` and `pub mod email_data;` | 1, 3 |
+| `worker/src/services/mod.rs` | Add `pub mod template_renderer;`, `pub mod domain_verification;`, and `pub mod email_data;` | 1, 3, 4 |
 | `worker/Cargo.toml` | Add `aws-config`, `aws-sdk-sesv2` | 2 |
 | `worker/src/config.rs` | Add `ses_region`, `ses_from_email`, `ses_from_name`, `ses_configuration_set` fields + tests | 2 |
-| `worker/src/services/email_processor.rs` | Replace `EmailConfig` with `SesEmailConfig`; add `SesClient`, `PgPool`, `send_email()`, `EmailSendError`, rewrite `process_job()`, add `log_communication()` | 2–6 |
-| New: `worker/src/services/email_data.rs` | `resolve_confirmation_data`, `resolve_reminder_data` DB queries | 3 |
-| `worker/src/main.rs` | Initialize `SesEmailConfig`, create + spawn `EmailProcessor` | 7 |
-| `worker/.env.example` | Add SES placeholder variables | 8 |
-| `Makefile` | Add SES vars to `worker-env` grep pattern | 8 |
-| `infra/secrets/.env.{dev,staging,production}.enc` | Add AWS/SES credentials | 8 |
-| New: `worker/src/services/reminder_scheduler.rs` | `find_revisions_needing_reminder` query + scheduler loop | 9 |
-| New: `worker/src/services/ses_events.rs` | SQS polling for delivery status | 10 |
-| `worker/Cargo.toml` | Add `aws-sdk-sqs` | 10 |
-| `worker/src/db/queries/communication.rs` | Add `update_email_status` query | 10 |
+| New: `worker/migrations/040_user_email_domains.sql` | Add customer-domain identity storage with forward-compatible active flag model | 3 |
+| New: `worker/src/services/domain_verification.rs` | Domain identity lifecycle (`create/get/delete`) + sender selection (`verified domain` vs fallback) | 3 |
+| New: `worker/src/db/queries/user_email_domain.rs` | CRUD + active-domain selection queries | 3 |
+| New: `worker/src/handlers/domain.rs` | NATS handlers for domain setup/check/delete/get | 3 |
+| `worker/src/services/email_processor.rs` | Replace `EmailConfig` with `SesEmailConfig`; add `PgPool`; dynamic sender selection; `EmailSendError`; rewrite `process_job()`; add `log_communication()` | 2–7 |
+| New: `worker/src/services/email_data.rs` | `resolve_confirmation_data`, `resolve_reminder_data` DB queries | 4 |
+| `worker/src/main.rs` | Initialize `SesEmailConfig`, create + spawn `EmailProcessor`, spawn verification poller | 8 |
+| `worker/.env.example` | Add SES placeholder variables | 9 |
+| `Makefile` | Add SES vars to `worker-env` grep pattern | 9 |
+| `infra/secrets/.env.{dev,staging,production}.enc` | Add AWS/SES credentials | 9 |
+| New: `worker/src/services/reminder_scheduler.rs` | `find_revisions_needing_reminder` query + scheduler loop | 10 |
+| New: `worker/src/services/ses_events.rs` | SQS polling for delivery status | 11 |
+| `worker/Cargo.toml` | Add `aws-sdk-sqs` | 11 |
+| `worker/src/db/queries/communication.rs` | Add `update_email_status` query | 11 |
+| `apps/site/functions/**` (handlers) | Replace Resend with SES v2 + Sig v4 | 12 |
+| `apps/site/wrangler.toml` / env example | SES + AWS credentials; drop `RESEND_API_KEY` | 12 |
 
 ---
 
-## 4. Open Questions
+## 4. Resolved Decisions and Remaining Questions
 
-1. **EU data residency:** Should we restrict SES to `eu-central-1` (Frankfurt) only, or allow `eu-west-1` (Ireland) as a fallback? Both are GDPR-compliant.
+### 4.1 Resolved MVP Decisions
 
-2. **Sender identity:** Is `noreply@ariadline.cz` the production sender, or should each user have their own verified sender address? Per-user addresses require SES identity verification for each.
+1. **Region:** Use `eu-central-1`.
+2. **Domain scope:** One active customer domain per user in MVP.
+3. **Schema strategy:** Forward-compatible schema now; future multi-domain expansion later.
+4. **Identity type:** Domain identities only (no per-email identity fallback).
+5. **Fallback sender:** Shared `noreply@ariadline.cz`.
+6. **Fallback display name:** `"<User business name> via Ariadline"`.
+7. **Reply handling:** On fallback sends, set `Reply-To` to user's business email.
+8. **Verification lifecycle:** Full in-app lifecycle (`CreateEmailIdentity`, `GetEmailIdentity`, `DeleteEmailIdentity`).
+9. **Verification checks:** Both poller and manual "Check now".
+10. **Rate limiting:** Rely on SES throttling + JetStream retries in MVP.
+11. **Verification UI:** Simple status (`pending`/`verified`/`failed`) + manual check.
+12. **Reminder scheduling:** Per-user/company `email_reminder_send_time` from settings (single time per company); UI may restrict to **full hours**. Worker uses a **minimum hourly** tick and only enqueues for users whose **local** time matches that slot on the relevant calendar day (see Phase 10).
+13. **Cloudflare site email:** Use **Amazon SES** from Workers (SES v2 + Sig v4, e.g. `aws4fetch`), **`eu-central-1`**, not Resend (§1.9, Phase 12).
 
-3. **Reply handling:** If a customer replies to a confirmation email, where should it go? Options: user's business email (set as `Reply-To` header), a shared inbox, or silently dropped (`noreply@`).
+### 4.2 Remaining Questions
 
-4. **Reminder scheduling trigger:** Should reminders run on a fixed daily schedule (e.g. 09:00 every morning), or should the worker check for due reminders on an interval (e.g. every hour)?
-
-5. **Rate limiting:** SES has a sending rate limit (starts at 1 email/second in sandbox, increases in production). Should the email processor enforce its own rate limit, or rely on SES throttling + JetStream redelivery?
-
-6. **Cloudflare site emails:** Use SES (via `aws4fetch` + Sig v4) or keep Resend for the marketing site's tiny email volume?
+None — open product questions for this document are resolved for MVP.

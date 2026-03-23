@@ -33,8 +33,8 @@ import {
   ArrivalBufferBar,
 } from '../components/planner';
 import { DraftModeBar } from '../components/planner/DraftModeBar';
-import { CollapseButton, SplitView, ThreePanelLayout } from '../components/common';
-import { SplitLayout, LayoutManager, DetachButton } from '../components/layout';
+import { SplitView, ThreePanelLayout } from '../components/common';
+import { SplitLayout, LayoutManager, DetachButton, MapPanelShell } from '../components/layout';
 import { useLayoutMode } from '../hooks/useLayoutMode';
 import { Map as MapIcon } from 'lucide-react';
 import type { SavedRouteStop } from '../services/routeService';
@@ -170,34 +170,6 @@ function PlanningInboxInner() {
   const { mode: layoutMode, setMode: setLayoutMode } = useLayoutMode();
   const [isMapOverlayOpen, setIsMapOverlayOpen] = useState(false);
   const { isDetached, detach, canDetach } = useDetachState();
-  const [isTimelineCollapsed, setIsTimelineCollapsed] = useState(() =>
-    localStorage.getItem('sazinka.inbox.timelineCollapsed') === 'true'
-  );
-  const [isMapCollapsed, setIsMapCollapsed] = useState(() =>
-    localStorage.getItem('sazinka.inbox.mapCollapsed') === 'true'
-  );
-  const toggleTimelineCollapsed = useCallback(() => {
-    setIsTimelineCollapsed(prev => {
-      const next = !prev;
-      localStorage.setItem('sazinka.inbox.timelineCollapsed', String(next));
-      if (next && isMapCollapsed) {
-        setIsMapCollapsed(false);
-        localStorage.setItem('sazinka.inbox.mapCollapsed', 'false');
-      }
-      return next;
-    });
-  }, [isMapCollapsed]);
-  const toggleMapCollapsed = useCallback(() => {
-    setIsMapCollapsed(prev => {
-      const next = !prev;
-      localStorage.setItem('sazinka.inbox.mapCollapsed', String(next));
-      if (next && isTimelineCollapsed) {
-        setIsTimelineCollapsed(false);
-        localStorage.setItem('sazinka.inbox.timelineCollapsed', 'false');
-      }
-      return next;
-    });
-  }, [isTimelineCollapsed]);
   // ──────────────────────────────────────────────────────────────────────────
   
   // Route cache store
@@ -225,8 +197,8 @@ function PlanningInboxInner() {
   // Timeline view toggle (planning = proportional, compact = classic)
   const [timelineView, setTimelineView] = useState<TimelineView>('planning');
   
-  // Map collapse/expand state
-  const [mapMode, setMapMode] = useState<'normal' | 'collapsed' | 'fullscreen'>('normal');
+  // Map fullscreen state (collapse removed; fullscreen kept)
+  const [mapMode, setMapMode] = useState<'normal' | 'fullscreen'>('normal');
   const [mapHeight, setMapHeight] = useState(280);
   const mapResizeRef = useRef<{ startY: number; startH: number } | null>(null);
 
@@ -2759,7 +2731,6 @@ function PlanningInboxInner() {
     
     return (
       <div className={`${styles.mapPanel} ${mapMode === 'fullscreen' ? styles.mapPanelFullscreen : ''}`}>
-        {mapMode !== 'collapsed' && (
           <div className={`${styles.mapSection} ${mapMode === 'fullscreen' ? styles.mapSectionFullscreen : ''}`} style={mapMode === 'normal' ? { height: mapHeight } : undefined}>
             <RouteMapPanel
               stops={routeStops}
@@ -2799,29 +2770,8 @@ function PlanningInboxInner() {
                   </svg>
                 )}
               </button>
-              <button
-                type="button"
-                className={styles.mapControlButton}
-                onClick={() => setMapMode('collapsed')}
-                title={t('map_hide')}
-              >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="2,5 7,1 12,5" />
-                </svg>
-              </button>
             </div>
           </div>
-        )}
-        {mapMode === 'collapsed' && (
-          <div className={styles.mapCollapsedBar}>
-            <span className={styles.mapCollapsedLabel}>{t('map_label')}</span>
-            <CollapseButton
-              collapsed={true}
-              onClick={() => setMapMode('normal')}
-              title={t('map_show')}
-            />
-          </div>
-        )}
         {mapMode === 'normal' && (
           <div className={styles.mapResizeHandle} onMouseDown={handleMapResizeStart} title={t('map_resize')} />
         )}
@@ -3235,18 +3185,16 @@ function PlanningInboxInner() {
   ) : null;
 
   const mapPanelContent = !isDetached('map') ? (
-    <div className={styles.mapPanelWrapper}>
-      {canDetach && (
-        <DetachButton
-          data-testid="detach-map-btn"
-          onDetach={() => detach('map')}
-        />
-      )}
-      <RouteMapPanelSelfSufficient 
-        selectedCandidate={selectedCandidateForMap} 
+    <MapPanelShell
+      panelName="map"
+      canDetach={canDetach}
+      onDetach={() => detach('map')}
+    >
+      <RouteMapPanelSelfSufficient
+        selectedCandidate={selectedCandidateForMap}
         insertionPreview={insertionPreviewForMap}
       />
-    </div>
+    </MapPanelShell>
   ) : null;
 
   const mapAndTimelineContent = (() => {
@@ -3254,20 +3202,10 @@ function PlanningInboxInner() {
       <div className={styles.rightPanelSection}>
         <div className={styles.rightPanelSectionHeader}>
           <span>{t('panel_map', 'Mapa')}</span>
-          <button
-            type="button"
-            className={styles.rightPanelCollapseBtn}
-            onClick={toggleMapCollapsed}
-            title={isMapCollapsed ? t('expand', 'Rozbalit') : t('collapse', 'Sbalit')}
-          >
-            {isMapCollapsed ? '▼' : '▲'}
-          </button>
         </div>
-        {!isMapCollapsed && (
-          <div className={styles.rightPanelSectionContent}>
-            {mapPanelContent ?? <div />}
-          </div>
-        )}
+        <div className={styles.rightPanelSectionContent}>
+          {mapPanelContent ?? <div />}
+        </div>
       </div>
     );
 
@@ -3275,20 +3213,10 @@ function PlanningInboxInner() {
       <div className={styles.rightPanelSection}>
         <div className={styles.rightPanelSectionHeader}>
           <span>{t('panel_timeline', 'Časová osa')}</span>
-          <button
-            type="button"
-            className={styles.rightPanelCollapseBtn}
-            onClick={toggleTimelineCollapsed}
-            title={isTimelineCollapsed ? t('expand', 'Rozbalit') : t('collapse', 'Sbalit')}
-          >
-            {isTimelineCollapsed ? '▼' : '▲'}
-          </button>
         </div>
-        {!isTimelineCollapsed && (
-          <div className={styles.rightPanelSectionContent}>
-            {renderRouteTimelineOnly()}
-          </div>
-        )}
+        <div className={styles.rightPanelSectionContent}>
+          {renderRouteTimelineOnly()}
+        </div>
       </div>
     );
 
@@ -3298,12 +3226,6 @@ function PlanningInboxInner() {
       return timelineSection;
     }
 
-    if (isMapCollapsed) {
-      return <div className={styles.rightPanelStack}>{mapSection}{timelineSection}</div>;
-    }
-    if (isTimelineCollapsed) {
-      return <div className={styles.rightPanelStack}>{mapSection}{timelineSection}</div>;
-    }
     return (
       <SplitLayout
         direction="vertical"

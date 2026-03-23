@@ -133,6 +133,26 @@ vi.mock('@/components/layout', () => ({
       Detach
     </button>
   ),
+  MapPanelShell: ({
+    panelName,
+    children,
+    onDetach,
+    canDetach,
+  }: {
+    panelName: string;
+    children: React.ReactNode;
+    onDetach?: () => void;
+    canDetach?: boolean;
+  }) => (
+    <div data-testid="map-panel-shell" data-panel={panelName}>
+      {canDetach && onDetach && (
+        <button data-testid={`detach-${panelName}-btn`} onClick={onDetach}>
+          Detach
+        </button>
+      )}
+      {children}
+    </div>
+  ),
 }));
 
 vi.mock('@/services/crewService', () => ({

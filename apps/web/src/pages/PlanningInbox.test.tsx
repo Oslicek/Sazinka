@@ -147,6 +147,9 @@ vi.mock('../components/layout', () => ({
   ),
   LayoutManager: () => null,
   DetachButton: () => null,
+  MapPanelShell: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="map-panel-shell">{children}</div>
+  ),
 }));
 
 import { PlanningInbox } from './PlanningInbox';

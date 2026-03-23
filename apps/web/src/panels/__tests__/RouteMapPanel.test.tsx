@@ -11,9 +11,10 @@ import type { InsertionPreview } from '../../components/planner/RouteMapPanel';
 // Mocks
 // ---------------------------------------------------------------------------
 
-// vi.hoisted ensures mockProps is available inside the vi.mock factory (which is hoisted)
-const { mockProps } = vi.hoisted(() => ({
+// vi.hoisted ensures refs are available inside vi.mock factories (which are hoisted)
+const { mockProps, mockIsConnected } = vi.hoisted(() => ({
   mockProps: { current: {} as Record<string, unknown> },
+  mockIsConnected: { value: true },
 }));
 
 vi.mock('@/components/planner/RouteMapPanel', () => ({
@@ -36,7 +37,7 @@ vi.mock('@/services/geometryService', () => ({
 }));
 
 vi.mock('@/stores/natsStore', () => ({
-  useNatsStore: () => ({ isConnected: true }),
+  useNatsStore: () => ({ isConnected: mockIsConnected.value }),
 }));
 
 // ---------------------------------------------------------------------------
@@ -92,6 +93,7 @@ function makeActionsCapture() {
 
 beforeEach(() => {
   mockProps.current = {};
+  mockIsConnected.value = true;
   vi.clearAllMocks();
   mockGetRoute.mockResolvedValue({ route: null, stops: [] });
   mockSubmitGeometryJob.mockResolvedValue({ jobId: 'geo-job-1' });
@@ -563,6 +565,167 @@ describe('panels/RouteMapPanel', () => {
     expect(ids).toContain('pre-existing');
     expect(ids).toContain('rect-1');
     expect(ids).toContain('rect-2');
+  });
+
+  // ---- Detached-map route hydration — regression tests ----
+  // The Plan page selects routes by ID (multiple routes can share a date).
+  // A prior bug caused the detached map to fetch only by date, which could
+  // miss or return the wrong route. These tests guard against that regression.
+
+  it('fetches by selectedRouteId when available (Plan page detach)', async () => {
+    const stop = makeStop();
+    mockGetRoute.mockResolvedValue({ route: { id: 'route-plan' }, stops: [stop] });
+
+    const { ref, ActionsCapture } = makeActionsCapture();
+
+    render(
+      <PanelStateProvider activePageContext="plan" enableChannel={false}>
+        <ActionsCapture />
+        <RouteMapPanel />
+      </PanelStateProvider>,
+    );
+
+    act(() => {
+      ref.actions!.selectRoute('route-plan');
+    });
+
+    await waitFor(() =>
+      expect(mockGetRoute).toHaveBeenCalledWith({ routeId: 'route-plan' }),
+    );
+    await waitFor(() => expect(mockProps.current.stops).toEqual([stop]));
+  });
+
+  it('falls back to date when selectedRouteId is absent (Inbox page detach)', async () => {
+    mockGetRoute.mockResolvedValue({ route: null, stops: [] });
+
+    render(
+      <PanelStateProvider activePageContext="inbox" enableChannel={false} initialRouteContext={mockRouteContext}>
+        <RouteMapPanel />
+      </PanelStateProvider>,
+    );
+
+    await waitFor(() =>
+      expect(mockGetRoute).toHaveBeenCalledWith({ date: '2026-03-10' }),
+    );
+    for (const call of mockGetRoute.mock.calls) {
+      expect(call[0]).not.toHaveProperty('routeId');
+    }
+  });
+
+  it('selectedRouteId takes priority when both routeId and date are available', async () => {
+    const stop = makeStop();
+    mockGetRoute.mockResolvedValue({ route: { id: 'route-priority' }, stops: [stop] });
+
+    const { ref, ActionsCapture } = makeActionsCapture();
+
+    render(
+      <PanelStateProvider activePageContext="plan" enableChannel={false} initialRouteContext={mockRouteContext}>
+        <ActionsCapture />
+        <RouteMapPanel />
+      </PanelStateProvider>,
+    );
+
+    // Initial render may fire a date-only fetch; clear those stops so the
+    // next effect iteration (after selectRoute) will actually re-fetch.
+    await waitFor(() => expect(mockGetRoute).toHaveBeenCalled());
+    mockGetRoute.mockClear();
+    mockGetRoute.mockResolvedValue({ route: { id: 'route-priority' }, stops: [stop] });
+
+    act(() => {
+      ref.actions!.setRouteStops([]);
+      ref.actions!.selectRoute('route-priority');
+    });
+
+    await waitFor(() =>
+      expect(mockGetRoute).toHaveBeenCalledWith({ routeId: 'route-priority' }),
+    );
+  });
+
+  it('does not fetch when neither selectedRouteId nor date is available', async () => {
+    render(
+      <PanelStateProvider activePageContext="plan" enableChannel={false}>
+        <RouteMapPanel />
+      </PanelStateProvider>,
+    );
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mockGetRoute).not.toHaveBeenCalled();
+  });
+
+  it('does not fetch when not connected to NATS', async () => {
+    mockIsConnected.value = false;
+
+    render(
+      <PanelStateProvider activePageContext="inbox" enableChannel={false} initialRouteContext={mockRouteContext}>
+        <RouteMapPanel />
+      </PanelStateProvider>,
+    );
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mockGetRoute).not.toHaveBeenCalled();
+  });
+
+  it('skips fetch when routeStops are already populated (bridge-supplied)', async () => {
+    const existingStop = makeStop('existing');
+    mockGetRoute.mockResolvedValue({ route: { id: 'r-1' }, stops: [existingStop] });
+
+    const { ref, ActionsCapture } = makeActionsCapture();
+
+    render(
+      <PanelStateProvider activePageContext="plan" enableChannel={false}>
+        <ActionsCapture />
+        <RouteMapPanel />
+      </PanelStateProvider>,
+    );
+
+    act(() => {
+      ref.actions!.setRouteStops([existingStop]);
+    });
+    mockGetRoute.mockClear();
+
+    act(() => {
+      ref.actions!.selectRoute('route-already-loaded');
+    });
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mockGetRoute).not.toHaveBeenCalled();
+  });
+
+  it('re-fetches by routeId when selectedRouteId changes and stops are cleared', async () => {
+    const stop1 = makeStop('a');
+    const stop2 = makeStop('b');
+
+    mockGetRoute
+      .mockResolvedValueOnce({ route: { id: 'route-1' }, stops: [stop1] })
+      .mockResolvedValueOnce({ route: { id: 'route-2' }, stops: [stop2] });
+
+    const { ref, ActionsCapture } = makeActionsCapture();
+
+    render(
+      <PanelStateProvider activePageContext="plan" enableChannel={false}>
+        <ActionsCapture />
+        <RouteMapPanel />
+      </PanelStateProvider>,
+    );
+
+    act(() => {
+      ref.actions!.selectRoute('route-1');
+    });
+
+    await waitFor(() =>
+      expect(mockGetRoute).toHaveBeenCalledWith({ routeId: 'route-1' }),
+    );
+    await waitFor(() => expect(mockProps.current.stops).toEqual([stop1]));
+
+    act(() => {
+      ref.actions!.setRouteStops([]);
+      ref.actions!.selectRoute('route-2');
+    });
+
+    await waitFor(() =>
+      expect(mockGetRoute).toHaveBeenCalledWith({ routeId: 'route-2' }),
+    );
+    await waitFor(() => expect(mockProps.current.stops).toEqual([stop2]));
   });
 
   it('shows loading state while fetching', async () => {

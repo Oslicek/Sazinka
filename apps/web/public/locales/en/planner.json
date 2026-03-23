@@ -86,9 +86,6 @@
 
   "map_shrink": "Shrink map",
   "map_fullscreen": "Expand map to full page",
-  "map_hide": "Hide map",
-  "map_show": "Show map",
-  "map_label": "Map",
   "map_resize": "Drag to resize map",
 
   "context_day": "Day",

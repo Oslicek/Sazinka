@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-03-17 (v0.20.0 - Unschedule visit feature: cancel agreed appointment, revert to upcoming)
+> **Last Updated:** 2026-03-23 (v0.21.0 - Remove map/route collapse UI from Inbox; introduce shared MapPanelShell; fix DetachButton overlap with MapLibre zoom controls)
 
 ## Overview
 
@@ -1530,6 +1530,18 @@ cargo test
 - MVP focuses on core CRM + route planning
 - Email notifications deferred to later phase
 - Invoicing/billing architecture prepared but not implemented
+
+## Recent Changes (v0.21.0)
+
+- **Remove Inbox map/route collapse UI + unify map button cluster (MapPanelShell):**
+  - Removed section-header collapse buttons (▲/▼) from Inbox Map and Timeline panels; `isMapCollapsed`, `isTimelineCollapsed`, `toggleMapCollapsed`, `toggleTimelineCollapsed` state and callbacks deleted from `PlanningInbox.tsx`
+  - Removed `localStorage` keys `sazinka.inbox.timelineCollapsed` and `sazinka.inbox.mapCollapsed` (no longer read or written)
+  - Removed inner `mapMode === 'collapsed'` path (hide-map button in `mapControls`), `mapCollapsedBar` JSX, and `CollapseButton` import from `PlanningInbox.tsx`; `mapMode` now only has `'normal'` and `'fullscreen'` values
+  - Introduced `MapPanelShell` (`apps/web/src/components/layout/MapPanelShell.tsx`) — shared wrapper for both Plan and Inbox map panels; renders `DetachButton` in a `position: absolute; right: calc(36px + 6px)` controls div, offset left of MapLibre's `top-right` `NavigationControl` column so they never overlap
+  - Both `Plan.tsx` and `PlanningInbox.tsx` now render `<MapPanelShell panelName="map">` instead of ad-hoc `<div className={styles.mapWrapper}>` + `DetachButton` pairs
+  - Removed dead CSS: `.rightPanelCollapseBtn`, `.rightPanelCollapseBtn:hover`, `.mapCollapsedBar`, `.mapCollapsedLabel`, `.mapPanelWrapper > button` and `.mapPanelWrapper > button:hover` from `PlanningInbox.module.css`
+  - New `MapPanelShell.test.tsx` unit tests (6 tests); new `PlanningInbox — collapse UI removed` integration tests (5 tests); `Plan.detach.test.tsx` and `PlanningInbox.detachLayout.test.tsx` updated with `map-panel-shell` testid assertions
+  - All 1313 Vitest tests green after changes
 
 ## Recent Changes (v0.20.0)
 

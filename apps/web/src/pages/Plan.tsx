@@ -30,7 +30,7 @@ import { usePanelState } from '../hooks/usePanelState';
 import { useDetachState } from '../hooks/useDetachState';
 import { CustomerDetailPanel } from '../panels/CustomerDetailPanel';
 import { RouteMapPanel as RouteMapPanelSelfSufficient } from '../panels/RouteMapPanel';
-import { DetachButton } from '../components/layout';
+import { MapPanelShell } from '../components/layout';
 
 // Default depot location (Prague center) - fallback
 const DEFAULT_DEPOT = { lat: 50.0755, lng: 14.4378 };
@@ -1254,13 +1254,13 @@ function PlanInner() {
       {/* Map — self-sufficient panel, detachable */}
       {!isDetached('map') && (
         <div className={styles.mapWrapper}>
-          {canDetach && (
-            <DetachButton
-              data-testid="detach-map-btn"
-              onDetach={() => detach('map')}
-            />
-          )}
-          <RouteMapPanelSelfSufficient />
+          <MapPanelShell
+            panelName="map"
+            canDetach={canDetach}
+            onDetach={() => detach('map')}
+          >
+            <RouteMapPanelSelfSufficient />
+          </MapPanelShell>
         </div>
       )}
 

@@ -238,29 +238,6 @@
   letter-spacing: 0.03em;
 }
 
-.rightPanelCollapseBtn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg);
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-  font-size: 0.625rem;
-  line-height: 1;
-  flex-shrink: 0;
-  transition: background 0.15s, color 0.15s;
-}
-
-.rightPanelCollapseBtn:hover {
-  background: var(--color-primary);
-  color: #fff;
-  border-color: var(--color-primary);
-}
-
 .rightPanelSectionContent {
   flex: 1;
   min-height: 0;
@@ -268,8 +245,7 @@
 }
 
 /* Self-sufficient panel wrappers (detachable panels) */
-.inboxPanelWrapper,
-.mapPanelWrapper {
+.inboxPanelWrapper {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -278,8 +254,7 @@
   overflow: hidden;
 }
 
-.inboxPanelWrapper > button,
-.mapPanelWrapper > button {
+.inboxPanelWrapper > button {
   position: absolute;
   top: 4px;
   right: 4px;
@@ -294,8 +269,7 @@
   transition: opacity 0.15s, color 0.15s;
 }
 
-.inboxPanelWrapper > button:hover,
-.mapPanelWrapper > button:hover {
+.inboxPanelWrapper > button:hover {
   opacity: 1;
   color: var(--color-primary);
 }
@@ -781,24 +755,6 @@
   background: var(--color-bg-secondary);
   color: var(--color-text);
   border-color: var(--color-primary);
-}
-
-/* Collapsed map bar */
-.mapCollapsedBar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.375rem;
-  padding: 0.25rem 0.75rem;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-bg-secondary);
-  flex-shrink: 0;
-}
-
-.mapCollapsedLabel {
-  font-size: 0.6875rem;
-  font-weight: 500;
-  color: var(--color-text-secondary);
 }
 
 /* Draggable resize handle between map and timeline */

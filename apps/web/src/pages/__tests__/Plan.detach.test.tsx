@@ -53,6 +53,26 @@ vi.mock('@/components/layout', () => ({
   DetachButton: ({ onDetach, 'data-testid': testId }: { onDetach: () => void; 'data-testid'?: string }) => (
     <button data-testid={testId ?? 'detach-btn'} onClick={onDetach}>Detach</button>
   ),
+  MapPanelShell: ({
+    panelName,
+    children,
+    onDetach,
+    canDetach,
+  }: {
+    panelName: string;
+    children: React.ReactNode;
+    onDetach?: () => void;
+    canDetach?: boolean;
+  }) => (
+    <div data-testid="map-panel-shell" data-panel={panelName}>
+      {canDetach && onDetach && (
+        <button data-testid={`detach-${panelName}-btn`} onClick={onDetach}>
+          Detach
+        </button>
+      )}
+      {children}
+    </div>
+  ),
 }));
 
 vi.mock('@/services/crewService', () => ({
@@ -160,6 +180,11 @@ describe('Plan — detach wiring (G.5b)', () => {
       { timeout: 3000 }
     );
   }, 10000);
+
+  it('Plan map column renders data-testid="map-panel-shell"', async () => {
+    render(<Plan />);
+    await waitFor(() => expect(screen.getByTestId('map-panel-shell')).toBeInTheDocument());
+  });
 
   it('detach URL uses page=plan', async () => {
     render(<Plan />);

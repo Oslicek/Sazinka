@@ -1718,3 +1718,369 @@ Delimiter: `;`, UTF-8.
 | Round-trip breaks on fallback refs | Prefixed UUID fallback with importer support |
 | CI instability | Dedicated services and deterministic fixtures |
 | Legacy path regressions | Explicit cleanup phase with scope lock |
+
+---
+
+# Page Filter Persistence — Full URL Sync
+
+## Problem
+
+When a user leaves a page and returns, filters reset to defaults. The Plan page
+always resets the date to "today", crew and depot to empty. This is because
+filter state lives in React `useState` (destroyed on unmount) and the URL is
+only partially synced. The same gap exists on Routes and Customers.
+
+## Goal
+
+Every page that has user-configurable filters must persist the full filter state
+in URL search params so that:
+
+1. Navigating away and back preserves the last configuration.
+2. Browser back/forward restores previous filter state.
+3. URLs are shareable and bookmarkable.
+4. Page refresh preserves filters.
+
+## Scope
+
+| Page | Current state | Gap |
+|------|--------------|-----|
+| **Plan** | `date` synced to URL on change; `crew`/`depot` only written when date changes; `dateTo`/`isDateRange` never synced | Crew/depot/dateTo/isDateRange changes lost on navigation |
+| **Routes** | Same partial sync as Plan (`dateFrom` only writes URL) | Crew/depot/dateTo changes lost |
+| **Customers** | Reads URL params on mount but never writes back on filter change | All filter changes lost |
+| **WorkLog** | Full sync via `syncUrl` on every filter change | **No gap — reference implementation** |
+| **Calendar** | Full sync via `updateSearchParams` on every filter change | **No gap** |
+
+## Design
+
+Adopt the WorkLog `syncUrl` pattern on all three pages. Each page gets a single
+`syncUrl(params)` function that calls `navigate({ to, search, replace: true })`
+with the merged current filter state. Every filter change handler calls `syncUrl`
+in addition to `setState`.
+
+### Plan page changes
+
+**Search params schema** (extends current `date`, `crew`, `depot`):
+
+```typescript
+interface PlannerSearchParams {
+  date?: string;      // dateFrom (existing)
+  dateTo?: string;    // new — only present when range mode is active
+  crew?: string;      // existing
+  depot?: string;     // existing
+}
+```
+
+**Changes:**
+
+1. Add `syncUrl` helper (like WorkLog) that merges all filter values into
+   `navigate({ to: '/plan', search: { ... }, replace: true })`.
+2. `handleDateFromChange` — already calls `navigate`; refactor to use `syncUrl`.
+3. `handleDateToChange` — add `syncUrl({ dateTo: value })`.
+4. `handleCrewFilterChange` — add `syncUrl({ crew: value })`.
+5. `handleDepotFilterChange` — add `syncUrl({ depot: value })`.
+6. `handleToggleRange` — when collapsing range, remove `dateTo` from URL.
+7. Initialize `dateTo` from `searchParams.dateTo ?? searchParams.date ?? today`.
+8. Initialize `isDateRange` from
+   `!!searchParams.dateTo && searchParams.dateTo !== (searchParams.date || today)`.
+9. Server preferences (default crew/depot) still apply only when URL params are
+   absent.
+
+### Routes page changes
+
+**Search params schema** (extends current `dateFrom`, `crew`, `depot`):
+
+```typescript
+interface RoutesSearchParams {
+  dateFrom?: string;
+  dateTo?: string;
+  crew?: string;
+  depot?: string;
+}
+```
+
+**Changes:**
+
+1. Add `syncUrl` helper (same pattern, `to: '/routes'`).
+2. Add `syncUrl` call to `handleDateToChange`.
+3. Add `syncUrl` call to `handleCrewFilterChange`.
+4. Add `syncUrl` call to `handleDepotFilterChange`.
+5. Refactor `handleDateFromChange` to use `syncUrl`.
+
+### Customers page changes
+
+**Search params schema** (new — currently no URL write-back):
+
+```typescript
+interface CustomersSearchParams {
+  view?: 'table' | 'cards';
+  geocodeStatus?: string;
+  hasOverdue?: string;
+  sortBy?: string;
+  sortOrder?: string;
+  search?: string;
+  type?: string;
+}
+```
+
+**Changes:**
+
+1. Add `syncUrl` helper (same pattern, `to: '/customers'`).
+2. Call `syncUrl` from every filter/sort/view change handler.
+3. Initialize `typeFilter` from `searchParams.type`.
+4. Initialize `search` from `searchParams.search`.
+5. Debounce text search URL sync (300ms) via `setTimeout`/`clearTimeout`
+   ref pattern — no new dependency.
+6. When clearing a filter, write `undefined` (not empty string) so the param is
+   removed from the URL entirely.
+
+### What does NOT change
+
+- **WorkLog** — already has full `syncUrl`.
+- **Calendar** — already has full `updateSearchParams`.
+- **PlanningInbox** — uses `sessionStorage` for complex ephemeral state (drag
+  context, selected candidate, scroll position); not changed in this initiative.
+- Backend / Rust worker — no changes.
+- Route definitions in `routes/index.tsx` — no `validateSearch` added
+  (matches existing untyped pattern across all pages; typed search validation is
+  a separate initiative).
+
+---
+
+## TDD Phases
+
+### Phase 0: Tests (RED) — all tests written before any production code
+
+Write all test cases first. They will fail because the sync behavior does not
+exist yet.
+
+#### 0.1 Plan page URL sync tests
+
+**File:** `apps/web/src/pages/__tests__/Plan.urlSync.test.tsx`
+
+Mock setup: same pattern as existing `Plan.detach.test.tsx` — mock NATS, route
+service, crew service, settings service, geometry service, router, i18n. Capture
+`navigate` mock calls to assert URL search params.
+
+| # | Test | Asserts |
+|---|------|---------|
+| 1 | `initializes dateFrom from URL ?date= param` | `dateFrom` input has the URL value, not today |
+| 2 | `initializes crew from URL ?crew= param` | crew select shows the URL crew value |
+| 3 | `initializes depot from URL ?depot= param` | depot select shows the URL depot value |
+| 4 | `defaults dateFrom to today when no URL param` | `dateFrom` input has today's date |
+| 5 | `changing crew updates URL with crew param` | `navigate` called with `search` containing `crew` |
+| 6 | `changing depot updates URL with depot param` | `navigate` called with `search` containing `depot` |
+| 7 | `changing dateFrom updates URL with all current filters` | `navigate` search includes `date`, `crew`, `depot` |
+| 8 | `changing dateTo in range mode updates URL` | `navigate` search includes `dateTo` |
+| 9 | `toggling range off removes dateTo from URL` | `navigate` search does NOT include `dateTo` |
+| 10 | `initializes dateTo from URL ?dateTo= param in range mode` | range mode active, `dateTo` input has URL value |
+| 11 | `initializes isDateRange=true when URL has dateTo different from date` | range toggle is active |
+| 12 | `initializes isDateRange=false when URL has no dateTo` | range toggle is inactive |
+| 13 | `server preferences apply when URL params absent` | crew defaults to preference, not empty |
+| 14 | `server preferences do NOT override URL params` | URL crew takes priority over preference |
+| 15 | `navigate uses replace: true (no history pollution)` | `navigate` options include `replace: true` |
+| 16 | `empty crew/depot written as undefined (clean URL)` | selecting "all crews" writes `crew: undefined` |
+
+#### 0.2 Routes page URL sync tests
+
+**File:** `apps/web/src/pages/__tests__/Routes.urlSync.test.tsx`
+
+| # | Test | Asserts |
+|---|------|---------|
+| 1 | `initializes dateFrom from URL ?dateFrom= param` | input value matches URL |
+| 2 | `initializes dateTo from URL ?dateTo= param` | input value matches URL |
+| 3 | `initializes crew from URL ?crew= param` | select value matches URL |
+| 4 | `initializes depot from URL ?depot= param` | select value matches URL |
+| 5 | `defaults to ±7 day range when no URL params` | inputs show weekAgo and weekAhead |
+| 6 | `changing crew updates URL` | `navigate` search includes `crew` |
+| 7 | `changing depot updates URL` | `navigate` search includes `depot` |
+| 8 | `changing dateTo updates URL` | `navigate` search includes `dateTo` |
+| 9 | `changing dateFrom preserves other params in URL` | all filter values present in `navigate` search |
+| 10 | `navigate uses replace: true` | options include `replace: true` |
+
+#### 0.3 Customers page URL sync tests
+
+**File:** `apps/web/src/pages/__tests__/Customers.urlSync.test.tsx`
+
+| # | Test | Asserts |
+|---|------|---------|
+| 1 | `initializes viewMode from URL ?view= param` | renders in correct mode |
+| 2 | `initializes geocodeFilter from URL ?geocodeStatus= param` | filter has URL value |
+| 3 | `initializes sortBy from URL ?sortBy= param` | sort shows URL value |
+| 4 | `initializes sortOrder from URL ?sortOrder= param` | sort direction matches URL |
+| 5 | `defaults to table view when no URL param` | renders table mode |
+| 6 | `defaults sortBy to name when no URL param` | sort is "name" |
+| 7 | `changing viewMode updates URL` | `navigate` search includes `view` |
+| 8 | `changing geocodeFilter updates URL` | `navigate` search includes `geocodeStatus` |
+| 9 | `changing sortBy updates URL` | `navigate` search includes `sortBy` |
+| 10 | `changing sortOrder updates URL` | `navigate` search includes `sortOrder` |
+| 11 | `changing revisionFilter updates URL` | `navigate` search includes `hasOverdue` |
+| 12 | `changing typeFilter updates URL` | `navigate` search includes `type` |
+| 13 | `text search updates URL after debounce` | `navigate` called after 300ms, not before |
+| 14 | `rapid text input only triggers one URL update` | single `navigate` call after debounce settles |
+| 15 | `clearing text search removes search param from URL` | `search: undefined` in navigate |
+| 16 | `initializes text search from URL ?search= param` | search input shows URL value |
+| 17 | `navigate uses replace: true` | options include `replace: true` |
+| 18 | `empty filter values written as undefined (clean URL)` | clearing geocodeFilter removes param |
+
+#### 0.4 Cross-page navigation persistence test
+
+**File:** `apps/web/src/pages/__tests__/filterPersistence.integration.test.tsx`
+
+A lightweight integration test proving the core user story works end-to-end with
+the router.
+
+| # | Test | Asserts |
+|---|------|---------|
+| 1 | `Plan: set date+crew → navigate to Customers → navigate back → date+crew preserved` | After back-navigation, Plan mounts with URL params from the previous visit |
+| 2 | `Routes: set crew+depot → navigate away → return → crew+depot preserved` | Same pattern |
+| 3 | `Customers: set sort+filter → navigate away → return → sort+filter preserved` | Same pattern |
+
+These tests use TanStack Router's `createMemoryHistory` to simulate navigation
+without a real browser.
+
+**Commit after Phase 0:** `test(filters): url sync tests for Plan, Routes, Customers (expected red)`
+
+---
+
+### Phase 1: Plan page — full URL sync (GREEN)
+
+**Scope:** Make Phase 0.1 tests pass.
+
+**Changes in `Plan.tsx`:**
+
+1. Add `syncUrl` helper:
+
+```typescript
+const syncUrl = useCallback((params: Partial<PlannerSearchParams>) => {
+  navigate({
+    to: '/plan',
+    search: {
+      date: params.date ?? dateFrom,
+      dateTo: isDateRange ? (params.dateTo ?? dateTo) : undefined,
+      crew: (params.crew ?? filterCrewId) || undefined,
+      depot: (params.depot ?? filterDepotId) || undefined,
+    } as Record<string, string | undefined>,
+    replace: true,
+  });
+}, [dateFrom, dateTo, isDateRange, filterCrewId, filterDepotId, navigate]);
+```
+
+2. Refactor `handleDateFromChange` to use `syncUrl`.
+3. Add `syncUrl` call to `handleDateToChange`.
+4. Add `syncUrl` call to `handleCrewFilterChange`.
+5. Add `syncUrl` call to `handleDepotFilterChange`.
+6. Add `syncUrl` call to `handleToggleRange` (remove `dateTo` when collapsing).
+7. Update initialization:
+
+```typescript
+const [dateFrom, setDateFrom] = useState(searchParams?.date || today);
+const [dateTo, setDateTo] = useState(
+  searchParams?.dateTo || searchParams?.date || today
+);
+const [isDateRange, setIsDateRange] = useState(
+  !!searchParams?.dateTo
+    && searchParams.dateTo !== (searchParams.date || today)
+);
+```
+
+**Commit:** `fix(plan): full url sync for all filter params`
+
+---
+
+### Phase 2: Routes page — full URL sync (GREEN)
+
+**Scope:** Make Phase 0.2 tests pass.
+
+**Changes in `Routes.tsx`:**
+
+1. Add `syncUrl` helper (same pattern, `to: '/routes'`).
+2. Add `syncUrl` call to `handleDateToChange`.
+3. Add `syncUrl` call to `handleCrewFilterChange`.
+4. Add `syncUrl` call to `handleDepotFilterChange`.
+5. Refactor `handleDateFromChange` to use `syncUrl`.
+
+**Commit:** `fix(routes): full url sync for all filter params`
+
+---
+
+### Phase 3: Customers page — full URL sync (GREEN)
+
+**Scope:** Make Phase 0.3 tests pass.
+
+**Changes in `Customers.tsx`:**
+
+1. Add `syncUrl` helper (same pattern, `to: '/customers'`).
+2. Call `syncUrl` from every filter/sort/view change handler.
+3. Initialize `typeFilter` and `search` from URL params.
+4. Add debounced URL sync for text search (300ms via `setTimeout`/`clearTimeout`
+   ref pattern — no new dependency).
+5. When clearing a filter, write `undefined` (not empty string) so the param is
+   removed from the URL entirely.
+
+**Commit:** `fix(customers): full url sync for all filter params`
+
+---
+
+### Phase 4: Cross-page integration + refactor (GREEN)
+
+**Scope:** Make Phase 0.4 tests pass. Clean up.
+
+1. Verify cross-page navigation tests pass (they should if Phases 1–3 are
+   correct).
+2. Remove any dead code from the old partial-sync patterns.
+3. Verify no regressions in existing page test suites.
+4. Run full `npx vitest run` in `apps/web`.
+
+**Commit:** `test(filters): verify cross-page filter persistence`
+
+---
+
+## Corner Cases (covered by tests)
+
+| Corner case | Expected behavior | Test phase |
+|-------------|-------------------|------------|
+| URL has `?date=` but no `?crew=` | Date from URL, crew from server preferences (if set), else empty | 0.1 #13, #14 |
+| URL has stale crew ID (deleted crew) | Crew select shows empty/unknown; filter applies but returns no matches; no crash | Manual QA |
+| `dateTo` in URL without `date` | `dateFrom` defaults to today, `dateTo` from URL, range mode active | 0.1 #10, #11 |
+| Empty string filter values | Written as `undefined` to keep URL clean | 0.1 #16, 0.3 #18 |
+| Rapid text search typing (Customers) | URL updates only after 300ms debounce | 0.3 #13, #14 |
+| Browser back after filter change | Previous filter state restored from URL | 0.4 #1–3 |
+| Direct URL entry with all params | All filters initialized from URL | 0.1 #1–3, 0.2 #1–4, 0.3 #1–4 |
+| `replace: true` prevents history bloat | Each filter change replaces current entry, not pushes | 0.1 #15, 0.2 #10, 0.3 #17 |
+| Range mode toggled off | `dateTo` removed from URL; `dateTo` state set to `dateFrom` | 0.1 #9 |
+| Page refresh | URL params survive; filters restored exactly | Same as direct URL entry |
+
+---
+
+## Files Touched
+
+| File | Change |
+|------|--------|
+| `apps/web/src/pages/Plan.tsx` | Add `syncUrl`; refactor filter handlers; update initialization |
+| `apps/web/src/pages/Routes.tsx` | Add `syncUrl`; add sync to crew/depot/dateTo handlers |
+| `apps/web/src/pages/Customers.tsx` | Add `syncUrl`; add sync to all filter/sort/view handlers; debounced search; init from URL |
+| `apps/web/src/pages/__tests__/Plan.urlSync.test.tsx` | New — 16 test cases |
+| `apps/web/src/pages/__tests__/Routes.urlSync.test.tsx` | New — 10 test cases |
+| `apps/web/src/pages/__tests__/Customers.urlSync.test.tsx` | New — 18 test cases |
+| `apps/web/src/pages/__tests__/filterPersistence.integration.test.tsx` | New — 3 integration test cases |
+
+## Estimated Effort
+
+| Phase | ~Hours |
+|-------|--------|
+| 0 (tests — RED) | 3 |
+| 1 (Plan sync) | 1 |
+| 2 (Routes sync) | 0.5 |
+| 3 (Customers sync) | 1.5 |
+| 4 (Integration + cleanup) | 0.5 |
+| **Total** | **~6.5** |
+
+## Risks and Mitigations
+
+| Risk | Mitigation |
+|------|------------|
+| URL becomes long with many params | Only non-default values written; empty/default values are `undefined` (omitted) |
+| Debounce timer leaks on unmount | Clear timeout in cleanup return of `useEffect` or `useCallback` ref |
+| TanStack Router search params lose type safety | Matches existing `useSearch({ strict: false })` pattern; typed validation is a separate initiative |
+| Stale URL params (e.g. deleted crew ID) | Graceful: filter applies but returns no data; user can clear; no crash |
+| `replace: true` vs `push` | All filter changes use `replace` to avoid polluting history with every click |
