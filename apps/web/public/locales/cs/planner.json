@@ -291,6 +291,15 @@
   "actions_delete_route": "Smazat trasu",
   "actions_optimize": "Optimalizovat",
   "actions_break": "Pauza",
+  "actions_print": "Tisknout",
+  "actions_export_gmaps": "Otevřít v Google Maps",
+
+  "export_gmaps_warning_truncated": "Trasa má příliš mnoho zastávek pro Google Maps — zahrnuto bylo pouze prvních několik.",
+  "export_gmaps_warning_skipped_no_coords": "Některé zastávky byly přeskočeny, protože nemají souřadnice.",
+  "export_gmaps_warning_no_depot": "Depot nenalezen — trasa začíná od první zákaznické zastávky.",
+  "export_gmaps_warning_no_stops": "Nebyly nalezeny žádné zákaznické zastávky s platnými souřadnicemi.",
+
+  "print_route_title_fallback": "Trasa",
 
   "view_compact": "Kompaktní pohled",
   "view_planning": "Plánovací pohled",

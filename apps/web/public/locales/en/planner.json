@@ -290,6 +290,15 @@
   "actions_delete_route": "Delete route",
   "actions_optimize": "Optimize",
   "actions_break": "Break",
+  "actions_print": "Print",
+  "actions_export_gmaps": "Open in Google Maps",
+
+  "export_gmaps_warning_truncated": "Route has too many stops for Google Maps — only the first stops were included.",
+  "export_gmaps_warning_skipped_no_coords": "Some stops were skipped because their coordinates are missing.",
+  "export_gmaps_warning_no_depot": "No depot found — route starts from the first customer stop.",
+  "export_gmaps_warning_no_stops": "No customer stops with valid coordinates found.",
+
+  "print_route_title_fallback": "Route",
 
   "view_compact": "Compact view",
   "view_planning": "Planning view",
