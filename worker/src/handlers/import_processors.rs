@@ -237,7 +237,7 @@ struct CsvVisitRow {
 
 pub(crate) const DEVICE_IMPORT_STREAM: &str = "SAZINKA_DEVICE_IMPORT_JOBS";
 pub(crate) const DEVICE_IMPORT_CONSUMER: &str = "device_import_workers";
-pub(crate) const DEVICE_IMPORT_SUBJECT: &str = "sazinka.jobs.import.device";
+pub(crate) const DEVICE_IMPORT_SUBJECT: &str = "sazinka.import.device.submit";
 pub(crate) const DEVICE_IMPORT_STATUS_PREFIX: &str = "sazinka.job.import.device.status";
 
 pub struct DeviceImportProcessor {
@@ -567,7 +567,7 @@ pub async fn handle_device_import_submit(
 
 pub(crate) const REVISION_IMPORT_STREAM: &str = "SAZINKA_REVISION_IMPORT_JOBS";
 pub(crate) const REVISION_IMPORT_CONSUMER: &str = "revision_import_workers";
-pub(crate) const REVISION_IMPORT_SUBJECT: &str = "sazinka.jobs.import.revision";
+pub(crate) const REVISION_IMPORT_SUBJECT: &str = "sazinka.import.revision.submit";
 pub(crate) const REVISION_IMPORT_STATUS_PREFIX: &str = "sazinka.job.import.revision.status";
 
 pub struct RevisionImportProcessor {
@@ -927,7 +927,7 @@ pub async fn handle_revision_import_submit(
 
 pub(crate) const COMMUNICATION_IMPORT_STREAM: &str = "SAZINKA_COMMUNICATION_IMPORT_JOBS";
 pub(crate) const COMMUNICATION_IMPORT_CONSUMER: &str = "communication_import_workers";
-pub(crate) const COMMUNICATION_IMPORT_SUBJECT: &str = "sazinka.jobs.import.communication";
+pub(crate) const COMMUNICATION_IMPORT_SUBJECT: &str = "sazinka.import.communication.submit";
 pub(crate) const COMMUNICATION_IMPORT_STATUS_PREFIX: &str = "sazinka.job.import.communication.status";
 
 pub struct CommunicationImportProcessor {
@@ -1233,10 +1233,10 @@ pub async fn handle_communication_import_submit(
 // VISIT IMPORT PROCESSOR
 // =============================================================================
 
-pub(crate) const WORK_LOG_IMPORT_STREAM: &str = "SAZINKA_VISIT_IMPORT_JOBS";
-pub(crate) const WORK_LOG_IMPORT_CONSUMER: &str = "visit_import_workers";
-pub(crate) const WORK_LOG_IMPORT_SUBJECT: &str = "sazinka.jobs.import.visit";
-pub(crate) const WORK_LOG_IMPORT_STATUS_PREFIX: &str = "sazinka.job.import.visit.status";
+pub(crate) const WORK_LOG_IMPORT_STREAM: &str = "SAZINKA_WORKLOG_IMPORT_JOBS";
+pub(crate) const WORK_LOG_IMPORT_CONSUMER: &str = "worklog_import_workers";
+pub(crate) const WORK_LOG_IMPORT_SUBJECT: &str = "sazinka.import.worklog.submit";
+pub(crate) const WORK_LOG_IMPORT_STATUS_PREFIX: &str = "sazinka.job.import.worklog.status";
 
 pub struct WorkLogImportProcessor {
     client: Client,
@@ -1259,7 +1259,7 @@ impl WorkLogImportProcessor {
         };
         
         js.get_or_create_stream(stream_config).await?;
-        info!("JetStream visit import stream '{}' ready", WORK_LOG_IMPORT_STREAM);
+        info!("JetStream work_log import stream '{}' ready", WORK_LOG_IMPORT_STREAM);
         
         Ok(Self {
             client,
@@ -1307,7 +1307,7 @@ impl WorkLogImportProcessor {
         };
         
         let consumer = stream.get_or_create_consumer(WORK_LOG_IMPORT_CONSUMER, consumer_config).await?;
-        info!("JetStream visit import consumer '{}' ready", WORK_LOG_IMPORT_CONSUMER);
+        info!("JetStream work_log import consumer '{}' ready", WORK_LOG_IMPORT_CONSUMER);
         
         let mut messages = consumer.messages().await?;
         
@@ -1555,7 +1555,7 @@ pub async fn handle_work_log_import_submit(
 
 pub(crate) const ZIP_IMPORT_STREAM: &str = "SAZINKA_ZIP_IMPORT_JOBS";
 pub(crate) const ZIP_IMPORT_CONSUMER: &str = "zip_import_workers";
-pub(crate) const ZIP_IMPORT_SUBJECT: &str = "sazinka.jobs.import.zip";
+pub(crate) const ZIP_IMPORT_SUBJECT: &str = "sazinka.import.zip.submit";
 pub(crate) const ZIP_IMPORT_STATUS_PREFIX: &str = "sazinka.job.import.zip.status";
 
 pub struct ZipImportProcessor {

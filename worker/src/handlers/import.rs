@@ -991,8 +991,8 @@ pub async fn handle_work_log_import(
 // Stream and consumer names for customer import
 pub(crate) const CUSTOMER_IMPORT_STREAM: &str = "SAZINKA_CUSTOMER_IMPORT_JOBS";
 pub(crate) const CUSTOMER_IMPORT_CONSUMER: &str = "customer_import_workers";
-pub(crate) const CUSTOMER_IMPORT_SUBJECT: &str = "sazinka.jobs.import.customer";
-pub(crate) const CUSTOMER_IMPORT_STATUS_PREFIX: &str = "sazinka.job.import.status";
+pub(crate) const CUSTOMER_IMPORT_SUBJECT: &str = "sazinka.import.customer.submit";
+pub(crate) const CUSTOMER_IMPORT_STATUS_PREFIX: &str = "sazinka.job.import.customer.status";
 
 /// Processor for customer import jobs
 pub struct CustomerImportProcessor {

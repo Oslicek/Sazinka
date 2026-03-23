@@ -1253,7 +1253,7 @@ if auto-dismiss is enabled for banner tests.
 
 # Import/Export Overhaul — TDD Plan
 
-> **Status:** Phase 0 COMPLETE — test suite built (RED). Phase 1 in progress.  
+> **Status:** Phase 1 COMPLETE — NATS subjects aligned. Phase 2 in progress.  
 > **Context:** Align CSV import/export with code and DB; no backwards compatibility required; DB may be recreated from scratch (admin user preserved).  
 > **Constraint from owner:** Build the **complete test suite first**, before production code changes.
 
@@ -1450,7 +1450,7 @@ Delimiter: `;`, UTF-8.
 - Make parser/shared-helper tests pass.
 - Fix customer status subject mismatch.
 - Keep all unrelated tests failing.
-- Commit: `fix(import): consolidate parsers and align customer status subject`
+- Commit: `fix(import): consolidate parsers and align customer status subject` ✅ DONE
 
 ### Phase 2: Customer + device import fixes
 - Add customer `type`.

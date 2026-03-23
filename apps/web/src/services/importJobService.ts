@@ -38,9 +38,9 @@ const SUBJECTS = {
     submit: 'sazinka.import.communication.submit',
     status: 'sazinka.job.import.communication.status',
   },
-  visit: {
-    submit: 'sazinka.import.visit.submit',
-    status: 'sazinka.job.import.visit.status',
+  worklog: {
+    submit: 'sazinka.import.worklog.submit',
+    status: 'sazinka.job.import.worklog.status',
   },
   zip: {
     submit: 'sazinka.import.zip.submit',
@@ -221,7 +221,7 @@ export async function submitWorkLogImportJob(
   const request = createRequest(getToken(), payload);
   
   const response = await deps.request<typeof request, NatsResponse<WorkLogImportJobSubmitResponse>>(
-    SUBJECTS.visit.submit,
+    SUBJECTS.worklog.submit,
     request
   );
 

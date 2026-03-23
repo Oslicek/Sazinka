@@ -8,9 +8,9 @@ import { submitExportJob, type ExportPlusRequest } from './exportPlusService';
 // Mock the NATS store
 vi.mock('@/stores/natsStore', () => ({
   useNatsStore: {
-    getState: () => ({
+    getState: vi.fn(() => ({
       request: vi.fn(),
-    }),
+    })),
   },
 }));
 
