@@ -1,6 +1,9 @@
 # Build context: monorepo root (.)
 # Command: docker build -t sazinka-worker:TAG -f worker/Dockerfile .
 #
+# NOTE: Using DEBUG build for faster CI turnaround (~30s vs 5-20min release).
+# Switch back to --release for production when build time is acceptable.
+#
 # The worker embeds packages/countries/countries.json via include_str! at
 # compile time, so the build context must include both worker/ and packages/.
 
@@ -33,13 +36,13 @@ RUN apt-get update && \
 
 # Compile dependencies first (cached until Cargo.toml/Cargo.lock changes)
 COPY --from=planner /app/worker/recipe.json recipe.json
-RUN SQLX_OFFLINE=true cargo chef cook --release --recipe-path recipe.json
+RUN SQLX_OFFLINE=true cargo chef cook --recipe-path recipe.json
 
 # Compile application source (runs on every source change)
 # SQLX_OFFLINE=true: pre-generated .sqlx cache — no DB needed at build time
 COPY worker/ .
 COPY packages/ /app/packages/
-RUN touch src/main.rs && SQLX_OFFLINE=true cargo build --release
+RUN touch src/main.rs && SQLX_OFFLINE=true cargo build
 
 # ============================================================
 # Stage 3: Runtime — minimal image with binary only
@@ -65,7 +68,7 @@ RUN apt-get update && \
     chown -R sazinka:sazinka /opt/sazinka
 
 # Binary owned by root, executed by non-root user
-COPY --from=builder --chown=root:root /app/worker/target/release/sazinka-worker /usr/local/bin/sazinka-worker
+COPY --from=builder --chown=root:root /app/worker/target/debug/sazinka-worker /usr/local/bin/sazinka-worker
 
 USER sazinka
 
