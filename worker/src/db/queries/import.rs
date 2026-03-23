@@ -149,19 +149,37 @@ pub async fn create_device_import(
     notes: Option<&str>,
 ) -> Result<Uuid> {
     let id = Uuid::new_v4();
-    
+    let device_type_str = device_type_to_str(device_type);
+
+    // Resolve device_type_config_id for this tenant and device type
+    let config_id: Uuid = sqlx::query_scalar(
+        r#"SELECT dtc.id FROM device_type_configs dtc
+           JOIN user_tenants ut ON ut.tenant_id = dtc.tenant_id
+           WHERE ut.user_id = $1 AND dtc.device_type_key = $2
+           LIMIT 1"#
+    )
+    .bind(user_id)
+    .bind(device_type_str)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| anyhow::anyhow!(
+        "No device_type_config found for type '{}' — ensure tenant has been set up",
+        device_type_str
+    ))?;
+
     sqlx::query(
         r#"
-        INSERT INTO devices (id, customer_id, user_id, device_type, device_name,
-            manufacturer, model, serial_number, installation_date,
+        INSERT INTO devices (id, customer_id, user_id, device_type, device_type_config_id,
+            device_name, manufacturer, model, serial_number, installation_date,
             revision_interval_months, notes, created_at, updated_at)
-        VALUES ($1, $2, $3, $4::device_type_enum, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
+        VALUES ($1, $2, $3, $4::device_type_enum, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
         "#,
     )
     .bind(id)
     .bind(customer_id)
     .bind(user_id)
-    .bind(device_type_to_str(device_type))
+    .bind(device_type_str)
+    .bind(config_id)
     .bind(device_name)
     .bind(manufacturer)
     .bind(model)
@@ -178,6 +196,7 @@ pub async fn create_device_import(
 /// Update device from import
 pub async fn update_device_import(
     pool: &PgPool,
+    user_id: Uuid,
     device_id: Uuid,
     device_type: DeviceType,
     device_name: Option<&str>,
@@ -187,21 +206,42 @@ pub async fn update_device_import(
     revision_interval_months: i32,
     notes: Option<&str>,
 ) -> Result<()> {
+    let device_type_str = device_type_to_str(device_type);
+
+    // Resolve device_type_config_id in case device_type changed
+    let config_id: Uuid = sqlx::query_scalar(
+        r#"SELECT dtc.id FROM device_type_configs dtc
+           JOIN user_tenants ut ON ut.tenant_id = dtc.tenant_id
+           WHERE ut.user_id = $1 AND dtc.device_type_key = $2
+           LIMIT 1"#
+    )
+    .bind(user_id)
+    .bind(device_type_str)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| anyhow::anyhow!(
+        "No device_type_config found for type '{}' — ensure tenant has been set up",
+        device_type_str
+    ))?;
+
     sqlx::query(
         r#"
         UPDATE devices 
-        SET device_type = $2::device_type_enum,
-            device_name = COALESCE($3, device_name),
-            manufacturer = COALESCE($4, manufacturer),
-            model = COALESCE($5, model),
-            installation_date = COALESCE($6, installation_date),
-            revision_interval_months = $7,
-            notes = COALESCE($8, notes)
-        WHERE id = $1
+        SET device_type = $3::device_type_enum,
+            device_type_config_id = $4,
+            device_name = COALESCE($5, device_name),
+            manufacturer = COALESCE($6, manufacturer),
+            model = COALESCE($7, model),
+            installation_date = COALESCE($8, installation_date),
+            revision_interval_months = $9,
+            notes = COALESCE($10, notes)
+        WHERE id = $1 AND user_id = $2
         "#,
     )
     .bind(device_id)
-    .bind(device_type_to_str(device_type))
+    .bind(user_id)
+    .bind(device_type_str)
+    .bind(config_id)
     .bind(device_name)
     .bind(manufacturer)
     .bind(model)

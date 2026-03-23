@@ -138,23 +138,25 @@ pub fn persist_report(report: &ImportReport) {
 // =============================================================================
 
 #[derive(Debug, serde::Deserialize)]
-struct CsvDeviceRow {
+pub(crate) struct CsvDeviceRow {
     #[serde(alias = "zakaznik", alias = "customer", alias = "customer_ref")]
-    customer_ref: Option<String>,
+    pub(crate) customer_ref: Option<String>,
     #[serde(alias = "typ", alias = "type", alias = "device_type")]
-    device_type: Option<String>,
+    pub(crate) device_type: Option<String>,
+    #[serde(alias = "nazev", alias = "name", alias = "device_name")]
+    pub(crate) device_name: Option<String>,
     #[serde(alias = "vyrobce", alias = "manufacturer")]
-    manufacturer: Option<String>,
+    pub(crate) manufacturer: Option<String>,
     #[serde(alias = "model")]
-    model: Option<String>,
+    pub(crate) model: Option<String>,
     #[serde(alias = "seriove_cislo", alias = "serial", alias = "serial_number")]
-    serial_number: Option<String>,
+    pub(crate) serial_number: Option<String>,
     #[serde(alias = "datum_instalace", alias = "installation_date")]
-    installation_date: Option<String>,
+    pub(crate) installation_date: Option<String>,
     #[serde(alias = "interval_revizi", alias = "revision_interval", alias = "revision_interval_months")]
-    revision_interval_months: Option<i32>,
+    pub(crate) revision_interval_months: Option<i32>,
     #[serde(alias = "poznamky", alias = "notes")]
-    notes: Option<String>,
+    pub(crate) notes: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -494,7 +496,7 @@ impl DeviceImportProcessor {
         let request = CreateDeviceRequest {
             customer_id,
             device_type: device_type.to_string(),
-            device_name: None,
+            device_name: row.device_name.clone(),
             manufacturer: row.manufacturer.clone(),
             model: row.model.clone(),
             serial_number: row.serial_number.clone(),
@@ -2090,7 +2092,7 @@ impl ZipImportProcessor {
         let request = CreateDeviceRequest {
             customer_id,
             device_type: device_type.to_string(),
-            device_name: None,
+            device_name: row.device_name.clone(),
             manufacturer: row.manufacturer.clone(),
             model: row.model.clone(),
             serial_number: row.serial_number.clone(),

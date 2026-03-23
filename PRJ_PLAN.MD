@@ -1253,7 +1253,7 @@ if auto-dismiss is enabled for banner tests.
 
 # Import/Export Overhaul — TDD Plan
 
-> **Status:** Phase 1 COMPLETE — NATS subjects aligned. Phase 2 in progress.  
+> **Status:** Phase 2 COMPLETE — customer type + device name + device_type_config_id fixed. Phase 3 in progress.  
 > **Context:** Align CSV import/export with code and DB; no backwards compatibility required; DB may be recreated from scratch (admin user preserved).  
 > **Constraint from owner:** Build the **complete test suite first**, before production code changes.
 
@@ -1456,7 +1456,7 @@ Delimiter: `;`, UTF-8.
 - Add customer `type`.
 - Add device `device_name`.
 - Fix `device_type_config_id` insertion.
-- Commit: `fix(import): customer type and device config integrity`
+- Commit: `fix(import): customer type and device config integrity` ✅ DONE
 
 ### Phase 3: Revision + communication fixes
 - Ensure date/time and duplicate handling.

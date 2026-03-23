@@ -321,7 +321,8 @@ pub async fn handle_device_import(
             if let Some(device_id) = existing_device {
                 // Update existing device
                 match queries::import::update_device_import(
-                    &pool, 
+                    &pool,
+                    user_id,
                     device_id,
                     device_type,
                     device_req.device_name.as_deref(),
@@ -1297,11 +1298,17 @@ impl CustomerImportProcessor {
     
     /// Create a customer from CSV row
     async fn create_customer(&self, user_id: Uuid, row: &CsvCustomerRow) -> Result<Uuid> {
-        // Determine customer type
-        let customer_type = if row.ico.is_some() || row.dic.is_some() || row.contact_person.is_some() {
-            CustomerType::Company
-        } else {
-            CustomerType::Person
+        // Determine customer type: explicit field takes priority, then infer from data
+        let customer_type = match row.customer_type.as_deref().map(|s| s.to_lowercase()).as_deref() {
+            Some("company" | "firma" | "spolecnost" | "s.r.o" | "a.s") => CustomerType::Company,
+            Some("person" | "osoba" | "fyzicka_osoba" | "fyz") => CustomerType::Person,
+            _ => {
+                if row.ico.is_some() || row.dic.is_some() || row.contact_person.is_some() {
+                    CustomerType::Company
+                } else {
+                    CustomerType::Person
+                }
+            }
         };
         
         // Normalize phone
@@ -1372,6 +1379,8 @@ impl CustomerImportProcessor {
 /// CSV row for customer import
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct CsvCustomerRow {
+    #[serde(alias = "type", alias = "typ", alias = "customer_type")]
+    pub customer_type: Option<String>,
     #[serde(alias = "name", alias = "nazev", alias = "jmeno", alias = "firma")]
     pub name: String,
     #[serde(alias = "contact_person", alias = "kontaktni_osoba", alias = "kontakt")]

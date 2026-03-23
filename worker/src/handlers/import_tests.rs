@@ -491,28 +491,17 @@ mod csv_customer_row_tests {
     }
 
     /// The `type` field must be present in CsvCustomerRow (Phase 2 requirement).
-    /// This test documents the contract. The field will be added in Phase 2.
     #[test]
     fn csv_customer_row_has_type_field() {
-        // Verify the canonical CSV with type header parses without error.
-        // The actual customer_type field check is done via a local struct
-        // until Phase 2 adds the field to CsvCustomerRow.
-        #[derive(serde::Deserialize)]
-        struct WithType {
-            #[serde(alias = "type")]
-            customer_type: Option<String>,
-            name: String,
-        }
         let csv = "type;name\nperson;Jan Novak";
         let mut reader = csv::ReaderBuilder::new()
             .delimiter(b';')
             .has_headers(true)
             .from_reader(csv.as_bytes());
-        let rows: Vec<WithType> = reader.deserialize().collect::<Result<_, _>>().unwrap();
+        let rows: Vec<CsvCustomerRow> = reader.deserialize().collect::<Result<_, _>>().unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].customer_type.as_deref(), Some("person"));
         assert_eq!(rows[0].name, "Jan Novak");
-        // TODO Phase 2: assert!(rows[0].customer_type.is_some()) on actual CsvCustomerRow
     }
 
     /// Czech alias headers must also deserialize.
@@ -549,12 +538,11 @@ mod csv_customer_row_tests {
 
 #[cfg(test)]
 mod csv_device_row_tests {
+    use crate::handlers::import_processors::CsvDeviceRow;
+
     /// CsvDeviceRow must have a device_name field (Phase 2 requirement).
-    /// This test will FAIL until Phase 2 adds the field.
     #[test]
     fn csv_device_row_has_device_name() {
-        // We test the JetStream processor's CsvDeviceRow struct
-        // by checking the canonical CSV parses device_name
         let csv = "customer_ref;device_type;device_name;manufacturer;model;serial_number;installation_date;revision_interval_months;notes\n\
                    jan@example.com;gas_boiler;Kotel Alfa;Vaillant;ecoTEC;SN123;2020-01-01;12;ok";
 
@@ -563,19 +551,7 @@ mod csv_device_row_tests {
             .has_headers(true)
             .from_reader(csv.as_bytes());
 
-        // We use a local struct to verify the CSV shape
-        #[derive(serde::Deserialize, Debug)]
-        struct TestDeviceRow {
-            customer_ref: Option<String>,
-            device_type: Option<String>,
-            #[serde(alias = "device_name")]
-            device_name: Option<String>,
-            manufacturer: Option<String>,
-            model: Option<String>,
-            serial_number: Option<String>,
-        }
-
-        let rows: Vec<TestDeviceRow> = reader.deserialize().collect::<Result<_, _>>().unwrap();
+        let rows: Vec<CsvDeviceRow> = reader.deserialize().collect::<Result<_, _>>().unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].device_name.as_deref(), Some("Kotel Alfa"));
         assert_eq!(rows[0].manufacturer.as_deref(), Some("Vaillant"));
