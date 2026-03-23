@@ -12,9 +12,10 @@ import type { PanelState, PanelActions } from '../../types/panelState';
 // Capture what Plan passes to RouteSummaryActions
 // ---------------------------------------------------------------------------
 
+type ExportTarget = 'google_maps' | 'mapy_cz';
 type RouteSummaryActionsCapture = {
   onPrint?: () => void;
-  onExportGoogleMaps?: () => void;
+  onExport?: (target: ExportTarget) => void;
   canPrint?: boolean;
   canExport?: boolean;
 };
@@ -59,13 +60,22 @@ vi.mock('@/components/planner', () => ({
             Print
           </button>
         )}
-        {props.onExportGoogleMaps && (
+        {props.onExport && (
           <button
-            data-testid="export-btn"
-            onClick={props.onExportGoogleMaps}
+            data-testid="export-gmaps-btn"
+            onClick={() => props.onExport!('google_maps')}
             disabled={props.canExport === false}
           >
-            Export
+            Export Google Maps
+          </button>
+        )}
+        {props.onExport && (
+          <button
+            data-testid="export-mapycz-btn"
+            onClick={() => props.onExport!('mapy_cz')}
+            disabled={props.canExport === false}
+          >
+            Export Mapy.cz
           </button>
         )}
       </div>
@@ -313,12 +323,33 @@ describe('Plan page — Print & Export', () => {
     });
 
     act(() => {
-      capturedSummaryActions.current.onExportGoogleMaps!();
+      capturedSummaryActions.current.onExport!('google_maps');
     });
 
     await waitFor(() => {
       expect(windowOpenSpy).toHaveBeenCalledWith(
         expect.stringContaining('google.com/maps/dir'),
+        '_blank',
+        'noopener,noreferrer',
+      );
+    });
+  });
+
+  // #2b — Export Mapy.cz opens Mapy.cz URL
+  it('export mapy_cz opens Mapy.cz URL in new tab', async () => {
+    await setupRouteAndWait();
+
+    await waitFor(() => {
+      expect(capturedSummaryActions.current.canExport).toBe(true);
+    });
+
+    act(() => {
+      capturedSummaryActions.current.onExport!('mapy_cz');
+    });
+
+    await waitFor(() => {
+      expect(windowOpenSpy).toHaveBeenCalledWith(
+        expect.stringContaining('mapy.com/fnc/v1/route'),
         '_blank',
         'noopener,noreferrer',
       );
@@ -407,11 +438,11 @@ describe('Plan page — Print & Export', () => {
     render(<Plan />);
 
     await waitFor(() => {
-      expect(capturedSummaryActions.current.onExportGoogleMaps).toBeDefined();
+      expect(capturedSummaryActions.current.onExport).toBeDefined();
     }, { timeout: 3000 });
 
     act(() => {
-      capturedSummaryActions.current.onExportGoogleMaps!();
+      capturedSummaryActions.current.onExport!('google_maps');
     });
 
     await waitFor(() => {
@@ -445,11 +476,11 @@ describe('Plan page — Print & Export', () => {
 
     render(<Plan />);
     await waitFor(() => {
-      expect(capturedSummaryActions.current.onExportGoogleMaps).toBeDefined();
+      expect(capturedSummaryActions.current.onExport).toBeDefined();
     }, { timeout: 3000 });
 
     act(() => {
-      capturedSummaryActions.current.onExportGoogleMaps!();
+      capturedSummaryActions.current.onExport!('google_maps');
     });
 
     const banner = await screen.findByRole('status');
@@ -494,7 +525,7 @@ describe('Plan page — Print & Export', () => {
     }, { timeout: 3000 });
 
     act(() => {
-      capturedSummaryActions.current.onExportGoogleMaps!();
+      capturedSummaryActions.current.onExport!('google_maps');
     });
 
     // All stops have valid coords and depot is set → no warnings
@@ -581,12 +612,12 @@ describe('Plan page — Print & Export', () => {
     render(<Plan />);
 
     await waitFor(() => {
-      expect(capturedSummaryActions.current.onExportGoogleMaps).toBeDefined();
+      expect(capturedSummaryActions.current.onExport).toBeDefined();
     }, { timeout: 3000 });
 
     // First export: shows warning banner
     act(() => {
-      capturedSummaryActions.current.onExportGoogleMaps!();
+      capturedSummaryActions.current.onExport!('google_maps');
     });
     await waitFor(() => {
       expect(screen.getByRole('status')).toBeInTheDocument();
@@ -600,7 +631,7 @@ describe('Plan page — Print & Export', () => {
 
     // Second export (same null-coord stops): banner should reappear
     act(() => {
-      capturedSummaryActions.current.onExportGoogleMaps!();
+      capturedSummaryActions.current.onExport!('google_maps');
     });
     expect(screen.getByRole('status')).toBeInTheDocument();
   });

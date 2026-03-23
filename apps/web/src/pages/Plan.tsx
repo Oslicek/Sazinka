@@ -18,7 +18,8 @@ import type { BreakSettings, Depot } from '@shared/settings';
 import type { RouteWarning } from '@shared/route';
 import { validateBreak } from '../utils/breakUtils';
 import { logger } from '../utils/logger';
-import { buildGoogleMapsUrl } from '../utils/routeExport';
+import { buildGoogleMapsUrl, buildMapyCzUrl } from '../utils/routeExport';
+import type { ExportTarget } from '../components/planner/RouteSummaryActions';
 import { buildPrintHtml } from '../utils/routePrint';
 import { RouteListPanel, RouteDetailTimeline, RouteMapPanel, type RouteMetrics, PlanningTimeline, TimelineViewToggle, type TimelineView, RouteSummaryStats, RouteSummaryActions, ArrivalBufferBar } from '../components/planner';
 import { PlannerFilters } from '../components/shared/PlannerFilters';
@@ -939,8 +940,8 @@ function PlanInner() {
 
   // ─── Export to Google Maps handler ───────────────────────────────────────
 
-  const handleExportGoogleMaps = useCallback(() => {
-    const result = buildGoogleMapsUrl({
+  const handleExport = useCallback((target: ExportTarget) => {
+    const exportParams = {
       depot: selectedRouteDepot
         ? { lat: selectedRouteDepot.lat, lng: selectedRouteDepot.lng }
         : null,
@@ -949,7 +950,11 @@ function PlanInner() {
         customerLng: s.customerLng,
         stopType: s.stopType as 'customer' | 'break',
       })),
-    });
+    };
+
+    const result = target === 'mapy_cz'
+      ? buildMapyCzUrl(exportParams)
+      : buildGoogleMapsUrl(exportParams);
 
     if (result.url) {
       window.open(result.url, '_blank', 'noopener,noreferrer');
@@ -1168,7 +1173,7 @@ function PlanInner() {
                 canOptimize={selectedRouteStops.length >= 2}
                 deleteLabel="Smazat trasu"
                 onPrint={handlePrint}
-                onExportGoogleMaps={handleExportGoogleMaps}
+                onExport={handleExport}
                 canPrint={canPrint}
                 canExport={canExport}
               />

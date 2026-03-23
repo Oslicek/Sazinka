@@ -2,6 +2,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-wrap: wrap;
   gap: 0.5rem;
   width: 100%;
   padding-top: 0.125rem;
@@ -46,6 +47,103 @@
   background: var(--color-bg-secondary);
   border-color: var(--color-primary);
 }
+
+.summaryActionBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Export split button ───────────────────────────────────────────────── */
+
+.exportButtonWrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+.exportPrimaryBtn {
+  padding: 0.375rem 0.875rem;
+  min-height: 2.25rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.exportPrimaryBtn:hover:not(:disabled) {
+  background: var(--color-bg-secondary);
+  border-color: var(--color-primary);
+}
+
+.exportPrimaryBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.exportDropdownToggle {
+  padding: 0.375rem 0.5rem;
+  min-height: 2.25rem;
+  font-size: 0.625rem;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-left: none;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.exportDropdownToggle:hover:not(:disabled) {
+  background: var(--color-bg-secondary);
+  border-color: var(--color-primary);
+}
+
+.exportDropdownToggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.exportDropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  min-width: 100%;
+  margin-top: 0.25rem;
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 10;
+  white-space: nowrap;
+}
+
+.exportOption {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8125rem;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text);
+  transition: background 0.1s;
+}
+
+.exportOption:hover {
+  background: var(--color-bg-secondary);
+}
+
+.exportOption + .exportOption {
+  border-top: 1px solid var(--color-border-light, #eee);
+}
+
+/* ── Delete button ─────────────────────────────────────────────────────── */
 
 .summaryDeleteBtn {
   padding: 0.375rem 0.875rem;

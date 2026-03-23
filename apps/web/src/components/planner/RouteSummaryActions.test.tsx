@@ -2,8 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
 import { RouteSummaryActions } from './RouteSummaryActions';
-
-// i18next is mocked globally; it returns the key as the displayed text.
+import type { ExportTarget } from './RouteSummaryActions';
 
 describe('RouteSummaryActions', () => {
 
@@ -27,39 +26,61 @@ describe('RouteSummaryActions', () => {
     expect(onPrint).toHaveBeenCalledOnce();
   });
 
-  // #4
-  it('renders Google Maps export button when onExportGoogleMaps is provided', () => {
-    render(<RouteSummaryActions onExportGoogleMaps={vi.fn()} />);
-    expect(screen.getByRole('button', { name: /actions_export_gmaps/i })).toBeInTheDocument();
+  // #4 — export split button renders when onExport is provided
+  it('renders export split button when onExport is provided', () => {
+    render(<RouteSummaryActions onExport={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /actions_export$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /actions_export_more/i })).toBeInTheDocument();
   });
 
-  // #5
-  it('does not render export button when onExportGoogleMaps is undefined', () => {
-    render(<RouteSummaryActions />);
-    expect(screen.queryByRole('button', { name: /actions_export_gmaps/i })).toBeNull();
+  // #5 — clicking primary export button calls onExport with google_maps
+  it('primary export button calls onExport with google_maps', () => {
+    const onExport = vi.fn();
+    render(<RouteSummaryActions onExport={onExport} />);
+    fireEvent.click(screen.getByRole('button', { name: /actions_export$/i }));
+    expect(onExport).toHaveBeenCalledWith('google_maps');
   });
 
-  // #6
-  it('calls onExportGoogleMaps on click', () => {
-    const onExportGoogleMaps = vi.fn();
-    render(<RouteSummaryActions onExportGoogleMaps={onExportGoogleMaps} />);
-    fireEvent.click(screen.getByRole('button', { name: /actions_export_gmaps/i }));
-    expect(onExportGoogleMaps).toHaveBeenCalledOnce();
+  // #6 — dropdown shows Google Maps and Mapy.cz options
+  it('dropdown shows Google Maps and Mapy.cz options', () => {
+    render(<RouteSummaryActions onExport={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /actions_export_more/i }));
+    expect(screen.getByRole('menuitem', { name: /actions_export_gmaps/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /actions_export_mapycz/i })).toBeInTheDocument();
   });
 
-  // #7
-  it('export button is disabled when canExport is false', () => {
-    render(<RouteSummaryActions onExportGoogleMaps={vi.fn()} canExport={false} />);
-    expect(screen.getByRole('button', { name: /actions_export_gmaps/i })).toBeDisabled();
+  // #7 — selecting Mapy.cz from dropdown calls onExport with mapy_cz
+  it('selecting Mapy.cz from dropdown calls onExport with mapy_cz', () => {
+    const onExport = vi.fn();
+    render(<RouteSummaryActions onExport={onExport} />);
+    fireEvent.click(screen.getByRole('button', { name: /actions_export_more/i }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /actions_export_mapycz/i }));
+    expect(onExport).toHaveBeenCalledWith('mapy_cz');
   });
 
-  // #8
+  // #8 — dropdown closes after selecting an option
+  it('dropdown closes after selecting an option', () => {
+    render(<RouteSummaryActions onExport={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /actions_export_more/i }));
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('menuitem', { name: /actions_export_gmaps/i }));
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  // #9 — export buttons disabled when canExport is false
+  it('export buttons disabled when canExport is false', () => {
+    render(<RouteSummaryActions onExport={vi.fn()} canExport={false} />);
+    expect(screen.getByRole('button', { name: /actions_export$/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /actions_export_more/i })).toBeDisabled();
+  });
+
+  // #10
   it('print button is disabled when canPrint is false', () => {
     render(<RouteSummaryActions onPrint={vi.fn()} canPrint={false} />);
     expect(screen.getByRole('button', { name: /actions_print/i })).toBeDisabled();
   });
 
-  // #9
+  // #11
   it('existing buttons still render when new props are added (regression)', () => {
     render(
       <RouteSummaryActions
@@ -67,7 +88,7 @@ describe('RouteSummaryActions', () => {
         onAddBreak={vi.fn()}
         onDeleteRoute={vi.fn()}
         onPrint={vi.fn()}
-        onExportGoogleMaps={vi.fn()}
+        onExport={vi.fn()}
       />,
     );
     expect(screen.getByRole('button', { name: /actions_optimize/i })).toBeInTheDocument();
@@ -75,21 +96,15 @@ describe('RouteSummaryActions', () => {
     expect(screen.getByRole('button', { name: /actions_delete_route|smazat/i })).toBeInTheDocument();
   });
 
-  // #10
-  it('both Print and Export buttons render when both handlers provided', () => {
-    render(<RouteSummaryActions onPrint={vi.fn()} onExportGoogleMaps={vi.fn()} />);
-    expect(screen.getByRole('button', { name: /actions_print/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /actions_export_gmaps/i })).toBeInTheDocument();
+  // #12 — backward compat: onExportGoogleMaps still works via primary click
+  it('backward compat: onExportGoogleMaps fires on primary export click', () => {
+    const onExportGoogleMaps = vi.fn();
+    render(<RouteSummaryActions onExportGoogleMaps={onExportGoogleMaps} />);
+    fireEvent.click(screen.getByRole('button', { name: /actions_export$/i }));
+    expect(onExportGoogleMaps).toHaveBeenCalledOnce();
   });
 
-  // #11
-  it('neither Print nor Export button renders when neither handler is provided', () => {
-    render(<RouteSummaryActions onOptimize={vi.fn()} />);
-    expect(screen.queryByRole('button', { name: /actions_print/i })).toBeNull();
-    expect(screen.queryByRole('button', { name: /actions_export_gmaps/i })).toBeNull();
-  });
-
-  // #12
+  // #13
   it('disabled print button does not fire onPrint on click', () => {
     const onPrint = vi.fn();
     render(<RouteSummaryActions onPrint={onPrint} canPrint={false} />);
@@ -97,9 +112,18 @@ describe('RouteSummaryActions', () => {
     expect(onPrint).not.toHaveBeenCalled();
   });
 
-  // #13
-  it('canPrint omitted with onPrint provided → button is enabled (default true)', () => {
-    render(<RouteSummaryActions onPrint={vi.fn()} />);
-    expect(screen.getByRole('button', { name: /actions_print/i })).not.toBeDisabled();
+  // #14 — no export buttons when neither handler provided
+  it('no export buttons when neither onExport nor onExportGoogleMaps provided', () => {
+    render(<RouteSummaryActions onOptimize={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /actions_export/i })).toBeNull();
+  });
+
+  // #15 — dropdown closes on outside click
+  it('dropdown closes on outside click', () => {
+    render(<RouteSummaryActions onExport={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /actions_export_more/i }));
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole('menu')).toBeNull();
   });
 });

@@ -1,26 +1,22 @@
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import styles from './RouteSummaryActions.module.css';
 
+export type ExportTarget = 'google_maps' | 'mapy_cz';
+
 export interface RouteSummaryActionsProps {
-  /** Handler for optimize button */
   onOptimize?: () => void;
-  /** Handler for add break button */
   onAddBreak?: () => void;
-  /** Handler for delete route button */
   onDeleteRoute?: () => void;
-  /** Whether optimization is in progress */
   isOptimizing?: boolean;
-  /** Whether the route can be optimized (needs at least 2 stops) */
   canOptimize?: boolean;
-  /** Label for delete button */
   deleteLabel?: string;
-  /** Handler for print action */
   onPrint?: () => void;
-  /** Handler for Google Maps export action */
+  /** Called with the selected export target */
+  onExport?: (target: ExportTarget) => void;
+  /** @deprecated use onExport instead */
   onExportGoogleMaps?: () => void;
-  /** Whether print is available (map ready + stops present). Defaults to true if onPrint provided. */
   canPrint?: boolean;
-  /** Whether Google Maps export is available (stops have coords). Defaults to true if onExportGoogleMaps provided. */
   canExport?: boolean;
 }
 
@@ -32,11 +28,37 @@ export function RouteSummaryActions({
   canOptimize = true,
   deleteLabel,
   onPrint,
+  onExport,
   onExportGoogleMaps,
   canPrint = true,
   canExport = true,
 }: RouteSummaryActionsProps) {
   const { t } = useTranslation('planner');
+  const [showExportDropdown, setShowExportDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const handleExport = useCallback((target: ExportTarget) => {
+    setShowExportDropdown(false);
+    if (onExport) {
+      onExport(target);
+    } else if (target === 'google_maps' && onExportGoogleMaps) {
+      onExportGoogleMaps();
+    }
+  }, [onExport, onExportGoogleMaps]);
+
+  useEffect(() => {
+    if (!showExportDropdown) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowExportDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showExportDropdown]);
+
+  const hasExport = !!(onExport || onExportGoogleMaps);
+
   return (
     <div className={styles.summaryActions}>
       {onOptimize && (
@@ -66,17 +88,48 @@ export function RouteSummaryActions({
           {t('actions_print')}
         </button>
       )}
-      {onExportGoogleMaps && (
-        <button
-          type="button"
-          className={styles.summaryActionBtn}
-          onClick={onExportGoogleMaps}
-          disabled={!canExport}
-          title={t('actions_export_gmaps')}
-          aria-label={t('actions_export_gmaps')}
-        >
-          {t('actions_export_gmaps')}
-        </button>
+      {hasExport && (
+        <div className={styles.exportButtonWrapper} ref={dropdownRef}>
+          <button
+            type="button"
+            className={styles.exportPrimaryBtn}
+            onClick={() => handleExport('google_maps')}
+            disabled={!canExport}
+          >
+            {t('actions_export')}
+          </button>
+          <button
+            type="button"
+            className={styles.exportDropdownToggle}
+            onClick={() => setShowExportDropdown(!showExportDropdown)}
+            disabled={!canExport}
+            aria-haspopup="true"
+            aria-expanded={showExportDropdown}
+            aria-label={t('actions_export_more')}
+          >
+            ▼
+          </button>
+          {showExportDropdown && (
+            <div className={styles.exportDropdown} role="menu">
+              <button
+                type="button"
+                className={styles.exportOption}
+                role="menuitem"
+                onClick={() => handleExport('google_maps')}
+              >
+                {t('actions_export_gmaps')}
+              </button>
+              <button
+                type="button"
+                className={styles.exportOption}
+                role="menuitem"
+                onClick={() => handleExport('mapy_cz')}
+              >
+                {t('actions_export_mapycz')}
+              </button>
+            </div>
+          )}
+        </div>
       )}
       {onDeleteRoute && (
         <button type="button" className={styles.summaryDeleteBtn} onClick={onDeleteRoute}>

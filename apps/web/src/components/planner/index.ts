@@ -12,5 +12,5 @@ export { PlanningTimeline, type CandidateForInsertion, type GapInsertionInfo } f
 export { buildTimelineItems } from './buildTimelineItems';
 export { TimelineViewToggle, type TimelineView } from './TimelineViewToggle';
 export { RouteSummaryStats, type RouteSummaryStatsProps } from './RouteSummaryStats';
-export { RouteSummaryActions, type RouteSummaryActionsProps } from './RouteSummaryActions';
+export { RouteSummaryActions, type RouteSummaryActionsProps, type ExportTarget } from './RouteSummaryActions';
 export { ArrivalBufferBar } from './ArrivalBufferBar';

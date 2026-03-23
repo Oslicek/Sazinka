@@ -291,7 +291,10 @@
   "actions_optimize": "Optimize",
   "actions_break": "Break",
   "actions_print": "Print",
-  "actions_export_gmaps": "Open in Google Maps",
+  "actions_export": "Export",
+  "actions_export_more": "More export options",
+  "actions_export_gmaps": "Google Maps",
+  "actions_export_mapycz": "Mapy.cz",
 
   "export_gmaps_warning_truncated": "Route has too many stops for Google Maps — only the first stops were included.",
   "export_gmaps_warning_skipped_no_coords": "Some stops were skipped because their coordinates are missing.",
