@@ -605,7 +605,7 @@ mod work_log_grouping_tests {
     /// First non-empty value wins for visit-level fields.
     #[test]
     fn work_log_first_non_empty_wins_for_visit_fields() {
-        let times = vec![
+        let times = [
             (Some("09:00"), Some("10:00")),
             (None, Some("11:00")),
             (Some("08:00"), None),

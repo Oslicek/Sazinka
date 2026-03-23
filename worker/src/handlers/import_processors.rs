@@ -1174,11 +1174,10 @@ impl CommunicationImportProcessor {
         let created_at = row.date.as_ref().and_then(|d| {
             NaiveDate::parse_from_str(d, "%Y-%m-%d").ok()
                 .or_else(|| NaiveDate::parse_from_str(d, "%d.%m.%Y").ok())
-                .map(|date| {
+                .and_then(|date| {
                     date.and_hms_opt(0, 0, 0)
                         .map(|ndt| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(ndt, chrono::Utc))
                 })
-                .flatten()
         });
         
         let communication = queries::communication::create_communication_with_date(
@@ -2403,11 +2402,10 @@ impl ZipImportProcessor {
         let created_at = row.date.as_ref().and_then(|d| {
             NaiveDate::parse_from_str(d, "%Y-%m-%d").ok()
                 .or_else(|| NaiveDate::parse_from_str(d, "%d.%m.%Y").ok())
-                .map(|date| {
+                .and_then(|date| {
                     date.and_hms_opt(0, 0, 0)
                         .map(|ndt| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(ndt, chrono::Utc))
                 })
-                .flatten()
         });
         
         let communication = queries::communication::create_communication_with_date(
