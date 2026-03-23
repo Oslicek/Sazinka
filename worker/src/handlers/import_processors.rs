@@ -1165,8 +1165,19 @@ impl CommunicationImportProcessor {
         
         let content = row.content.as_ref()
             .ok_or_else(|| anyhow::anyhow!("import:missing_content"))?;
+
+        // Parse date from CSV and use as created_at if present
+        let created_at = row.date.as_ref().and_then(|d| {
+            NaiveDate::parse_from_str(d, "%Y-%m-%d").ok()
+                .or_else(|| NaiveDate::parse_from_str(d, "%d.%m.%Y").ok())
+                .map(|date| {
+                    date.and_hms_opt(0, 0, 0)
+                        .map(|ndt| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(ndt, chrono::Utc))
+                })
+                .flatten()
+        });
         
-        let communication = queries::communication::create_communication(
+        let communication = queries::communication::create_communication_with_date(
             &self.pool,
             user_id,
             customer_id,
@@ -1178,6 +1189,7 @@ impl CommunicationImportProcessor {
             row.contact_name.as_deref(),
             row.contact_phone.as_deref(),
             row.duration_minutes,
+            created_at,
         ).await?;
         
         Ok(communication.id)
@@ -2268,8 +2280,18 @@ impl ZipImportProcessor {
         
         let content = row.content.as_ref()
             .ok_or_else(|| anyhow::anyhow!("import:missing_content"))?;
+
+        let created_at = row.date.as_ref().and_then(|d| {
+            NaiveDate::parse_from_str(d, "%Y-%m-%d").ok()
+                .or_else(|| NaiveDate::parse_from_str(d, "%d.%m.%Y").ok())
+                .map(|date| {
+                    date.and_hms_opt(0, 0, 0)
+                        .map(|ndt| chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(ndt, chrono::Utc))
+                })
+                .flatten()
+        });
         
-        let communication = queries::communication::create_communication(
+        let communication = queries::communication::create_communication_with_date(
             &self.pool,
             user_id,
             customer_id,
@@ -2281,6 +2303,7 @@ impl ZipImportProcessor {
             row.contact_name.as_deref(),
             row.contact_phone.as_deref(),
             row.duration_minutes,
+            created_at,
         ).await?;
         
         Ok(communication.id)

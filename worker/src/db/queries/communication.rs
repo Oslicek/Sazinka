@@ -2,6 +2,7 @@
 //! Communication database queries
 
 use anyhow::Result;
+use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -21,6 +22,29 @@ pub async fn create_communication(
     contact_phone: Option<&str>,
     duration_minutes: Option<i32>,
 ) -> Result<Communication> {
+    create_communication_with_date(
+        pool, user_id, customer_id, revision_id,
+        comm_type, direction, subject, content,
+        contact_name, contact_phone, duration_minutes,
+        None,
+    ).await
+}
+
+/// Create a new communication with an optional explicit date (for import)
+pub async fn create_communication_with_date(
+    pool: &PgPool,
+    user_id: Uuid,
+    customer_id: Uuid,
+    revision_id: Option<Uuid>,
+    comm_type: &str,
+    direction: &str,
+    subject: Option<&str>,
+    content: &str,
+    contact_name: Option<&str>,
+    contact_phone: Option<&str>,
+    duration_minutes: Option<i32>,
+    created_at: Option<DateTime<Utc>>,
+) -> Result<Communication> {
     let communication = sqlx::query_as::<_, Communication>(
         r#"
         INSERT INTO communications (
@@ -29,7 +53,8 @@ pub async fn create_communication(
             contact_name, contact_phone, duration_minutes,
             created_at, updated_at
         )
-        VALUES ($1, $2, $3, $4, $5::comm_type, $6::comm_direction, $7, $8, $9, $10, $11, NOW(), NOW())
+        VALUES ($1, $2, $3, $4, $5::comm_type, $6::comm_direction, $7, $8, $9, $10, $11,
+                COALESCE($12, NOW()), COALESCE($12, NOW()))
         RETURNING
             id, user_id, customer_id, revision_id,
             comm_type::text, direction::text, subject, content,
@@ -49,6 +74,7 @@ pub async fn create_communication(
     .bind(contact_name)
     .bind(contact_phone)
     .bind(duration_minutes)
+    .bind(created_at)
     .fetch_one(pool)
     .await?;
 

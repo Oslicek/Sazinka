@@ -569,6 +569,207 @@ Before considering this initiative complete, all of the following must pass:
 
 ---
 
+# Remove Map/Route Collapse UI and Unify Map Button Cluster (Inbox + Plan)
+
+## Background and motivation
+
+The Inbox right column has collapsible section headers (▲/▼) for both the **Map** and the **Route (timeline)** panels. Product no longer wants these. Additionally there is a second collapse layer deep inside `renderMapPanel`: a `mapMode` state (`normal | collapsed | fullscreen`) with hide-map / fullscreen map controls, a `mapCollapsedBar` restore bar and a draggable resize handle. The `DetachButton` also currently overlaps the MapLibre `NavigationControl` zoom cluster because Inbox uses an absolute-positioned wrapper (`top: 4px; right: 4px`) that competes with MapLibre's own `top-right` slot. Plan's map wrapper is built differently; the two pages do not share a common map shell.
+
+This initiative has three outcomes:
+
+1. **Remove** all collapse-related state, handlers, CSS and JSX from the Inbox right column (section headers + inner `mapMode === 'collapsed'` path).
+2. **Decide** once what happens to fullscreen and draggable-resize—both are excluded from removal (product call documented in Decisions section).
+3. **Unify** Plan and Inbox behind one shared `MapPanelShell` component that positions `DetachButton` without overlapping MapLibre controls.
+
+## Current state (code references)
+
+| Item | Location |
+|------|----------|
+| Section-level collapse toggles + localStorage | `PlanningInbox.tsx` ~174–200, ~3252–3293 |
+| Inner `mapMode` state, mapControls, mapCollapsedBar | `PlanningInbox.tsx` ~229, ~2760–2827 |
+| Map resize handle + `mapHeight` state | `PlanningInbox.tsx` ~230, ~323–343, ~2825 |
+| `.rightPanelCollapseBtn`, `.mapCollapsedBar`, `.mapCollapsedLabel` | `PlanningInbox.module.css` ~241–268, ~787–802 |
+| Inbox detach absolute-position hack | `PlanningInbox.module.css` ~281–295 (`.mapPanelWrapper > button`) |
+| Plan map wrapper (no overlap today) | `Plan.module.css` ~320–326 |
+| Detach wiring in Plan | `Plan.tsx` ~1249–1258 |
+| `NavigationControl` added at `top-right` | `RouteMapPanel.tsx` ~194 |
+
+## Decisions
+
+1. **Collapse removed:** section-header collapse (`isMapCollapsed`, `isTimelineCollapsed`, localStorage keys `sazinka.inbox.timelineCollapsed` / `sazinka.inbox.mapCollapsed`) and inner `mapMode === 'collapsed'` path are **deleted**.
+2. **Fullscreen kept:** `mapMode === 'fullscreen'` and the fullscreen-toggle button in `mapControls` are **kept** — Plan does not have this yet; a follow-up can decide whether to add it to Plan later.
+3. **Draggable resize kept:** `mapHeight`, `handleMapResizeStart`, `.mapResizeHandle` are **kept**. This is a size-adjustment UX, not a hide/show toggle.
+4. **Hide-map button removed:** the second button in `mapControls` (sets `mapMode = 'collapsed'`) is removed; it was the inner-layer version of the same collapse affordance.
+5. **Shared shell introduced:** a new `MapPanelShell` component wraps `DetachButton` (when `canDetach`) and renders its children (the map). `DetachButton` is placed in a CSS stack that does **not** overlap the MapLibre `top-right` control cluster. Both `Plan.tsx` and `PlanningInbox.tsx` use this shell.
+
+## TDD phases
+
+### Phase 1 — RED (tests first, all expected to fail)
+
+Write tests before touching production code. The test suite must go RED on initial run.
+
+#### 1a. `MapPanelShell.test.tsx` — new unit test
+
+Location: `apps/web/src/components/layout/__tests__/MapPanelShell.test.tsx`
+
+Scenarios:
+
+- **renders children** — passes `<div data-testid="child" />` as child and asserts `getByTestId('child')` is in the document.
+- **renders DetachButton when canDetach=true** — mocks `useDetachState` returning `{ canDetach: true, isDetached: () => false, detach: vi.fn() }` and asserts `getByRole('button', { name: /open in new window/i })` is present.
+- **does not render DetachButton when canDetach=false** — asserts the button is absent.
+- **DetachButton is not a direct sibling of child in same div** — asserts the detach button is inside a wrapper with `data-testid="map-panel-shell-controls"` and the child is inside `data-testid="map-panel-shell-content"` (or similar separation); these should be **separate** containers so the absolute-position overlap cannot happen.
+- **calls detach when DetachButton clicked** — asserts `detach` mock was called with the panel name.
+
+#### 1b. Collapse-removal assertions in `PlanningInbox.flows.test.tsx`
+
+Extend the existing file with a new `describe('collapse UI removed')` block:
+
+- **no Map section collapse button** — renders `<PlanningInbox />`, asserts `queryByTitle(/Sbalit|collapse|Rozbalit|expand/i)` on the right column returns `null`.
+- **no Timeline section collapse button** — same assertion for timeline section header.
+- **mapMode collapsed path absent** — `queryByTestId('map-collapsed-bar')` returns `null` (requires adding `data-testid="map-collapsed-bar"` to the `mapCollapsedBar` div in the pre-removal code or just querying by text/aria).
+- **localStorage keys not read on mount** — spy on `localStorage.getItem` before render; assert it was **never** called with `'sazinka.inbox.timelineCollapsed'` or `'sazinka.inbox.mapCollapsed'`.
+
+#### 1c. Shared shell data-testid in Plan + Inbox layout tests
+
+Extend or add to `apps/web/src/pages/__tests__/Plan.detach.test.tsx`:
+
+- **Plan map column uses MapPanelShell** — renders `<PlanPage />` (mocks as needed) and asserts `getByTestId('map-panel-shell')` is present.
+
+Add to `PlanningInbox.detachLayout.test.tsx` (existing file):
+
+- **Inbox map wrapper uses MapPanelShell** — asserts `getByTestId('map-panel-shell')` present in desktop layout.
+
+#### 1d. Regression: `localStorage` keys not read
+
+Covered by 1b above. Run separately if needed via `localStorage.getItem` spy.
+
+### Phase 2 — GREEN (implementation)
+
+#### Step A: Introduce `MapPanelShell`
+
+Create `apps/web/src/components/layout/MapPanelShell.tsx`:
+
+```tsx
+// Shared wrapper used by both PlanningInbox and Plan.
+// Renders an optional DetachButton that does NOT overlap the MapLibre
+// NavigationControl (placed at 'top-right').
+//
+// Layout: `position: relative` outer div fills its flex/grid cell.
+// Controls block: absolute, top-right, but right-offset by ~36px
+// (MapLibre nav column width) so they stack to the LEFT of the zoom cluster.
+interface MapPanelShellProps {
+  panelName: string;          // passed to detach()
+  children: React.ReactNode;
+}
+```
+
+Accompanying `MapPanelShell.module.css`:
+
+- `.shell` — `position: relative; width: 100%; height: 100%; overflow: hidden;`
+- `.controls` — `position: absolute; top: 8px; right: calc(36px + 8px); z-index: 10; display: flex; flex-direction: column; gap: 4px;` (36 px = MapLibre NavigationControl width)
+- `.content` — `width: 100%; height: 100%;`
+
+Export from `apps/web/src/components/layout/index.ts`.
+
+#### Step B: Remove Inbox collapse
+
+In `PlanningInbox.tsx` delete:
+
+- `isTimelineCollapsed`, `setIsTimelineCollapsed`, `toggleTimelineCollapsed` state + callback
+- `isMapCollapsed`, `setIsMapCollapsed`, `toggleMapCollapsed` state + callback
+- `mapMode === 'collapsed'` branch and the `mapCollapsedBar` JSX block
+- The second button in `mapControls` (the "hide map" button that sets `mapMode('collapsed')`)
+- The `rightPanelSectionHeader` + `rightPanelCollapseBtn` JSX wrappers around map and timeline sections in `mapAndTimelineContent`; replace with plain `<div className={styles.rightPanelSection}>` children directly rendered without the header band
+- `localStorage` reads and writes for the two collapsed keys
+
+In `PlanningInbox.tsx` update `mapPanelContent` and `mapAndTimelineContent`:
+
+- Replace the `.mapPanelWrapper` + `DetachButton` + `RouteMapPanelSelfSufficient` block with `<MapPanelShell panelName="map">…</MapPanelShell>`.
+
+#### Step C: Wire Plan
+
+In `Plan.tsx` replace:
+
+```tsx
+{!isDetached('map') && (
+  <div className={styles.mapWrapper}>
+    {canDetach && <DetachButton … />}
+    <RouteMapPanelSelfSufficient />
+  </div>
+)}
+```
+
+with:
+
+```tsx
+{!isDetached('map') && (
+  <MapPanelShell panelName="map">
+    <RouteMapPanelSelfSufficient />
+  </MapPanelShell>
+)}
+```
+
+Remove now-unused `DetachButton` import if it is no longer referenced elsewhere in `Plan.tsx`.
+
+#### Step D: CSS cleanup
+
+In `PlanningInbox.module.css` remove:
+
+- `.rightPanelCollapseBtn` and `.rightPanelCollapseBtn:hover`
+- `.mapCollapsedBar`, `.mapCollapsedLabel`
+- `.mapPanelWrapper > button` block (overlap hack — replaced by `MapPanelShell.module.css`)
+
+Keep: `.rightPanelSection`, `.rightPanelSectionContent`, `.rightPanelSectionHeader` if anything non-collapse still uses them, otherwise remove. Keep `.mapControls`, `.mapControlButton` (still used for fullscreen button). Keep `.mapResizeHandle` (resize kept). Keep `.rightPanelStack` if still needed by `isDetached('map')` branch.
+
+In `Plan.module.css` keep `.mapWrapper` intact (or reduce to just `flex: 1; overflow: hidden; position: relative` if the shell takes over styling).
+
+### Phase 3 — REFACTOR
+
+- Run `npx vitest run` in `apps/web`; fix any test mock breakage (`CollapseButton` may now be unused in mocks — remove or keep as no-op).
+- `cargo clippy` / `cargo fmt` — no expected changes in Rust.
+- Remove unused i18n keys: `map_label`, `map_hide`, `map_show` (verify in planner translation files).
+- Update `PROJECT_CONTEXT.MD` with a brief changelog entry.
+
+## Files touched
+
+| File | Change type |
+|------|-------------|
+| `apps/web/src/components/layout/MapPanelShell.tsx` | New |
+| `apps/web/src/components/layout/MapPanelShell.module.css` | New |
+| `apps/web/src/components/layout/index.ts` | Export `MapPanelShell` |
+| `apps/web/src/components/layout/__tests__/MapPanelShell.test.tsx` | New (RED first) |
+| `apps/web/src/pages/PlanningInbox.tsx` | Large deletion + shell swap |
+| `apps/web/src/pages/PlanningInbox.module.css` | CSS removal |
+| `apps/web/src/pages/Plan.tsx` | Shell swap |
+| `apps/web/src/pages/Plan.module.css` | Minor simplification |
+| `apps/web/src/pages/PlanningInbox.flows.test.tsx` | New `describe` block (RED first) |
+| `apps/web/src/pages/__tests__/PlanningInbox.detachLayout.test.tsx` | Add shell assertion |
+| `apps/web/src/pages/__tests__/Plan.detach.test.tsx` | Add shell assertion |
+| `PROJECT_CONTEXT.MD` | Changelog entry |
+
+## Risks and mitigations
+
+| Risk | Mitigation |
+|------|------------|
+| Right column height collapses to 0 after header removal | Assert flex containers still have `min-height: 0` in RTL; visual-check in browser |
+| Detach windows broken by DOM structure change | Re-run `PlanningInbox.detach.test.tsx` after implementation |
+| Unused i18n keys cause CI noise | Grep and prune during refactor phase |
+| MapPanelShell right offset assumes 36 px nav width | Use CSS custom property `--maplibre-nav-width` with fallback `36px`; override if MapLibre version changes control size |
+
+## Definition of done
+
+- [ ] `PRJ_PLAN.MD` updated (this section).
+- [ ] RED tests written and failing before any production code change.
+- [ ] Collapse section headers gone from Inbox right column (map + timeline).
+- [ ] Inner `mapMode === 'collapsed'` path and "hide map" button removed from Inbox.
+- [ ] `localStorage` keys `sazinka.inbox.timelineCollapsed` / `sazinka.inbox.mapCollapsed` not read or written.
+- [ ] `DetachButton` does not overlap MapLibre zoom controls in Inbox or Plan.
+- [ ] Both Plan and Inbox render `data-testid="map-panel-shell"` for the map column.
+- [ ] All Vitest tests green (`npx vitest run` in `apps/web`).
+- [ ] `PROJECT_CONTEXT.MD` updated.
+
+---
+
 # Collapse Detached Panel Space in Inbox
 
 ## Problem
@@ -1253,7 +1454,7 @@ if auto-dismiss is enabled for banner tests.
 
 # Import/Export Overhaul — TDD Plan
 
-> **Status:** Phase 2 COMPLETE — customer type + device name + device_type_config_id fixed. Phase 3 in progress.  
+> **Status:** Phase 3 COMPLETE — revision duplicate handling + communication date persistence. Phase 4 in progress.  
 > **Context:** Align CSV import/export with code and DB; no backwards compatibility required; DB may be recreated from scratch (admin user preserved).  
 > **Constraint from owner:** Build the **complete test suite first**, before production code changes.
 
@@ -1461,7 +1662,7 @@ Delimiter: `;`, UTF-8.
 ### Phase 3: Revision + communication fixes
 - Ensure date/time and duplicate handling.
 - Persist communication CSV `date`.
-- Commit: `fix(import): revisions and communication date persistence`
+- Commit: `fix(import): revisions and communication date persistence` ✅ DONE
 
 ### Phase 4: Work log correctness
 - Unify `work_type`.
