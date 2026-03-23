@@ -844,7 +844,176 @@ CREATE UNIQUE INDEX idx_user_email_domains_user_active
 
 **File:** new `worker/src/services/domain_verification.rs`
 
-**Step 3.2 — Implement identity lifecycle and sender selection**
+**Step 3.2 — RED: `select_from_address` tests (pure sender-selection logic)**
+
+The `select_from_address` function is the core business rule for dynamic sender selection.
+It can be tested as a pure function (takes domain row + fallback config, returns `SenderInfo`).
+
+```rust
+pub struct SenderInfo {
+    pub from: String,       // "Display Name <email>"
+    pub reply_to: Option<String>,
+}
+```
+
+Tests:
+
+```rust
+#[test]
+fn select_from_verified_domain_uses_domain_sender() {
+    // user has verified active domain with from_email="info@firma.cz", from_name="Firma"
+    // → SenderInfo { from: "Firma <info@firma.cz>", reply_to: None }
+}
+
+#[test]
+fn select_from_pending_domain_uses_fallback_with_reply_to() {
+    // user has pending active domain, business_email="jan@firma.cz", business_name="Firma"
+    // → SenderInfo { from: "Firma via Ariadline <noreply@ariadline.cz>", reply_to: Some("jan@firma.cz") }
+}
+
+#[test]
+fn select_from_failed_domain_uses_fallback_with_reply_to() {
+    // same as pending — failed domain falls back identically
+}
+
+#[test]
+fn select_from_no_domain_at_all_uses_fallback_with_reply_to() {
+    // user has zero rows in user_email_domains
+    // → fallback + Reply-To to business email
+}
+
+#[test]
+fn select_from_inactive_verified_domain_uses_fallback() {
+    // user has a verified domain but is_active=false → fallback
+}
+
+#[test]
+fn fallback_display_name_includes_business_name_via_ariadline() {
+    // business_name="Revize Praha" → from: "Revize Praha via Ariadline <noreply@ariadline.cz>"
+}
+
+#[test]
+fn fallback_display_name_empty_business_name() {
+    // business_name="" → from: "Ariadline <noreply@ariadline.cz>" (no "via" prefix)
+}
+
+#[test]
+fn fallback_display_name_special_chars_escaped() {
+    // business_name='Novák "Elektro" s.r.o.' → quotes in display name are safe (RFC 5322)
+}
+
+#[test]
+fn verified_domain_reply_to_is_none() {
+    // When sending from verified domain, reply_to must be None (replies go to from_email directly)
+}
+
+#[test]
+fn fallback_reply_to_is_user_business_email() {
+    // When falling back to Ariadline, reply_to = user's business email so customer replies reach user
+}
+```
+
+**Step 3.3 — RED: Domain input validation tests**
+
+```rust
+#[test]
+fn validate_domain_accepts_valid_domain() {
+    assert!(validate_domain("firma.cz").is_ok());
+    assert!(validate_domain("sub.firma.cz").is_ok());
+}
+
+#[test]
+fn validate_domain_rejects_empty() {
+    assert!(validate_domain("").is_err());
+}
+
+#[test]
+fn validate_domain_rejects_spaces() {
+    assert!(validate_domain("firma .cz").is_err());
+}
+
+#[test]
+fn validate_domain_rejects_leading_trailing_dots() {
+    assert!(validate_domain(".firma.cz").is_err());
+    assert!(validate_domain("firma.cz.").is_err());
+}
+
+#[test]
+fn validate_domain_rejects_protocol_prefix() {
+    assert!(validate_domain("https://firma.cz").is_err());
+}
+
+#[test]
+fn validate_from_email_must_be_on_domain() {
+    assert!(validate_from_email("info@firma.cz", "firma.cz").is_ok());
+    assert!(validate_from_email("info@other.cz", "firma.cz").is_err());
+}
+
+#[test]
+fn validate_from_email_rejects_invalid_email() {
+    assert!(validate_from_email("not-an-email", "firma.cz").is_err());
+}
+```
+
+**Step 3.4 — RED: Verification status transition tests**
+
+```rust
+#[test]
+fn status_pending_to_verified_when_ses_confirms() {
+    // SES GetEmailIdentity returns VerificationStatus::Success
+    // → update row: verification_status="verified", verified_at=now, last_checked_at=now
+}
+
+#[test]
+fn status_pending_stays_pending_when_ses_still_pending() {
+    // SES returns VerificationStatus::Pending
+    // → update last_checked_at only
+}
+
+#[test]
+fn status_pending_to_failed_when_ses_reports_failed() {
+    // SES returns VerificationStatus::Failed
+    // → update row: verification_status="failed", last_checked_at=now, verified_at stays NULL
+}
+
+#[test]
+fn status_verified_stays_verified_on_recheck() {
+    // Already verified, SES still says Success → no-op (idempotent)
+}
+
+#[test]
+fn status_failed_to_verified_when_user_fixes_dns() {
+    // Previously failed, user fixes DNS records, SES now returns Success
+    // → update row: verification_status="verified", verified_at=now
+}
+
+#[test]
+fn check_updates_last_checked_at_regardless_of_outcome() {
+    // Every check — pending, verified, or failed — always sets last_checked_at
+}
+```
+
+**Step 3.5 — RED: One-active-domain constraint tests**
+
+```rust
+#[test]
+fn setup_new_domain_deactivates_previous_active_domain() {
+    // User had active verified domain for "old.cz"
+    // Setup new domain "new.cz" → old.cz row becomes is_active=false
+}
+
+#[test]
+fn delete_active_domain_leaves_user_with_no_active_domain() {
+    // After deletion, select_from_address falls back to Ariadline
+}
+
+#[test]
+fn cannot_have_two_active_domains_simultaneously() {
+    // Enforced by the partial unique index; setup logic must deactivate before insert
+}
+```
+
+**Step 3.6 — GREEN: Implement identity lifecycle and sender selection**
 
 Core operations:
 1. `create_identity(...)` → `ses:CreateEmailIdentity` (domain only)
@@ -854,7 +1023,7 @@ Core operations:
    - verified domain sender, or
    - fallback sender + `Reply-To` to business email
 
-**Step 3.3 — Add settings-facing NATS subjects**
+**Step 3.7 — Add settings-facing NATS subjects**
 
 **NATS subjects (settings domain flow):**
 - `sazinka.settings.domain.setup`
@@ -862,7 +1031,7 @@ Core operations:
 - `sazinka.settings.domain.delete`
 - `sazinka.settings.domain.get`
 
-**Step 3.4 — Add both verification update paths**
+**Step 3.8 — Add both verification update paths**
 
 **Verification checks:**
 - Poller every 10-15 minutes updates pending identities.
@@ -878,7 +1047,104 @@ from the database to build template variables. This is a new internal module.
 
 **File:** new `worker/src/services/email_data.rs`
 
-**Step 4.1 — `resolve_confirmation_data` query**
+**Step 4.1 — RED: Data resolution helper tests**
+
+The SQL queries themselves are integration-tested (SQLx), but the data formatting helpers
+that post-process query results are pure and fully testable.
+
+```rust
+// --- Address formatting ---
+
+#[test]
+fn format_address_street_and_city() {
+    assert_eq!(format_address("Korunní 15", "Praha"), "Korunní 15, Praha");
+}
+
+#[test]
+fn format_address_street_only() {
+    assert_eq!(format_address("Korunní 15", ""), "Korunní 15");
+}
+
+#[test]
+fn format_address_city_only() {
+    assert_eq!(format_address("", "Praha"), "Praha");
+}
+
+#[test]
+fn format_address_both_empty() {
+    assert_eq!(format_address("", ""), "");
+}
+
+// --- Time window formatting ---
+
+#[test]
+fn format_time_window_both_times() {
+    // start=08:00, end=10:00 → "08:00–10:00"
+    assert_eq!(
+        format_time_window(Some(NaiveTime::from_hms(8, 0, 0)), Some(NaiveTime::from_hms(10, 0, 0))),
+        Some("08:00–10:00".to_string())
+    );
+}
+
+#[test]
+fn format_time_window_start_only() {
+    assert_eq!(
+        format_time_window(Some(NaiveTime::from_hms(8, 0, 0)), None),
+        Some("08:00".to_string())
+    );
+}
+
+#[test]
+fn format_time_window_neither() {
+    assert_eq!(format_time_window(None, None), None);
+}
+
+// --- Template selection (custom vs locale defaults) ---
+
+#[test]
+fn template_selection_uses_custom_when_edited() {
+    // email_confirmation_edited_at is Some → use user's custom templates
+    let (subj, body) = select_templates(
+        Some("Custom subject"), Some("Custom body"),
+        Some(Utc::now()), "cs",
+    );
+    assert_eq!(subj, "Custom subject");
+}
+
+#[test]
+fn template_selection_uses_locale_defaults_when_never_edited() {
+    // email_confirmation_edited_at is None → generate defaults from company_locale
+    let (subj, body) = select_templates(None, None, None, "cs");
+    assert!(subj.contains("Potvrzení")); // Czech default
+}
+
+#[test]
+fn template_selection_uses_locale_defaults_when_templates_null_but_edited() {
+    // Edge: edited_at is Some but template columns are NULL → still use defaults
+    let (subj, _) = select_templates(None, None, Some(Utc::now()), "cs");
+    assert!(subj.contains("Potvrzení"));
+}
+
+#[test]
+fn template_selection_en_locale_defaults() {
+    let (subj, _) = select_templates(None, None, None, "en");
+    assert!(subj.contains("Confirmation")); // English default
+}
+
+#[test]
+fn template_selection_sk_locale_defaults() {
+    let (subj, _) = select_templates(None, None, None, "sk");
+    assert!(subj.contains("Potvrdenie")); // Slovak default
+}
+
+#[test]
+fn template_selection_unknown_locale_falls_back_to_en() {
+    let (subj, _) = select_templates(None, None, None, "de");
+    assert!(subj.contains("Confirmation")); // fallback to English
+}
+```
+
+**Step 4.2 — GREEN: `resolve_confirmation_data` query**
 
 A single SQL query that joins `revisions`, `customers`, `devices`, and `users` to
 load everything the confirmation template needs:
@@ -894,7 +1160,6 @@ pub struct ConfirmationData {
     pub company_phone: String,
     pub company_email: String,
     pub company_locale: String,
-    // Template pair
     pub subject_template: String,
     pub body_template: String,
 }
@@ -916,11 +1181,11 @@ pub async fn resolve_confirmation_data(
 }
 ```
 
-Test: this is a DB query — tested via integration tests or manual QA (consistent with project
-testing conventions: "What NOT to Test — Third-party libraries (SQLx)"). The struct itself
-is tested via deserialization.
+The SQL query itself is tested via integration tests or manual QA (consistent with project
+conventions: "What NOT to Test — Third-party libraries (SQLx)"). The helpers it calls
+(`format_address`, `format_time_window`, `select_templates`) are unit-tested above.
 
-**Step 4.2 — `resolve_reminder_data` query**
+**Step 4.3 — GREEN: `resolve_reminder_data` query**
 
 Same pattern for reminders. Additionally loads `device.device_type` for the `{{device_type}}`
 placeholder and `revision.due_date` for `{{due_date}}`.
@@ -947,14 +1212,34 @@ pub async fn resolve_reminder_data(
 ) -> Result<Option<ReminderData>> { /* ... */ }
 ```
 
-**Step 4.3 — Guard: skip if no recipient email**
+**Step 4.4 — RED/GREEN: Guard — skip if no recipient email**
 
-Test: `resolve_returns_none_when_customer_has_no_email`
+```rust
+#[test]
+fn resolve_returns_none_when_customer_has_no_email() {
+    // customer.email IS NULL → return None (caller handles as NoRecipient)
+}
 
-Both resolve functions return `None` if `customer.email IS NULL` — the caller logs a warning
-and marks the job as failed with `"Customer has no email address"`.
+#[test]
+fn resolve_returns_none_when_customer_email_is_empty_string() {
+    // customer.email = "" → treat as no email, return None
+}
 
-**Step 4.4 — Register module**
+#[test]
+fn resolve_returns_none_when_revision_not_found() {
+    // revision_id doesn't exist or belongs to different user → None
+}
+
+#[test]
+fn resolve_returns_none_when_customer_not_found() {
+    // customer_id doesn't exist or belongs to different user → None
+}
+```
+
+Both resolve functions return `None` if `customer.email IS NULL` or empty — the caller
+logs a warning and marks the job as failed with `"Customer has no email address"`.
+
+**Step 4.5 — Register module**
 
 **File:** `worker/src/services/mod.rs` — add `pub mod email_data;`
 
@@ -964,7 +1249,138 @@ and marks the job as failed with `"Customer has no email address"`.
 
 **File:** `worker/src/services/email_processor.rs`
 
-**Step 5.1 — `send_email` method (domain-aware)**
+**Step 5.1 — RED: `EmailSendError` enum tests**
+
+```rust
+#[test]
+fn email_send_error_display_not_configured() {
+    assert_eq!(EmailSendError::NotConfigured.to_string(), "SES not configured");
+}
+
+#[test]
+fn email_send_error_display_no_recipient() {
+    assert_eq!(EmailSendError::NoRecipient.to_string(), "Recipient has no email address");
+}
+
+#[test]
+fn email_send_error_display_permanent() {
+    let e = EmailSendError::Permanent("bad address".to_string());
+    assert_eq!(e.to_string(), "Permanent SES error: bad address");
+}
+
+#[test]
+fn email_send_error_display_transient() {
+    let e = EmailSendError::Transient("throttled".to_string());
+    assert_eq!(e.to_string(), "Transient SES error: throttled");
+}
+```
+
+**Step 5.2 — RED: SES error classification tests**
+
+Classifying AWS SDK errors into transient vs permanent is critical for retry semantics.
+Extract a `classify_ses_error(err) -> EmailSendError` pure function.
+
+```rust
+#[test]
+fn classify_throttling_exception_as_transient() {
+    // SES ThrottlingException → EmailSendError::Transient
+}
+
+#[test]
+fn classify_service_unavailable_as_transient() {
+    // SES returns 503 or InternalServiceError → Transient
+}
+
+#[test]
+fn classify_too_many_requests_as_transient() {
+    // SES TooManyRequestsException → Transient
+}
+
+#[test]
+fn classify_message_rejected_as_permanent() {
+    // SES MessageRejected → Permanent
+}
+
+#[test]
+fn classify_mail_from_domain_not_verified_as_permanent() {
+    // SES MailFromDomainNotVerifiedException → Permanent
+}
+
+#[test]
+fn classify_account_suspended_as_permanent() {
+    // SES AccountSendingPausedException → Permanent
+}
+
+#[test]
+fn classify_invalid_parameter_as_permanent() {
+    // SES InvalidParameterValue (bad email format etc.) → Permanent
+}
+
+#[test]
+fn classify_unknown_sdk_error_as_transient() {
+    // Unrecognized error code → default to Transient (safer: will retry)
+}
+```
+
+**Step 5.3 — RED: `send_email` behaviour tests (mock SES client)**
+
+These tests use a mock/trait-based SES client to verify request construction
+without calling AWS.
+
+```rust
+#[tokio::test]
+async fn send_email_returns_not_configured_when_no_ses_client() {
+    // ses_client = None → EmailSendError::NotConfigured
+}
+
+#[tokio::test]
+async fn send_email_with_verified_domain_sets_from_without_reply_to() {
+    // select_from_address returns verified domain sender
+    // → SES request has From="Firma <info@firma.cz>", no ReplyTo
+}
+
+#[tokio::test]
+async fn send_email_with_fallback_sets_from_and_reply_to() {
+    // select_from_address returns fallback sender
+    // → SES request has From="Firma via Ariadline <noreply@ariadline.cz>",
+    //   ReplyTo=["jan@firma.cz"]
+}
+
+#[tokio::test]
+async fn send_email_attaches_configuration_set_when_present() {
+    // configuration_set = Some("sazinka-tracking")
+    // → SES request includes ConfigurationSetName
+}
+
+#[tokio::test]
+async fn send_email_omits_configuration_set_when_none() {
+    // configuration_set = None → SES request has no ConfigurationSetName
+}
+
+#[tokio::test]
+async fn send_email_returns_message_id_from_ses_response() {
+    // SES mock returns message_id="abc-123"
+    // → Ok("abc-123")
+}
+
+#[tokio::test]
+async fn send_email_returns_unknown_when_ses_has_no_message_id() {
+    // SES mock returns None for message_id
+    // → Ok("unknown")
+}
+
+#[tokio::test]
+async fn send_email_sets_utf8_charset_on_subject_and_body() {
+    // Verify charset="UTF-8" on subject, html body, and text body
+}
+
+#[tokio::test]
+async fn send_email_includes_both_html_and_text_body() {
+    // Verify both Body.Html and Body.Text are set in the SES request
+}
+```
+
+**Step 5.4 — GREEN: `send_email` method (domain-aware)**
 
 ```rust
 async fn send_email(
@@ -1020,11 +1436,7 @@ async fn send_email(
 }
 ```
 
-**Step 5.2 — Error classification**
-
-**File:** `worker/src/services/email_processor.rs`
-
-Define `EmailSendError` to distinguish transient vs permanent failures:
+**Step 5.5 — GREEN: `EmailSendError` enum + `classify_ses_error`**
 
 ```rust
 #[derive(Debug, thiserror::Error)]
@@ -1043,16 +1455,6 @@ pub enum EmailSendError {
 }
 ```
 
-Test: `test_email_send_error_display`
-
-```rust
-#[test]
-fn test_email_send_error_display() {
-    let e = EmailSendError::NotConfigured;
-    assert_eq!(e.to_string(), "SES not configured");
-}
-```
-
 The `process_job` method uses this to decide:
 - `Transient` → do NOT ack the message (JetStream redelivers, up to `max_deliver: 5`)
 - `Permanent` / `NotConfigured` / `NoRecipient` → ack + mark job `Failed`
@@ -1062,6 +1464,152 @@ The `process_job` method uses this to decide:
 #### Phase 6 — Wire `process_job` End-to-End
 
 **File:** `worker/src/services/email_processor.rs`
+
+**Step 6.0 — RED: `process_job` orchestration tests**
+
+These tests verify the full job-processing pipeline using mocked SES and DB.
+Each test follows one path through the `process_job` state machine.
+
+```rust
+// --- Cancellation ---
+
+#[tokio::test]
+async fn process_job_cancelled_job_is_acked_and_skipped() {
+    // Job ID is in CANCELLATION set → ack immediately, no SES call,
+    // no status published (or publish Cancelled), CANCELLATION.remove() called
+}
+
+// --- SES not configured ---
+
+#[tokio::test]
+async fn process_job_ses_not_configured_publishes_failed_and_acks() {
+    // ses_client=None → publish Failed("Email service not configured") + ack
+    // No SES call, no DB call
+}
+
+// --- Confirmation path (happy) ---
+
+#[tokio::test]
+async fn process_job_confirmation_happy_path() {
+    // 1. Publishes Sending status
+    // 2. resolve_confirmation_data returns valid data
+    // 3. Template rendered with correct vars
+    // 4. send_email called with correct (user_id, to, subject, html, text)
+    // 5. log_communication called
+    // 6. Publishes Sent(message_id, recipient)
+    // 7. Message acked
+}
+
+// --- Reminder path (happy) ---
+
+#[tokio::test]
+async fn process_job_reminder_happy_path() {
+    // Same as confirmation but uses resolve_reminder_data + build_reminder_vars
+}
+
+// --- Custom path (happy) ---
+
+#[tokio::test]
+async fn process_job_custom_happy_path() {
+    // No DB lookup — uses fields from CustomEmailRequest directly
+    // send_email called, Sent status published, message acked
+}
+
+#[tokio::test]
+async fn process_job_custom_uses_body_text_when_provided() {
+    // req.body_text = Some("plain text") → passed as body_text to send_email
+}
+
+#[tokio::test]
+async fn process_job_custom_falls_back_to_body_html_for_text() {
+    // req.body_text = None → body_html used as body_text fallback
+}
+
+// --- NoRecipient errors ---
+
+#[tokio::test]
+async fn process_job_confirmation_no_email_publishes_failed_and_acks() {
+    // resolve_confirmation_data returns None (customer has no email)
+    // → publish Failed("Recipient has no email address") + ack
+}
+
+#[tokio::test]
+async fn process_job_reminder_no_email_publishes_failed_and_acks() {
+    // resolve_reminder_data returns None → same as above
+}
+
+// --- DB errors ---
+
+#[tokio::test]
+async fn process_job_confirmation_db_error_publishes_failed_and_acks() {
+    // resolve_confirmation_data returns Err (DB connection issue)
+    // → Permanent error → publish Failed + ack
+}
+
+// --- Transient SES errors ---
+
+#[tokio::test]
+async fn process_job_transient_ses_error_does_not_ack() {
+    // send_email returns Transient("throttled")
+    // → message NOT acked (JetStream will redeliver up to max_deliver)
+    // → no Sent status published
+}
+
+// --- Permanent SES errors ---
+
+#[tokio::test]
+async fn process_job_permanent_ses_error_publishes_failed_and_acks() {
+    // send_email returns Permanent("MessageRejected")
+    // → publish Failed + ack (do not retry)
+}
+
+// --- Invalid payload ---
+
+#[tokio::test]
+async fn process_job_invalid_json_payload_returns_error() {
+    // msg.payload is not valid QueuedEmailJob JSON → deserialization error
+}
+
+// --- CRM logging non-fatal ---
+
+#[tokio::test]
+async fn process_job_crm_log_failure_still_reports_sent() {
+    // send_email succeeds, log_communication fails (DB error)
+    // → Sent status is still published, message is still acked
+    // (log_communication failure is non-fatal)
+}
+
+// --- Status publishing ---
+
+#[tokio::test]
+async fn process_job_publishes_sending_before_processing() {
+    // Before any DB/SES call, Sending status is published to NATS
+}
+```
+
+**Step 6.1 — RED: `process_confirmation` integration tests**
+
+```rust
+#[tokio::test]
+async fn process_confirmation_renders_subject_and_body_with_correct_vars() {
+    // Given: confirmation data with customer "Jan Novák", date "15.3.2026"
+    // When: process_confirmation called
+    // Then: rendered subject contains "Jan Novák", rendered body contains "15.3.2026"
+}
+
+#[tokio::test]
+async fn process_confirmation_uses_html_escaping_for_body() {
+    // Customer name contains <script> tag → HTML body escapes it,
+    // plaintext body does not escape
+}
+
+#[tokio::test]
+async fn process_confirmation_sends_to_customer_email() {
+    // send_email.to = customer's email from resolve_confirmation_data
+}
+```
+
+**Step 6.2 — GREEN: `process_job` implementation**
 
 Replace the current TODO stub in `process_job` with the full pipeline:
 
@@ -1129,7 +1677,7 @@ async fn process_job(&self, msg: jetstream::Message) -> Result<()> {
 }
 ```
 
-**Step 6.1 — `process_confirmation` method**
+**Step 6.3 — GREEN: `process_confirmation` method**
 
 ```rust
 async fn process_confirmation(
@@ -1167,12 +1715,12 @@ async fn process_confirmation(
 }
 ```
 
-**Step 6.2 — `process_reminder` method**
+**Step 6.4 — GREEN: `process_reminder` method**
 
 Same pattern as `process_confirmation` but uses `resolve_reminder_data` and
 `build_reminder_vars`.
 
-**Step 6.3 — `process_custom` method**
+**Step 6.5 — GREEN: `process_custom` method**
 
 The `Custom` variant already carries `to`, `subject`, `body_html`, `body_text` —
 no DB lookup needed. Just send directly.
@@ -1198,7 +1746,40 @@ async fn process_custom(
 
 **File:** `worker/src/services/email_processor.rs`
 
-**Step 7.1 — `log_communication` helper**
+**Step 7.1 — RED: `log_communication` tests**
+
+```rust
+#[tokio::test]
+async fn log_communication_creates_record_with_correct_fields() {
+    // Verify: comm_type="email_sent", direction="outbound",
+    // subject and content passed, customer_id and user_id bound
+}
+
+#[tokio::test]
+async fn log_communication_passes_revision_id_when_present() {
+    // Confirmation/reminder emails have revision_id=Some(uuid)
+    // → create_communication receives it
+}
+
+#[tokio::test]
+async fn log_communication_passes_none_revision_for_custom_email() {
+    // Custom emails may not have a revision_id → passed as None
+}
+
+#[tokio::test]
+async fn log_communication_db_error_does_not_propagate() {
+    // create_communication returns Err → log_communication logs the error
+    // but does NOT return Err or panic (non-fatal)
+}
+
+#[tokio::test]
+async fn log_communication_db_error_does_not_affect_job_status() {
+    // Even when logging fails, the calling process_* method still returns Ok
+    // (the email was already sent successfully)
+}
+```
+
+**Step 7.2 — GREEN: `log_communication` helper**
 
 ```rust
 async fn log_communication(
@@ -1225,7 +1806,6 @@ async fn log_communication(
         None,             // duration_minutes
     ).await {
         error!("Failed to log email communication: {}", e);
-        // Non-fatal: the email was already sent successfully
     }
 }
 ```
@@ -1356,9 +1936,117 @@ sub-minute polling. Timezone for “local wall clock” must be defined in imple
 
 **File:** new `worker/src/services/reminder_scheduler.rs`
 
-**Step 10.1 — Reminder query**
+**Step 10.1 — RED: `users_in_reminder_send_window` tests**
 
-Test: `test_reminder_query_finds_due_revisions` (integration test, requires DB)
+```rust
+#[test]
+fn user_with_matching_send_time_is_included() {
+    // send_time=09:00, current local hour=09 → user_id in result
+}
+
+#[test]
+fn user_with_non_matching_send_time_is_excluded() {
+    // send_time=09:00, current local hour=14 → user_id NOT in result
+}
+
+#[test]
+fn user_with_null_send_time_is_excluded() {
+    // email_reminder_send_time is NULL → excluded (no reminders configured)
+}
+
+#[test]
+fn multiple_users_only_matching_ones_returned() {
+    // user A: 09:00 (match), user B: 14:00 (no match), user C: 09:00 (match)
+    // current hour=09 → [A, C]
+}
+
+#[test]
+fn send_window_uses_full_hour_comparison() {
+    // send_time=09:30 with full-hours-only restriction → matches hour 09
+    // (or: if we restrict to full hours, 09:30 is rounded/truncated to 09:00)
+}
+
+#[test]
+fn send_window_midnight_boundary() {
+    // send_time=00:00, current hour=00 → included
+    // send_time=23:00, current hour=23 → included
+}
+```
+
+**Step 10.2 — RED: `find_revisions_needing_reminder` tests**
+
+```rust
+#[tokio::test]
+async fn finds_revision_due_tomorrow_with_one_day_reminder() {
+    // reminder_days_before=[1], due_date=tomorrow, today=today → found
+}
+
+#[tokio::test]
+async fn finds_revision_due_in_3_days_with_matching_reminder() {
+    // reminder_days_before=[1,3,7], due_date=today+3 → found (matches 3)
+}
+
+#[tokio::test]
+async fn skips_revision_due_today() {
+    // reminder_days_before=[1], due_date=today → NOT found (0 days ≠ 1 day)
+}
+
+#[tokio::test]
+async fn skips_revision_already_reminded_today() {
+    // communication exists with comm_type='email_sent' and created_at::date = today
+    // → NOT EXISTS prevents duplicate
+}
+
+#[tokio::test]
+async fn allows_reminder_if_last_reminder_was_yesterday() {
+    // communication exists but created_at::date = yesterday → NOT a duplicate, found
+}
+
+#[tokio::test]
+async fn skips_completed_revisions() {
+    // revision.status = 'completed' → NOT found (WHERE status IN ('upcoming','scheduled'))
+}
+
+#[tokio::test]
+async fn skips_cancelled_revisions() {
+    // revision.status = 'cancelled' → NOT found
+}
+
+#[tokio::test]
+async fn includes_upcoming_revisions() {
+    // revision.status = 'upcoming' → found
+}
+
+#[tokio::test]
+async fn includes_scheduled_revisions() {
+    // revision.status = 'scheduled' → found
+}
+
+#[tokio::test]
+async fn skips_users_not_in_send_window() {
+    // user_ids_in_send_window = [user_A] but revision belongs to user_B → NOT found
+}
+
+#[tokio::test]
+async fn empty_user_ids_returns_empty_vec() {
+    // user_ids_in_send_window = [] → no results regardless of data
+}
+
+#[tokio::test]
+async fn multiple_reminder_days_before_fires_each_matching_day() {
+    // reminder_days_before=[1,3,7], due_date=today+7 → found for the 7-day rule
+    // due_date=today+3 → found for the 3-day rule
+    // due_date=today+5 → NOT found (no matching rule)
+}
+
+#[tokio::test]
+async fn idempotent_on_double_run() {
+    // Run scheduler twice in same hour → second run finds nothing
+    // (first run created communications, NOT EXISTS blocks second)
+}
+```
+
+**Step 10.3 — GREEN: Reminder query**
 
 ```rust
 pub async fn find_revisions_needing_reminder(
@@ -1385,7 +2073,7 @@ pub async fn find_revisions_needing_reminder(
 The `NOT EXISTS` subquery prevents sending duplicate reminders on the same day
 (idempotency — safe to replay if the scheduler runs multiple times).
 
-**Step 10.2 — Scheduler loop**
+**Step 10.4 — GREEN: Scheduler loop**
 
 ```rust
 pub async fn run_reminder_scheduler(
@@ -1416,7 +2104,7 @@ pub async fn run_reminder_scheduler(
 }
 ```
 
-**Step 10.3 — Spawn in main.rs**
+**Step 10.5 — Spawn in main.rs**
 
 ```rust
 let reminder_handle = {
@@ -1463,9 +2151,9 @@ Implements §1.9: replace Resend-oriented code paths with SES v2 + Sig v4. Can p
 
 | # | Task | Phase | Status |
 |---|------|-------|--------|
-| 1 | `render_template` + tests | 1 | ☐ |
-| 2 | `render_template_html` (HTML-safe) + tests | 1 | ☐ |
-| 3 | `build_confirmation_vars` + `build_reminder_vars` + tests | 1 | ☐ |
+| 1 | `render_template` + tests | 1 | ✅ |
+| 2 | `render_template_html` (HTML-safe) + tests | 1 | ✅ |
+| 3 | `build_confirmation_vars` + `build_reminder_vars` + tests | 1 | ✅ |
 | 4 | Add `aws-config`, `aws-sdk-sesv2` to Cargo.toml | 2 | ☐ |
 | 5 | Add SES fields to `Config` + tests | 2 | ☐ |
 | 6 | Replace `EmailConfig` with `SesEmailConfig` | 2 | ☐ |
