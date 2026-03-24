@@ -9,6 +9,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearch, useNavigate } from '@tanstack/react-router';
 import { useNatsStore } from '../stores/natsStore';
+import { useAuthStore } from '../stores/authStore';
 import * as geometryService from '../services/geometryService';
 import * as settingsService from '../services/settingsService';
 import * as routeService from '../services/routeService';
@@ -32,35 +33,14 @@ import { useDetachState } from '../hooks/useDetachState';
 import { CustomerDetailPanel } from '../panels/CustomerDetailPanel';
 import { RouteMapPanel as RouteMapPanelSelfSufficient } from '../panels/RouteMapPanel';
 import { MapPanelShell } from '../components/layout';
+import { PersistenceProvider } from '../persistence/react/PersistenceProvider';
+import { usePersistentControl } from '../persistence/react/usePersistentControl';
+import { sessionAdapter } from '../persistence/adapters/singletons';
+import { planProfile, PLAN_PROFILE_ID } from '../persistence/profiles/planProfile';
+import { resolveValue } from '../persistence/react/resolveValue';
 
 // Default depot location (Prague center) - fallback
 const DEFAULT_DEPOT = { lat: 50.0755, lng: 14.4378 };
-
-const PLAN_FILTERS_KEY = 'plan.filters';
-
-interface PlanFiltersState {
-  dateFrom: string;
-  crewId: string;
-  depotId: string;
-}
-
-function readSavedFilters(): PlanFiltersState | null {
-  try {
-    const raw = sessionStorage.getItem(PLAN_FILTERS_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as PlanFiltersState;
-  } catch {
-    return null;
-  }
-}
-
-function writeSavedFilters(state: PlanFiltersState): void {
-  try {
-    sessionStorage.setItem(PLAN_FILTERS_KEY, JSON.stringify(state));
-  } catch {
-    // Quota exceeded — silently ignore
-  }
-}
 
 interface PlannerSearchParams {
   date?: string;
@@ -68,12 +48,18 @@ interface PlannerSearchParams {
   depot?: string;
 }
 
-
 export function Plan() {
+  const userId = useAuthStore((s) => s.user?.id ?? null);
   return (
-    <PanelStateProvider activePageContext="plan" enableChannel isSourceOfTruth={true}>
-      <PlanInner />
-    </PanelStateProvider>
+    <PersistenceProvider
+      userId={userId}
+      profiles={[planProfile]}
+      adapters={{ session: sessionAdapter }}
+    >
+      <PanelStateProvider activePageContext="plan" enableChannel isSourceOfTruth={true}>
+        <PlanInner />
+      </PanelStateProvider>
+    </PersistenceProvider>
   );
 }
 
@@ -85,14 +71,39 @@ function PlanInner() {
   const { isConnected } = useNatsStore();
   const { isDetached, detach, canDetach } = useDetachState();
 
-  // --- Filters (URL > sessionStorage > today) ---
+  // --- Filters (URL > UPP > today) ---
   const today = new Date().toISOString().split('T')[0];
-  const savedFilters = useMemo(() => readSavedFilters(), []);
-  const [dateFrom, setDateFrom] = useState(searchParams?.date || savedFilters?.dateFrom || today);
-  const [dateTo, setDateTo] = useState(searchParams?.date || savedFilters?.dateFrom || today);
-  const [isDateRange, setIsDateRange] = useState(false);
-  const [filterCrewId, setFilterCrewId] = useState<string>(searchParams?.crew || savedFilters?.crewId || '');
-  const [filterDepotId, setFilterDepotId] = useState<string>(searchParams?.depot || savedFilters?.depotId || '');
+  const { value: uppDateFrom, setValue: setUppDateFrom } = usePersistentControl<string>(PLAN_PROFILE_ID, 'dateFrom');
+  const { value: uppDateTo, setValue: setUppDateTo } = usePersistentControl<string>(PLAN_PROFILE_ID, 'dateTo');
+  const { value: uppIsDateRange, setValue: setUppIsDateRange } = usePersistentControl<boolean>(PLAN_PROFILE_ID, 'isDateRange');
+  const { value: uppCrew, setValue: setUppCrew } = usePersistentControl<string>(PLAN_PROFILE_ID, 'crew');
+  const { value: uppDepot, setValue: setUppDepot } = usePersistentControl<string>(PLAN_PROFILE_ID, 'depot');
+
+  const dateFrom = resolveValue<string>(searchParams?.date, uppDateFrom || undefined, today) ?? today;
+  const dateTo = resolveValue<string>(searchParams?.date, uppDateTo || undefined, today) ?? today;
+  const isDateRange = resolveValue<boolean>(undefined, uppIsDateRange, false) ?? false;
+  const filterCrewId = resolveValue<string>(searchParams?.crew, uppCrew, '') ?? '';
+  const filterDepotId = resolveValue<string>(searchParams?.depot, uppDepot, '') ?? '';
+
+  // Sync URL params to UPP on mount so they survive navigation
+  const didSyncRef = useRef(false);
+  useEffect(() => {
+    if (didSyncRef.current) return;
+    didSyncRef.current = true;
+    if (searchParams?.date) setUppDateFrom(searchParams.date);
+    if (searchParams?.crew) setUppCrew(searchParams.crew);
+    if (searchParams?.depot) setUppDepot(searchParams.depot);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const setDateFrom = (v: string) => setUppDateFrom(v);
+  const setDateTo = (v: string) => setUppDateTo(v);
+  const setIsDateRange = (v: boolean | ((prev: boolean) => boolean)) => {
+    const next = typeof v === 'function' ? v(isDateRange) : v;
+    setUppIsDateRange(next);
+  };
+  const setFilterCrewId = (v: string) => setUppCrew(v);
+  const setFilterDepotId = (v: string) => setUppDepot(v);
 
   // --- Data ---
   const [crews, setCrews] = useState<Crew[]>([]);
@@ -466,11 +477,6 @@ function PlanInner() {
   // Keep `loadStops` local to this effect to avoid dependency churn from route-derived callbacks.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRouteId, isConnected, depots]);
-
-  // ─── Persist filters to sessionStorage ──────────────────────────
-  useEffect(() => {
-    writeSavedFilters({ dateFrom, crewId: filterCrewId, depotId: filterDepotId });
-  }, [dateFrom, filterCrewId, filterDepotId]);
 
   // ─── URL sync ────────────────────────────────────────────────────
 

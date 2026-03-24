@@ -1,15 +1,18 @@
 /**
- * Phase 7 — Plan page persistence V2 tests (filters only).
+ * Phase 7 / P4 — Plan page persistence V2 tests (filters only).
  *
  * Verifies that all 5 filter controls hydrate from URL/session.
  * Covers C34 (isDateRange=false default), C35 (dateTo URL), C36 (timelineView).
+ * P4 additions: UPP wiring, legacy cleanup, route/timeline non-regression.
  *
  * IMPORTANT: These tests must NOT break route selection or detach behavior.
  * The mandatory gate (test:upp-gate) runs the full Plan guard suite separately.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
+import { makeKey, makeEnvelope } from '@/persistence/core/types';
+import { PLAN_PROFILE_ID } from '@/persistence/profiles/planProfile';
 
 // ---------------------------------------------------------------------------
 // Router mock
@@ -31,6 +34,13 @@ vi.mock('@tanstack/react-router', () => ({
 vi.mock('@/stores/natsStore', () => ({
   useNatsStore: vi.fn((selector?: (s: { isConnected: boolean }) => unknown) => {
     const state = { isConnected: false };
+    return selector ? selector(state) : state;
+  }),
+}));
+
+vi.mock('@/stores/authStore', () => ({
+  useAuthStore: vi.fn((selector?: (s: { user: { id: string } | null }) => unknown) => {
+    const state = { user: { id: 'test-user-plan' } };
     return selector ? selector(state) : state;
   }),
 }));
@@ -236,5 +246,129 @@ describe('Plan page — persistence V2 (Phase 7)', () => {
 
     render(<Plan />);
     expect(screen.getByTestId('pf-dateFrom').textContent).toBe('2026-04-01');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// P4 — UPP wiring tests
+// ---------------------------------------------------------------------------
+
+const TEST_USER_ID = 'test-user-plan';
+
+function seedUpp(controlId: string, value: unknown) {
+  const key = makeKey({ userId: TEST_USER_ID, profileId: PLAN_PROFILE_ID, controlId });
+  sessionStorage.setItem(key, JSON.stringify(makeEnvelope(value, 'session')));
+}
+
+describe('Plan page — P4 UPP wiring', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sessionStorage.clear();
+    localStorage.clear();
+    Object.keys(mockSearchParams).forEach((k) => delete mockSearchParams[k]);
+    Object.keys(capturedFilterProps).forEach((k) => delete capturedFilterProps[k]);
+  });
+
+  afterEach(() => {
+    sessionStorage.clear();
+    localStorage.clear();
+  });
+
+  it('dateFrom survives unmount/remount via UPP', async () => {
+    seedUpp('dateFrom', '2026-02-10');
+    const { unmount } = render(<Plan />);
+    await waitFor(() => {
+      expect(screen.getByTestId('pf-dateFrom').textContent).toBe('2026-02-10');
+    });
+    unmount();
+
+    Object.keys(capturedFilterProps).forEach((k) => delete capturedFilterProps[k]);
+    render(<Plan />);
+    await waitFor(() => {
+      expect(screen.getByTestId('pf-dateFrom').textContent).toBe('2026-02-10');
+    });
+  });
+
+  it('dateTo survives unmount/remount via UPP', async () => {
+    seedUpp('dateTo', '2026-02-20');
+    const { unmount } = render(<Plan />);
+    await waitFor(() => {
+      expect(screen.getByTestId('pf-dateTo').textContent).toBe('2026-02-20');
+    });
+    unmount();
+
+    Object.keys(capturedFilterProps).forEach((k) => delete capturedFilterProps[k]);
+    render(<Plan />);
+    await waitFor(() => {
+      expect(screen.getByTestId('pf-dateTo').textContent).toBe('2026-02-20');
+    });
+  });
+
+  it('isDateRange=false survives remount (falsy preserved via ??)', async () => {
+    seedUpp('isDateRange', false);
+    const { unmount } = render(<Plan />);
+    await waitFor(() => {
+      expect(screen.getByTestId('pf-isDateRange').textContent).toBe('false');
+    });
+    unmount();
+
+    Object.keys(capturedFilterProps).forEach((k) => delete capturedFilterProps[k]);
+    render(<Plan />);
+    await waitFor(() => {
+      expect(screen.getByTestId('pf-isDateRange').textContent).toBe('false');
+    });
+  });
+
+  it('crew survives unmount/remount via UPP', async () => {
+    seedUpp('crew', 'crew-upp');
+    const { unmount } = render(<Plan />);
+    await waitFor(() => {
+      expect(screen.getByTestId('pf-crewId').textContent).toBe('crew-upp');
+    });
+    unmount();
+
+    Object.keys(capturedFilterProps).forEach((k) => delete capturedFilterProps[k]);
+    render(<Plan />);
+    await waitFor(() => {
+      expect(screen.getByTestId('pf-crewId').textContent).toBe('crew-upp');
+    });
+  });
+
+  it('depot survives unmount/remount via UPP', async () => {
+    seedUpp('depot', 'depot-upp');
+    const { unmount } = render(<Plan />);
+    await waitFor(() => {
+      expect(screen.getByTestId('pf-depotId').textContent).toBe('depot-upp');
+    });
+    unmount();
+
+    Object.keys(capturedFilterProps).forEach((k) => delete capturedFilterProps[k]);
+    render(<Plan />);
+    await waitFor(() => {
+      expect(screen.getByTestId('pf-depotId').textContent).toBe('depot-upp');
+    });
+  });
+
+  it('legacy plan.filters key is NOT written to sessionStorage after wiring', async () => {
+    render(<Plan />);
+    // The old hand-rolled key must not be written
+    expect(sessionStorage.getItem('plan.filters')).toBeNull();
+  });
+
+  it('legacy plan.filters key is NOT read from sessionStorage (UPP key used instead)', async () => {
+    // Seed the old legacy key with a date
+    sessionStorage.setItem('plan.filters', JSON.stringify({ dateFrom: '2025-01-01', crewId: '', depotId: '' }));
+    render(<Plan />);
+    // The page should NOT use the legacy key — it should use today as default
+    const today = new Date().toISOString().split('T')[0];
+    expect(screen.getByTestId('pf-dateFrom').textContent).toBe(today);
+  });
+
+  it('PlannerFilters still receives correct depot (route/timeline non-regression)', async () => {
+    seedUpp('depot', 'depot-timeline-test');
+    render(<Plan />);
+    await waitFor(() => {
+      expect(screen.getByTestId('pf-depotId').textContent).toBe('depot-timeline-test');
+    });
   });
 });
