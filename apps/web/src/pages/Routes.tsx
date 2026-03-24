@@ -9,6 +9,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearch, useNavigate, Link } from '@tanstack/react-router';
 import { useNatsStore } from '../stores/natsStore';
+import { useAuthStore } from '../stores/authStore';
 import * as settingsService from '../services/settingsService';
 import * as routeService from '../services/routeService';
 import { listCrews, type Crew } from '../services/crewService';
@@ -18,6 +19,11 @@ import { PlannerFilters } from '../components/shared/PlannerFilters';
 import { getWeekdayNames } from '@/i18n/formatters';
 import { Map, ClipboardList, Trash2 } from 'lucide-react';
 import styles from './Routes.module.css';
+import { PersistenceProvider } from '../persistence/react/PersistenceProvider';
+import { usePersistentControl } from '../persistence/react/usePersistentControl';
+import { sessionAdapter } from '../persistence/adapters/singletons';
+import { routesProfile, ROUTES_PROFILE_ID } from '../persistence/profiles/routesProfile';
+import { resolveValue } from '../persistence/react/resolveValue';
 
 interface RoutesSearchParams {
   dateFrom?: string;
@@ -26,21 +32,38 @@ interface RoutesSearchParams {
   depot?: string;
 }
 
-export function Routes() {
+function RoutesInner() {
   const { t } = useTranslation('pages');
   const navigate = useNavigate();
   const searchParams = useSearch({ strict: false }) as RoutesSearchParams;
   const { isConnected } = useNatsStore();
 
-  // --- Filters ---
-  const today = new Date().toISOString().split('T')[0];
+  // --- UPP controls ---
+  const { value: uppDateFrom, setValue: setUppDateFrom } = usePersistentControl<string>(ROUTES_PROFILE_ID, 'dateFrom');
+  const { value: uppDateTo, setValue: setUppDateTo } = usePersistentControl<string>(ROUTES_PROFILE_ID, 'dateTo');
+  const { value: uppIsDateRange, setValue: setUppIsDateRange } = usePersistentControl<boolean>(ROUTES_PROFILE_ID, 'isDateRange');
+  const { value: uppCrew, setValue: setUppCrew } = usePersistentControl<string>(ROUTES_PROFILE_ID, 'crew');
+  const { value: uppDepot, setValue: setUppDepot } = usePersistentControl<string>(ROUTES_PROFILE_ID, 'depot');
+
+  // --- Filters (URL > UPP > default) ---
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
   const weekAhead = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  const [dateFrom, setDateFrom] = useState(searchParams?.dateFrom || weekAgo);
-  const [dateTo, setDateTo] = useState(searchParams?.dateTo || weekAhead);
-  const [isDateRange, setIsDateRange] = useState(true);
-  const [filterCrewId, setFilterCrewId] = useState<string>(searchParams?.crew || '');
-  const [filterDepotId, setFilterDepotId] = useState<string>(searchParams?.depot || '');
+  // For dates: treat empty string as "no value" (fall through to default)
+  const dateFrom = resolveValue<string>(searchParams?.dateFrom, uppDateFrom || undefined, weekAgo) ?? weekAgo;
+  const dateTo = resolveValue<string>(searchParams?.dateTo, uppDateTo || undefined, weekAhead) ?? weekAhead;
+  // isDateRange: profile default is true, but persisted false must be preserved (nullish-safe)
+  const isDateRange = resolveValue<boolean>(undefined, uppIsDateRange, true) ?? true;
+  const filterCrewId = resolveValue<string>(searchParams?.crew, uppCrew, '') ?? '';
+  const filterDepotId = resolveValue<string>(searchParams?.depot, uppDepot, '') ?? '';
+
+  const setDateFrom = (v: string) => setUppDateFrom(v);
+  const setDateTo = (v: string) => setUppDateTo(v);
+  const setIsDateRange = (v: boolean | ((prev: boolean) => boolean)) => {
+    const next = typeof v === 'function' ? v(isDateRange) : v;
+    setUppIsDateRange(next);
+  };
+  const setFilterCrewId = (v: string) => setUppCrew(v);
+  const setFilterDepotId = (v: string) => setUppDepot(v);
 
   // --- Data ---
   const [crews, setCrews] = useState<Crew[]>([]);
@@ -69,10 +92,11 @@ export function Routes() {
         setDepots(settings.depots);
 
         const prefs = settings.preferences;
-        if (!searchParams?.crew && prefs?.defaultCrewId) {
+        // Server defaults apply only when BOTH URL and UPP are empty
+        if (!searchParams?.crew && !uppCrew && prefs?.defaultCrewId) {
           setFilterCrewId(prefs.defaultCrewId);
         }
-        if (!searchParams?.depot && prefs?.defaultDepotId) {
+        if (!searchParams?.depot && !uppDepot && prefs?.defaultDepotId) {
           setFilterDepotId(prefs.defaultDepotId);
         }
       } catch (err) {
@@ -345,5 +369,18 @@ export function Routes() {
         </div>
       )}
     </div>
+  );
+}
+
+export function Routes() {
+  const userId = useAuthStore((s) => s.user?.id ?? null);
+  return (
+    <PersistenceProvider
+      userId={userId}
+      profiles={[routesProfile]}
+      adapters={{ session: sessionAdapter }}
+    >
+      <RoutesInner />
+    </PersistenceProvider>
   );
 }
