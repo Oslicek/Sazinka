@@ -205,13 +205,10 @@ function PlanningInboxInner() {
   useEffect(() => {
     if (didSeedBreakRuleRef.current) return;
     didSeedBreakRuleRef.current = true;
-    // If UPP has no stored value (still at default=true), check legacy key
-    const legacyRaw = localStorage.getItem('planningInbox.enforceDrivingBreakRule');
-    if (legacyRaw !== null) {
-      const legacyValue = readLegacyKey('local', 'planningInbox.enforceDrivingBreakRule');
-      if (typeof legacyValue === 'boolean') {
-        setUppBreakRule(legacyValue);
-      }
+    if (uppBreakRule !== undefined && uppBreakRule !== null) return;
+    const legacyValue = readLegacyKey('local', 'planningInbox.enforceDrivingBreakRule');
+    if (typeof legacyValue === 'boolean') {
+      setUppBreakRule(legacyValue);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -264,10 +261,11 @@ function PlanningInboxInner() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const filters: InboxFilterExpression = uppFilters != null
-    ? (() => { try { return normalizeExpression(uppFilters); } catch { return DEFAULT_FILTER_EXPRESSION; } })()
-    : DEFAULT_FILTER_EXPRESSION;
-  const setFilters = (v: InboxFilterExpression) => setUppFilters(v);
+  const filters: InboxFilterExpression = useMemo(() => {
+    if (uppFilters == null) return DEFAULT_FILTER_EXPRESSION;
+    try { return normalizeExpression(uppFilters); } catch { return DEFAULT_FILTER_EXPRESSION; }
+  }, [uppFilters]);
+  const setFilters = setUppFilters;
   const [candidates, setCandidates] = useState<InboxCandidate[]>([]);
   const candidatesRef = useRef<InboxCandidate[]>([]);
   candidatesRef.current = candidates;

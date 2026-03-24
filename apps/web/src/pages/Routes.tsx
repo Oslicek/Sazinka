@@ -5,7 +5,7 @@
  * Reuses the shared PlannerFilters component.
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearch, useNavigate, Link } from '@tanstack/react-router';
 import { useNatsStore } from '../stores/natsStore';
@@ -56,14 +56,26 @@ function RoutesInner() {
   const filterCrewId = resolveValue<string>(searchParams?.crew, uppCrew, '') ?? '';
   const filterDepotId = resolveValue<string>(searchParams?.depot, uppDepot, '') ?? '';
 
-  const setDateFrom = (v: string) => setUppDateFrom(v);
-  const setDateTo = (v: string) => setUppDateTo(v);
-  const setIsDateRange = (v: boolean | ((prev: boolean) => boolean)) => {
+  const setDateFrom = setUppDateFrom;
+  const setDateTo = setUppDateTo;
+  const setIsDateRange = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
     const next = typeof v === 'function' ? v(isDateRange) : v;
     setUppIsDateRange(next);
-  };
-  const setFilterCrewId = (v: string) => setUppCrew(v);
-  const setFilterDepotId = (v: string) => setUppDepot(v);
+  }, [isDateRange, setUppIsDateRange]);
+  const setFilterCrewId = setUppCrew;
+  const setFilterDepotId = setUppDepot;
+
+  // Sync URL params to UPP on mount so they survive navigation
+  const didSyncRef = useRef(false);
+  useEffect(() => {
+    if (didSyncRef.current) return;
+    didSyncRef.current = true;
+    if (searchParams?.dateFrom) setUppDateFrom(searchParams.dateFrom);
+    if (searchParams?.dateTo) setUppDateTo(searchParams.dateTo);
+    if (searchParams?.crew) setUppCrew(searchParams.crew);
+    if (searchParams?.depot) setUppDepot(searchParams.depot);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // --- Data ---
   const [crews, setCrews] = useState<Crew[]>([]);
@@ -152,26 +164,26 @@ function RoutesInner() {
       search: { dateFrom: value, dateTo, crew: filterCrewId || undefined, depot: filterDepotId || undefined } as Record<string, string | undefined>,
       replace: true,
     });
-  }, [isDateRange, dateTo, filterCrewId, filterDepotId, navigate]);
+  }, [setDateFrom, setDateTo, isDateRange, dateTo, filterCrewId, filterDepotId, navigate]);
 
   const handleDateToChange = useCallback((value: string) => {
     setDateTo(value);
-  }, []);
+  }, [setDateTo]);
 
   const handleToggleRange = useCallback(() => {
     setIsDateRange((prev) => {
       if (prev) setDateTo(dateFrom);
       return !prev;
     });
-  }, [dateFrom]);
+  }, [setIsDateRange, setDateTo, dateFrom]);
 
   const handleCrewFilterChange = useCallback((value: string) => {
     setFilterCrewId(value);
-  }, []);
+  }, [setFilterCrewId]);
 
   const handleDepotFilterChange = useCallback((value: string) => {
     setFilterDepotId(value);
-  }, []);
+  }, [setFilterDepotId]);
 
   // ─── Delete route ─────────────────────────────────────────────
 

@@ -32,7 +32,6 @@ import { updateCustomer } from '../services/customerService';
 import { AlertTriangle } from 'lucide-react';
 import styles from './Customers.module.css';
 import { PersistenceProvider } from '../persistence/react/PersistenceProvider';
-import { usePersistentProfile } from '../persistence/react/usePersistentProfile';
 import { usePersistentControl } from '../persistence/react/usePersistentControl';
 import { sessionAdapter } from '../persistence/adapters/singletons';
 import { customersProfile, CUSTOMERS_PROFILE_ID } from '../persistence/profiles/customersProfile';
@@ -56,23 +55,19 @@ function CustomersInner() {
   const navigate = useNavigate();
   const searchParams = useSearch({ strict: false }) as SearchParams;
 
-  // UPP profile for all 7 filter controls
-  const { commit: uppCommit } = usePersistentProfile(CUSTOMERS_PROFILE_ID);
-
-  // Debounced search via UPP — keep local optimistic state for responsive UI
+  // UPP controls — usePersistentControl for all 7 (setValue is useCallback-stable)
   const { value: uppSearch, setValue: setUppSearch } = usePersistentControl<string>(
     CUSTOMERS_PROFILE_ID, 'search', 300,
   );
-  const { value: uppViewMode } = usePersistentControl<'table' | 'cards'>(CUSTOMERS_PROFILE_ID, 'viewMode');
-  const { value: uppGeocodeFilter } = usePersistentControl<GeocodeStatus | ''>(CUSTOMERS_PROFILE_ID, 'geocodeFilter');
-  const { value: uppRevisionFilter } = usePersistentControl<string>(CUSTOMERS_PROFILE_ID, 'revisionFilter');
-  const { value: uppTypeFilter } = usePersistentControl<'company' | 'person' | ''>(CUSTOMERS_PROFILE_ID, 'typeFilter');
-  const { value: uppSortBy } = usePersistentControl<ListCustomersRequest['sortBy']>(CUSTOMERS_PROFILE_ID, 'sortBy');
-  const { value: uppSortOrder } = usePersistentControl<ListCustomersRequest['sortOrder']>(CUSTOMERS_PROFILE_ID, 'sortOrder');
+  const { value: uppViewMode, setValue: setViewMode } = usePersistentControl<'table' | 'cards'>(CUSTOMERS_PROFILE_ID, 'viewMode');
+  const { value: uppGeocodeFilter, setValue: setGeocodeFilter } = usePersistentControl<GeocodeStatus | ''>(CUSTOMERS_PROFILE_ID, 'geocodeFilter');
+  const { value: uppRevisionFilter, setValue: setRevisionFilter } = usePersistentControl<string>(CUSTOMERS_PROFILE_ID, 'revisionFilter');
+  const { value: uppTypeFilter, setValue: setTypeFilter } = usePersistentControl<'company' | 'person' | ''>(CUSTOMERS_PROFILE_ID, 'typeFilter');
+  const { value: uppSortBy, setValue: setSortBy } = usePersistentControl<ListCustomersRequest['sortBy']>(CUSTOMERS_PROFILE_ID, 'sortBy');
+  const { value: uppSortOrder, setValue: setSortOrder } = usePersistentControl<ListCustomersRequest['sortOrder']>(CUSTOMERS_PROFILE_ID, 'sortOrder');
 
   // Resolve with URL precedence (nullish-safe)
   const urlRevisionFilter = searchParams?.revisionFilter ?? (searchParams?.hasOverdue ? 'overdue' : undefined);
-  // Search: use local optimistic state for responsive UI; UPP is the persisted source
   const [localSearch, setLocalSearch] = useState<string>(resolveValue<string>(undefined, uppSearch, '') ?? '');
   const search = localSearch;
   const viewMode = resolveValue<'table' | 'cards'>(searchParams?.view as 'table' | 'cards' | undefined, uppViewMode, 'table') ?? 'table';
@@ -82,13 +77,20 @@ function CustomersInner() {
   const sortBy = resolveValue<ListCustomersRequest['sortBy']>(searchParams?.sortBy as ListCustomersRequest['sortBy'] | undefined, uppSortBy, 'name') ?? 'name';
   const sortOrder = resolveValue<ListCustomersRequest['sortOrder']>(searchParams?.sortOrder as ListCustomersRequest['sortOrder'] | undefined, uppSortOrder, 'asc') ?? 'asc';
 
-  const setSearch = (v: string) => { setLocalSearch(v); setUppSearch(v); };
-  const setViewMode = (v: 'table' | 'cards') => uppCommit('viewMode', v);
-  const setGeocodeFilter = (v: GeocodeStatus | '') => uppCommit('geocodeFilter', v);
-  const setRevisionFilter = (v: string) => uppCommit('revisionFilter', v);
-  const setTypeFilter = (v: 'company' | 'person' | '') => uppCommit('typeFilter', v);
-  const setSortBy = (v: ListCustomersRequest['sortBy']) => uppCommit('sortBy', v);
-  const setSortOrder = (v: ListCustomersRequest['sortOrder']) => uppCommit('sortOrder', v);
+  const setSearch = useCallback((v: string) => { setLocalSearch(v); setUppSearch(v); }, [setUppSearch]);
+
+  // Sync URL params to UPP on mount so they survive navigation
+  const didSyncRef = useRef(false);
+  useEffect(() => {
+    if (didSyncRef.current) return;
+    didSyncRef.current = true;
+    if (searchParams?.view) setViewMode(searchParams.view as 'table' | 'cards');
+    if (searchParams?.geocodeStatus) setGeocodeFilter(searchParams.geocodeStatus);
+    if (urlRevisionFilter) setRevisionFilter(urlRevisionFilter as string);
+    if (searchParams?.sortBy) setSortBy(searchParams.sortBy);
+    if (searchParams?.sortOrder) setSortOrder(searchParams.sortOrder);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [showForm, setShowForm] = useState(searchParams?.action === 'new');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -376,9 +378,9 @@ function CustomersInner() {
 
   // Handle saved view selection
   const handleSelectView = useCallback((view: SavedView) => {
-    setGeocodeFilter((view.filters.geocodeStatus || '') as GeocodeStatus | '');
-    setRevisionFilter(view.filters.revisionFilter || '');
-    setTypeFilter((view.filters.type || '') as 'company' | 'person' | '');
+    setGeocodeFilter((view.filters.geocodeStatus ?? '') as GeocodeStatus | '');
+    setRevisionFilter(view.filters.revisionFilter ?? '');
+    setTypeFilter((view.filters.type ?? '') as 'company' | 'person' | '');
   }, [setGeocodeFilter, setRevisionFilter, setTypeFilter]);
 
   // Stats: use server summary when available, fall back to loaded data
