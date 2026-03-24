@@ -101,6 +101,64 @@ describe('usePersistentControl', () => {
     expect(sessionAdapter.readRaw(key)?.value).toBe('debounced-value');
   });
 
+  it('debounced setValue does NOT call commit immediately on each keystroke', async () => {
+    const { unmount } = wrap('p', 'c', '', 300);
+    const key = makeKey({ userId: 'u1', profileId: 'p', controlId: 'c' });
+
+    // Click debounce button — should NOT write to storage yet
+    await act(async () => { screen.getByTestId('set-debounced').click(); });
+
+    // Before timer fires, storage must still be empty (no immediate commit)
+    expect(sessionAdapter.readRaw(key)).toBeNull();
+
+    // Advance timer — now it should write
+    await act(async () => { vi.advanceTimersByTime(300); });
+    expect(sessionAdapter.readRaw(key)?.value).toBe('debounced-value');
+
+    unmount();
+  });
+
+  it('rapid debounced setValue calls produce only one commit after settle', async () => {
+    const profile = makeProfile('p', 'c', '');
+    let commitCount = 0;
+
+    // Wrap with a spy adapter
+    const spyAdapter = new MemoryAdapter('session');
+    const originalWrite = spyAdapter.write.bind(spyAdapter);
+    spyAdapter.write = (key, env, ctx) => { commitCount++; originalWrite(key, env, ctx); };
+
+    const { unmount } = render(
+      <PersistenceProvider userId="u1" profiles={[profile]} adapters={{ session: spyAdapter }}>
+        <ControlConsumer profileId="p" controlId="c" debounceMs={300} />
+      </PersistenceProvider>,
+    );
+
+    // Simulate rapid typing (3 keystrokes)
+    await act(async () => { screen.getByTestId('set-debounced').click(); });
+    await act(async () => { screen.getByTestId('set-debounced').click(); });
+    await act(async () => { screen.getByTestId('set-debounced').click(); });
+
+    // Still no commit yet (debounce not settled)
+    expect(commitCount).toBe(0);
+
+    // Settle debounce
+    await act(async () => { vi.advanceTimersByTime(300); });
+
+    // Exactly one commit
+    expect(commitCount).toBe(1);
+    unmount();
+  });
+
+  it('non-debounced setValue still calls commit immediately (no regression)', async () => {
+    wrap('p', 'c', '');
+    const key = makeKey({ userId: 'u1', profileId: 'p', controlId: 'c' });
+
+    await act(async () => { screen.getByTestId('set-btn').click(); });
+
+    // Immediate commit — no timer needed
+    expect(sessionAdapter.readRaw(key)?.value).toBe('new-value');
+  });
+
   it('controlled component rerenders do not lose persisted value', async () => {
     const profile = makeProfile('p', 'c', '');
     const key = makeKey({ userId: 'u1', profileId: 'p', controlId: 'c' });

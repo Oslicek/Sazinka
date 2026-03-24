@@ -30,8 +30,7 @@ export function usePersistentControl<T = unknown>(
           commit(profileId, controlId, newValue);
         }, debounceMs);
         pendingRef.current = { value: newValue, timer };
-        // Optimistically update local state immediately for responsive UI
-        commit(profileId, controlId, newValue);
+        // Debounced: do NOT commit immediately — wait for timer to settle
       } else {
         commit(profileId, controlId, newValue);
       }
