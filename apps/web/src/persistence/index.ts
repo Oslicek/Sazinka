@@ -48,3 +48,10 @@ export { customersProfile, CUSTOMERS_PROFILE_ID } from './profiles/customersProf
 export { routesProfile, ROUTES_PROFILE_ID } from './profiles/routesProfile';
 export { planProfile, PLAN_PROFILE_ID } from './profiles/planProfile';
 export { inboxProfile, INBOX_PROFILE_ID } from './profiles/inboxProfile';
+export { inboxFiltersProfile, INBOX_FILTERS_PROFILE_ID } from './profiles/inboxFiltersProfile';
+export { inboxBreakRuleProfile, INBOX_BREAK_RULE_PROFILE_ID } from './profiles/inboxBreakRuleProfile';
+
+// Wiring primitives (P1)
+export { sessionAdapter, localAdapter } from './adapters/singletons';
+export { resolveValue } from './react/resolveValue';
+export { readLegacyKey } from './migration/legacySeed';
