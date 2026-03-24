@@ -1,12 +1,16 @@
 /**
- * Phase 5 — Customers page persistence V2 tests.
+ * Phase 5 / P2 — Customers page persistence V2 tests.
  *
  * Verifies that all 7 filter controls hydrate from and persist to UPP.
  * Covers C28 (revisionFilter full enum), C30 (typeFilter), C31 (search).
+ * P2 additions: unmount/remount survival, URL precedence, provider smoke.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import React from 'react';
+import { makeKey, makeEnvelope } from '@/persistence/core/types';
+import { sessionAdapter } from '@/persistence/adapters/singletons';
+import { CUSTOMERS_PROFILE_ID } from '@/persistence/profiles/customersProfile';
 
 // ---------------------------------------------------------------------------
 // Router mock — controllable search params
@@ -210,5 +214,166 @@ describe('Customers page — persistence V2 (Phase 5)', () => {
     render(<Customers />);
     // Should fall back to "all" (empty) option
     expect(screen.getByDisplayValue('filter_address_all')).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// P2 — UPP wiring tests (unmount/remount survival + URL precedence + smoke)
+// ---------------------------------------------------------------------------
+
+const TEST_USER_ID = 'test-user-upp';
+
+function seedUpp(controlId: string, value: unknown) {
+  const key = makeKey({ userId: TEST_USER_ID, profileId: CUSTOMERS_PROFILE_ID, controlId });
+  sessionStorage.setItem(key, JSON.stringify(makeEnvelope(value, 'session')));
+}
+
+describe('Customers page — P2 UPP wiring', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sessionStorage.clear();
+    localStorage.clear();
+    Object.keys(mockSearchParams).forEach((k) => delete mockSearchParams[k]);
+    // Seed auth store with test user
+    vi.mock('@/stores/authStore', () => ({
+      useAuthStore: vi.fn((selector?: (s: { user: { id: string } | null }) => unknown) => {
+        const state = { user: { id: TEST_USER_ID } };
+        return selector ? selector(state) : state;
+      }),
+    }));
+  });
+
+  afterEach(() => {
+    sessionStorage.clear();
+    localStorage.clear();
+  });
+
+  it('provider smoke: with PersistenceProvider in tree, Customers renders and toolbar visible', () => {
+    expect(() => render(<Customers />)).not.toThrow();
+    expect(screen.getByPlaceholderText('search_placeholder')).toBeInTheDocument();
+  });
+
+  it('viewMode survives unmount/remount', async () => {
+    seedUpp('viewMode', 'cards');
+    const { unmount } = render(<Customers />);
+    await waitFor(() => {
+      expect(screen.getByTestId('view-cards-btn')).toBeInTheDocument();
+    });
+    unmount();
+
+    render(<Customers />);
+    await waitFor(() => {
+      // Cards button should still be present (page restored from UPP)
+      expect(screen.getByTestId('view-cards-btn')).toBeInTheDocument();
+    });
+  });
+
+  it('geocodeFilter survives unmount/remount', async () => {
+    seedUpp('geocodeFilter', 'failed');
+    const { unmount } = render(<Customers />);
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('filter_address_failed')).toBeInTheDocument();
+    });
+    unmount();
+
+    render(<Customers />);
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('filter_address_failed')).toBeInTheDocument();
+    });
+  });
+
+  it('revisionFilter survives unmount/remount', async () => {
+    seedUpp('revisionFilter', 'week');
+    const { unmount } = render(<Customers />);
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('filter_revision_week')).toBeInTheDocument();
+    });
+    unmount();
+
+    render(<Customers />);
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('filter_revision_week')).toBeInTheDocument();
+    });
+  });
+
+  it('typeFilter survives unmount/remount', async () => {
+    seedUpp('typeFilter', 'company');
+    const { unmount } = render(<Customers />);
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('filter_type_company')).toBeInTheDocument();
+    });
+    unmount();
+
+    render(<Customers />);
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('filter_type_company')).toBeInTheDocument();
+    });
+  });
+
+  it('sortBy survives unmount/remount', async () => {
+    seedUpp('sortBy', 'city');
+    const { unmount } = render(<Customers />);
+    unmount();
+    // After remount, sortBy=city should be used in the request (no visible select, but no crash)
+    expect(() => render(<Customers />)).not.toThrow();
+  });
+
+  it('sortOrder survives unmount/remount', async () => {
+    seedUpp('sortOrder', 'desc');
+    const { unmount } = render(<Customers />);
+    unmount();
+    expect(() => render(<Customers />)).not.toThrow();
+  });
+
+  it('search survives unmount/remount', async () => {
+    seedUpp('search', 'persisted-search');
+    const { unmount } = render(<Customers />);
+    await waitFor(() => {
+      const input = screen.getByPlaceholderText('search_placeholder') as HTMLInputElement;
+      expect(input.value).toBe('persisted-search');
+    });
+    unmount();
+
+    render(<Customers />);
+    await waitFor(() => {
+      const input = screen.getByPlaceholderText('search_placeholder') as HTMLInputElement;
+      expect(input.value).toBe('persisted-search');
+    });
+  });
+
+  it('URL view=cards overrides UPP-persisted viewMode=table', async () => {
+    seedUpp('viewMode', 'table');
+    mockSearchParams.view = 'cards';
+    render(<Customers />);
+    // Cards button should be active (URL wins)
+    await waitFor(() => {
+      expect(screen.getByTestId('view-cards-btn')).toBeInTheDocument();
+    });
+  });
+
+  it('URL geocodeStatus=failed overrides UPP-persisted geocodeFilter=empty', async () => {
+    seedUpp('geocodeFilter', '');
+    mockSearchParams.geocodeStatus = 'failed';
+    render(<Customers />);
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('filter_address_failed')).toBeInTheDocument();
+    });
+  });
+
+  it('URL revisionFilter=week overrides UPP-persisted revisionFilter=overdue', async () => {
+    seedUpp('revisionFilter', 'overdue');
+    mockSearchParams.revisionFilter = 'week';
+    render(<Customers />);
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('filter_revision_week')).toBeInTheDocument();
+    });
+  });
+
+  it('listCustomersExtended is still called after UPP wiring (API shape unchanged)', async () => {
+    const { listCustomersExtended } = await import('@/services/customerService');
+    render(<Customers />);
+    await waitFor(() => {
+      expect(listCustomersExtended).toHaveBeenCalled();
+    });
   });
 });

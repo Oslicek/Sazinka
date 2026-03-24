@@ -27,9 +27,16 @@ import { CustomerEditDrawer } from '../components/customers/CustomerEditDrawer';
 import { SavedViewsSelector, type SavedView } from '../components/customers/SavedViewsSelector';
 import { SplitView } from '../components/common/SplitView';
 import { useNatsStore } from '../stores/natsStore';
+import { useAuthStore } from '../stores/authStore';
 import { updateCustomer } from '../services/customerService';
 import { AlertTriangle } from 'lucide-react';
 import styles from './Customers.module.css';
+import { PersistenceProvider } from '../persistence/react/PersistenceProvider';
+import { usePersistentProfile } from '../persistence/react/usePersistentProfile';
+import { usePersistentControl } from '../persistence/react/usePersistentControl';
+import { sessionAdapter } from '../persistence/adapters/singletons';
+import { customersProfile, CUSTOMERS_PROFILE_ID } from '../persistence/profiles/customersProfile';
+import { resolveValue } from '../persistence/react/resolveValue';
 
 /** Page size for infinite scroll */
 const PAGE_SIZE = 100;
@@ -45,10 +52,44 @@ interface SearchParams {
   view?: 'table' | 'cards';
 }
 
-export function Customers() {
+function CustomersInner() {
   const navigate = useNavigate();
   const searchParams = useSearch({ strict: false }) as SearchParams;
-  const [search, setSearch] = useState('');
+
+  // UPP profile for all 7 filter controls
+  const { commit: uppCommit } = usePersistentProfile(CUSTOMERS_PROFILE_ID);
+
+  // Debounced search via UPP — keep local optimistic state for responsive UI
+  const { value: uppSearch, setValue: setUppSearch } = usePersistentControl<string>(
+    CUSTOMERS_PROFILE_ID, 'search', 300,
+  );
+  const { value: uppViewMode } = usePersistentControl<'table' | 'cards'>(CUSTOMERS_PROFILE_ID, 'viewMode');
+  const { value: uppGeocodeFilter } = usePersistentControl<GeocodeStatus | ''>(CUSTOMERS_PROFILE_ID, 'geocodeFilter');
+  const { value: uppRevisionFilter } = usePersistentControl<string>(CUSTOMERS_PROFILE_ID, 'revisionFilter');
+  const { value: uppTypeFilter } = usePersistentControl<'company' | 'person' | ''>(CUSTOMERS_PROFILE_ID, 'typeFilter');
+  const { value: uppSortBy } = usePersistentControl<ListCustomersRequest['sortBy']>(CUSTOMERS_PROFILE_ID, 'sortBy');
+  const { value: uppSortOrder } = usePersistentControl<ListCustomersRequest['sortOrder']>(CUSTOMERS_PROFILE_ID, 'sortOrder');
+
+  // Resolve with URL precedence (nullish-safe)
+  const urlRevisionFilter = searchParams?.revisionFilter ?? (searchParams?.hasOverdue ? 'overdue' : undefined);
+  // Search: use local optimistic state for responsive UI; UPP is the persisted source
+  const [localSearch, setLocalSearch] = useState<string>(resolveValue<string>(undefined, uppSearch, '') ?? '');
+  const search = localSearch;
+  const viewMode = resolveValue<'table' | 'cards'>(searchParams?.view as 'table' | 'cards' | undefined, uppViewMode, 'table') ?? 'table';
+  const geocodeFilter = resolveValue<GeocodeStatus | ''>(searchParams?.geocodeStatus as GeocodeStatus | undefined, uppGeocodeFilter, '') ?? '';
+  const revisionFilter = resolveValue<string>(urlRevisionFilter as string | undefined, uppRevisionFilter, '') ?? '';
+  const typeFilter = resolveValue<'company' | 'person' | ''>(undefined, uppTypeFilter, '') ?? '';
+  const sortBy = resolveValue<ListCustomersRequest['sortBy']>(searchParams?.sortBy as ListCustomersRequest['sortBy'] | undefined, uppSortBy, 'name') ?? 'name';
+  const sortOrder = resolveValue<ListCustomersRequest['sortOrder']>(searchParams?.sortOrder as ListCustomersRequest['sortOrder'] | undefined, uppSortOrder, 'asc') ?? 'asc';
+
+  const setSearch = (v: string) => { setLocalSearch(v); setUppSearch(v); };
+  const setViewMode = (v: 'table' | 'cards') => uppCommit('viewMode', v);
+  const setGeocodeFilter = (v: GeocodeStatus | '') => uppCommit('geocodeFilter', v);
+  const setRevisionFilter = (v: string) => uppCommit('revisionFilter', v);
+  const setTypeFilter = (v: 'company' | 'person' | '') => uppCommit('typeFilter', v);
+  const setSortBy = (v: ListCustomersRequest['sortBy']) => uppCommit('sortBy', v);
+  const setSortOrder = (v: ListCustomersRequest['sortOrder']) => uppCommit('sortOrder', v);
+
   const [showForm, setShowForm] = useState(searchParams?.action === 'new');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [customers, setCustomers] = useState<CustomerListItem[]>([]);
@@ -70,20 +111,6 @@ export function Customers() {
   // Edit drawer state
   const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
-  
-  // View mode: table (desktop) or cards (mobile)
-  const [viewMode, setViewMode] = useState<'table' | 'cards'>(searchParams?.view || 'table');
-  
-  // Filters
-  const [geocodeFilter, setGeocodeFilter] = useState<GeocodeStatus | ''>(searchParams?.geocodeStatus || '');
-  const [revisionFilter, setRevisionFilter] = useState<string>(() => {
-    if (searchParams?.revisionFilter) return searchParams.revisionFilter as string;
-    if (searchParams?.hasOverdue) return 'overdue';
-    return '';
-  });
-  const [typeFilter, setTypeFilter] = useState<'company' | 'person' | ''>('');
-  const [sortBy, setSortBy] = useState<ListCustomersRequest['sortBy']>(searchParams?.sortBy || 'name');
-  const [sortOrder, setSortOrder] = useState<ListCustomersRequest['sortOrder']>(searchParams?.sortOrder || 'asc');
   
   const isConnected = useNatsStore((s) => s.isConnected);
   const { t } = useTranslation('customers');
@@ -349,10 +376,10 @@ export function Customers() {
 
   // Handle saved view selection
   const handleSelectView = useCallback((view: SavedView) => {
-    setGeocodeFilter(view.filters.geocodeStatus || '');
+    setGeocodeFilter((view.filters.geocodeStatus || '') as GeocodeStatus | '');
     setRevisionFilter(view.filters.revisionFilter || '');
-    setTypeFilter(view.filters.type || '');
-  }, []);
+    setTypeFilter((view.filters.type || '') as 'company' | 'person' | '');
+  }, [setGeocodeFilter, setRevisionFilter, setTypeFilter]);
 
   // Stats: use server summary when available, fall back to loaded data
   const stats = useMemo(() => {
@@ -751,5 +778,18 @@ export function Customers() {
         />
       </div>
     </div>
+  );
+}
+
+export function Customers() {
+  const userId = useAuthStore((s) => s.user?.id ?? null);
+  return (
+    <PersistenceProvider
+      userId={userId}
+      profiles={[customersProfile]}
+      adapters={{ session: sessionAdapter }}
+    >
+      <CustomersInner />
+    </PersistenceProvider>
   );
 }
