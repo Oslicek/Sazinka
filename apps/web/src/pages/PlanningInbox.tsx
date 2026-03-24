@@ -90,6 +90,13 @@ import { useDetachState } from '../hooks/useDetachState';
 import { InboxListPanel } from '../panels/InboxListPanel';
 import { RouteMapPanel as RouteMapPanelSelfSufficient } from '../panels/RouteMapPanel';
 import styles from './PlanningInbox.module.css';
+import { useAuthStore } from '../stores/authStore';
+import { PersistenceProvider } from '../persistence/react/PersistenceProvider';
+import { usePersistentControl } from '../persistence/react/usePersistentControl';
+import { sessionAdapter, localAdapter } from '../persistence/adapters/singletons';
+import { inboxFiltersProfile, INBOX_FILTERS_PROFILE_ID } from '../persistence/profiles/inboxFiltersProfile';
+import { inboxBreakRuleProfile, INBOX_BREAK_RULE_PROFILE_ID } from '../persistence/profiles/inboxBreakRuleProfile';
+import { readLegacyKey } from '../persistence/migration/legacySeed';
 import {
   buildGeometryKey,
   buildInRouteIds,
@@ -189,10 +196,27 @@ function PlanningInboxInner() {
   const [defaultWorkingHoursStart, setDefaultWorkingHoursStart] = useState<string | null>(null);
   const [defaultWorkingHoursEnd, setDefaultWorkingHoursEnd] = useState<string | null>(null);
   const [breakSettings, setBreakSettings] = useState<BreakSettings | null>(null);
-  const [enforceDrivingBreakRule, setEnforceDrivingBreakRule] = useState<boolean>(() => {
-    const raw = localStorage.getItem('planningInbox.enforceDrivingBreakRule');
-    return raw === null ? true : raw === 'true';
-  });
+  // UPP: enforceDrivingBreakRule — localStorage channel via inboxBreakRuleProfile
+  const { value: uppBreakRule, setValue: setUppBreakRule } = usePersistentControl<boolean>(
+    INBOX_BREAK_RULE_PROFILE_ID, 'enforceDrivingBreakRule',
+  );
+  // Legacy seeding: one-time migration from direct localStorage to UPP
+  const didSeedBreakRuleRef = useRef(false);
+  useEffect(() => {
+    if (didSeedBreakRuleRef.current) return;
+    didSeedBreakRuleRef.current = true;
+    // If UPP has no stored value (still at default=true), check legacy key
+    const legacyRaw = localStorage.getItem('planningInbox.enforceDrivingBreakRule');
+    if (legacyRaw !== null) {
+      const legacyValue = readLegacyKey('local', 'planningInbox.enforceDrivingBreakRule');
+      if (typeof legacyValue === 'boolean') {
+        setUppBreakRule(legacyValue);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const enforceDrivingBreakRule = uppBreakRule ?? true;
+  const setEnforceDrivingBreakRule = (v: boolean) => setUppBreakRule(v);
   
   // Timeline view toggle (planning = proportional, compact = classic)
   const [timelineView, setTimelineView] = useState<TimelineView>('planning');
@@ -218,17 +242,32 @@ function PlanningInboxInner() {
   /** Stops waiting for recalculation after route load. */
   const pendingRecalcStopsRef = useRef<SavedRouteStop[] | null>(null);
   
-  // Inbox state - restore from sessionStorage
-  const [filters, setFilters] = useState<InboxFilterExpression>(() => {
-    const raw = sessionStorage.getItem('planningInbox.filters');
-    if (!raw) return DEFAULT_FILTER_EXPRESSION;
-
-    try {
-      return normalizeExpression(JSON.parse(raw));
-    } catch {
-      return DEFAULT_FILTER_EXPRESSION;
+  // UPP: filters — sessionStorage channel via inboxFiltersProfile
+  const { value: uppFilters, setValue: setUppFilters } = usePersistentControl<InboxFilterExpression | null>(
+    INBOX_FILTERS_PROFILE_ID, 'filters',
+  );
+  // Legacy seeding: one-time migration from direct sessionStorage to UPP
+  const didSeedFiltersRef = useRef(false);
+  useEffect(() => {
+    if (didSeedFiltersRef.current) return;
+    didSeedFiltersRef.current = true;
+    if (uppFilters === null || uppFilters === undefined) {
+      const legacyValue = readLegacyKey('session', 'planningInbox.filters');
+      if (legacyValue !== undefined && legacyValue !== null) {
+        try {
+          const normalized = normalizeExpression(legacyValue as InboxFilterExpression);
+          setUppFilters(normalized);
+        } catch {
+          // Corrupt legacy data — keep default
+        }
+      }
     }
-  });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const filters: InboxFilterExpression = uppFilters != null
+    ? (() => { try { return normalizeExpression(uppFilters); } catch { return DEFAULT_FILTER_EXPRESSION; } })()
+    : DEFAULT_FILTER_EXPRESSION;
+  const setFilters = (v: InboxFilterExpression) => setUppFilters(v);
   const [candidates, setCandidates] = useState<InboxCandidate[]>([]);
   const candidatesRef = useRef<InboxCandidate[]>([]);
   candidatesRef.current = candidates;
@@ -314,6 +353,8 @@ function PlanningInboxInner() {
     document.body.style.userSelect = 'none';
   }, [mapHeight]);
 
+  // enforceDrivingBreakRule is now persisted via UPP (inboxBreakRuleProfile → localStorage)
+  // Legacy dual-write: also keep the direct key for Settings page compatibility
   useEffect(() => {
     localStorage.setItem('planningInbox.enforceDrivingBreakRule', String(enforceDrivingBreakRule));
   }, [enforceDrivingBreakRule]);
@@ -2533,6 +2574,8 @@ function PlanningInboxInner() {
     }
   }, [isMobileUi, candidateRowData]);
 
+  // filters is now persisted via UPP (inboxFiltersProfile → sessionStorage)
+  // Legacy dual-write: also keep the direct key for backward compatibility
   useEffect(() => {
     sessionStorage.setItem('planningInbox.filters', JSON.stringify(filters));
   }, [filters]);
@@ -3407,9 +3450,16 @@ function PlanningInboxInner() {
  * All state and handlers live in PlanningInboxInner.
  */
 export function PlanningInbox() {
+  const userId = useAuthStore((s) => s.user?.id ?? null);
   return (
-    <PanelStateProvider activePageContext="inbox" enableChannel isSourceOfTruth={true}>
-      <PlanningInboxInner />
-    </PanelStateProvider>
+    <PersistenceProvider
+      userId={userId}
+      profiles={[inboxFiltersProfile, inboxBreakRuleProfile]}
+      adapters={{ session: sessionAdapter, local: localAdapter }}
+    >
+      <PanelStateProvider activePageContext="inbox" enableChannel isSourceOfTruth={true}>
+        <PlanningInboxInner />
+      </PanelStateProvider>
+    </PersistenceProvider>
   );
 }

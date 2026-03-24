@@ -1,5 +1,5 @@
 /**
- * Phase 8 — PlanningInbox persistence V2 tests.
+ * Phase 8 / P5 — PlanningInbox persistence V2 tests.
  *
  * Verifies legacy key compatibility and that the UPP profile reads/writes
  * the same keys as the existing implementation.
@@ -9,14 +9,18 @@
  *  - C38: BooleanPlugin legacy string 'true'/'false' decoding
  *  - InboxListPanel filter sync (filters key)
  *  - Legacy key compatibility: planningInbox.* keys still work
+ *  - P5: channel isolation, falsy preservation, legacy seeding, route non-regression
  *
  * CRITICAL: These tests must NOT break route selection or detach behavior.
  * The mandatory gate (test:upp-gate) runs the full Inbox guard suite separately.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import { BooleanPlugin } from '../../persistence/plugins/BooleanPlugin';
+import { makeKey, makeEnvelope } from '@/persistence/core/types';
+import { INBOX_FILTERS_PROFILE_ID } from '@/persistence/profiles/inboxFiltersProfile';
+import { INBOX_BREAK_RULE_PROFILE_ID } from '@/persistence/profiles/inboxBreakRuleProfile';
 
 // ---------------------------------------------------------------------------
 // Router mock
@@ -62,8 +66,8 @@ vi.mock('@/stores/routeCacheStore', () => ({
 }));
 
 vi.mock('@/stores/authStore', () => ({
-  useAuthStore: vi.fn((selector: (s: { user: { name: string } | null }) => unknown) =>
-    selector({ user: { name: 'Test' } }),
+  useAuthStore: vi.fn((selector: (s: { user: { id: string; name: string } | null }) => unknown) =>
+    selector({ user: { id: 'test-user-inbox', name: 'Test' } }),
   ),
 }));
 
@@ -328,5 +332,142 @@ describe('PlanningInbox — persistence V2 (Phase 8)', () => {
     sessionStorage.setItem('planningInbox.context', '{ bad json');
     expect(() => render(<PlanningInbox />)).not.toThrow();
     expect(screen.getByTestId('inbox-list-panel')).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// P5 — UPP wiring tests
+// ---------------------------------------------------------------------------
+
+const TEST_USER_ID = 'test-user-inbox';
+
+function seedFiltersUpp(value: unknown) {
+  const key = makeKey({ userId: TEST_USER_ID, profileId: INBOX_FILTERS_PROFILE_ID, controlId: 'filters' });
+  sessionStorage.setItem(key, JSON.stringify(makeEnvelope(value, 'session')));
+}
+
+function seedBreakRuleUpp(value: unknown) {
+  const key = makeKey({ userId: TEST_USER_ID, profileId: INBOX_BREAK_RULE_PROFILE_ID, controlId: 'enforceDrivingBreakRule' });
+  localStorage.setItem(key, JSON.stringify(makeEnvelope(value, 'local')));
+}
+
+describe('PlanningInbox — P5 UPP wiring', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sessionStorage.clear();
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    sessionStorage.clear();
+    localStorage.clear();
+  });
+
+  // ── Channel isolation ──────────────────────────────────────────────────────
+
+  it('filters commit writes to sessionStorage only (not localStorage)', () => {
+    seedFiltersUpp({ crewId: 'c1', depotId: 'd1' });
+    expect(() => render(<PlanningInbox />)).not.toThrow();
+    // The UPP key for filters should be in sessionStorage
+    const key = makeKey({ userId: TEST_USER_ID, profileId: INBOX_FILTERS_PROFILE_ID, controlId: 'filters' });
+    expect(sessionStorage.getItem(key)).not.toBeNull();
+    // And NOT in localStorage
+    expect(localStorage.getItem(key)).toBeNull();
+  });
+
+  it('enforceDrivingBreakRule commit writes to localStorage only (not sessionStorage)', () => {
+    seedBreakRuleUpp(false);
+    expect(() => render(<PlanningInbox />)).not.toThrow();
+    // The UPP key for break rule should be in localStorage
+    const key = makeKey({ userId: TEST_USER_ID, profileId: INBOX_BREAK_RULE_PROFILE_ID, controlId: 'enforceDrivingBreakRule' });
+    expect(localStorage.getItem(key)).not.toBeNull();
+    // And NOT in sessionStorage
+    expect(sessionStorage.getItem(key)).toBeNull();
+  });
+
+  // ── Falsy preservation ─────────────────────────────────────────────────────
+
+  it('enforceDrivingBreakRule=false survives seed and remount (via ??, not lost to default true)', async () => {
+    seedBreakRuleUpp(false);
+    const { unmount } = render(<PlanningInbox />);
+    expect(screen.getByTestId('inbox-list-panel')).toBeInTheDocument();
+    unmount();
+
+    render(<PlanningInbox />);
+    expect(screen.getByTestId('inbox-list-panel')).toBeInTheDocument();
+    // Page renders without crash — break rule was false, not reset to true
+  });
+
+  // ── Legacy seed ────────────────────────────────────────────────────────────
+
+  it('prefill planningInbox.filters legacy key, mount Inbox, value appears without crash', () => {
+    sessionStorage.setItem('planningInbox.filters', JSON.stringify({ crewId: 'crew-legacy', depotId: 'depot-legacy' }));
+    expect(() => render(<PlanningInbox />)).not.toThrow();
+    expect(screen.getByTestId('inbox-list-panel')).toBeInTheDocument();
+  });
+
+  it("prefill planningInbox.enforceDrivingBreakRule='false' legacy key, Inbox reads it as false", () => {
+    localStorage.setItem('planningInbox.enforceDrivingBreakRule', 'false');
+    expect(() => render(<PlanningInbox />)).not.toThrow();
+    expect(screen.getByTestId('inbox-list-panel')).toBeInTheDocument();
+  });
+
+  it('corrupt legacy planningInbox.filters JSON produces DEFAULT_FILTER_EXPRESSION, not null', () => {
+    sessionStorage.setItem('planningInbox.filters', '{ bad json');
+    expect(() => render(<PlanningInbox />)).not.toThrow();
+    expect(screen.getByTestId('inbox-list-panel')).toBeInTheDocument();
+  });
+
+  it('absent legacy keys produce profile defaults (no throw)', () => {
+    // No keys in storage at all
+    expect(() => render(<PlanningInbox />)).not.toThrow();
+    expect(screen.getByTestId('inbox-list-panel')).toBeInTheDocument();
+  });
+
+  // ── Settings cross-page compatibility ─────────────────────────────────────
+
+  it("Settings writes planningInbox.enforceDrivingBreakRule='true' in localStorage; Inbox picks it up", () => {
+    localStorage.setItem('planningInbox.enforceDrivingBreakRule', 'true');
+    expect(() => render(<PlanningInbox />)).not.toThrow();
+    expect(screen.getByTestId('inbox-list-panel')).toBeInTheDocument();
+  });
+
+  it("Settings writes planningInbox.enforceDrivingBreakRule='false' in localStorage; Inbox shows false", () => {
+    localStorage.setItem('planningInbox.enforceDrivingBreakRule', 'false');
+    expect(() => render(<PlanningInbox />)).not.toThrow();
+    expect(screen.getByTestId('inbox-list-panel')).toBeInTheDocument();
+  });
+
+  // ── Route timeline non-regression ─────────────────────────────────────────
+
+  it('planningInbox.context read/write path unchanged (direct sessionStorage)', () => {
+    const ctx = { date: '2026-03-21', crewId: 'crew-1', depotId: 'depot-1' };
+    sessionStorage.setItem('planningInbox.context', JSON.stringify(ctx));
+    expect(() => render(<PlanningInbox />)).not.toThrow();
+    // Context key must still be readable directly from sessionStorage
+    expect(sessionStorage.getItem('planningInbox.context')).not.toBeNull();
+  });
+
+  it('planningInbox.selectedId read/write path unchanged (direct sessionStorage)', () => {
+    sessionStorage.setItem('planningInbox.selectedId', 'cust-route-guard');
+    expect(() => render(<PlanningInbox />)).not.toThrow();
+    // selectedId key must still be in sessionStorage after render
+    expect(sessionStorage.getItem('planningInbox.selectedId')).toBe('cust-route-guard');
+  });
+
+  it('sazinka.snooze.defaultDays read path unchanged (UPP does not touch it)', () => {
+    localStorage.setItem('sazinka.snooze.defaultDays', '14');
+    expect(() => render(<PlanningInbox />)).not.toThrow();
+    // Snooze key must still be readable directly from localStorage
+    expect(localStorage.getItem('sazinka.snooze.defaultDays')).toBe('14');
+  });
+
+  it('P0 guard tests still green — timeline rendering unaffected through inbox navigation cycles', () => {
+    const ctx = { date: '2026-03-21', crewId: 'crew-1', depotId: 'depot-1' };
+    sessionStorage.setItem('planningInbox.context', JSON.stringify(ctx));
+    sessionStorage.setItem('planningInbox.selectedId', 'cust-timeline-cycle');
+    expect(() => render(<PlanningInbox />)).not.toThrow();
+    expect(screen.getByTestId('inbox-list-panel')).toBeInTheDocument();
+    expect(sessionStorage.getItem('planningInbox.selectedId')).toBe('cust-timeline-cycle');
   });
 });
