@@ -173,4 +173,68 @@ describe('Plan page — persistence V2 (Phase 7)', () => {
     // Plan uses single-date mode by default
     expect(capturedFilterProps.isDateRange).toBe(false);
   });
+
+  // ── BUG: date resets to today on nav away/back ───────────────────────────
+
+  it('BUG-FIX: dateFrom survives unmount and re-mount (nav away and back)', () => {
+    // Step 1: User opens Plan with date=2026-03-21 (via URL)
+    mockSearchParams.date = '2026-03-21';
+    const { unmount } = render(<Plan />);
+    expect(screen.getByTestId('pf-dateFrom').textContent).toBe('2026-03-21');
+
+    // Step 2: User navigates away (unmount simulates leaving Plan)
+    unmount();
+
+    // Step 3: User returns to Plan — URL no longer has ?date= param
+    Object.keys(mockSearchParams).forEach((k) => delete mockSearchParams[k]);
+    Object.keys(capturedFilterProps).forEach((k) => delete capturedFilterProps[k]);
+
+    render(<Plan />);
+
+    // Expected: dateFrom should be restored from sessionStorage, NOT reset to today
+    expect(screen.getByTestId('pf-dateFrom').textContent).toBe('2026-03-21');
+  });
+
+  it('BUG-FIX: crew filter survives unmount and re-mount', () => {
+    mockSearchParams.date = '2026-03-21';
+    mockSearchParams.crew = 'crew-42';
+    const { unmount } = render(<Plan />);
+    expect(screen.getByTestId('pf-crewId').textContent).toBe('crew-42');
+
+    unmount();
+    Object.keys(mockSearchParams).forEach((k) => delete mockSearchParams[k]);
+    Object.keys(capturedFilterProps).forEach((k) => delete capturedFilterProps[k]);
+
+    render(<Plan />);
+    expect(screen.getByTestId('pf-crewId').textContent).toBe('crew-42');
+  });
+
+  it('BUG-FIX: depot filter survives unmount and re-mount', () => {
+    mockSearchParams.date = '2026-03-21';
+    mockSearchParams.depot = 'depot-1';
+    const { unmount } = render(<Plan />);
+    expect(screen.getByTestId('pf-depotId').textContent).toBe('depot-1');
+
+    unmount();
+    Object.keys(mockSearchParams).forEach((k) => delete mockSearchParams[k]);
+    Object.keys(capturedFilterProps).forEach((k) => delete capturedFilterProps[k]);
+
+    render(<Plan />);
+    expect(screen.getByTestId('pf-depotId').textContent).toBe('depot-1');
+  });
+
+  it('BUG-FIX: URL param takes precedence over sessionStorage on return', () => {
+    // First visit: date=2026-03-21
+    mockSearchParams.date = '2026-03-21';
+    const { unmount } = render(<Plan />);
+    unmount();
+
+    // Return with a different URL param — URL should win
+    Object.keys(mockSearchParams).forEach((k) => delete mockSearchParams[k]);
+    Object.keys(capturedFilterProps).forEach((k) => delete capturedFilterProps[k]);
+    mockSearchParams.date = '2026-04-01';
+
+    render(<Plan />);
+    expect(screen.getByTestId('pf-dateFrom').textContent).toBe('2026-04-01');
+  });
 });

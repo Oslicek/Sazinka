@@ -119,3 +119,29 @@
 - `Plan.metrics.test.ts` — "works without return-to-depot (undefined / not passed)"
 - `Plan.metrics.test.ts` — "handles return leg with null distance/duration"
 - `Plan.metrics.test.ts` — "return leg affects loadPercent (9h working day baseline)"
+
+---
+
+## BUG-6: Plan page — date filter resets to today on navigation away and back
+
+**Reported:** 2026-03-11
+**Status:** FIXED (2026-03-11)
+**Page:** Plan (`/plan`)
+
+**Steps to reproduce:**
+1. Open the Plan page and select date 2026-03-21. A planned route appears in the list.
+2. Navigate to the Inbox page (or any other page).
+3. Return to the Plan page.
+
+**Expected:** The date filter shows 2026-03-21 (the last selected date). The route is visible.
+**Actual:** The date filter resets to today (2026-03-24). The route for 2026-03-21 is not visible.
+
+**Root cause:** `Plan.tsx` initializes `dateFrom` from `searchParams?.date || today`. When the user selects a date, `handleDateFromChange` writes it to the URL (`?date=2026-03-21`). But when navigating to another page, the URL changes to that page's path. On return, the Plan component re-mounts and `searchParams?.date` is `undefined` (no URL param), so it falls back to `today`. The crew and depot filters had the same issue.
+
+**Fix:** Added `sessionStorage` persistence for Plan filter state (`plan.filters` key). On mount, the initialization chain is `URL param > sessionStorage > today`. A `useEffect` writes `{dateFrom, crewId, depotId}` to `sessionStorage` whenever any filter changes, so the state survives navigation.
+
+**Regression tests:**
+- `Plan.persistenceV2.test.tsx` — "BUG-FIX: dateFrom survives unmount and re-mount (nav away and back)"
+- `Plan.persistenceV2.test.tsx` — "BUG-FIX: crew filter survives unmount and re-mount"
+- `Plan.persistenceV2.test.tsx` — "BUG-FIX: depot filter survives unmount and re-mount"
+- `Plan.persistenceV2.test.tsx` — "BUG-FIX: URL param takes precedence over sessionStorage on return"

@@ -36,6 +36,32 @@ import { MapPanelShell } from '../components/layout';
 // Default depot location (Prague center) - fallback
 const DEFAULT_DEPOT = { lat: 50.0755, lng: 14.4378 };
 
+const PLAN_FILTERS_KEY = 'plan.filters';
+
+interface PlanFiltersState {
+  dateFrom: string;
+  crewId: string;
+  depotId: string;
+}
+
+function readSavedFilters(): PlanFiltersState | null {
+  try {
+    const raw = sessionStorage.getItem(PLAN_FILTERS_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as PlanFiltersState;
+  } catch {
+    return null;
+  }
+}
+
+function writeSavedFilters(state: PlanFiltersState): void {
+  try {
+    sessionStorage.setItem(PLAN_FILTERS_KEY, JSON.stringify(state));
+  } catch {
+    // Quota exceeded — silently ignore
+  }
+}
+
 interface PlannerSearchParams {
   date?: string;
   crew?: string;
@@ -59,13 +85,14 @@ function PlanInner() {
   const { isConnected } = useNatsStore();
   const { isDetached, detach, canDetach } = useDetachState();
 
-  // --- Filters ---
+  // --- Filters (URL > sessionStorage > today) ---
   const today = new Date().toISOString().split('T')[0];
-  const [dateFrom, setDateFrom] = useState(searchParams?.date || today);
-  const [dateTo, setDateTo] = useState(searchParams?.date || today);
+  const savedFilters = useMemo(() => readSavedFilters(), []);
+  const [dateFrom, setDateFrom] = useState(searchParams?.date || savedFilters?.dateFrom || today);
+  const [dateTo, setDateTo] = useState(searchParams?.date || savedFilters?.dateFrom || today);
   const [isDateRange, setIsDateRange] = useState(false);
-  const [filterCrewId, setFilterCrewId] = useState<string>(searchParams?.crew || '');
-  const [filterDepotId, setFilterDepotId] = useState<string>(searchParams?.depot || '');
+  const [filterCrewId, setFilterCrewId] = useState<string>(searchParams?.crew || savedFilters?.crewId || '');
+  const [filterDepotId, setFilterDepotId] = useState<string>(searchParams?.depot || savedFilters?.depotId || '');
 
   // --- Data ---
   const [crews, setCrews] = useState<Crew[]>([]);
@@ -439,6 +466,11 @@ function PlanInner() {
   // Keep `loadStops` local to this effect to avoid dependency churn from route-derived callbacks.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRouteId, isConnected, depots]);
+
+  // ─── Persist filters to sessionStorage ──────────────────────────
+  useEffect(() => {
+    writeSavedFilters({ dateFrom, crewId: filterCrewId, depotId: filterDepotId });
+  }, [dateFrom, filterCrewId, filterDepotId]);
 
   // ─── URL sync ────────────────────────────────────────────────────
 
