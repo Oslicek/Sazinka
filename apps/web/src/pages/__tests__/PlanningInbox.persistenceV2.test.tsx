@@ -19,7 +19,6 @@ import { render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import { BooleanPlugin } from '../../persistence/plugins/BooleanPlugin';
 import { makeKey, makeEnvelope } from '@/persistence/core/types';
-import { INBOX_FILTERS_PROFILE_ID } from '@/persistence/profiles/inboxFiltersProfile';
 import { INBOX_BREAK_RULE_PROFILE_ID } from '@/persistence/profiles/inboxBreakRuleProfile';
 
 // ---------------------------------------------------------------------------
@@ -341,11 +340,6 @@ describe('PlanningInbox — persistence V2 (Phase 8)', () => {
 
 const TEST_USER_ID = 'test-user-inbox';
 
-function seedFiltersUpp(value: unknown) {
-  const key = makeKey({ userId: TEST_USER_ID, profileId: INBOX_FILTERS_PROFILE_ID, controlId: 'filters' });
-  sessionStorage.setItem(key, JSON.stringify(makeEnvelope(value, 'session')));
-}
-
 function seedBreakRuleUpp(value: unknown) {
   const key = makeKey({ userId: TEST_USER_ID, profileId: INBOX_BREAK_RULE_PROFILE_ID, controlId: 'enforceDrivingBreakRule' });
   localStorage.setItem(key, JSON.stringify(makeEnvelope(value, 'local')));
@@ -364,16 +358,6 @@ describe('PlanningInbox — P5 UPP wiring', () => {
   });
 
   // ── Channel isolation ──────────────────────────────────────────────────────
-
-  it('filters commit writes to sessionStorage only (not localStorage)', () => {
-    seedFiltersUpp({ crewId: 'c1', depotId: 'd1' });
-    expect(() => render(<PlanningInbox />)).not.toThrow();
-    // The UPP key for filters should be in sessionStorage
-    const key = makeKey({ userId: TEST_USER_ID, profileId: INBOX_FILTERS_PROFILE_ID, controlId: 'filters' });
-    expect(sessionStorage.getItem(key)).not.toBeNull();
-    // And NOT in localStorage
-    expect(localStorage.getItem(key)).toBeNull();
-  });
 
   it('enforceDrivingBreakRule commit writes to localStorage only (not sessionStorage)', () => {
     seedBreakRuleUpp(false);

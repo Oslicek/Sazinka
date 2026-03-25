@@ -16,7 +16,6 @@ import {
   CandidateDetail,
   type CandidateDetailData,
   VirtualizedInboxList,
-  type VirtualizedInboxListRef,
   type CandidateRowData,
   MultiCrewTip,
   type CrewComparison,
@@ -62,23 +61,10 @@ import { usePlannerShortcuts } from '../hooks/useKeyboardShortcuts';
 import type { RouteWarning } from '@shared/route';
 import {
   DEFAULT_FILTER_EXPRESSION,
-  FILTER_PRESETS,
-  applyFilterPreset,
   applyInboxFilters,
-  buildFilterSummary,
-  getActiveFilterCount,
   hasPhone,
-  hasAdvancedCriteria,
   hasValidAddress,
   isScheduledCandidate,
-  normalizeExpression,
-  toggleToken,
-  type FilterPresetId,
-  type GroupOperator,
-  type InboxFilterExpression,
-  type ProblemToken,
-  type TimeToken,
-  type TriState,
 } from './planningInboxFilters';
 import { getMonthNames, getWeekdayNames } from '@/i18n/formatters';
 import { updateCustomer } from '../services/customerService';
@@ -94,7 +80,6 @@ import { useAuthStore } from '../stores/authStore';
 import { PersistenceProvider } from '../persistence/react/PersistenceProvider';
 import { usePersistentControl } from '../persistence/react/usePersistentControl';
 import { sessionAdapter, localAdapter } from '../persistence/adapters/singletons';
-import { inboxFiltersProfile, INBOX_FILTERS_PROFILE_ID } from '../persistence/profiles/inboxFiltersProfile';
 import { inboxBreakRuleProfile, INBOX_BREAK_RULE_PROFILE_ID } from '../persistence/profiles/inboxBreakRuleProfile';
 import { readLegacyKey } from '../persistence/migration/legacySeed';
 import {
@@ -169,7 +154,6 @@ function PlanningInboxInner() {
   const { isConnected } = useNatsStore();
   const navigate = useNavigate();
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const listRef = useRef<VirtualizedInboxListRef>(null);
   const sortedCandidatesRef = useRef<InboxCandidate[]>([]);
 
   // ── Layout / responsive state ───────────────────────────────────────────
@@ -239,38 +223,10 @@ function PlanningInboxInner() {
   /** Stops waiting for recalculation after route load. */
   const pendingRecalcStopsRef = useRef<SavedRouteStop[] | null>(null);
   
-  // UPP: filters — sessionStorage channel via inboxFiltersProfile
-  const { value: uppFilters, setValue: setUppFilters } = usePersistentControl<InboxFilterExpression | null>(
-    INBOX_FILTERS_PROFILE_ID, 'filters',
-  );
-  // Legacy seeding: one-time migration from direct sessionStorage to UPP
-  const didSeedFiltersRef = useRef(false);
-  useEffect(() => {
-    if (didSeedFiltersRef.current) return;
-    didSeedFiltersRef.current = true;
-    if (uppFilters === null || uppFilters === undefined) {
-      const legacyValue = readLegacyKey('session', 'planningInbox.filters');
-      if (legacyValue !== undefined && legacyValue !== null) {
-        try {
-          const normalized = normalizeExpression(legacyValue as InboxFilterExpression);
-          setUppFilters(normalized);
-        } catch {
-          // Corrupt legacy data — keep default
-        }
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  const filters: InboxFilterExpression = useMemo(() => {
-    if (uppFilters == null) return DEFAULT_FILTER_EXPRESSION;
-    try { return normalizeExpression(uppFilters); } catch { return DEFAULT_FILTER_EXPRESSION; }
-  }, [uppFilters]);
-  const setFilters = setUppFilters;
   const [candidates, setCandidates] = useState<InboxCandidate[]>([]);
   const candidatesRef = useRef<InboxCandidate[]>([]);
   candidatesRef.current = candidates;
   const [inboxItemMap, setInboxItemMap] = useState<Map<string, InboxItem>>(new Map());
-  const [isLoadingCandidates, setIsLoadingCandidates] = useState(false);
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(() => {
     return sessionStorage.getItem('planningInbox.selectedId');
   });
@@ -319,8 +275,6 @@ function PlanningInboxInner() {
   // Map sub-selection state (Story 2: select candidates directly on the map)
   const mapSelectionTool = state.mapSelectionTool ?? null;
   const mapSelectedIds = state.mapSelectedIds ?? [];
-  const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState(false);
-  const [activePresetId, setActivePresetId] = useState<FilterPresetId | null>(null);
 
   // Scoring state
   const [ruleSets, setRuleSets] = useState<ScoringRuleSet[]>([]);
@@ -848,7 +802,6 @@ function PlanningInboxInner() {
   const loadCandidates = useCallback(async () => {
     if (!isConnected) return;
     
-    setIsLoadingCandidates(true);
     try {
       const inboxResponse = await getInbox({
         limit: 100,
@@ -874,8 +827,6 @@ function PlanningInboxInner() {
     } catch (err) {
       logger.error('Failed to load candidates:', err);
       setCandidates([]);
-    } finally {
-      setIsLoadingCandidates(false);
     }
   }, [isConnected, selectedRuleSetId]);
 
@@ -1221,7 +1172,7 @@ function PlanningInboxInner() {
   // no longer matches the active filters — it will be removed once the user
   // clicks on a different candidate.
   const sortedCandidates = useMemo(() => {
-    const filtered = applyInboxFilters(candidates, filters, inRouteIds) as InboxCandidate[];
+    const filtered = applyInboxFilters(candidates, DEFAULT_FILTER_EXPRESSION, inRouteIds) as InboxCandidate[];
     
     // Ensure the currently selected candidate stays in the list even if filtered out
     if (selectedCandidateId && !filtered.some((c) => c.customerId === selectedCandidateId)) {
@@ -1255,7 +1206,7 @@ function PlanningInboxInner() {
       if (aOverdue !== bOverdue) return bOverdue - aOverdue;
       return a.daysUntilDue - b.daysUntilDue;
     });
-  }, [candidates, filters, inRouteIds]);
+  }, [candidates, inRouteIds]);
 
   // Keep ref in sync for use in callbacks
   sortedCandidatesRef.current = sortedCandidates;
@@ -2489,7 +2440,6 @@ function PlanningInboxInner() {
     const newIndex = currentIndex <= 0 ? candidateRowData.length - 1 : currentIndex - 1;
     const newId = candidateRowData[newIndex].id;
     setSelectedCandidateId(newId);
-    listRef.current?.scrollToIndex(newIndex);
   }, [candidateRowData, selectedCandidateId]);
 
   const handleMoveDown = useCallback(() => {
@@ -2502,7 +2452,6 @@ function PlanningInboxInner() {
     const newIndex = currentIndex >= candidateRowData.length - 1 ? 0 : currentIndex + 1;
     const newId = candidateRowData[newIndex].id;
     setSelectedCandidateId(newId);
-    listRef.current?.scrollToIndex(newIndex);
   }, [candidateRowData, selectedCandidateId]);
 
   const handleSelectSlot = useCallback((index: number) => {
@@ -2559,108 +2508,13 @@ function PlanningInboxInner() {
   const handleCandidateSelect = useCallback((id: string) => {
     setSelectedCandidateId(id);
     sessionStorage.setItem('planningInbox.selectedId', id);
-    if (isMobileUi) {
-      const idx = candidateRowData.findIndex((c) => c.id === id);
-      if (idx >= 0) listRef.current?.scrollToIndex(idx);
-    }
-  }, [isMobileUi, candidateRowData]);
+  }, []);
 
   useEffect(() => {
     if (context) {
       sessionStorage.setItem('planningInbox.context', JSON.stringify(context));
     }
   }, [context]);
-
-  const setRootOperator = useCallback((value: 'AND' | 'OR') => {
-    setActivePresetId(null);
-    setFilters((prev) => ({ ...prev, rootOperator: value }));
-  }, []);
-
-  const setGroupOperator = useCallback((group: 'time' | 'problems', value: GroupOperator) => {
-    setActivePresetId(null);
-    setFilters((prev) => ({
-      ...prev,
-      groups: {
-        ...prev.groups,
-        [group]: {
-          ...prev.groups[group],
-          operator: value,
-        },
-      },
-    }));
-  }, []);
-
-  const toggleTimeFilter = useCallback((value: TimeToken) => {
-    setActivePresetId(null);
-    setFilters((prev) => ({
-      ...prev,
-      groups: {
-        ...prev.groups,
-        time: (() => {
-          const selected = toggleToken(prev.groups.time.selected, value);
-          return {
-            ...prev.groups.time,
-            selected,
-            enabled: selected.length > 0,
-          };
-        })(),
-      },
-    }));
-  }, []);
-
-  const clearTimeFilters = useCallback(() => {
-    setActivePresetId(null);
-    setFilters((prev) => ({
-      ...prev,
-      groups: {
-        ...prev.groups,
-        time: { ...prev.groups.time, selected: [], enabled: false },
-      },
-    }));
-  }, []);
-
-  const toggleProblemFilter = useCallback((value: ProblemToken) => {
-    setActivePresetId(null);
-    setFilters((prev) => ({
-      ...prev,
-      groups: {
-        ...prev.groups,
-        problems: (() => {
-          const selected = toggleToken(prev.groups.problems.selected, value);
-          return {
-            ...prev.groups.problems,
-            selected,
-            enabled: selected.length > 0,
-          };
-        })(),
-      },
-    }));
-  }, []);
-
-  const setTriState = useCallback((field: 'hasTerm' | 'inRoute', value: TriState) => {
-    setActivePresetId(null);
-    setFilters((prev) => ({
-      ...prev,
-      groups: {
-        ...prev.groups,
-        [field]: value,
-      },
-    }));
-  }, []);
-
-  const applyPreset = useCallback((presetId: FilterPresetId) => {
-    setFilters((prev) => applyFilterPreset(presetId, prev));
-    setActivePresetId(presetId);
-  }, []);
-
-  const clearFilters = useCallback(() => {
-    setFilters(applyFilterPreset('ALL'));
-    setActivePresetId('ALL');
-  }, []);
-
-  const activeFilterCount = getActiveFilterCount(filters);
-  const filterSummary = buildFilterSummary(filters);
-  const hasAdvancedActive = hasAdvancedCriteria(filters);
 
   // Render map panel with route stop list below
   const renderMapPanel = () => {
@@ -3439,7 +3293,7 @@ export function PlanningInbox() {
   return (
     <PersistenceProvider
       userId={userId}
-      profiles={[inboxFiltersProfile, inboxBreakRuleProfile]}
+      profiles={[inboxBreakRuleProfile]}
       adapters={{ session: sessionAdapter, local: localAdapter }}
     >
       <PanelStateProvider activePageContext="inbox" enableChannel isSourceOfTruth={true}>
