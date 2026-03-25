@@ -120,4 +120,28 @@ describe('InboxFilterBar', () => {
     const newFilters: InboxFilterExpression = onFiltersChange.mock.calls[0][0];
     expect(newFilters.groups.hasTerm).toBe('YES');
   });
+
+  it('renders system scoring presets in fixed product order', () => {
+    render(
+      <InboxFilterBar
+        {...defaultProps}
+        ruleSets={[
+          { id: 'rs-3', name: 'Overdue Firefighter', isDefault: false, isArchived: false, systemKey: 'overdue_firefighter' },
+          { id: 'rs-5', name: 'Data Quality First', isDefault: false, isArchived: false, systemKey: 'data_quality_first' },
+          { id: 'rs-2', name: 'Due-Date Radar', isDefault: false, isArchived: false, systemKey: 'due_date_radar' },
+          { id: 'rs-4', name: 'New Customers First', isDefault: false, isArchived: false, systemKey: 'new_customers_first' },
+          { id: 'rs-1', name: 'Balanced', isDefault: true, isArchived: false, systemKey: 'standard' },
+        ]}
+      />
+    );
+
+    const options = screen.getAllByRole('option');
+    expect(options.map((option) => option.textContent?.trim())).toEqual([
+      'scoring_default_marker scoring_preset_name_standard',
+      'scoring_preset_name_due_date_radar',
+      'scoring_preset_name_overdue_firefighter',
+      'scoring_preset_name_new_customers_first',
+      'scoring_preset_name_data_quality_first',
+    ]);
+  });
 });

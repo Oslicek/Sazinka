@@ -961,6 +961,94 @@ Toolbar contains a rule-set selector dropdown next to the filter tabs:
 └──────────────────────────────┘
 ```
 
+#### 8.3a Rozšířená filtrace, řazení a konfigurovatelné sloupce (návrh)
+
+**Kontext:**
+- Současná stránka zákazníků je funkční pro základní práci, ale neumožňuje rychle filtrovat/řadit podle všech prakticky důležitých informací pro řemeslníka/dispečerku.
+- Cíl: "tabulka jako spreadsheet" + "rychlé common filtry nahoře" + "pokročilé filtry v rozbalitelném panelu".
+
+**Rozhodnutí — persistenční model (locked):**
+- **Pouze UPP** pro stav filtrů, řazení a konfigurace sloupců na stránce Zákazníci. **Žádná synchronizace do URL** pro tento stav v této fázi.
+- **Sdílení / deep link** není součástí návrhu; později explicitní akce „Sdílet pohled“ (nebo ekvivalent), která může vygenerovat odkaz nebo payload — až bude produktově definováno.
+- **Uložené pohledy (saved views), týmové presety a telemetrie** z tohoto dokumentu **vylučujeme** — řeší se až v samostatné iteraci, pokud vůbec.
+
+**Vztah k obecnému vzoru v §21.5 (URL > UPP > default):**  
+U jiných stránek může zůstat řetězec precedence s URL. Pro **evoluci stránky Zákazníci** podle tohoto návrhu je **cílový stav výhradně UPP** pro filtry, řazení a mřížku — bez paralelního zápisu do query parametrů. Případný přechod ze stávajícího chování je implementační migrace, ne součást tohoto UX popisu.
+
+**Bug-bash quick win (P0):**
+- Typ filtru na stránce zákazníků zobrazuje i18n klíče (`filter_type_all`, `filter_type_company`, `filter_type_person`) místo přeložených labelů.
+- Akceptace opravy:
+  1. Select zobrazuje lokalizované texty ve všech podporovaných jazycích.
+  2. Při přepnutí jazyka se labely okamžitě přepnou.
+  3. Persistovaná hodnota filtru zůstává stejná (enum), mění se jen display label.
+
+**UX principy pro Customers grid:**
+1. Každá relevantní customer informace má být potenciálně použitelná pro filtraci i řazení (v rozsahu, který backend v dané verzi podporuje).
+2. Nejčastější filtry/řazení mají být "1 click away" (toolbar + quick chips).
+3. Méně časté kombinace patří do Advanced panelu (drawer/sheet), ne do hlavního toolbaru.
+4. **Multisort (ano):** řazení spreadsheet-like — klik na hlavičku viditelného sloupce; **sekundární a další úrovně** přes `Shift+klik` na další viditelný sloupec. Pořadí priorit sortů musí být uživateli viditelné (např. čísla 1·2·3 u hlaviček nebo jeden řádek „Řazení: …“).
+5. Viditelné sloupce jsou uživatelsky konfigurovatelné a **persistované výhradně přes UPP** (viz níže).
+6. **Mobile (ano):** stejný mentální model — filtry a řazení v **bottom sheetu / full-screen sheetu** (ne přeplněný horní toolbar); karty zobrazují stejná kritéria v zhuštěné podobě; multisort v sheetu (primární + sekundární), případně zjednodušený výchozí preset + rozšíření v sheetu. Column picker na mobilu: omezený počet „prioritních“ polí na kartě + volitelně stejný picker ve sheetu.
+
+**Návrh filtrovacích kritérií (common vs. advanced):**
+
+_Common (vždy viditelné / rychlý přístup):_
+- fulltext (`name`, `address`, `phone`, `city`, případně `customerCode`)
+- due bucket (`Po termínu`, `Do 7 dní`, `Do 30 dní`, `Vše`)
+- geocode kvalita (`OK`, `Pending`, `Failed`, `Missing address`)
+- typ zákazníka (`Osoba`, `Firma`, `Vše`)
+- oblast (`Město/region/depo`)
+
+_Advanced (rozbalitelný panel):_
+- kontaktovatelnost (`má telefon`, `má email`, `preferred contact channel`)
+- lifecycle (`last service age`, `next revision window`, `never serviced`)
+- operativa (`has open action`, `in planned route`, `needs reschedule`)
+- business metadata (`service package`, `customer segment`, `priority`)
+- datová kvalita (`missing house number`, `invalid geocode`, `incomplete profile`)
+
+**Řazení (multisort):**
+- Primární: klik na hlavičku sloupce (cyklus ASC / DESC / none podle konvence tabulky).
+- Sekundární a další: `Shift+klik` na další **viditelný** sloupec; pořadí určuje prioritu.
+- Stabilní tie-break: `name ASC` nebo `id ASC` (deterministický výstup při shodě).
+- Rychlé presety (dropdown nebo chipy): např. `Nejbližší revize`, `Po termínu`, `Naposledy kontaktováno`, `Město A-Z` — stále persistované v UPP jako součást `sortModel`, ne v URL.
+- **Reset řazení** jedním kliknutím (návrat na výchozí), aby uživatel po experimentu nezůstal „zaseknutý“.
+
+**Konfigurovatelné sloupce (persistované v UPP):**
+- Column picker (`Zobrazit sloupce`) s kategoriemi:
+  - Identita: jméno, typ, segment
+  - Kontakt: telefon, email, preferovaný kanál
+  - Lokalita: město, adresa, geocode status
+  - Revize: poslední, další, overdue days
+  - Operativa: open action, in route, assigned crew
+- Drag-and-drop reorder sloupců (desktop); na mobilu alternativa (seznam přetahovatelný nebo pořadí přes šipky).
+- Volitelné: pin vlevo/vpravo, hustota řádků, šířky sloupců.
+- Core sloupce (např. `name`) nelze úplně skrýt.
+- **Max. počet současně viditelných sloupců** (doporučení produktu, např. 8–12) kvůli čitelnosti a výkonu — přesné číslo stanoví implementace.
+
+**UPP — jediný zdroj pravdy pro grid (bez URL):**
+- Rozdělení doporučeno kvůli kanálům a životnosti:
+  - **Session:** pracovní kontext relace (filtry, aktivní vyhledávání) — stav, který je přirozené „začít čistý“ v novém tabu.
+  - **Local:** dlouhodobá personalizace tabulky (viditelné sloupce, pořadí, šířky, pin, hustota, **řazení**) — stav, u kterého uživatel očekává, že přetrvá.
+
+_Profil A (`customers.filters` nebo rozšíření existujícího): session_
+- `search`, `geocodeFilter`, `revisionFilter`, `typeFilter`, případně `advancedFilterExpression`
+
+_Profil B (`customers.grid`): local_
+- `visibleColumns`, `columnOrder`, `columnWidths`, `pinnedColumns`, `density`
+- **`sortModel`** (včetně multisort) — řazení patří do **local**, ne session. Uživatel, který si nastaví „město → nejbližší revize“, očekává totéž řazení i v novém tabu / po restartu prohlížeče. Řazení je personalizace tabulky, ne dočasný kontext relace.
+- Formát: `[{ column: string, direction: 'asc' | 'desc' }]` — pole objektů, pořadí v poli = priorita multisort.
+- **Bez** `activeViewId` a bez konceptu uložených pohledů v této fázi.
+
+**Implementační poznámky (ne funkcionalita v tomto dokumentu):**
+- Které filtry a řazení podporuje **API** v které verzi, je samostatný kontrakt (indexy, stránkování, debounce u fulltextu). Dokument UX předpokládá, že „vše relevantní“ je cíl; technicky může být uvedeno po částech.
+- Při 0 výsledcích: jasná empty state + akce „Vymazat filtry“ / „Obnovit výchozí řazení“.
+- Přístupnost: klávesová navigace v pickeru sloupců, `aria-sort` u hlaviček, sheet s focusem.
+
+**Fáze (doporučené, bez saved views a bez telemetrie):**
+1. **P0:** i18n oprava `filter_type_*`.
+2. **Fáze 1:** Progressive disclosure (quick + advanced) + UPP pro filtry a sloupce + multisort + mobilní sheet.
+3. **Fáze 2 (volitelná):** hlubší advanced filtry / složitější výrazy — **bez** full query builderu, dokud to nebude nutné; alternativa je rozšířit advanced panel o další předdefinované bloky.
+
 ---
 
 #### 8.4 Detail zákazníka (workspace + edit drawer)

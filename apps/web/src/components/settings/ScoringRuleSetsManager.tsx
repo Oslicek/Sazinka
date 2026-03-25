@@ -12,6 +12,7 @@ import {
 } from '../../services/scoringService';
 import type { ScoringRuleSet, FactorInput } from '../../services/scoringService';
 import { FACTOR_KEYS, DEFAULT_PROFILE_FACTORS } from '@shared/scoring';
+import { sortRuleSetsForDisplay } from '@/lib/scoringPresetOrder';
 import styles from './ScoringRuleSetsManager.module.css';
 
 // Sorting factors (control primary inbox order via lifecycle_rank, due date, age)
@@ -218,7 +219,7 @@ export function ScoringRuleSetsManager() {
     return map[key] ?? key;
   };
 
-  const visible = ruleSets.filter((rs) => showArchived || !rs.isArchived);
+  const visible = sortRuleSetsForDisplay(ruleSets).filter((rs) => showArchived || !rs.isArchived);
 
   return (
     <div className={styles.manager}>

@@ -16,6 +16,7 @@ import {
   type ProblemToken,
 } from '@/pages/planningInboxFilters';
 import type { ScoringRuleSet } from '@/services/scoringService';
+import { sortRuleSetsForDisplay } from '@/lib/scoringPresetOrder';
 import styles from './InboxFilterBar.module.css';
 
 interface InboxFilterBarProps {
@@ -59,6 +60,7 @@ export function InboxFilterBar({
   const activeFilterCount = getActiveFilterCount(filters);
   const hasAdvancedActive = hasAdvancedCriteria(filters);
   const filterSummary = buildFilterSummary(filters);
+  const sortedRuleSets = sortRuleSetsForDisplay(ruleSets);
 
   const clearFilters = useCallback(() => {
     onFiltersChange(applyFilterPreset('ALL'));
@@ -147,7 +149,7 @@ export function InboxFilterBar({
             onChange={(e) => onRuleSetChange(e.target.value || null)}
             disabled={isLoadingRuleSets}
           >
-            {ruleSets.map((rs) => {
+            {sortedRuleSets.map((rs) => {
               const displayName = rs.systemKey
                 ? t(`scoring_preset_name_${rs.systemKey}`)
                 : rs.name;
