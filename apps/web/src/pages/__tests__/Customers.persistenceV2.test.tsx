@@ -74,17 +74,6 @@ vi.mock('@/components/customers/CustomerEditDrawer', () => ({
   CustomerEditDrawer: () => <div data-testid="edit-drawer" />,
 }));
 
-vi.mock('@/components/customers/SavedViewsSelector', () => ({
-  SavedViewsSelector: ({ onApply }: { onApply: (view: { filters: Record<string, unknown> }) => void }) => (
-    <button
-      data-testid="saved-view-btn"
-      onClick={() => onApply({ filters: { revisionFilter: 'week', type: 'company' } })}
-    >
-      Apply View
-    </button>
-  ),
-}));
-
 vi.mock('@/components/common/SplitView', () => ({
   SplitView: ({ panels }: { panels: { id: string; content: React.ReactNode }[] }) => (
     <div data-testid="split-view">

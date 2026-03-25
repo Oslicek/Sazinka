@@ -26,13 +26,34 @@ import type { CustomerListItem } from '@shared/customer';
 import { formatDate } from '../../i18n/formatters';
 import {
   ALL_COLUMNS,
+  CORE_COLUMN_IDS,
   DEFAULT_SORT_MODEL,
+  DEFAULT_VISIBLE_COLUMNS,
+  DEFAULT_COLUMN_ORDER,
   sanitizeSortModel,
+  sanitizeVisibleColumns,
+  sanitizeColumnOrder,
 } from '../../lib/customerColumns';
 import type { SortEntry } from '../../lib/customerColumns';
 import styles from './CustomerTable.module.css';
 
 const columnHelper = createColumnHelper<CustomerListItem>();
+
+// Maps catalog ID → TanStack column ID (for backward-compat with sort indicators + tests)
+const CATALOG_TO_TABLE_ID: Record<string, string> = {
+  name: 'customer',
+  nextRevision: 'nextRevisionDate',
+};
+
+// Maps TanStack column ID → catalog ID (reverse lookup for sort handler)
+const TABLE_TO_CATALOG_ID: Record<string, string> = {
+  customer: 'name',
+  nextRevisionDate: 'nextRevision',
+};
+
+function getTableToCatalogId(tableId: string): string {
+  return TABLE_TO_CATALOG_ID[tableId] ?? tableId;
+}
 
 interface CustomerTableProps {
   customers: CustomerListItem[];
@@ -178,6 +199,8 @@ export function CustomerTable({
   totalCount,
   sortModel: sortModelProp = DEFAULT_SORT_MODEL,
   onSortModelChange,
+  visibleColumns: visibleColumnsProp,
+  columnOrder: columnOrderProp,
 }: CustomerTableProps) {
   const { t } = useTranslation('customers');
 
@@ -186,25 +209,34 @@ export function CustomerTable({
   // Keep original prop for interaction logic (empty prop = no prior preference)
   const sortModelRaw = sortModelProp;
 
-  // Map column catalog IDs to their sortable flag for quick lookup
+  // Compute effective visible columns (sanitized, with core ensured)
+  const effectiveVisible = useMemo(
+    () => sanitizeVisibleColumns(visibleColumnsProp ?? DEFAULT_VISIBLE_COLUMNS),
+    [visibleColumnsProp],
+  );
+  // Compute effective column order
+  const effectiveOrder = useMemo(
+    () => sanitizeColumnOrder(columnOrderProp ?? DEFAULT_COLUMN_ORDER),
+    [columnOrderProp],
+  );
+
+  // Ordered visible catalog IDs (order by effectiveOrder, filter to effectiveVisible + core)
+  const orderedCatalogIds = useMemo(() => {
+    const visibleSet = new Set(effectiveVisible);
+    for (const coreId of CORE_COLUMN_IDS) visibleSet.add(coreId);
+    return effectiveOrder.filter((id) => visibleSet.has(id));
+  }, [effectiveVisible, effectiveOrder]);
+
+  // Map catalog IDs to their sortable flag for quick lookup
   const sortableIds = useMemo(
     () => new Set(ALL_COLUMNS.filter((c) => c.sortable).map((c) => c.id)),
     [],
   );
 
-  // Map table column IDs (used in TanStack) to catalog IDs
-  // customer column uses id='customer' but maps to catalog id='name'
-  const tableToCatalogId: Record<string, string> = {
-    customer: 'name',
-    city: 'city',
-    deviceCount: 'deviceCount',
-    nextRevisionDate: 'nextRevision',
-  };
-
   const handleHeaderInteraction = useCallback(
     (tableColId: string, shiftKey: boolean) => {
       if (!onSortModelChange) return;
-      const catalogId = tableToCatalogId[tableColId] ?? tableColId;
+      const catalogId = getTableToCatalogId(tableColId);
       if (!sortableIds.has(catalogId)) return;
 
       const nextModel = shiftKey
@@ -212,87 +244,144 @@ export function CustomerTable({
         : applyPrimarySort(sortModel, catalogId);
       onSortModelChange(nextModel);
     },
-    [onSortModelChange, sortModel, sortableIds],
+    [onSortModelChange, sortModel, sortModelRaw, sortableIds],
   );
 
-  const columns = useMemo(
-    () => [
-      columnHelper.accessor('name', {
-        id: 'customer',
-        header: t('table_customer'),
-        cell: ({ row }) => {
-          const customer = row.original;
-          return (
-            <div className={styles.customerCell}>
-              <div className={styles.customerMain}>
-                <span className={styles.customerName}>
-                  {customer.name}
-                  <span className={styles.customerType}>
-                    {customer.type === 'company' ? t('type_company') : t('type_person')}
-                  </span>
+  const columns = useMemo(() => {
+    return orderedCatalogIds.map((catalogId) => {
+      const tableId = CATALOG_TO_TABLE_ID[catalogId] ?? catalogId;
+      switch (catalogId) {
+        case 'name':
+          return columnHelper.accessor('name', {
+            id: tableId,
+            header: t('table_customer'),
+            cell: ({ row }) => {
+              const customer = row.original;
+              return (
+                <div className={styles.customerCell}>
+                  <div className={styles.customerMain}>
+                    <span className={styles.customerName}>
+                      {customer.name}
+                      <span className={styles.customerType}>
+                        {customer.type === 'company' ? t('type_company') : t('type_person')}
+                      </span>
+                    </span>
+                    <span className={styles.customerAddress}>
+                      {customer.street && `${customer.street}, `}{customer.city}
+                    </span>
+                  </div>
+                </div>
+              );
+            },
+            size: 350,
+          });
+        case 'type':
+          return columnHelper.accessor('type', {
+            id: tableId,
+            header: t('col_type'),
+            cell: ({ getValue }) =>
+              getValue() === 'company' ? t('type_company') : t('type_person'),
+            size: 80,
+          });
+        case 'city':
+          return columnHelper.accessor('city', {
+            id: tableId,
+            header: t('table_city'),
+            cell: ({ getValue }) => getValue() || '-',
+            size: 120,
+          });
+        case 'street':
+          return columnHelper.accessor('street', {
+            id: tableId,
+            header: t('col_street'),
+            cell: ({ getValue }) => getValue() || '-',
+            size: 140,
+          });
+        case 'postalCode':
+          return columnHelper.accessor('postalCode', {
+            id: tableId,
+            header: t('col_postal_code'),
+            cell: ({ getValue }) => getValue() || '-',
+            size: 80,
+          });
+        case 'phone':
+          return columnHelper.accessor('phone', {
+            id: tableId,
+            header: t('col_phone'),
+            cell: ({ getValue }) => getValue() || '-',
+            size: 120,
+          });
+        case 'email':
+          return columnHelper.accessor('email', {
+            id: tableId,
+            header: t('col_email'),
+            cell: ({ getValue }) => getValue() || '-',
+            size: 160,
+          });
+        case 'deviceCount':
+          return columnHelper.accessor('deviceCount', {
+            id: tableId,
+            header: t('table_devices'),
+            cell: ({ getValue }) => <span className={styles.deviceCount}>{getValue()}</span>,
+            size: 80,
+          });
+        case 'nextRevision':
+          return columnHelper.accessor('nextRevisionDate', {
+            id: tableId,
+            header: t('table_revision_status'),
+            cell: ({ row }) => {
+              const { text, status } = formatRevisionStatus(
+                row.original.nextRevisionDate,
+                row.original.overdueCount,
+                row.original.neverServicedCount,
+                t,
+              );
+              return (
+                <span
+                  className={`${styles.revisionStatus} ${
+                    status === 'overdue'
+                      ? styles.revisionOverdue
+                      : status === 'never-serviced'
+                      ? styles.revisionNeverServiced
+                      : status === 'soon'
+                      ? styles.revisionSoon
+                      : ''
+                  }`}
+                >
+                  {text}
                 </span>
-                <span className={styles.customerAddress}>
-                  {customer.street && `${customer.street}, `}{customer.city}
-                </span>
-              </div>
-              <div className={styles.customerContact}>
-                {customer.phone && <span className={styles.phone}>{customer.phone}</span>}
-                {customer.email && <span className={styles.email}>{customer.email}</span>}
-              </div>
-            </div>
-          );
-        },
-        size: 350,
-      }),
-      columnHelper.accessor('city', {
-        id: 'city',
-        header: t('table_city'),
-        cell: ({ getValue }) => getValue() || '-',
-        size: 120,
-      }),
-      columnHelper.accessor('deviceCount', {
-        id: 'deviceCount',
-        header: t('table_devices'),
-        cell: ({ getValue }) => <span className={styles.deviceCount}>{getValue()}</span>,
-        size: 80,
-      }),
-      columnHelper.accessor('nextRevisionDate', {
-        id: 'nextRevisionDate',
-        header: t('table_revision_status'),
-        cell: ({ row }) => {
-          const { text, status } = formatRevisionStatus(
-            row.original.nextRevisionDate,
-            row.original.overdueCount,
-            row.original.neverServicedCount,
-            t,
-          );
-          return (
-            <span
-              className={`${styles.revisionStatus} ${
-                status === 'overdue'
-                  ? styles.revisionOverdue
-                  : status === 'never-serviced'
-                  ? styles.revisionNeverServiced
-                  : status === 'soon'
-                  ? styles.revisionSoon
-                  : ''
-              }`}
-            >
-              {text}
-            </span>
-          );
-        },
-        size: 140,
-      }),
-      columnHelper.accessor('geocodeStatus', {
-        id: 'geocodeStatus',
-        header: t('table_address'),
-        cell: ({ getValue }) => <AddressStatusBadge status={getValue() ?? ''} t={t} />,
-        size: 80,
-      }),
-    ],
-    [t],
-  );
+              );
+            },
+            size: 140,
+          });
+        case 'geocodeStatus':
+          return columnHelper.accessor('geocodeStatus', {
+            id: tableId,
+            header: t('table_address'),
+            cell: ({ getValue }) => <AddressStatusBadge status={getValue() ?? ''} t={t} />,
+            size: 80,
+          });
+        case 'createdAt':
+          return columnHelper.accessor('createdAt' as keyof CustomerListItem, {
+            id: tableId,
+            header: t('col_created_at'),
+            cell: ({ getValue }) => {
+              const v = getValue() as string | null | undefined;
+              return v ? formatDate(new Date(v)) : '-';
+            },
+            size: 100,
+          });
+        default:
+          return columnHelper.display({
+            id: tableId,
+            header: catalogId,
+            cell: () => '-',
+            size: 100,
+          });
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderedCatalogIds, t]);
 
   const table = useReactTable({
     data: customers,
@@ -383,7 +472,7 @@ export function CustomerTable({
           table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id}>
               {headerGroup.headers.map((header) => {
-                const catalogId = tableToCatalogId[header.id] ?? header.id;
+                const catalogId = getTableToCatalogId(header.id);
                 const isSortable = sortableIds.has(catalogId);
                 const sortIdx = sortModel.findIndex((e) => e.column === catalogId);
                 const sortEntry = sortIdx >= 0 ? sortModel[sortIdx] : null;

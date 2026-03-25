@@ -24,7 +24,6 @@ import { AddCustomerForm } from '../components/customers/AddCustomerForm';
 import { CustomerTable } from '../components/customers/CustomerTable';
 import { CustomerPreviewPanel } from '../components/customers/CustomerPreviewPanel';
 import { CustomerEditDrawer } from '../components/customers/CustomerEditDrawer';
-import { SavedViewsSelector, type SavedView } from '../components/customers/SavedViewsSelector';
 import { CustomerFilterBar } from '../components/customers/CustomerFilterBar';
 import { AdvancedFilterPanel } from '../components/customers/AdvancedFilterPanel';
 import { MobileFilterSheet } from '../components/customers/MobileFilterSheet';
@@ -473,12 +472,6 @@ function CustomersInner() {
   }, [fullCustomer, loadCustomers]);
 
   // Handle saved view selection
-  const handleSelectView = useCallback((view: SavedView) => {
-    setGeocodeFilter((view.filters.geocodeStatus ?? '') as GeocodeStatus | '');
-    setRevisionFilter(view.filters.revisionFilter ?? '');
-    setTypeFilter((view.filters.type ?? '') as 'company' | 'person' | '');
-  }, [setGeocodeFilter, setRevisionFilter, setTypeFilter]);
-
   const activeFilterCount = useMemo(() => {
     let count = 0;
     if (search) count++;

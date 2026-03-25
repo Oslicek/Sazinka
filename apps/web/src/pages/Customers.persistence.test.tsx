@@ -85,9 +85,6 @@ vi.mock('../components/customers/AddCustomerForm', () => ({
   AddCustomerForm: () => null,
 }));
 
-vi.mock('../components/customers/SavedViewsSelector', () => ({
-  SavedViewsSelector: () => null,
-}));
 
 vi.mock('../components/common/SplitView', () => ({
   SplitView: ({ panels }: { panels: { id: string; content: React.ReactNode }[] }) => (

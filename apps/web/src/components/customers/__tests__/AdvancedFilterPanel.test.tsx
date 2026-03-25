@@ -52,10 +52,6 @@ vi.mock('@/components/customers/CustomerEditDrawer', () => ({
   CustomerEditDrawer: () => <div data-testid="edit-drawer" />,
 }));
 
-vi.mock('@/components/customers/SavedViewsSelector', () => ({
-  SavedViewsSelector: () => <div data-testid="saved-views" />,
-}));
-
 vi.mock('@/components/common/SplitView', () => ({
   SplitView: ({ panels }: { panels: { id: string; content: React.ReactNode }[] }) => (
     <div data-testid="split-view">
