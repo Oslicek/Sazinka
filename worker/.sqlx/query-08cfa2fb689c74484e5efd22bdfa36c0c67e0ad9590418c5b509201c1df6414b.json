@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE user_email_domains\n        SET verification_status = $2,\n            verified_at = $3,\n            last_checked_at = NOW(),\n            updated_at = NOW()\n        WHERE id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "08cfa2fb689c74484e5efd22bdfa36c0c67e0ad9590418c5b509201c1df6414b"
+}

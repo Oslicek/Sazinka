@@ -322,7 +322,15 @@ impl EmailProcessor {
         let body_text = template_renderer::render_template(&data.body_template, &vars);
 
         let message_id = self
-            .send_email(user_id, &data.recipient_email, &subject, &body_html, &body_text)
+            .send_email(
+                user_id,
+                &data.recipient_email,
+                &subject,
+                &body_html,
+                &body_text,
+                &data.company_name,
+                &data.company_email,
+            )
             .await?;
 
         self.log_communication(
@@ -369,7 +377,15 @@ impl EmailProcessor {
         let body_text = template_renderer::render_template(&data.body_template, &vars);
 
         let message_id = self
-            .send_email(user_id, &data.recipient_email, &subject, &body_html, &body_text)
+            .send_email(
+                user_id,
+                &data.recipient_email,
+                &subject,
+                &body_html,
+                &body_text,
+                &data.company_name,
+                &data.company_email,
+            )
             .await?;
 
         self.log_communication(
@@ -394,7 +410,7 @@ impl EmailProcessor {
     ) -> Result<(String, String), EmailSendError> {
         let body_text = req.body_text.as_deref().unwrap_or(&req.body_html);
         let message_id = self
-            .send_email(user_id, &req.to, &req.subject, &req.body_html, body_text)
+            .send_email(user_id, &req.to, &req.subject, &req.body_html, body_text, "", "")
             .await?;
         Ok((message_id, req.to.clone()))
     }
@@ -403,7 +419,8 @@ impl EmailProcessor {
     // Phase 5 — SES send function
     // -------------------------------------------------------------------------
 
-    /// Send an email via SES. Resolves the correct `From` address dynamically.
+    /// Send an email via SES. Resolves the correct `From` address dynamically
+    /// using the user's domain verification status and business identity.
     async fn send_email(
         &self,
         user_id: Uuid,
@@ -411,26 +428,24 @@ impl EmailProcessor {
         subject: &str,
         body_html: &str,
         body_text: &str,
+        business_name: &str,
+        business_email: &str,
     ) -> Result<String, EmailSendError> {
         let ses = self
             .ses_client
             .as_ref()
             .ok_or(EmailSendError::NotConfigured)?;
 
-        // Load active domain for this user (if any) to decide sender
         let active_domain = domain_verification::get_active_domain(&self.pool, user_id)
             .await
             .map_err(|e| EmailSendError::Permanent(e.to_string()))?;
 
-        // We need the user's business name and email for fallback display/reply-to.
-        // For now we use the fallback brand name; the business name is loaded from
-        // the domain row's from_name if present, or the fallback_from_name.
         let sender = domain_verification::select_from_address(
             active_domain.as_ref(),
             &self.fallback_from_email,
             &self.fallback_from_name,
-            "", // business_name resolved from domain.from_name or fallback
-            "", // business_email — set via Reply-To when domain row has it
+            business_name,
+            business_email,
         );
 
         let subject_content = Content::builder()

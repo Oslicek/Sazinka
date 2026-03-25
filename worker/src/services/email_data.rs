@@ -9,8 +9,8 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::types::settings::{
-    default_confirmation_subject, default_confirmation_template,
-    default_reminder_subject, default_reminder_template,
+    default_confirmation_subject, default_confirmation_template, default_reminder_subject,
+    default_reminder_template,
 };
 
 // ============================================================================
@@ -63,10 +63,7 @@ pub fn format_address(street: &str, city: &str) -> String {
 }
 
 /// Format a time window from optional start and end times.
-pub fn format_time_window(
-    start: Option<NaiveTime>,
-    end: Option<NaiveTime>,
-) -> Option<String> {
+pub fn format_time_window(start: Option<NaiveTime>, end: Option<NaiveTime>) -> Option<String> {
     match (start, end) {
         (Some(s), Some(e)) => Some(format!("{}–{}", s.format("%H:%M"), e.format("%H:%M"))),
         (Some(s), None) => Some(s.format("%H:%M").to_string()),
@@ -196,7 +193,10 @@ pub async fn resolve_confirmation_data(
         None => return Ok(None),
     };
 
-    let recipient_email = match row.recipient_email.filter(|e| !e.trim().is_empty()) {
+    let recipient_email = match row
+        .recipient_email
+        .filter(|e: &String| !e.trim().is_empty())
+    {
         Some(e) => e,
         None => return Ok(None),
     };
@@ -285,7 +285,10 @@ pub async fn resolve_reminder_data(
         None => return Ok(None),
     };
 
-    let recipient_email = match row.recipient_email.filter(|e: &String| !e.trim().is_empty()) {
+    let recipient_email = match row
+        .recipient_email
+        .filter(|e: &String| !e.trim().is_empty())
+    {
         Some(e) => e,
         None => return Ok(None),
     };
@@ -344,7 +347,10 @@ mod tests {
 
     #[test]
     fn format_address_trims_whitespace() {
-        assert_eq!(format_address("  Korunní 15  ", "  Praha  "), "Korunní 15, Praha");
+        assert_eq!(
+            format_address("  Korunní 15  ", "  Praha  "),
+            "Korunní 15, Praha"
+        );
     }
 
     #[test]
@@ -411,7 +417,11 @@ mod tests {
     #[test]
     fn confirmation_templates_uses_locale_default_when_not_edited() {
         let (subj, _) = select_confirmation_templates(None, None, None, "cs");
-        assert!(subj.contains("Potvrzení"), "Expected Czech default, got: {}", subj);
+        assert!(
+            subj.contains("Potvrzení"),
+            "Expected Czech default, got: {}",
+            subj
+        );
     }
 
     #[test]
@@ -435,7 +445,11 @@ mod tests {
     #[test]
     fn confirmation_templates_sk_locale_default() {
         let (subj, _) = select_confirmation_templates(None, None, None, "sk");
-        assert!(subj.contains("Potvrdenie"), "Expected Slovak default, got: {}", subj);
+        assert!(
+            subj.contains("Potvrdenie"),
+            "Expected Slovak default, got: {}",
+            subj
+        );
     }
 
     #[test]
@@ -461,13 +475,21 @@ mod tests {
     #[test]
     fn reminder_templates_uses_locale_default_when_not_edited() {
         let (subj, _) = select_reminder_templates(None, None, None, "cs");
-        assert!(subj.contains("Připomínka"), "Expected Czech default, got: {}", subj);
+        assert!(
+            subj.contains("Připomínka"),
+            "Expected Czech default, got: {}",
+            subj
+        );
     }
 
     #[test]
     fn reminder_templates_sk_locale_default() {
         let (subj, _) = select_reminder_templates(None, None, None, "sk");
-        assert!(subj.contains("Pripomienka"), "Expected Slovak default, got: {}", subj);
+        assert!(
+            subj.contains("Pripomienka"),
+            "Expected Slovak default, got: {}",
+            subj
+        );
     }
 
     #[test]

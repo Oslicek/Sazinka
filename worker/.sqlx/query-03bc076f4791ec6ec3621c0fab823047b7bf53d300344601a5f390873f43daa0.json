@@ -1,0 +1,84 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            c.email                                 AS recipient_email,\n            COALESCE(c.contact_person, c.name)      AS customer_name,\n            d.device_type::text                     AS device_type,\n            TO_CHAR(r.due_date, 'DD.MM.YYYY')       AS due_date,\n            u.business_name,\n            u.phone,\n            u.email                                 AS user_email,\n            u.company_locale,\n            u.email_reminder_subject_template       AS subject_template,\n            u.email_reminder_body_template          AS body_template,\n            u.email_reminder_edited_at              AS edited_at\n        FROM revisions r\n        JOIN customers c ON c.id = $2 AND c.user_id = $1\n        JOIN users u     ON u.id = $1\n        LEFT JOIN devices d ON d.id = r.device_id AND d.user_id = $1\n        WHERE r.id = $3 AND r.user_id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "recipient_email",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 1,
+        "name": "customer_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "device_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "due_date",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "business_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "phone",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "user_email",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 7,
+        "name": "company_locale",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 8,
+        "name": "subject_template",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "body_template",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "edited_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      null,
+      null,
+      null,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "03bc076f4791ec6ec3621c0fab823047b7bf53d300344601a5f390873f43daa0"
+}

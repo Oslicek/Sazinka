@@ -106,10 +106,21 @@ pub fn select_from_address(
     }
 }
 
-/// Format an RFC 5321 `From` value: `"Display Name <email>"`.
+/// Format an RFC 5322 `From` value: `"Display Name <email>"`.
+/// Display names containing special characters (`,`, `;`, `"`, etc.) are
+/// double-quoted per RFC 5322 §3.4.
 fn format_from(display: &str, email: &str) -> String {
     if display.is_empty() {
-        email.to_string()
+        return email.to_string();
+    }
+    let needs_quoting = display.contains(',')
+        || display.contains(';')
+        || display.contains('"')
+        || display.contains('(')
+        || display.contains(')');
+    if needs_quoting {
+        let escaped = display.replace('\\', "\\\\").replace('"', "\\\"");
+        format!("\"{}\" <{}>", escaped, email)
     } else {
         format!("{} <{}>", display, email)
     }
@@ -502,6 +513,61 @@ mod tests {
     #[test]
     fn validate_from_email_rejects_empty_domain_part() {
         assert!(validate_from_email("info@", "firma.cz").is_err());
+    }
+
+    // ---- VerificationStatus ----
+
+    // ---- format_from (via select_from_address) ----
+
+    #[test]
+    fn verified_domain_name_with_comma_is_quoted() {
+        let mut domain = verified_domain("info@firma.cz", Some("Revize, s.r.o."));
+        let info = select_from_address(
+            Some(&domain),
+            "noreply@ariadline.cz",
+            "Ariadline",
+            "Revize, s.r.o.",
+            "info@firma.cz",
+        );
+        assert_eq!(info.from, r#""Revize, s.r.o." <info@firma.cz>"#);
+    }
+
+    #[test]
+    fn fallback_name_with_comma_is_quoted() {
+        let info = select_from_address(
+            None,
+            "noreply@ariadline.cz",
+            "Ariadline",
+            "Firma, s.r.o.",
+            "jan@firma.cz",
+        );
+        assert_eq!(info.from, r#""Firma, s.r.o. via Ariadline" <noreply@ariadline.cz>"#);
+    }
+
+    #[test]
+    fn name_with_double_quote_is_escaped_and_quoted() {
+        let domain = verified_domain("info@firma.cz", Some(r#"The "Best" Firm"#));
+        let info = select_from_address(
+            Some(&domain),
+            "noreply@ariadline.cz",
+            "Ariadline",
+            "",
+            "",
+        );
+        assert_eq!(info.from, r#""The \"Best\" Firm" <info@firma.cz>"#);
+    }
+
+    #[test]
+    fn name_without_special_chars_is_not_quoted() {
+        let domain = verified_domain("info@firma.cz", Some("Firma Praha"));
+        let info = select_from_address(
+            Some(&domain),
+            "noreply@ariadline.cz",
+            "Ariadline",
+            "",
+            "",
+        );
+        assert_eq!(info.from, "Firma Praha <info@firma.cz>");
     }
 
     // ---- VerificationStatus ----
