@@ -652,6 +652,8 @@ function CustomersInner() {
           onEndReached={loadMore}
           isLoadingMore={isLoadingMore}
           totalCount={total}
+          sortModel={sortModel}
+          onSortModelChange={setSortModel}
         />
       ) : (
         // Cards view (mobile-friendly)
