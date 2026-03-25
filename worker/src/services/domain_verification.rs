@@ -521,7 +521,7 @@ mod tests {
 
     #[test]
     fn verified_domain_name_with_comma_is_quoted() {
-        let mut domain = verified_domain("info@firma.cz", Some("Revize, s.r.o."));
+        let domain = verified_domain("info@firma.cz", Some("Revize, s.r.o."));
         let info = select_from_address(
             Some(&domain),
             "noreply@ariadline.cz",
