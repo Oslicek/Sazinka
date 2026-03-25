@@ -1545,6 +1545,10 @@ cargo test
   - `InboxFilterBar.tsx`: scoring dropdown also resolves localized names for system presets
   - `PRESET_SYSTEM_KEYS` and `PresetSystemKey` type exported from shared-types for type-safe frontend use
   - 20 new Rust unit tests (preset catalog, weights, localization); 50 new TypeScript tests (i18n completeness + component rendering for EN/CS/SK); 1776 total TS tests green
+- **Batch factor hydration (N+1 fix):**
+  - `list_rule_sets` now uses a single `WHERE rule_set_id = ANY($1)` query to load all factors for all returned rule sets, then attaches in memory via `attach_factors_to_rule_sets()` — down from N+1 queries to exactly 2 queries regardless of rule set count
+  - Pure function `attach_factors_to_rule_sets` groups factors by `rule_set_id` using a HashMap, drops orphans, replaces stale factors; fully unit-tested (8 tests covering empty inputs, multi-set grouping, orphans, ordering, stale replacement)
+  - Single-row paths (create, update, get, restore_defaults) remain on per-row hydration since they only fetch one set
 
 ## Recent Changes (v0.21.0)
 
