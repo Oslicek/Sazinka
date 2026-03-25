@@ -101,7 +101,13 @@ export function CandidateRow({
       role="button"
       tabIndex={0}
       className={`${styles.row} ${isSelected ? styles.selected : ''} ${hasProblems ? styles.hasProblems : ''} ${isInRoute ? styles.inRoute : ''}`}
-      onClick={onClick}
+      onClick={(e) => {
+        // #region agent log
+        console.log('[BUG7] row onClick fired', { candidateId: candidate.id, targetTag: (e.target as HTMLElement).tagName });
+        fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ee0c72'},body:JSON.stringify({sessionId:'ee0c72',location:'CandidateRow.tsx:onClick',message:'row onClick fired',data:{candidateId:candidate.id,targetTag:(e.target as HTMLElement).tagName},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
+        onClick?.();
+      }}
       onKeyDown={handleKeyDown}
       data-candidate-id={candidate.id}
     >
@@ -114,9 +120,19 @@ export function CandidateRow({
           title={candidate.disableCheckbox ? t('candidate_row_checkbox_disabled') : undefined}
           onChange={(e) => {
             e.stopPropagation();
+            // #region agent log
+            console.log('[BUG7] checkbox onChange', { candidateId: candidate.id, newChecked: e.target.checked, hasOnCheckChange: !!onCheckChange, disableCheckbox: candidate.disableCheckbox });
+            fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ee0c72'},body:JSON.stringify({sessionId:'ee0c72',location:'CandidateRow.tsx:onChange',message:'checkbox onChange fired',data:{candidateId:candidate.id,newChecked:e.target.checked,hasOnCheckChange:!!onCheckChange,disableCheckbox:candidate.disableCheckbox},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+            // #endregion
             onCheckChange?.(e.target.checked);
           }}
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            // #region agent log
+            console.log('[BUG7] checkbox onClick (stopPropagation)', { candidateId: candidate.id });
+            fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ee0c72'},body:JSON.stringify({sessionId:'ee0c72',location:'CandidateRow.tsx:checkboxClick',message:'checkbox onClick stopPropagation',data:{candidateId:candidate.id},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+            // #endregion
+          }}
         />
       )}
       <div className={styles.stateIcons}>

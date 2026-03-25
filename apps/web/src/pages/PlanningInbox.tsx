@@ -1740,9 +1740,19 @@ function PlanningInboxInner() {
 
   // Route building: toggle checkbox selection
   const handleSelectionChange = useCallback((id: string, selected: boolean) => {
+    // #region agent log
+    const _candidate = sortedCandidatesRef.current.find((c) => c.customerId === id);
+    const _valid = _candidate ? hasValidAddress(_candidate) : null;
+    console.log('[BUG7] handleSelectionChange', { id, selected, candidateFound: !!_candidate, hasValidAddress: _valid, refLength: sortedCandidatesRef.current.length });
+    fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ee0c72'},body:JSON.stringify({sessionId:'ee0c72',location:'PlanningInbox.tsx:handleSelectionChange',message:'handleSelectionChange called',data:{id,selected,candidateFound:!!_candidate,hasValidAddress:_valid,refLength:sortedCandidatesRef.current.length},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
+    // #endregion
     if (selected) {
       const candidate = sortedCandidatesRef.current.find((c) => c.customerId === id);
       if (!candidate || !hasValidAddress(candidate)) {
+        // #region agent log
+        console.log('[BUG7] handleSelectionChange REJECTED', { id, candidateFound: !!candidate });
+        fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ee0c72'},body:JSON.stringify({sessionId:'ee0c72',location:'PlanningInbox.tsx:handleSelectionChange:rejected',message:'selection REJECTED by guard',data:{id,candidateFound:!!candidate},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
+        // #endregion
         return;
       }
     }
@@ -1754,6 +1764,10 @@ function PlanningInboxInner() {
       } else {
         next.delete(id);
       }
+      // #region agent log
+      console.log('[BUG7] setSelectedIds', { id, selected, prevSize: prev.size, nextSize: next.size });
+      fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ee0c72'},body:JSON.stringify({sessionId:'ee0c72',location:'PlanningInbox.tsx:setSelectedIds',message:'selectedIds updated',data:{id,selected,prevSize:prev.size,nextSize:next.size},timestamp:Date.now(),hypothesisId:'H4'})}).catch(()=>{});
+      // #endregion
       return next;
     });
   }, []);
