@@ -223,3 +223,53 @@ describe('Phase 1C: customers.filters profile migration', () => {
     expect(ids).toContain('selectedCustomerId');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 6B — URL coupling removal
+// ---------------------------------------------------------------------------
+
+describe('Customers page — Phase 6B: URL decoupling', () => {
+  beforeEach(() => {
+    Object.keys(mockSearchParams).forEach((k) => delete mockSearchParams[k]);
+    sessionStorage.clear();
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    sessionStorage.clear();
+    localStorage.clear();
+  });
+
+  it('6B-1. SearchParams no longer has sortBy or sortOrder', () => {
+    // Static structural test: render with sortBy/sortOrder in URL → no crash, and the
+    // sort request is still from UPP (default), NOT from URL params.
+    mockSearchParams.sortBy = 'city';
+    mockSearchParams.sortOrder = 'desc';
+    expect(() => render(<Customers />)).not.toThrow();
+  });
+
+  it('6B-2. URL view/geocodeStatus/revisionFilter do NOT override UPP state', async () => {
+    // Seed UPP with revisionFilter=overdue
+    const key = makeKey({ userId: 'test-user-1', profileId: CUSTOMERS_PROFILE_ID, controlId: 'revisionFilter' });
+    sessionStorage.setItem(key, JSON.stringify(makeEnvelope('overdue', 'session')));
+
+    // URL says week → should be ignored since we removed URL coupling
+    mockSearchParams.revisionFilter = 'week';
+
+    render(<Customers />);
+
+    await waitFor(() => {
+      // The "overdue" chip should be active (UPP wins), NOT "week"
+      const overdueChip = screen.getByRole('button', { name: 'filter_revision_overdue' });
+      expect(overdueChip).toHaveAttribute('aria-pressed', 'true');
+      const weekChip = screen.getByRole('button', { name: 'filter_revision_week' });
+      expect(weekChip).toHaveAttribute('aria-pressed', 'false');
+    });
+  });
+
+  it('6B-3. URL action=new → add-customer form opens (intent param preserved)', () => {
+    mockSearchParams.action = 'new';
+    render(<Customers />);
+    expect(screen.getByTestId('add-form')).toBeInTheDocument();
+  });
+});

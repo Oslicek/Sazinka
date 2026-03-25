@@ -39,7 +39,6 @@ import { usePersistentControl } from '../persistence/react/usePersistentControl'
 import { sessionAdapter, localAdapter } from '../persistence/adapters/singletons';
 import { customersProfile, CUSTOMERS_PROFILE_ID } from '../persistence/profiles/customersProfile';
 import { customersGridProfile, CUSTOMERS_GRID_PROFILE_ID } from '../persistence/profiles/customersGridProfile';
-import { resolveValue } from '../persistence/react/resolveValue';
 import {
   DEFAULT_SORT_MODEL,
   DEFAULT_VISIBLE_COLUMNS,
@@ -54,12 +53,8 @@ import type { SortEntry } from '../lib/customerColumns';
 const PAGE_SIZE = 100;
 
 interface SearchParams {
+  /** Navigation intent: 'new' opens the add-customer form */
   action?: string;
-  geocodeStatus?: GeocodeStatus;
-  hasOverdue?: boolean;
-  revisionFilter?: '' | 'overdue' | 'week' | 'month';
-  typeFilter?: 'company' | 'person' | '';
-  view?: 'table' | 'cards';
 }
 
 function CustomersInner() {
@@ -103,14 +98,13 @@ function CustomersInner() {
     [JSON.stringify(uppColumnOrder)],
   );
 
-  // Resolve with URL precedence (nullish-safe)
-  const urlRevisionFilter = searchParams?.revisionFilter ?? (searchParams?.hasOverdue ? 'overdue' : undefined);
-  const [localSearch, setLocalSearch] = useState<string>(resolveValue<string>(undefined, uppSearch, '') ?? '');
+  // UPP-only state (no URL coupling)
+  const [localSearch, setLocalSearch] = useState<string>(uppSearch ?? '');
   const search = localSearch;
-  const viewMode = resolveValue<'table' | 'cards'>(searchParams?.view as 'table' | 'cards' | undefined, uppViewMode, 'table') ?? 'table';
-  const geocodeFilter = resolveValue<GeocodeStatus | ''>(searchParams?.geocodeStatus as GeocodeStatus | undefined, uppGeocodeFilter, '') ?? '';
-  const revisionFilter = resolveValue<string>(urlRevisionFilter as string | undefined, uppRevisionFilter, '') ?? '';
-  const typeFilter = resolveValue<'company' | 'person' | ''>(undefined, uppTypeFilter, '') ?? '';
+  const viewMode: 'table' | 'cards' = (uppViewMode === 'cards') ? 'cards' : 'table';
+  const geocodeFilter: GeocodeStatus | '' = (uppGeocodeFilter as GeocodeStatus | '') ?? '';
+  const revisionFilter: string = uppRevisionFilter ?? '';
+  const typeFilter: 'company' | 'person' | '' = (uppTypeFilter as 'company' | 'person' | '') ?? '';
 
   const setSearch = useCallback((v: string) => { setLocalSearch(v); setUppSearch(v); }, [setUppSearch]);
   const setSortModel = useCallback((m: SortEntry[]) => setUppSortModel(sanitizeSortModel(m)), [setUppSortModel]);
@@ -120,17 +114,6 @@ function CustomersInner() {
     setUppVisibleColumns(DEFAULT_VISIBLE_COLUMNS);
     setUppColumnOrder(DEFAULT_COLUMN_ORDER);
   }, [setUppVisibleColumns, setUppColumnOrder]);
-
-  // Sync URL params to UPP on mount so they survive navigation
-  const didSyncRef = useRef(false);
-  useEffect(() => {
-    if (didSyncRef.current) return;
-    didSyncRef.current = true;
-    if (searchParams?.view) setViewMode(searchParams.view as 'table' | 'cards');
-    if (searchParams?.geocodeStatus) setGeocodeFilter(searchParams.geocodeStatus);
-    if (urlRevisionFilter) setRevisionFilter(urlRevisionFilter as string);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const [showForm, setShowForm] = useState(searchParams?.action === 'new');
 

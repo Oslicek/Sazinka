@@ -111,21 +111,12 @@ describe('Customers page — persistence V2 (Phase 5)', () => {
     expect(() => render(<Customers />)).not.toThrow();
   });
 
-  it('URL geocodeStatus param hydrates geocodeFilter', () => {
+  it('(6B) unknown URL params do not crash the page', () => {
+    // Post-6B: URL state params are ignored; only action= is recognised
     mockSearchParams.geocodeStatus = 'failed';
-    render(<Customers />);
-    const select = screen.getByDisplayValue('filter_address_failed');
-    expect(select).toBeInTheDocument();
-  });
-
-  it('URL sortBy param is read from searchParams without crash', () => {
     mockSearchParams.sortBy = 'city';
-    // Should not throw — sortBy is applied to the request
-    expect(() => render(<Customers />)).not.toThrow();
-  });
-
-  it('URL sortOrder param is read from searchParams without crash', () => {
     mockSearchParams.sortOrder = 'desc';
+    mockSearchParams.view = 'cards';
     expect(() => render(<Customers />)).not.toThrow();
   });
 
@@ -330,31 +321,32 @@ describe('Customers page — P2 UPP wiring', () => {
     });
   });
 
-  it('URL view=cards overrides UPP-persisted viewMode=table', async () => {
+  it('(6B) UPP viewMode=table persists after URL params are ignored', async () => {
     seedUpp('viewMode', 'table');
-    mockSearchParams.view = 'cards';
+    mockSearchParams.view = 'cards';  // URL no longer overrides
     render(<Customers />);
-    // Cards button should be active (URL wins)
+    // Table view is active (UPP wins)
     await waitFor(() => {
-      expect(screen.getByTestId('view-cards-btn')).toBeInTheDocument();
+      expect(screen.getByTestId('view-table-btn')).toBeInTheDocument();
     });
   });
 
-  it('URL geocodeStatus=failed overrides UPP-persisted geocodeFilter=empty', async () => {
-    seedUpp('geocodeFilter', '');
-    mockSearchParams.geocodeStatus = 'failed';
+  it('(6B) UPP geocodeFilter persists despite URL geocodeStatus', async () => {
+    seedUpp('geocodeFilter', 'failed');
+    mockSearchParams.geocodeStatus = 'ok';  // URL no longer overrides
     render(<Customers />);
     await waitFor(() => {
       expect(screen.getByDisplayValue('filter_address_failed')).toBeInTheDocument();
     });
   });
 
-  it('URL revisionFilter=week overrides UPP-persisted revisionFilter=overdue', async () => {
+  it('(6B) UPP revisionFilter=overdue persists despite URL revisionFilter=week', async () => {
     seedUpp('revisionFilter', 'overdue');
-    mockSearchParams.revisionFilter = 'week';
+    mockSearchParams.revisionFilter = 'week';  // URL no longer overrides
     render(<Customers />);
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'filter_revision_week' })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByRole('button', { name: 'filter_revision_overdue' })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByRole('button', { name: 'filter_revision_week' })).toHaveAttribute('aria-pressed', 'false');
     });
   });
 
