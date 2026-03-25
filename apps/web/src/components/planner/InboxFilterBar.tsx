@@ -28,6 +28,10 @@ interface InboxFilterBarProps {
   ruleSets: ScoringRuleSet[];
   isLoadingRuleSets: boolean;
   candidateCount: number;
+  /** Optional controlled prop — if provided, InboxListPanel owns the open state */
+  isAdvancedOpen?: boolean;
+  /** Called when the expand/collapse button is clicked (controlled mode) */
+  onToggleAdvanced?: () => void;
 }
 
 export function InboxFilterBar({
@@ -40,9 +44,17 @@ export function InboxFilterBar({
   ruleSets,
   isLoadingRuleSets,
   candidateCount,
+  isAdvancedOpen: isAdvancedOpenProp,
+  onToggleAdvanced,
 }: InboxFilterBarProps) {
   const { t } = useTranslation('planner');
-  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
+  const [isAdvancedOpenState, setIsAdvancedOpenState] = useState(false);
+  // Controlled if parent passes the prop; otherwise use internal state
+  const isAdvancedOpen = isAdvancedOpenProp !== undefined ? isAdvancedOpenProp : isAdvancedOpenState;
+  const handleToggleAdvanced = () => {
+    if (onToggleAdvanced) onToggleAdvanced();
+    else setIsAdvancedOpenState((prev) => !prev);
+  };
 
   const activeFilterCount = getActiveFilterCount(filters);
   const hasAdvancedActive = hasAdvancedCriteria(filters);
@@ -137,7 +149,7 @@ export function InboxFilterBar({
           >
             {ruleSets.map((rs) => {
               const displayName = rs.systemKey
-                ? t(`scoring_preset_name_${rs.systemKey}`, { ns: 'settings' })
+                ? t(`scoring_preset_name_${rs.systemKey}`)
                 : rs.name;
               return (
                 <option key={rs.id} value={rs.id}>
@@ -164,7 +176,7 @@ export function InboxFilterBar({
         </button>
         <CollapseButton
           collapsed={!isAdvancedOpen}
-          onClick={() => setIsAdvancedOpen((prev) => !prev)}
+          onClick={handleToggleAdvanced}
           title={isAdvancedOpen ? t('filter_collapse') : t('filter_expand')}
         />
       </div>

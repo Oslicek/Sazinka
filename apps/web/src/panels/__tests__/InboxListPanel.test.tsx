@@ -79,12 +79,21 @@ vi.mock('@/stores/natsStore', () => ({
   useNatsStore: () => ({ isConnected: true }),
 }));
 
+vi.mock('@/stores/authStore', () => ({
+  useAuthStore: vi.fn((selector?: (s: { user: { id: string } | null }) => unknown) => {
+    const state = { user: { id: 'test-user-inbox-list' } };
+    return selector ? selector(state) : state;
+  }),
+}));
+
 let lastFilterBarProps: {
   filters: InboxFilterExpression;
   onFiltersChange: (f: InboxFilterExpression) => void;
   activePresetId: FilterPresetId | null;
   onPresetChange: (id: FilterPresetId) => void;
   candidateCount: number;
+  isAdvancedOpen?: boolean;
+  onToggleAdvanced?: () => void;
 } | null = null;
 
 vi.mock('@/components/planner/InboxFilterBar', () => ({

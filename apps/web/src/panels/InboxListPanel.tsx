@@ -3,6 +3,11 @@ import { VirtualizedInboxList } from '@/components/planner';
 import { InboxFilterBar } from '@/components/planner/InboxFilterBar';
 import { usePanelState } from '@/hooks/usePanelState';
 import { useNatsStore } from '@/stores/natsStore';
+import { useAuthStore } from '@/stores/authStore';
+import { PersistenceProvider } from '@/persistence/react/PersistenceProvider';
+import { usePersistentControl } from '@/persistence/react/usePersistentControl';
+import { sessionAdapter } from '@/persistence/adapters/singletons';
+import { inboxUiProfile, INBOX_UI_PROFILE_ID } from '@/persistence/profiles/inboxUiProfile';
 import { getInbox } from '@/services/inboxService';
 import { inboxResponseToCallQueueResponse } from '@/services/inboxAdapter';
 import { listRuleSets, getInboxState, saveInboxState } from '@/services/scoringService';
@@ -113,7 +118,16 @@ interface InboxListPanelProps {
   onSelectionChange?: (id: string, selected: boolean) => void;
 }
 
-export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadingProp, selectable = false, selectedIds, onSelectionChange }: InboxListPanelProps) {
+export function InboxListPanel(props: InboxListPanelProps) {
+  const userId = useAuthStore((s) => s.user?.id ?? null);
+  return (
+    <PersistenceProvider userId={userId} profiles={[inboxUiProfile]} adapters={{ session: sessionAdapter }}>
+      <InboxListPanelInner {...props} />
+    </PersistenceProvider>
+  );
+}
+
+function InboxListPanelInner({ candidates: candidatesProp, isLoading: isLoadingProp, selectable = false, selectedIds, onSelectionChange }: InboxListPanelProps) {
   const { state, actions } = usePanelState();
   const { isConnected } = useNatsStore();
 
@@ -126,6 +140,14 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
   const [filters, setFilters] = useState<InboxFilterExpression>(loadPersistedFilters);
   const [activePresetId, setActivePresetId] = useState<FilterPresetId | null>(loadPersistedPresetId);
   const inboxStateLoadedRef = useRef(_cache.inboxStateLoaded);
+
+  // UPP: isAdvancedFiltersOpen — session channel
+  const { value: uppIsAdvancedOpen, setValue: setUppIsAdvancedOpen } =
+    usePersistentControl<boolean>(INBOX_UI_PROFILE_ID, 'isAdvancedFiltersOpen');
+  const isAdvancedOpen: boolean = uppIsAdvancedOpen === true;
+  const handleToggleAdvanced = useCallback(() => {
+    setUppIsAdvancedOpen(!isAdvancedOpen);
+  }, [isAdvancedOpen, setUppIsAdvancedOpen]);
 
   const setRawCandidates = useCallback((items: CallQueueItem[]) => {
     _cache.rawCandidates = items;
@@ -299,6 +321,8 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
         ruleSets={ruleSets}
         isLoadingRuleSets={false}
         candidateCount={filteredSorted.length}
+        isAdvancedOpen={isAdvancedOpen}
+        onToggleAdvanced={handleToggleAdvanced}
       />
       <VirtualizedInboxList
         candidates={resolvedCandidates}
