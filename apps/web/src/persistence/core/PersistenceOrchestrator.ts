@@ -45,7 +45,8 @@ export class PersistenceOrchestrator {
         .filter((e): e is NonNullable<typeof e> => e !== null && isValidEnvelope(e));
 
       const resolved = resolvePrecedence(envelopes);
-      state[control.controlId] = resolved !== null ? resolved.value : control.defaultValue;
+      const raw = resolved !== null ? resolved.value : control.defaultValue;
+      state[control.controlId] = control.sanitize ? (control.sanitize as (v: unknown) => unknown)(raw) : raw;
     }
 
     return state;
