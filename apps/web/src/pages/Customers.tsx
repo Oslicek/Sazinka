@@ -33,9 +33,12 @@ import { AlertTriangle } from 'lucide-react';
 import styles from './Customers.module.css';
 import { PersistenceProvider } from '../persistence/react/PersistenceProvider';
 import { usePersistentControl } from '../persistence/react/usePersistentControl';
-import { sessionAdapter } from '../persistence/adapters/singletons';
+import { sessionAdapter, localAdapter } from '../persistence/adapters/singletons';
 import { customersProfile, CUSTOMERS_PROFILE_ID } from '../persistence/profiles/customersProfile';
+import { customersGridProfile, CUSTOMERS_GRID_PROFILE_ID } from '../persistence/profiles/customersGridProfile';
 import { resolveValue } from '../persistence/react/resolveValue';
+import { DEFAULT_SORT_MODEL, sanitizeSortModel } from '../lib/customerColumns';
+import type { SortEntry } from '../lib/customerColumns';
 
 /** Page size for infinite scroll */
 const PAGE_SIZE = 100;
@@ -46,8 +49,6 @@ interface SearchParams {
   hasOverdue?: boolean;
   revisionFilter?: '' | 'overdue' | 'week' | 'month';
   typeFilter?: 'company' | 'person' | '';
-  sortBy?: ListCustomersRequest['sortBy'];
-  sortOrder?: ListCustomersRequest['sortOrder'];
   view?: 'table' | 'cards';
 }
 
@@ -55,7 +56,7 @@ function CustomersInner() {
   const navigate = useNavigate();
   const searchParams = useSearch({ strict: false }) as SearchParams;
 
-  // UPP controls — usePersistentControl for all 7 (setValue is useCallback-stable)
+  // UPP controls — customers.filters (session) — 6 controls
   const { value: uppSearch, setValue: setUppSearch } = usePersistentControl<string>(
     CUSTOMERS_PROFILE_ID, 'search', 300,
   );
@@ -63,8 +64,17 @@ function CustomersInner() {
   const { value: uppGeocodeFilter, setValue: setGeocodeFilter } = usePersistentControl<GeocodeStatus | ''>(CUSTOMERS_PROFILE_ID, 'geocodeFilter');
   const { value: uppRevisionFilter, setValue: setRevisionFilter } = usePersistentControl<string>(CUSTOMERS_PROFILE_ID, 'revisionFilter');
   const { value: uppTypeFilter, setValue: setTypeFilter } = usePersistentControl<'company' | 'person' | ''>(CUSTOMERS_PROFILE_ID, 'typeFilter');
-  const { value: uppSortBy, setValue: setSortBy } = usePersistentControl<ListCustomersRequest['sortBy']>(CUSTOMERS_PROFILE_ID, 'sortBy');
-  const { value: uppSortOrder, setValue: setSortOrder } = usePersistentControl<ListCustomersRequest['sortOrder']>(CUSTOMERS_PROFILE_ID, 'sortOrder');
+
+  // UPP controls — customers.grid (local) — sortModel
+  const { value: uppSortModel, setValue: setUppSortModel } = usePersistentControl<SortEntry[]>(
+    CUSTOMERS_GRID_PROFILE_ID, 'sortModel',
+  );
+  // Memoize to avoid new-reference churn on every render
+  const sortModel: SortEntry[] = useMemo(
+    () => sanitizeSortModel(uppSortModel ?? DEFAULT_SORT_MODEL),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify(uppSortModel)],
+  );
 
   // Resolve with URL precedence (nullish-safe)
   const urlRevisionFilter = searchParams?.revisionFilter ?? (searchParams?.hasOverdue ? 'overdue' : undefined);
@@ -74,10 +84,9 @@ function CustomersInner() {
   const geocodeFilter = resolveValue<GeocodeStatus | ''>(searchParams?.geocodeStatus as GeocodeStatus | undefined, uppGeocodeFilter, '') ?? '';
   const revisionFilter = resolveValue<string>(urlRevisionFilter as string | undefined, uppRevisionFilter, '') ?? '';
   const typeFilter = resolveValue<'company' | 'person' | ''>(undefined, uppTypeFilter, '') ?? '';
-  const sortBy = resolveValue<ListCustomersRequest['sortBy']>(searchParams?.sortBy as ListCustomersRequest['sortBy'] | undefined, uppSortBy, 'name') ?? 'name';
-  const sortOrder = resolveValue<ListCustomersRequest['sortOrder']>(searchParams?.sortOrder as ListCustomersRequest['sortOrder'] | undefined, uppSortOrder, 'asc') ?? 'asc';
 
   const setSearch = useCallback((v: string) => { setLocalSearch(v); setUppSearch(v); }, [setUppSearch]);
+  const setSortModel = useCallback((m: SortEntry[]) => setUppSortModel(sanitizeSortModel(m)), [setUppSortModel]);
 
   // Sync URL params to UPP on mount so they survive navigation
   const didSyncRef = useRef(false);
@@ -87,8 +96,6 @@ function CustomersInner() {
     if (searchParams?.view) setViewMode(searchParams.view as 'table' | 'cards');
     if (searchParams?.geocodeStatus) setGeocodeFilter(searchParams.geocodeStatus);
     if (urlRevisionFilter) setRevisionFilter(urlRevisionFilter as string);
-    if (searchParams?.sortBy) setSortBy(searchParams.sortBy);
-    if (searchParams?.sortOrder) setSortOrder(searchParams.sortOrder);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -140,8 +147,8 @@ function CustomersInner() {
   const requestOptions = useMemo<ListCustomersRequest>(() => {
     const options: ListCustomersRequest = {
       limit: PAGE_SIZE,
-      sortBy,
-      sortOrder,
+      sortBy: sortModel[0]?.column as ListCustomersRequest['sortBy'] ?? 'name',
+      sortOrder: sortModel[0]?.direction ?? 'asc',
     };
     
     if (search) {
@@ -165,7 +172,7 @@ function CustomersInner() {
     }
     
     return options;
-  }, [search, geocodeFilter, revisionFilter, typeFilter, sortBy, sortOrder]);
+  }, [search, geocodeFilter, revisionFilter, typeFilter, sortModel]);
 
   // Load first page + summary when connected or filters change
   const loadCustomers = useCallback(async () => {
@@ -821,8 +828,8 @@ export function Customers() {
   return (
     <PersistenceProvider
       userId={userId}
-      profiles={[customersProfile]}
-      adapters={{ session: sessionAdapter }}
+      profiles={[customersProfile, customersGridProfile]}
+      adapters={{ session: sessionAdapter, local: localAdapter }}
     >
       <CustomersInner />
     </PersistenceProvider>

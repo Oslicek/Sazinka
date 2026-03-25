@@ -1,15 +1,17 @@
 /**
- * Customers page persistence profile.
+ * Customers page persistence profile (session-scoped).
  *
- * Controls (8):
- *  - search: text input (debounced, not in URL currently)
- *  - viewMode: 'table' | 'cards' (URL: view)
- *  - geocodeFilter: GeocodeStatus | '' (URL: geocodeStatus)
- *  - revisionFilter: '' | 'overdue' | 'week' | 'month' (URL: revision — replaces lossy hasOverdue boolean)
- *  - typeFilter: 'company' | 'person' | '' (not in URL currently)
- *  - sortBy: ListCustomersRequest['sortBy'] (URL: sortBy)
- *  - sortOrder: 'asc' | 'desc' (URL: sortOrder)
- *  - selectedCustomerId: UUID string | null — last selected customer (P3-1)
+ * Controls (6):
+ *  - search: text input (debounced)
+ *  - viewMode: 'table' | 'cards'
+ *  - geocodeFilter: GeocodeStatus | ''
+ *  - revisionFilter: '' | 'overdue' | 'week' | 'month'
+ *  - typeFilter: 'company' | 'person' | ''
+ *  - selectedCustomerId: UUID string | null — last selected customer
+ *
+ * NOTE: sortBy/sortOrder were removed in Phase 1C.
+ * Sorting now lives in customers.grid (local) as sortModel.
+ * Phase 4B will add isAdvancedFiltersOpen as a 7th control.
  */
 import type { PersistenceProfile } from '../core/types';
 
@@ -51,20 +53,6 @@ export const customersProfile: PersistenceProfile = {
       controlId: 'typeFilter',
       pluginId: 'enum',
       defaultValue: '',
-      writeMode: 'immediate',
-      validators: [],
-    },
-    {
-      controlId: 'sortBy',
-      pluginId: 'enum',
-      defaultValue: 'name',
-      writeMode: 'immediate',
-      validators: [],
-    },
-    {
-      controlId: 'sortOrder',
-      pluginId: 'enum',
-      defaultValue: 'asc',
       writeMode: 'immediate',
       validators: [],
     },
