@@ -11,7 +11,7 @@ import {
   restoreRuleSetDefaults,
 } from '../../services/scoringService';
 import type { ScoringRuleSet, FactorInput } from '../../services/scoringService';
-import { FACTOR_KEYS } from '@shared/scoring';
+import { FACTOR_KEYS, DEFAULT_PROFILE_FACTORS } from '@shared/scoring';
 import styles from './ScoringRuleSetsManager.module.css';
 
 // Sorting factors (control primary inbox order via lifecycle_rank, due date, age)
@@ -32,8 +32,29 @@ const URGENCY_FACTOR_KEYS = [
 
 const ALL_FACTOR_KEYS = [...SORTING_FACTOR_KEYS, ...URGENCY_FACTOR_KEYS] as const;
 
+const DEFAULT_FACTOR_WEIGHTS = new Map<string, number>(
+  DEFAULT_PROFILE_FACTORS.map((factor) => [factor.factorKey, factor.weight]),
+);
+
 function defaultFactors(): FactorInput[] {
-  return ALL_FACTOR_KEYS.map((key) => ({ factorKey: key, weight: 0 }));
+  return ALL_FACTOR_KEYS.map((key) => ({
+    factorKey: key,
+    weight: DEFAULT_FACTOR_WEIGHTS.get(key) ?? 0,
+  }));
+}
+
+function normalizeFactors(
+  factors?: Array<{ factorKey: string; weight: number }>
+): FactorInput[] {
+  const base = defaultFactors();
+  if (!factors || factors.length === 0) return base;
+
+  const byKey = new Map<string, number>(factors.map((f) => [f.factorKey, f.weight]));
+  return base.map((factor) =>
+    byKey.has(factor.factorKey)
+      ? { ...factor, weight: byKey.get(factor.factorKey) ?? factor.weight }
+      : factor
+  );
 }
 
 interface EditState {
@@ -93,7 +114,7 @@ export function ScoringRuleSetsManager() {
       name: rs.name,
       description: rs.description ?? '',
       isDefault: rs.isDefault,
-      factors: defaultFactors(),
+      factors: normalizeFactors(rs.factors),
     });
   };
 

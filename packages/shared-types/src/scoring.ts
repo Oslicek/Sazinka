@@ -14,6 +14,7 @@ export interface ScoringRuleSet {
   updatedByUserId: string;
   createdAt: string;
   updatedAt: string;
+  factors?: ScoringRuleFactor[];
 }
 
 export interface ScoringRuleFactor {
@@ -86,7 +87,7 @@ export interface ScoreBreakdownItem {
 
 /** Factory weights for the seeded "Standard" system profile */
 export const DEFAULT_PROFILE_FACTORS: ReadonlyArray<{ factorKey: FactorKey; weight: number }> = [
-  { factorKey: FACTOR_KEYS.LIFECYCLE_RANK,   weight: -1000 },
+  { factorKey: FACTOR_KEYS.LIFECYCLE_RANK,   weight: 1000  },
   { factorKey: FACTOR_KEYS.DAYS_UNTIL_DUE,   weight: -5    },
   { factorKey: FACTOR_KEYS.CUSTOMER_AGE_DAYS, weight: 0.01 },
 ] as const;

@@ -26,9 +26,15 @@ const RULE_SET_COLS: &str = r#"
 ///   rank 2 (active)       → 1 × 1000 = 1000
 ///   rank 3 (needs_action) → 0 × 1000 = 0     (lowest)
 pub const DEFAULT_FACTORS: &[(&str, f64)] = &[
-    (crate::services::scoring::factor_keys::LIFECYCLE_RANK, 1000.0),
+    (
+        crate::services::scoring::factor_keys::LIFECYCLE_RANK,
+        1000.0,
+    ),
     (crate::services::scoring::factor_keys::DAYS_UNTIL_DUE, -5.0),
-    (crate::services::scoring::factor_keys::CUSTOMER_AGE_DAYS, 0.01),
+    (
+        crate::services::scoring::factor_keys::CUSTOMER_AGE_DAYS,
+        0.01,
+    ),
 ];
 
 /// Returns the localized name for the system "Standard" profile.
@@ -38,6 +44,11 @@ pub fn default_profile_name(locale: &str) -> &'static str {
         "sk" => "Štandardný",
         _ => "Standard",
     }
+}
+
+async fn hydrate_rule_set_factors(pool: &PgPool, rule_set: &mut ScoringRuleSet) -> Result<()> {
+    rule_set.factors = get_factors(pool, rule_set.id).await?;
+    Ok(())
 }
 
 // ============================================================================
@@ -72,7 +83,7 @@ pub async fn create_rule_set(
         .await?;
     }
 
-    let rule_set = sqlx::query_as::<_, ScoringRuleSet>(&format!(
+    let mut rule_set = sqlx::query_as::<_, ScoringRuleSet>(&format!(
         r#"
         INSERT INTO scoring_rule_sets (
             id, user_id, name, description, is_default, is_archived, is_system,
@@ -96,6 +107,7 @@ pub async fn create_rule_set(
     }
 
     tx.commit().await?;
+    hydrate_rule_set_factors(pool, &mut rule_set).await?;
     Ok(rule_set)
 }
 
@@ -117,7 +129,7 @@ pub async fn create_default_scoring_profile(
     .await?;
 
     let name = default_profile_name(locale);
-    let rule_set = sqlx::query_as::<_, ScoringRuleSet>(&format!(
+    let mut rule_set = sqlx::query_as::<_, ScoringRuleSet>(&format!(
         r#"
         INSERT INTO scoring_rule_sets (
             id, user_id, name, description, is_default, is_archived, is_system,
@@ -136,11 +148,15 @@ pub async fn create_default_scoring_profile(
 
     let factors: Vec<FactorInput> = DEFAULT_FACTORS
         .iter()
-        .map(|(k, w)| FactorInput { factor_key: k.to_string(), weight: *w })
+        .map(|(k, w)| FactorInput {
+            factor_key: k.to_string(),
+            weight: *w,
+        })
         .collect();
     upsert_factors_in_tx(&mut tx, rule_set.id, &factors).await?;
 
     tx.commit().await?;
+    hydrate_rule_set_factors(pool, &mut rule_set).await?;
     Ok(rule_set)
 }
 
@@ -155,7 +171,7 @@ pub async fn restore_rule_set_defaults(
     let mut tx = pool.begin().await?;
 
     let name = default_profile_name(locale);
-    let rule_set = sqlx::query_as::<_, ScoringRuleSet>(&format!(
+    let mut rule_set = sqlx::query_as::<_, ScoringRuleSet>(&format!(
         r#"
         UPDATE scoring_rule_sets
         SET name = $3, description = NULL, updated_at = NOW()
@@ -173,21 +189,23 @@ pub async fn restore_rule_set_defaults(
     if let Some(ref rs) = rule_set {
         let factors: Vec<FactorInput> = DEFAULT_FACTORS
             .iter()
-            .map(|(k, w)| FactorInput { factor_key: k.to_string(), weight: *w })
+            .map(|(k, w)| FactorInput {
+                factor_key: k.to_string(),
+                weight: *w,
+            })
             .collect();
         upsert_factors_in_tx(&mut tx, rs.id, &factors).await?;
     }
 
     tx.commit().await?;
+    if let Some(ref mut rs) = rule_set {
+        hydrate_rule_set_factors(pool, rs).await?;
+    }
     Ok(rule_set)
 }
 
 /// Hard-delete a rule set. Returns error if is_system = TRUE.
-pub async fn delete_rule_set(
-    pool: &PgPool,
-    user_id: Uuid,
-    rule_set_id: Uuid,
-) -> Result<bool> {
+pub async fn delete_rule_set(pool: &PgPool, user_id: Uuid, rule_set_id: Uuid) -> Result<bool> {
     // Guard: refuse to delete system profiles
     let row = sqlx::query_as::<_, (bool,)>(
         "SELECT is_system FROM scoring_rule_sets WHERE id = $1 AND user_id = $2",
@@ -205,13 +223,11 @@ pub async fn delete_rule_set(
         Some((false,)) => {}
     }
 
-    let result = sqlx::query(
-        "DELETE FROM scoring_rule_sets WHERE id = $1 AND user_id = $2",
-    )
-    .bind(rule_set_id)
-    .bind(user_id)
-    .execute(pool)
-    .await?;
+    let result = sqlx::query("DELETE FROM scoring_rule_sets WHERE id = $1 AND user_id = $2")
+        .bind(rule_set_id)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
 
     Ok(result.rows_affected() > 0)
 }
@@ -234,10 +250,14 @@ pub async fn list_rule_sets(
         )
     };
 
-    let sets = sqlx::query_as::<_, ScoringRuleSet>(&query)
+    let mut sets = sqlx::query_as::<_, ScoringRuleSet>(&query)
         .bind(user_id)
         .fetch_all(pool)
         .await?;
+
+    for set in &mut sets {
+        hydrate_rule_set_factors(pool, set).await?;
+    }
 
     Ok(sets)
 }
@@ -248,7 +268,7 @@ pub async fn get_rule_set(
     user_id: Uuid,
     rule_set_id: Uuid,
 ) -> Result<Option<ScoringRuleSet>> {
-    let set = sqlx::query_as::<_, ScoringRuleSet>(&format!(
+    let mut set = sqlx::query_as::<_, ScoringRuleSet>(&format!(
         "SELECT {} FROM scoring_rule_sets WHERE id = $1 AND user_id = $2",
         RULE_SET_COLS
     ))
@@ -256,6 +276,10 @@ pub async fn get_rule_set(
     .bind(user_id)
     .fetch_optional(pool)
     .await?;
+
+    if let Some(ref mut rule_set) = set {
+        hydrate_rule_set_factors(pool, rule_set).await?;
+    }
 
     Ok(set)
 }
@@ -313,7 +337,7 @@ pub async fn update_rule_set(
         qb = qb.bind(is_default);
     }
 
-    let result = qb.fetch_optional(&mut *tx).await?;
+    let mut result = qb.fetch_optional(&mut *tx).await?;
 
     if let Some(ref rule_set) = result {
         if let Some(ref factors) = req.factors {
@@ -322,15 +346,14 @@ pub async fn update_rule_set(
     }
 
     tx.commit().await?;
+    if let Some(ref mut rule_set) = result {
+        hydrate_rule_set_factors(pool, rule_set).await?;
+    }
     Ok(result)
 }
 
 /// Set a rule set as the default (clears other defaults for the user)
-pub async fn set_default_rule_set(
-    pool: &PgPool,
-    user_id: Uuid,
-    rule_set_id: Uuid,
-) -> Result<bool> {
+pub async fn set_default_rule_set(pool: &PgPool, user_id: Uuid, rule_set_id: Uuid) -> Result<bool> {
     let mut tx = pool.begin().await?;
 
     sqlx::query(
@@ -354,11 +377,7 @@ pub async fn set_default_rule_set(
 
 /// Archive a rule set (soft-delete). Auto-promotes next active profile to default
 /// if the archived profile was the current default.
-pub async fn archive_rule_set(
-    pool: &PgPool,
-    user_id: Uuid,
-    rule_set_id: Uuid,
-) -> Result<bool> {
+pub async fn archive_rule_set(pool: &PgPool, user_id: Uuid, rule_set_id: Uuid) -> Result<bool> {
     let mut tx = pool.begin().await?;
 
     let was_default = sqlx::query_as::<_, (bool,)>(
@@ -407,10 +426,7 @@ pub async fn archive_rule_set(
 // ============================================================================
 
 /// Get all factors for a rule set
-pub async fn get_factors(
-    pool: &PgPool,
-    rule_set_id: Uuid,
-) -> Result<Vec<ScoringRuleFactor>> {
+pub async fn get_factors(pool: &PgPool, rule_set_id: Uuid) -> Result<Vec<ScoringRuleFactor>> {
     let factors = sqlx::query_as::<_, ScoringRuleFactor>(
         "SELECT rule_set_id, factor_key, weight::float8 FROM scoring_rule_factors WHERE rule_set_id = $1 ORDER BY factor_key",
     )
@@ -493,8 +509,7 @@ mod tests {
 
     #[test]
     fn default_factors_weights_are_correct() {
-        let map: std::collections::HashMap<&str, f64> =
-            DEFAULT_FACTORS.iter().cloned().collect();
+        let map: std::collections::HashMap<&str, f64> = DEFAULT_FACTORS.iter().cloned().collect();
         assert!((map["lifecycle_rank"] - 1000.0).abs() < f64::EPSILON);
         assert!((map["days_until_due"] - (-5.0)).abs() < f64::EPSILON);
         assert!((map["customer_age_days"] - 0.01).abs() < f64::EPSILON);

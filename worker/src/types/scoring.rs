@@ -25,6 +25,9 @@ pub struct ScoringRuleSet {
     pub updated_by_user_id: Uuid,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    #[sqlx(skip)]
+    #[serde(default)]
+    pub factors: Vec<ScoringRuleFactor>,
 }
 
 /// A single factor/weight within a scoring rule set
@@ -135,6 +138,7 @@ mod tests {
             updated_by_user_id: Uuid::nil(),
             created_at: chrono::DateTime::from_timestamp(0, 0).unwrap(),
             updated_at: chrono::DateTime::from_timestamp(0, 0).unwrap(),
+            factors: vec![],
         };
         let json = serde_json::to_string(&rss).unwrap();
         assert!(json.contains("\"isDefault\""));
