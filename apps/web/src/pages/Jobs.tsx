@@ -18,6 +18,11 @@ import type { CustomerImportJobStatusUpdate, ImportReport } from '@shared/import
 import { formatDate } from '../i18n/formatters';
 import { MapPin, Map as MapIcon, Upload, Download, BarChart2, GitBranch, Mail, MessageSquare, Settings } from 'lucide-react';
 import styles from './Jobs.module.css';
+import { useAuthStore } from '../stores/authStore';
+import { PersistenceProvider } from '../persistence/react/PersistenceProvider';
+import { usePersistentControl } from '../persistence/react/usePersistentControl';
+import { sessionAdapter } from '../persistence/adapters/singletons';
+import { jobsProfile, JOBS_PROFILE_ID, HISTORY_FILTER_VALUES, type HistoryFilter } from '../persistence/profiles/jobsProfile';
 
 function JobTypeIcon({ type }: { type: JobType }) {
   switch (type) {
@@ -62,6 +67,19 @@ const JOB_STREAMS: JobType[] = [
 ];
 
 export function Jobs() {
+  const userId = useAuthStore((s) => s.user?.id ?? null);
+  return (
+    <PersistenceProvider
+      userId={userId}
+      profiles={[jobsProfile]}
+      adapters={{ session: sessionAdapter }}
+    >
+      <JobsInner />
+    </PersistenceProvider>
+  );
+}
+
+function JobsInner() {
   const { t } = useTranslation('jobs');
   const isConnected = useNatsStore((s) => s.isConnected);
   const subscribe = useNatsStore((s) => s.subscribe);
@@ -71,7 +89,12 @@ export function Jobs() {
   
   const [localActiveJobs, setLocalActiveJobs] = useState<Map<string, ActiveJob>>(new Map());
   const [recentJobs, setRecentJobs] = useState<CompletedJob[]>([]);
-  const [filter, setFilter] = useState<'all' | 'active' | 'completed' | 'failed' | 'cancelled'>('all');
+  const { value: _uppFilter, setValue: setUppFilter } =
+    usePersistentControl<string>(JOBS_PROFILE_ID, 'historyFilter');
+  const filter: HistoryFilter = (HISTORY_FILTER_VALUES as readonly string[]).includes(_uppFilter)
+    ? (_uppFilter as HistoryFilter)
+    : 'all';
+  const setFilter = (v: HistoryFilter) => setUppFilter(v);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirmingCancelId, setConfirmingCancelId] = useState<string | null>(null);
