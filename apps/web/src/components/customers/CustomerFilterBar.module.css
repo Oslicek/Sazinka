@@ -1,0 +1,198 @@
+.filterBar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.searchRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.searchWrapper {
+  position: relative;
+  flex: 1;
+}
+
+.search {
+  width: 100%;
+  padding: 6px 32px 6px 10px;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 6px;
+  font-size: 14px;
+  background: var(--input-bg, #fff);
+  color: var(--text-primary, #222);
+  box-sizing: border-box;
+}
+
+.search:focus {
+  outline: none;
+  border-color: var(--accent, #4f46e5);
+}
+
+.searchClear {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-muted, #888);
+  padding: 2px 4px;
+  line-height: 1;
+  border-radius: 3px;
+}
+
+.searchClear:hover {
+  color: var(--text-primary, #222);
+  background: var(--hover-bg, #f0f0f0);
+}
+
+.viewToggle {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.viewButton {
+  background: none;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 5px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text-muted, #888);
+  line-height: 1;
+}
+
+.viewButton:hover {
+  background: var(--hover-bg, #f5f5f5);
+  color: var(--text-primary, #222);
+}
+
+.viewButton.active {
+  background: var(--accent-light, #eef2ff);
+  color: var(--accent, #4f46e5);
+  border-color: var(--accent, #4f46e5);
+}
+
+.chipsRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chipGroup {
+  display: flex;
+  gap: 4px;
+}
+
+.chip {
+  padding: 4px 10px;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 14px;
+  background: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-secondary, #444);
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+.chip:hover {
+  background: var(--hover-bg, #f5f5f5);
+}
+
+.chipActive {
+  background: var(--accent-light, #eef2ff);
+  color: var(--accent, #4f46e5);
+  border-color: var(--accent, #4f46e5);
+  font-weight: 500;
+}
+
+.filterSelect {
+  padding: 4px 8px;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--input-bg, #fff);
+  color: var(--text-secondary, #444);
+  cursor: pointer;
+}
+
+.filterSelectActive {
+  border-color: var(--accent, #4f46e5);
+  color: var(--accent, #4f46e5);
+}
+
+.filterBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  background: var(--accent, #4f46e5);
+  color: #fff;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.clearAllBtn {
+  padding: 4px 10px;
+  background: none;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text-muted, #888);
+}
+
+.clearAllBtn:hover {
+  background: var(--hover-bg, #f5f5f5);
+  color: var(--text-primary, #222);
+}
+
+.advancedToggle {
+  padding: 4px 10px;
+  background: none;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text-secondary, #444);
+  margin-left: auto;
+}
+
+.advancedToggle:hover {
+  background: var(--hover-bg, #f5f5f5);
+}
+
+.advancedToggleOpen {
+  background: var(--accent-light, #eef2ff);
+  color: var(--accent, #4f46e5);
+  border-color: var(--accent, #4f46e5);
+}
+
+.columnPickerWrapper {
+  position: relative;
+}
+
+.columnPickerTrigger {
+  padding: 4px 10px;
+  background: none;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text-secondary, #444);
+}
+
+.columnPickerTrigger:hover {
+  background: var(--hover-bg, #f5f5f5);
+}

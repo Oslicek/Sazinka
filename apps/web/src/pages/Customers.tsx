@@ -25,6 +25,7 @@ import { CustomerTable } from '../components/customers/CustomerTable';
 import { CustomerPreviewPanel } from '../components/customers/CustomerPreviewPanel';
 import { CustomerEditDrawer } from '../components/customers/CustomerEditDrawer';
 import { SavedViewsSelector, type SavedView } from '../components/customers/SavedViewsSelector';
+import { CustomerFilterBar } from '../components/customers/CustomerFilterBar';
 import { SplitView } from '../components/common/SplitView';
 import { useNatsStore } from '../stores/natsStore';
 import { useAuthStore } from '../stores/authStore';
@@ -37,7 +38,14 @@ import { sessionAdapter, localAdapter } from '../persistence/adapters/singletons
 import { customersProfile, CUSTOMERS_PROFILE_ID } from '../persistence/profiles/customersProfile';
 import { customersGridProfile, CUSTOMERS_GRID_PROFILE_ID } from '../persistence/profiles/customersGridProfile';
 import { resolveValue } from '../persistence/react/resolveValue';
-import { DEFAULT_SORT_MODEL, sanitizeSortModel } from '../lib/customerColumns';
+import {
+  DEFAULT_SORT_MODEL,
+  DEFAULT_VISIBLE_COLUMNS,
+  DEFAULT_COLUMN_ORDER,
+  sanitizeSortModel,
+  sanitizeVisibleColumns,
+  sanitizeColumnOrder,
+} from '../lib/customerColumns';
 import type { SortEntry } from '../lib/customerColumns';
 
 /** Page size for infinite scroll */
@@ -65,15 +73,32 @@ function CustomersInner() {
   const { value: uppRevisionFilter, setValue: setRevisionFilter } = usePersistentControl<string>(CUSTOMERS_PROFILE_ID, 'revisionFilter');
   const { value: uppTypeFilter, setValue: setTypeFilter } = usePersistentControl<'company' | 'person' | ''>(CUSTOMERS_PROFILE_ID, 'typeFilter');
 
-  // UPP controls — customers.grid (local) — sortModel
+  // UPP controls — customers.grid (local) — sortModel, visibleColumns, columnOrder
   const { value: uppSortModel, setValue: setUppSortModel } = usePersistentControl<SortEntry[]>(
     CUSTOMERS_GRID_PROFILE_ID, 'sortModel',
   );
+  const { value: uppVisibleColumns, setValue: setUppVisibleColumns } = usePersistentControl<string[]>(
+    CUSTOMERS_GRID_PROFILE_ID, 'visibleColumns',
+  );
+  const { value: uppColumnOrder, setValue: setUppColumnOrder } = usePersistentControl<string[]>(
+    CUSTOMERS_GRID_PROFILE_ID, 'columnOrder',
+  );
+
   // Memoize to avoid new-reference churn on every render
   const sortModel: SortEntry[] = useMemo(
     () => sanitizeSortModel(uppSortModel ?? DEFAULT_SORT_MODEL),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [JSON.stringify(uppSortModel)],
+  );
+  const visibleColumns: string[] = useMemo(
+    () => sanitizeVisibleColumns(uppVisibleColumns ?? DEFAULT_VISIBLE_COLUMNS),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify(uppVisibleColumns)],
+  );
+  const columnOrder: string[] = useMemo(
+    () => sanitizeColumnOrder(uppColumnOrder ?? DEFAULT_COLUMN_ORDER),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify(uppColumnOrder)],
   );
 
   // Resolve with URL precedence (nullish-safe)
@@ -87,6 +112,12 @@ function CustomersInner() {
 
   const setSearch = useCallback((v: string) => { setLocalSearch(v); setUppSearch(v); }, [setUppSearch]);
   const setSortModel = useCallback((m: SortEntry[]) => setUppSortModel(sanitizeSortModel(m)), [setUppSortModel]);
+  const setVisibleColumns = useCallback((cols: string[]) => setUppVisibleColumns(sanitizeVisibleColumns(cols)), [setUppVisibleColumns]);
+  const setColumnOrder = useCallback((order: string[]) => setUppColumnOrder(sanitizeColumnOrder(order)), [setUppColumnOrder]);
+  const handleResetColumns = useCallback(() => {
+    setUppVisibleColumns(DEFAULT_VISIBLE_COLUMNS);
+    setUppColumnOrder(DEFAULT_COLUMN_ORDER);
+  }, [setUppVisibleColumns, setUppColumnOrder]);
 
   // Sync URL params to UPP on mount so they survive navigation
   const didSyncRef = useRef(false);
@@ -100,6 +131,7 @@ function CustomersInner() {
   }, []);
 
   const [showForm, setShowForm] = useState(searchParams?.action === 'new');
+  const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [customers, setCustomers] = useState<CustomerListItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -432,6 +464,22 @@ function CustomersInner() {
     setTypeFilter((view.filters.type ?? '') as 'company' | 'person' | '');
   }, [setGeocodeFilter, setRevisionFilter, setTypeFilter]);
 
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (search) count++;
+    if (geocodeFilter) count++;
+    if (revisionFilter) count++;
+    if (typeFilter) count++;
+    return count;
+  }, [search, geocodeFilter, revisionFilter, typeFilter]);
+
+  const handleClearAllFilters = useCallback(() => {
+    setSearch('');
+    setGeocodeFilter('');
+    setRevisionFilter('');
+    setTypeFilter('');
+  }, [setSearch, setGeocodeFilter, setRevisionFilter, setTypeFilter]);
+
   // Stats: use server summary when available, fall back to loaded data
   const stats = useMemo(() => {
     // Always compute from loaded data as baseline
@@ -535,79 +583,29 @@ function CustomersInner() {
   const tableContent = (
     <div className={styles.tablePanel}>
       {/* Toolbar */}
-      <div className={styles.toolbar}>
-        <input
-          type="text"
-          placeholder={t('search_placeholder')}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className={styles.search}
-        />
-        
-        <SavedViewsSelector
-          currentFilters={{
-            geocodeStatus: geocodeFilter || undefined,
-            revisionFilter: revisionFilter as 'overdue' | 'week' | 'month' | '' || undefined,
-            type: typeFilter || undefined,
-          }}
-          onSelectView={handleSelectView}
-        />
-        
-        <div className={styles.filterRow}>
-          <select 
-            value={geocodeFilter} 
-            onChange={(e) => setGeocodeFilter(e.target.value as GeocodeStatus | '')}
-            className={styles.filterSelect}
-          >
-            <option value="">{t('filter_address_all')}</option>
-            <option value="success">{t('filter_address_success')}</option>
-            <option value="failed">{t('filter_address_failed')}</option>
-            <option value="pending">{t('filter_address_pending')}</option>
-          </select>
-          
-          <select 
-            value={revisionFilter} 
-            onChange={(e) => setRevisionFilter(e.target.value)}
-            className={styles.filterSelect}
-          >
-            <option value="">{t('filter_revision_all')}</option>
-            <option value="overdue">{t('filter_revision_overdue')}</option>
-            <option value="week">{t('filter_revision_week')}</option>
-            <option value="month">{t('filter_revision_month')}</option>
-          </select>
-
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value as 'company' | 'person' | '')}
-            className={styles.filterSelect}
-          >
-            <option value="">{t('filter_type_all')}</option>
-            <option value="company">{t('filter_type_company')}</option>
-            <option value="person">{t('filter_type_person')}</option>
-          </select>
-        </div>
-        
-        <div className={styles.viewToggle}>
-          <button 
-            type="button"
-            data-testid="view-table-btn"
-            className={`${styles.viewButton} ${viewMode === 'table' ? styles.active : ''}`}
-            onClick={() => setViewMode('table')}
-            title={t('view_table')}
-          >
-            ☰
-          </button>
-          <button 
-            type="button"
-            data-testid="view-cards-btn"
-            className={`${styles.viewButton} ${viewMode === 'cards' ? styles.active : ''}`}
-            onClick={() => setViewMode('cards')}
-            title={t('view_cards')}
-          >
-            ▦
-          </button>
-        </div>
-      </div>
+      <CustomerFilterBar
+        search={search}
+        onSearchChange={setSearch}
+        geocodeFilter={geocodeFilter}
+        onGeocodeFilterChange={setGeocodeFilter}
+        revisionFilter={revisionFilter as '' | 'overdue' | 'week' | 'month'}
+        onRevisionFilterChange={setRevisionFilter}
+        typeFilter={typeFilter}
+        onTypeFilterChange={setTypeFilter}
+        activeFilterCount={activeFilterCount}
+        onClearAllFilters={handleClearAllFilters}
+        isAdvancedOpen={isAdvancedFiltersOpen}
+        onToggleAdvanced={() => setIsAdvancedFiltersOpen((o) => !o)}
+        sortModel={sortModel}
+        onSortModelChange={setSortModel}
+        visibleColumns={visibleColumns}
+        columnOrder={columnOrder}
+        onVisibleColumnsChange={setVisibleColumns}
+        onColumnOrderChange={setColumnOrder}
+        onResetColumns={handleResetColumns}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+      />
 
       {/* Loaded / total count */}
       {!isLoading && customers.length > 0 && customers.length < total && (
@@ -654,6 +652,8 @@ function CustomersInner() {
           totalCount={total}
           sortModel={sortModel}
           onSortModelChange={setSortModel}
+          visibleColumns={visibleColumns}
+          columnOrder={columnOrder}
         />
       ) : (
         // Cards view (mobile-friendly)

@@ -235,5 +235,10 @@
   "col_picker_sort_warning_title": "Sort columns will be affected",
   "col_picker_sort_warning_body": "Hiding these columns will remove the following sort rules:",
   "col_picker_cancel": "Cancel",
-  "col_picker_confirm": "Confirm"
+  "col_picker_confirm": "Confirm",
+
+  "filter_revision_label": "Revision due",
+  "filter_clear_search": "Clear search",
+  "filter_clear_all": "Clear all",
+  "filter_advanced": "Advanced filters"
 }

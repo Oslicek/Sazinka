@@ -275,21 +275,21 @@ describe('Customers', () => {
   // Toolbar: filter dropdowns always visible
   // =========================================================================
   describe('Toolbar filter dropdowns', () => {
-    it('should render both address and revision filter dropdowns', async () => {
+    it('should render both address and revision filter controls', async () => {
       mockListCustomersExtended.mockResolvedValueOnce({ items: [], total: 0 });
 
       render(<Customers />);
 
       await waitFor(() => {
-        // Address filter
+        // Address filter (still a SELECT)
         const addressFilter = screen.getByDisplayValue('filter_address_all');
         expect(addressFilter).toBeInTheDocument();
         expect(addressFilter.tagName).toBe('SELECT');
 
-        // Revision filter
-        const revisionFilter = screen.getByDisplayValue('filter_revision_all');
-        expect(revisionFilter).toBeInTheDocument();
-        expect(revisionFilter.tagName).toBe('SELECT');
+        // Revision filter is now chips — "All" chip is active by default
+        const allChip = screen.getByRole('button', { name: 'filter_revision_all' });
+        expect(allChip).toBeInTheDocument();
+        expect(allChip).toHaveAttribute('aria-pressed', 'true');
       });
     });
 
@@ -309,19 +309,17 @@ describe('Customers', () => {
       });
     });
 
-    it('should render revision filter options', async () => {
+    it('should render revision filter chips', async () => {
       mockListCustomersExtended.mockResolvedValueOnce({ items: [], total: 0 });
 
       render(<Customers />);
 
       await waitFor(() => {
-        const revisionFilter = screen.getByDisplayValue('filter_revision_all');
-        const options = revisionFilter.querySelectorAll('option');
-        expect(options).toHaveLength(4);
-        expect(options[0].textContent).toBe('filter_revision_all');
-        expect(options[1].textContent).toBe('filter_revision_overdue');
-        expect(options[2].textContent).toBe('filter_revision_week');
-        expect(options[3].textContent).toBe('filter_revision_month');
+        // Revision filter is now chips
+        expect(screen.getByRole('button', { name: 'filter_revision_all' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'filter_revision_overdue' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'filter_revision_week' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'filter_revision_month' })).toBeInTheDocument();
       });
     });
 
@@ -336,20 +334,20 @@ describe('Customers', () => {
       });
     });
 
-    it('should change revision filter value when selected', async () => {
+    it('should activate revision chip when clicked', async () => {
       mockListCustomersExtended.mockResolvedValue({ items: [], total: 0 });
       const user = userEvent.setup();
 
       render(<Customers />);
 
       await waitFor(() => {
-        expect(screen.getByDisplayValue('filter_revision_all')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'filter_revision_overdue' })).toBeInTheDocument();
       });
 
-      const revisionFilter = screen.getByDisplayValue('filter_revision_all');
-      await user.selectOptions(revisionFilter, 'overdue');
+      const overdueChip = screen.getByRole('button', { name: 'filter_revision_overdue' });
+      await user.click(overdueChip);
 
-      expect(revisionFilter).toHaveValue('overdue');
+      expect(overdueChip).toHaveAttribute('aria-pressed', 'true');
     });
   });
 
@@ -362,11 +360,11 @@ describe('Customers', () => {
       mockGetCustomerSummary.mockResolvedValue(null);
     });
 
-    it('toolbar has the toolbar class (CSS targets it for stacking)', () => {
+    it('filter bar has a filter bar class (CSS targets it for stacking)', () => {
       mockMatchMedia(VIEWPORTS.phone.width);
       setViewport(VIEWPORTS.phone.width, VIEWPORTS.phone.height);
       render(<Customers />);
-      expect(document.querySelector('[class*="toolbar"]')).toBeInTheDocument();
+      expect(document.querySelector('[class*="filterBar"]')).toBeInTheDocument();
     });
 
     it('search input has the search class (CSS sets full-width on mobile)', () => {
@@ -383,11 +381,11 @@ describe('Customers', () => {
       expect(document.querySelector('[class*="customers"]')).toBeInTheDocument();
     });
 
-    it('desktop layout is unchanged (toolbar still present)', () => {
+    it('desktop layout is unchanged (filter bar still present)', () => {
       mockMatchMedia(VIEWPORTS.desktop.width);
       setViewport(VIEWPORTS.desktop.width, VIEWPORTS.desktop.height);
       render(<Customers />);
-      expect(document.querySelector('[class*="toolbar"]')).toBeInTheDocument();
+      expect(document.querySelector('[class*="filterBar"]')).toBeInTheDocument();
     });
   });
 

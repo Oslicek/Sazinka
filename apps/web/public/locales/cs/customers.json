@@ -235,5 +235,10 @@
   "col_picker_sort_warning_title": "Budou ovlivněna řazení",
   "col_picker_sort_warning_body": "Skrytím těchto sloupců se odeberou následující pravidla řazení:",
   "col_picker_cancel": "Zrušit",
-  "col_picker_confirm": "Potvrdit"
+  "col_picker_confirm": "Potvrdit",
+
+  "filter_revision_label": "Termín revize",
+  "filter_clear_search": "Vymazat hledání",
+  "filter_clear_all": "Zrušit vše",
+  "filter_advanced": "Rozšířené filtry"
 }

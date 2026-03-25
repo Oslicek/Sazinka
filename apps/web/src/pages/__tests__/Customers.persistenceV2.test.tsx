@@ -140,31 +140,31 @@ describe('Customers page — persistence V2 (Phase 5)', () => {
     expect(() => render(<Customers />)).not.toThrow();
   });
 
-  it('revisionFilter: overdue value is selectable', async () => {
+  it('revisionFilter: overdue chip is clickable', async () => {
     render(<Customers />);
-    const select = screen.getByDisplayValue('filter_revision_all');
+    const chip = screen.getByRole('button', { name: 'filter_revision_overdue' });
     await act(async () => {
-      fireEvent.change(select, { target: { value: 'overdue' } });
+      fireEvent.click(chip);
     });
-    expect(screen.getByDisplayValue('filter_revision_overdue')).toBeInTheDocument();
+    expect(chip).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('revisionFilter: week value is selectable (C28)', async () => {
+  it('revisionFilter: week chip is clickable (C28)', async () => {
     render(<Customers />);
-    const select = screen.getByDisplayValue('filter_revision_all');
+    const chip = screen.getByRole('button', { name: 'filter_revision_week' });
     await act(async () => {
-      fireEvent.change(select, { target: { value: 'week' } });
+      fireEvent.click(chip);
     });
-    expect(screen.getByDisplayValue('filter_revision_week')).toBeInTheDocument();
+    expect(chip).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('revisionFilter: month value is selectable (C28)', async () => {
+  it('revisionFilter: month chip is clickable (C28)', async () => {
     render(<Customers />);
-    const select = screen.getByDisplayValue('filter_revision_all');
+    const chip = screen.getByRole('button', { name: 'filter_revision_month' });
     await act(async () => {
-      fireEvent.change(select, { target: { value: 'month' } });
+      fireEvent.click(chip);
     });
-    expect(screen.getByDisplayValue('filter_revision_month')).toBeInTheDocument();
+    expect(chip).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('typeFilter: company value is selectable (C30)', async () => {
@@ -286,13 +286,13 @@ describe('Customers page — P2 UPP wiring', () => {
     seedUpp('revisionFilter', 'week');
     const { unmount } = render(<Customers />);
     await waitFor(() => {
-      expect(screen.getByDisplayValue('filter_revision_week')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'filter_revision_week' })).toHaveAttribute('aria-pressed', 'true');
     });
     unmount();
 
     render(<Customers />);
     await waitFor(() => {
-      expect(screen.getByDisplayValue('filter_revision_week')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'filter_revision_week' })).toHaveAttribute('aria-pressed', 'true');
     });
   });
 
@@ -365,7 +365,7 @@ describe('Customers page — P2 UPP wiring', () => {
     mockSearchParams.revisionFilter = 'week';
     render(<Customers />);
     await waitFor(() => {
-      expect(screen.getByDisplayValue('filter_revision_week')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'filter_revision_week' })).toHaveAttribute('aria-pressed', 'true');
     });
   });
 

@@ -228,5 +228,10 @@
   "col_picker_sort_warning_title": "Budú ovplyvnené zoradenia",
   "col_picker_sort_warning_body": "Skrytím týchto stĺpcov sa odstránia nasledujúce pravidlá zoradenia:",
   "col_picker_cancel": "Zrušiť",
-  "col_picker_confirm": "Potvrdiť"
+  "col_picker_confirm": "Potvrdiť",
+
+  "filter_revision_label": "Termín revízie",
+  "filter_clear_search": "Vymazať hľadanie",
+  "filter_clear_all": "Zrušiť všetko",
+  "filter_advanced": "Rozšírené filtre"
 }
