@@ -337,5 +337,10 @@
   "scoring_error_restore_defaults": "Nepodarilo sa obnoviť predvolené hodnoty",
   "scoring_system_badge": "Systémový",
   "scoring_error_delete": "Nepodarilo sa zmazať profil hodnotenia",
-  "scoring_success_delete": "Profil hodnotenia zmazaný"
+  "scoring_success_delete": "Profil hodnotenia zmazaný",
+  "scoring_preset_name_standard": "Štandardný",
+  "scoring_preset_name_new_customers_first": "Noví zákazníci prví",
+  "scoring_preset_name_due_date_radar": "Radar termínov",
+  "scoring_preset_name_overdue_firefighter": "Krízový režim po termíne",
+  "scoring_preset_name_data_quality_first": "Kvalita dát a geokódovania"
 }

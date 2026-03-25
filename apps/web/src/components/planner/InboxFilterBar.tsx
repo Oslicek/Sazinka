@@ -135,11 +135,16 @@ export function InboxFilterBar({
             onChange={(e) => onRuleSetChange(e.target.value || null)}
             disabled={isLoadingRuleSets}
           >
-            {ruleSets.map((rs) => (
-              <option key={rs.id} value={rs.id}>
-                {rs.isDefault ? `${t('scoring_default_marker')} ` : ''}{rs.name}
-              </option>
-            ))}
+            {ruleSets.map((rs) => {
+              const displayName = rs.systemKey
+                ? t(`scoring_preset_name_${rs.systemKey}`, { ns: 'settings' })
+                : rs.name;
+              return (
+                <option key={rs.id} value={rs.id}>
+                  {rs.isDefault ? `${t('scoring_default_marker')} ` : ''}{displayName}
+                </option>
+              );
+            })}
           </select>
         </div>
         <span className={styles.filterResults}>

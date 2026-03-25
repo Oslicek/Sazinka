@@ -21,6 +21,11 @@ pub struct ScoringRuleSet {
     /// They are fully editable (name, weights) and have a "Restore defaults" action.
     #[sqlx(default)]
     pub is_system: bool,
+    /// Immutable key identifying which system preset this row represents.
+    /// NULL for user-created profiles. Used by the UI to display localised names.
+    /// Cannot be changed via the update API.
+    #[sqlx(default)]
+    pub system_key: Option<String>,
     pub created_by_user_id: Uuid,
     pub updated_by_user_id: Uuid,
     pub created_at: DateTime<Utc>,

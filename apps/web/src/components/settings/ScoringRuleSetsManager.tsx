@@ -285,7 +285,11 @@ export function ScoringRuleSetsManager() {
             ) : (
               <div className={styles.itemRow}>
                 <div className={styles.itemInfo}>
-                  <span className={styles.itemName}>{rs.name}</span>
+                  <span className={styles.itemName}>
+                    {rs.systemKey
+                      ? t(`scoring_preset_name_${rs.systemKey}`)
+                      : rs.name}
+                  </span>
                   {rs.isSystem && (
                     <span className={`${styles.badge} ${styles.badgeSystem}`}>
                       {t('scoring_system_badge')}

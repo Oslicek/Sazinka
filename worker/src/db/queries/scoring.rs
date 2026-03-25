@@ -12,39 +12,123 @@ use crate::types::scoring::{
 
 const RULE_SET_COLS: &str = r#"
     id, user_id, name, description,
-    is_default, is_archived, is_system,
+    is_default, is_archived, is_system, system_key,
     created_by_user_id, updated_by_user_id,
     created_at, updated_at
 "#;
 
-/// Factory factor weights for the seeded "Standard" system profile.
-/// Used both when seeding and when restoring defaults.
+// ── Preset catalog ────────────────────────────────────────────────────────────
+
+/// One system preset profile definition.
+pub struct PresetProfile {
+    /// Immutable system key (stored in DB, used for i18n lookup).
+    pub key: &'static str,
+    /// Factor weights (key, weight). Unspecified factors default to 0.
+    pub factors: &'static [(&'static str, f64)],
+    /// True for exactly one preset — the one selected by default for new companies.
+    pub is_default: bool,
+    /// Seed name (fallback for legacy display; UI resolves via i18n key).
+    pub seed_name_en: &'static str,
+}
+
+/// Catalog of all system presets, in priority order.
+/// Weights come directly from PRJ_PLAN.MD §2.1.
 ///
 /// lifecycle_rank uses an inverted formula: value = (3 − rank), so:
-///   rank 0 (untouched)    → 3 × 1000 = 3000  (highest)
-///   rank 1 (overdue)      → 2 × 1000 = 2000
-///   rank 2 (active)       → 1 × 1000 = 1000
-///   rank 3 (needs_action) → 0 × 1000 = 0     (lowest)
-pub const DEFAULT_FACTORS: &[(&str, f64)] = &[
-    (
-        crate::services::scoring::factor_keys::LIFECYCLE_RANK,
-        1000.0,
-    ),
-    (crate::services::scoring::factor_keys::DAYS_UNTIL_DUE, -5.0),
-    (
-        crate::services::scoring::factor_keys::CUSTOMER_AGE_DAYS,
-        0.01,
-    ),
+///   rank 0 (untouched)    → 3 × weight  (highest urgency)
+///   rank 1 (overdue)      → 2 × weight
+///   rank 2 (active)       → 1 × weight
+///   rank 3 (needs_action) → 0 × weight  (lowest urgency)
+///
+/// days_until_due vs overdue_days:
+///   days_until_due captures proximity to the due date (negative = already overdue).
+///   overdue_days captures depth of backlog (how many days past due).
+///   Some presets use both signals intentionally; if only one is needed the other is 0.
+pub const PRESET_CATALOG: &[PresetProfile] = &[
+    PresetProfile {
+        key: "standard",
+        is_default: true,
+        seed_name_en: "Standard",
+        factors: &[
+            ("lifecycle_rank",    1000.0),
+            ("days_until_due",      -5.0),
+            ("customer_age_days",    0.01),
+        ],
+    },
+    PresetProfile {
+        key: "new_customers_first",
+        is_default: false,
+        seed_name_en: "New Customers First",
+        factors: &[
+            ("lifecycle_rank",    1700.0),
+            ("days_until_due",      -2.0),
+            ("customer_age_days",    0.005),
+            ("no_open_action",     350.0),
+        ],
+    },
+    PresetProfile {
+        key: "due_date_radar",
+        is_default: false,
+        seed_name_en: "Due-Date Radar",
+        factors: &[
+            ("lifecycle_rank",   700.0),
+            ("days_until_due",   -12.0),
+            ("customer_age_days", 0.005),
+            ("overdue_days",       3.0),
+        ],
+    },
+    PresetProfile {
+        key: "overdue_firefighter",
+        is_default: false,
+        seed_name_en: "Overdue Firefighter",
+        factors: &[
+            ("lifecycle_rank", 500.0),
+            ("days_until_due", -18.0),
+            ("overdue_days",     8.0),
+            ("no_open_action", 100.0),
+        ],
+    },
+    PresetProfile {
+        key: "data_quality_first",
+        is_default: false,
+        seed_name_en: "Data Quality First",
+        factors: &[
+            ("lifecycle_rank",  500.0),
+            ("days_until_due",   -4.0),
+            ("geocode_failed",  900.0),
+            ("no_open_action",  150.0),
+        ],
+    },
 ];
 
-/// Returns the localized name for the system "Standard" profile.
-pub fn default_profile_name(locale: &str) -> &'static str {
-    match locale {
-        "cs" => "Standardní",
-        "sk" => "Štandardný",
-        _ => "Standard",
-    }
+/// Returns the localized display name for a system preset key.
+/// Returns `None` for unknown keys.
+/// Falls back to the English name for unknown locales.
+pub fn profile_name_for_key(key: &str, locale: &str) -> Option<&'static str> {
+    let names: &[(&str, &str, &str, &str)] = &[
+        // (key, cs, sk, en)
+        ("standard",           "Standardní",                    "Štandardný",                  "Standard"),
+        ("new_customers_first","Noví zákazníci první",           "Noví zákazníci prví",          "New Customers First"),
+        ("due_date_radar",     "Radar termínů",                  "Radar termínov",               "Due-Date Radar"),
+        ("overdue_firefighter","Krizový režim po termínu",       "Krízový režim po termíne",     "Overdue Firefighter"),
+        ("data_quality_first", "Kvalita dat a geokódingu",       "Kvalita dát a geokódovania",   "Data Quality First"),
+    ];
+    names.iter().find(|(k, _, _, _)| *k == key).map(|(_, cs, sk, en)| match locale {
+        "cs" => *cs,
+        "sk" => *sk,
+        _ => *en,
+    })
 }
+
+/// Returns the localized seed name for the "Standard" profile.
+/// Kept for backward-compatibility with the onboarding path.
+pub fn default_profile_name(locale: &str) -> &'static str {
+    profile_name_for_key("standard", locale).unwrap_or("Standard")
+}
+
+/// Factory factor weights for the seeded "Standard" system profile.
+/// Kept for backward-compatibility; prefer `PRESET_CATALOG` for new code.
+pub const DEFAULT_FACTORS: &[(&str, f64)] = PRESET_CATALOG[0].factors;
 
 async fn hydrate_rule_set_factors(pool: &PgPool, rule_set: &mut ScoringRuleSet) -> Result<()> {
     rule_set.factors = get_factors(pool, rule_set.id).await?;
@@ -86,10 +170,10 @@ pub async fn create_rule_set(
     let mut rule_set = sqlx::query_as::<_, ScoringRuleSet>(&format!(
         r#"
         INSERT INTO scoring_rule_sets (
-            id, user_id, name, description, is_default, is_archived, is_system,
+            id, user_id, name, description, is_default, is_archived, is_system, system_key,
             created_by_user_id, updated_by_user_id, created_at, updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, FALSE, FALSE, $2, $2, NOW(), NOW())
+        VALUES ($1, $2, $3, $4, $5, FALSE, FALSE, NULL, $2, $2, NOW(), NOW())
         RETURNING {}
         "#,
         RULE_SET_COLS
@@ -111,8 +195,9 @@ pub async fn create_rule_set(
     Ok(rule_set)
 }
 
-/// Seed the "Standard" system profile for a new company at onboarding.
-/// Idempotent — does nothing if a system profile already exists for the user.
+/// Seed all system preset profiles for a new company at onboarding.
+/// Idempotent per preset key — skips any preset that already exists for the user.
+/// Returns the default ("standard") rule set.
 pub async fn create_default_scoring_profile(
     pool: &PgPool,
     user_id: Uuid,
@@ -120,7 +205,7 @@ pub async fn create_default_scoring_profile(
 ) -> Result<ScoringRuleSet> {
     let mut tx = pool.begin().await?;
 
-    // Clear any existing default before setting the new one
+    // Clear any existing default before seeding; the catalog defines exactly one default.
     sqlx::query(
         "UPDATE scoring_rule_sets SET is_default = FALSE WHERE user_id = $1 AND is_default = TRUE",
     )
@@ -128,40 +213,75 @@ pub async fn create_default_scoring_profile(
     .execute(&mut *tx)
     .await?;
 
-    let name = default_profile_name(locale);
-    let mut rule_set = sqlx::query_as::<_, ScoringRuleSet>(&format!(
-        r#"
-        INSERT INTO scoring_rule_sets (
-            id, user_id, name, description, is_default, is_archived, is_system,
-            created_by_user_id, updated_by_user_id, created_at, updated_at
-        )
-        VALUES ($1, $2, $3, NULL, TRUE, FALSE, TRUE, $2, $2, NOW(), NOW())
-        RETURNING {}
-        "#,
-        RULE_SET_COLS
-    ))
-    .bind(Uuid::new_v4())
-    .bind(user_id)
-    .bind(name)
-    .fetch_one(&mut *tx)
-    .await?;
+    let mut default_id: Option<Uuid> = None;
 
-    let factors: Vec<FactorInput> = DEFAULT_FACTORS
-        .iter()
-        .map(|(k, w)| FactorInput {
-            factor_key: k.to_string(),
-            weight: *w,
-        })
-        .collect();
-    upsert_factors_in_tx(&mut tx, rule_set.id, &factors).await?;
+    for preset in PRESET_CATALOG {
+        let name = profile_name_for_key(preset.key, locale).unwrap_or(preset.seed_name_en);
+
+        // ON CONFLICT (user_id, system_key) DO NOTHING — idempotent re-seed.
+        let row = sqlx::query_as::<_, (Uuid,)>(
+            r#"
+            INSERT INTO scoring_rule_sets (
+                id, user_id, name, description,
+                is_default, is_archived, is_system, system_key,
+                created_by_user_id, updated_by_user_id, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, NULL, $4, FALSE, TRUE, $5, $2, $2, NOW(), NOW())
+            ON CONFLICT (user_id, system_key) WHERE system_key IS NOT NULL DO NOTHING
+            RETURNING id
+            "#,
+        )
+        .bind(Uuid::new_v4())
+        .bind(user_id)
+        .bind(name)
+        .bind(preset.is_default)
+        .bind(preset.key)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        if let Some((inserted_id,)) = row {
+            let factors: Vec<FactorInput> = preset
+                .factors
+                .iter()
+                .map(|(k, w)| FactorInput { factor_key: k.to_string(), weight: *w })
+                .collect();
+            upsert_factors_in_tx(&mut tx, inserted_id, &factors).await?;
+
+            if preset.is_default {
+                default_id = Some(inserted_id);
+            }
+        } else if preset.is_default {
+            // Already existed — look up its ID so we can return it.
+            let existing = sqlx::query_as::<_, (Uuid,)>(
+                "SELECT id FROM scoring_rule_sets WHERE user_id = $1 AND system_key = $2",
+            )
+            .bind(user_id)
+            .bind(preset.key)
+            .fetch_optional(&mut *tx)
+            .await?;
+            default_id = existing.map(|(id,)| id);
+        }
+    }
 
     tx.commit().await?;
+
+    // Fetch and return the default rule set with hydrated factors.
+    let id = default_id.ok_or_else(|| anyhow::anyhow!("standard preset not found after seed"))?;
+    let mut rule_set = sqlx::query_as::<_, ScoringRuleSet>(&format!(
+        "SELECT {} FROM scoring_rule_sets WHERE id = $1",
+        RULE_SET_COLS
+    ))
+    .bind(id)
+    .fetch_one(pool)
+    .await?;
     hydrate_rule_set_factors(pool, &mut rule_set).await?;
     Ok(rule_set)
 }
 
 /// Reset a system profile's name and factors to factory defaults.
-/// Returns error if the profile is not a system profile.
+/// Resolves the correct preset weights via `system_key`; falls back to the
+/// Standard preset for legacy rows that do not yet have a `system_key`.
+/// Returns `None` if the profile is not a system profile or does not belong to the user.
 pub async fn restore_rule_set_defaults(
     pool: &PgPool,
     user_id: Uuid,
@@ -170,7 +290,27 @@ pub async fn restore_rule_set_defaults(
 ) -> Result<Option<ScoringRuleSet>> {
     let mut tx = pool.begin().await?;
 
-    let name = default_profile_name(locale);
+    // Look up the system_key so we can restore the correct preset weights.
+    let key_row = sqlx::query_as::<_, (Option<String>,)>(
+        "SELECT system_key FROM scoring_rule_sets WHERE id = $1 AND user_id = $2 AND is_system = TRUE",
+    )
+    .bind(rule_set_id)
+    .bind(user_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let system_key = match key_row {
+        None => return Ok(None),
+        Some((k,)) => k.unwrap_or_else(|| "standard".to_string()),
+    };
+
+    let preset = PRESET_CATALOG
+        .iter()
+        .find(|p| p.key == system_key)
+        .unwrap_or(&PRESET_CATALOG[0]);
+
+    let name = profile_name_for_key(preset.key, locale).unwrap_or(preset.seed_name_en);
+
     let mut rule_set = sqlx::query_as::<_, ScoringRuleSet>(&format!(
         r#"
         UPDATE scoring_rule_sets
@@ -187,12 +327,10 @@ pub async fn restore_rule_set_defaults(
     .await?;
 
     if let Some(ref rs) = rule_set {
-        let factors: Vec<FactorInput> = DEFAULT_FACTORS
+        let factors: Vec<FactorInput> = preset
+            .factors
             .iter()
-            .map(|(k, w)| FactorInput {
-                factor_key: k.to_string(),
-                weight: *w,
-            })
+            .map(|(k, w)| FactorInput { factor_key: k.to_string(), weight: *w })
             .collect();
         upsert_factors_in_tx(&mut tx, rs.id, &factors).await?;
     }

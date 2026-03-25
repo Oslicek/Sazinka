@@ -1,80 +1,92 @@
 /**
- * Phase A (RED) — ScoringRuleSetsManager localization tests.
+ * Phase A (RED) / Phase B (GREEN) — ScoringRuleSetsManager localization tests.
  *
  * These tests assert that system presets use translated i18n names (via systemKey)
  * rather than the raw `name` stored in the database.
- *
- * Tests will FAIL until:
- *   - ScoringRuleSet.systemKey is added to shared-types
- *   - locale keys scoring_preset_name_* are added to settings.json
- *   - ScoringRuleSetsManager renders localised names for system presets
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { I18nextProvider } from 'react-i18next';
-import i18n from 'i18next';
-import { initReactI18next } from 'react-i18next';
 import { ScoringRuleSetsManager } from './ScoringRuleSetsManager';
 import type { ScoringRuleSet } from '@/services/scoringService';
 
-// ── i18n test instance ────────────────────────────────────────────────────────
+// ── Translation tables ────────────────────────────────────────────────────────
 
-const EN_SCORING_KEYS = {
-  scoring_title: 'Scoring Profiles',
-  scoring_description: 'Configure scoring profiles',
-  scoring_new_profile: 'New Profile',
-  scoring_show_archived: 'Show archived',
-  scoring_no_profiles: 'No profiles',
-  scoring_system_badge: 'System',
-  scoring_default_badge: 'Default',
-  scoring_archived_badge: 'Archived',
-  scoring_edit: 'Edit',
-  scoring_archive: 'Archive',
-  scoring_restore_defaults: 'Restore defaults',
-  scoring_set_default: 'Set as default',
-  scoring_error_load: 'Failed to load',
-  delete_action: 'Delete',
-  // NEW: preset name keys (must exist for tests to pass)
-  scoring_preset_name_standard: 'Standard',
-  scoring_preset_name_new_customers_first: 'New Customers First',
-  scoring_preset_name_due_date_radar: 'Due-Date Radar',
-  scoring_preset_name_overdue_firefighter: 'Overdue Firefighter',
-  scoring_preset_name_data_quality_first: 'Data Quality First',
+const TRANSLATIONS: Record<string, Record<string, string>> = {
+  en: {
+    scoring_title: 'Scoring Profiles',
+    scoring_description: 'Configure scoring profiles',
+    scoring_new_profile: 'New Profile',
+    scoring_show_archived: 'Show archived',
+    scoring_no_profiles: 'No profiles',
+    scoring_system_badge: 'System',
+    scoring_default_badge: 'Default',
+    scoring_archived_badge: 'Archived',
+    scoring_edit: 'Edit',
+    scoring_archive: 'Archive',
+    scoring_restore_defaults: 'Restore defaults',
+    scoring_set_default: 'Set as default',
+    scoring_error_load: 'Failed to load',
+    delete_action: 'Delete',
+    scoring_preset_name_standard: 'Standard',
+    scoring_preset_name_new_customers_first: 'New Customers First',
+    scoring_preset_name_due_date_radar: 'Due-Date Radar',
+    scoring_preset_name_overdue_firefighter: 'Overdue Firefighter',
+    scoring_preset_name_data_quality_first: 'Data Quality First',
+  },
+  cs: {
+    scoring_title: 'Profily hodnocení',
+    scoring_description: 'Nastavte profily hodnocení',
+    scoring_new_profile: 'Nový profil',
+    scoring_show_archived: 'Zobrazit archivované',
+    scoring_no_profiles: 'Žádné profily',
+    scoring_system_badge: 'Systémový',
+    scoring_default_badge: 'Výchozí',
+    scoring_archived_badge: 'Archivovaný',
+    scoring_edit: 'Upravit',
+    scoring_archive: 'Archivovat',
+    scoring_restore_defaults: 'Obnovit výchozí',
+    scoring_set_default: 'Nastavit jako výchozí',
+    scoring_error_load: 'Nepodařilo se načíst',
+    delete_action: 'Smazat',
+    scoring_preset_name_standard: 'Standardní',
+    scoring_preset_name_new_customers_first: 'Noví zákazníci první',
+    scoring_preset_name_due_date_radar: 'Radar termínů',
+    scoring_preset_name_overdue_firefighter: 'Krizový režim po termínu',
+    scoring_preset_name_data_quality_first: 'Kvalita dat a geokódingu',
+  },
+  sk: {
+    scoring_title: 'Profily hodnotenia',
+    scoring_description: 'Nastavte profily hodnotenia',
+    scoring_new_profile: 'Nový profil',
+    scoring_show_archived: 'Zobrazit archivované',
+    scoring_no_profiles: 'Žiadne profily',
+    scoring_system_badge: 'Systémový',
+    scoring_default_badge: 'Predvolený',
+    scoring_archived_badge: 'Archivovaný',
+    scoring_edit: 'Upraviť',
+    scoring_archive: 'Archivovať',
+    scoring_restore_defaults: 'Obnoviť predvolené',
+    scoring_set_default: 'Nastaviť ako predvolené',
+    scoring_error_load: 'Nepodarilo sa načítať',
+    delete_action: 'Zmazať',
+    scoring_preset_name_standard: 'Štandardný',
+    scoring_preset_name_new_customers_first: 'Noví zákazníci prví',
+    scoring_preset_name_due_date_radar: 'Radar termínov',
+    scoring_preset_name_overdue_firefighter: 'Krízový režim po termíne',
+    scoring_preset_name_data_quality_first: 'Kvalita dát a geokódovania',
+  },
 };
 
-const CS_SCORING_KEYS = {
-  ...EN_SCORING_KEYS,
-  scoring_preset_name_standard: 'Standardní',
-  scoring_preset_name_new_customers_first: 'Noví zákazníci první',
-  scoring_preset_name_due_date_radar: 'Radar termínů',
-  scoring_preset_name_overdue_firefighter: 'Krizový režim po termínu',
-  scoring_preset_name_data_quality_first: 'Kvalita dat a geokódingu',
-};
+// Mock react-i18next — locale is injected per test via `setLocale()`
+let activeLocale = 'en';
+const setLocale = (l: string) => { activeLocale = l; };
 
-const SK_SCORING_KEYS = {
-  ...EN_SCORING_KEYS,
-  scoring_preset_name_standard: 'Štandardný',
-  scoring_preset_name_new_customers_first: 'Noví zákazníci prví',
-  scoring_preset_name_due_date_radar: 'Radar termínov',
-  scoring_preset_name_overdue_firefighter: 'Krízový režim po termíne',
-  scoring_preset_name_data_quality_first: 'Kvalita dát a geokódovania',
-};
-
-function createI18n(locale: string) {
-  const resources: Record<string, { settings: Record<string, string> }> = {
-    en: { settings: EN_SCORING_KEYS },
-    cs: { settings: CS_SCORING_KEYS },
-    sk: { settings: SK_SCORING_KEYS },
-  };
-  const instance = i18n.createInstance();
-  instance.use(initReactI18next).init({
-    lng: locale,
-    fallbackLng: 'en',
-    resources,
-    interpolation: { escapeValue: false },
-  });
-  return instance;
-}
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string) => TRANSLATIONS[activeLocale]?.[key] ?? key,
+    i18n: { language: activeLocale },
+  }),
+}));
 
 // ── Service mock ──────────────────────────────────────────────────────────────
 
@@ -129,11 +141,8 @@ describe('ScoringRuleSetsManager – preset localisation', () => {
   });
 
   it('renders all 5 system presets in EN with localised names', async () => {
-    render(
-      <I18nextProvider i18n={createI18n('en')}>
-        <ScoringRuleSetsManager />
-      </I18nextProvider>
-    );
+    setLocale('en');
+    render(<ScoringRuleSetsManager />);
     expect(await screen.findByText('Standard')).toBeInTheDocument();
     expect(await screen.findByText('New Customers First')).toBeInTheDocument();
     expect(await screen.findByText('Due-Date Radar')).toBeInTheDocument();
@@ -142,11 +151,8 @@ describe('ScoringRuleSetsManager – preset localisation', () => {
   });
 
   it('renders all 5 system presets in CS with localised names', async () => {
-    render(
-      <I18nextProvider i18n={createI18n('cs')}>
-        <ScoringRuleSetsManager />
-      </I18nextProvider>
-    );
+    setLocale('cs');
+    render(<ScoringRuleSetsManager />);
     expect(await screen.findByText('Standardní')).toBeInTheDocument();
     expect(await screen.findByText('Noví zákazníci první')).toBeInTheDocument();
     expect(await screen.findByText('Radar termínů')).toBeInTheDocument();
@@ -155,11 +161,8 @@ describe('ScoringRuleSetsManager – preset localisation', () => {
   });
 
   it('renders all 5 system presets in SK with localised names', async () => {
-    render(
-      <I18nextProvider i18n={createI18n('sk')}>
-        <ScoringRuleSetsManager />
-      </I18nextProvider>
-    );
+    setLocale('sk');
+    render(<ScoringRuleSetsManager />);
     expect(await screen.findByText('Štandardný')).toBeInTheDocument();
     expect(await screen.findByText('Noví zákazníci prví')).toBeInTheDocument();
     expect(await screen.findByText('Radar termínov')).toBeInTheDocument();
@@ -168,6 +171,7 @@ describe('ScoringRuleSetsManager – preset localisation', () => {
   });
 
   it('renders custom profile name directly (not via system key)', async () => {
+    setLocale('cs');
     const custom: ScoringRuleSet = makePreset({
       id: 'rs-custom',
       name: 'My Custom Profile',
@@ -175,22 +179,13 @@ describe('ScoringRuleSetsManager – preset localisation', () => {
       systemKey: null,
     });
     vi.mocked(scoringService.listRuleSets).mockResolvedValue([custom]);
-
-    render(
-      <I18nextProvider i18n={createI18n('cs')}>
-        <ScoringRuleSetsManager />
-      </I18nextProvider>
-    );
+    render(<ScoringRuleSetsManager />);
     expect(await screen.findByText('My Custom Profile')).toBeInTheDocument();
   });
 
   it('CS preset names are not the raw English DB names', async () => {
-    render(
-      <I18nextProvider i18n={createI18n('cs')}>
-        <ScoringRuleSetsManager />
-      </I18nextProvider>
-    );
-    // Wait for the list to load, then check
+    setLocale('cs');
+    render(<ScoringRuleSetsManager />);
     await screen.findByText('Standardní');
     expect(screen.queryByText('New Customers First')).not.toBeInTheDocument();
     expect(screen.queryByText('Due-Date Radar')).not.toBeInTheDocument();

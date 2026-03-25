@@ -10,6 +10,10 @@ export interface ScoringRuleSet {
   /** System profiles are seeded automatically and cannot be deleted.
    *  They are fully editable and have a "Restore defaults" action. */
   isSystem: boolean;
+  /** Immutable key identifying which system preset this row represents.
+   *  NULL for user-created profiles. The UI uses this to look up a localised
+   *  display name via the `scoring_preset_name_<key>` i18n key. */
+  systemKey?: string | null;
   createdByUserId: string;
   updatedByUserId: string;
   createdAt: string;
