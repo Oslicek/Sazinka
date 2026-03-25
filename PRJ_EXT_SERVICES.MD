@@ -2170,7 +2170,7 @@ Implements §1.9: replace Resend-oriented code paths with SES v2 + Sig v4. Can p
 | 17 | Wire `process_job` — reminder path | 6 | ✅ |
 | 18 | Wire `process_job` — custom path | 6 | ✅ |
 | 19 | `log_communication` helper | 7 | ✅ |
-| 20 | Initialize + spawn `EmailProcessor` in main.rs | 8 | ☐ |
+| 20 | Initialize + spawn `EmailProcessor` in main.rs | 8 | ✅ |
 | 21 | Update `.env.example` | 9 | ✅ |
 | 22 | Update Makefile `worker-env` | 9 | ☐ |
 | 23 | Add secrets to SOPS | 9 | ☐ |

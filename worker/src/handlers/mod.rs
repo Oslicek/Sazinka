@@ -185,6 +185,32 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         Arc::new(LogEmailSender)
     };
 
+    // SES email processor (JetStream-based async email delivery)
+    let ses_config = config.ses_region.as_ref().map(|region| {
+        crate::services::email_processor::SesEmailConfig {
+            region: region.clone(),
+            from_email: config.ses_from_email.clone().unwrap_or_default(),
+            from_name: config.ses_from_name.clone().unwrap_or_default(),
+            configuration_set: config.ses_configuration_set.clone(),
+        }
+    });
+    let email_processor = Arc::new(
+        crate::services::email_processor::EmailProcessor::new(
+            client.clone(),
+            pool.clone(),
+            ses_config,
+        )
+        .await?,
+    );
+    {
+        let processor = Arc::clone(&email_processor);
+        tokio::spawn(async move {
+            if let Err(e) = processor.start_processing().await {
+                error!("Email processor error: {}", e);
+            }
+        });
+    }
+
     let app_base_url = Arc::new(config.app_base_url.clone());
 
     // Onboarding subscriptions
