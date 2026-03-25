@@ -411,7 +411,7 @@
   "panel_map": "Map",
   "panel_timeline": "Timeline",
 
-  "scoring_preset_name_standard": "Standard",
+  "scoring_preset_name_standard": "Balanced",
   "scoring_preset_name_new_customers_first": "New Customers First",
   "scoring_preset_name_due_date_radar": "Due-Date Radar",
   "scoring_preset_name_overdue_firefighter": "Overdue Firefighter",

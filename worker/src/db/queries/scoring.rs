@@ -48,7 +48,7 @@ pub const PRESET_CATALOG: &[PresetProfile] = &[
     PresetProfile {
         key: "standard",
         is_default: true,
-        seed_name_en: "Standard",
+        seed_name_en: "Balanced",
         factors: &[
             ("lifecycle_rank",    1000.0),
             ("days_until_due",      -5.0),
@@ -107,11 +107,11 @@ pub const PRESET_CATALOG: &[PresetProfile] = &[
 pub fn profile_name_for_key(key: &str, locale: &str) -> Option<&'static str> {
     let names: &[(&str, &str, &str, &str)] = &[
         // (key, cs, sk, en)
-        ("standard",           "Standardní",                    "Štandardný",                  "Standard"),
-        ("new_customers_first","Noví zákazníci první",           "Noví zákazníci prví",          "New Customers First"),
+        ("standard",           "Vyvážený",                      "Vyvážený",                    "Balanced"),
+        ("new_customers_first","Noví zákazníci",                  "Noví zákazníci",               "New Customers First"),
         ("due_date_radar",     "Radar termínů",                  "Radar termínov",               "Due-Date Radar"),
-        ("overdue_firefighter","Krizový režim po termínu",       "Krízový režim po termíne",     "Overdue Firefighter"),
-        ("data_quality_first", "Kvalita dat a geokódingu",       "Kvalita dát a geokódovania",   "Data Quality First"),
+        ("overdue_firefighter","Po termínu",                     "Po termíne",                   "Overdue Firefighter"),
+        ("data_quality_first", "Oprava chybných dat",             "Oprava chybných dát",          "Data Quality First"),
     ];
     names.iter().find(|(k, _, _, _)| *k == key).map(|(_, cs, sk, en)| match locale {
         "cs" => *cs,
@@ -120,13 +120,13 @@ pub fn profile_name_for_key(key: &str, locale: &str) -> Option<&'static str> {
     })
 }
 
-/// Returns the localized seed name for the "Standard" profile.
+/// Returns the localized seed name for the default "Balanced" profile.
 /// Kept for backward-compatibility with the onboarding path.
 pub fn default_profile_name(locale: &str) -> &'static str {
-    profile_name_for_key("standard", locale).unwrap_or("Standard")
+    profile_name_for_key("standard", locale).unwrap_or("Balanced")
 }
 
-/// Factory factor weights for the seeded "Standard" system profile.
+/// Factory factor weights for the seeded "Balanced" system profile.
 /// Kept for backward-compatibility; prefer `PRESET_CATALOG` for new code.
 pub const DEFAULT_FACTORS: &[(&str, f64)] = PRESET_CATALOG[0].factors;
 
@@ -674,11 +674,11 @@ mod tests {
 
     #[test]
     fn default_profile_name_localization() {
-        assert_eq!(default_profile_name("cs"), "Standardní");
-        assert_eq!(default_profile_name("sk"), "Štandardný");
-        assert_eq!(default_profile_name("en"), "Standard");
-        assert_eq!(default_profile_name("de"), "Standard");
-        assert_eq!(default_profile_name(""), "Standard");
+        assert_eq!(default_profile_name("cs"), "Vyvážený");
+        assert_eq!(default_profile_name("sk"), "Vyvážený");
+        assert_eq!(default_profile_name("en"), "Balanced");
+        assert_eq!(default_profile_name("de"), "Balanced");
+        assert_eq!(default_profile_name(""), "Balanced");
     }
 
     #[test]
@@ -782,15 +782,15 @@ mod tests {
 
     #[test]
     fn profile_name_for_key_standard_all_locales() {
-        assert_eq!(profile_name_for_key("standard", "cs"), Some("Standardní"));
-        assert_eq!(profile_name_for_key("standard", "sk"), Some("Štandardný"));
-        assert_eq!(profile_name_for_key("standard", "en"), Some("Standard"));
+        assert_eq!(profile_name_for_key("standard", "cs"), Some("Vyvážený"));
+        assert_eq!(profile_name_for_key("standard", "sk"), Some("Vyvážený"));
+        assert_eq!(profile_name_for_key("standard", "en"), Some("Balanced"));
     }
 
     #[test]
     fn profile_name_for_key_new_customers_first_all_locales() {
-        assert_eq!(profile_name_for_key("new_customers_first", "cs"), Some("Noví zákazníci první"));
-        assert_eq!(profile_name_for_key("new_customers_first", "sk"), Some("Noví zákazníci prví"));
+        assert_eq!(profile_name_for_key("new_customers_first", "cs"), Some("Noví zákazníci"));
+        assert_eq!(profile_name_for_key("new_customers_first", "sk"), Some("Noví zákazníci"));
         assert_eq!(profile_name_for_key("new_customers_first", "en"), Some("New Customers First"));
     }
 
@@ -803,15 +803,15 @@ mod tests {
 
     #[test]
     fn profile_name_for_key_overdue_firefighter_all_locales() {
-        assert_eq!(profile_name_for_key("overdue_firefighter", "cs"), Some("Krizový režim po termínu"));
-        assert_eq!(profile_name_for_key("overdue_firefighter", "sk"), Some("Krízový režim po termíne"));
+        assert_eq!(profile_name_for_key("overdue_firefighter", "cs"), Some("Po termínu"));
+        assert_eq!(profile_name_for_key("overdue_firefighter", "sk"), Some("Po termíne"));
         assert_eq!(profile_name_for_key("overdue_firefighter", "en"), Some("Overdue Firefighter"));
     }
 
     #[test]
     fn profile_name_for_key_data_quality_first_all_locales() {
-        assert_eq!(profile_name_for_key("data_quality_first", "cs"), Some("Kvalita dat a geokódingu"));
-        assert_eq!(profile_name_for_key("data_quality_first", "sk"), Some("Kvalita dát a geokódovania"));
+        assert_eq!(profile_name_for_key("data_quality_first", "cs"), Some("Oprava chybných dat"));
+        assert_eq!(profile_name_for_key("data_quality_first", "sk"), Some("Oprava chybných dát"));
         assert_eq!(profile_name_for_key("data_quality_first", "en"), Some("Data Quality First"));
     }
 
@@ -822,7 +822,7 @@ mod tests {
 
     #[test]
     fn profile_name_for_key_falls_back_to_en_for_unknown_locale() {
-        assert_eq!(profile_name_for_key("standard", "fr"), Some("Standard"));
+        assert_eq!(profile_name_for_key("standard", "fr"), Some("Balanced"));
         assert_eq!(profile_name_for_key("due_date_radar", "de"), Some("Due-Date Radar"));
     }
 

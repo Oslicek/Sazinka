@@ -412,9 +412,9 @@
   "panel_map": "Mapa",
   "panel_timeline": "Časová osa",
 
-  "scoring_preset_name_standard": "Standardní",
-  "scoring_preset_name_new_customers_first": "Noví zákazníci první",
+  "scoring_preset_name_standard": "Vyvážený",
+  "scoring_preset_name_new_customers_first": "Noví zákazníci",
   "scoring_preset_name_due_date_radar": "Radar termínů",
-  "scoring_preset_name_overdue_firefighter": "Krizový režim po termínu",
-  "scoring_preset_name_data_quality_first": "Kvalita dat a geokódingu"
+  "scoring_preset_name_overdue_firefighter": "Po termínu",
+  "scoring_preset_name_data_quality_first": "Oprava chybných dat"
 }

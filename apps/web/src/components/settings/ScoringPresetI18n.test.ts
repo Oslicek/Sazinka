@@ -24,25 +24,25 @@ const PRESET_KEYS = [
 
 const EXPECTED: Record<string, Record<string, string>> = {
   en: {
-    standard: 'Standard',
+    standard: 'Balanced',
     new_customers_first: 'New Customers First',
     due_date_radar: 'Due-Date Radar',
     overdue_firefighter: 'Overdue Firefighter',
     data_quality_first: 'Data Quality First',
   },
   cs: {
-    standard: 'Standardní',
-    new_customers_first: 'Noví zákazníci první',
+    standard: 'Vyvážený',
+    new_customers_first: 'Noví zákazníci',
     due_date_radar: 'Radar termínů',
-    overdue_firefighter: 'Krizový režim po termínu',
-    data_quality_first: 'Kvalita dat a geokódingu',
+    overdue_firefighter: 'Po termínu',
+    data_quality_first: 'Oprava chybných dat',
   },
   sk: {
-    standard: 'Štandardný',
-    new_customers_first: 'Noví zákazníci prví',
+    standard: 'Vyvážený',
+    new_customers_first: 'Noví zákazníci',
     due_date_radar: 'Radar termínov',
-    overdue_firefighter: 'Krízový režim po termíne',
-    data_quality_first: 'Kvalita dát a geokódovania',
+    overdue_firefighter: 'Po termíne',
+    data_quality_first: 'Oprava chybných dát',
   },
 };
 

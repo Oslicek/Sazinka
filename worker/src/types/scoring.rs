@@ -161,7 +161,7 @@ mod tests {
         let rss = ScoringRuleSet {
             id: Uuid::nil(),
             user_id: Uuid::nil(),
-            name: "Standard".to_string(),
+            name: "Balanced".to_string(),
             description: None,
             is_default: true,
             is_archived: false,

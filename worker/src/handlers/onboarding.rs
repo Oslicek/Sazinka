@@ -1126,7 +1126,7 @@ pub async fn handle_onboarding_complete(
         .execute(&pool)
         .await;
 
-        // Seed the "Standard" system scoring profile for the new company
+        // Seed the default "Balanced" system scoring profile for the new company
         if let Err(e) = queries::scoring::create_default_scoring_profile(&pool, user_id, &user_locale).await {
             warn!("Failed to seed default scoring profile for user {}: {}", user_id, e);
         }
