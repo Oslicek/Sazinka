@@ -94,8 +94,9 @@ describe('Calendar page — persistence (P1-3)', () => {
 
   describe('currentDate persistence', () => {
     it('restores persisted currentDate on remount — data fetch uses correct month', async () => {
-      // Seed February 2026
+      // Seed February 2026; also seed month layout so range assertion is deterministic
       seedUpp('currentDateKey', '2026-02-15');
+      seedUpp('layoutMode', 'month');
 
       render(<Calendar />);
 
@@ -108,6 +109,7 @@ describe('Calendar page — persistence (P1-3)', () => {
 
     it('survives two unmount/remount cycles', async () => {
       seedUpp('currentDateKey', '2026-02-15');
+      seedUpp('layoutMode', 'month');
 
       const { unmount: unmount1 } = render(<Calendar />);
       await waitFor(() => {
@@ -129,6 +131,7 @@ describe('Calendar page — persistence (P1-3)', () => {
     it('date serialization roundtrip — year/month/day preserved without timezone drift', async () => {
       // Seed a specific date and verify the correct month boundary is used
       seedUpp('currentDateKey', '2026-11-20');
+      seedUpp('layoutMode', 'month');
 
       render(<Calendar />);
 
@@ -139,13 +142,14 @@ describe('Calendar page — persistence (P1-3)', () => {
       });
     });
 
-    it('corrupted storage falls back to current month', async () => {
+    it('corrupted storage falls back to current date range', async () => {
       const key = makeKey({
         userId: TEST_USER_ID,
         profileId: CALENDAR_PROFILE_ID,
         controlId: 'currentDateKey',
       });
       sessionStorage.setItem(key, 'not-a-valid-envelope');
+      seedUpp('layoutMode', 'month');
 
       const today = new Date();
       const expectedStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
@@ -206,6 +210,7 @@ describe('Calendar page — persistence (P1-3)', () => {
   it('currentDate and selectedDay survive together — no clobbering', async () => {
     seedUpp('currentDateKey', '2026-02-15');
     seedUpp('selectedDayKey', '2026-02-20');
+    seedUpp('layoutMode', 'month');
 
     const { container } = render(<Calendar />);
 
@@ -217,5 +222,83 @@ describe('Calendar page — persistence (P1-3)', () => {
     await waitFor(() => {
       expect(container.querySelector('[class*="detailsOverlay"]')).toBeInTheDocument();
     });
+  });
+});
+
+// ─── layoutMode persistence (BUG-FIX) ──────────────────────────────────────
+
+describe('Calendar page — layoutMode persistence', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    vi.clearAllMocks();
+    vi.mocked(calendarService.listCalendarItems).mockResolvedValue({ items: [] });
+  });
+
+  it('default layoutMode on desktop (no URL, no persisted value) is week', async () => {
+    const { container } = render(<Calendar />);
+
+    await waitFor(() => {
+      expect(calendarService.listCalendarItems).toHaveBeenCalled();
+    });
+
+    // Week view renders weekHeader; month view renders CalendarGrid
+    expect(container.querySelector('[class*="weekHeader"]')).toBeInTheDocument();
+  });
+
+  it('restores persisted layoutMode=month on remount', async () => {
+    seedUpp('layoutMode', 'month');
+
+    const { container } = render(<Calendar />);
+
+    await waitFor(() => {
+      expect(calendarService.listCalendarItems).toHaveBeenCalled();
+    });
+
+    // Month view renders CalendarGrid — no weekHeader
+    expect(container.querySelector('[class*="weekHeader"]')).toBeNull();
+    expect(container.querySelector('[data-testid="calendar-grid"]')).toBeInTheDocument();
+  });
+
+  it('restores persisted layoutMode=day on remount', async () => {
+    seedUpp('layoutMode', 'day');
+
+    const { container } = render(<Calendar />);
+
+    await waitFor(() => {
+      expect(calendarService.listCalendarItems).toHaveBeenCalled();
+    });
+
+    expect(container.querySelector('[class*="dayView"]')).toBeInTheDocument();
+  });
+
+  it('multi-cycle: layoutMode=month persists across two unmount/remount cycles', async () => {
+    seedUpp('layoutMode', 'month');
+
+    const { unmount: u1, container: c1 } = render(<Calendar />);
+    await waitFor(() => expect(calendarService.listCalendarItems).toHaveBeenCalled());
+    expect(c1.querySelector('[data-testid="calendar-grid"]')).toBeInTheDocument();
+    u1();
+    vi.clearAllMocks();
+
+    const { container: c2 } = render(<Calendar />);
+    await waitFor(() => expect(calendarService.listCalendarItems).toHaveBeenCalled());
+    expect(c2.querySelector('[data-testid="calendar-grid"]')).toBeInTheDocument();
+  });
+
+  it('corrupted layoutMode storage falls back to week', async () => {
+    const key = makeKey({
+      userId: TEST_USER_ID,
+      profileId: CALENDAR_PROFILE_ID,
+      controlId: 'layoutMode',
+    });
+    sessionStorage.setItem(key, '{ bad json');
+
+    const { container } = render(<Calendar />);
+
+    await waitFor(() => {
+      expect(calendarService.listCalendarItems).toHaveBeenCalled();
+    });
+
+    expect(container.querySelector('[class*="weekHeader"]')).toBeInTheDocument();
   });
 });

@@ -198,7 +198,7 @@ describe('Calendar — Phase 6 mobile', () => {
     expect(dayBtn.closest('button')).toHaveClass(/_active_/);
   });
 
-  it('defaults to month layout on desktop (unchanged)', () => {
+  it('defaults to week layout on desktop', () => {
     mockUseBreakpoint.mockReturnValue({
       breakpoint: 'desktop',
       isPhone: false,
@@ -206,8 +206,8 @@ describe('Calendar — Phase 6 mobile', () => {
       isTouch: false,
     });
     render(<Calendar />);
-    const monthBtn = screen.getByText('layout_month');
-    expect(monthBtn.closest('button')).toHaveClass(/_active_/);
+    const weekBtn = screen.getByText('layout_week');
+    expect(weekBtn.closest('button')).toHaveClass(/_active_/);
   });
 
   it('does not override layout when URL already specifies one on mobile', async () => {

@@ -17,7 +17,7 @@ import { useAuthStore } from '../stores/authStore';
 import { PersistenceProvider } from '../persistence/react/PersistenceProvider';
 import { usePersistentControl } from '../persistence/react/usePersistentControl';
 import { sessionAdapter } from '../persistence/adapters/singletons';
-import { calendarProfile, CALENDAR_PROFILE_ID } from '../persistence/profiles/calendarProfile';
+import { calendarProfile, CALENDAR_PROFILE_ID, LAYOUT_MODES } from '../persistence/profiles/calendarProfile';
 
 /** Parse a YYYY-MM-DD key to a local Date, returning null for invalid input. */
 function parseDateKey(key: string): Date | null {
@@ -148,25 +148,32 @@ function CalendarInner() {
   const { isMobileUi } = useBreakpoint();
 
   const initialViewMode = searchParams.view === 'scheduled' ? 'scheduled' : 'due';
-  // On mobile/tablet: default to day view unless URL explicitly specifies a layout
-  const initialLayout =
-    searchParams.layout === 'week'
-      ? 'week'
-      : searchParams.layout === 'day'
-        ? 'day'
-        : searchParams.layout === 'agenda'
-          ? 'agenda'
-          : searchParams.layout === 'month'
-            ? 'month'
-            : isMobileUi
-              ? 'day'
-              : 'month';
   const initialTypes = parseListParam(searchParams.types, ITEM_TYPES);
   const initialStatus = parseListParam(searchParams.status, STATUS_FILTERS);
 
   // View mode: show by due_date or scheduled_date
   const [viewMode, setViewMode] = useState<CalendarViewMode>(initialViewMode);
-  const [layoutMode, setLayoutMode] = useState<LayoutMode>(initialLayout);
+
+  // Layout mode: persisted via UPP, URL overrides, mobile defaults to 'day'
+  const { value: _uppLayoutMode, setValue: setUppLayoutMode } =
+    usePersistentControl<string>(CALENDAR_PROFILE_ID, 'layoutMode');
+  const resolvedLayout: LayoutMode = (() => {
+    // URL takes precedence
+    if (searchParams.layout && (LAYOUT_MODES as readonly string[]).includes(searchParams.layout)) {
+      return searchParams.layout as LayoutMode;
+    }
+    // UPP persisted value
+    if ((LAYOUT_MODES as readonly string[]).includes(_uppLayoutMode)) {
+      return _uppLayoutMode as LayoutMode;
+    }
+    // Default: day on mobile, week on desktop
+    return isMobileUi ? 'day' : 'week';
+  })();
+  const [layoutMode, setLayoutModeState] = useState<LayoutMode>(resolvedLayout);
+  const setLayoutMode = useCallback((mode: LayoutMode) => {
+    setLayoutModeState(mode);
+    setUppLayoutMode(mode);
+  }, [setUppLayoutMode]);
   const [selectedTypes, setSelectedTypes] = useState<CalendarItemType[]>(initialTypes);
   const [selectedStatus, setSelectedStatus] = useState<CalendarItemStatus[]>(initialStatus);
   const [selectedCrew, setSelectedCrew] = useState<string>(searchParams.crew || '');
