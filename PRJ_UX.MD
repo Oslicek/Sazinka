@@ -1090,6 +1090,57 @@ Poznámka: [__________]
 - Faktory jsou vizuálně rozděleny do dvou skupin: "Řazení" (lifecycle_rank, days_until_due, customer_age_days) a "Urgence" (overdue_days, geocode_failed, total_communications, days_since_last_contact, no_open_action)
 - Změna vah se projeví při dalším načtení inboxu (bez cache — okamžitě)
 
+#### 8.6b Playbook přepínání profilů pořadí (dispatcher)
+
+**Cíl:** Dát dispečerovi jednoduchý a opakovatelný postup, *kdy* přepnout profil řazení podle situace v inboxu.
+
+**Předdefinované profily (lokalizované názvy):**
+
+| System key | Čeština (cs) | Slovenčina (sk) | English (en) | Primární účel |
+|---|---|---|---|---|
+| `standard` | Standardní | Štandardný | Standard | Vyvážené denní řazení (výchozí) |
+| `new_customers_first` | Noví zákazníci první | Noví zákazníci prví | New Customers First | Rychlé zpracování netknutých/nových zákazníků |
+| `due_date_radar` | Radar termínů | Radar termínov | Due-Date Radar | Ochrana blížících se termínů + po termínu |
+| `overdue_firefighter` | Krizový režim po termínu | Krízový režim po termíne | Overdue Firefighter | Agresivní snížení backlogu po termínu |
+| `data_quality_first` | Kvalita dat a geokódingu | Kvalita dát a geokódovania | Data Quality First | Priorita oprav dat blokujících plánování |
+
+**Doporučené váhy (preset baseline):**
+
+| Profil | lifecycle_rank | days_until_due | customer_age_days | overdue_days | geocode_failed | total_communications | days_since_last_contact | no_open_action |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Standardní | +1000 | -5 | +0.01 | 0 | 0 | 0 | 0 | 0 |
+| Noví zákazníci první | +1700 | -2 | +0.005 | 0 | 0 | 0 | 0 | +350 |
+| Radar termínů | +700 | -12 | +0.005 | +3 | 0 | 0 | 0 | 0 |
+| Krizový režim po termínu | +500 | -18 | 0 | +8 | 0 | 0 | 0 | +100 |
+| Kvalita dat a geokódingu | +500 | -4 | 0 | 0 | +900 | 0 | 0 | +150 |
+
+**Operativní pravidla přepnutí (kdy použít který profil):**
+
+1. **Výchozí start dne:** začni vždy profilem **Standardní**.
+2. **Přepni na "Noví zákazníci první", když:**
+   - podíl netknutých zákazníků v inboxu > 30 %, nebo
+   - backlog prvního kontaktu roste 3+ dny po sobě.
+3. **Přepni na "Radar termínů", když:**
+   - položky s termínem do 7 dnů > 25 % inboxu, nebo
+   - opakovaně vznikají "last-minute" přeplánování.
+4. **Přepni na "Krizový režim po termínu", když:**
+   - po termínu je > 15 % inboxu, nebo
+   - položek po termínu > 30 dnů je > 20.
+5. **Přepni na "Kvalita dat a geokódingu", když:**
+   - geocode_failed > 8 % aktivních položek, nebo
+   - plánování je blokováno chybou adres/geokódu u 10+ zákazníků.
+
+**Exit kritéria (kdy se vrátit na Standardní):**
+- Noví zákazníci první: netknutí klesnou pod 20 %.
+- Radar termínů: "do 7 dnů" klesne pod 15 %.
+- Krizový režim po termínu: po termínu klesne pod 8 %.
+- Kvalita dat: geocode_failed klesne pod 3 %.
+
+**Guardrails (aby řazení nebylo chaotické):**
+- Nepřepínat profil více než **2x za den** bez retrospektivy.
+- Profil držet minimálně **půl dne** (nebo 1 plánovací blok), aby byl měřitelný efekt.
+- Po každém přepnutí sledovat minimálně: počet po termínu, počet netknutých, počet geocode_failed.
+
 ---
 
 #### 8.7 Detail zakázky (workflow hub)
@@ -1827,5 +1878,367 @@ Runtime rule: URL seed is initial; snapshot overrides when received. Timeout →
 
 ---
 
+## 21. Unified Persistence Platform (UPP)
+
+> **Status:** ✅ Complete — Core framework + page wiring (P0–P6) done  
+> **Location:** `apps/web/src/persistence/`  
+> **Date:** 2026-03-24
+
+### 21.1 Purpose
+
+UPP is a framework for persisting and restoring UI filter/control state across page navigations, tab sessions, and browser restarts. Before UPP, each page managed its own `sessionStorage` / `localStorage` access with ad-hoc key naming, inconsistent serialization, and no structured precedence between URL parameters, stored values, and defaults.
+
+UPP solves:
+
+| Problem | UPP Solution |
+|---------|-------------|
+| Scattered `storage.getItem` / `setItem` calls | Centralized `PersistenceOrchestrator` facade |
+| No namespace isolation between users/pages | Structured key: `sazinka:persist:v1:user:{userId}:profile:{profileId}:control:{controlId}` |
+| Lossy falsy handling (`false`, `0`, `''` treated as missing) | Nullish-safe `resolveValue` utility (`??` over `||`) |
+| No precedence between URL, storage, defaults | Configurable `readPriority` per profile (`url > session > local > server`) |
+| Silent data corruption | Versioned envelope format with validation |
+| Code duplication across pages | Declarative profiles + reusable React hooks |
+
+### 21.2 Architecture
+
+```
+Page Component
+  │
+  └── PersistenceProvider (React Context)
+        │  userId, profiles[], adapters{}
+        │
+        ├── PersistenceOrchestrator (core engine)
+        │     ├── hydrateProfile()   — read from adapters, resolve precedence
+        │     ├── commit()           — write to all writeTargets
+        │     ├── clear()            — remove single control
+        │     └── resetProfile()     — remove all controls in a profile
+        │
+        ├── Adapters (read/write to storage backends)
+        │     ├── SessionStorageAdapter  (channelId: 'session')
+        │     ├── LocalStorageAdapter    (channelId: 'local')
+        │     ├── UrlAdapter             (channelId: 'url')
+        │     ├── ServerPreferencesAdapter (channelId: 'server')
+        │     └── MemoryAdapter          (channelId: 'session', for tests)
+        │
+        ├── Plugins (encode/decode/normalize per data type)
+        │     ├── TextSearchPlugin   (pluginId: 'text')
+        │     ├── EnumPlugin         (pluginId: 'enum')
+        │     ├── BooleanPlugin      (pluginId: 'boolean')
+        │     ├── DatePlugin         (pluginId: 'date')
+        │     ├── DateRangePlugin    (pluginId: 'dateRange')
+        │     └── JsonPlugin         (pluginId: 'json')
+        │
+        └── React Hooks (consumer API)
+              ├── usePersistentControl<T>(profileId, controlId, debounceMs?)
+              │     → { value: T, setValue: (v: T) => void }
+              ├── usePersistentProfile(profileId)
+              │     → { state, commit, reset }
+              └── usePersistence()
+                    → { orchestrator, profiles, userId, getState, commit, reset }
+```
+
+### 21.3 Core Concepts
+
+#### Envelope
+
+Every persisted value is wrapped in a versioned envelope for validation and precedence resolution:
+
+```typescript
+interface PersistenceEnvelope<T> {
+  v: 1;              // Schema version
+  ts: number;        // Timestamp (Date.now())
+  value: T;          // The actual persisted value
+  source: ChannelId; // Which adapter wrote it ('url' | 'session' | 'local' | 'server')
+}
+```
+
+The `isValidEnvelope()` function guards against corrupt or outdated data in storage.
+
+#### Adapter
+
+A `PersistenceAdapter` is a strategy for reading/writing envelopes to a specific storage backend:
+
+```typescript
+interface PersistenceAdapter {
+  readonly channelId: ChannelId;
+  read(key: string, ctx: HydrationContext): PersistenceEnvelope<unknown> | null;
+  write(key: string, envelope: PersistenceEnvelope<unknown>, ctx: HydrationContext): void;
+  remove(key: string, ctx: HydrationContext): void;
+  subscribe?(key: string, listener: (env | null) => void): () => void;
+}
+```
+
+Adapters are shared as module-level singletons (`sessionAdapter`, `localAdapter`) to avoid duplicate instances.
+
+#### Profile
+
+A `PersistenceProfile` declares which controls a page persists, where to read from, and where to write:
+
+```typescript
+interface PersistenceProfile {
+  profileId: string;              // e.g. 'customers.filters'
+  controls: ControlSpec[];        // List of controls to persist
+  readPriority: ChannelId[];      // Ordered list: first match wins (e.g. ['url', 'session', 'local'])
+  writeTargets: ChannelId[];      // Where to persist on commit (e.g. ['session'])
+}
+```
+
+#### Control
+
+Each control in a profile is a `ControlSpec`:
+
+```typescript
+interface ControlSpec<T = unknown> {
+  controlId: string;       // e.g. 'search', 'dateFrom', 'crew'
+  pluginId: string;        // e.g. 'text', 'enum', 'boolean', 'date', 'json'
+  defaultValue: T;         // Fallback when no stored value exists
+  writeMode: WriteMode;    // 'immediate' | 'debounced' | 'onBlur'
+  debounceMs?: number;     // Only for 'debounced' writeMode
+  validators: Array<(value: T) => boolean>;
+  sanitize?: (value: T) => T;
+  legacyKeys?: string[];   // Old key names for migration
+}
+```
+
+#### Precedence
+
+On hydration, the orchestrator reads each control from every adapter in `readPriority` order, then selects the highest-priority envelope. Within the same priority, the newest timestamp wins:
+
+```
+Channel priority (highest to lowest): url > session > local > server
+Same channel: newest ts wins
+```
+
+This is implemented in `resolvePrecedence()`.
+
+#### Storage Key Format
+
+All UPP keys follow a namespaced pattern to prevent collisions:
+
+```
+sazinka:persist:v1:user:{userId}:profile:{profileId}:control:{controlId}
+```
+
+Example: `sazinka:persist:v1:user:abc-123:profile:customers.filters:control:search`
+
+### 21.4 React Integration
+
+#### PersistenceProvider
+
+Each page wraps its inner component tree in a `PersistenceProvider`:
+
+```tsx
+<PersistenceProvider
+  userId={userId}
+  profiles={[customersProfile]}
+  adapters={{ session: sessionAdapter }}
+>
+  <CustomersInner />
+</PersistenceProvider>
+```
+
+The provider creates a `PersistenceOrchestrator`, hydrates state on mount, re-hydrates when `userId` changes, and exposes `getState` / `commit` / `reset` through React context.
+
+#### usePersistentControl
+
+The primary hook for individual controls. Returns the current value and a stable `setValue` callback. Supports optional debounce for text inputs:
+
+```tsx
+const { value: search, setValue: setSearch } = usePersistentControl<string>(
+  CUSTOMERS_PROFILE_ID, 'search', 300  // 300ms debounce
+);
+```
+
+On unmount, any pending debounced write is flushed to ensure no data loss.
+
+#### usePersistentProfile
+
+For bulk access to all controls in a profile at once. Provides a `commit(controlId, value)` and `reset()`:
+
+```tsx
+const { state, commit, reset } = usePersistentProfile('customers.filters');
+```
+
+### 21.5 Wiring Patterns
+
+#### Value Precedence Chain
+
+Pages resolve the effective value of each control using a `URL > UPP > Default` chain with `resolveValue`:
+
+```typescript
+const viewMode = resolveValue<'table' | 'cards'>(
+  searchParams?.view,   // URL parameter (highest priority)
+  uppViewMode,          // UPP-persisted value
+  'table'               // Static default (lowest priority)
+) ?? 'table';
+```
+
+`resolveValue` returns the first non-null, non-undefined candidate — preserving valid falsy values like `false`, `0`, and `''`.
+
+#### URL-to-UPP Sync on Mount
+
+To ensure URL parameters survive navigation (user lands with `?crew=abc`, navigates away, comes back without URL param), pages sync initial URL params to UPP on first mount:
+
+```typescript
+const didSyncRef = useRef(false);
+useEffect(() => {
+  if (didSyncRef.current) return;
+  didSyncRef.current = true;
+  if (searchParams?.crew) setUppCrew(searchParams.crew);
+  if (searchParams?.depot) setUppDepot(searchParams.depot);
+}, []);
+```
+
+#### Legacy Migration (One-Time Seeding)
+
+For pages migrating from direct storage to UPP, `readLegacyKey` reads old un-namespaced keys and seeds them into UPP on first mount:
+
+```typescript
+const didSeedRef = useRef(false);
+useEffect(() => {
+  if (didSeedRef.current) return;
+  didSeedRef.current = true;
+  if (uppValue === null || uppValue === undefined) {
+    const legacy = readLegacyKey('session', 'planningInbox.filters');
+    if (legacy != null) setUppValue(legacy);
+  }
+}, []);
+```
+
+`readLegacyKey` handles JSON objects, boolean strings (`"true"` / `"false"`), plain strings, and corrupt JSON gracefully.
+
+#### Debounced Text Inputs
+
+For search inputs, `usePersistentControl` accepts a `debounceMs` parameter. The component maintains a local `useState` for immediate UI responsiveness while UPP commits are debounced:
+
+```typescript
+const { value: uppSearch, setValue: setUppSearch } = usePersistentControl<string>(
+  PROFILE_ID, 'search', 300,
+);
+const [localSearch, setLocalSearch] = useState(uppSearch ?? '');
+const setSearch = useCallback((v: string) => {
+  setLocalSearch(v);   // Immediate UI update
+  setUppSearch(v);     // Debounced persistence
+}, [setUppSearch]);
+```
+
+#### Channel Isolation
+
+When a page needs controls in different storage backends (e.g., filters in `sessionStorage`, preferences in `localStorage`), it uses separate profiles:
+
+```tsx
+<PersistenceProvider
+  userId={userId}
+  profiles={[inboxFiltersProfile, inboxBreakRuleProfile]}
+  adapters={{ session: sessionAdapter, local: localAdapter }}
+>
+```
+
+The `inboxFiltersProfile` writes to `session`, `inboxBreakRuleProfile` writes to `local` — enforced by their `writeTargets`.
+
+### 21.6 Active Profiles
+
+| Profile ID | Page | Controls | Storage |
+|-----------|------|----------|---------|
+| `customers.filters` | Customers | search, viewMode, geocodeFilter, revisionFilter, typeFilter, sortBy, sortOrder (7) | session |
+| `routes.filters` | Routes | dateFrom, dateTo, isDateRange, crew, depot (5) | session |
+| `plan.filters` | Plan | dateFrom, dateTo, isDateRange, crew, depot (5) | session |
+| `inbox.filters` | PlanningInbox | filters (1 JSON object) | session |
+| `inbox.breakRule` | PlanningInbox | enforceDrivingBreakRule (1 boolean) | local |
+
+### 21.7 What UPP Does NOT Manage
+
+These keys remain as direct `sessionStorage` / `localStorage` access — see `STORAGE_ALLOWLIST.md` for the full list:
+
+| Key | Storage | Reason |
+|-----|---------|--------|
+| `sazinka.auth.*` | local | Security-sensitive auth tokens |
+| `sazinka.errorLog` | local | Must survive UPP failures |
+| `planningInbox.context` | session | Route timeline critical — kept direct for safety |
+| `planningInbox.selectedId` | session | Route timeline critical — kept direct for safety |
+| `planner.sidebarWidth`, `planner.routeListHeight` | local | Layout preferences, deferred |
+| `sazinka.snooze.defaultDays` | local | Rarely changes, deferred |
+| `sazinka.layoutPreference` | local | Managed by `useLayoutMode` hook |
+
+### 21.8 File Structure
+
+```
+apps/web/src/persistence/
+├── core/
+│   ├── types.ts                    — PersistenceEnvelope, PersistenceAdapter, PersistenceProfile, etc.
+│   ├── PersistenceOrchestrator.ts  — Central engine: hydrate, commit, clear, reset
+│   └── precedence.ts               — Channel priority + timestamp resolution
+├── adapters/
+│   ├── SessionStorageAdapter.ts    — sessionStorage read/write/subscribe
+│   ├── LocalStorageAdapter.ts      — localStorage read/write/subscribe
+│   ├── UrlAdapter.ts               — URL search params (read-only in practice)
+│   ├── ServerPreferencesAdapter.ts — Server-side user preferences
+│   ├── MemoryAdapter.ts            — In-memory adapter for tests
+│   └── singletons.ts               — Module-level sessionAdapter + localAdapter instances
+├── plugins/
+│   ├── types.ts                    — ControlPlugin<T> interface
+│   ├── registry.ts                 — PluginRegistry (register/get/has)
+│   ├── TextSearchPlugin.ts         — Plain string encode/decode
+│   ├── EnumPlugin.ts               — Enumerated string values
+│   ├── BooleanPlugin.ts            — Boolean encode/decode
+│   ├── DatePlugin.ts               — ISO date string
+│   ├── DateRangePlugin.ts          — { from, to } date pair
+│   └── JsonPlugin.ts               — Arbitrary JSON objects
+├── react/
+│   ├── PersistenceProvider.tsx      — React context: orchestrator + state management
+│   ├── usePersistentControl.ts     — Hook for single control (with debounce)
+│   ├── usePersistentProfile.ts     — Hook for full profile access
+│   └── resolveValue.ts             — Nullish-safe multi-candidate precedence
+├── profiles/
+│   ├── customersProfile.ts         — Customers page (7 controls, session)
+│   ├── routesProfile.ts            — Routes page (5 controls, session)
+│   ├── planProfile.ts              — Plan page (5 controls, session)
+│   ├── inboxProfile.ts             — Inbox combined (legacy, unused in wiring)
+│   ├── inboxFiltersProfile.ts      — Inbox filters (1 JSON control, session)
+│   └── inboxBreakRuleProfile.ts    — Inbox break rule (1 boolean, local)
+├── migration/
+│   └── legacySeed.ts               — One-time reader for old un-namespaced storage keys
+├── __tests__/                      — 24 test files, 239 tests
+│   ├── PersistenceOrchestrator.test.ts
+│   ├── PersistenceProvider.test.tsx
+│   ├── usePersistentControl.test.tsx
+│   ├── usePersistentProfile.test.tsx
+│   ├── resolveValue.test.ts
+│   ├── singletons.test.ts
+│   ├── legacySeed.test.ts
+│   ├── precedence.test.ts
+│   ├── types.contract.test.ts
+│   ├── adapterContract.test.ts
+│   ├── SessionStorageAdapter.test.ts
+│   ├── LocalStorageAdapter.test.ts
+│   ├── UrlAdapter.test.ts
+│   ├── ServerPreferencesAdapter.test.ts
+│   ├── crossTab.storage.test.ts
+│   ├── BooleanPlugin.test.ts
+│   ├── DatePlugin.test.ts
+│   ├── DateRangePlugin.test.ts
+│   ├── EnumPlugin.test.ts
+│   ├── JsonPlugin.test.ts
+│   ├── TextSearchPlugin.test.ts
+│   ├── jsonPlugin.fuzz.test.ts
+│   ├── urlCodec.property.test.ts
+│   └── registry.test.ts
+├── STORAGE_ALLOWLIST.md            — Keys exempt from UPP (auth, errors, route timeline)
+└── index.ts                        — Public API barrel
+```
+
+### 21.9 Test Coverage
+
+| Suite | Tests | Scope |
+|-------|-------|-------|
+| Core (orchestrator, precedence, types) | 45 | Hydration, commit, clear, reset, envelope validation |
+| Adapters (session, local, url, server, memory, contract) | 42 | Read/write/remove, cross-tab, quota overflow |
+| Plugins (6 types + registry + fuzz) | 52 | Encode/decode/normalize/isEmpty/equals per plugin |
+| React (Provider, hooks, resolveValue, singletons) | 100 | Context wiring, debounce, unmount flush, falsy preservation |
+| Page wiring guards (Customers, Routes, Plan, Inbox) | 98 | Unmount/remount survival, URL precedence, channel isolation, legacy seeding, route timeline safety |
+| **Total** | **337** | |
+
+---
+
 *Dokument vytvořen: 2026-01-31*  
-*Poslední aktualizace: 2026-03-11 (komprese: odstranění dokončených TDD ticketů, zastaralého MVP plánu, redundantních sekcí)*
+*Poslední aktualizace: 2026-03-24 (added Section 21: Unified Persistence Platform)*

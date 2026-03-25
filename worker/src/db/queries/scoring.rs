@@ -478,6 +478,14 @@ async fn upsert_factors_in_tx(
 mod tests {
     use super::*;
 
+    // ── helpers ──────────────────────────────────────────────────────────────
+
+    fn weight_map<'a>(factors: &'a [(&'a str, f64)]) -> std::collections::HashMap<&'a str, f64> {
+        factors.iter().map(|(k, w)| (*k, *w)).collect()
+    }
+
+    // ── existing tests ────────────────────────────────────────────────────────
+
     #[test]
     fn factor_input_serializes() {
         let f = FactorInput {
@@ -513,5 +521,133 @@ mod tests {
         assert!((map["lifecycle_rank"] - 1000.0).abs() < f64::EPSILON);
         assert!((map["days_until_due"] - (-5.0)).abs() < f64::EPSILON);
         assert!((map["customer_age_days"] - 0.01).abs() < f64::EPSILON);
+    }
+
+    // ── A.1: PRESET_CATALOG — five presets ───────────────────────────────────
+
+    #[test]
+    fn preset_catalog_has_five_entries() {
+        assert_eq!(PRESET_CATALOG.len(), 5);
+    }
+
+    #[test]
+    fn preset_catalog_contains_all_five_keys() {
+        let keys: Vec<&str> = PRESET_CATALOG.iter().map(|p| p.key).collect();
+        assert!(keys.contains(&"standard"), "missing: standard");
+        assert!(keys.contains(&"new_customers_first"), "missing: new_customers_first");
+        assert!(keys.contains(&"due_date_radar"), "missing: due_date_radar");
+        assert!(keys.contains(&"overdue_firefighter"), "missing: overdue_firefighter");
+        assert!(keys.contains(&"data_quality_first"), "missing: data_quality_first");
+    }
+
+    #[test]
+    fn preset_standard_weights_match_plan() {
+        let p = PRESET_CATALOG.iter().find(|p| p.key == "standard").expect("standard preset missing");
+        let m = weight_map(p.factors);
+        assert!((m["lifecycle_rank"] - 1000.0).abs() < f64::EPSILON);
+        assert!((m["days_until_due"] - (-5.0)).abs() < f64::EPSILON);
+        assert!((m["customer_age_days"] - 0.01).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn preset_new_customers_first_weights_match_plan() {
+        let p = PRESET_CATALOG.iter().find(|p| p.key == "new_customers_first").expect("new_customers_first preset missing");
+        let m = weight_map(p.factors);
+        assert!((m["lifecycle_rank"] - 1700.0).abs() < f64::EPSILON);
+        assert!((m["days_until_due"] - (-2.0)).abs() < f64::EPSILON);
+        assert!((m["customer_age_days"] - 0.005).abs() < f64::EPSILON);
+        assert!((m["no_open_action"] - 350.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn preset_due_date_radar_weights_match_plan() {
+        let p = PRESET_CATALOG.iter().find(|p| p.key == "due_date_radar").expect("due_date_radar preset missing");
+        let m = weight_map(p.factors);
+        assert!((m["lifecycle_rank"] - 700.0).abs() < f64::EPSILON);
+        assert!((m["days_until_due"] - (-12.0)).abs() < f64::EPSILON);
+        assert!((m["customer_age_days"] - 0.005).abs() < f64::EPSILON);
+        assert!((m["overdue_days"] - 3.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn preset_overdue_firefighter_weights_match_plan() {
+        let p = PRESET_CATALOG.iter().find(|p| p.key == "overdue_firefighter").expect("overdue_firefighter preset missing");
+        let m = weight_map(p.factors);
+        assert!((m["lifecycle_rank"] - 500.0).abs() < f64::EPSILON);
+        assert!((m["days_until_due"] - (-18.0)).abs() < f64::EPSILON);
+        assert!((m["overdue_days"] - 8.0).abs() < f64::EPSILON);
+        assert!((m["no_open_action"] - 100.0).abs() < f64::EPSILON);
+        assert!(*m.get("customer_age_days").unwrap_or(&0.0) == 0.0);
+    }
+
+    #[test]
+    fn preset_data_quality_first_weights_match_plan() {
+        let p = PRESET_CATALOG.iter().find(|p| p.key == "data_quality_first").expect("data_quality_first preset missing");
+        let m = weight_map(p.factors);
+        assert!((m["lifecycle_rank"] - 500.0).abs() < f64::EPSILON);
+        assert!((m["days_until_due"] - (-4.0)).abs() < f64::EPSILON);
+        assert!((m["geocode_failed"] - 900.0).abs() < f64::EPSILON);
+        assert!((m["no_open_action"] - 150.0).abs() < f64::EPSILON);
+        assert!(*m.get("customer_age_days").unwrap_or(&0.0) == 0.0);
+    }
+
+    #[test]
+    fn preset_catalog_exactly_one_default() {
+        let default_count = PRESET_CATALOG.iter().filter(|p| p.is_default).count();
+        assert_eq!(default_count, 1);
+    }
+
+    #[test]
+    fn preset_catalog_default_is_standard() {
+        let default_preset = PRESET_CATALOG.iter().find(|p| p.is_default).expect("no default preset");
+        assert_eq!(default_preset.key, "standard");
+    }
+
+    // ── A.1: profile_name_for_key — all locales ───────────────────────────────
+
+    #[test]
+    fn profile_name_for_key_standard_all_locales() {
+        assert_eq!(profile_name_for_key("standard", "cs"), Some("Standardní"));
+        assert_eq!(profile_name_for_key("standard", "sk"), Some("Štandardný"));
+        assert_eq!(profile_name_for_key("standard", "en"), Some("Standard"));
+    }
+
+    #[test]
+    fn profile_name_for_key_new_customers_first_all_locales() {
+        assert_eq!(profile_name_for_key("new_customers_first", "cs"), Some("Noví zákazníci první"));
+        assert_eq!(profile_name_for_key("new_customers_first", "sk"), Some("Noví zákazníci prví"));
+        assert_eq!(profile_name_for_key("new_customers_first", "en"), Some("New Customers First"));
+    }
+
+    #[test]
+    fn profile_name_for_key_due_date_radar_all_locales() {
+        assert_eq!(profile_name_for_key("due_date_radar", "cs"), Some("Radar termínů"));
+        assert_eq!(profile_name_for_key("due_date_radar", "sk"), Some("Radar termínov"));
+        assert_eq!(profile_name_for_key("due_date_radar", "en"), Some("Due-Date Radar"));
+    }
+
+    #[test]
+    fn profile_name_for_key_overdue_firefighter_all_locales() {
+        assert_eq!(profile_name_for_key("overdue_firefighter", "cs"), Some("Krizový režim po termínu"));
+        assert_eq!(profile_name_for_key("overdue_firefighter", "sk"), Some("Krízový režim po termíne"));
+        assert_eq!(profile_name_for_key("overdue_firefighter", "en"), Some("Overdue Firefighter"));
+    }
+
+    #[test]
+    fn profile_name_for_key_data_quality_first_all_locales() {
+        assert_eq!(profile_name_for_key("data_quality_first", "cs"), Some("Kvalita dat a geokódingu"));
+        assert_eq!(profile_name_for_key("data_quality_first", "sk"), Some("Kvalita dát a geokódovania"));
+        assert_eq!(profile_name_for_key("data_quality_first", "en"), Some("Data Quality First"));
+    }
+
+    #[test]
+    fn profile_name_for_key_unknown_returns_none() {
+        assert_eq!(profile_name_for_key("bogus_key", "en"), None);
+    }
+
+    #[test]
+    fn profile_name_for_key_falls_back_to_en_for_unknown_locale() {
+        assert_eq!(profile_name_for_key("standard", "fr"), Some("Standard"));
+        assert_eq!(profile_name_for_key("due_date_radar", "de"), Some("Due-Date Radar"));
     }
 }

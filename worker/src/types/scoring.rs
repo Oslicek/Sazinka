@@ -134,6 +134,7 @@ mod tests {
             is_default: false,
             is_archived: false,
             is_system: false,
+            system_key: None,
             created_by_user_id: Uuid::nil(),
             updated_by_user_id: Uuid::nil(),
             created_at: chrono::DateTime::from_timestamp(0, 0).unwrap(),
@@ -146,6 +147,29 @@ mod tests {
         assert!(json.contains("\"isSystem\""));
         assert!(json.contains("\"createdByUserId\""));
         assert!(!json.contains("\"is_default\""));
+        // system_key must be serialized as camelCase
+        assert!(json.contains("\"systemKey\""));
+    }
+
+    #[test]
+    fn scoring_rule_set_system_key_serializes() {
+        let rss = ScoringRuleSet {
+            id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            name: "Standard".to_string(),
+            description: None,
+            is_default: true,
+            is_archived: false,
+            is_system: true,
+            system_key: Some("standard".to_string()),
+            created_by_user_id: Uuid::nil(),
+            updated_by_user_id: Uuid::nil(),
+            created_at: chrono::DateTime::from_timestamp(0, 0).unwrap(),
+            updated_at: chrono::DateTime::from_timestamp(0, 0).unwrap(),
+            factors: vec![],
+        };
+        let json = serde_json::to_string(&rss).unwrap();
+        assert!(json.contains("\"systemKey\":\"standard\""));
     }
 
     #[test]
