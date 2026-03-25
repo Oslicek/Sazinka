@@ -788,4 +788,146 @@ mod tests {
         assert_eq!(profile_name_for_key("standard", "fr"), Some("Standard"));
         assert_eq!(profile_name_for_key("due_date_radar", "de"), Some("Due-Date Radar"));
     }
+
+    // ── batch hydration (attach_factors_to_rule_sets) ─────────────────────────
+
+    fn make_rule_set(id: Uuid) -> ScoringRuleSet {
+        ScoringRuleSet {
+            id,
+            user_id: Uuid::nil(),
+            name: "Test".to_string(),
+            description: None,
+            is_default: false,
+            is_archived: false,
+            is_system: false,
+            system_key: None,
+            created_by_user_id: Uuid::nil(),
+            updated_by_user_id: Uuid::nil(),
+            created_at: chrono::DateTime::from_timestamp(0, 0).unwrap(),
+            updated_at: chrono::DateTime::from_timestamp(0, 0).unwrap(),
+            factors: vec![],
+        }
+    }
+
+    fn make_factor(rule_set_id: Uuid, key: &str, weight: f64) -> ScoringRuleFactor {
+        ScoringRuleFactor {
+            rule_set_id,
+            factor_key: key.to_string(),
+            weight,
+        }
+    }
+
+    #[test]
+    fn attach_factors_empty_sets_no_panic() {
+        let mut sets: Vec<ScoringRuleSet> = vec![];
+        let factors: Vec<ScoringRuleFactor> = vec![];
+        attach_factors_to_rule_sets(&mut sets, factors);
+        assert!(sets.is_empty());
+    }
+
+    #[test]
+    fn attach_factors_empty_factors_leaves_sets_empty() {
+        let id = Uuid::new_v4();
+        let mut sets = vec![make_rule_set(id)];
+        attach_factors_to_rule_sets(&mut sets, vec![]);
+        assert!(sets[0].factors.is_empty());
+    }
+
+    #[test]
+    fn attach_factors_one_set_multiple_factors() {
+        let id = Uuid::new_v4();
+        let mut sets = vec![make_rule_set(id)];
+        let factors = vec![
+            make_factor(id, "lifecycle_rank", 1000.0),
+            make_factor(id, "days_until_due", -5.0),
+        ];
+        attach_factors_to_rule_sets(&mut sets, factors);
+        assert_eq!(sets[0].factors.len(), 2);
+        assert_eq!(sets[0].factors[0].factor_key, "lifecycle_rank");
+        assert!((sets[0].factors[0].weight - 1000.0).abs() < f64::EPSILON);
+        assert_eq!(sets[0].factors[1].factor_key, "days_until_due");
+    }
+
+    #[test]
+    fn attach_factors_multiple_sets_correct_grouping() {
+        let id_a = Uuid::new_v4();
+        let id_b = Uuid::new_v4();
+        let mut sets = vec![make_rule_set(id_a), make_rule_set(id_b)];
+        let factors = vec![
+            make_factor(id_a, "overdue_days", 8.0),
+            make_factor(id_b, "geocode_failed", 900.0),
+            make_factor(id_b, "no_open_action", 150.0),
+            make_factor(id_a, "lifecycle_rank", 500.0),
+        ];
+        attach_factors_to_rule_sets(&mut sets, factors);
+        assert_eq!(sets[0].factors.len(), 2, "set A should have 2 factors");
+        assert_eq!(sets[1].factors.len(), 2, "set B should have 2 factors");
+
+        let a_keys: Vec<&str> = sets[0].factors.iter().map(|f| f.factor_key.as_str()).collect();
+        assert!(a_keys.contains(&"overdue_days"));
+        assert!(a_keys.contains(&"lifecycle_rank"));
+
+        let b_keys: Vec<&str> = sets[1].factors.iter().map(|f| f.factor_key.as_str()).collect();
+        assert!(b_keys.contains(&"geocode_failed"));
+        assert!(b_keys.contains(&"no_open_action"));
+    }
+
+    #[test]
+    fn attach_factors_set_without_any_factors_stays_empty() {
+        let id_a = Uuid::new_v4();
+        let id_b = Uuid::new_v4();
+        let mut sets = vec![make_rule_set(id_a), make_rule_set(id_b)];
+        let factors = vec![
+            make_factor(id_a, "lifecycle_rank", 1000.0),
+        ];
+        attach_factors_to_rule_sets(&mut sets, factors);
+        assert_eq!(sets[0].factors.len(), 1);
+        assert!(sets[1].factors.is_empty(), "set B has no matching factors → empty");
+    }
+
+    #[test]
+    fn attach_factors_orphan_factors_ignored() {
+        let id = Uuid::new_v4();
+        let orphan_id = Uuid::new_v4();
+        let mut sets = vec![make_rule_set(id)];
+        let factors = vec![
+            make_factor(id, "lifecycle_rank", 1000.0),
+            make_factor(orphan_id, "geocode_failed", 900.0),
+        ];
+        attach_factors_to_rule_sets(&mut sets, factors);
+        assert_eq!(sets[0].factors.len(), 1);
+        assert_eq!(sets[0].factors[0].factor_key, "lifecycle_rank");
+    }
+
+    #[test]
+    fn attach_factors_preserves_rule_set_order() {
+        let ids: Vec<Uuid> = (0..5).map(|_| Uuid::new_v4()).collect();
+        let mut sets: Vec<ScoringRuleSet> = ids.iter().map(|id| make_rule_set(*id)).collect();
+        let factors = vec![
+            make_factor(ids[4], "a", 1.0),
+            make_factor(ids[0], "b", 2.0),
+            make_factor(ids[2], "c", 3.0),
+        ];
+        attach_factors_to_rule_sets(&mut sets, factors);
+        for (i, id) in ids.iter().enumerate() {
+            assert_eq!(sets[i].id, *id, "rule set order must be preserved");
+        }
+        assert_eq!(sets[0].factors.len(), 1);
+        assert_eq!(sets[1].factors.len(), 0);
+        assert_eq!(sets[2].factors.len(), 1);
+        assert_eq!(sets[3].factors.len(), 0);
+        assert_eq!(sets[4].factors.len(), 1);
+    }
+
+    #[test]
+    fn attach_factors_clears_pre_existing_factors() {
+        let id = Uuid::new_v4();
+        let mut sets = vec![make_rule_set(id)];
+        sets[0].factors = vec![make_factor(id, "stale_key", 999.0)];
+
+        let factors = vec![make_factor(id, "lifecycle_rank", 1000.0)];
+        attach_factors_to_rule_sets(&mut sets, factors);
+        assert_eq!(sets[0].factors.len(), 1);
+        assert_eq!(sets[0].factors[0].factor_key, "lifecycle_rank");
+    }
 }
