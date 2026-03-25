@@ -145,3 +145,27 @@
 - `Plan.persistenceV2.test.tsx` — "BUG-FIX: crew filter survives unmount and re-mount"
 - `Plan.persistenceV2.test.tsx` — "BUG-FIX: depot filter survives unmount and re-mount"
 - `Plan.persistenceV2.test.tsx` — "BUG-FIX: URL param takes precedence over sessionStorage on return"
+
+---
+
+## BUG-7: Inbox — checkboxes on candidate cards cannot be toggled
+
+**Reported:** 2026-02-23
+**Status:** FIXED (2026-02-23)
+**Page:** Inbox (`/inbox`)
+
+**Steps to reproduce:**
+1. Open the Inbox page with candidates in the queue.
+2. Start route building (selection mode is active, checkboxes visible).
+3. Click the checkbox on any candidate card.
+
+**Expected:** The checkbox toggles on/off, the candidate is added to / removed from the batch selection.
+**Actual:** The checkbox does not respond to clicks. It is not possible to select multiple candidates.
+
+**Root cause:** `CandidateRow` rendered the entire row as a native `<button>` element. The `<input type="checkbox">` was a child of that `<button>`. The HTML spec (§4.10.6) forbids interactive content (including `<input>`) inside `<button>`. Browsers enforce this by having the button "capture" click activation, preventing the checkbox from toggling.
+
+**Fix:** Replaced the `<button>` wrapper with `<div role="button" tabIndex={0}>`. This preserves accessibility semantics (screen readers still announce the row as a button) and keyboard navigation, while removing the content model restriction that blocked the checkbox. Added explicit Enter/Space key handling since `<div>` does not have native button activation behavior, with a guard to skip activation when the key target is the checkbox `<input>`.
+
+**Regression tests:**
+- `CandidateRow.test.tsx` — "BUG-7: row element is not a native <button> when selectable (avoids nested interactive content)"
+- `CandidateRow.test.tsx` — "BUG-7: clicking checkbox fires onCheckChange without firing row onClick"

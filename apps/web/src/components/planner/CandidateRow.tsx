@@ -86,12 +86,23 @@ export function CandidateRow({
   const daysOverdue = candidate.daysUntilDue < 0 ? Math.abs(candidate.daysUntilDue) : 0;
   const hasProblems = !candidate.hasPhone || !candidate.hasValidAddress;
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      if ((e.target as HTMLElement).tagName !== 'INPUT') {
+        e.preventDefault();
+        onClick?.();
+      }
+    }
+    onKeyDown?.(e);
+  };
+
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       className={`${styles.row} ${isSelected ? styles.selected : ''} ${hasProblems ? styles.hasProblems : ''} ${isInRoute ? styles.inRoute : ''}`}
       onClick={onClick}
-      onKeyDown={onKeyDown}
+      onKeyDown={handleKeyDown}
       data-candidate-id={candidate.id}
     >
       {selectable && (
@@ -183,6 +194,6 @@ export function CandidateRow({
           <span title={t('candidate_row_no_address')}><MapPin size={14} className={`${styles.warning} ${styles.noGeo}`} /></span>
         )}
       </div>
-    </button>
+    </div>
   );
 }
