@@ -34,10 +34,12 @@ function buildState(breakpoint: Breakpoint): BreakpointState {
   };
 }
 
-/** SSR-safe default — assumes desktop until hydration */
+/** SSR-safe default — assumes desktop until hydration.
+ * JSDOM (test env) defaults window.innerWidth to 0; treat 0 as desktop. */
 function getInitialState(): BreakpointState {
   if (typeof window === 'undefined') return buildState('desktop');
-  return buildState(getBreakpoint(window.innerWidth));
+  const width = window.innerWidth > 0 ? window.innerWidth : 1280;
+  return buildState(getBreakpoint(width));
 }
 
 /**

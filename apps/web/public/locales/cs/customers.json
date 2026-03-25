@@ -245,5 +245,9 @@
   "adv_section_contactability": "Kontaktovatelnost",
   "adv_section_lifecycle": "Životní cyklus",
   "adv_section_data_quality": "Kvalita dat",
-  "adv_coming_soon": "Připravujeme"
+  "adv_coming_soon": "Připravujeme",
+
+  "sort_no_secondary": "— Bez sekundárního řazení —",
+  "sort_clear": "Zrušit řazení",
+  "sheet_apply": "Použít"
 }

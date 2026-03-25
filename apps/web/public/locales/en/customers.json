@@ -245,5 +245,9 @@
   "adv_section_contactability": "Contactability",
   "adv_section_lifecycle": "Lifecycle",
   "adv_section_data_quality": "Data quality",
-  "adv_coming_soon": "Coming soon"
+  "adv_coming_soon": "Coming soon",
+
+  "sort_no_secondary": "— No secondary sort —",
+  "sort_clear": "Clear sort",
+  "sheet_apply": "Apply"
 }

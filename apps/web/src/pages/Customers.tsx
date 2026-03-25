@@ -27,6 +27,8 @@ import { CustomerEditDrawer } from '../components/customers/CustomerEditDrawer';
 import { SavedViewsSelector, type SavedView } from '../components/customers/SavedViewsSelector';
 import { CustomerFilterBar } from '../components/customers/CustomerFilterBar';
 import { AdvancedFilterPanel } from '../components/customers/AdvancedFilterPanel';
+import { MobileFilterSheet } from '../components/customers/MobileFilterSheet';
+import { useBreakpoint } from '../hooks/useBreakpoint';
 import { SplitView } from '../components/common/SplitView';
 import { useNatsStore } from '../stores/natsStore';
 import { useAuthStore } from '../stores/authStore';
@@ -190,6 +192,7 @@ function CustomersInner() {
   
   const isConnected = useNatsStore((s) => s.isConnected);
   const { t } = useTranslation('customers');
+  const { isMobileUi } = useBreakpoint();
 
   // Build request options (without offset — managed separately)
   const requestOptions = useMemo<ListCustomersRequest>(() => {
@@ -594,30 +597,51 @@ function CustomersInner() {
   // Table view content (left panel)
   const tableContent = (
     <div className={styles.tablePanel}>
-      {/* Toolbar */}
-      <CustomerFilterBar
-        search={search}
-        onSearchChange={setSearch}
-        geocodeFilter={geocodeFilter}
-        onGeocodeFilterChange={setGeocodeFilter}
-        revisionFilter={revisionFilter as '' | 'overdue' | 'week' | 'month'}
-        onRevisionFilterChange={setRevisionFilter}
-        typeFilter={typeFilter}
-        onTypeFilterChange={setTypeFilter}
-        activeFilterCount={activeFilterCount}
-        onClearAllFilters={handleClearAllFilters}
-        isAdvancedOpen={isAdvancedFiltersOpen}
-        onToggleAdvanced={() => setIsAdvancedFiltersOpen((o) => !o)}
-        sortModel={sortModel}
-        onSortModelChange={setSortModel}
-        visibleColumns={visibleColumns}
-        columnOrder={columnOrder}
-        onVisibleColumnsChange={setVisibleColumns}
-        onColumnOrderChange={setColumnOrder}
-        onResetColumns={handleResetColumns}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
-      />
+      {/* Toolbar — desktop: inline filter bar; mobile: trigger + sheet */}
+      {isMobileUi ? (
+        <MobileFilterSheet
+          isMobile={isMobileUi}
+          search={search}
+          onSearchChange={setSearch}
+          geocodeFilter={geocodeFilter}
+          onGeocodeFilterChange={setGeocodeFilter}
+          revisionFilter={revisionFilter as '' | 'overdue' | 'week' | 'month'}
+          onRevisionFilterChange={setRevisionFilter}
+          typeFilter={typeFilter}
+          onTypeFilterChange={setTypeFilter}
+          sortModel={sortModel}
+          onSortModelChange={setSortModel}
+          visibleColumns={visibleColumns}
+          columnOrder={columnOrder}
+          onVisibleColumnsChange={setVisibleColumns}
+          onColumnOrderChange={setColumnOrder}
+          onResetColumns={handleResetColumns}
+        />
+      ) : (
+        <CustomerFilterBar
+          search={search}
+          onSearchChange={setSearch}
+          geocodeFilter={geocodeFilter}
+          onGeocodeFilterChange={setGeocodeFilter}
+          revisionFilter={revisionFilter as '' | 'overdue' | 'week' | 'month'}
+          onRevisionFilterChange={setRevisionFilter}
+          typeFilter={typeFilter}
+          onTypeFilterChange={setTypeFilter}
+          activeFilterCount={activeFilterCount}
+          onClearAllFilters={handleClearAllFilters}
+          isAdvancedOpen={isAdvancedFiltersOpen}
+          onToggleAdvanced={() => setIsAdvancedFiltersOpen((o) => !o)}
+          sortModel={sortModel}
+          onSortModelChange={setSortModel}
+          visibleColumns={visibleColumns}
+          columnOrder={columnOrder}
+          onVisibleColumnsChange={setVisibleColumns}
+          onColumnOrderChange={setColumnOrder}
+          onResetColumns={handleResetColumns}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+        />
+      )}
 
       {/* Advanced filter panel */}
       <AdvancedFilterPanel

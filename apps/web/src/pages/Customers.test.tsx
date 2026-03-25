@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Customers } from './Customers';
 import type { CustomerListItem, CustomerSummary } from '@shared/customer';
@@ -360,17 +360,19 @@ describe('Customers', () => {
       mockGetCustomerSummary.mockResolvedValue(null);
     });
 
-    it('filter bar has a filter bar class (CSS targets it for stacking)', () => {
+    it('mobile trigger button shown on mobile viewport', () => {
       mockMatchMedia(VIEWPORTS.phone.width);
       setViewport(VIEWPORTS.phone.width, VIEWPORTS.phone.height);
       render(<Customers />);
-      expect(document.querySelector('[class*="filterBar"]')).toBeInTheDocument();
+      expect(screen.getByTestId('mobile-filter-trigger')).toBeInTheDocument();
     });
 
-    it('search input has the search class (CSS sets full-width on mobile)', () => {
+    it('search input accessible inside mobile sheet', () => {
       mockMatchMedia(VIEWPORTS.phone.width);
       setViewport(VIEWPORTS.phone.width, VIEWPORTS.phone.height);
       render(<Customers />);
+      // Open the mobile sheet to access search
+      fireEvent.click(screen.getByTestId('mobile-filter-trigger'));
       expect(document.querySelector('[class*="search"]')).toBeInTheDocument();
     });
 

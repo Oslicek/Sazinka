@@ -36,6 +36,26 @@ vi.mock('@/i18n', () => ({
 if (typeof window !== 'undefined') {
   window.URL.createObjectURL = vi.fn(() => 'blob:mock-url') as typeof window.URL.createObjectURL;
   window.URL.revokeObjectURL = vi.fn();
+
+  // Provide matchMedia stub so useBreakpoint and other hooks don't crash in jsdom.
+  // Tests that need specific viewport behavior should call mockMatchMedia() from
+  // src/test/utils/responsive.tsx before rendering the component.
+  if (!window.matchMedia) {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      configurable: true,
+      value: vi.fn((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
+  }
 }
 
 // Mock NATS WebSocket module before any imports
