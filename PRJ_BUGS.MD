@@ -162,9 +162,15 @@
 **Expected:** The checkbox toggles on/off, the candidate is added to / removed from the batch selection.
 **Actual:** The checkbox does not respond to clicks. It is not possible to select multiple candidates.
 
-**Root cause:** `CandidateRow` rendered the entire row as a native `<button>` element. The `<input type="checkbox">` was a child of that `<button>`. The HTML spec (§4.10.6) forbids interactive content (including `<input>`) inside `<button>`. Browsers enforce this by having the button "capture" click activation, preventing the checkbox from toggling.
+**Root cause:** `handleSelectionChange` in `PlanningInboxInner` validated the clicked candidate by looking it up in `sortedCandidatesRef.current` — a ref populated from `PlanningInboxInner`'s own `candidates` state. However, the displayed candidate list comes from `InboxListPanel`, which fetches and manages candidates **independently** via its own `getInbox()` pipeline. Because `InboxListPanel` is rendered without a `candidates` prop (line 3220), it uses its own internal data, while `sortedCandidatesRef` stayed empty (or stale). Every checkbox toggle was silently rejected by the guard `if (!candidate || !hasValidAddress(candidate)) return`.
 
-**Fix:** Replaced the `<button>` wrapper with `<div role="button" tabIndex={0}>`. This preserves accessibility semantics (screen readers still announce the row as a button) and keyboard navigation, while removing the content model restriction that blocked the checkbox. Added explicit Enter/Space key handling since `<div>` does not have native button activation behavior, with a guard to skip activation when the key target is the checkbox `<input>`.
+Runtime evidence (console logs):
+- Before fix: `handleSelectionChange { candidateFound: false, refLength: 0 }` → REJECTED
+- After fix: `setSelectedIds { prevSize: 0, nextSize: 1 }` → checkbox toggles
+
+**Fix (two parts):**
+1. Removed the broken `sortedCandidatesRef` lookup guard from `handleSelectionChange`. The `disableCheckbox: !validAddress` property on `CandidateRowData` already disables the HTML checkbox element for invalid-address candidates, making the guard redundant.
+2. Replaced the `<button>` wrapper in `CandidateRow` with `<div role="button" tabIndex={0}>` to comply with the HTML spec (interactive content must not be nested inside `<button>`).
 
 **Regression tests:**
 - `CandidateRow.test.tsx` — "BUG-7: row element is not a native <button> when selectable (avoids nested interactive content)"

@@ -1740,11 +1740,6 @@ function PlanningInboxInner() {
 
   // Route building: toggle checkbox selection
   const handleSelectionChange = useCallback((id: string, selected: boolean) => {
-    // #region agent log
-    console.log('[BUG7] handleSelectionChange', { id, selected });
-    fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ee0c72'},body:JSON.stringify({sessionId:'ee0c72',location:'PlanningInbox.tsx:handleSelectionChange',message:'handleSelectionChange called',data:{id,selected},timestamp:Date.now(),hypothesisId:'H3',runId:'post-fix'})}).catch(()=>{});
-    // #endregion
-
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (selected) {
@@ -1752,10 +1747,6 @@ function PlanningInboxInner() {
       } else {
         next.delete(id);
       }
-      // #region agent log
-      console.log('[BUG7] setSelectedIds', { id, selected, prevSize: prev.size, nextSize: next.size });
-      fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ee0c72'},body:JSON.stringify({sessionId:'ee0c72',location:'PlanningInbox.tsx:setSelectedIds',message:'selectedIds updated',data:{id,selected,prevSize:prev.size,nextSize:next.size},timestamp:Date.now(),hypothesisId:'H4',runId:'post-fix'})}).catch(()=>{});
-      // #endregion
       return next;
     });
   }, []);
