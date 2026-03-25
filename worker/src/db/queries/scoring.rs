@@ -135,6 +135,45 @@ async fn hydrate_rule_set_factors(pool: &PgPool, rule_set: &mut ScoringRuleSet) 
     Ok(())
 }
 
+/// Attach pre-fetched factors to their owning rule sets in memory.
+/// Factors whose `rule_set_id` doesn't match any set are silently dropped.
+/// Any pre-existing factors on the rule sets are replaced.
+fn attach_factors_to_rule_sets(
+    sets: &mut [ScoringRuleSet],
+    all_factors: Vec<ScoringRuleFactor>,
+) {
+    let mut by_id: std::collections::HashMap<Uuid, Vec<ScoringRuleFactor>> =
+        std::collections::HashMap::new();
+    for f in all_factors {
+        by_id.entry(f.rule_set_id).or_default().push(f);
+    }
+    for set in sets.iter_mut() {
+        set.factors = by_id.remove(&set.id).unwrap_or_default();
+    }
+}
+
+/// Fetch factors for all given rule set IDs in a single query, then attach
+/// them to the corresponding rule sets in memory. Replaces the N+1
+/// `hydrate_rule_set_factors`-per-row loop in list paths.
+async fn batch_hydrate_rule_set_factors(
+    pool: &PgPool,
+    sets: &mut [ScoringRuleSet],
+) -> Result<()> {
+    if sets.is_empty() {
+        return Ok(());
+    }
+    let ids: Vec<Uuid> = sets.iter().map(|s| s.id).collect();
+    let factors = sqlx::query_as::<_, ScoringRuleFactor>(
+        "SELECT rule_set_id, factor_key, weight::float8 FROM scoring_rule_factors WHERE rule_set_id = ANY($1) ORDER BY factor_key",
+    )
+    .bind(&ids)
+    .fetch_all(pool)
+    .await?;
+
+    attach_factors_to_rule_sets(sets, factors);
+    Ok(())
+}
+
 // ============================================================================
 // SCORING RULE SETS
 // ============================================================================
@@ -393,9 +432,7 @@ pub async fn list_rule_sets(
         .fetch_all(pool)
         .await?;
 
-    for set in &mut sets {
-        hydrate_rule_set_factors(pool, set).await?;
-    }
+    batch_hydrate_rule_set_factors(pool, &mut sets).await?;
 
     Ok(sets)
 }
