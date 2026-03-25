@@ -194,7 +194,17 @@ export interface CustomerListItem {
 }
 
 /**
- * Request for listing customers with filters and sorting
+ * Sort entry for multi-level server-side sorting.
+ * Canonical definition shared between NATS contract (here) and frontend (customerColumns.ts).
+ */
+export interface SortEntry {
+  column: string;
+  direction: 'asc' | 'desc';
+}
+
+/**
+ * Request for listing customers with filters and sorting.
+ * Phase 2A: sortBy/sortOrder replaced by sortModel for end-to-end server-authoritative multisort.
  */
 export interface ListCustomersRequest {
   limit?: number;
@@ -208,10 +218,8 @@ export interface ListCustomersRequest {
   nextRevisionWithinDays?: number;
   /** Filter by customer type */
   customerType?: CustomerType;
-  /** Sort by field */
-  sortBy?: 'name' | 'nextRevision' | 'deviceCount' | 'city' | 'createdAt';
-  /** Sort order */
-  sortOrder?: 'asc' | 'desc';
+  /** Multi-level sort model; backend executes full ORDER BY chain */
+  sortModel?: SortEntry[];
 }
 
 /**

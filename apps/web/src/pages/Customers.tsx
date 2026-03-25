@@ -106,6 +106,7 @@ function CustomersInner() {
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sortContractError, setSortContractError] = useState<string | null>(null);
   const [geocodeJob, setGeocodeJob] = useState<GeocodeJobStatusUpdate | null>(null);
   const geocodeUnsubscribeRef = useRef<(() => void) | null>(null);
   
@@ -132,6 +133,9 @@ function CustomersInner() {
     },
     [setUppSelectedCustomerId],
   );
+  // Stable ref so loadCustomers can call the latest setter without adding it to deps
+  const setSelectedCustomerRef = useRef(setSelectedCustomer);
+  setSelectedCustomerRef.current = setSelectedCustomer;
 
   const [fullCustomer, setFullCustomer] = useState<Customer | null>(null);
   const [isLoadingFull, setIsLoadingFull] = useState(false);
@@ -147,8 +151,7 @@ function CustomersInner() {
   const requestOptions = useMemo<ListCustomersRequest>(() => {
     const options: ListCustomersRequest = {
       limit: PAGE_SIZE,
-      sortBy: sortModel[0]?.column as ListCustomersRequest['sortBy'] ?? 'name',
-      sortOrder: sortModel[0]?.direction ?? 'asc',
+      sortModel,
     };
     
     if (search) {
@@ -190,7 +193,8 @@ function CustomersInner() {
         listCustomersExtended({ ...requestOptions, offset: 0 }),
         getCustomerSummary().catch(() => null),
       ]);
-      
+
+      setSortContractError(null);
       setCustomers(result.items);
       setTotal(result.total);
       if (summaryResult) setSummary(summaryResult);
@@ -198,15 +202,20 @@ function CustomersInner() {
       // Clear selection if the selected customer is no longer in the list
       const cur = selectedCustomerRef.current;
       if (cur && !result.items.some((c) => c.id === cur.id)) {
-        setSelectedCustomer(null);
+        setSelectedCustomerRef.current(null);
       }
     } catch (err) {
-      console.error('Failed to load customers:', err);
-      setError(err instanceof Error ? err.message : t('error_load_failed'));
+      const msg = err instanceof Error ? err.message : t('error_load_failed');
+      if (msg.includes('SORT_CONTRACT_ERROR')) {
+        setSortContractError(msg);
+      } else {
+        console.error('Failed to load customers:', err);
+        setError(msg);
+      }
     } finally {
       setIsLoading(false);
     }
-  }, [isConnected, requestOptions, setSelectedCustomer]);
+  }, [isConnected, requestOptions]);
 
   useEffect(() => {
     if (isConnected) {
@@ -608,6 +617,17 @@ function CustomersInner() {
       )}
 
       {error && <div className={styles.error}>{error}</div>}
+
+      {sortContractError && (
+        <div
+          role="alert"
+          data-testid="sort-contract-error-banner"
+          className={styles.error}
+        >
+          <AlertTriangle size={16} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+          {t('error_load_failed')}: {sortContractError}
+        </div>
+      )}
 
       {geocodeJob && (
         <div className={styles.geocodeStatus}>

@@ -11,6 +11,7 @@ import React from 'react';
 import { customersProfile } from '@/persistence/profiles/customersProfile';
 import { makeKey, makeEnvelope } from '@/persistence/core/types';
 import { CUSTOMERS_PROFILE_ID } from '@/persistence/profiles/customersProfile';
+import { DEFAULT_SORT_MODEL } from '@/lib/customerColumns';
 
 // ── i18n mock ─────────────────────────────────────────────────────────────────
 
@@ -153,25 +154,28 @@ describe('Phase 1C: customers.filters profile migration', () => {
     expect(() => render(<Customers />)).not.toThrow();
   });
 
-  it('5. legacy sortBy=city in session → page uses DEFAULT_SORT_MODEL (name), NOT city', async () => {
+  it('5. legacy sortBy=city in session → request uses sortModel from grid profile (DEFAULT), NOT legacy city', async () => {
     seedSession('sortBy', 'city');
     render(<Customers />);
     await waitFor(() => expect(customerService.listCustomersExtended).toHaveBeenCalled());
     const call = (customerService.listCustomersExtended as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    // sortBy comes from DEFAULT_SORT_MODEL[0].column = 'name', not 'city' from legacy session
-    expect(call.sortBy).toBe('name');
+    // Legacy sortBy key is ignored; sortModel comes from DEFAULT_SORT_MODEL
+    expect(call).not.toHaveProperty('sortBy');
+    expect(call).not.toHaveProperty('sortOrder');
+    expect(call.sortModel).toEqual(DEFAULT_SORT_MODEL);
   });
 
   // URL sort params no longer synced
 
-  it('6. URL sortBy/sortOrder params → page uses DEFAULT_SORT_MODEL (name), not city', async () => {
+  it('6. URL sortBy/sortOrder params → request uses DEFAULT sortModel (no legacy fields)', async () => {
     mockSearchParams.sortBy = 'city';
     mockSearchParams.sortOrder = 'desc';
     render(<Customers />);
     await waitFor(() => expect(customerService.listCustomersExtended).toHaveBeenCalled());
     const call = (customerService.listCustomersExtended as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    // URL sort params are not consumed by the new grid profile
-    expect(call.sortBy).toBe('name');
+    // URL sort params are not consumed; sortModel comes from grid profile
+    expect(call).not.toHaveProperty('sortBy');
+    expect(call.sortModel).toEqual(DEFAULT_SORT_MODEL);
   });
 
   it('7. after mount with URL sort params, session storage is NOT written with sortBy/sortOrder', async () => {
