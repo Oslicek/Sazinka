@@ -476,6 +476,67 @@ describe('InboxListPanel – filter integration', () => {
 });
 
 // ---------------------------------------------------------------------------
+// BUG-8: Filter + preset persistence across navigation
+// ---------------------------------------------------------------------------
+
+describe('InboxListPanel – filter persistence (BUG-8)', () => {
+  beforeEach(() => {
+    lastFilterBarProps = null;
+    sessionStorage.clear();
+  });
+
+  it('BUG-8a: activePresetId survives unmount and remount', async () => {
+    mockGetInbox.mockResolvedValue(makeInboxResponse([mockRawCandidate]));
+    mockInboxResponseToCallQueueResponse.mockReturnValue({ items: [mockRawCandidate] });
+
+    const { unmount } = render(<InboxListPanel />, { wrapper });
+    await waitFor(() => expect(lastFilterBarProps).not.toBeNull());
+
+    // Apply the ALL preset
+    act(() => { lastFilterBarProps!.onPresetChange('ALL'); });
+    expect(lastFilterBarProps!.activePresetId).toBe('ALL');
+
+    // Simulate navigation away
+    unmount();
+    resetInboxListCache();
+
+    // Simulate navigation back
+    lastFilterBarProps = null;
+    render(<InboxListPanel />, { wrapper });
+    await waitFor(() => expect(lastFilterBarProps).not.toBeNull());
+
+    expect(lastFilterBarProps!.activePresetId).toBe('ALL');
+  });
+
+  it('BUG-8b: filter expression set via preset survives two unmount/remount cycles', async () => {
+    mockGetInbox.mockResolvedValue(makeInboxResponse([mockRawCandidate]));
+    mockInboxResponseToCallQueueResponse.mockReturnValue({ items: [mockRawCandidate] });
+
+    // 1st mount — apply ALL preset
+    const { unmount: unmount1 } = render(<InboxListPanel />, { wrapper });
+    await waitFor(() => expect(lastFilterBarProps).not.toBeNull());
+    act(() => { lastFilterBarProps!.onPresetChange('ALL'); });
+    const allFilters = lastFilterBarProps!.filters;
+    unmount1();
+    resetInboxListCache();
+
+    // 2nd mount — filters should be ALL
+    lastFilterBarProps = null;
+    const { unmount: unmount2 } = render(<InboxListPanel />, { wrapper });
+    await waitFor(() => expect(lastFilterBarProps).not.toBeNull());
+    expect(lastFilterBarProps!.filters).toEqual(allFilters);
+    unmount2();
+    resetInboxListCache();
+
+    // 3rd mount — filters should STILL be ALL
+    lastFilterBarProps = null;
+    render(<InboxListPanel />, { wrapper });
+    await waitFor(() => expect(lastFilterBarProps).not.toBeNull());
+    expect(lastFilterBarProps!.filters).toEqual(allFilters);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Route stop enrichment — isInRoute + isScheduled from PanelState
 // ---------------------------------------------------------------------------
 

@@ -175,3 +175,33 @@ Runtime evidence (console logs):
 **Regression tests:**
 - `CandidateRow.test.tsx` — "BUG-7: row element is not a native <button> when selectable (avoids nested interactive content)"
 - `CandidateRow.test.tsx` — "BUG-7: clicking checkbox fires onCheckChange without firing row onClick"
+
+---
+
+## BUG-8: Inbox — queue filters reset after second navigation
+
+**Reported:** 2026-02-23
+**Status:** FIXED (2026-02-23)
+**Page:** Inbox (`/inbox`)
+
+**Steps to reproduce:**
+1. Open the Inbox page and select a filter preset (e.g., "All").
+2. Navigate to the Plan page.
+3. Return to the Inbox page — filters are correct.
+4. Navigate to the Plan page again.
+5. Return to the Inbox page — filters are reset to default.
+
+**Expected:** Filters and active preset survive any number of navigations.
+**Actual:** Filters survive the first navigation but reset on the second. The active preset indicator is never visible after navigation.
+
+**Root cause (two issues):**
+1. **Dual-write corruption:** `PlanningInboxInner` maintained a separate filter state via UPP (`usePersistentControl`) and dual-wrote to the same `planningInbox.filters` sessionStorage key that `InboxListPanel` uses. Since `InboxListPanel`'s filter changes never propagated to the parent's UPP, the parent's filter state stayed at DEFAULT. On remount, effects fired children-first: InboxListPanel wrote the correct value, then the parent's dual-write overwrote it with DEFAULT. On the first return, InboxListPanel's `useState` initializer read the correct value before effects ran (visual survival), but the storage was already corrupted for the next return.
+2. **`activePresetId` not persisted:** `InboxListPanel` initialized `activePresetId` with `useState(null)` — no storage backing. The preset indicator always reset to null on remount.
+
+**Fix:**
+1. Removed the parent's dual-write effect (`sessionStorage.setItem('planningInbox.filters', ...)`) from `PlanningInbox.tsx`. The `InboxListPanel` is the single owner of the legacy filter storage key.
+2. Added `planningInbox.activePresetId` sessionStorage persistence in `InboxListPanel` — reads on mount, writes on change.
+
+**Regression tests:**
+- `InboxListPanel.test.tsx` — "BUG-8a: activePresetId survives unmount and remount"
+- `InboxListPanel.test.tsx` — "BUG-8b: filter expression set via preset survives two unmount/remount cycles"

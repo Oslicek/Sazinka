@@ -68,6 +68,7 @@ function sortCandidates(items: CandidateRowData[]): CandidateRowData[] {
 }
 
 const SESSION_KEY_FILTERS = 'planningInbox.filters';
+const SESSION_KEY_PRESET = 'planningInbox.activePresetId';
 
 function loadPersistedFilters(): InboxFilterExpression {
   try {
@@ -76,6 +77,15 @@ function loadPersistedFilters(): InboxFilterExpression {
     return normalizeExpression(JSON.parse(raw));
   } catch {
     return DEFAULT_FILTER_EXPRESSION;
+  }
+}
+
+function loadPersistedPresetId(): FilterPresetId | null {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY_PRESET);
+    return raw as FilterPresetId | null;
+  } catch {
+    return null;
   }
 }
 
@@ -114,7 +124,7 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
   const [ruleSets, setRuleSetsState] = useState<ScoringRuleSet[]>(_cache.ruleSets);
   const [selectedRuleSetId, setSelectedRuleSetIdState] = useState<string | null>(_cache.selectedRuleSetId);
   const [filters, setFilters] = useState<InboxFilterExpression>(loadPersistedFilters);
-  const [activePresetId, setActivePresetId] = useState<FilterPresetId | null>(null);
+  const [activePresetId, setActivePresetId] = useState<FilterPresetId | null>(loadPersistedPresetId);
   const inboxStateLoadedRef = useRef(_cache.inboxStateLoaded);
 
   const setRawCandidates = useCallback((items: CallQueueItem[]) => {
@@ -229,10 +239,20 @@ export function InboxListPanel({ candidates: candidatesProp, isLoading: isLoadin
     return new Set<string>(matching.map((s) => s.customerId as string));
   }, [routeStops, remoteScheduledIds]);
 
-  // Persist filter expression to sessionStorage
+  // Persist filter expression + active preset to sessionStorage
   useEffect(() => {
     try { sessionStorage.setItem(SESSION_KEY_FILTERS, JSON.stringify(filters)); } catch { /* noop */ }
   }, [filters]);
+
+  useEffect(() => {
+    try {
+      if (activePresetId) {
+        sessionStorage.setItem(SESSION_KEY_PRESET, activePresetId);
+      } else {
+        sessionStorage.removeItem(SESSION_KEY_PRESET);
+      }
+    } catch { /* noop */ }
+  }, [activePresetId]);
 
   // Apply client-side filters + sorting, then enrich with route stop info
   const filteredSorted = useMemo(() => {

@@ -2565,12 +2565,6 @@ function PlanningInboxInner() {
     }
   }, [isMobileUi, candidateRowData]);
 
-  // filters is now persisted via UPP (inboxFiltersProfile → sessionStorage)
-  // Legacy dual-write: also keep the direct key for backward compatibility
-  useEffect(() => {
-    sessionStorage.setItem('planningInbox.filters', JSON.stringify(filters));
-  }, [filters]);
-
   useEffect(() => {
     if (context) {
       sessionStorage.setItem('planningInbox.context', JSON.stringify(context));
