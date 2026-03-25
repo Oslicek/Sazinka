@@ -36,7 +36,7 @@ import { MapPanelShell } from '../components/layout';
 import { PersistenceProvider } from '../persistence/react/PersistenceProvider';
 import { usePersistentControl } from '../persistence/react/usePersistentControl';
 import { sessionAdapter } from '../persistence/adapters/singletons';
-import { planProfile, PLAN_PROFILE_ID } from '../persistence/profiles/planProfile';
+import { planProfile, PLAN_PROFILE_ID, TIMELINE_VIEWS } from '../persistence/profiles/planProfile';
 import { resolveValue } from '../persistence/react/resolveValue';
 
 // Default depot location (Prague center) - fallback
@@ -114,9 +114,19 @@ function PlanInner() {
   const [breakWarnings, setBreakWarnings] = useState<string[]>([]);
   const [manuallyAdjustedBreakIds, setManuallyAdjustedBreakIds] = useState<Set<string>>(new Set());
   const [routes, setRoutes] = useState<SavedRoute[]>([]);
-  const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
+  const { value: _uppSelectedRouteId, setValue: setSelectedRouteId } =
+    usePersistentControl<string | null>(PLAN_PROFILE_ID, 'selectedRouteId');
+  const selectedRouteId: string | null =
+    typeof _uppSelectedRouteId === 'string' ? _uppSelectedRouteId : null;
+
   const [selectedRouteStops, setSelectedRouteStops] = useState<SavedRouteStop[]>([]);
-  const [timelineView, setTimelineView] = useState<TimelineView>('planning');
+
+  const { value: _uppTimelineView, setValue: setUppTimelineView } =
+    usePersistentControl<string>(PLAN_PROFILE_ID, 'timelineView');
+  const timelineView: TimelineView = (TIMELINE_VIEWS as readonly string[]).includes(_uppTimelineView)
+    ? (_uppTimelineView as TimelineView)
+    : 'planning';
+  const setTimelineView = (v: TimelineView) => setUppTimelineView(v);
   const [metrics, setMetrics] = useState<RouteMetrics | null>(null);
   const [depot, setDepot] = useState<{ lat: number; lng: number; name?: string } | null>(null);
 
@@ -245,7 +255,10 @@ function PlanInner() {
     selectedRouteStops, routeGeometry, returnToDepotLeg,
     depotDeparture, routeWarnings, breakWarnings, metrics,
     routeBufferPercent, routeBufferFixedMinutes,
-    selectedRouteId, highlightedSegment,
+    // Seed from PanelState (null) rather than local UPP value so the forward bridge
+    // fires on the first render and pushes the persisted selection into PanelState.
+    selectedRouteId: state.selectedRouteId,
+    highlightedSegment,
     derivedRouteContext,
   });
 
@@ -282,9 +295,11 @@ function PlanInner() {
     };
   });
 
-  // Context → local (bidirectional): only when context changes from outside
+  // Context → local (bidirectional): only when context provides a non-null value from
+  // an external source (e.g. detached map). Ignoring null guards the persisted
+  // selection from being overwritten by PanelState's initial null on first render.
   useEffect(() => {
-    if (state.selectedRouteId !== prevBridgeRef.current.selectedRouteId) {
+    if (state.selectedRouteId !== null && state.selectedRouteId !== prevBridgeRef.current.selectedRouteId) {
       setSelectedRouteId(state.selectedRouteId);
       prevBridgeRef.current = { ...prevBridgeRef.current, selectedRouteId: state.selectedRouteId };
     }
