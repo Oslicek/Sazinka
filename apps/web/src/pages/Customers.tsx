@@ -105,8 +105,27 @@ function CustomersInner() {
   // Server-side summary stats (accurate across all customers)
   const [summary, setSummary] = useState<CustomerSummary | null>(null);
   
+  // UPP: persist selected customer ID
+  const { value: uppSelectedCustomerId, setValue: setUppSelectedCustomerId } =
+    usePersistentControl<string | null>(CUSTOMERS_PROFILE_ID, 'selectedCustomerId');
+  const selectedCustomerId: string | null =
+    typeof uppSelectedCustomerId === 'string' ? uppSelectedCustomerId : null;
+
   // Selected customer for preview panel
-  const [selectedCustomer, setSelectedCustomer] = useState<CustomerListItem | null>(null);
+  const [selectedCustomer, setSelectedCustomerState] = useState<CustomerListItem | null>(null);
+  // Ref used by loadCustomers to read current selection without adding it to deps
+  const selectedCustomerRef = useRef<CustomerListItem | null>(null);
+  selectedCustomerRef.current = selectedCustomer;
+
+  // Combined setter: update both local state and persisted ID
+  const setSelectedCustomer = useCallback(
+    (customer: CustomerListItem | null) => {
+      setSelectedCustomerState(customer);
+      setUppSelectedCustomerId(customer?.id ?? null);
+    },
+    [setUppSelectedCustomerId],
+  );
+
   const [fullCustomer, setFullCustomer] = useState<Customer | null>(null);
   const [isLoadingFull, setIsLoadingFull] = useState(false);
   
@@ -170,7 +189,8 @@ function CustomersInner() {
       if (summaryResult) setSummary(summaryResult);
       
       // Clear selection if the selected customer is no longer in the list
-      if (selectedCustomer && !result.items.some(c => c.id === selectedCustomer.id)) {
+      const cur = selectedCustomerRef.current;
+      if (cur && !result.items.some((c) => c.id === cur.id)) {
         setSelectedCustomer(null);
       }
     } catch (err) {
@@ -179,13 +199,26 @@ function CustomersInner() {
     } finally {
       setIsLoading(false);
     }
-  }, [isConnected, requestOptions, selectedCustomer]);
+  }, [isConnected, requestOptions, setSelectedCustomer]);
 
   useEffect(() => {
     if (isConnected) {
       loadCustomers();
     }
   }, [isConnected, loadCustomers]);
+
+  // Restore persisted selection when customers are first loaded
+  const hasRestoredRef = useRef(false);
+  useEffect(() => {
+    if (hasRestoredRef.current || !selectedCustomerId || selectedCustomer || customers.length === 0) return;
+    hasRestoredRef.current = true;
+    const found = customers.find((c) => c.id === selectedCustomerId);
+    if (found) {
+      setSelectedCustomerState(found); // bypass combined setter — UPP ID is already correct
+    } else {
+      setUppSelectedCustomerId(null); // persisted customer no longer exists → clear
+    }
+  }, [customers, selectedCustomerId, selectedCustomer, setUppSelectedCustomerId]);
 
   // Load next page (infinite scroll)
   const loadMore = useCallback(async () => {

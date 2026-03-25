@@ -67,6 +67,13 @@ export const customersProfile: PersistenceProfile = {
       writeMode: 'immediate',
       validators: [],
     },
+    {
+      controlId: 'selectedCustomerId',
+      pluginId: 'json',
+      defaultValue: null,
+      writeMode: 'immediate',
+      validators: [],
+    },
   ],
   readPriority: ['url', 'session', 'local'],
   writeTargets: ['session'],
