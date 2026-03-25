@@ -89,9 +89,23 @@ export interface ScoreBreakdownItem {
   contribution: number;
 }
 
-/** Factory weights for the seeded "Standard" system profile */
+/** Factory weights for the seeded "Standard" system profile.
+ *  The canonical source of truth for ALL preset weights lives in
+ *  `worker/src/db/queries/scoring.rs → PRESET_CATALOG`. */
 export const DEFAULT_PROFILE_FACTORS: ReadonlyArray<{ factorKey: FactorKey; weight: number }> = [
-  { factorKey: FACTOR_KEYS.LIFECYCLE_RANK,   weight: 1000  },
-  { factorKey: FACTOR_KEYS.DAYS_UNTIL_DUE,   weight: -5    },
-  { factorKey: FACTOR_KEYS.CUSTOMER_AGE_DAYS, weight: 0.01 },
+  { factorKey: FACTOR_KEYS.LIFECYCLE_RANK,    weight: 1000  },
+  { factorKey: FACTOR_KEYS.DAYS_UNTIL_DUE,    weight: -5    },
+  { factorKey: FACTOR_KEYS.CUSTOMER_AGE_DAYS, weight: 0.01  },
 ] as const;
+
+/** All system preset keys in catalog order.
+ *  Use to drive dropdowns, icons, or documentation without hard-coding strings. */
+export const PRESET_SYSTEM_KEYS = [
+  'standard',
+  'new_customers_first',
+  'due_date_radar',
+  'overdue_firefighter',
+  'data_quality_first',
+] as const;
+
+export type PresetSystemKey = (typeof PRESET_SYSTEM_KEYS)[number];

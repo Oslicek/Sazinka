@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-03-23 (v0.21.0 - Remove map/route collapse UI from Inbox; introduce shared MapPanelShell; fix DetachButton overlap with MapLibre zoom controls)
+> **Last Updated:** 2026-03-25 (v0.22.0 - Scoring Preset Pack + Localization: 5 system presets, system_key, cs/en/sk names)
 
 ## Overview
 
@@ -1530,6 +1530,21 @@ cargo test
 - MVP focuses on core CRM + route planning
 - Email notifications deferred to later phase
 - Invoicing/billing architecture prepared but not implemented
+
+## Recent Changes (v0.22.0)
+
+- **Scoring Preset Pack + Localization (5 system presets):**
+  - Added `system_key` column (TEXT, nullable) to `scoring_rule_sets` table; immutable after insert
+  - DB migration `042_scoring_preset_pack.sql`: adds column, backfills `system_key = 'standard'` for existing Standard rows, creates unique partial index `(user_id, system_key) WHERE system_key IS NOT NULL`, and seeds 4 new presets for every company that had only the Standard profile
+  - Added `PRESET_CATALOG` constant in `worker/src/db/queries/scoring.rs` — single source of truth for all 5 preset keys and factor weights (standard, new_customers_first, due_date_radar, overdue_firefighter, data_quality_first) matching PRJ_PLAN §2.1
+  - `profile_name_for_key(key, locale)` replaces per-profile `default_profile_name()` — handles all 5 keys × 3 locales (cs/en/sk) with English fallback for unknown locales
+  - `create_default_scoring_profile` now seeds all 5 system presets at onboarding (idempotent via ON CONFLICT DO NOTHING); `restore_rule_set_defaults` resolves the correct preset weights via `system_key` instead of always returning Standard weights
+  - `ScoringRuleSet.system_key: Option<String>` added to Rust struct (sqlx default, serde camelCase as `systemKey`); `systemKey?: string | null` added to shared-types `ScoringRuleSet`
+  - `scoring_preset_name_<key>` locale keys added to `en/cs/sk/settings.json` for all 5 presets
+  - `ScoringRuleSetsManager.tsx`: system presets display `t(\`scoring_preset_name_${systemKey}\`)` instead of raw DB name; custom profiles unchanged
+  - `InboxFilterBar.tsx`: scoring dropdown also resolves localized names for system presets
+  - `PRESET_SYSTEM_KEYS` and `PresetSystemKey` type exported from shared-types for type-safe frontend use
+  - 20 new Rust unit tests (preset catalog, weights, localization); 50 new TypeScript tests (i18n completeness + component rendering for EN/CS/SK); 1776 total TS tests green
 
 ## Recent Changes (v0.21.0)
 

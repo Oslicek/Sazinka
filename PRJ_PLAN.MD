@@ -175,7 +175,7 @@ Every persistence item above must also satisfy these patterns:
 
 ## Scoring Preset Pack + Localization (Plan Only)
 
-**Status:** Planned (do not implement in this step)  
+**Status:** Implemented ✅ (2026-03-25)  
 **Date:** 2026-02-24  
 **Method:** Strict TDD (RED -> GREEN -> REFACTOR), maximum test coverage
 
