@@ -15,7 +15,6 @@ import {
   type MapInsertionPreview as InsertionPreview,
   CandidateDetail,
   type CandidateDetailData,
-  VirtualizedInboxList,
   type CandidateRowData,
   MultiCrewTip,
   type CrewComparison,

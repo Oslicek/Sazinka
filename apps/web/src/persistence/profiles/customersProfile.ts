@@ -1,7 +1,7 @@
 /**
  * Customers page persistence profile.
  *
- * Controls (7):
+ * Controls (8):
  *  - search: text input (debounced, not in URL currently)
  *  - viewMode: 'table' | 'cards' (URL: view)
  *  - geocodeFilter: GeocodeStatus | '' (URL: geocodeStatus)
@@ -9,6 +9,7 @@
  *  - typeFilter: 'company' | 'person' | '' (not in URL currently)
  *  - sortBy: ListCustomersRequest['sortBy'] (URL: sortBy)
  *  - sortOrder: 'asc' | 'desc' (URL: sortOrder)
+ *  - selectedCustomerId: UUID string | null — last selected customer (P3-1)
  */
 import type { PersistenceProfile } from '../core/types';
 
