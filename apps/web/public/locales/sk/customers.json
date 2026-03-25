@@ -233,5 +233,10 @@
   "filter_revision_label": "Termín revízie",
   "filter_clear_search": "Vymazať hľadanie",
   "filter_clear_all": "Zrušiť všetko",
-  "filter_advanced": "Rozšírené filtre"
+  "filter_advanced": "Rozšírené filtre",
+
+  "adv_section_contactability": "Kontaktovateľnosť",
+  "adv_section_lifecycle": "Životný cyklus",
+  "adv_section_data_quality": "Kvalita dát",
+  "adv_coming_soon": "Pripravujeme"
 }

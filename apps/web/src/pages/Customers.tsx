@@ -26,6 +26,7 @@ import { CustomerPreviewPanel } from '../components/customers/CustomerPreviewPan
 import { CustomerEditDrawer } from '../components/customers/CustomerEditDrawer';
 import { SavedViewsSelector, type SavedView } from '../components/customers/SavedViewsSelector';
 import { CustomerFilterBar } from '../components/customers/CustomerFilterBar';
+import { AdvancedFilterPanel } from '../components/customers/AdvancedFilterPanel';
 import { SplitView } from '../components/common/SplitView';
 import { useNatsStore } from '../stores/natsStore';
 import { useAuthStore } from '../stores/authStore';
@@ -131,7 +132,18 @@ function CustomersInner() {
   }, []);
 
   const [showForm, setShowForm] = useState(searchParams?.action === 'new');
-  const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState(false);
+
+  // UPP control for advanced filters open state
+  const { value: uppIsAdvancedFiltersOpen, setValue: setUppIsAdvancedFiltersOpen } =
+    usePersistentControl<boolean>(CUSTOMERS_PROFILE_ID, 'isAdvancedFiltersOpen');
+  const isAdvancedFiltersOpen = uppIsAdvancedFiltersOpen === true;
+  const setIsAdvancedFiltersOpen = useCallback(
+    (open: boolean | ((prev: boolean) => boolean)) => {
+      const next = typeof open === 'function' ? open(isAdvancedFiltersOpen) : open;
+      setUppIsAdvancedFiltersOpen(next);
+    },
+    [isAdvancedFiltersOpen, setUppIsAdvancedFiltersOpen],
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [customers, setCustomers] = useState<CustomerListItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -605,6 +617,14 @@ function CustomersInner() {
         onResetColumns={handleResetColumns}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
+      />
+
+      {/* Advanced filter panel */}
+      <AdvancedFilterPanel
+        isOpen={isAdvancedFiltersOpen}
+        onClose={() => setIsAdvancedFiltersOpen(false)}
+        activeAdvancedCount={0}
+        onClearAdvanced={() => {}}
       />
 
       {/* Loaded / total count */}

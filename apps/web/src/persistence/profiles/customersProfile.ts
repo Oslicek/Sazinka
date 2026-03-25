@@ -1,17 +1,17 @@
 /**
  * Customers page persistence profile (session-scoped).
  *
- * Controls (6):
+ * Controls (7):
  *  - search: text input (debounced)
  *  - viewMode: 'table' | 'cards'
  *  - geocodeFilter: GeocodeStatus | ''
  *  - revisionFilter: '' | 'overdue' | 'week' | 'month'
  *  - typeFilter: 'company' | 'person' | ''
  *  - selectedCustomerId: UUID string | null — last selected customer
+ *  - isAdvancedFiltersOpen: boolean — Phase 4B
  *
  * NOTE: sortBy/sortOrder were removed in Phase 1C.
  * Sorting now lives in customers.grid (local) as sortModel.
- * Phase 4B will add isAdvancedFiltersOpen as a 7th control.
  */
 import type { PersistenceProfile } from '../core/types';
 
@@ -60,6 +60,13 @@ export const customersProfile: PersistenceProfile = {
       controlId: 'selectedCustomerId',
       pluginId: 'json',
       defaultValue: null,
+      writeMode: 'immediate',
+      validators: [],
+    },
+    {
+      controlId: 'isAdvancedFiltersOpen',
+      pluginId: 'enum',
+      defaultValue: false,
       writeMode: 'immediate',
       validators: [],
     },

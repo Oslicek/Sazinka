@@ -240,5 +240,10 @@
   "filter_revision_label": "Revision due",
   "filter_clear_search": "Clear search",
   "filter_clear_all": "Clear all",
-  "filter_advanced": "Advanced filters"
+  "filter_advanced": "Advanced filters",
+
+  "adv_section_contactability": "Contactability",
+  "adv_section_lifecycle": "Lifecycle",
+  "adv_section_data_quality": "Data quality",
+  "adv_coming_soon": "Coming soon"
 }

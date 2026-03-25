@@ -135,15 +135,16 @@ describe('Phase 1C: customers.filters profile migration', () => {
     expect(ids).not.toContain('sortOrder');
   });
 
-  it('3. customersProfile.controls contains exactly 6 controls at this phase boundary', () => {
+  it('3. customersProfile.controls contains exactly 7 controls (Phase 4B added isAdvancedFiltersOpen)', () => {
     const ids = customersProfile.controls.map((c) => c.controlId).sort();
-    expect(ids).toHaveLength(6);
+    expect(ids).toHaveLength(7);
     expect(ids).toContain('search');
     expect(ids).toContain('viewMode');
     expect(ids).toContain('geocodeFilter');
     expect(ids).toContain('revisionFilter');
     expect(ids).toContain('typeFilter');
     expect(ids).toContain('selectedCustomerId');
+    expect(ids).toContain('isAdvancedFiltersOpen');
   });
 
   // Backward compat — stale session keys ignored
