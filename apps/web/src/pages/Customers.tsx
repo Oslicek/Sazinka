@@ -455,6 +455,16 @@ function CustomersInner() {
   }, [fullCustomer, loadCustomers]);
 
   // Handle saved view selection
+  const isNonDefaultSort = useMemo(
+    () => JSON.stringify(sortModel) !== JSON.stringify(DEFAULT_SORT_MODEL),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify(sortModel)],
+  );
+
+  const handleResetSort = useCallback(() => {
+    setSortModel(DEFAULT_SORT_MODEL);
+  }, [setSortModel]);
+
   const activeFilterCount = useMemo(() => {
     let count = 0;
     if (search) count++;
@@ -659,6 +669,51 @@ function CustomersInner() {
         </div>
       )}
 
+      {/* Empty state — shown for both table and cards view when 0 results */}
+      {!isLoading && customers.length === 0 && (
+        <div className="card">
+          <p className={styles.empty}>
+            {activeFilterCount === 0 && !isNonDefaultSort ? (
+              <>
+                {t('no_customers_yet')}
+                <br />
+                <button
+                  className="btn-primary"
+                  style={{ marginTop: '1rem' }}
+                  onClick={handleShowForm}
+                >
+                  {t('add_first_customer')}
+                </button>
+              </>
+            ) : (
+              <>
+                {activeFilterCount > 0 && t('no_customers_match')}
+                {activeFilterCount > 0 && (
+                  <button
+                    data-testid="empty-clear-filters-btn"
+                    className="btn-secondary"
+                    style={{ marginTop: '1rem', display: 'block' }}
+                    onClick={handleClearAllFilters}
+                  >
+                    {t('filter_clear_all')}
+                  </button>
+                )}
+                {isNonDefaultSort && (
+                  <button
+                    data-testid="empty-reset-sort-btn"
+                    className="btn-secondary"
+                    style={{ marginTop: '0.5rem', display: 'block' }}
+                    onClick={handleResetSort}
+                  >
+                    {t('sort_reset')}
+                  </button>
+                )}
+              </>
+            )}
+          </p>
+        </div>
+      )}
+
       {/* Table or Cards */}
       {viewMode === 'table' ? (
         <CustomerTable
@@ -683,25 +738,7 @@ function CustomersInner() {
               <p className={styles.loading}>{t('loading_customers')}</p>
             </div>
           ) : customers.length === 0 ? (
-            <div className="card">
-              <p className={styles.empty}>
-                {total === 0 && !search && !geocodeFilter && !revisionFilter ? (
-                  <>
-                    {t('no_customers_yet')}
-                    <br />
-                    <button
-                      className="btn-primary"
-                      style={{ marginTop: '1rem' }}
-                      onClick={handleShowForm}
-                    >
-                      {t('add_first_customer')}
-                    </button>
-                  </>
-                ) : (
-                  t('no_customers_match')
-                )}
-              </p>
-            </div>
+            <div />
           ) : (
             <>
               {customers.map((customer) => {

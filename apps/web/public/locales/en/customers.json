@@ -240,6 +240,7 @@
   "filter_revision_label": "Revision due",
   "filter_clear_search": "Clear search",
   "filter_clear_all": "Clear all",
+  "sort_reset": "Reset sort",
   "filter_advanced": "Advanced filters",
 
   "adv_section_contactability": "Contactability",
