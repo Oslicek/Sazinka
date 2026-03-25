@@ -13,6 +13,37 @@ import { CalendarGrid } from '../components/calendar';
 import { DayCell } from '../components/calendar/DayCell';
 import { getMonthNames, getWeekdayNames, formatDate } from '@/i18n/formatters';
 import styles from './Calendar.module.css';
+import { useAuthStore } from '../stores/authStore';
+import { PersistenceProvider } from '../persistence/react/PersistenceProvider';
+import { usePersistentControl } from '../persistence/react/usePersistentControl';
+import { sessionAdapter } from '../persistence/adapters/singletons';
+import { calendarProfile, CALENDAR_PROFILE_ID } from '../persistence/profiles/calendarProfile';
+
+/** Parse a YYYY-MM-DD key to a local Date, returning null for invalid input. */
+function parseDateKey(key: string): Date | null {
+  if (!key || !/^\d{4}-\d{2}-\d{2}$/.test(key)) return null;
+  const [y, m, d] = key.split('-').map(Number);
+  if (!y || !m || !d) return null;
+  const date = new Date(y, m - 1, d);
+  // Reject if month rolled over (e.g. Feb 30)
+  if (date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) return null;
+  return date;
+}
+
+/** Construct a minimal CalendarDay from a YYYY-MM-DD key. */
+function dateKeyToCalendarDay(key: string): CalendarDay | null {
+  const date = parseDateKey(key);
+  if (!date) return null;
+  const today = new Date();
+  const todayKey = formatDateKey(today);
+  return {
+    date,
+    dateKey: key,
+    dayNumber: date.getDate(),
+    isCurrentMonth: true,
+    isToday: key === todayKey,
+  };
+}
 
 const ITEM_TYPES: CalendarItemType[] = ['revision', 'visit', 'task'];
 const STATUS_FILTERS: CalendarItemStatus[] = [
@@ -96,6 +127,19 @@ function getCrewCapacityMinutes(crew?: Crew | null): number | null {
 }
 
 export function Calendar() {
+  const userId = useAuthStore((s) => s.user?.id ?? null);
+  return (
+    <PersistenceProvider
+      userId={userId}
+      profiles={[calendarProfile]}
+      adapters={{ session: sessionAdapter }}
+    >
+      <CalendarInner />
+    </PersistenceProvider>
+  );
+}
+
+function CalendarInner() {
   const navigate = useNavigate();
   const searchParams = useSearch({ strict: false }) as CalendarSearchParams;
   const isConnected = useNatsStore((s) => s.isConnected);
@@ -128,8 +172,22 @@ export function Calendar() {
   const [selectedCrew, setSelectedCrew] = useState<string>(searchParams.crew || '');
   const [customerQuery, setCustomerQuery] = useState<string>(searchParams.customer || '');
 
-  // Current displayed date (drives month/week/day views)
-  const [currentDate, setCurrentDate] = useState(() => new Date());
+  // Current displayed date (drives month/week/day views) — persisted via UPP
+  const { value: _uppCurrentDateKey, setValue: setUppCurrentDateKey } =
+    usePersistentControl<string>(CALENDAR_PROFILE_ID, 'currentDateKey');
+  const [currentDate, setCurrentDateState] = useState<Date>(
+    () => parseDateKey(_uppCurrentDateKey) ?? new Date(),
+  );
+  const setCurrentDate = useCallback(
+    (dateOrUpdater: Date | ((prev: Date) => Date)) => {
+      setCurrentDateState((prev) => {
+        const next = typeof dateOrUpdater === 'function' ? dateOrUpdater(prev) : dateOrUpdater;
+        setUppCurrentDateKey(formatDateKey(next));
+        return next;
+      });
+    },
+    [setUppCurrentDateKey],
+  );
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
 
@@ -139,8 +197,19 @@ export function Calendar() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Selected day state (for modal/details)
-  const [selectedDay, setSelectedDay] = useState<CalendarDay | null>(null);
+  // Selected day state (for modal/details) — persisted via UPP
+  const { value: _uppSelectedDayKey, setValue: setUppSelectedDayKey } =
+    usePersistentControl<string>(CALENDAR_PROFILE_ID, 'selectedDayKey');
+  const [selectedDay, setSelectedDayState] = useState<CalendarDay | null>(
+    () => dateKeyToCalendarDay(_uppSelectedDayKey),
+  );
+  const setSelectedDay = useCallback(
+    (day: CalendarDay | null) => {
+      setSelectedDayState(day);
+      setUppSelectedDayKey(day?.dateKey ?? '');
+    },
+    [setUppSelectedDayKey],
+  );
   const [selectedItems, setSelectedItems] = useState<CalendarItem[]>([]);
   const [selectedDayRoutes, setSelectedDayRoutes] = useState<SavedRoute[]>([]);
 
