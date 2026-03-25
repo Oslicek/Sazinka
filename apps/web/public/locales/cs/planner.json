@@ -410,5 +410,11 @@
   "panel_list": "Seznam",
   "panel_detail": "Detail",
   "panel_map": "Mapa",
-  "panel_timeline": "Časová osa"
+  "panel_timeline": "Časová osa",
+
+  "scoring_preset_name_standard": "Standardní",
+  "scoring_preset_name_new_customers_first": "Noví zákazníci první",
+  "scoring_preset_name_due_date_radar": "Radar termínů",
+  "scoring_preset_name_overdue_firefighter": "Krizový režim po termínu",
+  "scoring_preset_name_data_quality_first": "Kvalita dat a geokódingu"
 }

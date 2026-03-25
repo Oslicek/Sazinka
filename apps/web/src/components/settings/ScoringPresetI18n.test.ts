@@ -1,16 +1,18 @@
 /**
- * Phase A (RED) — i18n completeness tests for scoring preset names.
+ * i18n completeness tests for scoring preset names.
  *
- * These tests will FAIL until:
- *   - scoring_preset_name_* keys are added to cs/en/sk settings.json
- *   - The values match the localization table in PRJ_PLAN.MD §2.2
+ * Preset name keys must exist in BOTH settings.json (for Settings page)
+ * and planner.json (for InboxFilterBar dropdown). Values must match
+ * PRJ_PLAN.MD §2.2 and be consistent across the two namespaces.
  */
 import { describe, it, expect } from 'vitest';
 
-// Import locale JSON files directly so we can check keys without a full i18n setup
 import enSettings from '../../../public/locales/en/settings.json';
 import csSettings from '../../../public/locales/cs/settings.json';
 import skSettings from '../../../public/locales/sk/settings.json';
+import enPlanner from '../../../public/locales/en/planner.json';
+import csPlanner from '../../../public/locales/cs/planner.json';
+import skPlanner from '../../../public/locales/sk/planner.json';
 
 const PRESET_KEYS = [
   'standard',
@@ -18,12 +20,6 @@ const PRESET_KEYS = [
   'due_date_radar',
   'overdue_firefighter',
   'data_quality_first',
-] as const;
-
-const LOCALES = [
-  { code: 'en', json: enSettings },
-  { code: 'cs', json: csSettings },
-  { code: 'sk', json: skSettings },
 ] as const;
 
 const EXPECTED: Record<string, Record<string, string>> = {
@@ -50,27 +46,65 @@ const EXPECTED: Record<string, Record<string, string>> = {
   },
 };
 
+const NAMESPACES = [
+  { ns: 'settings', locales: [
+    { code: 'en', json: enSettings },
+    { code: 'cs', json: csSettings },
+    { code: 'sk', json: skSettings },
+  ]},
+  { ns: 'planner', locales: [
+    { code: 'en', json: enPlanner },
+    { code: 'cs', json: csPlanner },
+    { code: 'sk', json: skPlanner },
+  ]},
+] as const;
+
 describe('scoring preset i18n completeness', () => {
-  for (const { code, json } of LOCALES) {
-    describe(`locale: ${code}`, () => {
-      for (const presetKey of PRESET_KEYS) {
-        const i18nKey = `scoring_preset_name_${presetKey}`;
+  for (const { ns, locales } of NAMESPACES) {
+    describe(`namespace: ${ns}`, () => {
+      for (const { code, json } of locales) {
+        describe(`locale: ${code}`, () => {
+          for (const presetKey of PRESET_KEYS) {
+            const i18nKey = `scoring_preset_name_${presetKey}`;
 
-        it(`has key ${i18nKey}`, () => {
-          expect(Object.prototype.hasOwnProperty.call(json, i18nKey)).toBe(true);
-        });
+            it(`has key ${i18nKey}`, () => {
+              expect(Object.prototype.hasOwnProperty.call(json, i18nKey)).toBe(true);
+            });
 
-        it(`${i18nKey} value is not the raw key string (not a missing-key fallback)`, () => {
-          const value = (json as Record<string, string>)[i18nKey];
-          expect(value).toBeTruthy();
-          expect(value).not.toBe(i18nKey);
-        });
+            it(`${i18nKey} is not the raw key string`, () => {
+              const value = (json as Record<string, string>)[i18nKey];
+              expect(value).toBeTruthy();
+              expect(value).not.toBe(i18nKey);
+            });
 
-        it(`${i18nKey} equals expected: "${EXPECTED[code][presetKey]}"`, () => {
-          const value = (json as Record<string, string>)[i18nKey];
-          expect(value).toBe(EXPECTED[code][presetKey]);
+            it(`${i18nKey} equals expected: "${EXPECTED[code][presetKey]}"`, () => {
+              const value = (json as Record<string, string>)[i18nKey];
+              expect(value).toBe(EXPECTED[code][presetKey]);
+            });
+          }
         });
       }
     });
   }
+
+  describe('settings and planner values match', () => {
+    for (const presetKey of PRESET_KEYS) {
+      const i18nKey = `scoring_preset_name_${presetKey}`;
+
+      it(`en: ${i18nKey} identical in both namespaces`, () => {
+        expect((enSettings as Record<string, string>)[i18nKey])
+          .toBe((enPlanner as Record<string, string>)[i18nKey]);
+      });
+
+      it(`cs: ${i18nKey} identical in both namespaces`, () => {
+        expect((csSettings as Record<string, string>)[i18nKey])
+          .toBe((csPlanner as Record<string, string>)[i18nKey]);
+      });
+
+      it(`sk: ${i18nKey} identical in both namespaces`, () => {
+        expect((skSettings as Record<string, string>)[i18nKey])
+          .toBe((skPlanner as Record<string, string>)[i18nKey]);
+      });
+    }
+  });
 });
