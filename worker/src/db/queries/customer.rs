@@ -9,7 +9,135 @@ use chrono::Utc;
 use crate::types::customer::{
     Customer, CreateCustomerRequest, UpdateCustomerRequest, CustomerType,
     CustomerListItem, ListCustomersRequest, CustomerSummaryResponse, SortEntry,
+    ColumnFilter,
 };
+
+// ── Column filter builder ────────────────────────────────────────────────────
+
+/// Info about a column's filterable SQL expression.
+struct FilterColumnInfo {
+    /// SQL expression for WHERE condition (non-aggregate), or None for aggregate-only columns.
+    where_expr: Option<&'static str>,
+    /// SQL expression for HAVING condition (aggregate), or None for WHERE-only columns.
+    having_expr: Option<&'static str>,
+}
+
+/// Maps a frontend catalog column ID to its filter SQL expression info.
+/// Returns None for unknown or date-range columns (date-range is handled separately).
+/// SAFETY: only whitelisted static strings are returned — never user input.
+fn column_to_filter_sql(id: &str) -> Option<FilterColumnInfo> {
+    match id {
+        "name"         => Some(FilterColumnInfo { where_expr: Some("c.name"),                having_expr: None }),
+        "type"         => Some(FilterColumnInfo { where_expr: Some("c.customer_type::text"), having_expr: None }),
+        "city"         => Some(FilterColumnInfo { where_expr: Some("c.city"),                having_expr: None }),
+        "street"       => Some(FilterColumnInfo { where_expr: Some("c.street"),              having_expr: None }),
+        "postalCode"   => Some(FilterColumnInfo { where_expr: Some("c.postal_code"),         having_expr: None }),
+        "phone"        => Some(FilterColumnInfo { where_expr: Some("c.phone"),               having_expr: None }),
+        "email"        => Some(FilterColumnInfo { where_expr: Some("c.email"),               having_expr: None }),
+        "geocodeStatus"=> Some(FilterColumnInfo { where_expr: Some("c.geocode_status::text"), having_expr: None }),
+        "deviceCount"  => Some(FilterColumnInfo {
+            where_expr: None,
+            having_expr: Some("COALESCE(COUNT(DISTINCT ds.device_id), 0)"),
+        }),
+        "createdAt"    => Some(FilterColumnInfo { where_expr: Some("c.created_at::date"),    having_expr: None }),
+        "nextRevision" => Some(FilterColumnInfo {
+            where_expr: None,
+            having_expr: Some("MIN(r.due_date) FILTER (WHERE r.status NOT IN ('completed', 'cancelled') AND r.due_date >= CURRENT_DATE)"),
+        }),
+        _ => None,
+    }
+}
+
+/// A single value to bind to a query, produced by `build_column_filter_clauses`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FilterBindValue {
+    /// A scalar string (used for date-range bounds).
+    Text(String),
+    /// A text array (used for checklist = ANY($N) comparisons).
+    TextArray(Vec<String>),
+}
+
+/// Output of `build_column_filter_clauses`.
+#[derive(Debug, Default)]
+pub struct ColumnFilterClauses {
+    /// Conditions to append to the WHERE clause (non-aggregate).
+    pub where_conds: Vec<String>,
+    /// Conditions to append to the HAVING clause (aggregate).
+    pub having_conds: Vec<String>,
+    /// Bind values, in parameter order (each corresponds to a $N placeholder).
+    pub bind_values: Vec<FilterBindValue>,
+}
+
+/// Build SQL condition fragments for `column_filters` in a `ListCustomersRequest`.
+///
+/// Rules:
+/// - Unknown column IDs are skipped (injection-safe whitelist).
+/// - Duplicate column IDs: first entry wins, later ones are ignored.
+/// - Empty `values` array on a checklist filter: skipped (no condition produced).
+/// - Date-range filter with neither `from` nor `to`: skipped.
+/// - `param_idx` is incremented for every `$N` placeholder emitted.
+pub fn build_column_filter_clauses(
+    filters: &[ColumnFilter],
+    param_idx: &mut usize,
+) -> ColumnFilterClauses {
+    let mut out = ColumnFilterClauses::default();
+    let mut seen = std::collections::HashSet::new();
+
+    for filter in filters {
+        let col = filter.column();
+        if seen.contains(col) {
+            continue;
+        }
+        let Some(info) = column_to_filter_sql(col) else {
+            continue;
+        };
+        seen.insert(col);
+
+        match filter {
+            ColumnFilter::Checklist { values, .. } => {
+                if values.is_empty() {
+                    continue;
+                }
+                *param_idx += 1;
+                if let Some(expr) = info.where_expr {
+                    out.where_conds.push(format!("{} = ANY(${})", expr, param_idx));
+                    out.bind_values.push(FilterBindValue::TextArray(values.clone()));
+                } else if let Some(expr) = info.having_expr {
+                    // Cast aggregate to text for ANY comparison with string values
+                    out.having_conds.push(format!("{}::text = ANY(${})", expr, param_idx));
+                    out.bind_values.push(FilterBindValue::TextArray(values.clone()));
+                }
+            }
+            ColumnFilter::DateRange { from, to, .. } => {
+                if let Some(expr) = info.where_expr {
+                    if let Some(from_str) = from {
+                        *param_idx += 1;
+                        out.where_conds.push(format!("{} >= ${}::date", expr, param_idx));
+                        out.bind_values.push(FilterBindValue::Text(from_str.clone()));
+                    }
+                    if let Some(to_str) = to {
+                        *param_idx += 1;
+                        out.where_conds.push(format!("{} <= ${}::date", expr, param_idx));
+                        out.bind_values.push(FilterBindValue::Text(to_str.clone()));
+                    }
+                } else if let Some(expr) = info.having_expr {
+                    if let Some(from_str) = from {
+                        *param_idx += 1;
+                        out.having_conds.push(format!("{} >= ${}::date", expr, param_idx));
+                        out.bind_values.push(FilterBindValue::Text(from_str.clone()));
+                    }
+                    if let Some(to_str) = to {
+                        *param_idx += 1;
+                        out.having_conds.push(format!("{} <= ${}::date", expr, param_idx));
+                        out.bind_values.push(FilterBindValue::Text(to_str.clone()));
+                    }
+                }
+            }
+        }
+    }
+
+    out
+}
 
 // ── Sort ORDER BY builder ────────────────────────────────────────────────────
 
@@ -512,6 +640,16 @@ pub async fn list_customers_extended(
         let _ = ctype;
     }
 
+    // Apply column filters (WHERE conditions first, before joining)
+    let col_filter_clauses = if let Some(ref filters) = req.column_filters {
+        build_column_filter_clauses(filters, &mut param_idx)
+    } else {
+        ColumnFilterClauses::default()
+    };
+    for cond in &col_filter_clauses.where_conds {
+        conditions.push(cond.clone());
+    }
+
     let where_clause = conditions.join(" AND ");
 
     // Build HAVING clause for aggregated filters
@@ -530,6 +668,11 @@ pub async fn list_customers_extended(
             "MIN(r.due_date) FILTER (WHERE r.status NOT IN ('completed', 'cancelled')) <= CURRENT_DATE + ${} * INTERVAL '1 day'",
             param_idx
         ));
+    }
+
+    // Append column filter HAVING conditions
+    for cond in &col_filter_clauses.having_conds {
+        having_conditions.push(cond.clone());
     }
 
     let having_clause = if having_conditions.is_empty() {
@@ -638,13 +781,23 @@ pub async fn list_customers_extended(
         query_builder = query_builder.bind(days as f64);
     }
 
+    // Bind column filter values (same order as placeholders in where/having clauses)
+    for bind_val in col_filter_clauses.bind_values.iter().cloned() {
+        query_builder = match bind_val {
+            FilterBindValue::Text(s) => query_builder.bind(s),
+            FilterBindValue::TextArray(arr) => query_builder.bind(arr),
+        };
+    }
+
     query_builder = query_builder.bind(limit).bind(offset);
 
     let items = query_builder.fetch_all(pool).await?;
 
-    // Count total (without LIMIT/OFFSET but with same filters)
-    // When has_overdue filter is active, we need the device_status CTE for the HAVING clause
-    let count_query = if req.has_overdue == Some(true) {
+    // Count total (without LIMIT/OFFSET but with same filters).
+    // Use the CTE version when has_overdue is active OR when column filters produce HAVING
+    // conditions that reference ds.device_id (requires device_status CTE).
+    let needs_cte_count = req.has_overdue == Some(true) || !col_filter_clauses.having_conds.is_empty();
+    let count_query = if needs_cte_count {
         format!(
             r#"
             SELECT COUNT(*) FROM (
@@ -728,6 +881,14 @@ pub async fn list_customers_extended(
 
     if let Some(days) = req.next_revision_within_days {
         count_builder = count_builder.bind(days as f64);
+    }
+
+    // Bind column filter values (same order as main query)
+    for bind_val in col_filter_clauses.bind_values.iter().cloned() {
+        count_builder = match bind_val {
+            FilterBindValue::Text(s) => count_builder.bind(s),
+            FilterBindValue::TextArray(arr) => count_builder.bind(arr),
+        };
     }
 
     let (total,) = count_builder.fetch_one(pool).await?;
@@ -1524,6 +1685,220 @@ mod tests {
             assert!(!result.contains("DROP"), "SQL injection via column: {}", input.column);
             assert!(!result.contains("UNION"), "SQL injection via direction: {}", input.direction);
             assert!(!result.contains("SELECT"), "SQL injection in result: {result}");
+        }
+    }
+
+    // ── build_column_filter_clauses ──────────────────────────────────────────
+
+    use crate::types::customer::ColumnFilter;
+
+    fn cf_checklist(col: &str, values: Vec<&str>) -> ColumnFilter {
+        ColumnFilter::Checklist {
+            column: col.to_string(),
+            values: values.into_iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    fn cf_daterange(col: &str, from: Option<&str>, to: Option<&str>) -> ColumnFilter {
+        ColumnFilter::DateRange {
+            column: col.to_string(),
+            from: from.map(|s| s.to_string()),
+            to: to.map(|s| s.to_string()),
+        }
+    }
+
+    #[test]
+    fn filter_empty_produces_no_conditions() {
+        let mut idx = 2usize;
+        let out = build_column_filter_clauses(&[], &mut idx);
+        assert!(out.where_conds.is_empty());
+        assert!(out.having_conds.is_empty());
+        assert!(out.bind_values.is_empty());
+        assert_eq!(idx, 2, "param_idx must not change for empty filters");
+    }
+
+    #[test]
+    fn filter_checklist_city_produces_where_condition() {
+        let mut idx = 2usize;
+        let out = build_column_filter_clauses(&[cf_checklist("city", vec!["Prague", "Brno"])], &mut idx);
+        assert_eq!(out.where_conds.len(), 1);
+        assert!(out.where_conds[0].contains("c.city = ANY($3)"), "got: {}", out.where_conds[0]);
+        assert!(out.having_conds.is_empty());
+        assert_eq!(out.bind_values.len(), 1);
+        assert_eq!(out.bind_values[0], FilterBindValue::TextArray(vec!["Prague".into(), "Brno".into()]));
+        assert_eq!(idx, 3);
+    }
+
+    #[test]
+    fn filter_checklist_type_casts_to_text() {
+        let mut idx = 1usize;
+        let out = build_column_filter_clauses(&[cf_checklist("type", vec!["company"])], &mut idx);
+        assert!(out.where_conds[0].contains("c.customer_type::text = ANY($2)"), "got: {}", out.where_conds[0]);
+    }
+
+    #[test]
+    fn filter_checklist_geocode_status_casts_to_text() {
+        let mut idx = 1usize;
+        let out = build_column_filter_clauses(&[cf_checklist("geocodeStatus", vec!["success"])], &mut idx);
+        assert!(out.where_conds[0].contains("c.geocode_status::text = ANY($2)"), "got: {}", out.where_conds[0]);
+    }
+
+    #[test]
+    fn filter_checklist_device_count_produces_having_condition() {
+        let mut idx = 2usize;
+        let out = build_column_filter_clauses(&[cf_checklist("deviceCount", vec!["0", "1"])], &mut idx);
+        assert!(out.where_conds.is_empty());
+        assert_eq!(out.having_conds.len(), 1);
+        assert!(out.having_conds[0].contains("COALESCE(COUNT(DISTINCT ds.device_id), 0)::text = ANY($3)"),
+            "got: {}", out.having_conds[0]);
+        assert_eq!(out.bind_values[0], FilterBindValue::TextArray(vec!["0".into(), "1".into()]));
+    }
+
+    #[test]
+    fn filter_daterange_created_at_from_only() {
+        let mut idx = 3usize;
+        let out = build_column_filter_clauses(&[cf_daterange("createdAt", Some("2024-01-01"), None)], &mut idx);
+        assert_eq!(out.where_conds.len(), 1);
+        assert!(out.where_conds[0].contains("c.created_at::date >= $4::date"), "got: {}", out.where_conds[0]);
+        assert!(out.having_conds.is_empty());
+        assert_eq!(out.bind_values[0], FilterBindValue::Text("2024-01-01".into()));
+        assert_eq!(idx, 4);
+    }
+
+    #[test]
+    fn filter_daterange_created_at_to_only() {
+        let mut idx = 1usize;
+        let out = build_column_filter_clauses(&[cf_daterange("createdAt", None, Some("2024-12-31"))], &mut idx);
+        assert!(out.where_conds[0].contains("c.created_at::date <= $2::date"), "got: {}", out.where_conds[0]);
+    }
+
+    #[test]
+    fn filter_daterange_created_at_both_bounds() {
+        let mut idx = 1usize;
+        let out = build_column_filter_clauses(&[cf_daterange("createdAt", Some("2024-01-01"), Some("2024-12-31"))], &mut idx);
+        assert_eq!(out.where_conds.len(), 2);
+        assert!(out.where_conds[0].contains(">= $2::date"), "got: {}", out.where_conds[0]);
+        assert!(out.where_conds[1].contains("<= $3::date"), "got: {}", out.where_conds[1]);
+        assert_eq!(idx, 3);
+    }
+
+    #[test]
+    fn filter_daterange_next_revision_produces_having_condition() {
+        let mut idx = 2usize;
+        let out = build_column_filter_clauses(&[cf_daterange("nextRevision", Some("2024-06-01"), Some("2024-12-31"))], &mut idx);
+        assert!(out.where_conds.is_empty());
+        assert_eq!(out.having_conds.len(), 2);
+        assert!(out.having_conds[0].contains("MIN(r.due_date) FILTER"), "got: {}", out.having_conds[0]);
+        assert!(out.having_conds[0].contains(">= $3::date"), "got: {}", out.having_conds[0]);
+        assert!(out.having_conds[1].contains("<= $4::date"), "got: {}", out.having_conds[1]);
+    }
+
+    #[test]
+    fn filter_param_idx_increments_correctly_for_multiple_filters() {
+        // Start at 3 (simulating search + geocode_status already bound)
+        let mut idx = 3usize;
+        let filters = vec![
+            cf_checklist("city", vec!["Prague"]),  // $4
+            cf_daterange("createdAt", Some("2024-01-01"), Some("2024-12-31")),  // $5, $6
+            cf_checklist("type", vec!["company"]),  // $7
+        ];
+        let out = build_column_filter_clauses(&filters, &mut idx);
+        assert_eq!(idx, 7, "should have consumed $4, $5, $6, $7");
+        assert_eq!(out.bind_values.len(), 4);
+    }
+
+    #[test]
+    fn filter_duplicate_column_first_wins() {
+        let mut idx = 1usize;
+        let filters = vec![
+            cf_checklist("city", vec!["Prague"]),
+            cf_checklist("city", vec!["Brno"]),  // duplicate — must be skipped
+        ];
+        let out = build_column_filter_clauses(&filters, &mut idx);
+        assert_eq!(out.where_conds.len(), 1, "only one condition for city");
+        assert_eq!(out.bind_values.len(), 1);
+        assert_eq!(out.bind_values[0], FilterBindValue::TextArray(vec!["Prague".into()]));
+        assert_eq!(idx, 2);
+    }
+
+    #[test]
+    fn filter_unknown_column_skipped() {
+        let mut idx = 1usize;
+        let filters = vec![cf_checklist("nonexistent_col", vec!["x"])];
+        let out = build_column_filter_clauses(&filters, &mut idx);
+        assert!(out.where_conds.is_empty());
+        assert!(out.having_conds.is_empty());
+        assert!(out.bind_values.is_empty());
+        assert_eq!(idx, 1, "param_idx must not change for unknown column");
+    }
+
+    #[test]
+    fn filter_empty_values_checklist_skipped() {
+        let mut idx = 1usize;
+        let filters = vec![cf_checklist("city", vec![])];
+        let out = build_column_filter_clauses(&filters, &mut idx);
+        assert!(out.where_conds.is_empty());
+        assert_eq!(idx, 1, "empty values must not consume a param slot");
+    }
+
+    #[test]
+    fn filter_injection_safety_column_name_not_interpolated() {
+        let mut idx = 1usize;
+        let malicious = ColumnFilter::Checklist {
+            column: "'; DROP TABLE customers; --".to_string(),
+            values: vec!["x".to_string()],
+        };
+        let out = build_column_filter_clauses(&[malicious], &mut idx);
+        // Unknown column → no SQL emitted, no param consumed
+        assert!(out.where_conds.is_empty());
+        assert!(out.having_conds.is_empty());
+        assert_eq!(idx, 1);
+    }
+
+    #[test]
+    fn filter_injection_safety_values_not_interpolated() {
+        let mut idx = 1usize;
+        // Values go into bind positions, never into the SQL string
+        let filter = cf_checklist("city", vec!["'; DROP TABLE customers; --"]);
+        let out = build_column_filter_clauses(&[filter], &mut idx);
+        assert_eq!(out.where_conds.len(), 1);
+        // The SQL string itself must not contain the injected value
+        assert!(!out.where_conds[0].contains("DROP"), "value must not appear in SQL string");
+        // Value is in bind_values only
+        if let FilterBindValue::TextArray(arr) = &out.bind_values[0] {
+            assert_eq!(arr[0], "'; DROP TABLE customers; --");
+        } else {
+            panic!("expected TextArray");
+        }
+    }
+
+    #[test]
+    fn filter_all_where_columns_produce_where_not_having() {
+        for col in &["name", "type", "city", "street", "postalCode", "phone", "email", "geocodeStatus", "createdAt"] {
+            let filter = if *col == "createdAt" {
+                cf_daterange(col, Some("2024-01-01"), None)
+            } else {
+                cf_checklist(col, vec!["x"])
+            };
+            let mut idx = 1usize;
+            let out = build_column_filter_clauses(&[filter], &mut idx);
+            assert!(!out.where_conds.is_empty(), "column {col} should produce WHERE condition");
+            assert!(out.having_conds.is_empty(), "column {col} should NOT produce HAVING condition");
+        }
+    }
+
+    #[test]
+    fn filter_aggregate_columns_produce_having_not_where() {
+        for col in &["deviceCount", "nextRevision"] {
+            let filter = if *col == "nextRevision" {
+                cf_daterange(col, Some("2024-01-01"), None)
+            } else {
+                cf_checklist(col, vec!["1"])
+            };
+            let mut idx = 1usize;
+            let out = build_column_filter_clauses(&[filter], &mut idx);
+            assert!(out.where_conds.is_empty(), "column {col} should NOT produce WHERE condition");
+            assert!(!out.having_conds.is_empty(), "column {col} should produce HAVING condition");
         }
     }
 }
