@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-03-26 (v0.23.0 - Sort all customer columns end-to-end)
+> **Last Updated:** 2026-03-26 (v0.24.0 - Excel-style column filters on Customers grid)
 
 ## Overview
 
@@ -128,6 +128,7 @@ sazinka.customer.update         # Update customer
 sazinka.customer.delete         # Delete (anonymize) customer
 sazinka.customer.get            # Get single customer by ID
 sazinka.customer.list           # List customers (with filters)
+sazinka.customer.column.distinct  # Fetch distinct values for a column (Excel-style filter options)
 
 # Devices
 sazinka.device.create           # Add device to customer
@@ -1530,6 +1531,22 @@ cargo test
 - MVP focuses on core CRM + route planning
 - Email notifications deferred to later phase
 - Invoicing/billing architecture prepared but not implemented
+
+## Recent Changes (v0.24.0)
+
+- **Excel-style column filters on Customers grid:**
+  - **Filter types**: `ChecklistFilter` (9 columns: name, type, city, street, postalCode, phone, email, geocodeStatus, deviceCount) and `DateRangeFilter` (2 columns: nextRevision, createdAt). Filters across columns combine with AND semantics. Duplicate `column` entries in the array: **first wins**.
+  - **Shared types** (`packages/shared-types/src/customer.ts`): `ChecklistFilter`, `DateRangeFilter`, `ColumnFilter` union, `ColumnDistinctRequest`, `ColumnDistinctResponse` added. `ListCustomersRequest.columnFilters?: ColumnFilter[]`.
+  - **Backend filter application** (`worker/src/db/queries/customer.rs`): `build_column_filter_clauses` generates injection-safe parameterized `WHERE`/`HAVING` fragments via a column whitelist. Wired into `list_customers_extended` (main query and count sub-query). `get_column_distinct_values` fetches sorted unique values per column with context-aware filtering (excludes target column's own filter), search, and pagination.
+  - **NATS endpoint**: `sazinka.customer.column.distinct` — new Rust handler serves checklist dropdown options. Rejects unknown/date-range columns with `INVALID_COLUMN` error.
+  - **Frontend service** (`apps/web/src/services/customerService.ts`): `getColumnDistinctValues` sends the distinct request and returns `{ values, total, hasMore }`.
+  - **UI components**: `ChecklistFilterDropdown` (server-fetched distinct values, search, select-all, i18n labels), `DateRangeFilterDropdown` (from/to date inputs, inclusive bounds, open-ended ranges), `ColumnFilterDropdown` (type-dispatch wrapper).
+  - **CustomerTable integration**: Every column header shows a small always-visible filter icon. Clicking it opens the appropriate dropdown inline; a second click closes it. `data-filter-active` attribute drives visual indication. New props: `columnFilters`, `onColumnFiltersChange`, `distinctContext`.
+  - **Customers page wiring**: `columnFilters` persisted in `customers.grid` (localStorage via UPP). `requestOptions` includes `columnFilters`. `distinctContext` (`search`, `hasOverdue`, `nextRevisionWithinDays`, `columnFilters`) passed to `CustomerTable`. `activeFilterCount` counts each active column filter. `handleClearAllFilters` resets column filters along with search/revision.
+  - **Legacy filter removal**: `geocodeFilter` and `typeFilter` dropdowns removed from `CustomerFilterBar`, `MobileFilterSheet`, and `customersProfile`. Stale persisted values for those keys are silently ignored on hydration. Column-based checklist filters for `geocodeStatus` and `type` replace the removed UI.
+  - **Product decision**: `getCustomerSummary` returns **global** stats (not filtered by `columnFilters`). Summary is a KPI dashboard strip; filtering it requires a separate product decision.
+  - **Date semantics**: All date bounds are inclusive; `YYYY-MM-DD` strings with `::date` casting in SQL.
+  - **Test coverage**: 2316 frontend tests passing (163 test files). Rust unit tests for filter builder, distinct queries, and handler edge cases.
 
 ## Recent Changes (v0.23.0)
 
