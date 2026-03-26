@@ -6,7 +6,7 @@
  * content and the sort-conflict confirmation modal.
  *
  * Features:
- * - Grouped by category with headings
+ * - Flat list of all columns (single scrollable list)
  * - Checkbox visibility toggle (core columns locked)
  * - MAX_VISIBLE_COLUMNS limit enforced; exceeding columns disabled
  * - Blocking modal when hiding a sorted column (single aggregated modal)
@@ -18,7 +18,6 @@ import { useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ALL_COLUMNS,
-  COLUMN_CATEGORIES,
   CORE_COLUMN_IDS,
   DEFAULT_SORT_MODEL,
   DEFAULT_VISIBLE_COLUMNS,
@@ -193,14 +192,6 @@ export function ColumnPicker({
     [orderedColumns, onColumnOrderChange],
   );
 
-  const columnsByCategory = COLUMN_CATEGORIES.map((cat) => ({
-    category: cat,
-    columns: orderedColumns
-      .map((id) => ALL_COLUMNS.find((c) => c.id === id))
-      .filter((c) => c?.category === cat)
-      .map((c) => c!),
-  })).filter((g) => g.columns.length > 0);
-
   return (
     <>
       <div
@@ -226,51 +217,50 @@ export function ColumnPicker({
           </div>
         )}
 
-        {columnsByCategory.map(({ category, columns }) => (
-          <div key={category} className={styles.categorySection}>
-            <h3 role="heading" className={styles.categoryHeading}>
-              {t(`col_category_${category}`)}
-            </h3>
-            {columns.map((col) => {
-              const isVisible = visibleSet.has(col.id);
-              const isCore = CORE_COLUMN_IDS.includes(col.id);
-              const isDisabled = isCore || (!isVisible && atMax);
-              const displayName = resolveColumnDisplayName(t, col.labelKey);
+        <div className={styles.columnList} data-testid="column-picker-list">
+          {orderedColumns.map((columnId) => {
+            const col = ALL_COLUMNS.find((c) => c.id === columnId);
+            if (!col) return null;
+            const isVisible = visibleSet.has(col.id);
+            const isCore = CORE_COLUMN_IDS.includes(col.id);
+            const isDisabled = isCore || (!isVisible && atMax);
+            const displayName = resolveColumnDisplayName(t, col.labelKey);
 
-              return (
-                <div
-                  key={col.id}
-                  className={`${styles.columnRow} ${isDisabled ? styles.disabled : ''}`}
-                  onDragOver={handleDragOverRow}
-                  onDrop={(e) => handleDrop(e, col.id)}
-                  title={!isVisible && atMax ? t('col_picker_max_limit', { max: MAX_VISIBLE_COLUMNS }) : undefined}
-                >
-                  <span
-                    role="button"
-                    tabIndex={-1}
-                    className={styles.dragHandle}
-                    aria-label={t('col_picker_drag_reorder', { column: displayName })}
-                    draggable={!isCore}
-                    onDragStart={(e) => handleDragStart(e, col.id)}
-                    onDragEnd={handleDragEnd}
-                  >
-                    ⠿
-                  </span>
-                  <span className={styles.columnName}>{displayName}</span>
-                  <input
-                    type="checkbox"
-                    id={`col-pick-${col.id}`}
-                    className={styles.checkbox}
-                    checked={isVisible}
-                    disabled={isDisabled}
-                    aria-label={displayName}
-                    onChange={() => handleToggleColumn(col.id)}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        ))}
+            return (
+              <div
+                key={col.id}
+                className={`${styles.columnRow} ${isDisabled ? styles.disabled : ''}`}
+                draggable={!isCore}
+                onDragStart={(e) => {
+                  if ((e.target as HTMLElement).closest('input[type="checkbox"]')) {
+                    e.preventDefault();
+                    return;
+                  }
+                  handleDragStart(e, col.id);
+                }}
+                onDragEnd={handleDragEnd}
+                onDragOver={handleDragOverRow}
+                onDrop={(e) => handleDrop(e, col.id)}
+                title={!isVisible && atMax ? t('col_picker_max_limit', { max: MAX_VISIBLE_COLUMNS }) : undefined}
+              >
+                <span className={styles.dragHandle} aria-hidden="true">
+                  ⠿
+                </span>
+                <span className={styles.columnName}>{displayName}</span>
+                <input
+                  type="checkbox"
+                  id={`col-pick-${col.id}`}
+                  className={styles.checkbox}
+                  checked={isVisible}
+                  disabled={isDisabled}
+                  aria-label={displayName}
+                  onClick={(ev) => ev.stopPropagation()}
+                  onChange={() => handleToggleColumn(col.id)}
+                />
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {confirmState && (

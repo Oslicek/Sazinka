@@ -87,10 +87,11 @@ describe('Phase 3A: ColumnPicker — rendering', () => {
     expect(checkboxes.length).toBe(ALL_COLUMNS.length);
   });
 
-  it('4. each category heading is rendered', () => {
+  it('4. flat list — category group headings are not rendered', () => {
     renderPicker();
+    const dialog = screen.getByRole('dialog');
     for (const cat of COLUMN_CATEGORIES) {
-      expect(screen.getByText(`col_category_${cat}`)).toBeInTheDocument();
+      expect(within(dialog).queryByText(`col_category_${cat}`)).not.toBeInTheDocument();
     }
   });
 
@@ -101,9 +102,9 @@ describe('Phase 3A: ColumnPicker — rendering', () => {
     }
   });
 
-  it('6. empty category — no heading rendered if no columns in that category', () => {
+  it('6. flat list — scrollable column list container is present', () => {
     renderPicker();
-    expect(screen.getAllByRole('heading').length).toBeGreaterThanOrEqual(COLUMN_CATEGORIES.length);
+    expect(screen.getByTestId('column-picker-list')).toBeInTheDocument();
   });
 });
 
@@ -375,10 +376,10 @@ describe('Phase 3A: ColumnPicker — accessibility', () => {
     }
   });
 
-  it('32. category headings have heading role', () => {
+  it('32. flat list — picker dialog has no category section headings', () => {
     renderPicker();
-    const headings = screen.getAllByRole('heading');
-    expect(headings.length).toBeGreaterThanOrEqual(COLUMN_CATEGORIES.length);
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).queryAllByRole('heading')).toHaveLength(0);
   });
 
   it('35. Escape calls onClose', () => {
