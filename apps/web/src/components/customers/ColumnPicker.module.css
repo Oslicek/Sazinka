@@ -95,8 +95,11 @@
 }
 
 .label {
+  display: inline;
   font-size: 13px;
   flex: 1;
+  color: var(--color-text-primary, #1a1a1a);
+  margin-bottom: 0;
 }
 
 .maxHint {

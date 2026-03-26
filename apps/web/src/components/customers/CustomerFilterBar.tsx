@@ -122,33 +122,34 @@ export function CustomerFilterBar({
         ))}
       </div>
 
-      {/* Geocode filter */}
-      <select
-        data-testid="geocode-filter"
-        data-active={geocodeFilter !== '' ? 'true' : undefined}
-        className={`${styles.filterSelect} ${geocodeFilter ? styles.filterSelectActive : ''}`}
-        aria-label={t('filter_address_all')}
-        value={geocodeFilter}
-        onChange={(e) => onGeocodeFilterChange(e.target.value as GeocodeStatus | '')}
-      >
-        <option value="">{t('filter_address_all')}</option>
-        <option value="success">{t('filter_address_success')}</option>
-        <option value="failed">{t('filter_address_failed')}</option>
-        <option value="pending">{t('filter_address_pending')}</option>
-      </select>
+      {/* Geocode + Type filters side-by-side */}
+      <div className={styles.selectGroup}>
+        <select
+          data-testid="geocode-filter"
+          data-active={geocodeFilter !== '' ? 'true' : undefined}
+          className={`${styles.filterSelect} ${geocodeFilter ? styles.filterSelectActive : ''}`}
+          aria-label={t('filter_address_all')}
+          value={geocodeFilter}
+          onChange={(e) => onGeocodeFilterChange(e.target.value as GeocodeStatus | '')}
+        >
+          <option value="">{t('filter_address_all')}</option>
+          <option value="success">{t('filter_address_success')}</option>
+          <option value="failed">{t('filter_address_failed')}</option>
+          <option value="pending">{t('filter_address_pending')}</option>
+        </select>
 
-      {/* Type filter */}
-      <select
-        data-testid="type-filter"
-        className={`${styles.filterSelect} ${typeFilter ? styles.filterSelectActive : ''}`}
-        aria-label={t('filter_type_all')}
-        value={typeFilter}
-        onChange={(e) => onTypeFilterChange(e.target.value as 'company' | 'person' | '')}
-      >
-        <option value="">{t('filter_type_all')}</option>
-        <option value="company">{t('filter_type_company')}</option>
-        <option value="person">{t('filter_type_person')}</option>
-      </select>
+        <select
+          data-testid="type-filter"
+          className={`${styles.filterSelect} ${typeFilter ? styles.filterSelectActive : ''}`}
+          aria-label={t('filter_type_all')}
+          value={typeFilter}
+          onChange={(e) => onTypeFilterChange(e.target.value as 'company' | 'person' | '')}
+        >
+          <option value="">{t('filter_type_all')}</option>
+          <option value="company">{t('filter_type_company')}</option>
+          <option value="person">{t('filter_type_person')}</option>
+        </select>
+      </div>
 
       {/* Active filter badge + clear all */}
       {activeFilterCount > 0 && (
