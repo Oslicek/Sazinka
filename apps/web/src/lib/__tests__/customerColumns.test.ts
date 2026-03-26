@@ -76,15 +76,22 @@ describe('Phase 1A: customerColumns — catalog integrity', () => {
     });
   });
 
-  it('11. every non-sortable column has sortField undefined', () => {
-    ALL_COLUMNS.filter((c) => !c.sortable).forEach((c) => {
-      expect(c.sortField).toBeUndefined();
+  it('11. every column is sortable (all 11 columns support sorting)', () => {
+    expect(ALL_COLUMNS.every((c) => c.sortable)).toBe(true);
+  });
+
+  it('11b. every column has a non-empty sortField', () => {
+    ALL_COLUMNS.forEach((c) => {
+      expect(c.sortField).toBeTruthy();
     });
   });
 
-  it('12. every sortField is a valid ListCustomersRequest sortBy value', () => {
-    const validSortFields = new Set(['name', 'nextRevision', 'deviceCount', 'city', 'createdAt']);
-    ALL_COLUMNS.filter((c) => c.sortField).forEach((c) => {
+  it('12. every sortField maps to a known whitelist entry', () => {
+    const validSortFields = new Set([
+      'name', 'type', 'city', 'street', 'postalCode',
+      'phone', 'email', 'deviceCount', 'nextRevision', 'geocodeStatus', 'createdAt',
+    ]);
+    ALL_COLUMNS.forEach((c) => {
       expect(validSortFields.has(c.sortField!)).toBe(true);
     });
   });
@@ -127,12 +134,32 @@ describe('Phase 1A: getSortField helper', () => {
     expect(getSortField('city')).toBe('city');
   });
 
-  it('19. non-sortable column ID returns undefined', () => {
-    expect(getSortField('email')).toBeUndefined();
+  it('19. email column returns sortField email', () => {
+    expect(getSortField('email')).toBe('email');
   });
 
   it('20. unknown column ID returns undefined', () => {
     expect(getSortField('completely_unknown')).toBeUndefined();
+  });
+
+  it('21. type column returns sortField type', () => {
+    expect(getSortField('type')).toBe('type');
+  });
+
+  it('22. street column returns sortField street', () => {
+    expect(getSortField('street')).toBe('street');
+  });
+
+  it('23. postalCode column returns sortField postalCode', () => {
+    expect(getSortField('postalCode')).toBe('postalCode');
+  });
+
+  it('24. phone column returns sortField phone', () => {
+    expect(getSortField('phone')).toBe('phone');
+  });
+
+  it('25. geocodeStatus column returns sortField geocodeStatus', () => {
+    expect(getSortField('geocodeStatus')).toBe('geocodeStatus');
   });
 });
 
@@ -192,8 +219,49 @@ describe('Phase 1A: isValidSortModel validator', () => {
     expect(isValidSortModel([{ column: 'nonexistent_col', direction: 'asc' }])).toBe(false);
   });
 
-  it('33. array with column referencing non-sortable column → false', () => {
-    expect(isValidSortModel([{ column: 'email', direction: 'asc' }])).toBe(false);
+  it('33. array with column referencing non-existent column → false', () => {
+    expect(isValidSortModel([{ column: 'nonexistent_col', direction: 'asc' }])).toBe(false);
+  });
+
+  it('33b. email column is now sortable → isValidSortModel returns true', () => {
+    expect(isValidSortModel([{ column: 'email', direction: 'asc' }])).toBe(true);
+  });
+
+  it('33c. type column is now sortable → isValidSortModel returns true', () => {
+    expect(isValidSortModel([{ column: 'type', direction: 'asc' }])).toBe(true);
+  });
+
+  it('33d. street column is now sortable → isValidSortModel returns true', () => {
+    expect(isValidSortModel([{ column: 'street', direction: 'desc' }])).toBe(true);
+  });
+
+  it('33e. postalCode column is now sortable → isValidSortModel returns true', () => {
+    expect(isValidSortModel([{ column: 'postalCode', direction: 'asc' }])).toBe(true);
+  });
+
+  it('33f. phone column is now sortable → isValidSortModel returns true', () => {
+    expect(isValidSortModel([{ column: 'phone', direction: 'asc' }])).toBe(true);
+  });
+
+  it('33g. geocodeStatus column is now sortable → isValidSortModel returns true', () => {
+    expect(isValidSortModel([{ column: 'geocodeStatus', direction: 'asc' }])).toBe(true);
+  });
+
+  it('33h. all 11 columns in one model → isValidSortModel returns true', () => {
+    const allColumns = [
+      { column: 'name', direction: 'asc' as const },
+      { column: 'type', direction: 'asc' as const },
+      { column: 'city', direction: 'asc' as const },
+      { column: 'street', direction: 'asc' as const },
+      { column: 'postalCode', direction: 'asc' as const },
+      { column: 'phone', direction: 'asc' as const },
+      { column: 'email', direction: 'asc' as const },
+      { column: 'deviceCount', direction: 'asc' as const },
+      { column: 'nextRevision', direction: 'asc' as const },
+      { column: 'geocodeStatus', direction: 'asc' as const },
+      { column: 'createdAt', direction: 'asc' as const },
+    ];
+    expect(isValidSortModel(allColumns)).toBe(true);
   });
 
   it('34. array with duplicate columns → false', () => {
@@ -243,6 +311,16 @@ describe('Phase 1A: sanitizeSortModel sanitizer', () => {
 
   it('41. array with all invalid entries → returns DEFAULT_SORT_MODEL', () => {
     expect(sanitizeSortModel([{ column: 'bad', direction: 'asc' }])).toEqual(DEFAULT);
+  });
+
+  it('41b. email in sort model → preserved as valid entry', () => {
+    const model = [{ column: 'email', direction: 'asc' as const }];
+    expect(sanitizeSortModel(model)).toEqual(model);
+  });
+
+  it('41c. geocodeStatus in sort model → preserved as valid entry', () => {
+    const model = [{ column: 'geocodeStatus', direction: 'desc' as const }];
+    expect(sanitizeSortModel(model)).toEqual(model);
   });
 
   it('42. array with duplicate column → keeps first occurrence, strips duplicate', () => {

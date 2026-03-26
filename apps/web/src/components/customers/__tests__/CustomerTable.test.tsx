@@ -195,11 +195,16 @@ describe('Phase 2B: CustomerTable — click → primary sort (no modifier)', () 
     expect(onSortModelChange).toHaveBeenCalledWith(DEFAULT_SORT_MODEL);
   });
 
-  it('11. click non-sortable header (geocodeStatus) → onSortModelChange NOT called', () => {
-    renderTable({ onSortModelChange });
+  it('11. click geocodeStatus header (now sortable) → onSortModelChange IS called', () => {
+    renderTable({
+      sortModel: [{ column: 'name', direction: 'asc' }],
+      onSortModelChange,
+    });
     const addrHeader = screen.getByRole('columnheader', { name: /table_address/i });
     fireEvent.click(addrHeader);
-    expect(onSortModelChange).not.toHaveBeenCalled();
+    expect(onSortModelChange).toHaveBeenCalled();
+    const result = (onSortModelChange.mock.calls[0][0] as SortEntry[]);
+    expect(result[0].column).toBe('geocodeStatus');
   });
 
   it('12. click replaces entire sortModel (not append)', () => {
@@ -266,11 +271,16 @@ describe('Phase 2B: CustomerTable — Shift+click → secondary sort', () => {
     expect(onSortModelChange).toHaveBeenCalledWith([{ column: 'name', direction: 'asc' }]);
   });
 
-  it('16. Shift+click on non-sortable header (geocodeStatus) → no change', () => {
-    renderTable({ onSortModelChange });
+  it('16. Shift+click on geocodeStatus header (now sortable) → onSortModelChange IS called', () => {
+    renderTable({
+      sortModel: [{ column: 'name', direction: 'asc' }],
+      onSortModelChange,
+    });
     const addrHeader = screen.getByRole('columnheader', { name: /table_address/i });
     fireEvent.click(addrHeader, { shiftKey: true });
-    expect(onSortModelChange).not.toHaveBeenCalled();
+    expect(onSortModelChange).toHaveBeenCalled();
+    const result = (onSortModelChange.mock.calls[0][0] as SortEntry[]);
+    expect(result.some((e) => e.column === 'geocodeStatus')).toBe(true);
   });
 
   it('17. Shift+click when model empty → behaves like regular click (sets primary)', () => {
@@ -605,5 +615,93 @@ describe('Phase 2B: CustomerTable — edge cases', () => {
     expect(nameHeader.querySelector('[data-sort-priority]')).toBeTruthy();
     // No email column header in the basic table
     expect(screen.queryByRole('columnheader', { name: /col_email/i })).toBeNull();
+  });
+});
+
+// ── Newly-sortable columns (Phase X) ─────────────────────────────────────────
+// These columns were previously non-sortable (sortable: false in customerColumns).
+// After enabling sortable:true + sortField for all 11 columns, they must work like
+// any other sortable column in the table.
+
+describe('Newly-sortable columns: header click and indicator', () => {
+  const NEWLY_SORTABLE: Array<{ catalogId: string; headerPattern: RegExp; colLabel: string }> = [
+    { catalogId: 'type',         headerPattern: /col_type/i,        colLabel: 'type' },
+    { catalogId: 'street',       headerPattern: /col_street/i,      colLabel: 'street' },
+    { catalogId: 'postalCode',   headerPattern: /col_postal_code/i, colLabel: 'postalCode' },
+    { catalogId: 'phone',        headerPattern: /col_phone/i,       colLabel: 'phone' },
+    { catalogId: 'email',        headerPattern: /col_email/i,       colLabel: 'email' },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  NEWLY_SORTABLE.forEach(({ catalogId, headerPattern, colLabel }) => {
+    it(`click ${colLabel} header → onSortModelChange([{column:${catalogId}, direction:asc}])`, () => {
+      const onSortModelChange = vi.fn();
+      renderTable({
+        visibleColumns: ['name', catalogId],
+        sortModel: [{ column: 'name', direction: 'asc' }],
+        onSortModelChange,
+      });
+      const header = screen.getByRole('columnheader', { name: headerPattern });
+      fireEvent.click(header);
+      expect(onSortModelChange).toHaveBeenCalled();
+      const result = onSortModelChange.mock.calls[0][0] as SortEntry[];
+      expect(result[0].column).toBe(catalogId);
+      expect(result[0].direction).toBe('asc');
+    });
+
+    it(`Shift+click ${colLabel} header appends to sort model`, () => {
+      const onSortModelChange = vi.fn();
+      renderTable({
+        visibleColumns: ['name', catalogId],
+        sortModel: [{ column: 'name', direction: 'asc' }],
+        onSortModelChange,
+      });
+      const header = screen.getByRole('columnheader', { name: headerPattern });
+      fireEvent.click(header, { shiftKey: true });
+      expect(onSortModelChange).toHaveBeenCalled();
+      const result = onSortModelChange.mock.calls[0][0] as SortEntry[];
+      expect(result.some((e) => e.column === catalogId)).toBe(true);
+      expect(result.some((e) => e.column === 'name')).toBe(true);
+    });
+
+    it(`Enter key on ${colLabel} header → same as primary click`, () => {
+      const onSortModelChange = vi.fn();
+      renderTable({
+        visibleColumns: ['name', catalogId],
+        sortModel: [{ column: 'name', direction: 'asc' }],
+        onSortModelChange,
+      });
+      const header = screen.getByRole('columnheader', { name: headerPattern });
+      fireEvent.keyDown(header, { key: 'Enter' });
+      expect(onSortModelChange).toHaveBeenCalled();
+      const result = onSortModelChange.mock.calls[0][0] as SortEntry[];
+      expect(result[0].column).toBe(catalogId);
+    });
+
+    it(`${colLabel} header has tabIndex and aria-sort="none" when not in sort model`, () => {
+      renderTable({
+        visibleColumns: ['name', catalogId],
+        sortModel: [{ column: 'name', direction: 'asc' }],
+      });
+      const header = screen.getByRole('columnheader', { name: headerPattern });
+      expect(header).toHaveAttribute('tabindex', '0');
+      expect(header).toHaveAttribute('aria-sort', 'none');
+    });
+
+    it(`${colLabel} sort indicator shows when in sort model`, () => {
+      renderTable({
+        visibleColumns: ['name', catalogId],
+        sortModel: [
+          { column: 'name', direction: 'asc' },
+          { column: catalogId, direction: 'desc' },
+        ],
+      });
+      const header = screen.getByRole('columnheader', { name: headerPattern });
+      expect(header.querySelector('[data-sort-dir="desc"]')).toBeTruthy();
+      expect(header.querySelector('[data-sort-priority]')?.textContent).toBe('2');
+    });
   });
 });

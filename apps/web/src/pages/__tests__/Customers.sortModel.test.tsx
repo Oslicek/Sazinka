@@ -213,8 +213,8 @@ describe('Phase 2A: sortModel end-to-end contract', () => {
 
   // Edge cases / sanitization
 
-  it('10. sortModel with non-sortable column → stripped by sanitizer, default sort used', async () => {
-    seedGridLocal('sortModel', [{ column: 'email', direction: 'asc' }]);
+  it('10. sortModel with unknown column → stripped by sanitizer, default sort used', async () => {
+    seedGridLocal('sortModel', [{ column: 'nonexistent_col', direction: 'asc' }]);
     render(<Customers />);
     await waitFor(() => expect(mockListCustomersExtended).toHaveBeenCalled());
     expect(lastCall().sortModel).toEqual(DEFAULT_SORT_MODEL);
@@ -299,5 +299,51 @@ describe('Phase 2A: sortModel end-to-end contract', () => {
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
     const retryBtn = screen.queryByRole('button', { name: /retry/i });
     expect(retryBtn).toBeNull();
+  });
+});
+
+// ── Newly-sortable columns forwarding ─────────────────────────────────────────
+
+describe('Newly-sortable columns: request forwarding', () => {
+  const NEWLY_SORTABLE_COLUMNS = ['email', 'phone', 'type', 'street', 'postalCode', 'geocodeStatus'];
+
+  beforeEach(() => {
+    mockListCustomersExtended.mockClear();
+    mockListCustomersExtended.mockResolvedValue({ items: [], total: 0 });
+    sessionStorage.clear();
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    sessionStorage.clear();
+    localStorage.clear();
+  });
+
+  NEWLY_SORTABLE_COLUMNS.forEach((col) => {
+    it(`sortModel=[{column:${col}, direction:asc}] is forwarded unchanged to backend`, async () => {
+      const model: SortEntry[] = [{ column: col, direction: 'asc' }];
+      seedGridLocal('sortModel', model);
+      render(<Customers />);
+      await waitFor(() => expect(mockListCustomersExtended).toHaveBeenCalled());
+      const sentModel = lastCall().sortModel as SortEntry[];
+      expect(sentModel).toHaveLength(1);
+      expect(sentModel[0].column).toBe(col);
+      expect(sentModel[0].direction).toBe('asc');
+    });
+
+    it(`multisort with ${col} DESC is forwarded with correct priority`, async () => {
+      const model: SortEntry[] = [
+        { column: 'name', direction: 'asc' },
+        { column: col, direction: 'desc' },
+      ];
+      seedGridLocal('sortModel', model);
+      render(<Customers />);
+      await waitFor(() => expect(mockListCustomersExtended).toHaveBeenCalled());
+      const sentModel = lastCall().sortModel as SortEntry[];
+      expect(sentModel).toHaveLength(2);
+      expect(sentModel[0].column).toBe('name');
+      expect(sentModel[1].column).toBe(col);
+      expect(sentModel[1].direction).toBe('desc');
+    });
   });
 });

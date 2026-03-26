@@ -28,15 +28,15 @@ export interface CustomerColumnDef {
 
 export const ALL_COLUMNS: CustomerColumnDef[] = [
   { id: 'name',         labelKey: 'col_name',        category: 'identity',   sortField: 'name',          sortable: true,  core: true,  defaultVisible: true  },
-  { id: 'type',         labelKey: 'col_type',         category: 'identity',   sortField: undefined,       sortable: false, core: false, defaultVisible: false },
+  { id: 'type',         labelKey: 'col_type',         category: 'identity',   sortField: 'type',          sortable: true,  core: false, defaultVisible: false },
   { id: 'city',         labelKey: 'col_city',         category: 'location',   sortField: 'city',          sortable: true,  core: false, defaultVisible: true  },
-  { id: 'street',       labelKey: 'col_street',       category: 'location',   sortField: undefined,       sortable: false, core: false, defaultVisible: false },
-  { id: 'postalCode',   labelKey: 'col_postal_code',  category: 'location',   sortField: undefined,       sortable: false, core: false, defaultVisible: false },
-  { id: 'phone',        labelKey: 'col_phone',        category: 'contact',    sortField: undefined,       sortable: false, core: false, defaultVisible: false },
-  { id: 'email',        labelKey: 'col_email',        category: 'contact',    sortField: undefined,       sortable: false, core: false, defaultVisible: false },
+  { id: 'street',       labelKey: 'col_street',       category: 'location',   sortField: 'street',        sortable: true,  core: false, defaultVisible: false },
+  { id: 'postalCode',   labelKey: 'col_postal_code',  category: 'location',   sortField: 'postalCode',    sortable: true,  core: false, defaultVisible: false },
+  { id: 'phone',        labelKey: 'col_phone',        category: 'contact',    sortField: 'phone',         sortable: true,  core: false, defaultVisible: false },
+  { id: 'email',        labelKey: 'col_email',        category: 'contact',    sortField: 'email',         sortable: true,  core: false, defaultVisible: false },
   { id: 'deviceCount',  labelKey: 'col_devices',      category: 'revision',   sortField: 'deviceCount',   sortable: true,  core: false, defaultVisible: true  },
   { id: 'nextRevision', labelKey: 'col_revision',     category: 'revision',   sortField: 'nextRevision',  sortable: true,  core: false, defaultVisible: true  },
-  { id: 'geocodeStatus',labelKey: 'col_geocode',      category: 'operations', sortField: undefined,       sortable: false, core: false, defaultVisible: true  },
+  { id: 'geocodeStatus',labelKey: 'col_geocode',      category: 'operations', sortField: 'geocodeStatus', sortable: true,  core: false, defaultVisible: true  },
   { id: 'createdAt',    labelKey: 'col_created_at',   category: 'operations', sortField: 'createdAt',     sortable: true,  core: false, defaultVisible: false },
 ];
 
