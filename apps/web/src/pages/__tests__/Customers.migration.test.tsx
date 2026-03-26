@@ -132,16 +132,16 @@ describe('Phase 1C: customers.filters profile migration', () => {
     expect(ids).not.toContain('sortOrder');
   });
 
-  it('3. customersProfile.controls contains exactly 7 controls (Phase 4B added isAdvancedFiltersOpen)', () => {
+  it('3. customersProfile.controls contains exactly 5 controls (geocodeFilter/typeFilter removed Phase 6B)', () => {
     const ids = customersProfile.controls.map((c) => c.controlId).sort();
-    expect(ids).toHaveLength(7);
+    expect(ids).toHaveLength(5);
     expect(ids).toContain('search');
     expect(ids).toContain('viewMode');
-    expect(ids).toContain('geocodeFilter');
     expect(ids).toContain('revisionFilter');
-    expect(ids).toContain('typeFilter');
     expect(ids).toContain('selectedCustomerId');
     expect(ids).toContain('isAdvancedFiltersOpen');
+    expect(ids).not.toContain('geocodeFilter');
+    expect(ids).not.toContain('typeFilter');
   });
 
   // Backward compat — stale session keys ignored
@@ -203,12 +203,13 @@ describe('Phase 1C: customers.filters profile migration', () => {
 
   });
 
-  it('9. geocodeFilter hydrates from session storage', async () => {
+  it('9. stale geocodeFilter in session storage → ignored, no crash, no geocodeStatus in request', async () => {
     seedSession('geocodeFilter', 'failed');
     render(<Customers />);
     await waitFor(() => expect(customerService.listCustomersExtended).toHaveBeenCalled());
     const call = (customerService.listCustomersExtended as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(call.geocodeStatus).toBe('failed');
+    // geocodeFilter is no longer a control — stale value should be ignored
+    expect(call.geocodeStatus).toBeUndefined();
 
 
   });
@@ -223,12 +224,13 @@ describe('Phase 1C: customers.filters profile migration', () => {
 
   });
 
-  it('11. typeFilter=company hydrates from session storage', async () => {
+  it('11. stale typeFilter in session storage → ignored, no crash, no customerType in request', async () => {
     seedSession('typeFilter', 'company');
     render(<Customers />);
     await waitFor(() => expect(customerService.listCustomersExtended).toHaveBeenCalled());
     const call = (customerService.listCustomersExtended as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(call.customerType).toBe('company');
+    // typeFilter is no longer a control — stale value should be ignored
+    expect(call.customerType).toBeUndefined();
 
 
   });

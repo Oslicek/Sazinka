@@ -163,38 +163,30 @@ describe('P0: filter_type_* i18n keys', () => {
     expect(SK.filter_type_person).not.toBe('filter_type_person');
   });
 
-  // Test 6: component renders translated text (not raw key) in en
-  it('6. type filter renders translated filter_type_all in en (not raw key)', () => {
+  // Test 6: type filter dropdown removed in Phase 6B — i18n keys still exist in translations
+  it('6. type filter dropdown no longer rendered in page (Phase 6B removal)', () => {
     activeLocale = 'en';
     renderCustomers();
-    const select = screen.getAllByRole('combobox').find((el) =>
-      el.querySelector('option[value="company"]') !== null ||
-      Array.from(el.querySelectorAll('option')).some((o) => o.value === 'company')
-    );
-    expect(select).toBeTruthy();
-    const allOption = Array.from(select!.querySelectorAll('option')).find(
-      (o) => (o as HTMLOptionElement).value === ''
-    ) as HTMLOptionElement | undefined;
-    expect(allOption).toBeTruthy();
-    expect(allOption!.textContent).not.toBe('filter_type_all');
-    expect(allOption!.textContent).toBe(EN.filter_type_all);
-  });
-
-  // Test 7: switching locale re-renders labels
-  it('7. switching locale from en to cs changes type filter labels', () => {
-    activeLocale = 'en';
-    const { rerender } = renderCustomers();
-    activeLocale = 'cs';
-    rerender(<Customers />);
-    const selects = screen.getAllByRole('combobox');
+    // The type filter SELECT is gone; no combobox with company option
+    const selects = screen.queryAllByRole('combobox');
     const typeSelect = selects.find((el) =>
       Array.from(el.querySelectorAll('option')).some((o) => (o as HTMLOptionElement).value === 'company')
     );
-    expect(typeSelect).toBeTruthy();
-    const allOption = Array.from(typeSelect!.querySelectorAll('option')).find(
-      (o) => (o as HTMLOptionElement).value === ''
-    ) as HTMLOptionElement | undefined;
-    expect(allOption!.textContent).toBe(CS.filter_type_all);
-    expect(allOption!.textContent).not.toBe(EN.filter_type_all);
+    expect(typeSelect).toBeUndefined();
+  });
+
+  // Test 7: switching locale no longer shows type filter — test revision chips instead
+  it('7. switching locale from en to cs changes revision chip labels', () => {
+    activeLocale = 'en';
+    const { rerender } = renderCustomers();
+    // "All" revision chip text should be from EN translation, not raw key
+    const allChip = screen.getByRole('button', { name: EN.filter_revision_all });
+    expect(allChip).toBeInTheDocument();
+
+    activeLocale = 'cs';
+    rerender(<Customers />);
+    // After locale switch, label should be from CS translation
+    const allChipCs = screen.getByRole('button', { name: CS.filter_revision_all });
+    expect(allChipCs).toBeInTheDocument();
   });
 });

@@ -5,18 +5,12 @@ import type { SortEntry } from '@/lib/customerColumns';
 import { ColumnPicker } from './ColumnPicker';
 import styles from './MobileFilterSheet.module.css';
 
-type GeocodeStatus = 'success' | 'failed' | 'pending';
-
 export interface MobileFilterSheetProps {
   isMobile: boolean;
   search: string;
   onSearchChange: (v: string) => void;
-  geocodeFilter: GeocodeStatus | '';
-  onGeocodeFilterChange: (v: GeocodeStatus | '') => void;
   revisionFilter: '' | 'overdue' | 'week' | 'month';
   onRevisionFilterChange: (v: '' | 'overdue' | 'week' | 'month') => void;
-  typeFilter: 'company' | 'person' | '';
-  onTypeFilterChange: (v: 'company' | 'person' | '') => void;
   sortModel: SortEntry[];
   onSortModelChange: (m: SortEntry[]) => void;
   visibleColumns: string[];
@@ -39,12 +33,8 @@ export function MobileFilterSheet({
   isMobile,
   search,
   onSearchChange,
-  geocodeFilter,
-  onGeocodeFilterChange,
   revisionFilter,
   onRevisionFilterChange,
-  typeFilter,
-  onTypeFilterChange,
   sortModel,
   onSortModelChange,
   visibleColumns,
@@ -166,33 +156,6 @@ export function MobileFilterSheet({
                   </button>
                 ))}
               </div>
-
-              {/* Geocode filter */}
-              <select
-                data-testid="sheet-geocode-filter"
-                className={styles.select}
-                aria-label={t('filter_address_all')}
-                value={geocodeFilter}
-                onChange={(e) => onGeocodeFilterChange(e.target.value as GeocodeStatus | '')}
-              >
-                <option value="">{t('filter_address_all')}</option>
-                <option value="success">{t('filter_address_success')}</option>
-                <option value="failed">{t('filter_address_failed')}</option>
-                <option value="pending">{t('filter_address_pending')}</option>
-              </select>
-
-              {/* Type filter */}
-              <select
-                data-testid="sheet-type-filter"
-                className={styles.select}
-                aria-label={t('filter_type_all')}
-                value={typeFilter}
-                onChange={(e) => onTypeFilterChange(e.target.value as 'company' | 'person' | '')}
-              >
-                <option value="">{t('filter_type_all')}</option>
-                <option value="company">{t('filter_type_company')}</option>
-                <option value="person">{t('filter_type_person')}</option>
-              </select>
 
               {/* Sort section */}
               <div className={styles.sortSection}>

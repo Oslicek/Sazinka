@@ -7,8 +7,8 @@ import type {
   Customer,
   CustomerListItem,
   ListCustomersRequest,
-  GeocodeStatus,
-  CustomerSummary,
+  ColumnFilter,
+  ColumnDistinctRequest,
 } from '@shared/customer';
 import { 
   createCustomer,
@@ -47,6 +47,7 @@ import {
   sanitizeSortModel,
   sanitizeVisibleColumns,
   sanitizeColumnOrder,
+  sanitizeColumnFilters,
 } from '../lib/customerColumns';
 import type { SortEntry } from '../lib/customerColumns';
 
@@ -62,16 +63,14 @@ function CustomersInner() {
   const navigate = useNavigate();
   const searchParams = useSearch({ strict: false }) as SearchParams;
 
-  // UPP controls — customers.filters (session) — 6 controls
+  // UPP controls — customers.filters (session)
   const { value: uppSearch, setValue: setUppSearch } = usePersistentControl<string>(
     CUSTOMERS_PROFILE_ID, 'search', 300,
   );
   const { value: uppViewMode, setValue: setViewMode } = usePersistentControl<'table' | 'cards'>(CUSTOMERS_PROFILE_ID, 'viewMode');
-  const { value: uppGeocodeFilter, setValue: setGeocodeFilter } = usePersistentControl<GeocodeStatus | ''>(CUSTOMERS_PROFILE_ID, 'geocodeFilter');
   const { value: uppRevisionFilter, setValue: setRevisionFilter } = usePersistentControl<'' | 'overdue' | 'week' | 'month'>(CUSTOMERS_PROFILE_ID, 'revisionFilter');
-  const { value: uppTypeFilter, setValue: setTypeFilter } = usePersistentControl<'company' | 'person' | ''>(CUSTOMERS_PROFILE_ID, 'typeFilter');
 
-  // UPP controls — customers.grid (local) — sortModel, visibleColumns, columnOrder
+  // UPP controls — customers.grid (local) — sortModel, visibleColumns, columnOrder, columnFilters
   const { value: uppSortModel, setValue: setUppSortModel } = usePersistentControl<SortEntry[]>(
     CUSTOMERS_GRID_PROFILE_ID, 'sortModel',
   );
@@ -80,6 +79,9 @@ function CustomersInner() {
   );
   const { value: uppColumnOrder, setValue: setUppColumnOrder } = usePersistentControl<string[]>(
     CUSTOMERS_GRID_PROFILE_ID, 'columnOrder',
+  );
+  const { value: uppColumnFilters, setValue: setUppColumnFilters } = usePersistentControl<ColumnFilter[]>(
+    CUSTOMERS_GRID_PROFILE_ID, 'columnFilters',
   );
 
   // Deep-memo to avoid new-reference churn when persistence layer returns
@@ -101,14 +103,21 @@ function CustomersInner() {
   const [localSearch, setLocalSearch] = useState<string>(uppSearch ?? '');
   const search = localSearch;
   const viewMode: 'table' | 'cards' = (uppViewMode === 'cards') ? 'cards' : 'table';
-  const geocodeFilter: GeocodeStatus | '' = uppGeocodeFilter ?? '';
   const revisionFilter: '' | 'overdue' | 'week' | 'month' = uppRevisionFilter ?? '';
-  const typeFilter: 'company' | 'person' | '' = uppTypeFilter ?? '';
+
+  const columnFilters: ColumnFilter[] = useDeepMemo(
+    () => sanitizeColumnFilters(uppColumnFilters ?? []),
+    [uppColumnFilters],
+  );
 
   const setSearch = useCallback((v: string) => { setLocalSearch(v); setUppSearch(v); }, [setUppSearch]);
   const setSortModel = useCallback((m: SortEntry[]) => setUppSortModel(sanitizeSortModel(m)), [setUppSortModel]);
   const setVisibleColumns = useCallback((cols: string[]) => setUppVisibleColumns(sanitizeVisibleColumns(cols)), [setUppVisibleColumns]);
   const setColumnOrder = useCallback((order: string[]) => setUppColumnOrder(sanitizeColumnOrder(order)), [setUppColumnOrder]);
+  const setColumnFilters = useCallback(
+    (filters: ColumnFilter[]) => setUppColumnFilters(sanitizeColumnFilters(filters)),
+    [setUppColumnFilters],
+  );
   const handleResetColumns = useCallback(() => {
     setUppVisibleColumns(DEFAULT_VISIBLE_COLUMNS);
     setUppColumnOrder(DEFAULT_COLUMN_ORDER);
@@ -186,10 +195,6 @@ function CustomersInner() {
       options.search = search;
     }
     
-    if (geocodeFilter) {
-      options.geocodeStatus = geocodeFilter;
-    }
-    
     if (revisionFilter === 'overdue') {
       options.hasOverdue = true;
     } else if (revisionFilter === 'week') {
@@ -198,12 +203,23 @@ function CustomersInner() {
       options.nextRevisionWithinDays = 30;
     }
 
-    if (typeFilter) {
-      options.customerType = typeFilter as 'company' | 'person';
+    if (columnFilters.length > 0) {
+      options.columnFilters = columnFilters;
     }
     
     return options;
-  }, [search, geocodeFilter, revisionFilter, typeFilter, sortModel]);
+  }, [search, revisionFilter, columnFilters, sortModel]);
+
+  // Context for column distinct queries — all request context except `column` (and pagination)
+  const distinctContext = useMemo<Omit<ColumnDistinctRequest, 'column'>>(() => {
+    const ctx: Omit<ColumnDistinctRequest, 'column'> = {};
+    if (search) ctx.search = search;
+    if (revisionFilter === 'overdue') ctx.hasOverdue = true;
+    else if (revisionFilter === 'week') ctx.nextRevisionWithinDays = 7;
+    else if (revisionFilter === 'month') ctx.nextRevisionWithinDays = 30;
+    if (columnFilters.length > 0) ctx.columnFilters = columnFilters;
+    return ctx;
+  }, [search, revisionFilter, columnFilters]);
 
   // Load first page + summary when connected or filters change
   const loadCustomers = useCallback(async () => {
@@ -470,18 +486,16 @@ function CustomersInner() {
   const activeFilterCount = useMemo(() => {
     let count = 0;
     if (search) count++;
-    if (geocodeFilter) count++;
     if (revisionFilter) count++;
-    if (typeFilter) count++;
+    count += columnFilters.length;
     return count;
-  }, [search, geocodeFilter, revisionFilter, typeFilter]);
+  }, [search, revisionFilter, columnFilters]);
 
   const handleClearAllFilters = useCallback(() => {
     setSearch('');
-    setGeocodeFilter('');
     setRevisionFilter('');
-    setTypeFilter('');
-  }, [setSearch, setGeocodeFilter, setRevisionFilter, setTypeFilter]);
+    setColumnFilters([]);
+  }, [setSearch, setRevisionFilter, setColumnFilters]);
 
   // Stats: use server summary when available, fall back to loaded data
   const stats = useMemo(() => {
@@ -587,12 +601,8 @@ function CustomersInner() {
           isMobile={isMobileUi}
           search={search}
           onSearchChange={setSearch}
-          geocodeFilter={geocodeFilter}
-          onGeocodeFilterChange={setGeocodeFilter}
           revisionFilter={revisionFilter}
           onRevisionFilterChange={setRevisionFilter}
-          typeFilter={typeFilter}
-          onTypeFilterChange={setTypeFilter}
           sortModel={sortModel}
           onSortModelChange={setSortModel}
           visibleColumns={visibleColumns}
@@ -605,12 +615,8 @@ function CustomersInner() {
         <CustomerFilterBar
           search={search}
           onSearchChange={setSearch}
-          geocodeFilter={geocodeFilter}
-          onGeocodeFilterChange={setGeocodeFilter}
           revisionFilter={revisionFilter}
           onRevisionFilterChange={setRevisionFilter}
-          typeFilter={typeFilter}
-          onTypeFilterChange={setTypeFilter}
           activeFilterCount={activeFilterCount}
           onClearAllFilters={handleClearAllFilters}
           isAdvancedOpen={isAdvancedFiltersOpen}
@@ -728,6 +734,9 @@ function CustomersInner() {
             onSortModelChange={setSortModel}
             visibleColumns={visibleColumns}
             columnOrder={columnOrder}
+            columnFilters={columnFilters}
+            onColumnFiltersChange={setColumnFilters}
+            distinctContext={distinctContext}
           />
         )
       ) : (

@@ -61,12 +61,13 @@ describe('Phase 1B: customersGridProfile — structure', () => {
     expect(customersGridProfile.writeTargets).toEqual(['local']);
   });
 
-  it('4. contains exactly 3 controls: sortModel, visibleColumns, columnOrder', () => {
+  it('4. contains exactly 4 controls: sortModel, visibleColumns, columnOrder, columnFilters', () => {
     const ids = customersGridProfile.controls.map((c) => c.controlId);
-    expect(ids).toHaveLength(3);
+    expect(ids).toHaveLength(4);
     expect(ids).toContain('sortModel');
     expect(ids).toContain('visibleColumns');
     expect(ids).toContain('columnOrder');
+    expect(ids).toContain('columnFilters');
   });
 
   it('5. sortModel default equals DEFAULT_SORT_MODEL', () => {

@@ -289,10 +289,12 @@ describe('AdvancedFilterPanel — UPP persistence via Customers page', () => {
     });
   });
 
-  it('16. customers.filters control count is 7 after adding isAdvancedFiltersOpen', () => {
+  it('16. customers.filters control count is 5 (geocodeFilter/typeFilter removed in Phase 6B)', () => {
     const ids = customersProfile.controls.map((c) => c.controlId);
-    expect(ids).toHaveLength(7);
+    expect(ids).toHaveLength(5);
     expect(ids).toContain('isAdvancedFiltersOpen');
+    expect(ids).not.toContain('geocodeFilter');
+    expect(ids).not.toContain('typeFilter');
   });
 
   it('19. advanced filter count shown on toggle button', async () => {

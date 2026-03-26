@@ -31,18 +31,12 @@ vi.mock('react-i18next', () => ({
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-type GeocodeStatus = 'success' | 'failed' | 'pending';
-
 interface SheetProps {
   isMobile?: boolean;
   search?: string;
   onSearchChange?: (v: string) => void;
-  geocodeFilter?: GeocodeStatus | '';
-  onGeocodeFilterChange?: (v: GeocodeStatus | '') => void;
   revisionFilter?: '' | 'overdue' | 'week' | 'month';
   onRevisionFilterChange?: (v: '' | 'overdue' | 'week' | 'month') => void;
-  typeFilter?: 'company' | 'person' | '';
-  onTypeFilterChange?: (v: 'company' | 'person' | '') => void;
   sortModel?: SortEntry[];
   onSortModelChange?: (m: SortEntry[]) => void;
   visibleColumns?: string[];
@@ -57,12 +51,8 @@ function renderSheet(overrides: SheetProps = {}) {
     isMobile: true,
     search: '',
     onSearchChange: vi.fn(),
-    geocodeFilter: '',
-    onGeocodeFilterChange: vi.fn(),
     revisionFilter: '',
     onRevisionFilterChange: vi.fn(),
-    typeFilter: '',
-    onTypeFilterChange: vi.fn(),
     sortModel: DEFAULT_SORT_MODEL,
     onSortModelChange: vi.fn(),
     visibleColumns: DEFAULT_VISIBLE_COLUMNS,
@@ -121,18 +111,18 @@ describe('MobileFilterSheet', () => {
     expect(within(sheet).getByRole('button', { name: 'filter_revision_overdue' })).toBeInTheDocument();
   });
 
-  it('7. sheet contains geocode filter', () => {
+  it('7. geocode filter NOT in sheet (removed Phase 6B)', () => {
     renderSheet();
     fireEvent.click(screen.getByTestId('mobile-filter-trigger'));
     const sheet = screen.getByTestId('mobile-filter-sheet');
-    expect(within(sheet).getByTestId('sheet-geocode-filter')).toBeInTheDocument();
+    expect(within(sheet).queryByTestId('sheet-geocode-filter')).toBeNull();
   });
 
-  it('8. sheet contains type filter', () => {
+  it('8. type filter NOT in sheet (removed Phase 6B)', () => {
     renderSheet();
     fireEvent.click(screen.getByTestId('mobile-filter-trigger'));
     const sheet = screen.getByTestId('mobile-filter-sheet');
-    expect(within(sheet).getByTestId('sheet-type-filter')).toBeInTheDocument();
+    expect(within(sheet).queryByTestId('sheet-type-filter')).toBeNull();
   });
 
   it('9. sheet contains primary sort picker with direction', () => {

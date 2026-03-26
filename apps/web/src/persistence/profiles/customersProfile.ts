@@ -1,17 +1,19 @@
 /**
  * Customers page persistence profile (session-scoped).
  *
- * Controls (7):
+ * Controls (5):
  *  - search: text input (debounced)
  *  - viewMode: 'table' | 'cards'
- *  - geocodeFilter: GeocodeStatus | ''
  *  - revisionFilter: '' | 'overdue' | 'week' | 'month'
- *  - typeFilter: 'company' | 'person' | ''
  *  - selectedCustomerId: UUID string | null — last selected customer
- *  - isAdvancedFiltersOpen: boolean — Phase 4B
+ *  - isAdvancedFiltersOpen: boolean
+ *
+ * Removed (Phase 6): geocodeFilter, typeFilter — replaced by per-column checklist filters.
+ * Stale persisted values for those keys are safely ignored on hydration.
  *
  * NOTE: sortBy/sortOrder were removed in Phase 1C.
  * Sorting now lives in customers.grid (local) as sortModel.
+ * Column filters (columnFilters) live in customers.grid (local) as well.
  */
 import type { PersistenceProfile } from '../core/types';
 
@@ -36,21 +38,7 @@ export const customersProfile: PersistenceProfile = {
       validators: [],
     },
     {
-      controlId: 'geocodeFilter',
-      pluginId: 'enum',
-      defaultValue: '',
-      writeMode: 'immediate',
-      validators: [],
-    },
-    {
       controlId: 'revisionFilter',
-      pluginId: 'enum',
-      defaultValue: '',
-      writeMode: 'immediate',
-      validators: [],
-    },
-    {
-      controlId: 'typeFilter',
       pluginId: 'enum',
       defaultValue: '',
       writeMode: 'immediate',

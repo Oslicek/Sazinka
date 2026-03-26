@@ -14,6 +14,7 @@ import {
   sanitizeSortModel,
   sanitizeVisibleColumns,
   sanitizeColumnOrder,
+  sanitizeColumnFilters,
 } from '@/lib/customerColumns';
 
 export const CUSTOMERS_GRID_PROFILE_ID = 'customers.grid';
@@ -44,6 +45,14 @@ export const customersGridProfile: PersistenceProfile = {
       writeMode: 'immediate',
       validators: [],
       sanitize: sanitizeColumnOrder,
+    },
+    {
+      controlId: 'columnFilters',
+      pluginId: 'json',
+      defaultValue: [],
+      writeMode: 'immediate',
+      validators: [],
+      sanitize: sanitizeColumnFilters,
     },
   ],
   readPriority: ['local'],

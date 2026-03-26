@@ -265,40 +265,32 @@ describe('Customers', () => {
   });
 
   // =========================================================================
-  // Toolbar: filter dropdowns always visible
+  // Toolbar: filter controls
   // =========================================================================
   describe('Toolbar filter dropdowns', () => {
-    it('should render both address and revision filter controls', async () => {
+    it('should render revision filter chips (address filter removed Phase 6B)', async () => {
       mockListCustomersExtended.mockResolvedValueOnce({ items: [], total: 0 });
 
       render(<Customers />);
 
       await waitFor(() => {
-        // Address filter (still a SELECT)
-        const addressFilter = screen.getByDisplayValue('filter_address_all');
-        expect(addressFilter).toBeInTheDocument();
-        expect(addressFilter.tagName).toBe('SELECT');
+        // Address filter dropdown removed in Phase 6B
+        expect(screen.queryByDisplayValue('filter_address_all')).toBeNull();
 
-        // Revision filter is now chips — "All" chip is active by default
+        // Revision filter is chips — "All" chip is active by default
         const allChip = screen.getByRole('button', { name: 'filter_revision_all' });
         expect(allChip).toBeInTheDocument();
         expect(allChip).toHaveAttribute('aria-pressed', 'true');
       });
     });
 
-    it('should render address filter options', async () => {
+    it('address filter dropdown is NOT rendered (Phase 6B removal)', async () => {
       mockListCustomersExtended.mockResolvedValueOnce({ items: [], total: 0 });
 
       render(<Customers />);
 
       await waitFor(() => {
-        const addressFilter = screen.getByDisplayValue('filter_address_all');
-        const options = addressFilter.querySelectorAll('option');
-        expect(options).toHaveLength(4);
-        expect(options[0].textContent).toBe('filter_address_all');
-        expect(options[1].textContent).toBe('filter_address_success');
-        expect(options[2].textContent).toBe('filter_address_failed');
-        expect(options[3].textContent).toBe('filter_address_pending');
+        expect(screen.queryByDisplayValue('filter_address_all')).toBeNull();
       });
     });
 

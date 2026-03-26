@@ -152,22 +152,10 @@ describe('Customers page — persistence V2 (Phase 5)', () => {
     expect(chip).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('typeFilter: company value is selectable (C30)', async () => {
+  it('typeFilter dropdown is no longer rendered (Phase 6B removal)', async () => {
     render(<Customers />);
-    const select = screen.getByDisplayValue('filter_type_all');
-    await act(async () => {
-      fireEvent.change(select, { target: { value: 'company' } });
-    });
-    expect(screen.getByDisplayValue('filter_type_company')).toBeInTheDocument();
-  });
-
-  it('typeFilter: person value is selectable (C30)', async () => {
-    render(<Customers />);
-    const select = screen.getByDisplayValue('filter_type_all');
-    await act(async () => {
-      fireEvent.change(select, { target: { value: 'person' } });
-    });
-    expect(screen.getByDisplayValue('filter_type_person')).toBeInTheDocument();
+    // type filter dropdown was removed; querying by its old display value should return null
+    expect(screen.queryByDisplayValue('filter_type_all')).toBeNull();
   });
 
   it('search input exists and accepts text (C31)', async () => {
@@ -193,11 +181,10 @@ describe('Customers page — persistence V2 (Phase 5)', () => {
     expect(screen.getByTestId('view-cards-btn')).toBeInTheDocument();
   });
 
-  it('geocodeFilter unknown value falls back to empty (invalid URL param)', () => {
-    mockSearchParams.geocodeStatus = 'invalid_value' as unknown as string;
+  it('geocodeFilter dropdown is no longer rendered (Phase 6B removal)', () => {
     render(<Customers />);
-    // Should fall back to "all" (empty) option
-    expect(screen.getByDisplayValue('filter_address_all')).toBeInTheDocument();
+    // geocode filter dropdown was removed; no "filter_address_all" select exists
+    expect(screen.queryByDisplayValue('filter_address_all')).toBeNull();
   });
 });
 
@@ -254,18 +241,13 @@ describe('Customers page — P2 UPP wiring', () => {
     });
   });
 
-  it('geocodeFilter survives unmount/remount', async () => {
+  it('stale geocodeFilter in session storage → no crash on unmount/remount', async () => {
+    // Stale legacy value — ignored by current code, must not cause crash
     seedUpp('geocodeFilter', 'failed');
     const { unmount } = render(<Customers />);
-    await waitFor(() => {
-      expect(screen.getByDisplayValue('filter_address_failed')).toBeInTheDocument();
-    });
-    unmount();
-
-    render(<Customers />);
-    await waitFor(() => {
-      expect(screen.getByDisplayValue('filter_address_failed')).toBeInTheDocument();
-    });
+    await waitFor(() => expect(screen.queryByTestId('customer-table')).toBeInTheDocument());
+    expect(() => unmount()).not.toThrow();
+    expect(() => render(<Customers />)).not.toThrow();
   });
 
   it('revisionFilter survives unmount/remount', async () => {
@@ -282,18 +264,13 @@ describe('Customers page — P2 UPP wiring', () => {
     });
   });
 
-  it('typeFilter survives unmount/remount', async () => {
+  it('stale typeFilter in session storage → no crash on unmount/remount', async () => {
+    // Stale legacy value — ignored by current code, must not cause crash
     seedUpp('typeFilter', 'company');
     const { unmount } = render(<Customers />);
-    await waitFor(() => {
-      expect(screen.getByDisplayValue('filter_type_company')).toBeInTheDocument();
-    });
-    unmount();
-
-    render(<Customers />);
-    await waitFor(() => {
-      expect(screen.getByDisplayValue('filter_type_company')).toBeInTheDocument();
-    });
+    await waitFor(() => expect(screen.queryByTestId('customer-table')).toBeInTheDocument());
+    expect(() => unmount()).not.toThrow();
+    expect(() => render(<Customers />)).not.toThrow();
   });
 
   it('sortBy survives unmount/remount', async () => {
@@ -337,13 +314,12 @@ describe('Customers page — P2 UPP wiring', () => {
     });
   });
 
-  it('(6B) UPP geocodeFilter persists despite URL geocodeStatus', async () => {
+  it('(6B) stale UPP geocodeFilter + URL geocodeStatus → no crash (both ignored)', async () => {
     seedUpp('geocodeFilter', 'failed');
-    mockSearchParams.geocodeStatus = 'ok';  // URL no longer overrides
-    render(<Customers />);
-    await waitFor(() => {
-      expect(screen.getByDisplayValue('filter_address_failed')).toBeInTheDocument();
-    });
+    mockSearchParams.geocodeStatus = 'ok';
+    expect(() => render(<Customers />)).not.toThrow();
+    // geocodeFilter dropdown should not appear
+    expect(screen.queryByDisplayValue('filter_address_failed')).toBeNull();
   });
 
   it('(6B) UPP revisionFilter=overdue persists despite URL revisionFilter=week', async () => {
