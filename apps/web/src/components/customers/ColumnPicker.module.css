@@ -31,7 +31,7 @@
 .popoverHeader {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding: 8px 12px;
   border-bottom: 1px solid var(--color-border, #d1d5db);
 }
@@ -68,7 +68,7 @@
   align-items: center;
   gap: 8px;
   padding: 4px 12px;
-  cursor: grab;
+  cursor: default;
 }
 
 .columnRow:hover {
@@ -81,11 +81,10 @@
 }
 
 .dragHandle {
+  display: inline-flex;
   cursor: grab;
   color: var(--color-text-muted, #9ca3af);
   padding: 2px;
-  background: none;
-  border: none;
   line-height: 1;
   font-size: 14px;
   flex-shrink: 0;
@@ -93,8 +92,8 @@
   user-select: none;
 }
 
-.dragHandle:disabled {
-  cursor: default;
+.dragHandle:active {
+  cursor: grabbing;
 }
 
 .checkbox {
@@ -108,7 +107,8 @@
   font-size: 13px;
   font-weight: 400;
   line-height: 1.35;
-  color: var(--color-text, #1e293b);
+  color: #0f172a;
+  overflow-wrap: anywhere;
 }
 
 .maxHint {

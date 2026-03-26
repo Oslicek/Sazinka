@@ -229,6 +229,7 @@
   "col_picker_sort_warning_body": "Skrytím týchto stĺpcov sa odstránia nasledujúce pravidlá zoradenia:",
   "col_picker_cancel": "Zrušiť",
   "col_picker_confirm": "Potvrdiť",
+  "col_picker_drag_reorder": "Zmeniť poradie stĺpca {{column}}",
 
   "filter_revision_label": "Termín revízie",
   "filter_clear_search": "Vymazať hľadanie",

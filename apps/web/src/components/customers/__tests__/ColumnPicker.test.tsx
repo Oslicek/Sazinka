@@ -23,6 +23,9 @@ import type { SortEntry } from '@/lib/customerColumns';
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, opts?: Record<string, unknown>) => {
+      if (opts && 'defaultValue' in opts && opts.defaultValue === '') {
+        return '';
+      }
       if (opts) {
         return `${key}(${Object.entries(opts).map(([k, v]) => `${k}=${v}`).join(',')})`;
       }
@@ -45,7 +48,7 @@ interface PickerProps {
   onClose?: () => void;
 }
 
-import { ColumnPicker } from '../ColumnPicker';
+import { ColumnPicker, fallbackColumnTitle } from '../ColumnPicker';
 
 function renderPicker(overrides: PickerProps = {}) {
   const props: PickerProps = {
@@ -91,10 +94,10 @@ describe('Phase 3A: ColumnPicker — rendering', () => {
     }
   });
 
-  it('5. each column shows its translated labelKey', () => {
+  it('5. each column shows a human-readable title (fallback when t default is empty)', () => {
     renderPicker();
     for (const col of ALL_COLUMNS) {
-      expect(screen.getByText(col.labelKey)).toBeInTheDocument();
+      expect(screen.getByText(fallbackColumnTitle(col.labelKey))).toBeInTheDocument();
     }
   });
 
@@ -114,14 +117,14 @@ describe('Phase 3A: ColumnPicker — visibility checkboxes', () => {
   it('7. visible column → checkbox is checked', () => {
     const visibleColumns = ['name', 'city'];
     renderPicker({ visibleColumns, onVisibleColumnsChange });
-    const nameCheckbox = screen.getByRole('checkbox', { name: /col_name/i });
+    const nameCheckbox = screen.getByRole('checkbox', { name: /^name$/i });
     expect(nameCheckbox).toBeChecked();
   });
 
   it('8. hidden column → checkbox is unchecked', () => {
     const visibleColumns = ['name', 'city'];
     renderPicker({ visibleColumns, onVisibleColumnsChange });
-    const emailCheckbox = screen.getByRole('checkbox', { name: /col_email/i });
+    const emailCheckbox = screen.getByRole('checkbox', { name: /^email$/i });
     expect(emailCheckbox).not.toBeChecked();
   });
 
@@ -129,7 +132,7 @@ describe('Phase 3A: ColumnPicker — visibility checkboxes', () => {
     renderPicker({ onVisibleColumnsChange });
     for (const coreId of CORE_COLUMN_IDS) {
       const col = ALL_COLUMNS.find((c) => c.id === coreId)!;
-      const checkbox = screen.getByRole('checkbox', { name: new RegExp(col.labelKey, 'i') });
+      const checkbox = screen.getByRole('checkbox', { name: fallbackColumnTitle(col.labelKey) });
       expect(checkbox).toBeChecked();
       expect(checkbox).toBeDisabled();
     }
@@ -138,7 +141,7 @@ describe('Phase 3A: ColumnPicker — visibility checkboxes', () => {
   it('10. checking a hidden column → onVisibleColumnsChange called with that column added', () => {
     const visibleColumns = ['name', 'city'];
     renderPicker({ visibleColumns, onVisibleColumnsChange });
-    const emailCheckbox = screen.getByRole('checkbox', { name: /col_email/i });
+    const emailCheckbox = screen.getByRole('checkbox', { name: /^email$/i });
     fireEvent.click(emailCheckbox);
     expect(onVisibleColumnsChange).toHaveBeenCalledWith(
       expect.arrayContaining(['name', 'city', 'email']),
@@ -148,7 +151,7 @@ describe('Phase 3A: ColumnPicker — visibility checkboxes', () => {
   it('11. unchecking a visible non-core column → onVisibleColumnsChange called without it', () => {
     const visibleColumns = ['name', 'city', 'deviceCount'];
     renderPicker({ visibleColumns, onVisibleColumnsChange });
-    const cityCheckbox = screen.getByRole('checkbox', { name: /col_city/i });
+    const cityCheckbox = screen.getByRole('checkbox', { name: /^city$/i });
     fireEvent.click(cityCheckbox);
     const result = onVisibleColumnsChange.mock.calls[0][0] as string[];
     expect(result).not.toContain('city');
@@ -158,7 +161,7 @@ describe('Phase 3A: ColumnPicker — visibility checkboxes', () => {
   it('12. toggle preserves order of other visible columns', () => {
     const visibleColumns = ['name', 'city', 'deviceCount'];
     renderPicker({ visibleColumns, onVisibleColumnsChange });
-    const emailCheckbox = screen.getByRole('checkbox', { name: /col_email/i });
+    const emailCheckbox = screen.getByRole('checkbox', { name: /^email$/i });
     fireEvent.click(emailCheckbox);
     const result = onVisibleColumnsChange.mock.calls[0][0] as string[];
     const nameIdx = result.indexOf('name');
@@ -177,7 +180,7 @@ describe('Phase 3A: ColumnPicker — visibility checkboxes', () => {
       onVisibleColumnsChange,
       onSortModelChange,
     });
-    const cityCheckbox = screen.getByRole('checkbox', { name: /col_city/i });
+    const cityCheckbox = screen.getByRole('checkbox', { name: /^city$/i });
     fireEvent.click(cityCheckbox);
     expect(screen.getByRole('dialog', { name: /col_picker_sort_warning_title/i })).toBeInTheDocument();
   });
@@ -189,7 +192,7 @@ describe('Phase 3A: ColumnPicker — visibility checkboxes', () => {
       sortModel: [{ column: 'city', direction: 'asc' }],
       onVisibleColumnsChange,
     });
-    fireEvent.click(screen.getByRole('checkbox', { name: /col_city/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /^city$/i }));
     expect(screen.getByRole('button', { name: /col_picker_cancel/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /col_picker_confirm/i })).toBeInTheDocument();
   });
@@ -203,7 +206,7 @@ describe('Phase 3A: ColumnPicker — visibility checkboxes', () => {
       onVisibleColumnsChange,
       onSortModelChange,
     });
-    fireEvent.click(screen.getByRole('checkbox', { name: /col_city/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /^city$/i }));
     fireEvent.click(screen.getByRole('button', { name: /col_picker_cancel/i }));
     expect(onSortModelChange).not.toHaveBeenCalled();
     expect(onVisibleColumnsChange).not.toHaveBeenCalled();
@@ -218,7 +221,7 @@ describe('Phase 3A: ColumnPicker — visibility checkboxes', () => {
       onVisibleColumnsChange,
       onSortModelChange,
     });
-    fireEvent.click(screen.getByRole('checkbox', { name: /col_city/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /^city$/i }));
     fireEvent.click(screen.getByRole('button', { name: /col_picker_confirm/i }));
     const newVisible = onVisibleColumnsChange.mock.calls[0][0] as string[];
     expect(newVisible).not.toContain('city');
@@ -236,7 +239,7 @@ describe('Phase 3A: ColumnPicker — visibility checkboxes', () => {
       onVisibleColumnsChange,
       onSortModelChange,
     });
-    fireEvent.click(screen.getByRole('checkbox', { name: /col_city/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /^city$/i }));
     fireEvent.keyDown(screen.getByRole('dialog', { name: /col_picker_sort_warning_title/i }), {
       key: 'Escape',
     });
@@ -258,7 +261,7 @@ describe('Phase 3A: ColumnPicker — max columns limit', () => {
     renderPicker({ visibleColumns: padded });
     const hidden = ALL_COLUMNS.filter((c) => !padded.includes(c.id) && !c.core);
     if (hidden.length > 0) {
-      const checkbox = screen.getByRole('checkbox', { name: new RegExp(hidden[0].labelKey, 'i') });
+      const checkbox = screen.getByRole('checkbox', { name: fallbackColumnTitle(hidden[0].labelKey) });
       expect(checkbox).toBeDisabled();
     }
   });
@@ -273,7 +276,7 @@ describe('Phase 3A: ColumnPicker — max columns limit', () => {
     renderPicker({ visibleColumns: padded });
     const hidden = ALL_COLUMNS.filter((c) => !padded.includes(c.id) && !c.core);
     if (hidden.length > 0) {
-      const checkbox = screen.getByRole('checkbox', { name: new RegExp(hidden[0].labelKey, 'i') });
+      const checkbox = screen.getByRole('checkbox', { name: fallbackColumnTitle(hidden[0].labelKey) });
       expect(
         checkbox.closest('[title]') || checkbox.closest('[aria-label]') || checkbox.parentElement,
       ).toBeTruthy();
@@ -292,7 +295,7 @@ describe('Phase 3A: ColumnPicker — max columns limit', () => {
     const nonCoreVisible = padded.find((id) => !CORE_COLUMN_IDS.includes(id));
     if (nonCoreVisible) {
       const col = ALL_COLUMNS.find((c) => c.id === nonCoreVisible)!;
-      fireEvent.click(screen.getByRole('checkbox', { name: new RegExp(col.labelKey, 'i') }));
+      fireEvent.click(screen.getByRole('checkbox', { name: fallbackColumnTitle(col.labelKey) }));
       expect(onVisibleColumnsChange).toHaveBeenCalled();
     }
   });
@@ -353,7 +356,7 @@ describe('Phase 3A: ColumnPicker — reorder (drag-and-drop)', () => {
 
   it('29. core column can be reordered (drag handles present for core columns)', () => {
     renderPicker();
-    const handles = screen.getAllByRole('button', { name: /drag|reorder/i });
+    const handles = screen.getAllByText('⠿');
     expect(handles.length).toBeGreaterThanOrEqual(CORE_COLUMN_IDS.length);
   });
 });
@@ -367,7 +370,7 @@ describe('Phase 3A: ColumnPicker — accessibility', () => {
   it('31. each checkbox has an accessible label matching column name', () => {
     renderPicker();
     for (const col of ALL_COLUMNS) {
-      const checkbox = screen.getByRole('checkbox', { name: new RegExp(col.labelKey, 'i') });
+      const checkbox = screen.getByRole('checkbox', { name: fallbackColumnTitle(col.labelKey) });
       expect(checkbox).toBeInTheDocument();
     }
   });

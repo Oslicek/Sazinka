@@ -57,6 +57,21 @@ function removeFromSort(sortModel: SortEntry[], hidingColumns: string[]): SortEn
   return next.length > 0 ? next : [...DEFAULT_SORT_MODEL];
 }
 
+/** Human-readable title when i18n returns no string for the label key. */
+export function fallbackColumnTitle(labelKey: string): string {
+  const rest = labelKey.startsWith('col_') ? labelKey.slice(4) : labelKey;
+  return rest.replace(/_/g, ' ');
+}
+
+function resolveColumnDisplayName(
+  t: (key: string, opts?: { defaultValue?: string }) => string,
+  labelKey: string,
+): string {
+  const raw = t(labelKey, { defaultValue: '' });
+  const trimmed = typeof raw === 'string' ? raw.trim() : '';
+  return trimmed || fallbackColumnTitle(labelKey);
+}
+
 export function ColumnPicker({
   visibleColumns,
   columnOrder,
@@ -200,13 +215,7 @@ export function ColumnPicker({
         }}
       >
         <div className={styles.popoverHeader}>
-          <span style={{ fontSize: 13, fontWeight: 500 }}>
-            {t('col_picker_columns_label', {
-              visible: visibleColumns.length,
-              total: ALL_COLUMNS.length,
-            })}
-          </span>
-          <button className={styles.resetBtn} onClick={handleReset}>
+          <button type="button" className={styles.resetBtn} onClick={handleReset}>
             {t('col_picker_reset')}
           </button>
         </div>
@@ -226,6 +235,7 @@ export function ColumnPicker({
               const isVisible = visibleSet.has(col.id);
               const isCore = CORE_COLUMN_IDS.includes(col.id);
               const isDisabled = isCore || (!isVisible && atMax);
+              const displayName = resolveColumnDisplayName(t, col.labelKey);
 
               return (
                 <div
@@ -235,25 +245,25 @@ export function ColumnPicker({
                   onDrop={(e) => handleDrop(e, col.id)}
                   title={!isVisible && atMax ? t('col_picker_max_limit', { max: MAX_VISIBLE_COLUMNS }) : undefined}
                 >
-                  <button
-                    type="button"
+                  <span
+                    role="button"
+                    tabIndex={-1}
                     className={styles.dragHandle}
-                    aria-label={`drag ${col.labelKey}`}
+                    aria-label={t('col_picker_drag_reorder', { column: displayName })}
                     draggable={!isCore}
                     onDragStart={(e) => handleDragStart(e, col.id)}
                     onDragEnd={handleDragEnd}
-                    tabIndex={-1}
                   >
                     ⠿
-                  </button>
-                  <span className={styles.columnName}>{t(col.labelKey)}</span>
+                  </span>
+                  <span className={styles.columnName}>{displayName}</span>
                   <input
                     type="checkbox"
                     id={`col-pick-${col.id}`}
                     className={styles.checkbox}
                     checked={isVisible}
                     disabled={isDisabled}
-                    aria-label={t(col.labelKey)}
+                    aria-label={displayName}
                     onChange={() => handleToggleColumn(col.id)}
                   />
                 </div>
@@ -280,12 +290,16 @@ export function ColumnPicker({
             <div className={styles.modalBody}>
               {t('col_picker_sort_warning_body')}
               <ul className={styles.affectedList}>
-                {confirmState.affectedSortEntries.map((e) => (
-                  <li key={e.column}>
-                    {t(ALL_COLUMNS.find((c) => c.id === e.column)?.labelKey ?? e.column)}{' '}
-                    {e.direction === 'asc' ? '↑' : '↓'}
-                  </li>
-                ))}
+                {confirmState.affectedSortEntries.map((e) => {
+                  const labelKey = ALL_COLUMNS.find((c) => c.id === e.column)?.labelKey ?? e.column;
+                  const affectedDisplayName = resolveColumnDisplayName(t, labelKey);
+                  return (
+                    <li key={e.column}>
+                      {affectedDisplayName}{' '}
+                      {e.direction === 'asc' ? '↑' : '↓'}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
             <div className={styles.modalActions}>
