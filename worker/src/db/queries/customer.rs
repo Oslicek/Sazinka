@@ -1195,9 +1195,26 @@ mod tests {
     #[test]
     fn build_order_by_invalid_direction_skipped() {
         let result = build_order_by(&[se("name", "sideways"), se("city", "asc")]);
-        // sideways direction causes name entry to be skipped
         assert!(!result.contains("sideways"));
         assert!(result.contains("c.city"));
+    }
+
+    #[test]
+    fn build_order_by_uppercase_asc_rejected() {
+        let result = build_order_by(&[se("name", "ASC")]);
+        assert_eq!(result, "c.name ASC NULLS LAST, c.id ASC", "uppercase ASC should be rejected, falling back to default");
+    }
+
+    #[test]
+    fn build_order_by_uppercase_desc_rejected() {
+        let result = build_order_by(&[se("name", "DESC")]);
+        assert_eq!(result, "c.name ASC NULLS LAST, c.id ASC", "uppercase DESC should be rejected, falling back to default");
+    }
+
+    #[test]
+    fn build_order_by_mixed_case_direction_rejected() {
+        let result = build_order_by(&[se("name", "Asc"), se("city", "Desc")]);
+        assert_eq!(result, "c.name ASC NULLS LAST, c.id ASC", "mixed case directions should be rejected");
     }
 
     #[test]
@@ -1319,6 +1336,95 @@ mod tests {
         assert!(result.starts_with("c.name ASC NULLS LAST"));
     }
 
+    #[test]
+    fn resolve_sort_legacy_name_asc() {
+        let req = ListCustomersRequest {
+            sort_by: Some("name".to_string()),
+            sort_order: Some("asc".to_string()),
+            ..Default::default()
+        };
+        let result = resolve_sort(&req);
+        assert!(result.starts_with("c.name ASC NULLS LAST"));
+        assert!(result.ends_with("c.id ASC"));
+    }
+
+    #[test]
+    fn resolve_sort_legacy_name_desc() {
+        let req = ListCustomersRequest {
+            sort_by: Some("name".to_string()),
+            sort_order: Some("desc".to_string()),
+            ..Default::default()
+        };
+        let result = resolve_sort(&req);
+        assert!(result.starts_with("c.name DESC NULLS FIRST"));
+    }
+
+    #[test]
+    fn resolve_sort_legacy_city_desc() {
+        let req = ListCustomersRequest {
+            sort_by: Some("city".to_string()),
+            sort_order: Some("desc".to_string()),
+            ..Default::default()
+        };
+        let result = resolve_sort(&req);
+        assert!(result.starts_with("c.city DESC NULLS FIRST"));
+    }
+
+    #[test]
+    fn resolve_sort_legacy_next_revision() {
+        let req = ListCustomersRequest {
+            sort_by: Some("nextRevision".to_string()),
+            sort_order: Some("asc".to_string()),
+            ..Default::default()
+        };
+        let result = resolve_sort(&req);
+        assert!(result.starts_with("next_revision_date ASC NULLS LAST"));
+    }
+
+    #[test]
+    fn resolve_sort_legacy_device_count() {
+        let req = ListCustomersRequest {
+            sort_by: Some("deviceCount".to_string()),
+            sort_order: Some("desc".to_string()),
+            ..Default::default()
+        };
+        let result = resolve_sort(&req);
+        assert!(result.starts_with("device_count DESC NULLS FIRST"));
+    }
+
+    #[test]
+    fn resolve_sort_legacy_created_at() {
+        let req = ListCustomersRequest {
+            sort_by: Some("createdAt".to_string()),
+            sort_order: Some("asc".to_string()),
+            ..Default::default()
+        };
+        let result = resolve_sort(&req);
+        assert!(result.starts_with("c.created_at ASC NULLS LAST"));
+    }
+
+    #[test]
+    fn resolve_sort_legacy_unmapped_column_defaults_to_name() {
+        let req = ListCustomersRequest {
+            sort_by: Some("email".to_string()),
+            sort_order: Some("asc".to_string()),
+            ..Default::default()
+        };
+        let result = resolve_sort(&req);
+        assert!(result.starts_with("c.name ASC"), "unmapped legacy column should fall back to c.name");
+    }
+
+    #[test]
+    fn resolve_sort_legacy_missing_sort_order_defaults_to_asc() {
+        let req = ListCustomersRequest {
+            sort_by: Some("city".to_string()),
+            sort_order: None,
+            ..Default::default()
+        };
+        let result = resolve_sort(&req);
+        assert!(result.starts_with("c.city ASC NULLS LAST"));
+    }
+
     // ── Integration-level path: ORDER BY clause construction ─────────────────
     // These tests verify the full resolve_sort + build_order_by path as it would
     // be used by list_customers_extended (no live DB required).
@@ -1390,8 +1496,11 @@ mod tests {
 
     #[test]
     fn integration_tie_breaker_ensures_deterministic_pagination() {
-        // Any non-unique sort key must be followed by c.id to avoid row swapping between pages
-        for col in &["name", "city", "email", "phone", "street", "type"] {
+        for col in &[
+            "name", "type", "city", "street", "postalCode",
+            "phone", "email", "deviceCount", "nextRevision",
+            "geocodeStatus", "createdAt",
+        ] {
             let result = build_order_by(&[se(col, "asc")]);
             assert!(
                 result.ends_with("c.id ASC"),

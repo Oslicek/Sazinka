@@ -390,7 +390,6 @@ describe('Phase 2B: CustomerTable — server-authoritative ordering', () => {
     const betaIndex = rows.findIndex((r) => r.textContent?.includes('Beta'));
     const alphaIndex = rows.findIndex((r) => r.textContent?.includes('Alpha'));
     expect(betaIndex).toBeLessThan(alphaIndex);
-    rerender;
   });
 
   it('25. when parent passes updated sorted data, table renders rows in the new provided order', () => {
@@ -605,7 +604,7 @@ describe('Phase 2B: CustomerTable — edge cases', () => {
   });
 
   it('28. sortModel with hidden/non-table column → indicators shown only for visible column headers', () => {
-    // 'email' is not a table column so no indicator; 'name' is visible so shows indicator
+    // 'email' is hidden by default so no header rendered; 'name' is visible so shows indicator
     renderTable({
       sortModel: [
         { column: 'name', direction: 'asc' },
@@ -630,6 +629,7 @@ describe('Newly-sortable columns: header click and indicator', () => {
     { catalogId: 'postalCode',   headerPattern: /col_postal_code/i, colLabel: 'postalCode' },
     { catalogId: 'phone',        headerPattern: /col_phone/i,       colLabel: 'phone' },
     { catalogId: 'email',        headerPattern: /col_email/i,       colLabel: 'email' },
+    { catalogId: 'createdAt',    headerPattern: /col_created_at/i,  colLabel: 'createdAt' },
   ];
 
   beforeEach(() => {

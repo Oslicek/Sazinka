@@ -25,6 +25,10 @@ import type { SortEntry } from '../customerColumns';
 // ── Catalog integrity ─────────────────────────────────────────────────────────
 
 describe('Phase 1A: customerColumns — catalog integrity', () => {
+  it('0. ALL_COLUMNS has exactly 11 columns', () => {
+    expect(ALL_COLUMNS).toHaveLength(11);
+  });
+
   it('1. ALL_COLUMNS has no duplicate IDs', () => {
     const ids = ALL_COLUMNS.map((c) => c.id);
     expect(new Set(ids).size).toBe(ids.length);
@@ -161,6 +165,18 @@ describe('Phase 1A: getSortField helper', () => {
   it('25. geocodeStatus column returns sortField geocodeStatus', () => {
     expect(getSortField('geocodeStatus')).toBe('geocodeStatus');
   });
+
+  it('26. deviceCount column returns sortField deviceCount', () => {
+    expect(getSortField('deviceCount')).toBe('deviceCount');
+  });
+
+  it('27. nextRevision column returns sortField nextRevision', () => {
+    expect(getSortField('nextRevision')).toBe('nextRevision');
+  });
+
+  it('28. createdAt column returns sortField createdAt', () => {
+    expect(getSortField('createdAt')).toBe('createdAt');
+  });
 });
 
 // ── isValidSortModel ──────────────────────────────────────────────────────────
@@ -216,10 +232,6 @@ describe('Phase 1A: isValidSortModel validator', () => {
   });
 
   it('32. array with column referencing non-existent column → false', () => {
-    expect(isValidSortModel([{ column: 'nonexistent_col', direction: 'asc' }])).toBe(false);
-  });
-
-  it('33. array with column referencing non-existent column → false', () => {
     expect(isValidSortModel([{ column: 'nonexistent_col', direction: 'asc' }])).toBe(false);
   });
 
