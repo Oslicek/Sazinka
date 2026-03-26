@@ -88,18 +88,27 @@
   border: none;
   line-height: 1;
   font-size: 14px;
+  flex-shrink: 0;
+  touch-action: none;
+  user-select: none;
+}
+
+.dragHandle:disabled {
+  cursor: default;
 }
 
 .checkbox {
   flex-shrink: 0;
 }
 
-.label {
-  display: inline;
+/* Span — avoids global `label { display: block }` in index.css fighting flex layout */
+.columnName {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 13px;
-  flex: 1;
-  color: var(--color-text-primary, #1a1a1a);
-  margin-bottom: 0;
+  font-weight: 400;
+  line-height: 1.35;
+  color: var(--color-text, #1e293b);
 }
 
 .maxHint {

@@ -135,13 +135,36 @@ export function ColumnPicker({
 
   const dragItemRef = useRef<string | null>(null);
 
-  const handleDragStart = useCallback((columnId: string) => {
-    dragItemRef.current = columnId;
+  const handleDragStart = useCallback(
+    (e: React.DragEvent, columnId: string) => {
+      dragItemRef.current = columnId;
+      e.dataTransfer.setData('text/plain', columnId);
+      e.dataTransfer.effectAllowed = 'move';
+    },
+    [],
+  );
+
+  const handleDragEnd = useCallback(() => {
+    dragItemRef.current = null;
+  }, []);
+
+  const handleDragOverRow = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
   }, []);
 
   const handleDrop = useCallback(
-    (targetId: string) => {
-      const dragId = dragItemRef.current;
+    (e: React.DragEvent, targetId: string) => {
+      e.preventDefault();
+      const dragId =
+        dragItemRef.current ||
+        (() => {
+          try {
+            return e.dataTransfer.getData('text/plain');
+          } catch {
+            return null;
+          }
+        })();
       if (!dragId || dragId === targetId) return;
       const newOrder = [...orderedColumns];
       const fromIdx = newOrder.indexOf(dragId);
@@ -208,21 +231,22 @@ export function ColumnPicker({
                 <div
                   key={col.id}
                   className={`${styles.columnRow} ${isDisabled ? styles.disabled : ''}`}
-                  draggable={!isCore}
-                  onDragStart={() => handleDragStart(col.id)}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={() => handleDrop(col.id)}
+                  onDragOver={handleDragOverRow}
+                  onDrop={(e) => handleDrop(e, col.id)}
                   title={!isVisible && atMax ? t('col_picker_max_limit', { max: MAX_VISIBLE_COLUMNS }) : undefined}
                 >
                   <button
+                    type="button"
                     className={styles.dragHandle}
                     aria-label={`drag ${col.labelKey}`}
-                    draggable
-                    onDragStart={() => handleDragStart(col.id)}
+                    draggable={!isCore}
+                    onDragStart={(e) => handleDragStart(e, col.id)}
+                    onDragEnd={handleDragEnd}
                     tabIndex={-1}
                   >
                     ⠿
                   </button>
+                  <span className={styles.columnName}>{t(col.labelKey)}</span>
                   <input
                     type="checkbox"
                     id={`col-pick-${col.id}`}
@@ -232,9 +256,6 @@ export function ColumnPicker({
                     aria-label={t(col.labelKey)}
                     onChange={() => handleToggleColumn(col.id)}
                   />
-                  <label htmlFor={`col-pick-${col.id}`} className={styles.label}>
-                    {t(col.labelKey)}
-                  </label>
                 </div>
               );
             })}
