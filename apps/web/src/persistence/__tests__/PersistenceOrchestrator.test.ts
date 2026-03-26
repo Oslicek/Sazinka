@@ -150,6 +150,28 @@ describe('PersistenceOrchestrator', () => {
     expect(writeSpy).toHaveBeenCalledOnce();
   });
 
+  it('commit applies sanitize before writing when control has a sanitizer', () => {
+    const sanitize = (v: unknown) => (typeof v === 'string' ? v.trim().toLowerCase() : 'default');
+    const profile = makeProfile('test', [makeControl('tag', 'default', { sanitize })]);
+    const ctx = makeCtx();
+    orchestrator.commit(profile, 'tag', '  HELLO  ', ctx);
+
+    const key = makeKey({ userId: ctx.userId, profileId: 'test', controlId: 'tag' });
+    expect(sessionAdapter.readRaw(key)?.value).toBe('hello');
+  });
+
+  it('commit sanitize no-op check uses sanitized value', () => {
+    const sanitize = (v: unknown) => (typeof v === 'string' ? v.trim() : 'default');
+    const profile = makeProfile('test', [makeControl('tag', 'default', { sanitize })]);
+    const ctx = makeCtx();
+    const key = makeKey({ userId: ctx.userId, profileId: 'test', controlId: 'tag' });
+    sessionAdapter.writeRaw(key, makeEnvelope('hello', 'session'));
+
+    const writeSpy = vi.spyOn(sessionAdapter, 'write');
+    orchestrator.commit(profile, 'tag', '  hello  ', ctx);
+    expect(writeSpy).not.toHaveBeenCalled();
+  });
+
   // ── Clear ──────────────────────────────────────────────────────────────────
 
   it('clear removes value from all writeTargets', () => {

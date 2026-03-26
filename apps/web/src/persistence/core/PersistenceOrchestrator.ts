@@ -60,6 +60,11 @@ export class PersistenceOrchestrator {
   ): void {
     if (ctx.userId === null) return;
 
+    const control = profile.controls.find((c) => c.controlId === controlId);
+    const sanitized = control?.sanitize
+      ? (control.sanitize as (v: unknown) => unknown)(value)
+      : value;
+
     const key = makeKey({
       userId: ctx.userId,
       profileId: profile.profileId,
@@ -70,10 +75,10 @@ export class PersistenceOrchestrator {
     const firstTarget = profile.writeTargets[0];
     if (firstTarget) {
       const existing = this.adapters[firstTarget]?.read(key, ctx);
-      if (isValidEnvelope(existing) && existing.value === value) return;
+      if (isValidEnvelope(existing) && existing.value === sanitized) return;
     }
 
-    const envelope = makeEnvelope(value, profile.writeTargets[0] ?? 'session');
+    const envelope = makeEnvelope(sanitized, profile.writeTargets[0] ?? 'session');
     for (const channelId of profile.writeTargets) {
       const adapter = this.adapters[channelId];
       if (adapter) {
