@@ -1,9 +1,13 @@
 /**
  * customerColumns — single source of truth for all customer table columns.
  *
- * SortEntry is also defined in packages/shared-types/src/customer.ts (NATS contract);
- * this file re-exports it for frontend convenience alongside column metadata.
+ * SortEntry is the canonical definition from the NATS contract
+ * (packages/shared-types/src/customer.ts); re-exported here for frontend convenience.
  */
+
+import type { SortEntry } from '@shared/customer';
+
+export type { SortEntry };
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -18,11 +22,6 @@ export interface CustomerColumnDef {
   core: boolean;
   defaultVisible: boolean;
   defaultWidth?: number;
-}
-
-export interface SortEntry {
-  column: string;
-  direction: 'asc' | 'desc';
 }
 
 // ── Catalog ───────────────────────────────────────────────────────────────────
