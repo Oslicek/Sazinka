@@ -9,7 +9,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import React from 'react';
 import { makeKey, makeEnvelope } from '@/persistence/core/types';
-import { sessionAdapter } from '@/persistence/adapters/singletons';
 import { CUSTOMERS_PROFILE_ID } from '@/persistence/profiles/customersProfile';
 
 // ---------------------------------------------------------------------------
@@ -89,6 +88,10 @@ vi.mock('@/components/common/SplitView', () => ({
 // ---------------------------------------------------------------------------
 
 import { Customers } from '../Customers';
+import * as customerService from '@/services/customerService';
+
+const mockListCustomers = customerService.listCustomersExtended as ReturnType<typeof vi.fn>;
+const mockGetSummary = customerService.getCustomerSummary as ReturnType<typeof vi.fn>;
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -97,6 +100,8 @@ import { Customers } from '../Customers';
 describe('Customers page — persistence V2 (Phase 5)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockListCustomers.mockResolvedValue({ items: [], total: 0 });
+    mockGetSummary.mockResolvedValue(null);
     sessionStorage.clear();
     localStorage.clear();
     Object.keys(mockSearchParams).forEach((k) => delete mockSearchParams[k]);
@@ -175,12 +180,11 @@ describe('Customers page — persistence V2 (Phase 5)', () => {
     expect((input as HTMLInputElement).value).toBe('test search');
   });
 
-  it('URL view param hydrates viewMode', () => {
+  it('(6B) URL view param is ignored — table mode remains default', () => {
     mockSearchParams.view = 'cards';
     render(<Customers />);
-    // Cards view button should be present
-    const cardsBtn = screen.getByTestId('view-cards-btn');
-    expect(cardsBtn).toBeInTheDocument();
+    expect(screen.getByTestId('view-table-btn')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('view-cards-btn')).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('view toggle buttons are present', () => {
@@ -203,6 +207,13 @@ describe('Customers page — persistence V2 (Phase 5)', () => {
 
 const TEST_USER_ID = 'test-user-upp';
 
+vi.mock('@/stores/authStore', () => ({
+  useAuthStore: vi.fn((selector?: (s: { user: { id: string } | null }) => unknown) => {
+    const state = { user: { id: 'test-user-upp' } };
+    return selector ? selector(state) : state;
+  }),
+}));
+
 function seedUpp(controlId: string, value: unknown) {
   const key = makeKey({ userId: TEST_USER_ID, profileId: CUSTOMERS_PROFILE_ID, controlId });
   sessionStorage.setItem(key, JSON.stringify(makeEnvelope(value, 'session')));
@@ -211,16 +222,11 @@ function seedUpp(controlId: string, value: unknown) {
 describe('Customers page — P2 UPP wiring', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockListCustomers.mockResolvedValue({ items: [], total: 0 });
+    mockGetSummary.mockResolvedValue(null);
     sessionStorage.clear();
     localStorage.clear();
     Object.keys(mockSearchParams).forEach((k) => delete mockSearchParams[k]);
-    // Seed auth store with test user
-    vi.mock('@/stores/authStore', () => ({
-      useAuthStore: vi.fn((selector?: (s: { user: { id: string } | null }) => unknown) => {
-        const state = { user: { id: TEST_USER_ID } };
-        return selector ? selector(state) : state;
-      }),
-    }));
   });
 
   afterEach(() => {
@@ -237,14 +243,14 @@ describe('Customers page — P2 UPP wiring', () => {
     seedUpp('viewMode', 'cards');
     const { unmount } = render(<Customers />);
     await waitFor(() => {
-      expect(screen.getByTestId('view-cards-btn')).toBeInTheDocument();
+      expect(screen.getByTestId('view-cards-btn')).toHaveAttribute('aria-pressed', 'true');
     });
     unmount();
 
     render(<Customers />);
     await waitFor(() => {
-      // Cards button should still be present (page restored from UPP)
-      expect(screen.getByTestId('view-cards-btn')).toBeInTheDocument();
+      expect(screen.getByTestId('view-cards-btn')).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByTestId('view-table-btn')).toHaveAttribute('aria-pressed', 'false');
     });
   });
 
@@ -325,9 +331,9 @@ describe('Customers page — P2 UPP wiring', () => {
     seedUpp('viewMode', 'table');
     mockSearchParams.view = 'cards';  // URL no longer overrides
     render(<Customers />);
-    // Table view is active (UPP wins)
     await waitFor(() => {
-      expect(screen.getByTestId('view-table-btn')).toBeInTheDocument();
+      expect(screen.getByTestId('view-table-btn')).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByTestId('view-cards-btn')).toHaveAttribute('aria-pressed', 'false');
     });
   });
 

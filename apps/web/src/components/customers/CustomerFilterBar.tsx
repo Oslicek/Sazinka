@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ColumnPicker } from './ColumnPicker';
+import { ALL_COLUMNS } from '@/lib/customerColumns';
 import type { SortEntry } from '@/lib/customerColumns';
 import styles from './CustomerFilterBar.module.css';
 
@@ -76,6 +77,7 @@ export function CustomerFilterBar({
             type="text"
             className={styles.search}
             placeholder={t('search_placeholder')}
+            aria-label={t('search_placeholder')}
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
           />
@@ -99,6 +101,7 @@ export function CustomerFilterBar({
             data-testid="view-table-btn"
             className={`${styles.viewButton} ${viewMode === 'table' ? styles.active : ''}`}
             aria-pressed={viewMode === 'table'}
+            aria-label={t('view_table')}
             onClick={() => onViewModeChange('table')}
             title={t('view_table')}
           >
@@ -109,6 +112,7 @@ export function CustomerFilterBar({
             data-testid="view-cards-btn"
             className={`${styles.viewButton} ${viewMode === 'cards' ? styles.active : ''}`}
             aria-pressed={viewMode === 'cards'}
+            aria-label={t('view_cards')}
             onClick={() => onViewModeChange('cards')}
             title={t('view_cards')}
           >
@@ -139,6 +143,7 @@ export function CustomerFilterBar({
           data-testid="geocode-filter"
           data-active={geocodeFilter !== '' ? 'true' : undefined}
           className={`${styles.filterSelect} ${geocodeFilter ? styles.filterSelectActive : ''}`}
+          aria-label={t('filter_address_all')}
           value={geocodeFilter}
           onChange={(e) => onGeocodeFilterChange(e.target.value as GeocodeStatus | '')}
         >
@@ -152,6 +157,7 @@ export function CustomerFilterBar({
         <select
           data-testid="type-filter"
           className={`${styles.filterSelect} ${typeFilter ? styles.filterSelectActive : ''}`}
+          aria-label={t('filter_type_all')}
           value={typeFilter}
           onChange={(e) => onTypeFilterChange(e.target.value as 'company' | 'person' | '')}
         >
@@ -183,6 +189,7 @@ export function CustomerFilterBar({
           data-testid="advanced-toggle-btn"
           className={`${styles.advancedToggle} ${isAdvancedOpen ? styles.advancedToggleOpen : ''}`}
           aria-expanded={isAdvancedOpen}
+          aria-controls="advanced-filter-panel"
           onClick={onToggleAdvanced}
         >
           {t('filter_advanced')}
@@ -199,7 +206,7 @@ export function CustomerFilterBar({
             >
               {t('col_picker_columns_label', {
                 visible: visibleColumns.length,
-                total: visibleColumns.length,
+                total: ALL_COLUMNS.length,
               })}
             </button>
             {isColumnPickerOpen && (
@@ -210,8 +217,7 @@ export function CustomerFilterBar({
                 onVisibleColumnsChange={onVisibleColumnsChange}
                 onColumnOrderChange={onColumnOrderChange}
                 onSortModelChange={onSortModelChange}
-                onResetColumns={onResetColumns}
-                onClose={() => setIsColumnPickerOpen(false)}
+                onReset={onResetColumns}
               />
             )}
           </div>

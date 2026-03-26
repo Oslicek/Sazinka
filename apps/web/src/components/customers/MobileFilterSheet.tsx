@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ALL_COLUMNS, DEFAULT_SORT_MODEL } from '@/lib/customerColumns';
 import type { SortEntry } from '@/lib/customerColumns';
+import { ColumnPicker } from './ColumnPicker';
 import styles from './MobileFilterSheet.module.css';
 
 type GeocodeStatus = 'success' | 'failed' | 'pending';
@@ -54,6 +55,23 @@ export function MobileFilterSheet({
 }: MobileFilterSheetProps) {
   const { t } = useTranslation('customers');
   const [isOpen, setIsOpen] = useState(false);
+  const [isColumnPickerOpen, setIsColumnPickerOpen] = useState(false);
+  const sheetRef = useRef<HTMLDivElement>(null);
+
+  const handleClose = useCallback(() => {
+    setIsOpen(false);
+    setIsColumnPickerOpen(false);
+  }, []);
+
+  // Trap focus and handle Escape
+  useEffect(() => {
+    if (!isOpen) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') handleClose();
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, handleClose]);
 
   if (!isMobile) return null;
 
@@ -107,11 +125,19 @@ export function MobileFilterSheet({
           <div
             data-testid="sheet-backdrop"
             className={styles.backdrop}
-            onClick={() => setIsOpen(false)}
+            onClick={handleClose}
+            role="presentation"
           />
 
           {/* Sheet content */}
-          <div data-testid="mobile-filter-sheet" className={styles.sheet}>
+          <div
+            ref={sheetRef}
+            data-testid="mobile-filter-sheet"
+            className={styles.sheet}
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('filter_advanced')}
+          >
             {/* Drag handle */}
             <div data-testid="sheet-drag-handle" className={styles.dragHandle} />
 
@@ -121,12 +147,13 @@ export function MobileFilterSheet({
                 type="text"
                 className={styles.search}
                 placeholder={t('search_placeholder')}
+                aria-label={t('search_placeholder')}
                 value={search}
                 onChange={(e) => onSearchChange(e.target.value)}
               />
 
               {/* Revision chips */}
-              <div className={styles.chipGroup}>
+              <div className={styles.chipGroup} role="group" aria-label={t('filter_revision_label')}>
                 {REVISION_CHIPS.map(({ value, labelKey }) => (
                   <button
                     key={labelKey}
@@ -144,6 +171,7 @@ export function MobileFilterSheet({
               <select
                 data-testid="sheet-geocode-filter"
                 className={styles.select}
+                aria-label={t('filter_address_all')}
                 value={geocodeFilter}
                 onChange={(e) => onGeocodeFilterChange(e.target.value as GeocodeStatus | '')}
               >
@@ -157,6 +185,7 @@ export function MobileFilterSheet({
               <select
                 data-testid="sheet-type-filter"
                 className={styles.select}
+                aria-label={t('filter_type_all')}
                 value={typeFilter}
                 onChange={(e) => onTypeFilterChange(e.target.value as 'company' | 'person' | '')}
               >
@@ -182,6 +211,7 @@ export function MobileFilterSheet({
                   <select
                     data-testid="sheet-sort-primary-dir"
                     className={styles.selectSmall}
+                    aria-label={t('sort_direction', { defaultValue: 'Sort direction' })}
                     value={primaryEntry.direction}
                     onChange={(e) => handlePrimaryDirection(e.target.value as 'asc' | 'desc')}
                   >
@@ -213,24 +243,36 @@ export function MobileFilterSheet({
                 </button>
               </div>
 
-              {/* Column picker trigger */}
+              {/* Column picker */}
               <button
                 type="button"
                 data-testid="sheet-column-picker-trigger"
                 className={styles.columnPickerTrigger}
+                onClick={() => setIsColumnPickerOpen((o) => !o)}
               >
                 {t('col_picker_columns_label', {
                   visible: visibleColumns.length,
-                  total: visibleColumns.length,
+                  total: ALL_COLUMNS.length,
                 })}
               </button>
+              {isColumnPickerOpen && (
+                <ColumnPicker
+                  visibleColumns={visibleColumns}
+                  columnOrder={columnOrder}
+                  sortModel={sortModel}
+                  onVisibleColumnsChange={onVisibleColumnsChange}
+                  onColumnOrderChange={onColumnOrderChange}
+                  onSortModelChange={onSortModelChange}
+                  onReset={onResetColumns}
+                />
+              )}
 
               {/* Apply button */}
               <button
                 type="button"
                 data-testid="sheet-apply-btn"
                 className={styles.applyBtn}
-                onClick={() => setIsOpen(false)}
+                onClick={handleClose}
               >
                 {t('sheet_apply')}
               </button>

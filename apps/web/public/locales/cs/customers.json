@@ -84,7 +84,7 @@
   "form_save_customer": "Uložit zákazníka",
   "delete_title": "Smazat zákazníka?",
   "delete_confirm": "Opravdu chcete smazat zákazníka <strong>{{name}}</strong>?",
-  "delete_warning": "Tato akce je nevratná. Po potvrzení budou osobní údaje zákazníka bez možnosti Undo trvale smazány a související data (například ve worklogu) budou anonymizována.",
+  "delete_warning": "Tato akce je nevratná. Po potvrzení budou osobní údaje zákazníka trvale smazány bez možnosti vrácení a související data (například v pracovním deníku) budou anonymizována.",
   "delete_cancel": "Zrušit",
   "delete_deleting": "Mazání...",
   "delete_confirm_button": "Smazat",

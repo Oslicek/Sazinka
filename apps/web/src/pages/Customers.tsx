@@ -28,6 +28,7 @@ import { CustomerFilterBar } from '../components/customers/CustomerFilterBar';
 import { AdvancedFilterPanel } from '../components/customers/AdvancedFilterPanel';
 import { MobileFilterSheet } from '../components/customers/MobileFilterSheet';
 import { useBreakpoint } from '../hooks/useBreakpoint';
+import { useDeepMemo } from '../hooks/useDeepMemo';
 import { SplitView } from '../components/common/SplitView';
 import { useNatsStore } from '../stores/natsStore';
 import { useAuthStore } from '../stores/authStore';
@@ -67,7 +68,7 @@ function CustomersInner() {
   );
   const { value: uppViewMode, setValue: setViewMode } = usePersistentControl<'table' | 'cards'>(CUSTOMERS_PROFILE_ID, 'viewMode');
   const { value: uppGeocodeFilter, setValue: setGeocodeFilter } = usePersistentControl<GeocodeStatus | ''>(CUSTOMERS_PROFILE_ID, 'geocodeFilter');
-  const { value: uppRevisionFilter, setValue: setRevisionFilter } = usePersistentControl<string>(CUSTOMERS_PROFILE_ID, 'revisionFilter');
+  const { value: uppRevisionFilter, setValue: setRevisionFilter } = usePersistentControl<'' | 'overdue' | 'week' | 'month'>(CUSTOMERS_PROFILE_ID, 'revisionFilter');
   const { value: uppTypeFilter, setValue: setTypeFilter } = usePersistentControl<'company' | 'person' | ''>(CUSTOMERS_PROFILE_ID, 'typeFilter');
 
   // UPP controls — customers.grid (local) — sortModel, visibleColumns, columnOrder
@@ -81,30 +82,28 @@ function CustomersInner() {
     CUSTOMERS_GRID_PROFILE_ID, 'columnOrder',
   );
 
-  // Memoize to avoid new-reference churn on every render
-  const sortModel: SortEntry[] = useMemo(
+  // Deep-memo to avoid new-reference churn when persistence layer returns
+  // structurally-equal but referentially-new arrays on every render.
+  const sortModel: SortEntry[] = useDeepMemo(
     () => sanitizeSortModel(uppSortModel ?? DEFAULT_SORT_MODEL),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [JSON.stringify(uppSortModel)],
+    [uppSortModel],
   );
-  const visibleColumns: string[] = useMemo(
+  const visibleColumns: string[] = useDeepMemo(
     () => sanitizeVisibleColumns(uppVisibleColumns ?? DEFAULT_VISIBLE_COLUMNS),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [JSON.stringify(uppVisibleColumns)],
+    [uppVisibleColumns],
   );
-  const columnOrder: string[] = useMemo(
+  const columnOrder: string[] = useDeepMemo(
     () => sanitizeColumnOrder(uppColumnOrder ?? DEFAULT_COLUMN_ORDER),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [JSON.stringify(uppColumnOrder)],
+    [uppColumnOrder],
   );
 
   // UPP-only state (no URL coupling)
   const [localSearch, setLocalSearch] = useState<string>(uppSearch ?? '');
   const search = localSearch;
   const viewMode: 'table' | 'cards' = (uppViewMode === 'cards') ? 'cards' : 'table';
-  const geocodeFilter: GeocodeStatus | '' = (uppGeocodeFilter as GeocodeStatus | '') ?? '';
-  const revisionFilter: string = uppRevisionFilter ?? '';
-  const typeFilter: 'company' | 'person' | '' = (uppTypeFilter as 'company' | 'person' | '') ?? '';
+  const geocodeFilter: GeocodeStatus | '' = uppGeocodeFilter ?? '';
+  const revisionFilter: '' | 'overdue' | 'week' | 'month' = uppRevisionFilter ?? '';
+  const typeFilter: 'company' | 'person' | '' = uppTypeFilter ?? '';
 
   const setSearch = useCallback((v: string) => { setLocalSearch(v); setUppSearch(v); }, [setUppSearch]);
   const setSortModel = useCallback((m: SortEntry[]) => setUppSortModel(sanitizeSortModel(m)), [setUppSortModel]);
@@ -244,6 +243,7 @@ function CustomersInner() {
     } finally {
       setIsLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps — t from useTranslation is stable at runtime
   }, [isConnected, requestOptions]);
 
   useEffect(() => {
@@ -330,6 +330,7 @@ function CustomersInner() {
     } finally {
       setIsSubmitting(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected, loadCustomers]);
 
   const handleCancel = useCallback(() => {
@@ -443,6 +444,7 @@ function CustomersInner() {
     } finally {
       setIsEditSubmitting(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected, fullCustomer, loadCustomers]);
 
   const handleEditGeocodeCompleted = useCallback(() => {
@@ -519,11 +521,7 @@ function CustomersInner() {
     }
     
     if (!date) {
-      // No upcoming revision date. If no warnings either, all devices are properly serviced.
-      if (neverServicedCount === 0 && overdueCount === 0) {
-        return { text: t('revision_ok'), className: styles.revisionNone };
-      }
-      return { text: t('revision_no_revision_plain'), className: styles.revisionNone };
+      return { text: t('revision_ok'), className: styles.revisionNone };
     }
     
     const dueDate = new Date(date);
@@ -591,7 +589,7 @@ function CustomersInner() {
           onSearchChange={setSearch}
           geocodeFilter={geocodeFilter}
           onGeocodeFilterChange={setGeocodeFilter}
-          revisionFilter={revisionFilter as '' | 'overdue' | 'week' | 'month'}
+          revisionFilter={revisionFilter}
           onRevisionFilterChange={setRevisionFilter}
           typeFilter={typeFilter}
           onTypeFilterChange={setTypeFilter}
@@ -609,7 +607,7 @@ function CustomersInner() {
           onSearchChange={setSearch}
           geocodeFilter={geocodeFilter}
           onGeocodeFilterChange={setGeocodeFilter}
-          revisionFilter={revisionFilter as '' | 'overdue' | 'week' | 'month'}
+          revisionFilter={revisionFilter}
           onRevisionFilterChange={setRevisionFilter}
           typeFilter={typeFilter}
           onTypeFilterChange={setTypeFilter}
@@ -714,22 +712,24 @@ function CustomersInner() {
         </div>
       )}
 
-      {/* Table or Cards */}
+      {/* Table or Cards — skip rendering when empty-state is already shown */}
       {viewMode === 'table' ? (
-        <CustomerTable
-          customers={customers}
-          selectedId={selectedCustomer?.id || null}
-          onSelectCustomer={handleSelectCustomer}
-          onDoubleClick={handleOpenDetail}
-          isLoading={isLoading}
-          onEndReached={loadMore}
-          isLoadingMore={isLoadingMore}
-          totalCount={total}
-          sortModel={sortModel}
-          onSortModelChange={setSortModel}
-          visibleColumns={visibleColumns}
-          columnOrder={columnOrder}
-        />
+        (isLoading || customers.length > 0) && (
+          <CustomerTable
+            customers={customers}
+            selectedId={selectedCustomer?.id || null}
+            onSelectCustomer={handleSelectCustomer}
+            onDoubleClick={handleOpenDetail}
+            isLoading={isLoading}
+            onEndReached={loadMore}
+            isLoadingMore={isLoadingMore}
+            totalCount={total}
+            sortModel={sortModel}
+            onSortModelChange={setSortModel}
+            visibleColumns={visibleColumns}
+            columnOrder={columnOrder}
+          />
+        )
       ) : (
         // Cards view (mobile-friendly)
         <div className={styles.list}>
@@ -737,9 +737,7 @@ function CustomersInner() {
             <div className="card">
               <p className={styles.loading}>{t('loading_customers')}</p>
             </div>
-          ) : customers.length === 0 ? (
-            <div />
-          ) : (
+          ) : customers.length === 0 ? null : (
             <>
               {customers.map((customer) => {
                 const revision = formatRevisionStatus(customer.nextRevisionDate, customer.overdueCount, customer.neverServicedCount);
@@ -876,27 +874,31 @@ function CustomersInner() {
         />
       )}
 
-      {/* Split view: Table + Preview Panel */}
+      {/* Split view: Table + Preview Panel (preview only in table mode) */}
       <div className={styles.content}>
-        <SplitView
-          panels={[
-            { 
-              id: 'table', 
-              content: tableContent, 
-              defaultWidth: 70,
-              minWidth: 50,
-              maxWidth: 85,
-            },
-            { 
-              id: 'preview', 
-              content: previewContent, 
-              defaultWidth: 30,
-              minWidth: 15,
-              maxWidth: 50,
-            },
-          ]}
-          resizable={true}
-        />
+        {viewMode === 'table' ? (
+          <SplitView
+            panels={[
+              { 
+                id: 'table', 
+                content: tableContent, 
+                defaultWidth: 70,
+                minWidth: 50,
+                maxWidth: 85,
+              },
+              { 
+                id: 'preview', 
+                content: previewContent, 
+                defaultWidth: 30,
+                minWidth: 15,
+                maxWidth: 50,
+              },
+            ]}
+            resizable={true}
+          />
+        ) : (
+          tableContent
+        )}
       </div>
     </div>
   );

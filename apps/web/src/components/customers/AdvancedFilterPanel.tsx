@@ -10,6 +10,7 @@ export interface AdvancedFilterPanelProps {
 
 export function AdvancedFilterPanel({
   isOpen,
+  onClose,
   activeAdvancedCount,
   onClearAdvanced,
 }: AdvancedFilterPanelProps) {
@@ -18,34 +19,33 @@ export function AdvancedFilterPanel({
   if (!isOpen) return null;
 
   return (
-    <div data-testid="advanced-filter-panel" className={styles.panel}>
+    <div id="advanced-filter-panel" data-testid="advanced-filter-panel" className={styles.panel}>
       <div className={styles.header}>
         <span className={styles.title}>{t('filter_advanced')}</span>
+        <button
+          type="button"
+          data-testid="advanced-close-btn"
+          className={styles.clearBtn}
+          onClick={onClose}
+          aria-label={t('preview_close')}
+          style={{ marginLeft: 'auto', marginRight: '0.5rem' }}
+        >
+          ✕
+        </button>
         {activeAdvancedCount > 0 && (
           <span data-testid="advanced-count-badge" className={styles.badge}>
             {activeAdvancedCount}
           </span>
         )}
-        {activeAdvancedCount > 0 ? (
-          <button
-            type="button"
-            data-testid="clear-advanced-btn"
-            className={styles.clearBtn}
-            onClick={onClearAdvanced}
-          >
-            {t('filter_clear_all')}
-          </button>
-        ) : (
-          <button
-            type="button"
-            data-testid="clear-advanced-btn"
-            className={styles.clearBtn}
-            onClick={onClearAdvanced}
-            disabled
-          >
-            {t('filter_clear_all')}
-          </button>
-        )}
+        <button
+          type="button"
+          data-testid="clear-advanced-btn"
+          className={styles.clearBtn}
+          onClick={onClearAdvanced}
+          disabled={activeAdvancedCount === 0}
+        >
+          {t('filter_clear_all')}
+        </button>
       </div>
 
       <div className={styles.sections}>

@@ -131,8 +131,8 @@ describe('Customers', () => {
   // =========================================================================
   describe('Stats bar uses server-side summary', () => {
     it('should display total customers from summary', async () => {
-      mockGetCustomerSummary.mockResolvedValueOnce(makeSummary({ totalCustomers: 1234 }));
-      mockListCustomersExtended.mockResolvedValueOnce({ items: [], total: 1234 });
+      mockGetCustomerSummary.mockResolvedValue(makeSummary({ totalCustomers: 1234 }));
+      mockListCustomersExtended.mockResolvedValue({ items: [], total: 1234 });
 
       render(<Customers />);
 
@@ -145,8 +145,8 @@ describe('Customers', () => {
     });
 
     it('should display customersWithOverdue from summary as "stat_overdue"', async () => {
-      mockGetCustomerSummary.mockResolvedValueOnce(makeSummary({ customersWithOverdue: 70 }));
-      mockListCustomersExtended.mockResolvedValueOnce({ items: [], total: 1000 });
+      mockGetCustomerSummary.mockResolvedValue(makeSummary({ customersWithOverdue: 70 }));
+      mockListCustomersExtended.mockResolvedValue({ items: [], total: 1000 });
 
       render(<Customers />);
 
@@ -157,8 +157,8 @@ describe('Customers', () => {
     });
 
     it('should display customersNeverServiced from summary as "stat_no_revision"', async () => {
-      mockGetCustomerSummary.mockResolvedValueOnce(makeSummary({ customersNeverServiced: 100 }));
-      mockListCustomersExtended.mockResolvedValueOnce({ items: [], total: 1000 });
+      mockGetCustomerSummary.mockResolvedValue(makeSummary({ customersNeverServiced: 100 }));
+      mockListCustomersExtended.mockResolvedValue({ items: [], total: 1000 });
 
       render(<Customers />);
 
@@ -169,8 +169,8 @@ describe('Customers', () => {
     });
 
     it('should display geocodeFailed from summary as "stat_geocode_failed"', async () => {
-      mockGetCustomerSummary.mockResolvedValueOnce(makeSummary({ geocodeFailed: 401 }));
-      mockListCustomersExtended.mockResolvedValueOnce({ items: [], total: 1000 });
+      mockGetCustomerSummary.mockResolvedValue(makeSummary({ geocodeFailed: 401 }));
+      mockListCustomersExtended.mockResolvedValue({ items: [], total: 1000 });
 
       render(<Customers />);
 
@@ -181,8 +181,8 @@ describe('Customers', () => {
     });
 
     it('should display geocodePending from summary as "stat_geocode_pending"', async () => {
-      mockGetCustomerSummary.mockResolvedValueOnce(makeSummary({ geocodePending: 99 }));
-      mockListCustomersExtended.mockResolvedValueOnce({ items: [], total: 1000 });
+      mockGetCustomerSummary.mockResolvedValue(makeSummary({ geocodePending: 99 }));
+      mockListCustomersExtended.mockResolvedValue({ items: [], total: 1000 });
 
       render(<Customers />);
 
@@ -193,8 +193,8 @@ describe('Customers', () => {
     });
 
     it('should NOT show "stat_overdue" stat when count is 0', async () => {
-      mockGetCustomerSummary.mockResolvedValueOnce(makeSummary({ customersWithOverdue: 0 }));
-      mockListCustomersExtended.mockResolvedValueOnce({ items: [], total: 1000 });
+      mockGetCustomerSummary.mockResolvedValue(makeSummary({ customersWithOverdue: 0 }));
+      mockListCustomersExtended.mockResolvedValue({ items: [], total: 1000 });
 
       render(<Customers />);
 
@@ -205,8 +205,8 @@ describe('Customers', () => {
     });
 
     it('should NOT show "stat_no_revision" stat when count is 0', async () => {
-      mockGetCustomerSummary.mockResolvedValueOnce(makeSummary({ customersNeverServiced: 0 }));
-      mockListCustomersExtended.mockResolvedValueOnce({ items: [], total: 1000 });
+      mockGetCustomerSummary.mockResolvedValue(makeSummary({ customersNeverServiced: 0 }));
+      mockListCustomersExtended.mockResolvedValue({ items: [], total: 1000 });
 
       render(<Customers />);
 
@@ -217,14 +217,12 @@ describe('Customers', () => {
     });
 
     it('should show stable stats that do not change as more customers load', async () => {
-      // Summary provides fixed counts
-      mockGetCustomerSummary.mockResolvedValueOnce(makeSummary({
+      mockGetCustomerSummary.mockResolvedValue(makeSummary({
         customersWithOverdue: 70,
         customersNeverServiced: 100,
         geocodeFailed: 401,
       }));
-      // First page: only 2 customers, one with overdue
-      mockListCustomersExtended.mockResolvedValueOnce({
+      mockListCustomersExtended.mockResolvedValue({
         items: [
           makeCustomer({ overdueCount: 1 }),
           makeCustomer({ neverServicedCount: 1 }),
@@ -235,7 +233,6 @@ describe('Customers', () => {
       render(<Customers />);
 
       await waitFor(() => {
-        // Stats should show server-side summary values, not loaded data counts (1, 1)
         expect(screen.getByText('70')).toBeInTheDocument();
         expect(screen.getByText('stat_overdue')).toBeInTheDocument();
         expect(screen.getByText('100')).toBeInTheDocument();
@@ -245,8 +242,8 @@ describe('Customers', () => {
     });
 
     it('should fall back to loaded-data counts when summary fails', async () => {
-      mockGetCustomerSummary.mockRejectedValueOnce(new Error('unavailable'));
-      mockListCustomersExtended.mockResolvedValueOnce({
+      mockGetCustomerSummary.mockRejectedValue(new Error('unavailable'));
+      mockListCustomersExtended.mockResolvedValue({
         items: [
           makeCustomer({ overdueCount: 2 }),
           makeCustomer({ overdueCount: 1 }),
@@ -413,7 +410,7 @@ describe('Customers', () => {
 
     it('should pass loaded customers to table component', async () => {
       const customers = [makeCustomer({ name: 'Jan' }), makeCustomer({ name: 'Marie' })];
-      mockListCustomersExtended.mockResolvedValueOnce({ items: customers, total: 2 });
+      mockListCustomersExtended.mockResolvedValue({ items: customers, total: 2 });
 
       render(<Customers />);
 

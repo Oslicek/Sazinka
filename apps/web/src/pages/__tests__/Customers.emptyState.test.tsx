@@ -161,18 +161,23 @@ describe('Customers page — Phase 6C: empty state UX', () => {
     });
   });
 
-  it('6C-4. After clearing filters, listCustomersExtended is re-called without filters', async () => {
+  it('6C-4. After clearing filters, listCustomersExtended is re-called without the week filter', async () => {
     seedSession('revisionFilter', 'week');
     render(<Customers />);
     await waitFor(() => {
       expect(screen.getByTestId('empty-clear-filters-btn')).toBeInTheDocument();
     });
+    // Capture the call with the week filter to verify the API shape first
+    const callWithFilter = mockListCustomers.mock.calls[mockListCustomers.mock.calls.length - 1][0];
+    expect(callWithFilter).toHaveProperty('nextRevisionWithinDays', 7);
+
     const callsBefore = mockListCustomers.mock.calls.length;
     fireEvent.click(screen.getByTestId('empty-clear-filters-btn'));
     await waitFor(() => {
       expect(mockListCustomers.mock.calls.length).toBeGreaterThan(callsBefore);
       const lastCall = mockListCustomers.mock.calls[mockListCustomers.mock.calls.length - 1][0];
-      expect(lastCall).not.toHaveProperty('revisionFilter', 'week');
+      expect(lastCall).not.toHaveProperty('nextRevisionWithinDays');
+      expect(lastCall).not.toHaveProperty('hasOverdue');
     });
   });
 
