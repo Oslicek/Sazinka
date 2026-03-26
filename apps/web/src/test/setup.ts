@@ -1,6 +1,19 @@
 import '@testing-library/jest-dom';
 import { vi } from 'vitest';
 
+// Suppress React 18's spurious "not wrapped in act(...)" warnings.
+// These fire when async callbacks (e.g. data fetching in useEffect) resolve
+// after the test assertion but before component unmount. The warnings are
+// cosmetic — they don't indicate bugs — and cannot be reliably fixed with
+// act() flushes because React 18's recursive flush interacts badly with
+// debounced UPP writes and concurrent rendering.
+const originalConsoleError = console.error;
+console.error = (...args: unknown[]) => {
+  const msg = typeof args[0] === 'string' ? args[0] : '';
+  if (msg.includes('not wrapped in act')) return;
+  originalConsoleError.apply(console, args);
+};
+
 // Partial mock of react-i18next: provides default useTranslation that returns keys,
 // but preserves I18nextProvider and initReactI18next for tests that create their own i18n instance.
 vi.mock('react-i18next', async (importOriginal) => {

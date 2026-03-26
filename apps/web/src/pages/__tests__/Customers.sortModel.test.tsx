@@ -6,6 +6,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import { act } from 'react';
 import React from 'react';
 import { makeKey, makeEnvelope } from '@/persistence/core/types';
 import { CUSTOMERS_GRID_PROFILE_ID } from '@/persistence/profiles/customersGridProfile';
@@ -207,7 +208,6 @@ describe('Phase 2A: sortModel end-to-end contract', () => {
     });
     render(<Customers />);
     await waitFor(() => expect(mockListCustomersExtended).toHaveBeenCalled());
-    // Response order should reach the table intact (CustomerTable mock just renders count)
     expect(screen.getByTestId('customer-table')).toBeInTheDocument();
   });
 
@@ -279,19 +279,16 @@ describe('Phase 2A: sortModel end-to-end contract', () => {
     mockListCustomersExtended.mockRejectedValue(new Error('SORT_CONTRACT_ERROR'));
     render(<Customers />);
     await waitFor(() => expect(mockListCustomersExtended).toHaveBeenCalled());
-    // SortModel should still be the seeded city:desc (not reset)
     expect(lastCall().sortModel).toEqual(model);
   });
 
   it('16. backend contract rejection → does NOT auto-retry request', async () => {
     mockListCustomersExtended.mockRejectedValue(new Error('SORT_CONTRACT_ERROR'));
     render(<Customers />);
-    // Wait for all mount-lifecycle calls to settle (there may be 1-2 due to persistence hydration)
     await waitFor(() => expect(mockListCustomersExtended).toHaveBeenCalled());
-    await new Promise((r) => setTimeout(r, 300));
+    await act(async () => { await new Promise((r) => setTimeout(r, 300)); });
     const callCountAfterSettle = mockListCustomersExtended.mock.calls.length;
-    // Wait additional time — no more retries should happen
-    await new Promise((r) => setTimeout(r, 300));
+    await act(async () => { await new Promise((r) => setTimeout(r, 300)); });
     expect(mockListCustomersExtended).toHaveBeenCalledTimes(callCountAfterSettle);
   });
 
@@ -299,8 +296,7 @@ describe('Phase 2A: sortModel end-to-end contract', () => {
     mockListCustomersExtended.mockRejectedValue(new Error('SORT_CONTRACT_ERROR'));
     render(<Customers />);
     await waitFor(() => expect(mockListCustomersExtended).toHaveBeenCalled());
-    await new Promise((r) => setTimeout(r, 50));
-    // There should be no retry button in the page
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
     const retryBtn = screen.queryByRole('button', { name: /retry/i });
     expect(retryBtn).toBeNull();
   });

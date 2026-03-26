@@ -6,7 +6,7 @@
  * and remaining filter persistence is unaffected.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import { customersProfile } from '@/persistence/profiles/customersProfile';
 import { makeKey, makeEnvelope } from '@/persistence/core/types';
@@ -151,7 +151,8 @@ describe('Phase 1C: customers.filters profile migration', () => {
     seedSession('sortOrder', 'desc');
     expect(() => render(<Customers />)).not.toThrow();
     await waitFor(() => expect(customerService.listCustomersExtended).toHaveBeenCalled());
-    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+
+
   });
 
   it('5. legacy sortBy=city in session → request uses sortModel from grid profile (DEFAULT), NOT legacy city', async () => {
@@ -162,7 +163,8 @@ describe('Phase 1C: customers.filters profile migration', () => {
     expect(call).not.toHaveProperty('sortBy');
     expect(call).not.toHaveProperty('sortOrder');
     expect(call.sortModel).toEqual(DEFAULT_SORT_MODEL);
-    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+
+
   });
 
   // URL sort params no longer synced
@@ -175,7 +177,8 @@ describe('Phase 1C: customers.filters profile migration', () => {
     const call = (customerService.listCustomersExtended as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(call).not.toHaveProperty('sortBy');
     expect(call.sortModel).toEqual(DEFAULT_SORT_MODEL);
-    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+
+
   });
 
   it('7. after mount with URL sort params, session storage is NOT written with sortBy/sortOrder', async () => {
@@ -184,7 +187,8 @@ describe('Phase 1C: customers.filters profile migration', () => {
     await waitFor(() => expect(customerService.listCustomersExtended).toHaveBeenCalled());
     const sortByKey = sessionKey('sortBy');
     expect(sessionStorage.getItem(sortByKey)).toBeNull();
-    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+
+
   });
 
   // Remaining filter persistence unaffected (via UPP seeding)
@@ -195,7 +199,8 @@ describe('Phase 1C: customers.filters profile migration', () => {
     await waitFor(() => expect(customerService.listCustomersExtended).toHaveBeenCalled());
     const call = (customerService.listCustomersExtended as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(call.search).toBe('test-company');
-    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+
+
   });
 
   it('9. geocodeFilter hydrates from session storage', async () => {
@@ -204,7 +209,8 @@ describe('Phase 1C: customers.filters profile migration', () => {
     await waitFor(() => expect(customerService.listCustomersExtended).toHaveBeenCalled());
     const call = (customerService.listCustomersExtended as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(call.geocodeStatus).toBe('failed');
-    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+
+
   });
 
   it('10. revisionFilter=overdue hydrates from session storage', async () => {
@@ -213,7 +219,8 @@ describe('Phase 1C: customers.filters profile migration', () => {
     await waitFor(() => expect(customerService.listCustomersExtended).toHaveBeenCalled());
     const call = (customerService.listCustomersExtended as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(call.hasOverdue).toBe(true);
-    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+
+
   });
 
   it('11. typeFilter=company hydrates from session storage', async () => {
@@ -222,7 +229,8 @@ describe('Phase 1C: customers.filters profile migration', () => {
     await waitFor(() => expect(customerService.listCustomersExtended).toHaveBeenCalled());
     const call = (customerService.listCustomersExtended as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(call.customerType).toBe('company');
-    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+
+
   });
 
   it('12. selectedCustomerId is still in the profile (not removed)', () => {
@@ -257,7 +265,8 @@ describe('Customers page — Phase 6B: URL decoupling', () => {
     expect(call.sortModel).toEqual(DEFAULT_SORT_MODEL);
     expect(call).not.toHaveProperty('sortBy');
     expect(call).not.toHaveProperty('sortOrder');
-    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+
+
   });
 
   it('6B-2. URL view/geocodeStatus/revisionFilter do NOT override UPP state', async () => {
@@ -274,7 +283,8 @@ describe('Customers page — Phase 6B: URL decoupling', () => {
       const weekChip = screen.getByRole('button', { name: 'filter_revision_week' });
       expect(weekChip).toHaveAttribute('aria-pressed', 'false');
     });
-    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+
+
   });
 
   it('6B-3. URL action=new → add-customer form opens (intent param preserved)', async () => {
@@ -282,6 +292,7 @@ describe('Customers page — Phase 6B: URL decoupling', () => {
     render(<Customers />);
     expect(screen.getByTestId('add-form')).toBeInTheDocument();
     await waitFor(() => expect(customerService.listCustomersExtended).toHaveBeenCalled());
-    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+
+
   });
 });
