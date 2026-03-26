@@ -12,9 +12,9 @@
  * - Infinite scroll (endReached callback)
  */
 
-import { useMemo, useCallback, type ReactNode } from 'react';
+import { useMemo, useCallback, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, AlertTriangle, ClipboardCopy, ArrowUp, ArrowDown } from 'lucide-react';
+import { Check, AlertTriangle, ClipboardCopy, ArrowUp, ArrowDown, Filter } from 'lucide-react';
 import {
   createColumnHelper,
   flexRender,
@@ -22,7 +22,7 @@ import {
   useReactTable,
 } from '@tanstack/react-table';
 import { TableVirtuoso } from 'react-virtuoso';
-import type { CustomerListItem } from '@shared/customer';
+import type { CustomerListItem, ColumnFilter, ColumnDistinctRequest } from '@shared/customer';
 import { formatDate } from '../../i18n/formatters';
 import {
   ALL_COLUMNS,
@@ -35,6 +35,7 @@ import {
   sanitizeColumnOrder,
 } from '../../lib/customerColumns';
 import type { SortEntry } from '../../lib/customerColumns';
+import { ColumnFilterDropdown } from './ColumnFilterDropdown';
 import styles from './CustomerTable.module.css';
 
 const columnHelper = createColumnHelper<CustomerListItem>();
@@ -75,6 +76,12 @@ interface CustomerTableProps {
   visibleColumns?: string[];
   /** Full column order (Phase 3) */
   columnOrder?: string[];
+  /** Active column filters */
+  columnFilters?: ColumnFilter[];
+  /** Called when user applies or clears a column filter */
+  onColumnFiltersChange?: (filters: ColumnFilter[]) => void;
+  /** Context passed to distinct endpoint (search, revision chips, etc.) */
+  distinctContext?: Omit<ColumnDistinctRequest, 'column'>;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -201,8 +208,35 @@ export function CustomerTable({
   onSortModelChange,
   visibleColumns: visibleColumnsProp,
   columnOrder: columnOrderProp,
+  columnFilters = [],
+  onColumnFiltersChange,
+  distinctContext,
 }: CustomerTableProps) {
   const { t } = useTranslation('customers');
+
+  // Which column's filter dropdown is currently open (catalog ID, or null)
+  const [openFilterColumn, setOpenFilterColumn] = useState<string | null>(null);
+
+  // Quick lookup: column ID → active filter
+  const activeFiltersByColumn = useMemo(() => {
+    const map = new Map<string, ColumnFilter>();
+    for (const f of columnFilters) map.set(f.column, f);
+    return map;
+  }, [columnFilters]);
+
+  const handleFilterApply = useCallback((filter: ColumnFilter) => {
+    if (!onColumnFiltersChange) return;
+    const next = columnFilters.filter((f) => f.column !== filter.column);
+    next.push(filter);
+    onColumnFiltersChange(next);
+    setOpenFilterColumn(null);
+  }, [columnFilters, onColumnFiltersChange]);
+
+  const handleFilterClear = useCallback((columnId: string) => {
+    if (!onColumnFiltersChange) return;
+    onColumnFiltersChange(columnFilters.filter((f) => f.column !== columnId));
+    setOpenFilterColumn(null);
+  }, [columnFilters, onColumnFiltersChange]);
 
   // Normalize the incoming sortModel (for display)
   const sortModel = useMemo(() => sanitizeSortModel(sortModelProp), [sortModelProp]);
@@ -482,10 +516,13 @@ export function CustomerTable({
                     : 'descending'
                   : 'none';
 
+                const hasActiveFilter = activeFiltersByColumn.has(catalogId);
+                const isFilterOpen = openFilterColumn === catalogId;
+
                 return (
                   <th
                     key={header.id}
-                    style={{ width: header.getSize() }}
+                    style={{ width: header.getSize(), position: 'relative' }}
                     className={`${styles.th} ${isSortable ? styles.sortable : ''}`}
                     aria-sort={isSortable ? ariaSortValue : undefined}
                     tabIndex={isSortable ? 0 : undefined}
@@ -510,6 +547,31 @@ export function CustomerTable({
                           {String(sortIdx + 1)}
                         </span>
                       </span>
+                    )}
+                    {/* Filter icon — always visible, click opens filter dropdown */}
+                    <button
+                      type="button"
+                      className={styles.filterButton}
+                      data-filter-active={hasActiveFilter ? 'true' : 'false'}
+                      aria-label={t('filter_column_label', { column: catalogId })}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenFilterColumn(isFilterOpen ? null : catalogId);
+                      }}
+                      onKeyDown={(e) => e.stopPropagation()}
+                    >
+                      <Filter size={10} />
+                    </button>
+                    {/* Filter dropdown */}
+                    {isFilterOpen && onColumnFiltersChange && (
+                      <ColumnFilterDropdown
+                        columnId={catalogId}
+                        currentFilter={activeFiltersByColumn.get(catalogId) ?? null}
+                        contextRequest={distinctContext}
+                        onApply={handleFilterApply}
+                        onClear={() => handleFilterClear(catalogId)}
+                        onClose={() => setOpenFilterColumn(null)}
+                      />
                     )}
                   </th>
                 );

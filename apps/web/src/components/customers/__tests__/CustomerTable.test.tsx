@@ -705,3 +705,96 @@ describe('Newly-sortable columns: header click and indicator', () => {
     });
   });
 });
+
+// ── Phase 5: filter icon + dropdown integration ───────────────────────────────
+
+vi.mock('../ColumnFilterDropdown', () => ({
+  ColumnFilterDropdown: ({ columnId, onClose }: { columnId: string; onClose: () => void }) => (
+    <div data-testid="col-filter-dropdown" data-column={columnId}>
+      <button onClick={onClose}>close-dropdown</button>
+    </div>
+  ),
+}));
+
+describe('Phase 5: CustomerTable — filter icon in headers', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('every visible column header renders a filter button', () => {
+    renderTable();
+    // Should have filter buttons for all visible columns (default: name + city + deviceCount + nextRevision + geocodeStatus)
+    const filterButtons = screen.getAllByRole('button', { name: /filter_column_label/ });
+    expect(filterButtons.length).toBeGreaterThan(0);
+  });
+
+  it('filter button click opens filter dropdown without triggering sort', () => {
+    const onSortModelChange = vi.fn();
+    const onColumnFiltersChange = vi.fn();
+    renderTable({ onSortModelChange, onColumnFiltersChange });
+
+    const filterBtn = screen.getAllByRole('button', { name: /filter_column_label/ })[0];
+    fireEvent.click(filterBtn);
+
+    // Dropdown should appear
+    expect(screen.getByTestId('col-filter-dropdown')).toBeInTheDocument();
+    // Sort should not have been called
+    expect(onSortModelChange).not.toHaveBeenCalled();
+  });
+
+  it('second click on same filter button closes the dropdown', () => {
+    const onColumnFiltersChange = vi.fn();
+    renderTable({ onColumnFiltersChange });
+
+    // First click — open
+    const filterBtns = screen.getAllByRole('button', { name: /filter_column_label/ });
+    fireEvent.click(filterBtns[0]);
+    expect(screen.getByTestId('col-filter-dropdown')).toBeInTheDocument();
+
+    // Re-query after re-render (React may have recycled the DOM node)
+    const filterBtnsAfter = screen.getAllByRole('button', { name: /filter_column_label/ });
+    fireEvent.click(filterBtnsAfter[0]);
+    expect(screen.queryByTestId('col-filter-dropdown')).not.toBeInTheDocument();
+  });
+
+  it('filter icon has data-filter-active=false when no active filter', () => {
+    renderTable({ columnFilters: [], onColumnFiltersChange: vi.fn() });
+    const filterButtons = screen.getAllByRole('button', { name: /filter_column_label/ });
+    filterButtons.forEach((btn) => {
+      expect(btn).toHaveAttribute('data-filter-active', 'false');
+    });
+  });
+
+  it('filter icon has data-filter-active=true when column has active filter', () => {
+    renderTable({
+      columnFilters: [{ type: 'checklist', column: 'city', values: ['Prague'] }],
+      onColumnFiltersChange: vi.fn(),
+    });
+    const cityHeader = screen.getByRole('columnheader', { name: /table_city/i });
+    const filterBtn = cityHeader.querySelector('[data-filter-active]');
+    expect(filterBtn).toHaveAttribute('data-filter-active', 'true');
+  });
+
+  it('sort and filter indicators coexist: active sort + active filter on same column', () => {
+    renderTable({
+      sortModel: [{ column: 'city', direction: 'asc' }],
+      columnFilters: [{ type: 'checklist', column: 'city', values: ['Prague'] }],
+      onColumnFiltersChange: vi.fn(),
+    });
+    const cityHeader = screen.getByRole('columnheader', { name: /table_city/i });
+    // Sort indicator present
+    expect(cityHeader.querySelector('[data-sort-dir="asc"]')).toBeTruthy();
+    // Filter active indicator present
+    const filterBtn = cityHeader.querySelector('[data-filter-active]');
+    expect(filterBtn).toHaveAttribute('data-filter-active', 'true');
+  });
+
+  it('clicking sort area does not open filter dropdown', () => {
+    const onColumnFiltersChange = vi.fn();
+    renderTable({ onColumnFiltersChange });
+
+    // Click the header (not the filter button) - sort interaction
+    const cityHeader = screen.getByRole('columnheader', { name: /table_city/i });
+    fireEvent.click(cityHeader);
+    // Filter dropdown should NOT appear
+    expect(screen.queryByTestId('col-filter-dropdown')).not.toBeInTheDocument();
+  });
+});
