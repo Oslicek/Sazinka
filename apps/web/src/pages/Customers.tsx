@@ -819,7 +819,34 @@ function CustomersInner() {
   return (
     <div className={styles.customers}>
       <div className={styles.header}>
-        <h1>{t('title')}</h1>
+        <div className={styles.headerLeft}>
+          <h1>{t('title')}</h1>
+          <div className={styles.statsInline}>
+            <span className={styles.statBadge}>
+              <strong>{stats.total}</strong> <span>{t('stat_total')}</span>
+            </span>
+            {stats.neverServicedCount > 0 && (
+              <span className={`${styles.statBadge} ${styles.statBadgeWarning}`}>
+                <strong>{stats.neverServicedCount}</strong> <span>{t('stat_no_revision')}</span>
+              </span>
+            )}
+            {stats.overdueCount > 0 && (
+              <span className={`${styles.statBadge} ${styles.statBadgeDanger}`}>
+                <strong>{stats.overdueCount}</strong> <span>{t('stat_overdue')}</span>
+              </span>
+            )}
+            {stats.geocodeFailed > 0 && (
+              <span className={`${styles.statBadge} ${styles.statBadgeWarning}`}>
+                <strong>{stats.geocodeFailed}</strong> <span>{t('stat_geocode_failed')}</span>
+              </span>
+            )}
+            {stats.geocodePending > 0 && (
+              <span className={`${styles.statBadge} ${styles.statBadgeInfo}`}>
+                <strong>{stats.geocodePending}</strong> <span>{t('stat_geocode_pending')}</span>
+              </span>
+            )}
+          </div>
+        </div>
         <div className={styles.headerActions}>
           <Link to="/customers/summary" className={styles.summaryButton}>
             {t('summary_link')}
@@ -828,38 +855,6 @@ function CustomersInner() {
             {t('new_customer')}
           </button>
         </div>
-      </div>
-
-      {/* Quick Stats (from server summary) */}
-      <div className={styles.statsBar}>
-        <div className={styles.statItem}>
-          <span className={styles.statValue}>{stats.total}</span>
-          <span className={styles.statLabel}>{t('stat_total')}</span>
-        </div>
-        {stats.neverServicedCount > 0 && (
-          <div className={`${styles.statItem} ${styles.statWarning}`}>
-            <span className={styles.statValue}>{stats.neverServicedCount}</span>
-            <span className={styles.statLabel}>{t('stat_no_revision')}</span>
-          </div>
-        )}
-        {stats.overdueCount > 0 && (
-          <div className={`${styles.statItem} ${styles.statDanger}`}>
-            <span className={styles.statValue}>{stats.overdueCount}</span>
-            <span className={styles.statLabel}>{t('stat_overdue')}</span>
-          </div>
-        )}
-        {stats.geocodeFailed > 0 && (
-          <div className={`${styles.statItem} ${styles.statWarning}`}>
-            <span className={styles.statValue}>{stats.geocodeFailed}</span>
-            <span className={styles.statLabel}>{t('stat_geocode_failed')}</span>
-          </div>
-        )}
-        {stats.geocodePending > 0 && (
-          <div className={`${styles.statItem} ${styles.statInfo}`}>
-            <span className={styles.statValue}>{stats.geocodePending}</span>
-            <span className={styles.statLabel}>{t('stat_geocode_pending')}</span>
-          </div>
-        )}
       </div>
 
       {/* Edit drawer (inline, no navigation) */}

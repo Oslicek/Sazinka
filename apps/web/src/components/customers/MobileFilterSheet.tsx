@@ -264,6 +264,7 @@ export function MobileFilterSheet({
                   onColumnOrderChange={onColumnOrderChange}
                   onSortModelChange={onSortModelChange}
                   onReset={onResetColumns}
+                  onClose={() => setIsColumnPickerOpen(false)}
                 />
               )}
 

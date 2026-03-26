@@ -42,6 +42,7 @@ interface PickerProps {
   onColumnOrderChange?: (order: string[]) => void;
   onSortModelChange?: (model: SortEntry[]) => void;
   onReset?: () => void;
+  onClose?: () => void;
 }
 
 import { ColumnPicker } from '../ColumnPicker';
@@ -55,43 +56,36 @@ function renderPicker(overrides: PickerProps = {}) {
     onColumnOrderChange: vi.fn(),
     onSortModelChange: vi.fn(),
     onReset: vi.fn(),
+    onClose: vi.fn(),
     ...overrides,
   };
-  return render(<ColumnPicker {...props} />);
-}
-
-function openPicker() {
-  const trigger = screen.getByRole('button', { name: /col_picker_columns_label/i });
-  fireEvent.click(trigger);
-  return trigger;
+  return render(<ColumnPicker {...(props as Required<PickerProps>)} />);
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('Phase 3A: ColumnPicker — rendering', () => {
-  it('1. renders a trigger button with column count label', () => {
+  it('1. renders popover dialog directly (controlled by parent)', () => {
     renderPicker();
-    const btn = screen.getByRole('button', { name: /col_picker_columns_label/i });
-    expect(btn).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
-  it('2. clicking trigger opens the picker popover', () => {
+  it('2. popover shows column count in aria-label', () => {
     renderPicker();
-    openPicker();
-    // Popover content visible
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toHaveAttribute(
+      'aria-label',
+      expect.stringContaining('col_picker_columns_label'),
+    );
   });
 
   it('3. popover lists all ALL_COLUMNS (each column has a checkbox)', () => {
     renderPicker();
-    openPicker();
     const checkboxes = screen.getAllByRole('checkbox');
     expect(checkboxes.length).toBe(ALL_COLUMNS.length);
   });
 
   it('4. each category heading is rendered', () => {
     renderPicker();
-    openPicker();
     for (const cat of COLUMN_CATEGORIES) {
       expect(screen.getByText(`col_category_${cat}`)).toBeInTheDocument();
     }
@@ -99,16 +93,13 @@ describe('Phase 3A: ColumnPicker — rendering', () => {
 
   it('5. each column shows its translated labelKey', () => {
     renderPicker();
-    openPicker();
     for (const col of ALL_COLUMNS) {
       expect(screen.getByText(col.labelKey)).toBeInTheDocument();
     }
   });
 
   it('6. empty category — no heading rendered if no columns in that category', () => {
-    // All COLUMN_CATEGORIES have at least one column, so all headings appear
     renderPicker();
-    openPicker();
     expect(screen.getAllByRole('heading').length).toBeGreaterThanOrEqual(COLUMN_CATEGORIES.length);
   });
 });
@@ -123,7 +114,6 @@ describe('Phase 3A: ColumnPicker — visibility checkboxes', () => {
   it('7. visible column → checkbox is checked', () => {
     const visibleColumns = ['name', 'city'];
     renderPicker({ visibleColumns, onVisibleColumnsChange });
-    openPicker();
     const nameCheckbox = screen.getByRole('checkbox', { name: /col_name/i });
     expect(nameCheckbox).toBeChecked();
   });
@@ -131,14 +121,12 @@ describe('Phase 3A: ColumnPicker — visibility checkboxes', () => {
   it('8. hidden column → checkbox is unchecked', () => {
     const visibleColumns = ['name', 'city'];
     renderPicker({ visibleColumns, onVisibleColumnsChange });
-    openPicker();
     const emailCheckbox = screen.getByRole('checkbox', { name: /col_email/i });
     expect(emailCheckbox).not.toBeChecked();
   });
 
   it('9. core column → checkbox is checked and disabled', () => {
     renderPicker({ onVisibleColumnsChange });
-    openPicker();
     for (const coreId of CORE_COLUMN_IDS) {
       const col = ALL_COLUMNS.find((c) => c.id === coreId)!;
       const checkbox = screen.getByRole('checkbox', { name: new RegExp(col.labelKey, 'i') });
@@ -150,7 +138,6 @@ describe('Phase 3A: ColumnPicker — visibility checkboxes', () => {
   it('10. checking a hidden column → onVisibleColumnsChange called with that column added', () => {
     const visibleColumns = ['name', 'city'];
     renderPicker({ visibleColumns, onVisibleColumnsChange });
-    openPicker();
     const emailCheckbox = screen.getByRole('checkbox', { name: /col_email/i });
     fireEvent.click(emailCheckbox);
     expect(onVisibleColumnsChange).toHaveBeenCalledWith(
@@ -161,7 +148,6 @@ describe('Phase 3A: ColumnPicker — visibility checkboxes', () => {
   it('11. unchecking a visible non-core column → onVisibleColumnsChange called without it', () => {
     const visibleColumns = ['name', 'city', 'deviceCount'];
     renderPicker({ visibleColumns, onVisibleColumnsChange });
-    openPicker();
     const cityCheckbox = screen.getByRole('checkbox', { name: /col_city/i });
     fireEvent.click(cityCheckbox);
     const result = onVisibleColumnsChange.mock.calls[0][0] as string[];
@@ -172,7 +158,6 @@ describe('Phase 3A: ColumnPicker — visibility checkboxes', () => {
   it('12. toggle preserves order of other visible columns', () => {
     const visibleColumns = ['name', 'city', 'deviceCount'];
     renderPicker({ visibleColumns, onVisibleColumnsChange });
-    openPicker();
     const emailCheckbox = screen.getByRole('checkbox', { name: /col_email/i });
     fireEvent.click(emailCheckbox);
     const result = onVisibleColumnsChange.mock.calls[0][0] as string[];
@@ -192,10 +177,8 @@ describe('Phase 3A: ColumnPicker — visibility checkboxes', () => {
       onVisibleColumnsChange,
       onSortModelChange,
     });
-    openPicker();
     const cityCheckbox = screen.getByRole('checkbox', { name: /col_city/i });
     fireEvent.click(cityCheckbox);
-    // Modal should appear
     expect(screen.getByRole('dialog', { name: /col_picker_sort_warning_title/i })).toBeInTheDocument();
   });
 
@@ -206,7 +189,6 @@ describe('Phase 3A: ColumnPicker — visibility checkboxes', () => {
       sortModel: [{ column: 'city', direction: 'asc' }],
       onVisibleColumnsChange,
     });
-    openPicker();
     fireEvent.click(screen.getByRole('checkbox', { name: /col_city/i }));
     expect(screen.getByRole('button', { name: /col_picker_cancel/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /col_picker_confirm/i })).toBeInTheDocument();
@@ -221,7 +203,6 @@ describe('Phase 3A: ColumnPicker — visibility checkboxes', () => {
       onVisibleColumnsChange,
       onSortModelChange,
     });
-    openPicker();
     fireEvent.click(screen.getByRole('checkbox', { name: /col_city/i }));
     fireEvent.click(screen.getByRole('button', { name: /col_picker_cancel/i }));
     expect(onSortModelChange).not.toHaveBeenCalled();
@@ -237,13 +218,10 @@ describe('Phase 3A: ColumnPicker — visibility checkboxes', () => {
       onVisibleColumnsChange,
       onSortModelChange,
     });
-    openPicker();
     fireEvent.click(screen.getByRole('checkbox', { name: /col_city/i }));
     fireEvent.click(screen.getByRole('button', { name: /col_picker_confirm/i }));
-    // city removed from visible columns
     const newVisible = onVisibleColumnsChange.mock.calls[0][0] as string[];
     expect(newVisible).not.toContain('city');
-    // city removed from sortModel (falls back to DEFAULT_SORT_MODEL)
     expect(onSortModelChange).toHaveBeenCalled();
     const newSort = onSortModelChange.mock.calls[0][0] as SortEntry[];
     expect(newSort.some((e) => e.column === 'city')).toBe(false);
@@ -258,9 +236,7 @@ describe('Phase 3A: ColumnPicker — visibility checkboxes', () => {
       onVisibleColumnsChange,
       onSortModelChange,
     });
-    openPicker();
     fireEvent.click(screen.getByRole('checkbox', { name: /col_city/i }));
-    // Press Escape on modal
     fireEvent.keyDown(screen.getByRole('dialog', { name: /col_picker_sort_warning_title/i }), {
       key: 'Escape',
     });
@@ -272,7 +248,6 @@ describe('Phase 3A: ColumnPicker — visibility checkboxes', () => {
 describe('Phase 3A: ColumnPicker — max columns limit', () => {
   it('18. when visibleColumns.length === MAX_VISIBLE_COLUMNS → unchecked columns disabled', () => {
     const visibleColumns = ALL_COLUMNS.filter((c) => c.defaultVisible).map((c) => c.id);
-    // Pad to MAX_VISIBLE_COLUMNS with non-visible non-core columns
     const extras = ALL_COLUMNS.filter(
       (c) => !visibleColumns.includes(c.id) && !c.core,
     );
@@ -281,8 +256,6 @@ describe('Phase 3A: ColumnPicker — max columns limit', () => {
       MAX_VISIBLE_COLUMNS,
     );
     renderPicker({ visibleColumns: padded });
-    openPicker();
-    // Columns not in padded (and not core) should be disabled
     const hidden = ALL_COLUMNS.filter((c) => !padded.includes(c.id) && !c.core);
     if (hidden.length > 0) {
       const checkbox = screen.getByRole('checkbox', { name: new RegExp(hidden[0].labelKey, 'i') });
@@ -298,7 +271,6 @@ describe('Phase 3A: ColumnPicker — max columns limit', () => {
       ...extras.slice(0, MAX_VISIBLE_COLUMNS - visibleColumns.length),
     ].slice(0, MAX_VISIBLE_COLUMNS);
     renderPicker({ visibleColumns: padded });
-    openPicker();
     const hidden = ALL_COLUMNS.filter((c) => !padded.includes(c.id) && !c.core);
     if (hidden.length > 0) {
       const checkbox = screen.getByRole('checkbox', { name: new RegExp(hidden[0].labelKey, 'i') });
@@ -317,8 +289,6 @@ describe('Phase 3A: ColumnPicker — max columns limit', () => {
     ].slice(0, MAX_VISIBLE_COLUMNS);
     const onVisibleColumnsChange = vi.fn((newCols: string[]) => newCols);
     renderPicker({ visibleColumns: padded, onVisibleColumnsChange });
-    openPicker();
-    // Uncheck a non-core visible column
     const nonCoreVisible = padded.find((id) => !CORE_COLUMN_IDS.includes(id));
     if (nonCoreVisible) {
       const col = ALL_COLUMNS.find((c) => c.id === nonCoreVisible)!;
@@ -333,25 +303,21 @@ describe('Phase 3A: ColumnPicker — reset', () => {
     const onReset = vi.fn();
     const onSortModelChange = vi.fn();
     renderPicker({
-      sortModel: DEFAULT_SORT_MODEL, // default sort, no hidden sorted column
+      sortModel: DEFAULT_SORT_MODEL,
       onReset,
       onSortModelChange,
     });
-    openPicker();
     fireEvent.click(screen.getByRole('button', { name: /col_picker_reset/i }));
     expect(onReset).toHaveBeenCalledTimes(1);
   });
 
   it('22. clicking Reset when sorted column would be hidden → blocking summary modal shown', () => {
     const onReset = vi.fn();
-    // 'createdAt' is sortable but NOT in DEFAULT_VISIBLE_COLUMNS.
-    // When resetting, createdAt would be hidden → modal should appear.
     renderPicker({
       visibleColumns: ['name', 'createdAt'],
       sortModel: [{ column: 'createdAt', direction: 'asc' }],
       onReset,
     });
-    openPicker();
     fireEvent.click(screen.getByRole('button', { name: /col_picker_reset/i }));
     expect(
       screen.queryByRole('dialog', { name: /col_picker_sort_warning_title/i }),
@@ -360,16 +326,14 @@ describe('Phase 3A: ColumnPicker — reset', () => {
 
   it('26. one aggregated modal for multiple sorted columns affected by reset', () => {
     const onReset = vi.fn();
-    // Both createdAt and type are NOT in DEFAULT_VISIBLE_COLUMNS; both sorted
     renderPicker({
       visibleColumns: ['name', 'createdAt', 'city'],
       sortModel: [{ column: 'createdAt', direction: 'asc' }],
       onReset,
     });
-    openPicker();
     fireEvent.click(screen.getByRole('button', { name: /col_picker_reset/i }));
     const modals = screen.queryAllByRole('dialog', { name: /col_picker_sort_warning_title/i });
-    expect(modals.length).toBe(1); // exactly one aggregated modal
+    expect(modals.length).toBe(1);
   });
 });
 
@@ -377,8 +341,6 @@ describe('Phase 3A: ColumnPicker — reorder (drag-and-drop)', () => {
   it('27. reorder drag-drop interaction is wired (onColumnOrderChange prop exists)', () => {
     const onColumnOrderChange = vi.fn();
     renderPicker({ onColumnOrderChange });
-    openPicker();
-    // Just verify the component renders and accepts the callback
     expect(onColumnOrderChange).toBeDefined();
   });
 
@@ -386,30 +348,24 @@ describe('Phase 3A: ColumnPicker — reorder (drag-and-drop)', () => {
     const onVisibleColumnsChange = vi.fn();
     const onColumnOrderChange = vi.fn();
     renderPicker({ onVisibleColumnsChange, onColumnOrderChange });
-    openPicker();
-    // Column order callback present, visibility callback not called spuriously
     expect(onVisibleColumnsChange).not.toHaveBeenCalled();
   });
 
   it('29. core column can be reordered (drag handles present for core columns)', () => {
     renderPicker();
-    openPicker();
-    // Drag handles should be present for all columns including core
     const handles = screen.getAllByRole('button', { name: /drag|reorder/i });
     expect(handles.length).toBeGreaterThanOrEqual(CORE_COLUMN_IDS.length);
   });
 });
 
 describe('Phase 3A: ColumnPicker — accessibility', () => {
-  it('30. trigger button has aria-expanded attribute', () => {
+  it('30. popover dialog has aria-label', () => {
     renderPicker();
-    const btn = screen.getByRole('button', { name: /col_picker_columns_label/i });
-    expect(btn).toHaveAttribute('aria-expanded');
+    expect(screen.getByRole('dialog')).toHaveAttribute('aria-label');
   });
 
   it('31. each checkbox has an accessible label matching column name', () => {
     renderPicker();
-    openPicker();
     for (const col of ALL_COLUMNS) {
       const checkbox = screen.getByRole('checkbox', { name: new RegExp(col.labelKey, 'i') });
       expect(checkbox).toBeInTheDocument();
@@ -418,34 +374,15 @@ describe('Phase 3A: ColumnPicker — accessibility', () => {
 
   it('32. category headings have heading role', () => {
     renderPicker();
-    openPicker();
     const headings = screen.getAllByRole('heading');
     expect(headings.length).toBeGreaterThanOrEqual(COLUMN_CATEGORIES.length);
   });
 
-  it('35. Escape closes popover', () => {
-    renderPicker();
-    openPicker();
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  it('35. Escape calls onClose', () => {
+    const onClose = vi.fn();
+    renderPicker({ onClose });
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
-    expect(screen.queryByRole('dialog')).toBeNull();
-  });
-});
-
-describe('Phase 3A: ColumnPicker — close behavior', () => {
-  it('36. click outside popover → closes', () => {
-    renderPicker();
-    openPicker();
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-    fireEvent.mouseDown(document.body);
-    expect(screen.queryByRole('dialog')).toBeNull();
-  });
-
-  it('37. pressing Escape on trigger → closes (toggle)', () => {
-    renderPicker();
-    const trigger = openPicker();
-    fireEvent.keyDown(trigger, { key: 'Escape' });
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -474,7 +411,6 @@ describe('Phase 3A: ColumnPicker — i18n col_* label keys', () => {
   it('41. column labels in picker match translated text (not raw keys) — en locale', async () => {
     const en = await import('../../../../public/locales/en/customers.json');
     renderPicker();
-    openPicker();
     const nameCol = ALL_COLUMNS.find((c) => c.id === 'name')!;
     const translated = en[nameCol.labelKey as keyof typeof en] as string;
     expect(translated).toBeDefined();

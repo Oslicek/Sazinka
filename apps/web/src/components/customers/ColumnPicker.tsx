@@ -1,5 +1,9 @@
 /**
- * ColumnPicker — popover for managing visible columns and column order.
+ * ColumnPicker — popover body for managing visible columns and column order.
+ *
+ * This is a controlled component — the parent manages open/close state
+ * and renders the trigger button. ColumnPicker only renders the popover
+ * content and the sort-conflict confirmation modal.
  *
  * Features:
  * - Grouped by category with headings
@@ -7,10 +11,10 @@
  * - MAX_VISIBLE_COLUMNS limit enforced; exceeding columns disabled
  * - Blocking modal when hiding a sorted column (single aggregated modal)
  * - Drag-and-drop reorder via drag handles (keyboard + mouse)
- * - Escape / click-outside closes
+ * - Escape closes via onClose callback
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ALL_COLUMNS,
@@ -23,7 +27,7 @@ import {
 import type { SortEntry } from '../../lib/customerColumns';
 import styles from './ColumnPicker.module.css';
 
-interface ColumnPickerProps {
+export interface ColumnPickerProps {
   visibleColumns: string[];
   columnOrder: string[];
   sortModel: SortEntry[];
@@ -31,16 +35,13 @@ interface ColumnPickerProps {
   onColumnOrderChange: (order: string[]) => void;
   onSortModelChange: (model: SortEntry[]) => void;
   onReset: () => void;
+  onClose: () => void;
 }
 
 interface ConfirmState {
-  /** Which column IDs would be hidden */
   hidingColumns: string[];
-  /** Affected sort entries to remove */
   affectedSortEntries: SortEntry[];
-  /** Pending new visible columns (after hiding) */
   pendingVisible: string[];
-  /** Is this for a full reset action? */
   isReset: boolean;
 }
 
@@ -64,33 +65,11 @@ export function ColumnPicker({
   onColumnOrderChange,
   onSortModelChange,
   onReset,
+  onClose,
 }: ColumnPickerProps) {
   const { t } = useTranslation('customers');
-  const [isOpen, setIsOpen] = useState(false);
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const popoverRef = useRef<HTMLDivElement>(null);
 
-  // Close on outside click
-  useEffect(() => {
-    if (!isOpen) return;
-    function handleMouseDown(e: MouseEvent) {
-      if (
-        popoverRef.current &&
-        !popoverRef.current.contains(e.target as Node) &&
-        triggerRef.current &&
-        !triggerRef.current.contains(e.target as Node)
-      ) {
-        setIsOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleMouseDown);
-    return () => document.removeEventListener('mousedown', handleMouseDown);
-  }, [isOpen]);
-
-  const toggle = useCallback(() => setIsOpen((v) => !v), []);
-
-  // Build ordered columns for display (columnOrder controls sequence, then any extras)
   const orderedColumns = [
     ...columnOrder.filter((id) => ALL_COLUMNS.some((c) => c.id === id)),
     ...ALL_COLUMNS.filter((c) => !columnOrder.includes(c.id)).map((c) => c.id),
@@ -107,7 +86,6 @@ export function ColumnPicker({
       const isVisible = visibleSet.has(columnId);
 
       if (isVisible) {
-        // Hiding — check if this column is sorted
         const affected = buildAffectedSort(sortModel, [columnId]);
         const pending = visibleColumns.filter((id) => id !== columnId);
         if (affected.length > 0) {
@@ -121,7 +99,6 @@ export function ColumnPicker({
         }
         onVisibleColumnsChange(pending);
       } else {
-        // Showing
         if (atMax) return;
         onVisibleColumnsChange([...visibleColumns, columnId]);
       }
@@ -130,7 +107,6 @@ export function ColumnPicker({
   );
 
   const handleReset = useCallback(() => {
-    // Check if any columns in DEFAULT_VISIBLE_COLUMNS would hide currently-sorted columns
     const afterReset = DEFAULT_VISIBLE_COLUMNS;
     const hiding = visibleColumns.filter((id) => !afterReset.includes(id));
     const affected = buildAffectedSort(sortModel, hiding);
@@ -157,7 +133,6 @@ export function ColumnPicker({
 
   const handleCancel = useCallback(() => setConfirmState(null), []);
 
-  // Drag-and-drop reorder state
   const dragItemRef = useRef<string | null>(null);
 
   const handleDragStart = useCallback((columnId: string) => {
@@ -180,7 +155,6 @@ export function ColumnPicker({
     [orderedColumns, onColumnOrderChange],
   );
 
-  // Group columns by category
   const columnsByCategory = COLUMN_CATEGORIES.map((cat) => ({
     category: cat,
     columns: orderedColumns
@@ -190,102 +164,83 @@ export function ColumnPicker({
   })).filter((g) => g.columns.length > 0);
 
   return (
-    <div style={{ position: 'relative', display: 'inline-block' }}>
-      <button
-        ref={triggerRef}
-        className={styles.trigger}
-        aria-expanded={isOpen}
-        aria-haspopup="dialog"
-        onClick={toggle}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') setIsOpen(false);
-        }}
-      >
-        {t('col_picker_columns_label', {
+    <>
+      <div
+        className={styles.popover}
+        role="dialog"
+        aria-label={t('col_picker_columns_label', {
           visible: visibleColumns.length,
           total: ALL_COLUMNS.length,
         })}
-      </button>
-
-      {isOpen && (
-        <div
-          ref={popoverRef}
-          className={styles.popover}
-          role="dialog"
-          aria-label={t('col_picker_columns_label', {
-            visible: visibleColumns.length,
-            total: ALL_COLUMNS.length,
-          })}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') setIsOpen(false);
-          }}
-        >
-          <div className={styles.popoverHeader}>
-            <span style={{ fontSize: 13, fontWeight: 500 }}>
-              {t('col_picker_columns_label', {
-                visible: visibleColumns.length,
-                total: ALL_COLUMNS.length,
-              })}
-            </span>
-            <button className={styles.resetBtn} onClick={handleReset}>
-              {t('col_picker_reset')}
-            </button>
-          </div>
-
-          {atMax && (
-            <div className={styles.maxHint}>
-              {t('col_picker_max_limit', { max: MAX_VISIBLE_COLUMNS })}
-            </div>
-          )}
-
-          {columnsByCategory.map(({ category, columns }) => (
-            <div key={category} className={styles.categorySection}>
-              <h3 role="heading" className={styles.categoryHeading}>
-                {t(`col_category_${category}`)}
-              </h3>
-              {columns.map((col) => {
-                const isVisible = visibleSet.has(col.id);
-                const isCore = CORE_COLUMN_IDS.includes(col.id);
-                const isDisabled = isCore || (!isVisible && atMax);
-
-                return (
-                  <div
-                    key={col.id}
-                    className={`${styles.columnRow} ${isDisabled ? styles.disabled : ''}`}
-                    draggable={!isCore}
-                    onDragStart={() => handleDragStart(col.id)}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={() => handleDrop(col.id)}
-                    title={!isVisible && atMax ? t('col_picker_max_limit', { max: MAX_VISIBLE_COLUMNS }) : undefined}
-                  >
-                    <button
-                      className={styles.dragHandle}
-                      aria-label={`drag ${col.labelKey}`}
-                      draggable
-                      onDragStart={() => handleDragStart(col.id)}
-                      tabIndex={-1}
-                    >
-                      ⠿
-                    </button>
-                    <input
-                      type="checkbox"
-                      id={`col-pick-${col.id}`}
-                      className={styles.checkbox}
-                      checked={isVisible}
-                      disabled={isDisabled}
-                      aria-label={t(col.labelKey)}
-                      onChange={() => handleToggleColumn(col.id)}
-                    />
-                    <label htmlFor={`col-pick-${col.id}`} className={styles.label}>
-                      {t(col.labelKey)}
-                    </label>
-                  </div>
-                );
-              })}
-            </div>
-          ))}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') onClose();
+        }}
+      >
+        <div className={styles.popoverHeader}>
+          <span style={{ fontSize: 13, fontWeight: 500 }}>
+            {t('col_picker_columns_label', {
+              visible: visibleColumns.length,
+              total: ALL_COLUMNS.length,
+            })}
+          </span>
+          <button className={styles.resetBtn} onClick={handleReset}>
+            {t('col_picker_reset')}
+          </button>
         </div>
-      )}
+
+        {atMax && (
+          <div className={styles.maxHint}>
+            {t('col_picker_max_limit', { max: MAX_VISIBLE_COLUMNS })}
+          </div>
+        )}
+
+        {columnsByCategory.map(({ category, columns }) => (
+          <div key={category} className={styles.categorySection}>
+            <h3 role="heading" className={styles.categoryHeading}>
+              {t(`col_category_${category}`)}
+            </h3>
+            {columns.map((col) => {
+              const isVisible = visibleSet.has(col.id);
+              const isCore = CORE_COLUMN_IDS.includes(col.id);
+              const isDisabled = isCore || (!isVisible && atMax);
+
+              return (
+                <div
+                  key={col.id}
+                  className={`${styles.columnRow} ${isDisabled ? styles.disabled : ''}`}
+                  draggable={!isCore}
+                  onDragStart={() => handleDragStart(col.id)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => handleDrop(col.id)}
+                  title={!isVisible && atMax ? t('col_picker_max_limit', { max: MAX_VISIBLE_COLUMNS }) : undefined}
+                >
+                  <button
+                    className={styles.dragHandle}
+                    aria-label={`drag ${col.labelKey}`}
+                    draggable
+                    onDragStart={() => handleDragStart(col.id)}
+                    tabIndex={-1}
+                  >
+                    ⠿
+                  </button>
+                  <input
+                    type="checkbox"
+                    id={`col-pick-${col.id}`}
+                    className={styles.checkbox}
+                    checked={isVisible}
+                    disabled={isDisabled}
+                    aria-label={t(col.labelKey)}
+                    onChange={() => handleToggleColumn(col.id)}
+                  />
+                  <label htmlFor={`col-pick-${col.id}`} className={styles.label}>
+                    {t(col.labelKey)}
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
 
       {confirmState && (
         <div className={styles.modalOverlay}>
@@ -323,6 +278,6 @@ export function ColumnPicker({
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
