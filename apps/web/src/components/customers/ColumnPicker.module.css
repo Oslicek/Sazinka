@@ -64,10 +64,12 @@
 
 .columnRow {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 8px;
   padding: 4px 12px;
   cursor: default;
+  min-width: 0;
 }
 
 .columnRow:hover {
@@ -99,15 +101,17 @@
   flex-shrink: 0;
 }
 
-/* Span — avoids global `label { display: block }` in index.css fighting flex layout */
+/* Label text: do not use min-width:0 + overflow-wrap:anywhere — that collapses the
+   flex item and forces a line break after every character. */
 .columnName {
   flex: 1 1 auto;
-  min-width: 0;
+  min-width: 3rem;
   font-size: 13px;
   font-weight: 400;
   line-height: 1.35;
   color: #0f172a;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .maxHint {
