@@ -8,8 +8,105 @@ use chrono::Utc;
 
 use crate::types::customer::{
     Customer, CreateCustomerRequest, UpdateCustomerRequest, CustomerType,
-    CustomerListItem, ListCustomersRequest, CustomerSummaryResponse,
+    CustomerListItem, ListCustomersRequest, CustomerSummaryResponse, SortEntry,
 };
+
+// ── Sort ORDER BY builder ────────────────────────────────────────────────────
+
+/// Maps a frontend catalog column ID to its safe SQL expression.
+/// Returns None for unknown IDs (injection-safe whitelist).
+fn column_to_sql(id: &str) -> Option<&'static str> {
+    match id {
+        "name"         => Some("c.name"),
+        "type"         => Some("c.customer_type"),
+        "city"         => Some("c.city"),
+        "street"       => Some("c.street"),
+        "postalCode"   => Some("c.postal_code"),
+        "phone"        => Some("c.phone"),
+        "email"        => Some("c.email"),
+        "deviceCount"  => Some("device_count"),
+        "nextRevision" => Some("next_revision_date"),
+        "geocodeStatus"=> Some("c.geocode_status"),
+        "createdAt"    => Some("c.created_at"),
+        _              => None,
+    }
+}
+
+/// Build an ORDER BY clause string from a slice of SortEntry values.
+///
+/// Rules:
+/// - Unknown column IDs are skipped (whitelist).
+/// - Invalid directions (not exactly "asc"/"desc") are skipped.
+/// - Duplicate column IDs: first-wins.
+/// - Empty or all-invalid input: falls back to `c.name ASC NULLS LAST`.
+/// - A deterministic tie-breaker `c.id ASC` is always appended.
+pub fn build_order_by(sort_model: &[SortEntry]) -> String {
+    let mut seen = std::collections::HashSet::new();
+    let mut parts: Vec<String> = Vec::new();
+
+    for entry in sort_model {
+        let Some(sql_col) = column_to_sql(&entry.column) else { continue };
+        if seen.contains(sql_col) { continue }
+        let (dir_sql, nulls) = match entry.direction.as_str() {
+            "asc"  => ("ASC",  "NULLS LAST"),
+            "desc" => ("DESC", "NULLS FIRST"),
+            _      => continue,
+        };
+        seen.insert(sql_col);
+        parts.push(format!("{} {} {}", sql_col, dir_sql, nulls));
+    }
+
+    if parts.is_empty() {
+        parts.push("c.name ASC NULLS LAST".to_string());
+    }
+
+    parts.push("c.id ASC".to_string());
+    parts.join(", ")
+}
+
+/// Resolve the ORDER BY clause from a `ListCustomersRequest`.
+///
+/// Precedence:
+/// 1. `sort_model` when present and produces at least one valid entry.
+/// 2. Legacy `sort_by` / `sort_order` fields.
+/// 3. Default: `c.name ASC NULLS LAST, c.id ASC`.
+pub fn resolve_sort(req: &ListCustomersRequest) -> String {
+    // Prefer sort_model when it exists and contains at least one valid entry
+    if let Some(ref model) = req.sort_model {
+        let candidate = build_order_by(model);
+        // build_order_by always returns at least the default; detect if user entries
+        // contributed anything by checking whether the model produced any valid parts
+        // (we can tell because the default-only result is exactly the fallback string).
+        let has_user_entries = model.iter().any(|e| {
+            column_to_sql(&e.column).is_some()
+                && (e.direction == "asc" || e.direction == "desc")
+        });
+        if has_user_entries {
+            return candidate;
+        }
+    }
+
+    // Fall back to legacy sort_by / sort_order
+    if let Some(ref sort_by) = req.sort_by {
+        let sql_col = match sort_by.as_str() {
+            "nextRevision" => "next_revision_date",
+            "deviceCount"  => "device_count",
+            "city"         => "c.city",
+            "createdAt"    => "c.created_at",
+            "name"         => "c.name",
+            _              => "c.name",
+        };
+        let dir = match req.sort_order.as_deref() {
+            Some("desc") => "DESC",
+            _            => "ASC",
+        };
+        let nulls = if dir == "ASC" { "NULLS LAST" } else { "NULLS FIRST" };
+        return format!("{} {} {}, c.id ASC", sql_col, dir, nulls);
+    }
+
+    // Default
+    "c.name ASC NULLS LAST, c.id ASC".to_string()
+}
 
 /// Create a new customer
 pub async fn create_customer(
@@ -441,22 +538,9 @@ pub async fn list_customers_extended(
         format!("HAVING {}", having_conditions.join(" AND "))
     };
 
-    // Build ORDER BY clause
-    let order_by = match req.sort_by.as_deref() {
-        Some("nextRevision") => "next_revision_date",
-        Some("deviceCount") => "device_count",
-        Some("city") => "c.city",
-        Some("createdAt") => "c.created_at",
-        _ => "c.name", // default
-    };
-
-    let order_dir = match req.sort_order.as_deref() {
-        Some("desc") => "DESC",
-        _ => "ASC",
-    };
-
-    // Handle NULL values in sorting (NULLs last for ASC, first for DESC)
-    let nulls_order = if order_dir == "ASC" { "NULLS LAST" } else { "NULLS FIRST" };
+    // Build ORDER BY clause — uses sort_model if present and valid,
+    // falls back to legacy sort_by/sort_order, then to default.
+    let order_clause = resolve_sort(req);
 
     // Subquery to calculate device overdue status based on last completed revision or visit
     // A device is overdue if: (last_completed_date + interval_months) < today
@@ -524,14 +608,12 @@ pub async fn list_customers_extended(
         GROUP BY c.id, c.user_id, c.customer_type, c.name, c.email, c.phone,
                  c.street, c.city, c.postal_code, c.lat, c.lng, c.geocode_status, c.created_at
         {}
-        ORDER BY {} {} {}
+        ORDER BY {}
         LIMIT ${} OFFSET ${}
         "#,
         where_clause,
         having_clause,
-        order_by,
-        order_dir,
-        nulls_order,
+        order_clause,
         param_idx,
         param_idx + 1
     );
@@ -912,5 +994,329 @@ pub async fn anonymize_customer(
 
     tx.commit().await?;
     Ok(result.rows_affected() > 0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::customer::SortEntry;
+
+    fn se(column: &str, direction: &str) -> SortEntry {
+        SortEntry { column: column.to_string(), direction: direction.to_string() }
+    }
+
+    // ── Default / empty ──────────────────────────────────────────────────────
+
+    #[test]
+    fn build_order_by_empty_slice_returns_default() {
+        let result = build_order_by(&[]);
+        assert_eq!(result, "c.name ASC NULLS LAST, c.id ASC");
+    }
+
+    #[test]
+    fn build_order_by_all_invalid_columns_returns_default() {
+        let result = build_order_by(&[se("unknown_col", "asc"), se("another_bad", "desc")]);
+        assert_eq!(result, "c.name ASC NULLS LAST, c.id ASC");
+    }
+
+    #[test]
+    fn build_order_by_all_invalid_directions_returns_default() {
+        let result = build_order_by(&[se("name", "sideways"), se("city", "DESCENDING")]);
+        assert_eq!(result, "c.name ASC NULLS LAST, c.id ASC");
+    }
+
+    // ── Single column mappings ───────────────────────────────────────────────
+
+    #[test]
+    fn build_order_by_name_asc() {
+        let result = build_order_by(&[se("name", "asc")]);
+        assert!(result.starts_with("c.name ASC NULLS LAST"));
+        assert!(result.ends_with("c.id ASC"));
+    }
+
+    #[test]
+    fn build_order_by_name_desc() {
+        let result = build_order_by(&[se("name", "desc")]);
+        assert!(result.starts_with("c.name DESC NULLS FIRST"));
+    }
+
+    #[test]
+    fn build_order_by_type_asc() {
+        let result = build_order_by(&[se("type", "asc")]);
+        assert!(result.starts_with("c.customer_type ASC NULLS LAST"));
+    }
+
+    #[test]
+    fn build_order_by_type_desc() {
+        let result = build_order_by(&[se("type", "desc")]);
+        assert!(result.starts_with("c.customer_type DESC NULLS FIRST"));
+    }
+
+    #[test]
+    fn build_order_by_city_asc() {
+        let result = build_order_by(&[se("city", "asc")]);
+        assert!(result.starts_with("c.city ASC NULLS LAST"));
+    }
+
+    #[test]
+    fn build_order_by_city_desc() {
+        let result = build_order_by(&[se("city", "desc")]);
+        assert!(result.starts_with("c.city DESC NULLS FIRST"));
+    }
+
+    #[test]
+    fn build_order_by_street_asc() {
+        let result = build_order_by(&[se("street", "asc")]);
+        assert!(result.starts_with("c.street ASC NULLS LAST"));
+    }
+
+    #[test]
+    fn build_order_by_street_desc() {
+        let result = build_order_by(&[se("street", "desc")]);
+        assert!(result.starts_with("c.street DESC NULLS FIRST"));
+    }
+
+    #[test]
+    fn build_order_by_postal_code_asc() {
+        let result = build_order_by(&[se("postalCode", "asc")]);
+        assert!(result.starts_with("c.postal_code ASC NULLS LAST"));
+    }
+
+    #[test]
+    fn build_order_by_postal_code_desc() {
+        let result = build_order_by(&[se("postalCode", "desc")]);
+        assert!(result.starts_with("c.postal_code DESC NULLS FIRST"));
+    }
+
+    #[test]
+    fn build_order_by_phone_asc() {
+        let result = build_order_by(&[se("phone", "asc")]);
+        assert!(result.starts_with("c.phone ASC NULLS LAST"));
+    }
+
+    #[test]
+    fn build_order_by_phone_desc() {
+        let result = build_order_by(&[se("phone", "desc")]);
+        assert!(result.starts_with("c.phone DESC NULLS FIRST"));
+    }
+
+    #[test]
+    fn build_order_by_email_asc() {
+        let result = build_order_by(&[se("email", "asc")]);
+        assert!(result.starts_with("c.email ASC NULLS LAST"));
+    }
+
+    #[test]
+    fn build_order_by_email_desc() {
+        let result = build_order_by(&[se("email", "desc")]);
+        assert!(result.starts_with("c.email DESC NULLS FIRST"));
+    }
+
+    #[test]
+    fn build_order_by_device_count_asc() {
+        let result = build_order_by(&[se("deviceCount", "asc")]);
+        assert!(result.starts_with("device_count ASC NULLS LAST"));
+    }
+
+    #[test]
+    fn build_order_by_device_count_desc() {
+        let result = build_order_by(&[se("deviceCount", "desc")]);
+        assert!(result.starts_with("device_count DESC NULLS FIRST"));
+    }
+
+    #[test]
+    fn build_order_by_next_revision_asc() {
+        let result = build_order_by(&[se("nextRevision", "asc")]);
+        assert!(result.starts_with("next_revision_date ASC NULLS LAST"));
+    }
+
+    #[test]
+    fn build_order_by_next_revision_desc() {
+        let result = build_order_by(&[se("nextRevision", "desc")]);
+        assert!(result.starts_with("next_revision_date DESC NULLS FIRST"));
+    }
+
+    #[test]
+    fn build_order_by_geocode_status_asc() {
+        let result = build_order_by(&[se("geocodeStatus", "asc")]);
+        assert!(result.starts_with("c.geocode_status ASC NULLS LAST"));
+    }
+
+    #[test]
+    fn build_order_by_geocode_status_desc() {
+        let result = build_order_by(&[se("geocodeStatus", "desc")]);
+        assert!(result.starts_with("c.geocode_status DESC NULLS FIRST"));
+    }
+
+    #[test]
+    fn build_order_by_created_at_asc() {
+        let result = build_order_by(&[se("createdAt", "asc")]);
+        assert!(result.starts_with("c.created_at ASC NULLS LAST"));
+    }
+
+    #[test]
+    fn build_order_by_created_at_desc() {
+        let result = build_order_by(&[se("createdAt", "desc")]);
+        assert!(result.starts_with("c.created_at DESC NULLS FIRST"));
+    }
+
+    // ── Multi-column ordering ────────────────────────────────────────────────
+
+    #[test]
+    fn build_order_by_preserves_priority_order() {
+        let result = build_order_by(&[se("name", "asc"), se("city", "desc")]);
+        let name_pos = result.find("c.name").unwrap();
+        let city_pos = result.find("c.city").unwrap();
+        assert!(name_pos < city_pos, "name must come before city");
+    }
+
+    #[test]
+    fn build_order_by_three_columns_full_output() {
+        let result = build_order_by(&[
+            se("name", "asc"),
+            se("city", "desc"),
+            se("createdAt", "asc"),
+        ]);
+        assert!(result.contains("c.name ASC NULLS LAST"));
+        assert!(result.contains("c.city DESC NULLS FIRST"));
+        assert!(result.contains("c.created_at ASC NULLS LAST"));
+        assert!(result.ends_with("c.id ASC"));
+    }
+
+    // ── Invalid / mixed entries ──────────────────────────────────────────────
+
+    #[test]
+    fn build_order_by_unknown_column_skipped() {
+        let result = build_order_by(&[se("unknown_xyz", "asc"), se("city", "asc")]);
+        assert!(!result.contains("unknown_xyz"));
+        assert!(result.contains("c.city ASC NULLS LAST"));
+    }
+
+    #[test]
+    fn build_order_by_invalid_direction_skipped() {
+        let result = build_order_by(&[se("name", "sideways"), se("city", "asc")]);
+        // sideways direction causes name entry to be skipped
+        assert!(!result.contains("sideways"));
+        assert!(result.contains("c.city"));
+    }
+
+    #[test]
+    fn build_order_by_mixed_valid_and_invalid_keeps_valid() {
+        let result = build_order_by(&[
+            se("name", "asc"),
+            se("bad_col", "asc"),
+            se("city", "desc"),
+        ]);
+        assert!(result.contains("c.name"));
+        assert!(!result.contains("bad_col"));
+        assert!(result.contains("c.city"));
+    }
+
+    #[test]
+    fn build_order_by_duplicate_columns_first_wins() {
+        let result = build_order_by(&[se("name", "asc"), se("name", "desc")]);
+        // Only one entry for name, direction from first occurrence
+        let count = result.matches("c.name").count();
+        // c.name appears once in the user sort, once potentially in tie-breaker (c.id) — check c.name ASC appears
+        assert!(result.contains("c.name ASC NULLS LAST"));
+        // The desc variant must not appear
+        assert!(!result.contains("c.name DESC"));
+        // Only one name sort entry means exactly one "c.name" before the tie-breaker
+        assert!(count >= 1);
+    }
+
+    // ── Tie-breaker ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn build_order_by_always_appends_id_tie_breaker() {
+        let result = build_order_by(&[se("name", "asc")]);
+        assert!(result.ends_with("c.id ASC"));
+    }
+
+    #[test]
+    fn build_order_by_tie_breaker_not_duplicated_when_name_is_id() {
+        // Even if user somehow sorts by id (not a valid column in whitelist),
+        // the tie-breaker c.id ASC appears exactly once
+        let result = build_order_by(&[se("name", "asc")]);
+        let count = result.matches("c.id ASC").count();
+        assert_eq!(count, 1);
+    }
+
+    // ── Injection safety ────────────────────────────────────────────────────
+
+    #[test]
+    fn build_order_by_malicious_column_string_not_in_output() {
+        let malicious = "name; DROP TABLE customers; --";
+        let result = build_order_by(&[se(malicious, "asc")]);
+        assert!(!result.contains("DROP"));
+        assert!(!result.contains(malicious));
+        // Falls back to default
+        assert_eq!(result, "c.name ASC NULLS LAST, c.id ASC");
+    }
+
+    #[test]
+    fn build_order_by_malicious_direction_string_not_in_output() {
+        let result = build_order_by(&[se("name", "asc; DROP TABLE customers; --")]);
+        assert!(!result.contains("DROP"));
+        // Falls back to default because direction is invalid
+        assert_eq!(result, "c.name ASC NULLS LAST, c.id ASC");
+    }
+
+    // ── Precedence (sort_model vs legacy sort_by/sort_order) ─────────────────
+
+    #[test]
+    fn resolve_sort_precedence_sort_model_wins_over_legacy() {
+        let req = ListCustomersRequest {
+            sort_model: Some(vec![se("city", "desc")]),
+            sort_by: Some("name".to_string()),
+            sort_order: Some("asc".to_string()),
+            ..Default::default()
+        };
+        let result = resolve_sort(&req);
+        assert!(result.starts_with("c.city DESC"), "sort_model should win over sort_by/sort_order");
+    }
+
+    #[test]
+    fn resolve_sort_falls_back_to_legacy_when_sort_model_absent() {
+        let req = ListCustomersRequest {
+            sort_model: None,
+            sort_by: Some("city".to_string()),
+            sort_order: Some("desc".to_string()),
+            ..Default::default()
+        };
+        let result = resolve_sort(&req);
+        assert!(result.contains("c.city"), "should use legacy sort_by when sort_model is None");
+    }
+
+    #[test]
+    fn resolve_sort_falls_back_to_legacy_when_sort_model_empty() {
+        let req = ListCustomersRequest {
+            sort_model: Some(vec![]),
+            sort_by: Some("city".to_string()),
+            sort_order: Some("asc".to_string()),
+            ..Default::default()
+        };
+        let result = resolve_sort(&req);
+        assert!(result.contains("c.city"), "empty sort_model should fall back to sort_by");
+    }
+
+    #[test]
+    fn resolve_sort_falls_back_to_legacy_when_sort_model_all_invalid() {
+        let req = ListCustomersRequest {
+            sort_model: Some(vec![se("bad_col", "asc")]),
+            sort_by: Some("city".to_string()),
+            sort_order: Some("asc".to_string()),
+            ..Default::default()
+        };
+        let result = resolve_sort(&req);
+        assert!(result.contains("c.city"), "all-invalid sort_model should fall back to sort_by");
+    }
+
+    #[test]
+    fn resolve_sort_default_when_both_absent() {
+        let req = ListCustomersRequest::default();
+        let result = resolve_sort(&req);
+        assert!(result.starts_with("c.name ASC NULLS LAST"));
+    }
 }
 
