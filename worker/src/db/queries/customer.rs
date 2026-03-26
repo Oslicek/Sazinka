@@ -896,6 +896,243 @@ pub async fn list_customers_extended(
     Ok((items, total))
 }
 
+// ── Distinct values ──────────────────────────────────────────────────────────
+
+/// Maps a checklist column ID to the SQL expression used for DISTINCT value lookup.
+/// Returns None for unknown or date-range columns.
+fn column_to_distinct_sql(id: &str) -> Option<&'static str> {
+    match id {
+        "name"         => Some("c.name"),
+        "type"         => Some("c.customer_type::text"),
+        "city"         => Some("c.city"),
+        "street"       => Some("c.street"),
+        "postalCode"   => Some("c.postal_code"),
+        "phone"        => Some("c.phone"),
+        "email"        => Some("c.email"),
+        "geocodeStatus"=> Some("c.geocode_status::text"),
+        "deviceCount"  => Some("device_count_col"),  // resolved from CTE below
+        _ => None,
+    }
+}
+
+/// Fetch distinct values for a checklist-type column, applying context filters.
+///
+/// - Only checklist columns are valid; date-range columns return an error.
+/// - Context filters (search, hasOverdue, nextRevisionWithinDays, columnFilters) are applied,
+///   but the target column's own filter is excluded.
+/// - Results are ordered case-insensitively ascending; empty/null values appear last.
+/// - `query` narrows values; `limit`/`offset` paginate; `has_more` reflects remaining rows.
+pub async fn get_column_distinct_values(
+    pool: &PgPool,
+    user_id: Uuid,
+    req: &crate::types::customer::ColumnDistinctRequest,
+) -> Result<crate::types::customer::ColumnDistinctResponse> {
+    use crate::types::customer::ColumnDistinctResponse;
+
+    let col = req.column.as_str();
+    let distinct_expr = column_to_distinct_sql(col)
+        .ok_or_else(|| anyhow::anyhow!("INVALID_COLUMN: column '{}' is not a valid checklist column", col))?;
+
+    let limit = req.limit.unwrap_or(50) as i64;
+    let offset = req.offset.unwrap_or(0) as i64;
+
+    // Build context WHERE conditions (same as list_customers_extended base filters)
+    let mut conditions: Vec<String> = vec![
+        "c.user_id = $1".to_string(),
+        "c.is_anonymized = FALSE".to_string(),
+    ];
+    let mut param_idx = 1usize;
+
+    let search_pattern = req.search.as_ref().map(|s| format!("%{}%", s.to_lowercase()));
+    if search_pattern.is_some() {
+        param_idx += 1;
+        conditions.push(format!(
+            "(LOWER(c.name) LIKE ${0} OR LOWER(c.city) LIKE ${0} OR LOWER(c.street) LIKE ${0} OR LOWER(c.email) LIKE ${0} OR c.phone LIKE ${0})",
+            param_idx
+        ));
+    }
+
+    // Apply context column filters — excluding the target column's own filter
+    let context_filters: Vec<ColumnFilter> = req.column_filters
+        .as_deref()
+        .unwrap_or(&[])
+        .iter()
+        .filter(|f| f.column() != col)
+        .cloned()
+        .collect();
+
+    let ctx_clauses = build_column_filter_clauses(&context_filters, &mut param_idx);
+    for cond in &ctx_clauses.where_conds {
+        conditions.push(cond.clone());
+    }
+
+    let where_clause = conditions.join(" AND ");
+
+    // Build HAVING for context filters (aggregate)
+    let mut having_conds: Vec<String> = Vec::new();
+    if req.has_overdue == Some(true) {
+        having_conds.push(
+            "COUNT(DISTINCT ds.device_id) FILTER (WHERE ds.is_overdue OR ds.is_never_serviced) > 0".to_string()
+        );
+    }
+    for cond in &ctx_clauses.having_conds {
+        having_conds.push(cond.clone());
+    }
+    let having_clause = if having_conds.is_empty() {
+        String::new()
+    } else {
+        format!("HAVING {}", having_conds.join(" AND "))
+    };
+
+    // Optional search within distinct values
+    let value_search_pattern = req.query.as_ref().map(|q| format!("%{}%", q.to_lowercase()));
+    let value_search_cond = if value_search_pattern.is_some() {
+        param_idx += 1;
+        format!("AND (val IS NULL OR LOWER(val) LIKE ${})", param_idx)
+    } else {
+        String::new()
+    };
+
+    // Limit + offset params
+    let limit_param = param_idx + 1;
+    let offset_param = param_idx + 2;
+
+    // For aggregate columns (deviceCount), we need the full CTE wrapped as a subquery
+    let needs_cte = col == "deviceCount" || !having_clause.is_empty();
+
+    let query = if needs_cte {
+        // Use the full aggregating CTE, then select distinct from it
+        format!(
+            r#"
+            WITH base AS (
+                WITH device_status AS (
+                    SELECT
+                        d.id as device_id,
+                        d.customer_id,
+                        d.revision_interval_months,
+                        d.installation_date,
+                        GREATEST(
+                            MAX(r.completed_at) FILTER (WHERE r.status = 'completed'),
+                            MAX(COALESCE(v.actual_arrival, v.scheduled_date::timestamptz)) FILTER (WHERE v.status = 'completed' AND v.visit_type = 'revision')
+                        ) as last_completed,
+                        CASE
+                            WHEN GREATEST(
+                                MAX(r.completed_at) FILTER (WHERE r.status = 'completed'),
+                                MAX(COALESCE(v.actual_arrival, v.scheduled_date::timestamptz)) FILTER (WHERE v.status = 'completed' AND v.visit_type = 'revision')
+                            ) IS NOT NULL THEN
+                                GREATEST(
+                                    MAX(r.completed_at) FILTER (WHERE r.status = 'completed'),
+                                    MAX(COALESCE(v.actual_arrival, v.scheduled_date::timestamptz)) FILTER (WHERE v.status = 'completed' AND v.visit_type = 'revision')
+                                )::date + (d.revision_interval_months || ' months')::interval < CURRENT_DATE
+                            WHEN d.installation_date IS NOT NULL THEN
+                                d.installation_date + (d.revision_interval_months || ' months')::interval < CURRENT_DATE
+                            ELSE FALSE
+                        END as is_overdue,
+                        GREATEST(
+                            MAX(r.completed_at) FILTER (WHERE r.status = 'completed'),
+                            MAX(COALESCE(v.actual_arrival, v.scheduled_date::timestamptz)) FILTER (WHERE v.status = 'completed' AND v.visit_type = 'revision')
+                        ) IS NULL as is_never_serviced
+                    FROM devices d
+                    LEFT JOIN revisions r ON d.id = r.device_id
+                    LEFT JOIN visits v ON (v.device_id = d.id OR (v.device_id IS NULL AND v.customer_id = d.customer_id))
+                    GROUP BY d.id, d.customer_id, d.revision_interval_months, d.installation_date
+                )
+                SELECT
+                    COALESCE(COUNT(DISTINCT ds.device_id), 0) as device_count_col
+                FROM customers c
+                LEFT JOIN device_status ds ON c.id = ds.customer_id
+                LEFT JOIN revisions r ON c.id = r.customer_id
+                WHERE {where_clause}
+                GROUP BY c.id, c.user_id, c.customer_type, c.name, c.email, c.phone,
+                         c.street, c.city, c.postal_code, c.lat, c.lng, c.geocode_status, c.created_at
+                {having_clause}
+            ),
+            distinct_vals AS (
+                SELECT DISTINCT {col_expr}::text AS val FROM base
+            ),
+            filtered_vals AS (
+                SELECT val FROM distinct_vals
+                WHERE TRUE {value_search_cond}
+            )
+            SELECT val,
+                   COUNT(*) OVER() as total_count
+            FROM filtered_vals
+            ORDER BY CASE WHEN val IS NULL OR val = '' THEN 1 ELSE 0 END,
+                     LOWER(val) ASC
+            LIMIT ${limit_param} OFFSET ${offset_param}
+            "#,
+            where_clause = where_clause,
+            having_clause = having_clause,
+            col_expr = distinct_expr,
+            value_search_cond = value_search_cond,
+            limit_param = limit_param,
+            offset_param = offset_param,
+        )
+    } else {
+        // Simple distinct query for non-aggregate WHERE columns
+        format!(
+            r#"
+            WITH distinct_vals AS (
+                SELECT DISTINCT {col_expr}::text AS val
+                FROM customers c
+                WHERE {where_clause}
+            ),
+            filtered_vals AS (
+                SELECT val FROM distinct_vals
+                WHERE TRUE {value_search_cond}
+            )
+            SELECT val,
+                   COUNT(*) OVER() as total_count
+            FROM filtered_vals
+            ORDER BY CASE WHEN val IS NULL OR val = '' THEN 1 ELSE 0 END,
+                     LOWER(val) ASC
+            LIMIT ${limit_param} OFFSET ${offset_param}
+            "#,
+            col_expr = distinct_expr,
+            where_clause = where_clause,
+            value_search_cond = value_search_cond,
+            limit_param = limit_param,
+            offset_param = offset_param,
+        )
+    };
+
+    let mut qb = sqlx::query_as::<_, (Option<String>, i64)>(&query).bind(user_id);
+
+    if let Some(ref pattern) = search_pattern {
+        qb = qb.bind(pattern);
+    }
+
+    for bind_val in ctx_clauses.bind_values.iter().cloned() {
+        qb = match bind_val {
+            FilterBindValue::Text(s) => qb.bind(s),
+            FilterBindValue::TextArray(arr) => qb.bind(arr),
+        };
+    }
+
+    if let Some(ref pattern) = value_search_pattern {
+        qb = qb.bind(pattern);
+    }
+
+    qb = qb.bind(limit).bind(offset);
+
+    let rows = qb.fetch_all(pool).await?;
+
+    let total = rows.first().map(|(_, t)| *t).unwrap_or(0);
+    let values: Vec<String> = rows
+        .into_iter()
+        .map(|(v, _)| v.unwrap_or_default())
+        .collect();
+    let returned = values.len() as i64;
+    let has_more = offset + returned < total;
+
+    Ok(ColumnDistinctResponse {
+        column: req.column.clone(),
+        values,
+        total,
+        has_more,
+    })
+}
+
 /// Get customer summary statistics
 pub async fn get_customer_summary(
     pool: &PgPool,
@@ -1900,6 +2137,40 @@ mod tests {
             assert!(out.where_conds.is_empty(), "column {col} should NOT produce WHERE condition");
             assert!(!out.having_conds.is_empty(), "column {col} should produce HAVING condition");
         }
+    }
+
+    // ── column_to_distinct_sql ───────────────────────────────────────────────
+
+    #[test]
+    fn distinct_sql_all_checklist_columns_map_to_expression() {
+        for col in &["name", "type", "city", "street", "postalCode", "phone", "email", "geocodeStatus", "deviceCount"] {
+            assert!(column_to_distinct_sql(col).is_some(), "column '{col}' should have a distinct SQL mapping");
+        }
+    }
+
+    #[test]
+    fn distinct_sql_date_range_columns_return_none() {
+        // Date-range columns are not valid for distinct lookup
+        assert!(column_to_distinct_sql("createdAt").is_none());
+        assert!(column_to_distinct_sql("nextRevision").is_none());
+    }
+
+    #[test]
+    fn distinct_sql_unknown_column_returns_none() {
+        assert!(column_to_distinct_sql("nonexistent_col").is_none());
+        assert!(column_to_distinct_sql("'; DROP TABLE customers; --").is_none());
+    }
+
+    #[test]
+    fn distinct_sql_type_column_casts_to_text() {
+        let expr = column_to_distinct_sql("type").unwrap();
+        assert!(expr.contains("::text"), "type must cast to text, got: {expr}");
+    }
+
+    #[test]
+    fn distinct_sql_geocode_status_casts_to_text() {
+        let expr = column_to_distinct_sql("geocodeStatus").unwrap();
+        assert!(expr.contains("::text"), "geocodeStatus must cast to text, got: {expr}");
     }
 }
 

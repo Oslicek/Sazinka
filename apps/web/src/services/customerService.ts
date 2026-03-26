@@ -6,6 +6,8 @@ import type {
   CustomerListResponse,
   CustomerSummary,
   ListCustomersRequest,
+  ColumnDistinctRequest,
+  ColumnDistinctResponse,
 } from '@shared/customer';
 import type { ListRequest, ListResponse, SuccessResponse, ErrorResponse } from '@shared/messages';
 import { createRequest } from '@shared/messages';
@@ -97,6 +99,28 @@ export async function listCustomersExtended(
 
   const response = await deps.request<typeof request, NatsResponse<CustomerListResponse>>(
     'sazinka.customer.list.extended',
+    request
+  );
+
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+
+  return response.payload;
+}
+
+/**
+ * Fetch distinct values for a column (used for filter dropdowns).
+ * Only checklist-type columns are valid; date-range columns will throw.
+ */
+export async function getColumnDistinctValues(
+  options: ColumnDistinctRequest,
+  deps: CustomerServiceDeps = getDefaultDeps()
+): Promise<ColumnDistinctResponse> {
+  const request = createRequest(getToken(), options);
+
+  const response = await deps.request<typeof request, NatsResponse<ColumnDistinctResponse>>(
+    'sazinka.customer.column.distinct',
     request
   );
 

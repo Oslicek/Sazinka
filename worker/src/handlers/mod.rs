@@ -288,6 +288,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let customer_abandon_sub = client.subscribe("sazinka.customer.abandon").await?;
     let customer_unabandon_sub = client.subscribe("sazinka.customer.unabandon").await?;
     let customer_anonymize_sub = client.subscribe("sazinka.customer.anonymize").await?;
+    let customer_column_distinct_sub = client.subscribe("sazinka.customer.column.distinct").await?;
 
     // Planned action subscriptions
     let pa_create_sub = client.subscribe("sazinka.planned_action.create").await?;
@@ -444,6 +445,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let client_customer_abandon = client.clone();
     let client_customer_unabandon = client.clone();
     let client_customer_anonymize = client.clone();
+    let client_customer_column_distinct = client.clone();
     let client_pa_create = client.clone();
     let client_pa_list = client.clone();
     let client_pa_get = client.clone();
@@ -505,6 +507,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_customer_abandon = pool.clone();
     let pool_customer_unabandon = pool.clone();
     let pool_customer_anonymize = pool.clone();
+    let pool_customer_column_distinct = pool.clone();
     let pool_pa_create = pool.clone();
     let pool_pa_list = pool.clone();
     let pool_pa_get = pool.clone();
@@ -662,6 +665,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let jwt_secret_customer_abandon = Arc::clone(&jwt_secret);
     let jwt_secret_customer_unabandon = Arc::clone(&jwt_secret);
     let jwt_secret_customer_anonymize = Arc::clone(&jwt_secret);
+    let jwt_secret_customer_column_distinct = Arc::clone(&jwt_secret);
     let jwt_secret_pa_create = Arc::clone(&jwt_secret);
     let jwt_secret_pa_list = Arc::clone(&jwt_secret);
     let jwt_secret_pa_get = Arc::clone(&jwt_secret);
@@ -1131,6 +1135,16 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
             customer_anonymize_sub,
             pool_customer_anonymize,
             jwt_secret_customer_anonymize,
+        )
+        .await
+    });
+
+    let customer_column_distinct_handle = tokio::spawn(async move {
+        customer::handle_column_distinct(
+            client_customer_column_distinct,
+            customer_column_distinct_sub,
+            pool_customer_column_distinct,
+            jwt_secret_customer_column_distinct,
         )
         .await
     });
@@ -2810,6 +2824,7 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         customer_abandon_handle.boxed(),
         customer_unabandon_handle.boxed(),
         customer_anonymize_handle.boxed(),
+        customer_column_distinct_handle.boxed(),
         pa_create_handle.boxed(),
         pa_list_handle.boxed(),
         pa_get_handle.boxed(),

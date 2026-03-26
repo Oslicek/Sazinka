@@ -8,9 +8,10 @@ import {
   subscribeToGeocodeAddressJobStatus,
   submitReverseGeocodeJob,
   subscribeToReverseGeocodeJobStatus,
+  getColumnDistinctValues,
   type CustomerServiceDeps 
 } from './customerService';
-import type { CreateCustomerRequest, Customer } from '@shared/customer';
+import type { CreateCustomerRequest, Customer, ColumnDistinctRequest, ColumnDistinctResponse } from '@shared/customer';
 
 vi.mock('@/utils/auth', () => ({
   getToken: () => 'test-user-id',
@@ -309,6 +310,91 @@ describe('customerService', () => {
         'sazinka.job.geocode.reverse.status.job-rev',
         callback
       );
+    });
+  });
+
+  describe('getColumnDistinctValues', () => {
+    const mockDistinctResponse: ColumnDistinctResponse = {
+      column: 'city',
+      values: ['Brno', 'Ostrava', 'Praha'],
+      total: 3,
+      hasMore: false,
+    };
+
+    it('uses exact subject sazinka.customer.column.distinct', async () => {
+      mockRequest.mockResolvedValueOnce({ payload: mockDistinctResponse });
+
+      const req: ColumnDistinctRequest = { column: 'city' };
+      await getColumnDistinctValues(req, mockDeps);
+
+      expect(mockRequest).toHaveBeenCalledWith(
+        'sazinka.customer.column.distinct',
+        expect.any(Object)
+      );
+    });
+
+    it('returns the parsed ColumnDistinctResponse on success', async () => {
+      mockRequest.mockResolvedValueOnce({ payload: mockDistinctResponse });
+
+      const result = await getColumnDistinctValues({ column: 'city' }, mockDeps);
+
+      expect(result).toEqual(mockDistinctResponse);
+      expect(result.hasMore).toBe(false);
+      expect(result.values).toEqual(['Brno', 'Ostrava', 'Praha']);
+    });
+
+    it('throws on error response', async () => {
+      mockRequest.mockResolvedValueOnce({
+        error: { code: 'INVALID_COLUMN', message: 'column is not a checklist column' },
+      });
+
+      await expect(getColumnDistinctValues({ column: 'createdAt' }, mockDeps)).rejects.toThrow(
+        'column is not a checklist column'
+      );
+    });
+
+    it('forwards column, query, limit, offset in the payload', async () => {
+      mockRequest.mockResolvedValueOnce({ payload: mockDistinctResponse });
+
+      const req: ColumnDistinctRequest = {
+        column: 'city',
+        query: 'pra',
+        limit: 20,
+        offset: 40,
+      };
+      await getColumnDistinctValues(req, mockDeps);
+
+      expect(mockRequest).toHaveBeenCalledWith(
+        'sazinka.customer.column.distinct',
+        expect.objectContaining({ payload: req })
+      );
+    });
+
+    it('forwards context filters (columnFilters, search) unchanged', async () => {
+      mockRequest.mockResolvedValueOnce({ payload: mockDistinctResponse });
+
+      const req: ColumnDistinctRequest = {
+        column: 'city',
+        search: 'test',
+        columnFilters: [{ type: 'checklist', column: 'type', values: ['company'] }],
+      };
+      await getColumnDistinctValues(req, mockDeps);
+
+      expect(mockRequest).toHaveBeenCalledWith(
+        'sazinka.customer.column.distinct',
+        expect.objectContaining({ payload: req })
+      );
+    });
+
+    it('returns hasMore: true when backend indicates more results', async () => {
+      mockRequest.mockResolvedValueOnce({
+        payload: { column: 'city', values: ['Brno'], total: 50, hasMore: true },
+      });
+
+      const result = await getColumnDistinctValues({ column: 'city', limit: 1 }, mockDeps);
+
+      expect(result.hasMore).toBe(true);
+      expect(result.total).toBe(50);
     });
   });
 });

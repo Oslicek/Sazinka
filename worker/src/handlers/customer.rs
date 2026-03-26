@@ -16,6 +16,7 @@ use crate::types::{
     ListResponse, Request, SuccessResponse,
     ListCustomersRequest, CustomerListResponse,
 };
+use crate::types::customer::ColumnDistinctRequest;
 
 /// Handle customer.create messages
 /// 
@@ -702,6 +703,59 @@ pub async fn handle_anonymize(
             Err(e) => {
                 error!("anonymize_customer error: {}", e);
                 let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Handle sazinka.customer.column.distinct — fetch distinct values for a column
+pub async fn handle_column_distinct(
+    client: Client,
+    mut subscriber: Subscriber,
+    pool: PgPool,
+    jwt_secret: Arc<String>,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received customer.column.distinct");
+
+        let reply = match msg.reply {
+            Some(ref r) => r.clone(),
+            None => { warn!("No reply subject"); continue; }
+        };
+
+        let request: Request<ColumnDistinctRequest> = match serde_json::from_slice(&msg.payload) {
+            Ok(req) => req,
+            Err(e) => {
+                let error = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let error = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+                continue;
+            }
+        };
+
+        match queries::customer::get_column_distinct_values(&pool, user_id, &request.payload).await {
+            Ok(resp) => {
+                let response = SuccessResponse::new(request.id, resp);
+                let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+            }
+            Err(e) => {
+                let code = if e.to_string().starts_with("INVALID_COLUMN") {
+                    "INVALID_COLUMN"
+                } else {
+                    "DATABASE_ERROR"
+                };
+                error!("column_distinct error: {}", e);
+                let error = ErrorResponse::new(request.id, code, e.to_string());
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
             }
         }
