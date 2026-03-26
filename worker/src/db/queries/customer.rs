@@ -1939,7 +1939,7 @@ mod tests {
             se("name", "asc UNION SELECT 1"),
         ];
         for input in malicious_inputs {
-            let result = build_order_by(&[input.clone()]);
+            let result = build_order_by(std::slice::from_ref(&input));
             assert!(!result.contains("DROP"), "SQL injection via column: {}", input.column);
             assert!(!result.contains("UNION"), "SQL injection via direction: {}", input.direction);
             assert!(!result.contains("SELECT"), "SQL injection in result: {result}");
