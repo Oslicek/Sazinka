@@ -777,16 +777,18 @@ pub async fn list_customers_extended(
         query_builder = query_builder.bind(ctype);
     }
 
-    if let Some(days) = req.next_revision_within_days {
-        query_builder = query_builder.bind(days as f64);
-    }
-
-    // Bind column filter values (same order as placeholders in where/having clauses)
+    // Column filter values must be bound before next_revision_within_days
+    // because build_column_filter_clauses allocates $N placeholders before
+    // the HAVING clause for next_revision_within_days.
     for bind_val in col_filter_clauses.bind_values.iter().cloned() {
         query_builder = match bind_val {
             FilterBindValue::Text(s) => query_builder.bind(s),
             FilterBindValue::TextArray(arr) => query_builder.bind(arr),
         };
+    }
+
+    if let Some(days) = req.next_revision_within_days {
+        query_builder = query_builder.bind(days as f64);
     }
 
     query_builder = query_builder.bind(limit).bind(offset);
@@ -879,16 +881,15 @@ pub async fn list_customers_extended(
         count_builder = count_builder.bind(ctype);
     }
 
-    if let Some(days) = req.next_revision_within_days {
-        count_builder = count_builder.bind(days as f64);
-    }
-
-    // Bind column filter values (same order as main query)
     for bind_val in col_filter_clauses.bind_values.iter().cloned() {
         count_builder = match bind_val {
             FilterBindValue::Text(s) => count_builder.bind(s),
             FilterBindValue::TextArray(arr) => count_builder.bind(arr),
         };
+    }
+
+    if let Some(days) = req.next_revision_within_days {
+        count_builder = count_builder.bind(days as f64);
     }
 
     let (total,) = count_builder.fetch_one(pool).await?;
@@ -978,6 +979,13 @@ pub async fn get_column_distinct_values(
     for cond in &ctx_clauses.having_conds {
         having_conds.push(cond.clone());
     }
+    if req.next_revision_within_days.is_some() {
+        param_idx += 1;
+        having_conds.push(format!(
+            "MIN(r.due_date) FILTER (WHERE r.status NOT IN ('completed', 'cancelled')) <= CURRENT_DATE + ${} * INTERVAL '1 day'",
+            param_idx
+        ));
+    }
     let having_clause = if having_conds.is_empty() {
         String::new()
     } else {
@@ -997,11 +1005,18 @@ pub async fn get_column_distinct_values(
     let limit_param = param_idx + 1;
     let offset_param = param_idx + 2;
 
-    // For aggregate columns (deviceCount), we need the full CTE wrapped as a subquery
+    // CTE required for aggregate columns, HAVING conditions, or revision-within-days context
     let needs_cte = col == "deviceCount" || !having_clause.is_empty();
 
+    // In the CTE, the distinct_expr (e.g. "c.name") loses the table alias.
+    // Project the target column with an alias so the outer distinct_vals can reference it.
+    let (cte_extra_select, cte_col_ref) = if col == "deviceCount" {
+        (String::new(), "device_count_col".to_string())
+    } else {
+        (format!(", {}", distinct_expr), distinct_expr.replace("c.", "").replace("::text", ""))
+    };
+
     let query = if needs_cte {
-        // Use the full aggregating CTE, then select distinct from it
         format!(
             r#"
             WITH base AS (
@@ -1039,6 +1054,7 @@ pub async fn get_column_distinct_values(
                 )
                 SELECT
                     COALESCE(COUNT(DISTINCT ds.device_id), 0) as device_count_col
+                    {cte_extra_select}
                 FROM customers c
                 LEFT JOIN device_status ds ON c.id = ds.customer_id
                 LEFT JOIN revisions r ON c.id = r.customer_id
@@ -1048,7 +1064,7 @@ pub async fn get_column_distinct_values(
                 {having_clause}
             ),
             distinct_vals AS (
-                SELECT DISTINCT {col_expr}::text AS val FROM base
+                SELECT DISTINCT {cte_col_ref}::text AS val FROM base
             ),
             filtered_vals AS (
                 SELECT val FROM distinct_vals
@@ -1063,7 +1079,8 @@ pub async fn get_column_distinct_values(
             "#,
             where_clause = where_clause,
             having_clause = having_clause,
-            col_expr = distinct_expr,
+            cte_extra_select = cte_extra_select,
+            cte_col_ref = cte_col_ref,
             value_search_cond = value_search_cond,
             limit_param = limit_param,
             offset_param = offset_param,
@@ -1107,6 +1124,10 @@ pub async fn get_column_distinct_values(
             FilterBindValue::Text(s) => qb.bind(s),
             FilterBindValue::TextArray(arr) => qb.bind(arr),
         };
+    }
+
+    if let Some(days) = req.next_revision_within_days {
+        qb = qb.bind(days as f64);
     }
 
     if let Some(ref pattern) = value_search_pattern {

@@ -53,17 +53,21 @@ export function ChecklistFilterDropdown({
     () => new Set(currentFilter?.values ?? [])
   );
 
-  // Fetch distinct values
+  // Stable key for contextRequest to avoid refetching on every render
+  const contextKey = JSON.stringify(contextRequest ?? {});
+
+  // Fetch distinct values when column or context filters change
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
 
+    const ctx = JSON.parse(contextKey) as Omit<ColumnDistinctRequest, 'column'>;
     const request: ColumnDistinctRequest = {
       column: columnId,
       limit: 200,
       offset: 0,
-      ...contextRequest,
+      ...ctx,
     };
 
     getColumnDistinctValues(request, deps)
@@ -81,7 +85,12 @@ export function ChecklistFilterDropdown({
       });
 
     return () => { cancelled = true; };
-  }, [columnId, deps]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [columnId, contextKey, deps]);
+
+  // Focus the dropdown on mount so keyboard navigation works immediately
+  useEffect(() => {
+    dropdownRef.current?.focus();
+  }, []);
 
   // Close on outside click
   useEffect(() => {
@@ -140,6 +149,8 @@ export function ChecklistFilterDropdown({
       ref={dropdownRef}
       className={styles.dropdown}
       role="dialog"
+      aria-modal="true"
+      tabIndex={-1}
       aria-label={t('filter_dropdown_label', { column: columnId })}
     >
       {/* Search input */}

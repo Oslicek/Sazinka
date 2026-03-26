@@ -33,6 +33,11 @@ export function DateRangeFilterDropdown({
   const [from, setFrom] = useState(currentFilter?.from ?? '');
   const [to, setTo] = useState(currentFilter?.to ?? '');
 
+  // Focus the dropdown on mount so keyboard navigation works immediately
+  useEffect(() => {
+    dropdownRef.current?.focus();
+  }, []);
+
   // Close on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -89,6 +94,8 @@ export function DateRangeFilterDropdown({
       ref={dropdownRef}
       className={styles.dropdown}
       role="dialog"
+      aria-modal="true"
+      tabIndex={-1}
       aria-label={t('filter_date_range_label', { column: columnId })}
     >
       <div className={styles.fields}>

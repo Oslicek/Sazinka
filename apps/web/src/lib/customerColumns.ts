@@ -195,6 +195,7 @@ export function isValidColumnFilter(filter: unknown): filter is ColumnFilter {
 
   if (f.type === 'checklist') {
     if (!Array.isArray(f.values) || f.values.length === 0) return false;
+    if (!f.values.every((v: unknown) => typeof v === 'string')) return false;
     return true;
   }
 

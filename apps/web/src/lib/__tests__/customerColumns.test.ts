@@ -571,6 +571,11 @@ describe('Phase 1B: isValidColumnFilter validator', () => {
     expect(isValidColumnFilter({ type: 'checklist', column: 'city', values: [] })).toBe(false);
   });
 
+  it('F33b. checklist with non-string values → false', () => {
+    expect(isValidColumnFilter({ type: 'checklist', column: 'city', values: [42, true] })).toBe(false);
+    expect(isValidColumnFilter({ type: 'checklist', column: 'city', values: ['ok', 123] })).toBe(false);
+  });
+
   it('F34. dateRange with no bounds (both missing) → false', () => {
     expect(isValidColumnFilter({ type: 'dateRange', column: 'createdAt' })).toBe(false);
   });
