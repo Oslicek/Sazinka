@@ -156,6 +156,63 @@ pub struct SortEntry {
     pub direction: String,
 }
 
+/// Per-column Excel-style filter.
+/// Serde uses an internal `type` tag: "checklist" or "dateRange".
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum ColumnFilter {
+    #[serde(rename = "checklist")]
+    Checklist {
+        column: String,
+        /// Non-empty list of selected values
+        values: Vec<String>,
+    },
+    #[serde(rename = "dateRange")]
+    DateRange {
+        column: String,
+        /// Start of range inclusive (YYYY-MM-DD)
+        from: Option<String>,
+        /// End of range inclusive (YYYY-MM-DD)
+        to: Option<String>,
+    },
+}
+
+impl ColumnFilter {
+    pub fn column(&self) -> &str {
+        match self {
+            ColumnFilter::Checklist { column, .. } => column,
+            ColumnFilter::DateRange { column, .. } => column,
+        }
+    }
+}
+
+/// Request for fetching distinct values for a column (for filter dropdowns)
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ColumnDistinctRequest {
+    /// Target column ID (must be a checklist-type column)
+    pub column: String,
+    /// Optional search string to narrow values
+    pub query: Option<String>,
+    pub limit: Option<i32>,
+    pub offset: Option<i32>,
+    // Context filters applied to narrow distinct values (target column excluded)
+    pub search: Option<String>,
+    pub has_overdue: Option<bool>,
+    pub next_revision_within_days: Option<i32>,
+    pub column_filters: Option<Vec<ColumnFilter>>,
+}
+
+/// Response for distinct values of a column
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ColumnDistinctResponse {
+    pub column: String,
+    pub values: Vec<String>,
+    pub total: i64,
+    pub has_more: bool,
+}
+
 /// Request for listing customers with filters and sorting
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -179,6 +236,8 @@ pub struct ListCustomersRequest {
     pub sort_by: Option<String>,
     /// Legacy: sort order: "asc", "desc"
     pub sort_order: Option<String>,
+    /// Per-column Excel-style filters. Duplicate column entries: first wins.
+    pub column_filters: Option<Vec<ColumnFilter>>,
 }
 
 /// Response for customer list with pagination
@@ -330,5 +389,167 @@ mod tests {
         assert_eq!(req.customer_type.as_deref(), Some("company"));
         let model = req.sort_model.unwrap();
         assert_eq!(model[0].column, "createdAt");
+    }
+
+    // ── ColumnFilter serde ───────────────────────────────────────────────────
+
+    #[test]
+    fn column_filter_checklist_deserializes() {
+        let json = r#"{"type":"checklist","column":"city","values":["Prague","Brno"]}"#;
+        let f: ColumnFilter = serde_json::from_str(json).unwrap();
+        match f {
+            ColumnFilter::Checklist { column, values } => {
+                assert_eq!(column, "city");
+                assert_eq!(values, vec!["Prague", "Brno"]);
+            }
+            _ => panic!("expected Checklist variant"),
+        }
+    }
+
+    #[test]
+    fn column_filter_date_range_deserializes_with_both_bounds() {
+        let json = r#"{"type":"dateRange","column":"createdAt","from":"2024-01-01","to":"2024-12-31"}"#;
+        let f: ColumnFilter = serde_json::from_str(json).unwrap();
+        match f {
+            ColumnFilter::DateRange { column, from, to } => {
+                assert_eq!(column, "createdAt");
+                assert_eq!(from.as_deref(), Some("2024-01-01"));
+                assert_eq!(to.as_deref(), Some("2024-12-31"));
+            }
+            _ => panic!("expected DateRange variant"),
+        }
+    }
+
+    #[test]
+    fn column_filter_date_range_deserializes_with_only_from() {
+        let json = r#"{"type":"dateRange","column":"nextRevision","from":"2024-06-01"}"#;
+        let f: ColumnFilter = serde_json::from_str(json).unwrap();
+        match f {
+            ColumnFilter::DateRange { from, to, .. } => {
+                assert!(from.is_some());
+                assert!(to.is_none());
+            }
+            _ => panic!("expected DateRange variant"),
+        }
+    }
+
+    #[test]
+    fn column_filter_checklist_serializes_correctly() {
+        let f = ColumnFilter::Checklist {
+            column: "type".to_string(),
+            values: vec!["company".to_string()],
+        };
+        let json = serde_json::to_string(&f).unwrap();
+        assert!(json.contains("\"type\":\"checklist\""), "tag must be 'checklist'");
+        assert!(json.contains("\"column\":\"type\""));
+        assert!(json.contains("\"values\""));
+    }
+
+    #[test]
+    fn column_filter_date_range_serializes_correctly() {
+        let f = ColumnFilter::DateRange {
+            column: "createdAt".to_string(),
+            from: Some("2024-01-01".to_string()),
+            to: None,
+        };
+        let json = serde_json::to_string(&f).unwrap();
+        assert!(json.contains("\"type\":\"dateRange\""), "tag must be 'dateRange'");
+        assert!(json.contains("\"column\":\"createdAt\""));
+    }
+
+    #[test]
+    fn column_filter_checklist_round_trip() {
+        let original = ColumnFilter::Checklist {
+            column: "geocodeStatus".to_string(),
+            values: vec!["success".to_string(), "failed".to_string()],
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let restored: ColumnFilter = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, restored);
+    }
+
+    #[test]
+    fn column_filter_date_range_round_trip() {
+        let original = ColumnFilter::DateRange {
+            column: "createdAt".to_string(),
+            from: Some("2024-03-01".to_string()),
+            to: Some("2024-03-31".to_string()),
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let restored: ColumnFilter = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, restored);
+    }
+
+    #[test]
+    fn list_customers_request_with_column_filters_round_trip() {
+        let original = ListCustomersRequest {
+            search: Some("test".to_string()),
+            column_filters: Some(vec![
+                ColumnFilter::Checklist {
+                    column: "city".to_string(),
+                    values: vec!["Prague".to_string()],
+                },
+                ColumnFilter::DateRange {
+                    column: "createdAt".to_string(),
+                    from: Some("2024-01-01".to_string()),
+                    to: None,
+                },
+            ]),
+            sort_model: Some(vec![SortEntry {
+                column: "name".to_string(),
+                direction: "asc".to_string(),
+            }]),
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let restored: ListCustomersRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.search.as_deref(), Some("test"));
+        let filters = restored.column_filters.unwrap();
+        assert_eq!(filters.len(), 2);
+        assert_eq!(filters[0].column(), "city");
+        assert_eq!(filters[1].column(), "createdAt");
+    }
+
+    #[test]
+    fn column_filter_unknown_type_fails_to_deserialize() {
+        let json = r#"{"type":"unknown","column":"city","values":["x"]}"#;
+        let result: Result<ColumnFilter, _> = serde_json::from_str(json);
+        assert!(result.is_err(), "unknown type should fail to deserialize");
+    }
+
+    // ── ColumnDistinctRequest / ColumnDistinctResponse serde ─────────────────
+
+    #[test]
+    fn column_distinct_request_deserializes() {
+        let json = r#"{
+            "column": "city",
+            "query": "prag",
+            "limit": 20,
+            "offset": 0,
+            "columnFilters": [
+                {"type":"checklist","column":"type","values":["company"]}
+            ]
+        }"#;
+        let req: ColumnDistinctRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.column, "city");
+        assert_eq!(req.query.as_deref(), Some("prag"));
+        assert_eq!(req.limit, Some(20));
+        let filters = req.column_filters.unwrap();
+        assert_eq!(filters.len(), 1);
+        assert_eq!(filters[0].column(), "type");
+    }
+
+    #[test]
+    fn column_distinct_response_serializes() {
+        let resp = ColumnDistinctResponse {
+            column: "city".to_string(),
+            values: vec!["Prague".to_string(), "Brno".to_string()],
+            total: 2,
+            has_more: false,
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"column\":\"city\""));
+        assert!(json.contains("\"total\":2"));
+        assert!(json.contains("\"hasMore\":false"));
     }
 }

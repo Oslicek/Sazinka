@@ -202,6 +202,56 @@ export interface SortEntry {
   direction: 'asc' | 'desc';
 }
 
+// ============================================================================
+// Column Filters (Excel-style per-column filters)
+// ============================================================================
+
+/** Multi-select checklist filter for categorical columns */
+export interface ChecklistFilter {
+  type: 'checklist';
+  column: string;
+  /** Non-empty array of selected values (empty is invalid — skip filter) */
+  values: string[];
+}
+
+/** Inclusive date-range filter for date columns (YYYY-MM-DD strings) */
+export interface DateRangeFilter {
+  type: 'dateRange';
+  column: string;
+  /** Start of range inclusive (YYYY-MM-DD). At least one of from/to must be set. */
+  from?: string;
+  /** End of range inclusive (YYYY-MM-DD). At least one of from/to must be set. */
+  to?: string;
+}
+
+/** Discriminated union of all column filter types */
+export type ColumnFilter = ChecklistFilter | DateRangeFilter;
+
+/** Request for fetching distinct values for a column (for filter dropdowns) */
+export interface ColumnDistinctRequest {
+  /** Target column ID (must be a checklist-type column) */
+  column: string;
+  /** Optional search string to narrow values */
+  query?: string;
+  /** Pagination limit */
+  limit?: number;
+  /** Pagination offset */
+  offset?: number;
+  // Context filters — applied to narrow distinct values (target column excluded)
+  search?: string;
+  hasOverdue?: boolean;
+  nextRevisionWithinDays?: number;
+  columnFilters?: ColumnFilter[];
+}
+
+/** Response for distinct values of a column */
+export interface ColumnDistinctResponse {
+  column: string;
+  values: string[];
+  total: number;
+  hasMore: boolean;
+}
+
 /**
  * Request for listing customers with filters and sorting.
  * Phase 2A: sortBy/sortOrder replaced by sortModel for end-to-end server-authoritative multisort.
@@ -220,6 +270,8 @@ export interface ListCustomersRequest {
   customerType?: CustomerType;
   /** Multi-level sort model; backend executes full ORDER BY chain */
   sortModel?: SortEntry[];
+  /** Per-column Excel-style filters. Duplicate column entries: first wins. */
+  columnFilters?: ColumnFilter[];
 }
 
 /**

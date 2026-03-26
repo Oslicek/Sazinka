@@ -5,9 +5,10 @@
  * (packages/shared-types/src/customer.ts); re-exported here for frontend convenience.
  */
 
-import type { SortEntry } from '@shared/customer';
+import type { SortEntry, ColumnFilter } from '@shared/customer';
 
 export type { SortEntry };
+export type { ColumnFilter };
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -22,22 +23,24 @@ export interface CustomerColumnDef {
   core: boolean;
   defaultVisible: boolean;
   defaultWidth?: number;
+  /** Filter type for Excel-style column filters */
+  filterType: 'checklist' | 'dateRange';
 }
 
 // ── Catalog ───────────────────────────────────────────────────────────────────
 
 export const ALL_COLUMNS: CustomerColumnDef[] = [
-  { id: 'name',         labelKey: 'col_name',        category: 'identity',   sortField: 'name',          sortable: true,  core: true,  defaultVisible: true  },
-  { id: 'type',         labelKey: 'col_type',         category: 'identity',   sortField: 'type',          sortable: true,  core: false, defaultVisible: false },
-  { id: 'city',         labelKey: 'col_city',         category: 'location',   sortField: 'city',          sortable: true,  core: false, defaultVisible: true  },
-  { id: 'street',       labelKey: 'col_street',       category: 'location',   sortField: 'street',        sortable: true,  core: false, defaultVisible: false },
-  { id: 'postalCode',   labelKey: 'col_postal_code',  category: 'location',   sortField: 'postalCode',    sortable: true,  core: false, defaultVisible: false },
-  { id: 'phone',        labelKey: 'col_phone',        category: 'contact',    sortField: 'phone',         sortable: true,  core: false, defaultVisible: false },
-  { id: 'email',        labelKey: 'col_email',        category: 'contact',    sortField: 'email',         sortable: true,  core: false, defaultVisible: false },
-  { id: 'deviceCount',  labelKey: 'col_devices',      category: 'revision',   sortField: 'deviceCount',   sortable: true,  core: false, defaultVisible: true  },
-  { id: 'nextRevision', labelKey: 'col_revision',     category: 'revision',   sortField: 'nextRevision',  sortable: true,  core: false, defaultVisible: true  },
-  { id: 'geocodeStatus',labelKey: 'col_geocode',      category: 'operations', sortField: 'geocodeStatus', sortable: true,  core: false, defaultVisible: true  },
-  { id: 'createdAt',    labelKey: 'col_created_at',   category: 'operations', sortField: 'createdAt',     sortable: true,  core: false, defaultVisible: false },
+  { id: 'name',         labelKey: 'col_name',        category: 'identity',   sortField: 'name',          sortable: true,  core: true,  defaultVisible: true,  filterType: 'checklist' },
+  { id: 'type',         labelKey: 'col_type',         category: 'identity',   sortField: 'type',          sortable: true,  core: false, defaultVisible: false, filterType: 'checklist' },
+  { id: 'city',         labelKey: 'col_city',         category: 'location',   sortField: 'city',          sortable: true,  core: false, defaultVisible: true,  filterType: 'checklist' },
+  { id: 'street',       labelKey: 'col_street',       category: 'location',   sortField: 'street',        sortable: true,  core: false, defaultVisible: false, filterType: 'checklist' },
+  { id: 'postalCode',   labelKey: 'col_postal_code',  category: 'location',   sortField: 'postalCode',    sortable: true,  core: false, defaultVisible: false, filterType: 'checklist' },
+  { id: 'phone',        labelKey: 'col_phone',        category: 'contact',    sortField: 'phone',         sortable: true,  core: false, defaultVisible: false, filterType: 'checklist' },
+  { id: 'email',        labelKey: 'col_email',        category: 'contact',    sortField: 'email',         sortable: true,  core: false, defaultVisible: false, filterType: 'checklist' },
+  { id: 'deviceCount',  labelKey: 'col_devices',      category: 'revision',   sortField: 'deviceCount',   sortable: true,  core: false, defaultVisible: true,  filterType: 'checklist' },
+  { id: 'nextRevision', labelKey: 'col_revision',     category: 'revision',   sortField: 'nextRevision',  sortable: true,  core: false, defaultVisible: true,  filterType: 'dateRange' },
+  { id: 'geocodeStatus',labelKey: 'col_geocode',      category: 'operations', sortField: 'geocodeStatus', sortable: true,  core: false, defaultVisible: true,  filterType: 'checklist' },
+  { id: 'createdAt',    labelKey: 'col_created_at',   category: 'operations', sortField: 'createdAt',     sortable: true,  core: false, defaultVisible: false, filterType: 'dateRange' },
 ];
 
 export const COLUMN_CATEGORIES: ColumnCategory[] = [
@@ -154,6 +157,77 @@ export function sanitizeVisibleColumns(cols: unknown): string[] {
     return [...cores, ...extras.slice(0, remainingSlots)];
   }
 
+  return result;
+}
+
+/** Get the filter type for a column ID, or undefined if unknown. */
+export function getFilterType(columnId: string): 'checklist' | 'dateRange' | undefined {
+  return ALL_COLUMNS.find((c) => c.id === columnId)?.filterType;
+}
+
+const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+function isValidDateString(s: unknown): s is string {
+  if (typeof s !== 'string') return false;
+  if (!DATE_REGEX.test(s)) return false;
+  const d = new Date(s);
+  return !isNaN(d.getTime());
+}
+
+/**
+ * Validate a single ColumnFilter.
+ * Rules:
+ * - type must be 'checklist' or 'dateRange'
+ * - column must be a known column ID
+ * - type must match the column's filterType
+ * - checklist: values must be a non-empty string array
+ * - dateRange: at least one of from/to must be a valid YYYY-MM-DD date; from <= to
+ */
+export function isValidColumnFilter(filter: unknown): filter is ColumnFilter {
+  if (typeof filter !== 'object' || filter === null) return false;
+  const f = filter as Record<string, unknown>;
+  if (typeof f.type !== 'string') return false;
+  if (typeof f.column !== 'string') return false;
+
+  const expectedFilterType = getFilterType(f.column);
+  if (!expectedFilterType) return false;
+  if (f.type !== expectedFilterType) return false;
+
+  if (f.type === 'checklist') {
+    if (!Array.isArray(f.values) || f.values.length === 0) return false;
+    return true;
+  }
+
+  if (f.type === 'dateRange') {
+    const hasFrom = f.from !== undefined;
+    const hasTo = f.to !== undefined;
+    if (!hasFrom && !hasTo) return false;
+    if (hasFrom && !isValidDateString(f.from)) return false;
+    if (hasTo && !isValidDateString(f.to)) return false;
+    if (hasFrom && hasTo && typeof f.from === 'string' && typeof f.to === 'string') {
+      if (f.from > f.to) return false;
+    }
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Sanitize an array of ColumnFilters.
+ * - Drops invalid entries
+ * - Duplicate column IDs: first wins (later ones are dropped)
+ */
+export function sanitizeColumnFilters(filters: unknown): ColumnFilter[] {
+  if (!Array.isArray(filters)) return [];
+  const seen = new Set<string>();
+  const result: ColumnFilter[] = [];
+  for (const f of filters) {
+    if (!isValidColumnFilter(f)) continue;
+    if (seen.has(f.column)) continue;
+    seen.add(f.column);
+    result.push(f);
+  }
   return result;
 }
 

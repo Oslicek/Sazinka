@@ -2,7 +2,8 @@
  * Phase 1A (RED → GREEN) — customerColumns module tests.
  *
  * Covers catalog integrity, helper functions, and all sanitizers:
- * sanitizeSortModel, sanitizeVisibleColumns, sanitizeColumnOrder.
+ * sanitizeSortModel, sanitizeVisibleColumns, sanitizeColumnOrder,
+ * filterType property, getFilterType, isValidColumnFilter, sanitizeColumnFilters.
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -19,6 +20,9 @@ import {
   sanitizeSortModel,
   sanitizeVisibleColumns,
   sanitizeColumnOrder,
+  getFilterType,
+  isValidColumnFilter,
+  sanitizeColumnFilters,
 } from '../customerColumns';
 import type { SortEntry } from '../customerColumns';
 
@@ -458,5 +462,197 @@ describe('Phase 1A: sanitizeColumnOrder sanitizer', () => {
   it('62. valid reordering of all columns → returns as-is (preserves drag-reorder)', () => {
     const reordered = [...DEFAULT_COLUMN_ORDER].reverse();
     expect(sanitizeColumnOrder(reordered)).toEqual(reordered);
+  });
+});
+
+// ── filterType property ───────────────────────────────────────────────────────
+
+describe('Phase 1B: filterType — column catalog', () => {
+  it('F1. every column has a filterType property', () => {
+    ALL_COLUMNS.forEach((c) => {
+      expect(c).toHaveProperty('filterType');
+      expect(['checklist', 'dateRange']).toContain(c.filterType);
+    });
+  });
+
+  it('F2. checklist columns are exactly the 9 categorical columns', () => {
+    const checklistIds = ALL_COLUMNS.filter((c) => c.filterType === 'checklist').map((c) => c.id);
+    expect(checklistIds.sort()).toEqual(
+      ['name', 'type', 'city', 'street', 'postalCode', 'phone', 'email', 'geocodeStatus', 'deviceCount'].sort()
+    );
+  });
+
+  it('F3. dateRange columns are exactly nextRevision and createdAt', () => {
+    const dateIds = ALL_COLUMNS.filter((c) => c.filterType === 'dateRange').map((c) => c.id);
+    expect(dateIds.sort()).toEqual(['createdAt', 'nextRevision']);
+  });
+
+  it('F4. total filterType counts sum to 11', () => {
+    const checklists = ALL_COLUMNS.filter((c) => c.filterType === 'checklist').length;
+    const dateRanges = ALL_COLUMNS.filter((c) => c.filterType === 'dateRange').length;
+    expect(checklists + dateRanges).toBe(11);
+  });
+});
+
+// ── getFilterType ─────────────────────────────────────────────────────────────
+
+describe('Phase 1B: getFilterType helper', () => {
+  it('F5. name → checklist', () => expect(getFilterType('name')).toBe('checklist'));
+  it('F6. type → checklist', () => expect(getFilterType('type')).toBe('checklist'));
+  it('F7. city → checklist', () => expect(getFilterType('city')).toBe('checklist'));
+  it('F8. street → checklist', () => expect(getFilterType('street')).toBe('checklist'));
+  it('F9. postalCode → checklist', () => expect(getFilterType('postalCode')).toBe('checklist'));
+  it('F10. phone → checklist', () => expect(getFilterType('phone')).toBe('checklist'));
+  it('F11. email → checklist', () => expect(getFilterType('email')).toBe('checklist'));
+  it('F12. geocodeStatus → checklist', () => expect(getFilterType('geocodeStatus')).toBe('checklist'));
+  it('F13. deviceCount → checklist', () => expect(getFilterType('deviceCount')).toBe('checklist'));
+  it('F14. nextRevision → dateRange', () => expect(getFilterType('nextRevision')).toBe('dateRange'));
+  it('F15. createdAt → dateRange', () => expect(getFilterType('createdAt')).toBe('dateRange'));
+  it('F16. unknown column → undefined', () => expect(getFilterType('unknown_xyz')).toBeUndefined());
+});
+
+// ── isValidColumnFilter ───────────────────────────────────────────────────────
+
+describe('Phase 1B: isValidColumnFilter validator', () => {
+  it('F17. valid checklist filter → true', () => {
+    expect(isValidColumnFilter({ type: 'checklist', column: 'city', values: ['Prague'] })).toBe(true);
+  });
+
+  it('F18. checklist with multiple values → true', () => {
+    expect(isValidColumnFilter({ type: 'checklist', column: 'type', values: ['company', 'person'] })).toBe(true);
+  });
+
+  it('F19. valid dateRange filter with both bounds → true', () => {
+    expect(isValidColumnFilter({ type: 'dateRange', column: 'createdAt', from: '2024-01-01', to: '2024-12-31' })).toBe(true);
+  });
+
+  it('F20. valid dateRange filter with only from → true', () => {
+    expect(isValidColumnFilter({ type: 'dateRange', column: 'nextRevision', from: '2024-06-01' })).toBe(true);
+  });
+
+  it('F21. valid dateRange filter with only to → true', () => {
+    expect(isValidColumnFilter({ type: 'dateRange', column: 'createdAt', to: '2024-12-31' })).toBe(true);
+  });
+
+  it('F22. null → false', () => expect(isValidColumnFilter(null)).toBe(false));
+  it('F23. undefined → false', () => expect(isValidColumnFilter(undefined)).toBe(false));
+  it('F24. string → false', () => expect(isValidColumnFilter('city')).toBe(false));
+  it('F25. number → false', () => expect(isValidColumnFilter(42)).toBe(false));
+
+  it('F26. missing type → false', () => {
+    expect(isValidColumnFilter({ column: 'city', values: ['Prague'] })).toBe(false);
+  });
+
+  it('F27. missing column → false', () => {
+    expect(isValidColumnFilter({ type: 'checklist', values: ['Prague'] })).toBe(false);
+  });
+
+  it('F28. unknown type → false', () => {
+    expect(isValidColumnFilter({ type: 'range', column: 'city', values: ['Prague'] })).toBe(false);
+  });
+
+  it('F29. unknown column ID → false', () => {
+    expect(isValidColumnFilter({ type: 'checklist', column: 'nonexistent_col', values: ['x'] })).toBe(false);
+  });
+
+  it('F30. checklist on a dateRange column → false', () => {
+    expect(isValidColumnFilter({ type: 'checklist', column: 'createdAt', values: ['2024-01-01'] })).toBe(false);
+  });
+
+  it('F31. dateRange on a checklist column → false', () => {
+    expect(isValidColumnFilter({ type: 'dateRange', column: 'city', from: '2024-01-01' })).toBe(false);
+  });
+
+  it('F32. checklist with non-array values → false', () => {
+    expect(isValidColumnFilter({ type: 'checklist', column: 'city', values: 'Prague' })).toBe(false);
+  });
+
+  it('F33. checklist with empty values array → false', () => {
+    expect(isValidColumnFilter({ type: 'checklist', column: 'city', values: [] })).toBe(false);
+  });
+
+  it('F34. dateRange with no bounds (both missing) → false', () => {
+    expect(isValidColumnFilter({ type: 'dateRange', column: 'createdAt' })).toBe(false);
+  });
+
+  it('F35. dateRange with non-string from → false', () => {
+    expect(isValidColumnFilter({ type: 'dateRange', column: 'createdAt', from: 123 })).toBe(false);
+  });
+
+  it('F36. dateRange with invalid date format → false', () => {
+    expect(isValidColumnFilter({ type: 'dateRange', column: 'createdAt', from: 'not-a-date' })).toBe(false);
+  });
+
+  it('F37. dateRange from > to → false', () => {
+    expect(isValidColumnFilter({ type: 'dateRange', column: 'createdAt', from: '2024-12-31', to: '2024-01-01' })).toBe(false);
+  });
+
+  it('F38. dateRange same day from = to → true (inclusive single day)', () => {
+    expect(isValidColumnFilter({ type: 'dateRange', column: 'createdAt', from: '2024-06-15', to: '2024-06-15' })).toBe(true);
+  });
+});
+
+// ── sanitizeColumnFilters ─────────────────────────────────────────────────────
+
+describe('Phase 1B: sanitizeColumnFilters sanitizer', () => {
+  it('F39. null → empty array', () => expect(sanitizeColumnFilters(null)).toEqual([]));
+  it('F40. undefined → empty array', () => expect(sanitizeColumnFilters(undefined)).toEqual([]));
+  it('F41. empty array → empty array', () => expect(sanitizeColumnFilters([])).toEqual([]));
+  it('F42. non-array → empty array', () => expect(sanitizeColumnFilters('invalid')).toEqual([]));
+
+  it('F43. valid checklist filter → preserved', () => {
+    const filter = { type: 'checklist', column: 'city', values: ['Prague'] };
+    expect(sanitizeColumnFilters([filter])).toEqual([filter]);
+  });
+
+  it('F44. valid dateRange filter → preserved', () => {
+    const filter = { type: 'dateRange', column: 'createdAt', from: '2024-01-01' };
+    expect(sanitizeColumnFilters([filter])).toEqual([filter]);
+  });
+
+  it('F45. invalid filter in array → stripped', () => {
+    const valid = { type: 'checklist', column: 'city', values: ['Prague'] };
+    const invalid = { type: 'checklist', column: 'nonexistent', values: ['x'] };
+    expect(sanitizeColumnFilters([valid, invalid])).toEqual([valid]);
+  });
+
+  it('F46. all invalid → empty array', () => {
+    expect(sanitizeColumnFilters([{ type: 'unknown', column: 'city' }])).toEqual([]);
+  });
+
+  it('F47. duplicate column entries → first wins, second stripped', () => {
+    const first = { type: 'checklist', column: 'city', values: ['Prague'] };
+    const second = { type: 'checklist', column: 'city', values: ['Brno'] };
+    expect(sanitizeColumnFilters([first, second])).toEqual([first]);
+  });
+
+  it('F48. duplicate column entries (different filter types) → first wins', () => {
+    // Can't actually have same column with different types since filterType is fixed per column,
+    // but still test that duplicate column key is handled
+    const first = { type: 'checklist', column: 'name', values: ['Alice'] };
+    const second = { type: 'checklist', column: 'name', values: ['Bob'] };
+    const result = sanitizeColumnFilters([first, second]);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual(first);
+  });
+
+  it('F49. multiple valid different columns → all preserved', () => {
+    const filters = [
+      { type: 'checklist', column: 'city', values: ['Prague'] },
+      { type: 'checklist', column: 'type', values: ['company'] },
+      { type: 'dateRange', column: 'createdAt', from: '2024-01-01' },
+    ];
+    expect(sanitizeColumnFilters(filters)).toEqual(filters);
+  });
+
+  it('F50. mixed valid + invalid with duplicates → valid non-duplicate entries only', () => {
+    const filters = [
+      { type: 'checklist', column: 'city', values: ['Prague'] },       // valid
+      { type: 'checklist', column: 'nonexistent', values: ['x'] },    // invalid column
+      { type: 'checklist', column: 'city', values: ['Brno'] },         // duplicate
+    ];
+    const result = sanitizeColumnFilters(filters);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({ type: 'checklist', column: 'city', values: ['Prague'] });
   });
 });
