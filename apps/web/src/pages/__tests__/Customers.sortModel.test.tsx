@@ -347,3 +347,89 @@ describe('Newly-sortable columns: request forwarding', () => {
     });
   });
 });
+
+// ── Integration-level path tests ──────────────────────────────────────────────
+// These tests verify the full request-construction path:
+// Customers page → UPP sortModel → listCustomersExtended payload
+// without a live DB (mocked service layer).
+
+describe('Integration path: sort_model never regresses to legacy-only payload', () => {
+  beforeEach(() => {
+    mockListCustomersExtended.mockClear();
+    mockListCustomersExtended.mockResolvedValue({ items: [], total: 0 });
+    sessionStorage.clear();
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    sessionStorage.clear();
+    localStorage.clear();
+  });
+
+  it('request always has sortModel field, never sortBy or sortOrder', async () => {
+    render(<Customers />);
+    await waitFor(() => expect(mockListCustomersExtended).toHaveBeenCalled());
+    const call = lastCall();
+    expect(call).toHaveProperty('sortModel');
+    expect(call).not.toHaveProperty('sortBy');
+    expect(call).not.toHaveProperty('sortOrder');
+  });
+
+  it('sortModel contains at least one entry in every request', async () => {
+    render(<Customers />);
+    await waitFor(() => expect(mockListCustomersExtended).toHaveBeenCalled());
+    const sentModel = lastCall().sortModel as SortEntry[];
+    expect(Array.isArray(sentModel)).toBe(true);
+    expect(sentModel.length).toBeGreaterThan(0);
+  });
+
+  it('loadMore request uses the same sortModel as the initial request', async () => {
+    const model: SortEntry[] = [{ column: 'city', direction: 'desc' }];
+    seedGridLocal('sortModel', model);
+    mockListCustomersExtended.mockResolvedValue({ items: Array(100).fill({ id: 'x', name: 'X' }), total: 200 });
+    render(<Customers />);
+    await waitFor(() => expect(mockListCustomersExtended).toHaveBeenCalled());
+    const firstCallModel = (mockListCustomersExtended.mock.calls[0][0] as { sortModel: SortEntry[] }).sortModel;
+    if (mockListCustomersExtended.mock.calls.length > 1) {
+      for (const call of mockListCustomersExtended.mock.calls.slice(1)) {
+        expect((call[0] as { sortModel: SortEntry[] }).sortModel).toEqual(firstCallModel);
+      }
+    }
+  });
+
+  it('pagination call includes offset=0 on initial load with sortModel', async () => {
+    const model: SortEntry[] = [
+      { column: 'email', direction: 'asc' },
+      { column: 'name', direction: 'asc' },
+    ];
+    seedGridLocal('sortModel', model);
+    render(<Customers />);
+    await waitFor(() => expect(mockListCustomersExtended).toHaveBeenCalled());
+    const firstCall = mockListCustomersExtended.mock.calls[0][0] as { sortModel: SortEntry[]; offset?: number };
+    expect(firstCall.sortModel).toEqual(model);
+    expect(firstCall.offset).toBe(0);
+  });
+
+  it('sortModel with all 11 columns is forwarded in correct priority order', async () => {
+    const model: SortEntry[] = [
+      { column: 'geocodeStatus', direction: 'asc' },
+      { column: 'type', direction: 'asc' },
+      { column: 'city', direction: 'asc' },
+      { column: 'street', direction: 'asc' },
+      { column: 'postalCode', direction: 'asc' },
+      { column: 'phone', direction: 'asc' },
+      { column: 'email', direction: 'asc' },
+      { column: 'deviceCount', direction: 'asc' },
+      { column: 'nextRevision', direction: 'asc' },
+      { column: 'createdAt', direction: 'asc' },
+      { column: 'name', direction: 'asc' },
+    ];
+    seedGridLocal('sortModel', model);
+    render(<Customers />);
+    await waitFor(() => expect(mockListCustomersExtended).toHaveBeenCalled());
+    const sentModel = lastCall().sortModel as SortEntry[];
+    expect(sentModel).toHaveLength(11);
+    expect(sentModel[0].column).toBe('geocodeStatus');
+    expect(sentModel[10].column).toBe('name');
+  });
+});

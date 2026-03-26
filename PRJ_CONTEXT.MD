@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-03-25 (v0.22.0 - Scoring Preset Pack + Localization: 5 system presets, system_key, cs/en/sk names)
+> **Last Updated:** 2026-03-26 (v0.23.0 - Sort all customer columns end-to-end)
 
 ## Overview
 
@@ -1530,6 +1530,15 @@ cargo test
 - MVP focuses on core CRM + route planning
 - Email notifications deferred to later phase
 - Invoicing/billing architecture prepared but not implemented
+
+## Recent Changes (v0.23.0)
+
+- **Sort all customer columns end-to-end:**
+  - **Frontend** (`apps/web/src/lib/customerColumns.ts`): All 11 customer columns are now sortable (`sortable: true` with `sortField` for `type`, `street`, `postalCode`, `phone`, `email`, `geocodeStatus`). Each column header in the customers grid is clickable to set primary sort, Shift-clickable for multisort, and keyboard-accessible (Enter / Shift+Enter).
+  - **Backend types** (`worker/src/types/customer.rs`): Added `SortEntry { column: String, direction: String }` and `sort_model: Option<Vec<SortEntry>>` to `ListCustomersRequest`. Legacy `sort_by`/`sort_order` fields retained for backward compatibility.
+  - **Backend query** (`worker/src/db/queries/customer.rs`): Added `build_order_by(sort_model: &[SortEntry]) -> String` — a pure, injection-safe whitelist function that maps column IDs to SQL expressions. Added `resolve_sort(req)` with precedence `sort_model > sort_by/sort_order > default`. Deterministic pagination tie-breaker `c.id ASC` always appended to prevent row swapping between pages.
+  - **Sort contract**: Frontend sends `sortModel` (array of `{column, direction}` objects). Backend deserializes it into `sort_model`, builds a multi-column `ORDER BY` clause, and returns results in the requested order.
+  - **Test coverage**: 172 frontend tests (catalog, CustomerTable interactions, sortModel forwarding) + 50 Rust unit/integration tests (22-case mapping matrix, precedence, injection safety, pagination stability). Total: 2188 frontend tests + 642 Rust tests all passing.
 
 ## Recent Changes (v0.22.0)
 

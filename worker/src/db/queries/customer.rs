@@ -1318,5 +1318,104 @@ mod tests {
         let result = resolve_sort(&req);
         assert!(result.starts_with("c.name ASC NULLS LAST"));
     }
+
+    // ── Integration-level path: ORDER BY clause construction ─────────────────
+    // These tests verify the full resolve_sort + build_order_by path as it would
+    // be used by list_customers_extended (no live DB required).
+
+    #[test]
+    fn integration_sort_model_yields_correct_order_clause_for_all_11_columns() {
+        let all_columns = vec![
+            se("name", "asc"),
+            se("type", "desc"),
+            se("city", "asc"),
+            se("street", "desc"),
+            se("postalCode", "asc"),
+            se("phone", "desc"),
+            se("email", "asc"),
+            se("deviceCount", "desc"),
+            se("nextRevision", "asc"),
+            se("geocodeStatus", "desc"),
+            se("createdAt", "asc"),
+        ];
+        let req = ListCustomersRequest {
+            sort_model: Some(all_columns),
+            ..Default::default()
+        };
+        let result = resolve_sort(&req);
+        assert!(result.contains("c.name ASC"));
+        assert!(result.contains("c.customer_type DESC"));
+        assert!(result.contains("c.city ASC"));
+        assert!(result.contains("c.street DESC"));
+        assert!(result.contains("c.postal_code ASC"));
+        assert!(result.contains("c.phone DESC"));
+        assert!(result.contains("c.email ASC"));
+        assert!(result.contains("device_count DESC"));
+        assert!(result.contains("next_revision_date ASC"));
+        assert!(result.contains("c.geocode_status DESC"));
+        assert!(result.contains("c.created_at ASC"));
+        assert!(result.ends_with("c.id ASC"), "tie-breaker must be present");
+    }
+
+    #[test]
+    fn integration_priority_order_preserved_in_final_clause() {
+        let req = ListCustomersRequest {
+            sort_model: Some(vec![
+                se("email", "asc"),
+                se("city", "desc"),
+                se("name", "asc"),
+            ]),
+            ..Default::default()
+        };
+        let result = resolve_sort(&req);
+        let email_pos = result.find("c.email").unwrap();
+        let city_pos = result.find("c.city").unwrap();
+        let name_pos = result.find("c.name").unwrap();
+        assert!(email_pos < city_pos, "email must precede city");
+        assert!(city_pos < name_pos, "city must precede name");
+    }
+
+    #[test]
+    fn integration_sort_model_wins_over_legacy_full_path() {
+        let req = ListCustomersRequest {
+            sort_model: Some(vec![se("geocodeStatus", "desc")]),
+            sort_by: Some("name".to_string()),
+            sort_order: Some("asc".to_string()),
+            ..Default::default()
+        };
+        let result = resolve_sort(&req);
+        assert!(result.contains("c.geocode_status DESC"), "geocodeStatus should win");
+        assert!(!result.contains("c.name ASC NULLS LAST, c.id"), "legacy name should not appear as primary");
+    }
+
+    #[test]
+    fn integration_tie_breaker_ensures_deterministic_pagination() {
+        // Any non-unique sort key must be followed by c.id to avoid row swapping between pages
+        for col in &["name", "city", "email", "phone", "street", "type"] {
+            let result = build_order_by(&[se(col, "asc")]);
+            assert!(
+                result.ends_with("c.id ASC"),
+                "column {col} ORDER BY must end with c.id ASC for stable pagination, got: {result}"
+            );
+        }
+    }
+
+    #[test]
+    fn integration_no_user_input_in_sql_for_any_column() {
+        // Verify that no column ID or direction value is interpolated directly into SQL;
+        // only whitelisted SQL expressions appear.
+        let malicious_inputs = vec![
+            se("'; DROP TABLE customers; --", "asc"),
+            se("name", "'; DROP TABLE customers; --"),
+            se("name UNION SELECT * FROM users", "asc"),
+            se("name", "asc UNION SELECT 1"),
+        ];
+        for input in malicious_inputs {
+            let result = build_order_by(&[input.clone()]);
+            assert!(!result.contains("DROP"), "SQL injection via column: {}", input.column);
+            assert!(!result.contains("UNION"), "SQL injection via direction: {}", input.direction);
+            assert!(!result.contains("SELECT"), "SQL injection in result: {result}");
+        }
+    }
 }
 
