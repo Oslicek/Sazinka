@@ -270,6 +270,11 @@ export function CustomerTable({
 
   const handleHeaderInteraction = useCallback(
     (tableColId: string, shiftKey: boolean) => {
+      // #region agent log
+      const msg = `[DBG] handleHeaderInteraction: tableColId=${tableColId} shiftKey=${shiftKey} openFilter=${openFilterColumn}`;
+      console.log(msg);
+      fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ee0c72'},body:JSON.stringify({sessionId:'ee0c72',location:'CustomerTable.tsx:handleHeaderInteraction',message:msg,data:{tableColId,shiftKey,openFilterColumn},timestamp:Date.now(),hypothesisId:'F'})}).catch(()=>{});
+      // #endregion
       if (!onSortModelChange) return;
       const catalogId = getTableToCatalogId(tableColId);
       if (!sortableIds.has(catalogId)) return;
@@ -279,7 +284,7 @@ export function CustomerTable({
         : applyPrimarySort(sortModel, catalogId);
       onSortModelChange(nextModel);
     },
-    [onSortModelChange, sortModel, sortModelRaw, sortableIds],
+    [onSortModelChange, sortModel, sortModelRaw, sortableIds, openFilterColumn],
   );
 
   const columns = useMemo(() => {
