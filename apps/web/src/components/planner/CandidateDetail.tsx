@@ -138,7 +138,6 @@ export function CandidateDetail({
   const {
     notes: lastVisitNotes,
     visit: lastVisit,
-    isLoading: isLoadingVisit,
   } = useLastVisitComment(candidate?.customerId);
 
   // Reset service duration when candidate changes to reflect device type default

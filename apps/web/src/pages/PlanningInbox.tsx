@@ -71,6 +71,7 @@ import type { CustomerUpdateFields } from '../components/planner/CandidateDetail
 import { Plus, AlertTriangle } from 'lucide-react';
 import { PanelStateProvider } from '../contexts/PanelStateContext';
 import { usePanelState } from '../hooks/usePanelState';
+import { useLastVisitComment } from '../hooks/useLastVisitComment';
 import { useDetachState } from '../hooks/useDetachState';
 import { InboxListPanel } from '../panels/InboxListPanel';
 import { RouteMapPanel as RouteMapPanelSelfSufficient } from '../panels/RouteMapPanel';
@@ -232,7 +233,10 @@ function PlanningInboxInner() {
 
   // Map/timeline highlighting state
   const [highlightedSegment, setHighlightedSegment] = useState<number | null>(null);
-  
+
+  const { notes: lvcNotes, visit: lvcVisit } = useLastVisitComment(selectedCandidateId);
+  const lastVisitComment = lvcNotes != null || lvcVisit != null ? { notes: lvcNotes, visit: lvcVisit } : undefined;
+
   // Detail state
   const [slotSuggestions, setSlotSuggestions] = useState<SlotSuggestion[]>([]);
   const [isCalculatingSlots, setIsCalculatingSlots] = useState(false);
@@ -2710,6 +2714,7 @@ function PlanningInboxInner() {
               depotDeparture={depotDeparture}
               returnToDepotDistanceKm={returnToDepotLeg?.distanceKm ?? null}
               returnToDepotDurationMinutes={returnToDepotLeg?.durationMinutes ?? null}
+              lastVisitComment={lastVisitComment}
             />
           ) : (
             <PlanningTimeline
@@ -2740,6 +2745,7 @@ function PlanningInboxInner() {
                 }
               }}
               onQuickPlaceInGap={handleQuickPlaceInGap}
+              lastVisitComment={lastVisitComment}
             />
           )}
         </div>
@@ -2857,6 +2863,7 @@ function PlanningInboxInner() {
           depotDeparture={depotDeparture}
           returnToDepotDistanceKm={returnToDepotLeg?.distanceKm ?? null}
           returnToDepotDurationMinutes={returnToDepotLeg?.durationMinutes ?? null}
+          lastVisitComment={lastVisitComment}
         />
       ) : (
         <PlanningTimeline
@@ -2887,6 +2894,7 @@ function PlanningInboxInner() {
             }
           }}
           onQuickPlaceInGap={handleQuickPlaceInGap}
+          lastVisitComment={lastVisitComment}
         />
       )}
     </div>

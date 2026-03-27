@@ -9,8 +9,8 @@ import type { ReactNode } from 'react';
 import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MapPin, AlertTriangle } from 'lucide-react';
-import { formatDate } from '@/i18n/formatters';
-import type { Visit } from '@shared/visit';
+import type { LastVisitCommentData } from '@/hooks/useLastVisitComment';
+import { StopCommentBlock } from './StopCommentBlock';
 import {
   DndContext,
   closestCenter,
@@ -57,7 +57,7 @@ interface RouteDetailTimelineProps {
   returnToDepotDistanceKm?: number | null;
   returnToDepotDurationMinutes?: number | null;
   /** Last visit comment for the currently selected stop (fetched by parent via useLastVisitComment) */
-  lastVisitComment?: { notes: string | null; visit: Visit | null };
+  lastVisitComment?: LastVisitCommentData;
 }
 
 function formatTime(time: string | null): string {
@@ -453,27 +453,8 @@ export function RouteDetailTimeline({
                   <div className={styles.stopAddress}>{stop.address}</div>
 
                   {/* Last visit comment — shown only on selected stop */}
-                  {isSelected && lastVisitComment?.notes && (
-                    <div className={styles.stopComment} data-testid="stop-comment">
-                      <div className={styles.stopCommentHeader}>
-                        <span className={styles.stopCommentLabel}>{t('timeline_stop_comment_label')}</span>
-                        {lastVisitComment.visit && (
-                          <span className={styles.stopCommentDate}>{formatDate(lastVisitComment.visit.scheduledDate)}</span>
-                        )}
-                      </div>
-                      <p
-                        className={styles.stopCommentText}
-                        title={lastVisitComment.notes}
-                      >
-                        {lastVisitComment.notes}
-                      </p>
-                      {lastVisitComment.visit?.requiresFollowUp && lastVisitComment.visit.followUpReason && (
-                        <div className={styles.stopCommentFollowUp}>
-                          <AlertTriangle size={12} />
-                          <span>{lastVisitComment.visit.followUpReason}</span>
-                        </div>
-                      )}
-                    </div>
+                  {isSelected && lastVisitComment && (
+                    <StopCommentBlock comment={lastVisitComment} />
                   )}
 
                   {/* Service duration (inline editable) */}

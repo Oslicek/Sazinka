@@ -5,6 +5,10 @@ import type { PanelStateContextValue, PanelState, PanelActions } from '../../typ
 import { RouteTimelinePanel } from '../RouteTimelinePanel';
 import type { SavedRouteStop } from '../../services/routeService';
 
+vi.mock('@/hooks/useLastVisitComment', () => ({
+  useLastVisitComment: () => ({ notes: null, visit: null, isLoading: false }),
+}));
+
 vi.mock('@/components/planner', () => ({
   RouteDetailTimeline: ({
     stops,

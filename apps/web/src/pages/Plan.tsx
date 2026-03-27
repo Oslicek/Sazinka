@@ -24,6 +24,7 @@ import { buildGoogleMapsUrl, buildMapyCzUrl } from '../utils/routeExport';
 import type { ExportTarget } from '../components/planner/RouteSummaryActions';
 import { buildPrintHtml } from '../utils/routePrint';
 import { RouteListPanel, RouteDetailTimeline, RouteMapPanel, type RouteMetrics, PlanningTimeline, TimelineViewToggle, type TimelineView, RouteSummaryStats, RouteSummaryActions, ArrivalBufferBar } from '../components/planner';
+import { useLastVisitComment } from '../hooks/useLastVisitComment';
 import { PlannerFilters } from '../components/shared/PlannerFilters';
 import { AlertTriangle } from 'lucide-react';
 import styles from './Plan.module.css';
@@ -206,6 +207,9 @@ function PlanInner() {
   const [depotDeparture, setDepotDeparture] = useState<string | null>(null);
   const geometryUnsubRef = useRef<(() => void) | null>(null);
   const activeGeometryJobRef = useRef<string | null>(null);
+
+  const { notes: lvcNotes, visit: lvcVisit } = useLastVisitComment(highlightedStopId);
+  const lastVisitComment = lvcNotes != null || lvcVisit != null ? { notes: lvcNotes, visit: lvcVisit } : undefined;
 
   // --- Route warnings (from optimization) ---
   // Note: Saved routes don't have warnings stored in DB yet, so this will be empty
@@ -1212,6 +1216,7 @@ function PlanInner() {
                 routeEndTime={routeEndTime}
                 returnToDepotDistanceKm={returnToDepotLeg?.distanceKm ?? null}
                 returnToDepotDurationMinutes={returnToDepotLeg?.durationMinutes ?? null}
+                lastVisitComment={lastVisitComment}
               />
             ) : (
               <PlanningTimeline
@@ -1232,6 +1237,7 @@ function PlanInner() {
                 warnings={routeWarnings}
                 returnToDepotDistanceKm={returnToDepotLeg?.distanceKm ?? null}
                 returnToDepotDurationMinutes={returnToDepotLeg?.durationMinutes ?? null}
+                lastVisitComment={lastVisitComment}
               />
             )}
           </div>
@@ -1265,6 +1271,7 @@ function PlanInner() {
       <CustomerDetailPanel
         mode="plan"
         isOpen={isDetailOpen}
+        routeStops={selectedRouteStops}
       />
     </div>
   );

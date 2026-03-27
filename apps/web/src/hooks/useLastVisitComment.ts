@@ -5,15 +5,24 @@ import { listVisits, getVisit } from '@/services/visitService';
 import { useNatsStore } from '@/stores/natsStore';
 import { extractLastVisitComment } from '@/lib/lastVisitComment';
 
-export interface LastVisitCommentResult {
+/** The data portion passed down to UI components (no loading state). */
+export interface LastVisitCommentData {
   notes: string | null;
   visit: Visit | null;
+}
+
+export interface LastVisitCommentResult extends LastVisitCommentData {
   isLoading: boolean;
 }
 
 const EMPTY: LastVisitCommentResult = { notes: null, visit: null, isLoading: false };
 
-// Per-customer in-memory cache (module-level, survives re-renders)
+/**
+ * Per-customer in-memory cache. No TTL — entries live until page refresh.
+ * If a new visit is completed while the planner is open, the stale cached
+ * comment will remain until the user refreshes. This is an accepted v1
+ * trade-off; a future iteration can add event-based invalidation or a TTL.
+ */
 const cache = new Map<string, LastVisitCommentResult>();
 
 /** Clear the cache — for testing only. */

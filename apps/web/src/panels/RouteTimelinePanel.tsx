@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { usePanelState } from '@/hooks/usePanelState';
+import { useLastVisitComment } from '@/hooks/useLastVisitComment';
 import {
   RouteDetailTimeline,
   PlanningTimeline,
@@ -55,6 +56,9 @@ export function RouteTimelinePanel({ onOptimize }: RouteTimelinePanelProps) {
     actions.setRouteBuffer(percent, fixedMinutes);
   };
 
+  const { notes, visit } = useLastVisitComment(selectedCustomerId);
+  const lastVisitComment = notes != null || visit != null ? { notes, visit } : undefined;
+
   const stopCount = routeStops.filter((s) => s.stopType !== 'break').length;
   const sharedTimelineProps = {
     stops: routeStops,
@@ -69,6 +73,7 @@ export function RouteTimelinePanel({ onOptimize }: RouteTimelinePanelProps) {
     depotDeparture,
     returnToDepotDistanceKm: returnToDepotLeg?.distanceKm ?? null,
     returnToDepotDurationMinutes: returnToDepotLeg?.durationMinutes ?? null,
+    lastVisitComment,
   };
 
   return (

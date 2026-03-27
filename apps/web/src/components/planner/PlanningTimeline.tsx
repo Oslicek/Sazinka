@@ -7,8 +7,8 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MapPin, AlertTriangle } from 'lucide-react';
-import { formatDate } from '@/i18n/formatters';
-import type { Visit } from '@shared/visit';
+import type { LastVisitCommentData } from '@/hooks/useLastVisitComment';
+import { StopCommentBlock } from './StopCommentBlock';
 import {
   DndContext,
   DragOverlay,
@@ -93,7 +93,7 @@ interface PlanningTimelineProps {
    */
   onQuickPlaceInGap?: (newStops: SavedRouteStop[]) => void;
   /** Last visit comment for the currently selected/expanded stop (fetched by parent) */
-  lastVisitComment?: { notes: string | null; visit: Visit | null };
+  lastVisitComment?: LastVisitCommentData;
 }
 
 // ---------------------------------------------------------------------------
@@ -162,7 +162,7 @@ function SortableStopCard({
   onUpdateBreak?: (stopId: string, patch: { breakTimeStart?: string; breakDurationMinutes?: number }) => void;
   onUpdateServiceDuration?: (stopId: string, minutes: number) => void;
   onResetServiceDuration?: (stopId: string) => void;
-  lastVisitComment?: { notes: string | null; visit: Visit | null };
+  lastVisitComment?: LastVisitCommentData;
 }) {
   const { t } = useTranslation('planner');
   const {
@@ -332,27 +332,8 @@ function SortableStopCard({
         )}
 
         {/* Last visit comment — shown only when expanded and not a break */}
-        {isExpanded && !isBreak && lastVisitComment?.notes && (
-          <div className={styles.stopComment} data-testid="stop-comment">
-            <div className={styles.stopCommentHeader}>
-              <span className={styles.stopCommentLabel}>{t('timeline_stop_comment_label')}</span>
-              {lastVisitComment.visit && (
-                <span className={styles.stopCommentDate}>{formatDate(lastVisitComment.visit.scheduledDate)}</span>
-              )}
-            </div>
-            <p
-              className={styles.stopCommentText}
-              title={lastVisitComment.notes}
-            >
-              {lastVisitComment.notes}
-            </p>
-            {lastVisitComment.visit?.requiresFollowUp && lastVisitComment.visit.followUpReason && (
-              <div className={styles.stopCommentFollowUp}>
-                <AlertTriangle size={12} />
-                <span>{lastVisitComment.visit.followUpReason}</span>
-              </div>
-            )}
-          </div>
+        {isExpanded && !isBreak && lastVisitComment && (
+          <StopCommentBlock comment={lastVisitComment} />
         )}
       </div>
 
