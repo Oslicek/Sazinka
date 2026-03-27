@@ -11,7 +11,11 @@ const VIEWPORT_MARGIN = 8;
  * Position is computed once on mount. Only window resize triggers a recalculation
  * (scroll events are ignored — internal dropdown scrolling must not shift the panel).
  */
-export function useAnchoredFilterDropdown(anchorRef: RefObject<HTMLElement | null> | undefined): {
+export function useAnchoredFilterDropdown(
+  anchorRef: RefObject<HTMLElement | null> | undefined,
+  /** When the anchored target changes (e.g. another column), re-measure. */
+  positionKey?: string | number,
+): {
   top: number;
   left: number;
   usePortal: boolean;
@@ -39,7 +43,7 @@ export function useAnchoredFilterDropdown(anchorRef: RefObject<HTMLElement | nul
     measure();
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
-  }, [usePortal]);
+  }, [usePortal, positionKey]);
 
   return { ...pos, usePortal };
 }

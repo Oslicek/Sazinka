@@ -11,7 +11,7 @@ export interface ColumnFilterDropdownProps {
   currentFilter?: ColumnFilter | null;
   /** Context filters for narrowing distinct values (for the checklist dropdown). */
   contextRequest?: Omit<ColumnDistinctRequest, 'column'>;
-  /** Filter button ref — portaled dropdowns anchor to this to avoid table overflow clipping. */
+  /** Header cell (or other element) ref — portaled dropdown anchors here to avoid overflow clipping and align with the column. */
   anchorRef?: RefObject<HTMLElement | null>;
   onApply: (filter: ColumnFilter) => void;
   onClear: () => void;

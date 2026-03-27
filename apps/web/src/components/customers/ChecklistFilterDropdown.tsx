@@ -49,7 +49,7 @@ export function ChecklistFilterDropdown({
 }: ChecklistFilterDropdownProps) {
   const { t } = useTranslation('customers');
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const { top, left, usePortal } = useAnchoredFilterDropdown(anchorRef);
+  const { top, left, usePortal } = useAnchoredFilterDropdown(anchorRef, columnId);
 
   const [values, setValues] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -222,12 +222,15 @@ export function ChecklistFilterDropdown({
             className={styles.valueRow}
             data-selected={selected.has(v) ? 'true' : 'false'}
           >
+            {/* Native input kept for a11y + tests; visible tick is .checkboxFace (global input/label CSS breaks native paint). */}
             <input
               type="checkbox"
+              className={styles.checkboxInput}
               checked={selected.has(v)}
               onChange={() => toggleValue(v)}
               aria-label={getValueLabel(columnId, v, t)}
             />
+            <span className={styles.checkboxFace} aria-hidden="true" />
             <span className={styles.valueLabel}>
               {getValueLabel(columnId, v, t)}
             </span>

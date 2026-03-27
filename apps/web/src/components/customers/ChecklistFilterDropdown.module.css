@@ -55,6 +55,7 @@
 }
 
 .valueRow {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -62,17 +63,53 @@
   cursor: pointer;
   font-size: 0.875rem;
   user-select: none;
+  /* Override global `label { ... }` in index.css (muted color, margin-bottom, font-weight) */
+  margin-bottom: 0;
+  font-weight: 400;
+  color: var(--color-text, #1f2937);
 }
 
-.valueRow input[type="checkbox"] {
-  all: revert;
+/* Visually hidden; .checkboxFace provides the visible control */
+.checkboxInput {
+  position: absolute;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0 !important;
+  opacity: 0;
+}
+
+.checkboxFace {
+  flex: 0 0 16px;
   width: 16px;
   height: 16px;
-  min-width: 16px;
-  flex: 0 0 16px;
-  margin: 0;
-  accent-color: var(--color-primary, #2563eb);
-  cursor: pointer;
+  box-sizing: border-box;
+  border: 2px solid var(--color-border, #e2e8f0);
+  border-radius: 4px;
+  background: var(--color-surface, #fff);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.valueRow[data-selected='true'] .checkboxFace {
+  background: var(--color-primary, #2563eb);
+  border-color: var(--color-primary, #2563eb);
+}
+
+.valueRow[data-selected='true'] .checkboxFace::after {
+  content: '';
+  display: block;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) translateY(-1px);
 }
 
 .valueRow:hover {

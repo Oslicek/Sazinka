@@ -34,7 +34,7 @@ export function DateRangeFilterDropdown({
 }: DateRangeFilterDropdownProps) {
   const { t } = useTranslation('customers');
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const { top, left, usePortal } = useAnchoredFilterDropdown(anchorRef);
+  const { top, left, usePortal } = useAnchoredFilterDropdown(anchorRef, columnId);
 
   const [from, setFrom] = useState(currentFilter?.from ?? '');
   const [to, setTo] = useState(currentFilter?.to ?? '');

@@ -136,6 +136,16 @@ textarea:focus {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
+/* Checkboxes/radios must not inherit full-width padded "text field" styling */
+input[type='checkbox'],
+input[type='radio'] {
+  width: auto;
+  max-width: none;
+  padding: 0;
+  vertical-align: middle;
+  accent-color: var(--color-primary);
+}
+
 label {
   display: block;
   font-size: 0.875rem;

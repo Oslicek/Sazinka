@@ -216,8 +216,8 @@ export function CustomerTable({
 
   // Which column's filter dropdown is currently open (catalog ID, or null)
   const [openFilterColumn, setOpenFilterColumn] = useState<string | null>(null);
-  /** Anchor for portaled filter panels (avoids overflow clipping in the scrollable table). */
-  const filterAnchorRef = useRef<HTMLButtonElement>(null);
+  /** Anchor portaled filter panels to the full header cell so the menu aligns with the column, not only the funnel icon. */
+  const filterHeaderCellRef = useRef<HTMLTableCellElement>(null);
 
   // Quick lookup: column ID → active filter
   const activeFiltersByColumn = useMemo(() => {
@@ -524,6 +524,7 @@ export function CustomerTable({
                 return (
                   <th
                     key={header.id}
+                    ref={isFilterOpen ? filterHeaderCellRef : undefined}
                     style={{ width: header.getSize(), position: 'relative' }}
                     className={`${styles.th} ${isSortable ? styles.sortable : ''}`}
                     aria-sort={isSortable ? ariaSortValue : undefined}
@@ -553,7 +554,6 @@ export function CustomerTable({
                     {/* Filter icon — always visible, click opens filter dropdown */}
                     <button
                       type="button"
-                      ref={isFilterOpen ? filterAnchorRef : undefined}
                       className={styles.filterButton}
                       data-filter-active={hasActiveFilter ? 'true' : 'false'}
                       aria-label={t('filter_column_label', { column: catalogId })}
@@ -571,7 +571,7 @@ export function CustomerTable({
                         columnId={catalogId}
                         currentFilter={activeFiltersByColumn.get(catalogId) ?? null}
                         contextRequest={distinctContext}
-                        anchorRef={filterAnchorRef}
+                        anchorRef={filterHeaderCellRef}
                         onApply={handleFilterApply}
                         onClear={() => handleFilterClear(catalogId)}
                         onClose={() => setOpenFilterColumn(null)}
