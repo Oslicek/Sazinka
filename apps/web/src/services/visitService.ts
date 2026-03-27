@@ -9,6 +9,8 @@ import type {
   CompleteVisitRequest,
   ListVisitsRequest,
   ListVisitsResponse,
+  UpdateFieldNotesRequest,
+  ListNotesHistoryResponse,
 } from '@shared/visit';
 import { createRequest } from '@shared/messages';
 import { useNatsStore } from '../stores/natsStore';
@@ -132,6 +134,36 @@ export async function completeVisit(
   const response = await deps.request<{ payload: Visit }>(
     'sazinka.visit.complete',
     request
+  );
+  return response.payload;
+}
+
+/**
+ * Save field notes for a visit (auto-save / explicit save)
+ */
+export async function saveFieldNotes(
+  data: UpdateFieldNotesRequest,
+  deps = getDefaultDeps(),
+): Promise<Visit> {
+  const request = createRequest(getToken(), data);
+  const response = await deps.request<{ payload: Visit }>(
+    'sazinka.visit.update_field_notes',
+    request,
+  );
+  return response.payload;
+}
+
+/**
+ * Fetch the note edit history for a visit
+ */
+export async function fetchNotesHistory(
+  visitId: string,
+  deps = getDefaultDeps(),
+): Promise<ListNotesHistoryResponse> {
+  const request = createRequest(getToken(), { visitId });
+  const response = await deps.request<{ payload: ListNotesHistoryResponse }>(
+    'sazinka.visit.notes.history',
+    request,
   );
   return response.payload;
 }
