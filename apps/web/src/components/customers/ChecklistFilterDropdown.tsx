@@ -42,7 +42,7 @@ export function ChecklistFilterDropdown({
   onClose,
   deps,
 }: ChecklistFilterDropdownProps) {
-  const { t } = useTranslation();
+  const { t } = useTranslation('customers');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const [values, setValues] = useState<string[]>([]);

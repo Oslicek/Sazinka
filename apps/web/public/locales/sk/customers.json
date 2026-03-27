@@ -244,5 +244,30 @@
 
   "sort_no_secondary": "— Bez sekundárného zoradenia —",
   "sort_clear": "Zrušiť zoradenie",
-  "sheet_apply": "Použiť"
+  "sheet_apply": "Použiť",
+
+  "filter_search_placeholder": "Hľadať…",
+  "filter_search_label": "Hľadať hodnoty filtra",
+  "filter_select_all": "Vybrať všetko",
+  "filter_deselect_all": "Zrušiť výber",
+  "filter_apply": "Použiť",
+  "filter_clear": "Zrušiť",
+  "filter_loading": "Načítanie…",
+  "filter_error": "Chyba",
+  "filter_no_results": "Žiadne hodnoty nenájdené",
+  "filter_empty_value": "(prázdne)",
+  "filter_dropdown_label": "Filtrovať podľa {{column}}",
+  "filter_values_label": "Hodnoty filtra",
+  "filter_date_range_label": "Filter rozsahu dátumov pre {{column}}",
+  "filter_date_from": "Od",
+  "filter_date_to": "Do",
+  "filter_date_invalid_from": "Neplatný dátum 'Od'",
+  "filter_date_invalid_to": "Neplatný dátum 'Do'",
+  "filter_date_range_invalid": "Dátum 'Od' musí byť pred 'Do'",
+
+  "customer_type_company": "Firma",
+  "customer_type_person": "Osoba",
+  "geocode_status_success": "Úspešne overená",
+  "geocode_status_pending": "Čaká na overenie",
+  "geocode_status_failed": "Nie je možné overiť"
 }

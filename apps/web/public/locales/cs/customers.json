@@ -251,5 +251,30 @@
 
   "sort_no_secondary": "— Bez sekundárního řazení —",
   "sort_clear": "Zrušit řazení",
-  "sheet_apply": "Použít"
+  "sheet_apply": "Použít",
+
+  "filter_search_placeholder": "Hledat…",
+  "filter_search_label": "Hledat hodnoty filtru",
+  "filter_select_all": "Vybrat vše",
+  "filter_deselect_all": "Zrušit výběr",
+  "filter_apply": "Použít",
+  "filter_clear": "Zrušit",
+  "filter_loading": "Načítání…",
+  "filter_error": "Chyba",
+  "filter_no_results": "Žádné hodnoty nenalezeny",
+  "filter_empty_value": "(prázdné)",
+  "filter_dropdown_label": "Filtrovat dle {{column}}",
+  "filter_values_label": "Hodnoty filtru",
+  "filter_date_range_label": "Filtr rozsahu dat pro {{column}}",
+  "filter_date_from": "Od",
+  "filter_date_to": "Do",
+  "filter_date_invalid_from": "Neplatné datum 'Od'",
+  "filter_date_invalid_to": "Neplatné datum 'Do'",
+  "filter_date_range_invalid": "Datum 'Od' musí být před 'Do'",
+
+  "customer_type_company": "Firma",
+  "customer_type_person": "Osoba",
+  "geocode_status_success": "Úspěšně ověřená",
+  "geocode_status_pending": "Čeká na ověření",
+  "geocode_status_failed": "Nelze ověřit"
 }

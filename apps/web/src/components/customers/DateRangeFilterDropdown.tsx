@@ -27,7 +27,7 @@ export function DateRangeFilterDropdown({
   onClear,
   onClose,
 }: DateRangeFilterDropdownProps) {
-  const { t } = useTranslation();
+  const { t } = useTranslation('customers');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const [from, setFrom] = useState(currentFilter?.from ?? '');
