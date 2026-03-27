@@ -21,12 +21,12 @@ const mockListVisits = vi.mocked(listVisits);
 const mockGetVisit = vi.mocked(getVisit);
 const mockUseNatsStore = vi.mocked(useNatsStore);
 
-function makeVisitRow(id = 'v-1', resultNotes?: string) {
-  return makeVisitFixture({ id, customerId: 'c-1', resultNotes: resultNotes ?? undefined });
+function makeVisitRow(id = 'v-1', fieldNotes?: string) {
+  return makeVisitFixture({ id, customerId: 'c-1', fieldNotes: fieldNotes ?? undefined });
 }
 
-function makeFullVisitResponse(visitId = 'v-1', resultNotes?: string) {
-  return makeGetVisitResponse(makeVisitFixture({ id: visitId, resultNotes: resultNotes ?? undefined }));
+function makeFullVisitResponse(visitId = 'v-1', fieldNotes?: string) {
+  return makeGetVisitResponse(makeVisitFixture({ id: visitId, fieldNotes: fieldNotes ?? undefined }));
 }
 
 beforeEach(() => {

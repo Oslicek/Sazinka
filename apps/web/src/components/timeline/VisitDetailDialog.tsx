@@ -36,7 +36,7 @@ export function VisitDetailDialog({
   
   const [completeData, setCompleteData] = useState({
     result: visit.result || 'successful',
-    resultNotes: visit.resultNotes || '',
+    fieldNotes: visit.fieldNotes || '',
     requiresFollowUp: visit.requiresFollowUp || false,
     followUpReason: visit.followUpReason || '',
   });
@@ -109,7 +109,7 @@ export function VisitDetailDialog({
       const data: CompleteVisitRequest = {
         id: visit.id,
         result: completeData.result as Visit['result'] & string,
-        resultNotes: completeData.resultNotes || undefined,
+        fieldNotes: completeData.fieldNotes || undefined,
         requiresFollowUp: completeData.requiresFollowUp,
         followUpReason: completeData.requiresFollowUp ? completeData.followUpReason || undefined : undefined,
       };
@@ -256,8 +256,8 @@ export function VisitDetailDialog({
                     <label>{t('visit_result_note')}</label>
                     <textarea
                       rows={2}
-                      value={completeData.resultNotes}
-                      onChange={(e) => setCompleteData({ ...completeData, resultNotes: e.target.value })}
+                      value={completeData.fieldNotes}
+                      onChange={(e) => setCompleteData({ ...completeData, fieldNotes: e.target.value })}
                       disabled={isSubmitting}
                       placeholder={t('visit_optional_note_placeholder')}
                     />
@@ -317,8 +317,8 @@ export function VisitDetailDialog({
               {visit.result && (
                 <p><strong>{t('visit_result')}:</strong> {getVisitResultLabel(visit.result)}</p>
               )}
-              {visit.resultNotes && (
-                <p><strong>{t('visit_note_label')}</strong> {visit.resultNotes}</p>
+              {visit.fieldNotes && (
+                <p><strong>{t('visit_note_label')}</strong> {visit.fieldNotes}</p>
               )}
               {visit.requiresFollowUp && (
                 <p className={styles.followUp}>

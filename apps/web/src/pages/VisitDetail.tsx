@@ -201,7 +201,7 @@ export function VisitDetail() {
       await completeVisit({
         id: data.visit.id,
         result: completeResult,
-        resultNotes: completeNotes || undefined,
+        fieldNotes: completeNotes || undefined,
         requiresFollowUp,
         followUpReason: requiresFollowUp ? followUpReason : undefined,
       });
@@ -417,10 +417,10 @@ export function VisitDetail() {
                 </div>
               )}
 
-              {visit.resultNotes && (
+              {visit.fieldNotes && (
                 <div className={styles.notesSection}>
                   <span className={styles.detailLabel}>{t('visit_notes')}</span>
-                  <p className={styles.notes}>{visit.resultNotes}</p>
+                  <p className={styles.notes}>{visit.fieldNotes}</p>
                 </div>
               )}
             </div>

@@ -85,7 +85,7 @@ export function useLastVisitComment(customerId: string | null | undefined): Last
         } catch {
           // getVisit failed — fall back to visit-level notes from listVisits row
           if (cancelled || latestCustomerIdRef.current !== customerId) return;
-          const notes = visitRow.resultNotes?.trim() || null;
+          const notes = visitRow.fieldNotes?.trim() || null;
           const r: LastVisitCommentResult = { notes, visit: visitRow, isLoading: false };
           cache.set(customerId, r);
           if (!cancelled && latestCustomerIdRef.current === customerId) setResult(r);

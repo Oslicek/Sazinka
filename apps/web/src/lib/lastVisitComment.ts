@@ -1,12 +1,14 @@
 import type { Visit } from '@shared/visit';
 import type { VisitWorkItem } from '@shared/workItem';
+import { stripMarkdownFormatting } from './stripMarkdown';
 
 /**
  * Extract and normalise the "last visit comment" from a completed visit.
  *
  * Collection order (deterministic, visit-level first then work items in array order):
- *   1. visit.resultNotes
+ *   1. visit.fieldNotes (stripped to plain text — stored as Markdown)
  *   2. per work item: wi.resultNotes, wi.findings, wi.followUpReason (if requiresFollowUp)
+ *      (work-item fields are plain text — no markdown stripping needed)
  *
  * Returns null when there is nothing non-empty to show.
  * Truncation/clamping is a UI concern and is NOT performed here.
@@ -19,7 +21,7 @@ export function extractLastVisitComment(
 
   const parts: string[] = [];
 
-  const visitNotes = visit.resultNotes?.trim();
+  const visitNotes = stripMarkdownFormatting(visit.fieldNotes?.trim() ?? '');
   if (visitNotes) parts.push(visitNotes);
 
   for (const wi of workItems) {

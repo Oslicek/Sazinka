@@ -16,6 +16,7 @@ export function makeVisitFixture(overrides: Partial<Visit> = {}): Visit {
     requiresFollowUp: false,
     createdAt: '2026-03-20T08:00:00Z',
     updatedAt: '2026-03-20T10:00:00Z',
+    fieldNotes: undefined,
     ...overrides,
   };
 }

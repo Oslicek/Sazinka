@@ -419,7 +419,7 @@ describe('CandidateDetail', () => {
       status: 'completed',
       visitType: 'revision',
       requiresFollowUp: false,
-      resultNotes: null,
+      fieldNotes: null,
       followUpReason: null,
       createdAt: '2026-03-20T08:00:00Z',
       updatedAt: '2026-03-20T10:00:00Z',
@@ -452,9 +452,9 @@ describe('CandidateDetail', () => {
 
     // A.3.1 Comment banner shown when resolved comment exists
     it('shows comment banner when last visit has notes', async () => {
-      mockListVisits.mockResolvedValue({ visits: [{ ...visitRow, resultNotes: 'Kotel vyměněn' }], total: 1 });
+      mockListVisits.mockResolvedValue({ visits: [{ ...visitRow, fieldNotes: 'Kotel vyměněn' }], total: 1 });
       mockGetVisit.mockResolvedValue({
-        visit: { ...visitRow, resultNotes: 'Kotel vyměněn' } as any,
+        visit: { ...visitRow, fieldNotes: 'Kotel vyměněn' } as any,
         customerName: null, customerStreet: null, customerCity: null,
         customerPostalCode: null, customerPhone: null, customerLat: null, customerLng: null,
         workItems: [],
@@ -480,9 +480,9 @@ describe('CandidateDetail', () => {
 
     // A.3.3 Visit date shown in banner header when comment is visible
     it('shows visit date in banner header when comment is visible', async () => {
-      mockListVisits.mockResolvedValue({ visits: [{ ...visitRow, resultNotes: 'Poznámka' }], total: 1 });
+      mockListVisits.mockResolvedValue({ visits: [{ ...visitRow, fieldNotes: 'Poznámka' }], total: 1 });
       mockGetVisit.mockResolvedValue({
-        visit: { ...visitRow, resultNotes: 'Poznámka' } as any,
+        visit: { ...visitRow, fieldNotes: 'Poznámka' } as any,
         customerName: null, customerStreet: null, customerCity: null,
         customerPostalCode: null, customerPhone: null, customerLat: null, customerLng: null,
         workItems: [],
@@ -502,7 +502,7 @@ describe('CandidateDetail', () => {
     it('shows follow-up indicator block when requiresFollowUp is true', async () => {
       const followUpVisit = {
         ...visitRow,
-        resultNotes: 'Hlavní poznámka',
+        fieldNotes: 'Hlavní poznámka',
         requiresFollowUp: true,
         followUpReason: 'Nutná opravná návštěva',
       };
@@ -525,7 +525,7 @@ describe('CandidateDetail', () => {
     it('hides follow-up indicator when requiresFollowUp is false', async () => {
       const normalVisit = {
         ...visitRow,
-        resultNotes: 'Vše v pořádku',
+        fieldNotes: 'Vše v pořádku',
         requiresFollowUp: false,
         followUpReason: 'Should not appear',
       };
@@ -547,9 +547,9 @@ describe('CandidateDetail', () => {
 
     // A.3.6 Loading state does not flash stale comment when switching candidates
     it('clears comment when switching to a new candidate with no notes', async () => {
-      mockListVisits.mockResolvedValue({ visits: [{ ...visitRow, resultNotes: 'Old note' }], total: 1 });
+      mockListVisits.mockResolvedValue({ visits: [{ ...visitRow, fieldNotes: 'Old note' }], total: 1 });
       mockGetVisit.mockResolvedValue({
-        visit: { ...visitRow, resultNotes: 'Old note' } as any,
+        visit: { ...visitRow, fieldNotes: 'Old note' } as any,
         customerName: null, customerStreet: null, customerCity: null,
         customerPostalCode: null, customerPhone: null, customerLat: null, customerLng: null,
         workItems: [],
@@ -571,9 +571,9 @@ describe('CandidateDetail', () => {
 
     // A.3.7 Switching customer updates displayed comment correctly
     it('updates comment when switching to a new candidate with different notes', async () => {
-      mockListVisits.mockResolvedValue({ visits: [{ ...visitRow, resultNotes: 'Note A' }], total: 1 });
+      mockListVisits.mockResolvedValue({ visits: [{ ...visitRow, fieldNotes: 'Note A' }], total: 1 });
       mockGetVisit.mockResolvedValue({
-        visit: { ...visitRow, resultNotes: 'Note A' } as any,
+        visit: { ...visitRow, fieldNotes: 'Note A' } as any,
         customerName: null, customerStreet: null, customerCity: null,
         customerPostalCode: null, customerPhone: null, customerLat: null, customerLng: null,
         workItems: [],
@@ -583,11 +583,11 @@ describe('CandidateDetail', () => {
       await waitFor(() => expect(screen.getByText('Note A')).toBeInTheDocument());
 
       mockListVisits.mockResolvedValue({
-        visits: [{ ...visitRow, id: 'v-2', customerId: 'cust-2', resultNotes: 'Note B' }],
+        visits: [{ ...visitRow, id: 'v-2', customerId: 'cust-2', fieldNotes: 'Note B' }],
         total: 1,
       });
       mockGetVisit.mockResolvedValue({
-        visit: { ...visitRow, id: 'v-2', customerId: 'cust-2', resultNotes: 'Note B' } as any,
+        visit: { ...visitRow, id: 'v-2', customerId: 'cust-2', fieldNotes: 'Note B' } as any,
         customerName: null, customerStreet: null, customerCity: null,
         customerPostalCode: null, customerPhone: null, customerLat: null, customerLng: null,
         workItems: [],

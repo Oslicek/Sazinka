@@ -303,7 +303,7 @@ function TimelineItemCard({
             {t('timeline_result')}: {visitService.getVisitResultLabel(visit.result)}
           </p>
         )}
-        {visit.resultNotes && <p className={styles.itemText}>{visit.resultNotes}</p>}
+        {visit.fieldNotes && <p className={styles.itemText}>{visit.fieldNotes}</p>}
       </div>
     </div>
   );

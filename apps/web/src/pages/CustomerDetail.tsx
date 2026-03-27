@@ -96,7 +96,7 @@ export function CustomerDetail() {
             const full = await getVisit(visit.id);
             if (cancelled) return;
             const allNotes: string[] = [];
-            if (full.visit.resultNotes) allNotes.push(full.visit.resultNotes);
+            if (full.visit.fieldNotes) allNotes.push(full.visit.fieldNotes);
             for (const wi of full.workItems ?? []) {
               if (wi.resultNotes) allNotes.push(wi.resultNotes);
               if (wi.findings) allNotes.push(wi.findings);
@@ -104,7 +104,7 @@ export function CustomerDetail() {
             }
             setLastVisitNotes(allNotes.length > 0 ? allNotes.join('\n') : null);
           } catch {
-            setLastVisitNotes(visit.resultNotes ?? null);
+            setLastVisitNotes(visit.fieldNotes ?? null);
           }
         } else {
           setLastVisit(null);
