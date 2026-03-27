@@ -2092,6 +2092,7 @@ UI: "Tip: Posádka 2 (+2 min)" - ne spam pro malé rozdíly
 - [x] ~~Onboarding wizard backend handlers (profile, devices, depot)~~ (implemented v0.20.0)
 - [x] ~~Async depot geocoding (fire-and-forget via NATS)~~ (implemented v0.20.0)
 - [x] ~~Responsive app navigation (hamburger on mobile, horizontal on desktop)~~ (implemented v0.20.0)
+- [x] ~~Visit Field Notes: Tiptap rich-text editor, offline localStorage draft, conflict resolution, notes history UI~~ (implemented v0.21.0)
 - [ ] Email notifications with Resend/SES
 - [ ] Mobile-responsive pages (beyond navigation)
 - [ ] Offline support (Service Worker)
