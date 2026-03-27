@@ -28,7 +28,9 @@ export function useAnchoredFilterDropdown(
   useLayoutEffect(() => {
     if (!usePortal) return;
 
+    let measureCallCount = 0;
     function measure() {
+      measureCallCount += 1;
       const el = anchorRefStable.current?.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
@@ -37,6 +39,11 @@ export function useAnchoredFilterDropdown(
       if (left + MAX_PANEL_WIDTH > vw - VIEWPORT_MARGIN) {
         left = Math.max(VIEWPORT_MARGIN, vw - MAX_PANEL_WIDTH - VIEWPORT_MARGIN);
       }
+      // #region agent log
+      const msg = `[DBG] measure #${measureCallCount}: tag=${el.tagName} rectLeft=${r.left.toFixed(1)} rectBottom=${r.bottom.toFixed(1)} finalLeft=${left.toFixed(1)} top=${(r.bottom+GAP_PX).toFixed(1)}`;
+      console.log(msg);
+      fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ee0c72'},body:JSON.stringify({sessionId:'ee0c72',location:'useAnchoredFilterDropdown.ts:measure',message:msg,data:{callNum:measureCallCount,tag:el.tagName,rectLeft:r.left,rectBottom:r.bottom,finalLeft:left},timestamp:Date.now(),hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
       setPos({ top: r.bottom + GAP_PX, left });
     }
 
