@@ -12,8 +12,9 @@ use uuid::Uuid;
 use crate::auth;
 use crate::db::queries;
 use crate::types::{
-    CompleteVisitRequest, CreateVisitRequest, ErrorResponse, ListVisitsRequest,
-    ListVisitsResponse, Request, SuccessResponse, UpdateVisitRequest,
+    CompleteVisitRequest, CreateVisitRequest, ErrorResponse, ListNotesHistoryRequest,
+    ListNotesHistoryResponse, ListVisitsRequest, ListVisitsResponse, Request, SuccessResponse,
+    UpdateFieldNotesRequest, UpdateVisitRequest,
 };
 
 /// Handle visit.create messages
@@ -306,7 +307,8 @@ pub async fn handle_complete(
             payload.id,
             user_id,
             &payload.result,
-            payload.result_notes.as_deref(),
+            payload.field_notes.as_deref(),
+            payload.session_id,
             payload.actual_arrival,
             payload.actual_departure,
             payload.requires_follow_up.unwrap_or(false),
@@ -504,6 +506,134 @@ pub async fn handle_get(
                 error!("Failed to get visit: {}", e);
                 let error = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
                 let _ = client.publish(reply, serde_json::to_vec(&error)?.into()).await;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Handle sazinka.visit.update_field_notes messages
+pub async fn handle_update_field_notes(
+    client: Client,
+    mut subscriber: async_nats::Subscriber,
+    pool: PgPool,
+    jwt_secret: Arc<String>,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received visit.update_field_notes message");
+
+        let reply = match msg.reply {
+            Some(ref r) => r.clone(),
+            None => { warn!("Message without reply subject"); continue; }
+        };
+
+        let request: crate::types::Request<UpdateFieldNotesRequest> =
+            match serde_json::from_slice(&msg.payload) {
+                Ok(r) => r,
+                Err(e) => {
+                    error!("Failed to parse request: {}", e);
+                    let err = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                    let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+                    continue;
+                }
+            };
+
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let err = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+                continue;
+            }
+        };
+
+        let payload = request.payload;
+
+        if payload.field_notes.len() > 10_000 {
+            let err = ErrorResponse::new(request.id, "FIELD_NOTES_TOO_LONG",
+                "Field notes must not exceed 10,000 characters");
+            let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+            continue;
+        }
+
+        match queries::visit::update_field_notes(
+            &pool,
+            payload.visit_id,
+            user_id,
+            payload.session_id,
+            &payload.field_notes,
+        ).await {
+            Ok(Some(visit)) => {
+                let response = SuccessResponse::new(request.id, visit);
+                let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+            }
+            Ok(None) => {
+                let err = ErrorResponse::new(request.id, "VISIT_NOT_FOUND", "Visit not found");
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+            }
+            Err(e) if e.to_string().contains("FIELD_NOTES_TOO_LONG") => {
+                let err = ErrorResponse::new(request.id, "FIELD_NOTES_TOO_LONG",
+                    "Field notes must not exceed 10,000 characters");
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+            }
+            Err(e) => {
+                error!("Failed to update field notes: {}", e);
+                let err = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Handle sazinka.visit.notes.history messages
+pub async fn handle_notes_history(
+    client: Client,
+    mut subscriber: async_nats::Subscriber,
+    pool: PgPool,
+    jwt_secret: Arc<String>,
+) -> Result<()> {
+    while let Some(msg) = subscriber.next().await {
+        debug!("Received visit.notes.history message");
+
+        let reply = match msg.reply {
+            Some(ref r) => r.clone(),
+            None => { warn!("Message without reply subject"); continue; }
+        };
+
+        let request: crate::types::Request<ListNotesHistoryRequest> =
+            match serde_json::from_slice(&msg.payload) {
+                Ok(r) => r,
+                Err(e) => {
+                    error!("Failed to parse request: {}", e);
+                    let err = ErrorResponse::new(Uuid::nil(), "INVALID_REQUEST", e.to_string());
+                    let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+                    continue;
+                }
+            };
+
+        let user_id = match auth::extract_auth(&request, &jwt_secret) {
+            Ok(info) => info.data_user_id(),
+            Err(_) => {
+                let err = ErrorResponse::new(request.id, "UNAUTHORIZED", "Authentication required");
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
+                continue;
+            }
+        };
+
+        let visit_id = request.payload.visit_id;
+
+        match queries::visit::list_notes_history(&pool, visit_id, user_id).await {
+            Ok(entries) => {
+                let response = SuccessResponse::new(request.id, ListNotesHistoryResponse { entries });
+                let _ = client.publish(reply, serde_json::to_vec(&response)?.into()).await;
+            }
+            Err(e) => {
+                error!("Failed to fetch notes history: {}", e);
+                let err = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
             }
         }
     }

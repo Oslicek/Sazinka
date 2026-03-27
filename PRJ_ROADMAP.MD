@@ -1820,13 +1820,115 @@ Explicitly excluded:
 - Mobile app
 - Multi-tenant/team features (multiple users per account)
 - Invoice generation
-- Document attachments
+- ~~Document attachments~~ → Photo attachments planned as future feature (see below)
 - Incoming email processing
 - Advanced reporting/analytics
 - ~~Multi-region support~~ → Internationalization (i18n) is now **in scope** — see `PRJ_I18N.MD`
 - RTL languages (Arabic, Hebrew)
 - Currency conversion
 - Per-tenant locale overrides
+
+---
+
+## Future Features (Unversioned)
+
+Features confirmed for implementation but not assigned to a specific release.
+
+### F1: Visit Photo Attachments
+
+> **Status:** Confirmed (not scheduled)
+> **Created:** 2026-03-27
+> **Related:** Visit Field Notes feature in `PRJ_PLAN.MD`
+
+#### Problem
+
+Technicians need to document visual findings — damaged parts, meter readings,
+before/after states, installation details. Currently there is no way to attach
+photos to a visit. Notes (even with Markdown formatting) cannot replace a
+photograph.
+
+#### Scope
+
+A standalone photo attachment feature **separate from field notes** (no inline
+image embedding in the Markdown editor). Each visit gets a photo gallery;
+photos are uploaded individually and displayed as thumbnails in a grid.
+
+#### Data model
+
+```
+visit_attachments table:
+  id              UUID PRIMARY KEY
+  visit_id        UUID NOT NULL REFERENCES visits(id)
+  user_id         UUID NOT NULL REFERENCES users(id)
+  storage_key     TEXT NOT NULL        -- S3 object key
+  filename        TEXT NOT NULL        -- original filename
+  content_type    VARCHAR(100)         -- e.g. image/jpeg
+  size_bytes      BIGINT
+  thumbnail_key   TEXT                 -- S3 key for thumbnail (generated)
+  caption         TEXT                 -- optional user caption
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+```
+
+#### API
+
+| Subject | Description |
+|---------|-------------|
+| `sazinka.visit.attachment.presign` | Get a presigned upload URL (browser uploads directly to storage) |
+| `sazinka.visit.attachment.confirm` | Confirm upload completed, store metadata, trigger thumbnail generation |
+| `sazinka.visit.attachment.list` | List attachments for a visit |
+| `sazinka.visit.attachment.delete` | Delete an attachment (removes from storage + DB) |
+
+Upload flow: browser requests presigned URL → uploads directly to S3/MinIO →
+calls `confirm` with the storage key → worker generates thumbnail → stores
+metadata in DB.
+
+#### Storage options evaluated
+
+| Option | Approach | Pros | Cons |
+|--------|----------|------|------|
+| **S1** | Local filesystem (`/data/attachments/`) | Zero infra, simplest | No redundancy, single server only, no CDN |
+| **S2** | **MinIO (self-hosted, S3-compatible)** | S3 API (portable to cloud), runs in Docker Compose, presigned URLs, lifecycle policies | Extra container, needs disk + backup |
+| **S3** | AWS S3 / Cloudflare R2 (cloud) | Fully managed, 11-nines durability, CDN, R2 has zero egress | Cloud dependency, ongoing cost, data leaves infra |
+| **S4** | PostgreSQL `BYTEA` / large objects | Everything in one backup | DB size explodes, terrible performance, NATS message limits |
+
+**Recommendation: S2 (MinIO)** — fits the self-hosted Docker Compose stack.
+Rust worker uses `aws-sdk-s3` crate which works with MinIO out of the box.
+Migrating to cloud S3/R2 later is a config change, not a code change.
+
+#### UI placement
+
+- **Visit Detail page:** new "Photos" tab next to "Work Items" and "Field Notes"
+- **Photo grid:** thumbnails with lightbox on click, caption below each
+- **Upload:** drag-and-drop zone + "Take photo" button (mobile camera integration)
+- **Visit completion:** photos section visible in completion summary
+- **Read-only display:** thumbnail gallery wherever visits are shown (timeline, detail panels)
+
+#### Thumbnail generation
+
+- On `confirm`: worker generates 200x200 thumbnail using `image` crate (Rust)
+- Stored as separate S3 object (`thumbnail_key`)
+- UI loads thumbnails for grid; full-size on click/lightbox
+
+#### Scope estimate
+
+| Layer | Work |
+|-------|------|
+| DB migration | `visit_attachments` table |
+| Infra | MinIO container in `docker-compose.yml` + bucket init |
+| Shared types | `VisitAttachment`, `PresignRequest`, `PresignResponse` |
+| Rust handlers | presign, confirm (+ thumbnail), list, delete |
+| Frontend service | `attachmentService.ts` (presign → upload → confirm flow) |
+| UI component | `VisitPhotoGallery.tsx` with drag-drop, grid, lightbox |
+| Visit detail page | New "Photos" tab |
+| Tests | ~20 test cases (handler, service, upload flow, component) |
+
+#### Open questions
+
+1. **Max photos per visit?** Soft limit (e.g. 20) vs unlimited.
+2. **Max file size?** 10 MB per photo is reasonable (phones compress to ~3-5 MB).
+3. **Video support?** Short clips (e.g. 30s) or photos only?
+4. **Offline upload queue?** Upload when back online, or require connectivity?
+5. **Photo annotations?** Draw arrows/circles on photos (significant scope increase).
 
 ---
 

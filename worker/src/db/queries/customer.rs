@@ -537,9 +537,9 @@ pub async fn delete_customer(
     sqlx::query(
         r#"
         UPDATE visits
-        SET result_notes = 'Anonymizováno'
+        SET field_notes = 'Anonymizováno'
         WHERE user_id = $1 AND customer_id = $2
-          AND result_notes IS NOT NULL
+          AND field_notes IS NOT NULL
         "#
     )
     .bind(user_id)

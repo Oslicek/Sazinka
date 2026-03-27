@@ -405,6 +405,8 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let visit_complete_sub = client.subscribe("sazinka.visit.complete").await?;
     let visit_delete_sub = client.subscribe("sazinka.visit.delete").await?;
     let visit_get_sub = client.subscribe("sazinka.visit.get").await?;
+    let visit_update_field_notes_sub = client.subscribe("sazinka.visit.update_field_notes").await?;
+    let visit_notes_history_sub = client.subscribe("sazinka.visit.notes.history").await?;
 
     // Crew subjects
     let crew_create_sub = client.subscribe("sazinka.crew.create").await?;
@@ -602,6 +604,8 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let client_visit_complete = client.clone();
     let client_visit_delete = client.clone();
     let client_visit_get = client.clone();
+    let client_visit_update_field_notes = client.clone();
+    let client_visit_notes_history = client.clone();
 
     // Communication pool clones
     let pool_comm_create = pool.clone();
@@ -616,6 +620,8 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_visit_complete = pool.clone();
     let pool_visit_delete = pool.clone();
     let pool_visit_get = pool.clone();
+    let pool_visit_update_field_notes = pool.clone();
+    let pool_visit_notes_history = pool.clone();
 
     // Crew handler clones
     let client_crew_create = client.clone();
@@ -775,6 +781,8 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let jwt_secret_visit_complete = Arc::clone(&jwt_secret);
     let jwt_secret_visit_delete = Arc::clone(&jwt_secret);
     let jwt_secret_visit_get = Arc::clone(&jwt_secret);
+    let jwt_secret_visit_update_field_notes = Arc::clone(&jwt_secret);
+    let jwt_secret_visit_notes_history = Arc::clone(&jwt_secret);
 
     // JWT secret clones for crew handlers
     let jwt_secret_crew_create = Arc::clone(&jwt_secret);
@@ -1914,6 +1922,26 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         .await
     });
 
+    let visit_update_field_notes_handle = tokio::spawn(async move {
+        visit::handle_update_field_notes(
+            client_visit_update_field_notes,
+            visit_update_field_notes_sub,
+            pool_visit_update_field_notes,
+            jwt_secret_visit_update_field_notes,
+        )
+        .await
+    });
+
+    let visit_notes_history_handle = tokio::spawn(async move {
+        visit::handle_notes_history(
+            client_visit_notes_history,
+            visit_notes_history_sub,
+            pool_visit_notes_history,
+            jwt_secret_visit_notes_history,
+        )
+        .await
+    });
+
     // Crew handlers
     let crew_create_handle = tokio::spawn(async move {
         crew::handle_create(
@@ -2894,6 +2922,8 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         visit_complete_handle.boxed(),
         visit_delete_handle.boxed(),
         visit_get_handle.boxed(),
+        visit_update_field_notes_handle.boxed(),
+        visit_notes_history_handle.boxed(),
         crew_create_handle.boxed(),
         crew_list_handle.boxed(),
         crew_update_handle.boxed(),

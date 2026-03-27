@@ -85,11 +85,12 @@ pub struct Visit {
     pub actual_departure: Option<DateTime<Utc>>,
     
     pub result: Option<String>,
-    pub result_notes: Option<String>,
-    
+    /// Rich-text field notes in Markdown (renamed from result_notes)
+    pub field_notes: Option<String>,
+
     pub requires_follow_up: Option<bool>,
     pub follow_up_reason: Option<String>,
-    
+
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -103,20 +104,21 @@ pub struct VisitWithCustomer {
     pub customer_id: Uuid,
     pub crew_id: Option<Uuid>,
     pub device_id: Option<Uuid>,
-    
+
     pub scheduled_date: NaiveDate,
     pub scheduled_time_start: Option<NaiveTime>,
     pub scheduled_time_end: Option<NaiveTime>,
-    
+
     pub status: String,
     pub visit_type: String,
-    
+
     pub actual_arrival: Option<DateTime<Utc>>,
     pub actual_departure: Option<DateTime<Utc>>,
-    
+
     pub result: Option<String>,
-    pub result_notes: Option<String>,
-    
+    /// Rich-text field notes in Markdown (renamed from result_notes)
+    pub field_notes: Option<String>,
+
     pub requires_follow_up: Option<bool>,
     pub follow_up_reason: Option<String>,
     
@@ -161,11 +163,52 @@ pub struct UpdateVisitRequest {
 pub struct CompleteVisitRequest {
     pub id: Uuid,
     pub result: String,
-    pub result_notes: Option<String>,
     pub actual_arrival: Option<DateTime<Utc>>,
     pub actual_departure: Option<DateTime<Utc>>,
+    /// Optional final note state — persisted atomically in the same transaction
+    pub field_notes: Option<String>,
+    /// Browser-tab session id for audit upsert
+    pub session_id: Option<Uuid>,
     pub requires_follow_up: Option<bool>,
     pub follow_up_reason: Option<String>,
+}
+
+/// Request to update visit field notes (NATS: sazinka.visit.update_field_notes)
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateFieldNotesRequest {
+    pub visit_id: Uuid,
+    pub session_id: Uuid,
+    /// Markdown content, max 10,000 chars
+    pub field_notes: String,
+}
+
+/// Request to list note history for a visit (NATS: sazinka.visit.notes.history)
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListNotesHistoryRequest {
+    pub visit_id: Uuid,
+}
+
+/// A single session-level audit snapshot
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct NotesHistoryEntry {
+    pub id: Uuid,
+    pub session_id: Uuid,
+    pub edited_by_user_id: Uuid,
+    pub edited_by_name: Option<String>,
+    pub field_notes: String,
+    pub first_edited_at: DateTime<Utc>,
+    pub last_edited_at: DateTime<Utc>,
+    pub change_count: i32,
+}
+
+/// Response listing all note audit entries for a visit
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListNotesHistoryResponse {
+    pub entries: Vec<NotesHistoryEntry>,
 }
 
 /// Request to list visits
@@ -231,7 +274,7 @@ mod tests {
             actual_arrival: None,
             actual_departure: None,
             result: None,
-            result_notes: None,
+            field_notes: None,
             requires_follow_up: None,
             follow_up_reason: None,
             created_at: Utc::now(),

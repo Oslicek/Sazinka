@@ -6,7 +6,7 @@ use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::types::{Visit, VisitWithCustomer};
+use crate::types::{NotesHistoryEntry, Visit, VisitWithCustomer};
 
 /// Create a new visit
 pub async fn create_visit(
@@ -37,7 +37,7 @@ pub async fn create_visit(
             scheduled_date, scheduled_time_start, scheduled_time_end,
             status::text, visit_type,
             actual_arrival, actual_departure,
-            result, result_notes,
+            result, field_notes,
             requires_follow_up, follow_up_reason,
             created_at, updated_at
         "#,
@@ -67,7 +67,7 @@ pub async fn get_visit(pool: &PgPool, id: Uuid, user_id: Uuid) -> Result<Option<
             scheduled_date, scheduled_time_start, scheduled_time_end,
             status::text, visit_type,
             actual_arrival, actual_departure,
-            result, result_notes,
+            result, field_notes,
             requires_follow_up, follow_up_reason,
             created_at, updated_at
         FROM visits
@@ -112,7 +112,7 @@ pub async fn list_visits(
             v.scheduled_date, v.scheduled_time_start, v.scheduled_time_end,
             v.status::text, v.visit_type,
             v.actual_arrival, v.actual_departure,
-            v.result, v.result_notes,
+            v.result, v.field_notes,
             v.requires_follow_up, v.follow_up_reason,
             v.created_at, v.updated_at,
             c.name as customer_name,
@@ -177,7 +177,7 @@ pub async fn update_visit(
             scheduled_date, scheduled_time_start, scheduled_time_end,
             status::text, visit_type,
             actual_arrival, actual_departure,
-            result, result_notes,
+            result, field_notes,
             requires_follow_up, follow_up_reason,
             created_at, updated_at
         "#,
@@ -195,24 +195,39 @@ pub async fn update_visit(
     Ok(visit)
 }
 
-/// Complete a visit with result
+/// Complete a visit with result, optionally updating field notes atomically.
+/// When `field_notes` is Some and differs from current value, the note and
+/// audit row are written in the same transaction before commit.
 pub async fn complete_visit(
     pool: &PgPool,
     id: Uuid,
     user_id: Uuid,
     result: &str,
-    result_notes: Option<&str>,
+    field_notes: Option<&str>,
+    session_id: Option<Uuid>,
     actual_arrival: Option<DateTime<Utc>>,
     actual_departure: Option<DateTime<Utc>>,
     requires_follow_up: bool,
     follow_up_reason: Option<&str>,
 ) -> Result<Option<Visit>> {
+    let mut tx = pool.begin().await?;
+
+    // Fetch current note to detect no-op
+    let current_field_notes: Option<String> = sqlx::query_scalar(
+        "SELECT field_notes FROM visits WHERE id = $1 AND user_id = $2",
+    )
+    .bind(id)
+    .bind(user_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .flatten();
+
     let visit = sqlx::query_as::<_, Visit>(
         r#"
         UPDATE visits SET
             status = 'completed',
             result = $3,
-            result_notes = $4,
+            field_notes = COALESCE($4, field_notes),
             actual_arrival = $5,
             actual_departure = $6,
             requires_follow_up = $7,
@@ -224,7 +239,7 @@ pub async fn complete_visit(
             scheduled_date, scheduled_time_start, scheduled_time_end,
             status::text, visit_type,
             actual_arrival, actual_departure,
-            result, result_notes,
+            result, field_notes,
             requires_follow_up, follow_up_reason,
             created_at, updated_at
         "#,
@@ -232,22 +247,188 @@ pub async fn complete_visit(
     .bind(id)
     .bind(user_id)
     .bind(result)
-    .bind(result_notes)
+    .bind(field_notes)
     .bind(actual_arrival)
     .bind(actual_departure)
     .bind(requires_follow_up)
     .bind(follow_up_reason)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await?;
 
+    // Upsert audit row if note actually changed
+    if let (Some(notes), Some(sid)) = (field_notes, session_id) {
+        let changed = current_field_notes.as_deref() != Some(notes);
+        if changed {
+            upsert_notes_audit(&mut tx, id, sid, user_id, notes).await?;
+        }
+    }
+
+    tx.commit().await?;
     Ok(visit)
 }
 
-/// Delete a visit
-pub async fn delete_visit(pool: &PgPool, id: Uuid, user_id: Uuid) -> Result<bool> {
-    let result = sqlx::query("DELETE FROM visits WHERE id = $1 AND user_id = $2")
-        .bind(id).bind(user_id).execute(pool).await?;
-    Ok(result.rows_affected() > 0)
+/// Upsert a session-level audit row for field notes changes.
+/// On conflict (same visit_id + session_id): update note, bump change_count and last_edited_at.
+pub async fn upsert_notes_audit(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    visit_id: Uuid,
+    session_id: Uuid,
+    edited_by_user_id: Uuid,
+    field_notes: &str,
+) -> Result<()> {
+    sqlx::query(
+        r#"
+        INSERT INTO visit_notes_history
+            (id, visit_id, session_id, edited_by_user_id, field_notes,
+             first_edited_at, last_edited_at, change_count)
+        VALUES
+            (uuid_generate_v4(), $1, $2, $3, $4, NOW(), NOW(), 1)
+        ON CONFLICT (visit_id, session_id) DO UPDATE SET
+            field_notes       = EXCLUDED.field_notes,
+            last_edited_at    = NOW(),
+            edited_by_user_id = EXCLUDED.edited_by_user_id,
+            change_count      = visit_notes_history.change_count + 1
+        "#,
+    )
+    .bind(visit_id)
+    .bind(session_id)
+    .bind(edited_by_user_id)
+    .bind(field_notes)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+/// Update field notes for a visit (NATS: sazinka.visit.update_field_notes).
+/// Returns the updated visit, or None if the visit doesn't belong to this user.
+/// Returns Err if the note exceeds 10,000 chars.
+pub async fn update_field_notes(
+    pool: &PgPool,
+    visit_id: Uuid,
+    user_id: Uuid,
+    session_id: Uuid,
+    field_notes: &str,
+) -> Result<Option<Visit>> {
+    if field_notes.len() > 10_000 {
+        anyhow::bail!("FIELD_NOTES_TOO_LONG");
+    }
+
+    let mut tx = pool.begin().await?;
+
+    // Fetch current note to detect no-op
+    let current: Option<String> = sqlx::query_scalar(
+        "SELECT field_notes FROM visits WHERE id = $1 AND user_id = $2",
+    )
+    .bind(visit_id)
+    .bind(user_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .flatten();
+
+    // Treat missing row as not-found
+    let row_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM visits WHERE id = $1 AND user_id = $2)",
+    )
+    .bind(visit_id)
+    .bind(user_id)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    if !row_exists {
+        tx.rollback().await?;
+        return Ok(None);
+    }
+
+    // No-op if content unchanged
+    if current.as_deref() == Some(field_notes) {
+        let visit = sqlx::query_as::<_, Visit>(
+            r#"
+            SELECT id, user_id, customer_id, crew_id, device_id,
+                   scheduled_date, scheduled_time_start, scheduled_time_end,
+                   status::text, visit_type,
+                   actual_arrival, actual_departure,
+                   result, field_notes,
+                   requires_follow_up, follow_up_reason,
+                   created_at, updated_at
+            FROM visits WHERE id = $1 AND user_id = $2
+            "#,
+        )
+        .bind(visit_id)
+        .bind(user_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        return Ok(visit);
+    }
+
+    let visit = sqlx::query_as::<_, Visit>(
+        r#"
+        UPDATE visits SET
+            field_notes = $3,
+            updated_at  = NOW()
+        WHERE id = $1 AND user_id = $2
+        RETURNING
+            id, user_id, customer_id, crew_id, device_id,
+            scheduled_date, scheduled_time_start, scheduled_time_end,
+            status::text, visit_type,
+            actual_arrival, actual_departure,
+            result, field_notes,
+            requires_follow_up, follow_up_reason,
+            created_at, updated_at
+        "#,
+    )
+    .bind(visit_id)
+    .bind(user_id)
+    .bind(field_notes)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    upsert_notes_audit(&mut tx, visit_id, session_id, user_id, field_notes).await?;
+    tx.commit().await?;
+    Ok(visit)
+}
+
+/// List all note audit entries for a visit, newest first.
+pub async fn list_notes_history(
+    pool: &PgPool,
+    visit_id: Uuid,
+    user_id: Uuid,
+) -> Result<Vec<NotesHistoryEntry>> {
+    // Verify the visit belongs to this user first
+    let exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM visits WHERE id = $1 AND user_id = $2)",
+    )
+    .bind(visit_id)
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+
+    if !exists {
+        return Ok(vec![]);
+    }
+
+    let entries = sqlx::query_as::<_, NotesHistoryEntry>(
+        r#"
+        SELECT
+            h.id,
+            h.session_id,
+            h.edited_by_user_id,
+            u.name AS edited_by_name,
+            h.field_notes,
+            h.first_edited_at,
+            h.last_edited_at,
+            h.change_count
+        FROM visit_notes_history h
+        LEFT JOIN users u ON h.edited_by_user_id = u.id
+        WHERE h.visit_id = $1
+        ORDER BY h.last_edited_at DESC
+        "#,
+    )
+    .bind(visit_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(entries)
 }
 
 /// Get visits for a customer (for timeline)
@@ -264,7 +445,7 @@ pub async fn get_customer_visits(
             scheduled_date, scheduled_time_start, scheduled_time_end,
             status::text, visit_type,
             actual_arrival, actual_departure,
-            result, result_notes,
+            result, field_notes,
             requires_follow_up, follow_up_reason,
             created_at, updated_at
         FROM visits
@@ -277,4 +458,11 @@ pub async fn get_customer_visits(
     .fetch_all(pool).await?;
 
     Ok(visits)
+}
+
+/// Delete a visit
+pub async fn delete_visit(pool: &PgPool, id: Uuid, user_id: Uuid) -> Result<bool> {
+    let result = sqlx::query("DELETE FROM visits WHERE id = $1 AND user_id = $2")
+        .bind(id).bind(user_id).execute(pool).await?;
+    Ok(result.rows_affected() > 0)
 }

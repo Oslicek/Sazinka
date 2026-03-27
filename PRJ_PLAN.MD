@@ -2025,3 +2025,541 @@ Test matrix:
 - [ ] i18n complete for `en`, `cs`, `sk` if new keys added.
 - [ ] New/updated tests pass with near-100% coverage on touched code (A.1: 14 cases, A.2: 9 cases, A.3: 8 cases, A.4: 11 cases, A.5: 2 cases = **44 test cases minimum**).
 - [ ] `PRJ_CONTEXT.MD` updated after implementation (not in planning step).
+
+---
+
+# Visit Field Notes — Plan (Reviewed)
+
+> **Status:** Planned (final review complete, TDD plan locked, ready for implementation)
+> **Created:** 2026-03-27
+> **Final review:** 2026-03-27
+
+## Problem
+
+Technicians need a comfortable way to take notes during a visit. Today notes are effectively captured at completion time, which causes memory loss, rework, and poor note quality.
+
+## Final decisions (locked)
+
+| # | Topic | Decision |
+|---|-------|----------|
+| 1 | Editable after completion | Always editable, with audit trail |
+| 2 | Max length | Hard DB limit: 10,000 chars |
+| 3 | Rich editor | Tiptap WYSIWYG, Markdown storage |
+| 4 | Images in notes | Not allowed; separate photo feature in `PRJ_ROADMAP.MD` |
+| 5 | Offline resilience | Browser-level draft (`localStorage`) + sync on reconnect |
+| 6 | Migration strategy | Use migration; if old note >10,000 chars, truncate |
+| 7 | Completion consistency | `complete_visit` accepts optional `fieldNotes` and persists atomically in one transaction |
+| 8 | Compact UI rendering | Full Markdown only in Visit Detail; plain-text excerpt in timeline/cards |
+| 9 | Markdown security | Strict markdown only, no raw HTML, sanitized allowlist |
+| 10 | Edit permissions | Anyone who has access to the visit can edit |
+| 11 | Audit retention | Keep forever |
+| 12 | Snapshot granularity | One snapshot row per browser-tab session; keep latest changed version for that session |
+| 13 | Session definition | Browser-tab session (new session on open/reload) |
+| 14 | Author tracking | Required on every audit update (`edited_by_user_id`) |
+
+## Proposed solution
+
+Single Markdown note per visit, backed by `visits.field_notes`, edited via Tiptap, auto-saved, with session-level audit history and author tracking.
+
+## Data model
+
+```sql
+-- 1) Rename note column and normalize legacy data
+ALTER TABLE visits RENAME COLUMN result_notes TO field_notes;
+
+-- 2) Truncate pre-existing over-limit values before adding hard check
+UPDATE visits
+SET field_notes = substring(field_notes from 1 for 10000)
+WHERE field_notes IS NOT NULL
+  AND length(field_notes) > 10000;
+
+-- 3) Hard limit for all future writes
+ALTER TABLE visits
+  ADD CONSTRAINT visits_field_notes_max_length
+  CHECK (field_notes IS NULL OR length(field_notes) <= 10000);
+
+-- 4) Session-level audit table (one row per visit+session, updatable)
+CREATE TABLE visit_notes_history (
+  id                 UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  visit_id           UUID NOT NULL REFERENCES visits(id) ON DELETE CASCADE,
+  session_id         UUID NOT NULL,
+  edited_by_user_id  UUID NOT NULL REFERENCES users(id),
+  field_notes        TEXT NOT NULL,
+  first_edited_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_edited_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  change_count       INTEGER NOT NULL DEFAULT 1,
+  UNIQUE (visit_id, session_id)
+);
+
+CREATE INDEX idx_visit_notes_history_visit ON visit_notes_history(visit_id);
+CREATE INDEX idx_visit_notes_history_last_edit ON visit_notes_history(last_edited_at);
+```
+
+### Audit semantics
+
+- Audit row is created/updated only when content actually changes.
+- For the same `(visit_id, session_id)`, only the latest version is kept.
+- On repeated changes in the same session, row is updated:
+  - `field_notes` = latest value
+  - `last_edited_at` = now
+  - `edited_by_user_id` = current editor
+  - `change_count` increments
+
+### Rename scope (important)
+
+- `visits.result_notes` → `visits.field_notes` and `Visit.resultNotes` → `Visit.fieldNotes` — **visit-level only**.
+- `VisitWorkItem.resultNotes`, `VisitWorkItem.findings`, `VisitWorkItem.followUpReason` are **NOT renamed**. They remain as-is on the work-item model.
+- All import/export paths that reference `result_notes` on the **visits** table must be updated. Import/export paths for **work items** stay unchanged.
+
+## API changes
+
+### New endpoint: `sazinka.visit.update_field_notes`
+
+```typescript
+interface UpdateFieldNotesRequest {
+  visitId: string;
+  sessionId: string;   // browser-tab session id (UUID v4)
+  fieldNotes: string;  // markdown, max 10,000 chars
+}
+// Response: updated Visit object
+```
+
+Behavior:
+- Validate permission: caller must have access to the visit.
+- Validate length <= 10,000 → reject with `FIELD_NOTES_TOO_LONG`.
+- Validate `visitId` exists → reject with `VISIT_NOT_FOUND`.
+- No-op if content is unchanged (no DB write, no audit row).
+- If changed: update `visits.field_notes` and upsert audit row for `(visit_id, session_id)`.
+
+### New endpoint: `sazinka.visit.notes.history`
+
+```typescript
+interface ListNotesHistoryRequest {
+  visitId: string;
+}
+
+interface NotesHistoryEntry {
+  id: string;
+  sessionId: string;
+  editedByUserId: string;
+  editedByName?: string;  // joined from users table
+  fieldNotes: string;
+  firstEditedAt: string;
+  lastEditedAt: string;
+  changeCount: number;
+}
+
+interface ListNotesHistoryResponse {
+  entries: NotesHistoryEntry[];  // ordered by last_edited_at DESC
+}
+```
+
+Behavior:
+- Returns all audit snapshots for a visit, newest first.
+- No pagination for v1 (session count per visit is naturally bounded).
+
+### Existing endpoint update: `sazinka.visit.complete`
+
+Extends the **current** `CompleteVisitRequest` (preserving all existing fields):
+
+```typescript
+interface CompleteVisitRequest {
+  id: string;
+  result: VisitResult;           // 'successful' | 'partial' | 'failed' | 'customer_absent' | 'rescheduled'
+  actualArrival?: string;        // existing field (preserved)
+  actualDeparture?: string;      // existing field (preserved)
+  fieldNotes?: string;           // NEW — optional final note state
+  sessionId?: string;            // NEW — optional for audit upsert
+  requiresFollowUp?: boolean;
+  followUpReason?: string;
+}
+```
+
+Behavior:
+- Complete visit and optional final notes write happen in a **single DB transaction**.
+- If `fieldNotes` is provided and differs from current value, visit note + audit row are updated before commit.
+- Prevents race where completion succeeds but latest notes are lost.
+- Existing fields (`result`, `actualArrival`, `actualDeparture`, `requiresFollowUp`, `followUpReason`) behave identically to today.
+
+## UI/UX
+
+### Visit Detail
+
+- New `Notes` tab with Tiptap editor and small toolbar.
+- Status line: character count and save status.
+- Button: `History` opens note change history for that visit.
+
+### Completion dialog
+
+- Shows read-only preview of current note.
+- Provides `Edit notes before completing` action.
+- No separate legacy `resultNotes` textarea.
+
+### Compact surfaces
+
+- Timeline/cards use plain-text excerpt generated from markdown (clamped).
+- Full markdown rendering is only in Visit Detail and dedicated note view.
+
+## Offline and conflicts
+
+- Draft mirrored to `localStorage` per `visitId + sessionId`.
+- On reconnect, unsynced draft is pushed automatically.
+- If local draft and server differ on reopen, show conflict prompt:
+  - Keep local
+  - Use server
+  - Compare
+- **Compare:** two panes of **side-by-side rendered Markdown** (sanitized HTML in both), not a raw text diff.
+
+### Complete visit with unsynced draft
+
+- **Default:** **auto-save (flush draft to server) then complete** in one user action.
+- **If flush fails:** show a **warning dialog** (save failed): options such as Retry, Discard local draft and complete, or Cancel — do not complete silently while local draft still differs.
+
+## Security
+
+- Raw HTML disabled.
+- Render through strict markdown pipeline with sanitized allowlist output.
+- Links sanitized and opened safely.
+
+## Migration plan
+
+1. Rename `result_notes` -> `field_notes`.
+2. Truncate over-limit legacy values to 10,000 chars (**silent** — no migration report, admin list, or structured “truncated visits” export).
+3. Add hard `CHECK` constraint.
+4. Create `visit_notes_history`.
+5. Update shared types and backend handlers.
+6. Update frontend references and completion flow.
+7. Roll out with regression tests and fixtures containing long legacy notes.
+
+## Utility: `stripMarkdown`
+
+**Location:** `apps/web/src/lib/stripMarkdown.ts`
+
+```typescript
+/**
+ * Strip markdown formatting to produce a plain-text string for compact UIs.
+ * Used by extractLastVisitComment, timeline cards, StopCommentBlock.
+ * Removes headings, bold, italic, links, images, lists, code blocks.
+ * Collapses whitespace. Does NOT truncate (truncation is a UI concern).
+ */
+export function stripMarkdown(md: string): string;
+```
+
+Implementation approach: lightweight regex-based stripping (no full AST).
+Library option: `remove-markdown` (tiny, 0 deps) or hand-rolled.
+
+### `extractLastVisitComment` update
+
+After rename, reads `visit.fieldNotes` (was `visit.resultNotes`).
+Applies `stripMarkdown()` to the visit-level note before joining.
+Work-item `resultNotes`/`findings` are already plain-text, no stripping needed.
+
+## Scope estimate
+
+| Layer | Work |
+|-------|------|
+| DB migration | Rename column, truncate long legacy notes, add check constraint, create history table |
+| Shared types | `Visit.fieldNotes`, `UpdateFieldNotesRequest`, extend `CompleteVisitRequest`, `ListNotesHistoryRequest/Response` |
+| Rust handlers | `update_field_notes`, `notes_history`, transactional `complete_visit` note merge, permission checks |
+| Frontend service | Save note, fetch history, complete with optional final notes payload |
+| Utility | `stripMarkdown` — plain-text extraction from markdown |
+| Editor UI | `VisitFieldNotes.tsx` with Tiptap + save state + character count |
+| History UI | Visit Detail `History` button + list of session snapshots + side-by-side compare |
+| Rendering | Markdown in detail (sanitized), plain excerpt in timeline/cards |
+| Offline | `localStorage` draft + conflict prompt + reconnect sync |
+| Tests | 88 focused tests across 7 TDD phases (see below) |
+
+## Follow-up decisions (resolved 2026-03-27)
+
+| Topic | Decision |
+|-------|----------|
+| History Compare UX | **Side-by-side rendered Markdown** (two sanitized preview panes). |
+| Truncation transparency | **Silent** — no post-migration report or UI for truncated rows. |
+| Completion with unsynced draft | **Flush draft (save) then complete**; if save fails, **warning dialog** with retry / discard local / cancel (no silent complete with divergent draft). |
+
+---
+
+## TDD Implementation Plan
+
+> Strict RED → GREEN → REFACTOR per phase.
+> Coverage target: **≥ 95%** statements per module, **100%** for pure functions and handlers.
+
+### Phase 1: DB migration + Shared types
+
+**Scope:** SQL migration, `Visit.fieldNotes` rename, new request/response types.
+
+#### 1a — RED (write tests before any implementation)
+
+**Rust migration tests** (`worker/src/db/migration_tests.rs` or integration test):
+
+| # | Test | What it verifies |
+|---|------|-----------------|
+| M1 | `migration_renames_result_notes_column` | Column `field_notes` exists, `result_notes` does not |
+| M2 | `migration_truncates_long_notes` | Pre-seeded 15,000-char note → exactly 10,000 after migration |
+| M3 | `migration_preserves_short_notes` | 500-char note unchanged |
+| M4 | `migration_preserves_null_notes` | NULL stays NULL |
+| M5 | `migration_creates_check_constraint` | INSERT with 10,001-char note → DB error |
+| M6 | `migration_allows_max_length_note` | INSERT with exactly 10,000 chars → succeeds |
+| M7 | `migration_creates_history_table` | `visit_notes_history` table exists with correct columns |
+| M8 | `migration_unique_constraint_visit_session` | Duplicate `(visit_id, session_id)` → unique violation |
+
+**TypeScript type tests** (`packages/shared-types/src/__tests__/visit.test.ts`):
+
+| # | Test | What it verifies |
+|---|------|-----------------|
+| T1 | `Visit_has_fieldNotes_property` | `Visit` type has `fieldNotes?: string \| null` |
+| T2 | `Visit_no_longer_has_resultNotes` | Compile-time: accessing `resultNotes` on `Visit` is a type error |
+| T3 | `CompleteVisitRequest_accepts_fieldNotes` | `fieldNotes` and `sessionId` are optional valid fields |
+| T4 | `UpdateFieldNotesRequest_requires_all_fields` | `visitId`, `sessionId`, `fieldNotes` are required |
+| T5 | `ListNotesHistoryResponse_shape` | Response contains `entries: NotesHistoryEntry[]` |
+
+#### 1b — GREEN
+
+- Write SQL migration file.
+- Update `Visit` interface: rename `resultNotes` → `fieldNotes`.
+- Add `UpdateFieldNotesRequest`, `ListNotesHistoryRequest`, `ListNotesHistoryResponse`, `NotesHistoryEntry`.
+- Extend `CompleteVisitRequest` with optional `fieldNotes` + `sessionId`.
+- Update Rust `Visit` struct: `result_notes` → `field_notes`.
+
+#### 1c — REFACTOR
+
+- Clean up migration SQL (comments, consistent naming).
+- Verify all 8 migration tests + 5 type tests green.
+
+---
+
+### Phase 2: Rust handlers (`update_field_notes`, `notes_history`, `complete_visit` update)
+
+#### 2a — RED
+
+**Handler tests** (`worker/src/handlers/visit_tests.rs`):
+
+| # | Test | What it verifies |
+|---|------|-----------------|
+| H1 | `update_field_notes_saves_new_note` | Empty → "Hello" written to `visits.field_notes` |
+| H2 | `update_field_notes_creates_audit_row` | Audit row exists with correct `session_id`, `edited_by_user_id`, `change_count = 1` |
+| H3 | `update_field_notes_upserts_same_session` | Second save in same session → `change_count = 2`, `last_edited_at` updated |
+| H4 | `update_field_notes_new_session_new_row` | Different `session_id` → second audit row, both have `change_count = 1` |
+| H5 | `update_field_notes_noop_unchanged` | Save same content twice → no new audit row, no `updated_at` change |
+| H6 | `update_field_notes_rejects_too_long` | 10,001 chars → error `FIELD_NOTES_TOO_LONG` |
+| H7 | `update_field_notes_accepts_max_length` | Exactly 10,000 chars → success |
+| H8 | `update_field_notes_rejects_missing_visit` | Non-existent `visitId` → `VISIT_NOT_FOUND` |
+| H9 | `update_field_notes_stores_editor_id` | `edited_by_user_id` matches the caller |
+| H10 | `notes_history_returns_entries_newest_first` | 3 sessions → 3 entries, `last_edited_at` descending |
+| H11 | `notes_history_empty_for_no_edits` | Visit with no audit rows → empty `entries` |
+| H12 | `notes_history_includes_user_name` | `editedByName` joined from `users` table |
+| H13 | `complete_visit_with_field_notes_atomic` | `fieldNotes` written + visit completed in one transaction |
+| H14 | `complete_visit_field_notes_creates_audit` | Completing with `fieldNotes` + `sessionId` → audit row |
+| H15 | `complete_visit_without_field_notes_unchanged` | Completing without `fieldNotes` → `field_notes` stays as-is |
+| H16 | `complete_visit_field_notes_noop_same_content` | Same content → no audit write |
+| H17 | `complete_visit_preserves_existing_fields` | `actualArrival`, `actualDeparture`, `requiresFollowUp` all stored correctly alongside `fieldNotes` |
+
+#### 2b — GREEN
+
+- Implement `handle_update_field_notes` handler + SQL queries.
+- Implement `handle_notes_history` handler + SQL query with `LEFT JOIN users`.
+- Update `handle_complete_visit` to accept and persist `fieldNotes/sessionId` transactionally.
+- Register NATS subjects `sazinka.visit.update_field_notes` and `sazinka.visit.notes.history`.
+
+#### 2c — REFACTOR
+
+- Extract shared audit-upsert logic into `db::queries::visit_notes::upsert_audit`.
+- All 17 handler tests green.
+
+---
+
+### Phase 3: Frontend utilities (`stripMarkdown`, `extractLastVisitComment` update)
+
+#### 3a — RED
+
+**`stripMarkdown` tests** (`apps/web/src/lib/__tests__/stripMarkdown.test.ts`):
+
+| # | Test | What it verifies |
+|---|------|-----------------|
+| S1 | `strips_bold` | `**bold**` → `bold` |
+| S2 | `strips_italic` | `*italic*` and `_italic_` → `italic` |
+| S3 | `strips_headings` | `## Heading` → `Heading` |
+| S4 | `strips_links` | `[text](url)` → `text` |
+| S5 | `strips_images` | `![alt](url)` → `alt` |
+| S6 | `strips_inline_code` | `` `code` `` → `code` |
+| S7 | `strips_code_blocks` | Fenced block → content only |
+| S8 | `strips_unordered_lists` | `- item` → `item` |
+| S9 | `strips_ordered_lists` | `1. item` → `item` |
+| S10 | `collapses_whitespace` | Multiple newlines / spaces → single space |
+| S11 | `empty_string_returns_empty` | `""` → `""` |
+| S12 | `null_safe` | `null` / `undefined` → `""` |
+| S13 | `plain_text_unchanged` | No markdown → same string |
+| S14 | `strips_strikethrough` | `~~text~~` → `text` |
+| S15 | `strips_blockquotes` | `> quote` → `quote` |
+
+**`extractLastVisitComment` update tests** (extend `apps/web/src/lib/__tests__/lastVisitComment.test.ts`):
+
+| # | Test | What it verifies |
+|---|------|-----------------|
+| E1 | `reads_fieldNotes_instead_of_resultNotes` | Visit with `fieldNotes` → included in output |
+| E2 | `strips_markdown_from_fieldNotes` | `**bold** text` → `bold text` in output |
+| E3 | `does_not_strip_workItem_resultNotes` | Work-item plain-text stays unchanged |
+| E4 | `handles_mixed_markdown_and_plain` | Visit markdown + work-item plain → correct concatenation |
+
+#### 3b — GREEN
+
+- Implement `stripMarkdown.ts`.
+- Update `extractLastVisitComment`: read `visit.fieldNotes`, apply `stripMarkdown`.
+- Update all test fixtures to use `fieldNotes` instead of `resultNotes`.
+
+#### 3c — REFACTOR
+
+- All 19 utility tests green.
+- Verify no `resultNotes` references remain on `Visit` in frontend code.
+
+---
+
+### Phase 4: Frontend services + editor component
+
+#### 4a — RED
+
+**Service tests** (`apps/web/src/services/__tests__/visitService.test.ts`):
+
+| # | Test | What it verifies |
+|---|------|-----------------|
+| SV1 | `saveFieldNotes_publishes_correct_subject` | Publishes to `sazinka.visit.update_field_notes` |
+| SV2 | `saveFieldNotes_sends_visitId_sessionId_fieldNotes` | Payload shape matches `UpdateFieldNotesRequest` |
+| SV3 | `fetchNotesHistory_publishes_correct_subject` | Publishes to `sazinka.visit.notes.history` |
+| SV4 | `completeVisit_includes_fieldNotes_when_provided` | `fieldNotes` + `sessionId` in payload |
+| SV5 | `completeVisit_omits_fieldNotes_when_absent` | No `fieldNotes` key in payload |
+
+**Editor component tests** (`apps/web/src/components/visit/__tests__/VisitFieldNotes.test.tsx`):
+
+| # | Test | What it verifies |
+|---|------|-----------------|
+| VN1 | `renders_tiptap_editor` | Editor container is in the DOM |
+| VN2 | `displays_character_count` | Shows "0 / 10,000" initially |
+| VN3 | `updates_character_count_on_input` | Typing "Hi" → "2 / 10,000" |
+| VN4 | `shows_save_status_saving` | During save → "Saving..." indicator |
+| VN5 | `shows_save_status_saved` | After save → "Saved" indicator |
+| VN6 | `shows_save_status_error` | Failed save → "Save failed" indicator |
+| VN7 | `prevents_input_beyond_max_length` | Pasting 11,000 chars → truncated to 10,000 |
+| VN8 | `auto_saves_after_debounce` | Typing → wait debounce → `saveFieldNotes` called |
+| VN9 | `loads_existing_notes_into_editor` | Visit with existing `fieldNotes` → editor pre-filled |
+| VN10 | `read_only_when_no_permission` | No access → editor disabled (edge case if permissions evolve) |
+
+#### 4b — GREEN
+
+- Add `saveFieldNotes`, `fetchNotesHistory` to `visitService.ts`.
+- Update `completeVisit` to accept + forward `fieldNotes`/`sessionId`.
+- Implement `VisitFieldNotes.tsx` with Tiptap, debounced auto-save, char count, save status.
+
+#### 4c — REFACTOR
+
+- All 15 service + editor tests green.
+
+---
+
+### Phase 5: Offline draft + conflict resolution
+
+#### 5a — RED
+
+**Draft hook tests** (`apps/web/src/hooks/__tests__/useFieldNotesDraft.test.ts`):
+
+| # | Test | What it verifies |
+|---|------|-----------------|
+| D1 | `saves_draft_to_localStorage` | After typing, `localStorage` has key `fieldNotes:{visitId}:{sessionId}` |
+| D2 | `restores_draft_on_mount` | Existing `localStorage` entry → editor pre-filled |
+| D3 | `clears_draft_after_successful_save` | Server save OK → `localStorage` key removed |
+| D4 | `detects_conflict_local_vs_server` | Server has different content → conflict state true |
+| D5 | `resolve_keep_local` | Choose local → server updated with local content |
+| D6 | `resolve_use_server` | Choose server → local draft discarded, editor updated |
+| D7 | `flush_before_complete` | `flushDraft()` triggers save → returns success/failure |
+| D8 | `flush_failure_does_not_clear_draft` | Failed flush → draft preserved in `localStorage` |
+
+#### 5b — GREEN
+
+- Implement `useFieldNotesDraft` hook: `localStorage` read/write, conflict detection, `flushDraft`.
+- Wire into `VisitFieldNotes.tsx`.
+
+#### 5c — REFACTOR
+
+- All 8 draft tests green.
+
+---
+
+### Phase 6: History UI + completion dialog update
+
+#### 6a — RED
+
+**History component tests** (`apps/web/src/components/visit/__tests__/NotesHistory.test.tsx`):
+
+| # | Test | What it verifies |
+|---|------|-----------------|
+| NH1 | `renders_list_of_history_entries` | 3 entries → 3 items rendered |
+| NH2 | `shows_editor_name_and_date` | Each entry shows `editedByName` + formatted `lastEditedAt` |
+| NH3 | `shows_change_count` | "5 edits" badge |
+| NH4 | `empty_state` | No entries → "No edit history" message |
+| NH5 | `compare_button_opens_side_by_side` | Click compare → two rendered markdown panes |
+
+**Completion dialog tests** (`apps/web/src/components/visit/__tests__/CompleteVisitDialog.test.tsx`):
+
+| # | Test | What it verifies |
+|---|------|-----------------|
+| CD1 | `shows_note_preview` | Current note markdown rendered read-only |
+| CD2 | `edit_notes_link_navigates_to_editor` | Click "Edit notes" → editor opened |
+| CD3 | `flush_before_complete_success` | Unsynced draft → flushed → complete proceeds |
+| CD4 | `flush_before_complete_failure_shows_warning` | Flush fails → warning dialog with retry/discard/cancel |
+| CD5 | `discard_local_and_complete` | Discard → complete without local draft |
+
+#### 6b — GREEN
+
+- Implement `NotesHistory.tsx` with `fetchNotesHistory` + side-by-side compare modal.
+- Update `CompleteVisitDialog` to show note preview, wire flush logic.
+
+#### 6c — REFACTOR
+
+- All 10 history + completion tests green.
+
+---
+
+### Phase 7: Rename blast radius cleanup + integration
+
+#### 7a — RED
+
+**Rename verification tests:**
+
+| # | Test | What it verifies |
+|---|------|-----------------|
+| R1 | `no_resultNotes_on_Visit_in_frontend` | `grep -r "resultNotes"` in frontend Visit-typed code → 0 hits (work-item refs excluded) |
+| R2 | `no_result_notes_in_rust_visit_struct` | Rust `Visit` struct uses `field_notes` |
+| R3 | `existing_lastVisitComment_tests_pass` | All existing `lastVisitComment.test.ts` tests still green after rename |
+| R4 | `useLastVisitComment_reads_fieldNotes` | Hook returns data derived from `visit.fieldNotes` |
+| R5 | `CandidateDetail_displays_fieldNotes` | Component shows note from `fieldNotes` |
+| R6 | `StopCommentBlock_shows_stripped_markdown` | Markdown notes → plain-text in compact surface |
+
+#### 7b — GREEN
+
+- Rename all `resultNotes` → `fieldNotes` on `Visit` across 12 frontend files.
+- Rename `result_notes` → `field_notes` in 13 Rust files (visit-related only).
+- Update test fixtures.
+
+#### 7c — REFACTOR
+
+- Full test suite green.
+- `cargo clippy` clean, `cargo fmt` applied.
+- No unused imports.
+
+---
+
+### Coverage summary
+
+| Module | IDs | Count | Target |
+|--------|-----|-------|--------|
+| DB migration (Rust) | M1–M8 | 8 | 100% |
+| Shared types (TS) | T1–T5 | 5 | 100% |
+| Rust handlers | H1–H17 | 17 | 100% branches |
+| `stripMarkdown` | S1–S15 | 15 | 100% |
+| `extractLastVisitComment` update | E1–E4 | 4 | 100% |
+| Visit service | SV1–SV5 | 5 | 100% |
+| `VisitFieldNotes` editor | VN1–VN10 | 10 | ≥ 95% |
+| `useFieldNotesDraft` hook | D1–D8 | 8 | 100% |
+| `NotesHistory` component | NH1–NH5 | 5 | ≥ 95% |
+| `CompleteVisitDialog` update | CD1–CD5 | 5 | ≥ 95% |
+| Rename verification | R1–R6 | 6 | N/A (integration) |
+| **Total** | | **88** | **≥ 95% overall** |
