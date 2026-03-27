@@ -1,11 +1,14 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { CandidateDetail, type CandidateDetailData, type SlotSuggestion } from '@/components/planner';
 import { usePanelState } from '@/hooks/usePanelState';
+import type { SavedRouteStop } from '@/services/routeService';
 
 export interface CustomerDetailPanelProps {
   mode: 'inbox' | 'plan';
   /** Controls visibility in plan mode */
   isOpen?: boolean;
+  /** Route stops used in plan mode to derive candidate data for the selected customer */
+  routeStops?: SavedRouteStop[];
   onSchedule?: (candidateId: string, date: string, timeStart: string, timeEnd: string) => void;
   onSnooze?: (candidateId: string, days: number) => void;
   onAddToRoute?: (candidateId: string) => void;
@@ -14,6 +17,7 @@ export interface CustomerDetailPanelProps {
 export function CustomerDetailPanel({
   mode,
   isOpen,
+  routeStops,
   onSchedule,
   onSnooze,
   onAddToRoute,
@@ -21,7 +25,6 @@ export function CustomerDetailPanel({
   const { state, actions } = usePanelState();
   const { selectedCustomerId } = state;
 
-  // Local panel state (full logic wired in A.6/A.7)
   const [slotSuggestions] = useState<SlotSuggestion[]>([]);
   const [isCalculatingSlots] = useState(false);
   const [scheduledConfirmation] = useState<string | null>(null);
@@ -30,10 +33,33 @@ export function CustomerDetailPanel({
     ? selectedCustomerId !== null
     : isOpen === true;
 
-  if (!isVisible) return null;
+  // Derive minimal CandidateDetailData from the matching route stop (plan mode)
+  const candidate: CandidateDetailData | null = useMemo(() => {
+    if (!selectedCustomerId) return null;
 
-  // Stub candidate — data fetching wired in A.6/A.7
-  const candidate: CandidateDetailData | null = null;
+    if (mode === 'plan' && routeStops) {
+      const stop = routeStops.find(
+        (s) => s.customerId === selectedCustomerId && s.stopType === 'customer',
+      );
+      if (stop) {
+        return {
+          id: stop.revisionId ?? stop.id,
+          customerId: stop.customerId!,
+          customerName: stop.customerName ?? '',
+          deviceType: '',
+          street: stop.address ?? '',
+          city: '',
+          dueDate: stop.scheduledDate ?? '',
+          daysUntilDue: 0,
+          priority: 'upcoming',
+        };
+      }
+    }
+
+    return null;
+  }, [selectedCustomerId, mode, routeStops]);
+
+  if (!isVisible) return null;
 
   return (
     <div data-testid="customer-detail-panel">

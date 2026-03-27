@@ -357,6 +357,8 @@
   "candidate_needs_reschedule": "Late arrival — need to arrange new time with client",
   "candidate_row_needs_reschedule": "Need to arrange new time",
   "candidate_visit_note": "Note from last visit",
+  "timeline_stop_comment_label": "Last visit note",
+  "timeline_stop_comment_follow_up": "Follow-up required",
   "candidate_devices": "Devices",
   "candidate_no_devices": "No devices",
 

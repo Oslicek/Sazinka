@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import { useLastVisitComment } from '../useLastVisitComment';
+import { useLastVisitComment, _clearLastVisitCommentCache } from '../useLastVisitComment';
 
 vi.mock('@/services/visitService', () => ({
   listVisits: vi.fn(),
@@ -51,6 +51,7 @@ function makeFullVisitResponse(visitId = 'v-1', resultNotes?: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  _clearLastVisitCommentCache();
   // Default: connected
   mockUseNatsStore.mockImplementation((selector: (s: { isConnected: boolean }) => unknown) =>
     selector({ isConnected: true }),

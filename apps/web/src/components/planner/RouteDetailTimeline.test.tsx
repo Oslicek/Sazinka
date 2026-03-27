@@ -247,9 +247,9 @@ describe('RouteDetailTimeline — last visit comment', () => {
   // A.4.2 Selected stop shows visit date alongside comment
   it('shows visit date alongside comment on selected stop', () => {
     renderTimeline('cust1', { notes: 'Kotel vyměněn', visit });
-    const commentBlock = screen.getByText('Kotel vyměněn').closest('[class*="stopComment"]') ??
-      screen.getByText('Kotel vyměněn').parentElement;
-    expect(commentBlock?.textContent).toMatch(/2026|15\. 3\.|15\.03\./);
+    const commentBlock = document.querySelector('[data-testid="stop-comment"]');
+    expect(commentBlock).toBeInTheDocument();
+    expect(commentBlock!.textContent).toMatch(/2026|15\. 3\.|15\.03\.|3\/15/);
   });
 
   // A.4.3 Non-selected stop does NOT show comment

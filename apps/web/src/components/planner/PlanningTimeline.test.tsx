@@ -124,9 +124,9 @@ describe('PlanningTimeline — last visit comment', () => {
 
     fireEvent.click(screen.getByText('Karel Suchý'));
 
-    const commentText = screen.getByText('Kotel vyměněn');
-    const block = commentText.closest('[class*="stopComment"]') ?? commentText.parentElement;
-    expect(block?.textContent).toMatch(/2026|15\. 3\.|15\.03\./);
+    const commentBlock = document.querySelector('[data-testid="stop-comment"]');
+    expect(commentBlock).toBeInTheDocument();
+    expect(commentBlock!.textContent).toMatch(/2026|15\. 3\.|15\.03\.|3\/15/);
   });
 
   // A.4.6 Collapsed stop hides comment

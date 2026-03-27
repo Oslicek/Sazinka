@@ -337,6 +337,8 @@
   "candidate_needs_reschedule": "Neskorý príchod — treba dohodnúť nový termín s klientom",
   "candidate_row_needs_reschedule": "Treba dohodnúť nový termín",
   "candidate_visit_note": "Poznámka z poslednej návštevy",
+  "timeline_stop_comment_label": "Poznámka z poslednej návštevy",
+  "timeline_stop_comment_follow_up": "Nutná opravná návšteva",
   "candidate_devices": "Zariadenia",
   "candidate_no_devices": "Žiadne zariadenia",
   "service_duration_label": "Servis:",

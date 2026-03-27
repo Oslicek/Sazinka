@@ -1427,3 +1427,601 @@ Locked: **No retry action** — banner is informational/recovery guidance only; 
 - [ ] Shift+click on primary sort column toggles direction (does not remove).
 - [ ] All tests green, near-100 % branch coverage on new code (~304 frontend + 14 backend = ~318 total test cases).
 - [ ] `PRJ_CONTEXT.MD` updated.
+
+---
+
+# Column Filters (Excel-style) — Implementation Plan
+
+**Status:** Final  
+**TDD:** Red → Green → Refactor for every phase; commit after each phase where practical.  
+**Related:** Customers grid, NATS `sazinka.customer.list.extended`, new `sazinka.customer.column.distinct`.
+
+---
+
+## Design decisions (locked)
+
+| Topic | Decision |
+|-------|----------|
+| Checklist columns (9) | name, type, city, street, postalCode, phone, email, geocodeStatus, deviceCount |
+| Date range columns (2) | nextRevision, createdAt |
+| Legacy UI | Remove `geocodeFilter` and `typeFilter` dropdowns (desktop bar + mobile sheet) |
+| Kept in bar | Search, revision chips, column picker, view toggle, advanced toggle |
+| Filter trigger | Small always-visible icon per column header (table view) |
+| Distinct values | Server-side (`sazinka.customer.column.distinct`) with context-aware filtering |
+| Distinct list scope | Apply all active filters **except** the target column's own filter |
+| Distinct scaling | Server-side search + pagination (`query`, `limit`, `offset`, `hasMore`) |
+| Composition | Column filters AND together |
+| Legacy profile cleanup | Remove deprecated `geocodeFilter`/`typeFilter` controls from `customersProfile`; stale persisted keys are safely ignored |
+| **Duplicate `column` entries in `columnFilters` array** | **First wins** — later duplicates ignored (sanitize + backend must match) |
+
+---
+
+## Product: `getCustomerSummary` vs column filters
+
+**Decision (v1):** `getCustomerSummary` continues to return **global** stats for the user (not filtered by `columnFilters`). Rationale: summary is a dashboard KPI strip; aligning it with filters requires API changes and product sign-off.
+
+**Tests:**  
+- Assert summary request payload **does not** include `columnFilters` (or explicitly documents no filter args).  
+- Document in `PRJ_CONTEXT.MD` that summary is global while the list is filtered.
+
+**Follow-up (optional):** add `summaryRespectsFilters` or a separate endpoint — out of scope unless product asks.
+
+---
+
+## Distinct endpoint semantics (locked)
+
+- Request includes:
+  - `column` (required)
+  - `query?: string`, `limit?: number`, `offset?: number`
+  - current list context filters: `search`, `hasOverdue`, `nextRevisionWithinDays`, `columnFilters`
+- Backend applies all context filters, but excludes filters whose `column` equals the target `column`.
+- Only checklist-capable columns are valid for distinct lookup; date-range columns are rejected.
+- Response includes `values: string[]`, `total: number`, `hasMore: boolean`.
+- Ordering is deterministic: ascending, case-insensitive; empty value (`""`) is normalized and returned last.
+
+---
+
+## Summary: coverage improvements (v2 vs v1)
+
+| Area | Addition |
+|------|----------|
+| **Count query** | Tests that `total` / count SQL uses the **same** `column_filters` (and WHERE/HAVING) as the main list query — no drift. Includes mandatory automated DB integration tests (no manual-only fallback). |
+| **Pagination** | Filtered list: `total` matches DB; `loadMore` offset respects filtered set; empty page returns `total: 0`. |
+| **NATS handler** | `handle_column_distinct`: auth failure, invalid/missing column, success path (mock pool or integration). |
+| **Serde** | Rust: **serialize** + deserialize round-trip for `ColumnFilter` and `ListCustomersRequest` with `column_filters`. |
+| **Dates** | Inclusive day bounds (document), invalid ISO rejected, `from > to` rejected server-side **or** only client-side — **both layers**: client UX + server rejects invalid range. |
+| **Timezone** | Store/send **date-only** strings (`YYYY-MM-DD`); treat as **date** in SQL (`::date`), not timestamptz ambiguity — tests for boundary day. |
+| **Distinct semantics** | Context-aware distinct values, target-column exclusion, server-side query/limit/offset, deterministic ordering, `hasMore` coverage. |
+| **Cards view** | Same `requestOptions` as table — `columnFilters` still sent when user switched to cards after setting filters (UPP). |
+| **UPP / profile** | `columnFilters` in `customers.grid`: default `[]`, corrupted storage → `sanitizeColumnFilters` → `[]`; missing key → `[]`. Deprecated `customers.filters` controls (`geocodeFilter`, `typeFilter`) removed with stale-key compatibility tests. |
+| **SQLx** | New queries: run `cargo sqlx prepare` / document offline cache update in Phase 7 checklist. |
+| **i18n** | New keys `filter_*`, `col_filter_*` — cs/en/sk parity smoke test or checklist in DoD. |
+
+**Path fixes:** All test paths use `__tests__/` (not `lib/tests/`).
+
+---
+
+## Must-run tests first (strict sequence)
+
+Run these in order during implementation. Do not proceed to the next gate until the current gate is green.
+
+1. **TS catalog and filter contract gate**  
+   File: [`apps/web/src/lib/__tests__/customerColumns.test.ts`](apps/web/src/lib/__tests__/customerColumns.test.ts)  
+   Must prove: `filterType` mapping, `isValidColumnFilter`, `sanitizeColumnFilters`, duplicate-first-wins.
+
+2. **Rust wire-contract gate**  
+   File: [`worker/src/types/customer.rs`](worker/src/types/customer.rs) `#[cfg(test)]`  
+   Must prove: serde deserialize + serialize + round-trip for `ColumnFilter`, `ListCustomersRequest` with `column_filters`.
+
+3. **Backend filter-clause unit gate**  
+   File: [`worker/src/db/queries/customer.rs`](worker/src/db/queries/customer.rs) `#[cfg(test)]`  
+   Must prove: WHERE/HAVING split for all 11 columns, injection safety, param index correctness.
+
+4. **Backend count parity integration gate (mandatory)**  
+   File: [`worker/src/db/queries/customer.rs`](worker/src/db/queries/customer.rs) integration tests (`#[sqlx::test]` or existing DB harness)  
+   Must prove: filtered `items` and `total` stay consistent, including pagination parity (`offset` pages, same total).
+
+5. **Date-boundary correctness gate**  
+   File: [`worker/src/db/queries/customer.rs`](worker/src/db/queries/customer.rs) tests  
+   Must prove: explicit `::date` bounds are inclusive; exact boundary days included; adjacent days excluded.
+
+6. **Distinct endpoint backend gate**  
+   Files: [`worker/src/db/queries/customer.rs`](worker/src/db/queries/customer.rs), [`worker/src/handlers/customer.rs`](worker/src/handlers/customer.rs) tests  
+   Must prove: target-column exclusion semantics, context-aware filtering, pagination/search, deterministic ordering, auth + invalid column handling.
+
+7. **Distinct service-contract frontend gate**  
+   File: [`apps/web/src/services/customerService.ts`](apps/web/src/services/customerService.ts) tests  
+   Must prove: exact NATS subject, forwards context/query/limit/offset, parses `hasMore`.
+
+8. **Customers request payload gate**  
+   File: [`apps/web/src/pages/__tests__/Customers.columnFilters.test.tsx`](apps/web/src/pages/__tests__/Customers.columnFilters.test.tsx)  
+   Must prove: `columnFilters` forwarded on initial load and loadMore, cards mode still forwards filters, summary remains global.
+
+9. **Header interaction safety gate**  
+   File: [`apps/web/src/components/customers/__tests__/CustomerTable.test.tsx`](apps/web/src/components/customers/__tests__/CustomerTable.test.tsx)  
+   Must prove: filter icon opens dropdown and never triggers sort; sort and filter indicators coexist.
+
+10. **Dropdown behavior gate**  
+    Files:  
+    - [`apps/web/src/components/customers/__tests__/ChecklistFilterDropdown.test.tsx`](apps/web/src/components/customers/__tests__/ChecklistFilterDropdown.test.tsx)  
+    - [`apps/web/src/components/customers/__tests__/DateRangeFilterDropdown.test.tsx`](apps/web/src/components/customers/__tests__/DateRangeFilterDropdown.test.tsx)  
+    Must prove: loading/error/search/select-all-visible/date validation/apply-clear semantics.
+
+11. **Legacy removal and migration gate**  
+    Files:  
+    - [`apps/web/src/components/customers/__tests__/CustomerFilterBar.test.tsx`](apps/web/src/components/customers/__tests__/CustomerFilterBar.test.tsx)  
+    - [`apps/web/src/components/customers/__tests__/MobileFilterSheet.test.tsx`](apps/web/src/components/customers/__tests__/MobileFilterSheet.test.tsx)  
+    - [`apps/web/src/pages/__tests__/Customers.columnFilters.test.tsx`](apps/web/src/pages/__tests__/Customers.columnFilters.test.tsx)  
+    Must prove: legacy geocode/type controls are absent, stale persisted keys do not affect behavior or counts.
+
+12. **Revision-chip interaction gate**  
+    File: [`apps/web/src/pages/__tests__/Customers.columnFilters.test.tsx`](apps/web/src/pages/__tests__/Customers.columnFilters.test.tsx)  
+    Must prove: revision chips and `nextRevision` dateRange filter combine with AND semantics; clear-all resets both.
+
+13. **Final regression gate**  
+    Files:
+    - [`apps/web/src/pages/__tests__/Customers.sortModel.test.tsx`](apps/web/src/pages/__tests__/Customers.sortModel.test.tsx)  
+    - All updated customer filter suites  
+    Must prove: `sortModel` + `columnFilters` coexist with no payload regression.
+
+14. **Release hygiene gate**  
+    Must run:
+    - frontend test suites for all changed files  
+    - `SQLX_OFFLINE=true cargo test` on updated Rust modules  
+    - `cargo sqlx prepare` update committed  
+    - docs update in [`PRJ_CONTEXT.MD`](PRJ_CONTEXT.MD)
+
+---
+
+## Phase 1 — Shared types and column catalog
+
+### Deliverables
+
+- **TS:** `ColumnFilter` union, `columnFilters?` on `ListCustomersRequest`, and `ColumnDistinctRequest` / `ColumnDistinctResponse` in [`packages/shared-types/src/customer.ts`](packages/shared-types/src/customer.ts), including `query`/`limit`/`offset` and `hasMore`.
+- **Catalog:** `filterType: 'checklist' | 'dateRange'` on every column in [`apps/web/src/lib/customerColumns.ts`](apps/web/src/lib/customerColumns.ts); `getFilterType`, `isValidColumnFilter`, `sanitizeColumnFilters` (**duplicate column: first wins**).
+- **Rust:** `ColumnFilter` enum, `column_filters` on `ListCustomersRequest`, and distinct request/response in [`worker/src/types/customer.rs`](worker/src/types/customer.rs), mirroring `query`/`limit`/`offset` and `has_more`.
+
+### Tests (TS) — [`apps/web/src/lib/__tests__/customerColumns.test.ts`](apps/web/src/lib/__tests__/customerColumns.test.ts)
+
+- All v1 cases (filterType per column, validators, invalid shapes, empty array).
+- **sanitizeColumnFilters duplicates:** `[{city: A}, {city: B}]` → first city entry kept only.
+- **`ALL_COLUMNS.length` guard** if still 11 columns with filterType.
+
+### Tests (Rust) — `worker/src/types/customer.rs` `#[cfg(test)]`
+
+- All v1 deserialize cases.
+- **Serialize:** `ColumnFilter::Checklist { ... }` → JSON → deserialize equals original.
+- **Round-trip:** full `ListCustomersRequest` with `column_filters` + `sort_model`.
+- **Invalid UTF-8 / edge:** N/A at serde level; skip.
+
+---
+
+## Phase 2 — Backend: `column_filters` in list + **count query**
+
+### Deliverables
+
+- `build_column_filter_clauses` + wire into `list_customers_extended` **and** the **count** subquery path in [`worker/src/db/queries/customer.rs`](worker/src/db/queries/customer.rs).
+
+### Tests — `customer.rs` `#[cfg(test)]`
+
+- All v1 builder tests (WHERE/HAVING, deviceCount, dates, injection, param_idx).
+- **Count parity:** helper or test that **given the same `req`**, the WHERE/HAVING fragment used for count matches the one used for the main query (shared builder — assert single source of truth).
+- **Integration (mandatory):** automated DB test (`#[sqlx::test]` or existing integration harness) where a filter matching exactly 3 rows yields `total == 3`.
+- **Pagination integration (mandatory):** `limit=2, offset=0` vs `offset=2` with same filters returns disjoint sets and same `total`.
+- **No manual-only fallback:** integration parity coverage must run in CI for this feature.
+
+### Corner cases
+
+- **Empty `values` in checklist:** skipped (already in v1).
+- **`createdAt` bounds are explicit:** `c.created_at::date >= $N::date` and `c.created_at::date <= $M::date` (inclusive).
+- **`nextRevision` bounds are explicit:** `MIN(r.due_date) FILTER (WHERE r.status NOT IN ('completed', 'cancelled') AND r.due_date >= CURRENT_DATE) >= $N::date` and `<= $M::date` (inclusive).
+- **Boundary tests:** rows on exact `from`/`to` days are included; adjacent-day rows excluded.
+
+---
+
+## Phase 3 — Distinct values endpoint
+
+> **Dependency:** Phase 3 reuses `build_column_filter_clauses` from Phase 2 to apply context filters. Phase 2 must be green before Phase 3 begins.
+
+### Deliverables
+
+- `get_column_distinct_values`, `sazinka.customer.column.distinct`, [`customerService.getColumnDistinctValues`](apps/web/src/services/customerService.ts).
+- Distinct request carries context (`search`, revision filters, `columnFilters`) plus `query`/`limit`/`offset`.
+- Distinct response returns `values`, `total`, and `hasMore`.
+- Backend excludes target-column filter from context when computing its distinct options.
+- **Aggregate columns** (`deviceCount`, `nextRevision`): the distinct query wraps the base `FROM … GROUP BY` as a CTE/subquery first, then `SELECT DISTINCT` on the materialized column. This avoids re-aggregating inside a nested `HAVING`.
+
+### Tests — Rust
+
+- v1 `column_to_distinct_sql` tests.
+- **Handler:** `handle_column_distinct` — invalid column → error response; missing auth → error; success returns `values` + `total`.
+- **SQLx:** after adding query, **`cargo sqlx prepare`** committed in CI/offline cache.
+- **Context semantics:** `city` distinct call with active `type=company` filter narrows city list; active `city` filter itself is ignored for city distinct.
+- **Server pagination/search:** `query` narrows values; `limit`/`offset` paginate; `hasMore` reflects remaining rows.
+- **Deterministic ordering:** case-insensitive ascending; empty value normalized to `""` and appears last.
+
+### Tests — Frontend service
+
+- v1 cases + **subject string** exact match `sazinka.customer.column.distinct`.
+- Forwards `query`/`limit`/`offset` and context filters unchanged.
+- Parses and returns `hasMore` correctly.
+
+---
+
+## Phase 4 — Dropdown components
+
+### Tests — ChecklistFilterDropdown
+
+- Shows loading state while fetching distinct values.
+- Renders a checkbox for each distinct value returned by the service.
+- Checkbox selection toggles value in/out of selection set.
+- Search input filters the visible checkbox options (client-side).
+- “Select all” selects all currently visible values; “Deselect all” deselects all.
+- Apply button calls `onApply` with the selected `values` array.
+- Clear button calls `onClear` and resets selection.
+- Displays i18n labels for enum values (`CustomerType`, `GeocodeStatus`).
+- Handles `null`/empty values gracefully (rendered as `""` or a placeholder label).
+- Shows “No results” when search matches nothing.
+- Pre-selects values from an existing filter (edit mode).
+- Closes on outside click; Escape key closes dropdown.
+- `aria-label` and `role` attributes present for accessibility.
+- **Retry:** optional “Retry” on fetch failure if implemented; else assert error UI + dismiss.
+- **Select all when search narrows list:** “select all” applies to **visible** rows only (document + test).
+
+### Tests — DateRangeFilterDropdown
+
+- Renders two date inputs (From, To).
+- Apply button calls `onApply` with `{ from, to }` dates.
+- Clear button calls `onClear`.
+- Validates `from <= to`; shows validation error when `from > to`.
+- Apply disabled when range is invalid.
+- Allows only “from” set (open-ended to); allows only “to” set (open-ended from).
+- Pre-populates from an existing filter (edit mode).
+- Closes on outside click; Escape key closes dropdown.
+- **Invalid date string** in input (if free text): validation message.
+- **Same day from and to:** valid (inclusive single day).
+
+### Tests — ColumnFilterDropdown
+
+- Renders `ChecklistFilterDropdown` for columns with `filterType: 'checklist'`.
+- Renders `DateRangeFilterDropdown` for columns with `filterType: 'dateRange'`.
+- Passes **initial filter** from parent for edit mode.
+
+---
+
+## Phase 5 — CustomerTable headers
+
+### Tests — [`CustomerTable.test.tsx`](apps/web/src/components/customers/__tests__/CustomerTable.test.tsx)
+
+- v1 cases.
+- **Dropdown positioning:** `fixed`/`portal` if used — smoke test that dropdown mounts (no crash).
+- **Focus:** first focusable inside dropdown on open (optional a11y).
+
+---
+
+## Phase 6 — Customers page + legacy removal
+
+### Deliverables
+
+- UPP `columnFilters` on grid profile; `requestOptions` includes sanitized filters; remove geocode/type props from bar and sheet.
+- Update [`apps/web/src/persistence/profiles/customersProfile.ts`](apps/web/src/persistence/profiles/customersProfile.ts): remove `geocodeFilter` and `typeFilter` controls (deprecated); hydration remains tolerant of stale keys in stored blobs.
+
+### Tests — [`Customers.columnFilters.test.tsx`](apps/web/src/pages/__tests__/Customers.columnFilters.test.tsx)
+
+- v1 payload + UPP + legacy DOM absence.
+- **Cards mode:** `viewMode === 'cards'` → `listCustomersExtended` still receives `columnFilters` from UPP when filters were set in table mode (simulate: set filters in table, switch to cards, assert last call includes filters).
+- **Summary:** `getCustomerSummary` called **without** column filter params (or as per product decision).
+- **Clear all:** clears `columnFilters`, search, revision chips; **mock** `setUppColumnFilters` or similar.
+- **Revision + column date interaction:** revision chip (`overdue`/`week`/`month`) and `nextRevision` column dateRange are both sent and combined with AND semantics. Implementation note: revision chips translate to `next_revision_within_days` (existing HAVING clause) while the column dateRange adds a separate HAVING bound via `build_column_filter_clauses`; both appear in the final HAVING and the DB ANDs them.
+- **Revision + clear-all interaction:** clear all resets revision chips and removes `nextRevision` dateRange filter together.
+- **Legacy persistence migration:** stale `geocodeFilter`/`typeFilter` values in persisted `customers.filters` state do not crash, do not affect request payload, and do not appear in active filter count.
+
+### Tests — FilterBar / MobileSheet
+
+- Update/remove geocode/type tests as in v1.
+
+### Tests — [`Customers.sortModel.test.tsx`](apps/web/src/pages/__tests__/Customers.sortModel.test.tsx)
+
+- Update props if `CustomerTable` / page mocks change; **assert `sortModel` + `columnFilters` together** in one test (no regression).
+
+---
+
+## Phase 7 — Documentation
+
+- [`PRJ_CONTEXT.MD`](PRJ_CONTEXT.MD): v0.24.0, NATS subjects, duplicate-first-wins, summary global vs list filtered, inclusive date semantics.
+- **DoD checklist:** sqlx cache, i18n keys, all tests green.
+
+---
+
+## Definition of done (column filters)
+
+- [ ] Duplicate `column` in `columnFilters`: **first wins** (TS sanitize + Rust skip duplicates).
+- [ ] List **total** count matches filtered dataset (count query uses same logic as list).
+- [ ] `getCustomerSummary` behavior documented and tested (global KPIs in v1).
+- [ ] `handle_column_distinct` tested with invalid column + auth failure paths.
+- [ ] Rust serde **round-trip** for `ColumnFilter` on the wire.
+- [ ] Cards view still sends `columnFilters` when filters active.
+- [ ] Date range: inclusive bounds documented; invalid ranges rejected.
+- [ ] New SQL: `sqlx` offline data updated.
+- [ ] Legacy geocode/type dropdowns removed; DOM tests prove absence.
+- [ ] Distinct endpoint is context-aware (target-column exclusion), paginated, searchable, deterministic, and exposes `hasMore`.
+- [ ] Deprecated `customers.filters` controls (`geocodeFilter`, `typeFilter`) removed from profile with stale-key compatibility verified.
+- [ ] Mandatory automated DB integration tests validate filtered `items`/`total` parity and pagination parity.
+- [ ] Revision chips + `nextRevision` column dateRange coexistence and clear-all behavior are explicitly tested.
+- [ ] `PRJ_CONTEXT.MD` updated.
+
+---
+
+## Files touched (reference)
+
+See implementation in repo: `packages/shared-types`, `apps/web/src/lib/customerColumns.ts`, `customerService.ts`, `CustomerTable.tsx`, `Customers.tsx`, `CustomerFilterBar.tsx`, `MobileFilterSheet.tsx`, `apps/web/src/persistence/profiles/customersProfile.ts`, `apps/web/src/persistence/profiles/customersGridProfile.ts`, `worker/src/db/queries/customer.rs`, `worker/src/types/customer.rs`, `worker/src/handlers/customer.rs`, `worker/src/handlers/mod.rs`.
+
+---
+
+# Inbox — Last Visit Comment in Detail + Timeline (Plan Only)
+
+**Status:** Planning only (no implementation in this step)  
+**Method:** Strict TDD (RED -> GREEN -> REFACTOR)  
+**Quality bar:** Near-100% coverage for touched logic + explicit corner-case coverage
+
+## 1) Goal
+
+Show the **last comment from the most recent completed visit** of a customer in two places:
+
+1. **Customer detail panel** (see §2 for the two code paths in the app).
+2. **Visit panel in route timeline** when:
+   - compact timeline stop is **selected** (highlighted), or
+   - planning timeline stop is **expanded**
+
+**Product rule (locked for this delivery):** timeline comment is **not** shown on hover alone; only **selected** (compact) or **expanded** (planning).  
+> Assumption for informal wording “high again”: **highlighted/selected** stop.
+
+## 2) Scope and constraints
+
+### UI surfaces (name the real owners)
+
+| Surface | Where it lives today | Work planned |
+|--------|----------------------|--------------|
+| Inbox detail column | `PlanningInbox.tsx` renders `CandidateDetail` with full `CandidateDetailData` | **Refactor** existing last-visit fetch in `CandidateDetail` to shared helper + hook; behavior preserved, tests updated/extended. |
+| Plan customer panel | `CustomerDetailPanel.tsx` (used from `Plan.tsx`) currently passes **`candidate={null}`** stub | **Wire** real candidate data for `selectedCustomerId` (derive `CandidateDetailData` similarly to inbox fallback-from-route-stop, or lift shared mapper) so last-visit comment can appear here too. |
+| Route timeline | `RouteDetailTimeline.tsx`, `PlanningTimeline.tsx`; parents include `PlanningInbox.tsx` and `Plan.tsx` | Embed comment UI + hook; parents need **no new props** if hook reads `customerId` from stop + panel selection state. |
+| Detached / wrapper | `RouteTimelinePanel.tsx` composes the same timeline components | Re-test if this path is still used; same behavior as parent. |
+
+### In scope
+- Shared comment-loading and normalization logic (frontend); **refactor** `CandidateDetail` instead of duplicating a second implementation.
+- Wiring **Plan** customer detail panel when it is the target for “customer detail panel.”
+- i18n keys for timeline label / empty copy (if introduced).
+- Tests with near-100% coverage on changed modules.
+
+### Out of scope (this delivery)
+- New DB schema/migration.
+- Reworking visit completion workflow.
+- Broad redesign of timeline card layout beyond a comment slot (see §3.6 for long-text UX within the slot).
+
+### Future (not this delivery)
+- Optional backend optimization: enrich `route.get` stops with `lastVisitComment` (or batch query) to avoid N parallel client fetches on large routes. **On-demand + cache** remains the v1 approach per §3.2.
+
+## 3) Technical approach (planned)
+
+### 3.1 Single source of truth for "last visit comment"
+
+`CandidateDetail.tsx` **already** loads last completed visit (`listVisits` + `getVisit`) and merges notes. **Do not** add a parallel second implementation.
+
+1. Extract **pure** normalization into `lastVisitComment.ts` (visit + work items → single `string | null`). The pure function is concerned **only** with note extraction/concatenation.
+2. Extract **async** load + cache + stale guard into `useLastVisitComment` hook. The hook returns the **full `Visit` object** alongside the extracted notes so consumers can access any visit metadata (date, follow-up, type, result) without predicting every future need:
+   ```ts
+   interface LastVisitCommentResult {
+     notes: string | null;
+     visit: Visit | null;
+     isLoading: boolean;
+   }
+   ```
+3. **Refactor** `CandidateDetail` to consume the hook/helper so existing banner tests migrate to the shared behavior.
+
+### 3.1a Device-loading split strategy
+
+`CandidateDetail` currently loads devices + visits together in one `Promise.all`. When extracting the visit part into `useLastVisitComment`:
+
+- **Keep devices in `CandidateDetail`** as a separate `useEffect` (or its own `useCustomerDevices` hook).
+- The visit hook handles visits independently; no duplicate `listVisits` calls.
+- Minor UX change: two sequential `setState` instead of one combined — acceptable because the loading indicator already covers both.
+- A.2 tests must assert no duplicate `listVisits` call when hook is consumed alongside remaining device logic.
+
+### 3.2 Fetch strategy
+
+- Reusable hook (or service) with:
+  - per-customer in-memory cache
+  - stale-response guard when `customerId` changes mid-flight
+  - graceful fallback if `getVisit` fails after `listVisits` succeeds
+- Fetch **on demand only**: selected customer in detail; selected compact stop or expanded planning stop in timeline.
+
+### 3.2a Timeline hook placement
+
+Each **individual stop card** does NOT call the hook. Instead:
+
+- The **parent timeline component** determines which stop is selected (compact) or expanded (planning) and reads its `customerId`.
+- The parent calls `useLastVisitComment(customerId)` **once** for the active stop and passes the result down as a prop to the card.
+- When no stop is selected/expanded, `customerId` is `null` and the hook skips the fetch.
+- This avoids N hook instances and keeps the card component pure/testable without NATS mocking.
+
+### 3.3 `listVisits` ordering contract
+
+**RED must include a failing test if the contract is wrong:** `visit.list` with `customerId` + `status='completed'` + `limit=1` must return the **chronologically latest** completed visit (verify against `worker` `visit` list query / `ORDER BY`). If the API does not guarantee order, **fix in one place**: either adjust backend ordering (still no schema migration) or client-side pick max by `scheduledDate`/`updatedAt` from a small window — document the chosen rule in code + test.
+
+### 3.4 NATS / connection parity
+
+Match existing `CandidateDetail` behavior: when **`useNatsStore` reports not connected**, do not fire visit fetches; clear or hide comment state without throwing. Hook tests must cover **`isConnected === false`**.
+
+### 3.5 UI strategy
+
+- **Customer detail:** last visit comment in panel flow (inbox via refactored `CandidateDetail`; plan via wired `CustomerDetailPanel` + same hook).
+- **Timeline:** concise comment block when **selected** (compact) or **expanded** (planning).
+- Break stops and stops without `customerId`: **no fetch**.
+
+### 3.5a Plan-mode `CustomerDetailPanel` data source
+
+`CustomerDetailPanel.tsx` currently stubs `candidate: null`. To wire it:
+
+- When `selectedCustomerId` is set, derive `CandidateDetailData` from the route's `SavedRouteStop[]` (already available in Plan via the route store / parent props) — map `stop.customerId`, `stop.customerName`, `stop.address`, etc.
+- If the stop alone doesn't carry enough fields for `CandidateDetailData` (e.g. `dueDate`, `priority`), fetch the missing revision data via existing `getRevision` / `listRevisions` service (same pattern as inbox fallback in `PlanningInbox`).
+- The `useLastVisitComment` hook is called inside `CandidateDetail` (or `CustomerDetailPanel`), so once `candidate` is non-null the comment loads automatically.
+- **Test strategy (A.3 Plan path):** mock `usePanelState` to return a `selectedCustomerId`, provide a minimal `CandidateDetailData` via the wiring, and assert the comment banner appears. The data-derivation mapping itself gets a small unit test if non-trivial.
+
+### 3.6 Long text in timeline cards
+
+Avoid layout blow-up: e.g. **line-clamp** (2–3 lines) + **`title` / tooltip** with full text, or a compact “expand” control — pick one in GREEN; cover with one RTL assertion.
+
+## 4) TDD plan (maximum coverage)
+
+### Phase A — RED (tests first; must fail)
+
+#### A.1 Pure unit tests: comment extraction/normalization
+**New file:** `apps/web/src/lib/__tests__/lastVisitComment.test.ts`
+
+Test matrix:
+1. No visits (empty array / null) -> `null`
+2. Visit exists, `resultNotes` present, no work items -> returns trimmed `resultNotes`
+3. `resultNotes` whitespace only -> ignored, treated as empty
+4. Visit `resultNotes` empty, fallback to first non-empty work-item `resultNotes`
+5. Fallback to work-item `findings` when both visit-level and work-item `resultNotes` are empty
+6. Work-item follow-up reason included when `requiresFollowUp === true` (with `⚠` prefix preserved)
+7. Work-item follow-up reason excluded when `requiresFollowUp === false` even if `followUpReason` is set
+8. **Multi-source join:** visit has `resultNotes` AND work item has `findings` AND another work item has follow-up -> joined with `'\n'` in deterministic order (visit-level first, then work items in array order)
+9. **Empty `workItems` array:** `getVisit` succeeds, `workItems` is `[]` -> returns visit-level `resultNotes` only
+10. Multiple candidate note fields -> deterministic precedence (visit.resultNotes > wi.resultNotes > wi.findings > wi.followUpReason per work item)
+11. Multiline text preserved (no collapsing of internal newlines)
+12. Very long note -> full pass-through in pure layer (truncation/clamping is a UI concern, tested in A.4)
+13. Unicode/diacritics preserved (Czech characters)
+14. **Ordering:** API pre-filters to one row (limit=1, ORDER BY scheduled_date DESC); pure function accepts single Visit + workItems, no multi-visit logic needed — contract verified in A.2
+
+#### A.2 Hook/service tests: load + cache + race safety
+**New file:** `apps/web/src/hooks/__tests__/useLastVisitComment.test.ts`
+
+Hook returns `{ notes: string | null; visit: Visit | null; isLoading: boolean }`.
+
+Test matrix:
+1. Calls `listVisits` with expected filters (`customerId`, `status='completed'`, `limit=1`)
+2. Calls `getVisit` for returned visit id; returns `{ notes, visit, isLoading: false }`
+3. `getVisit` failure -> fallback: `visit` from `listVisits` row, `notes` from `visit.resultNotes`
+4. `listVisits` failure -> stable `{ notes: null, visit: null, isLoading: false }` (no crash)
+5. Customer switch A -> B before A resolves -> A result ignored (stale guard)
+6. Same customer requested twice -> second call served from cache (no extra `listVisits`/`getVisit`)
+7. Null/undefined customer id -> no fetch, returns `{ notes: null, visit: null, isLoading: false }`
+8. **`isConnected === false`** -> no fetch / clears state, no throw (mirror `CandidateDetail` gating)
+9. **No duplicate `listVisits`:** when hook is used alongside separate device loading in `CandidateDetail`, only one `listVisits` call fires (regression guard for §3.1a split)
+
+#### A.3 Component tests: customer detail
+
+**Update:** `apps/web/src/components/planner/CandidateDetail.test.tsx`  
+**Update:** `apps/web/src/panels/__tests__/CustomerDetailPanel.test.tsx`
+
+> **Setup note:** existing `CandidateDetail.test.tsx` mocks `useNatsStore` with `isConnected: false` globally (line 12-16). Tests that need the visit banner **must override** this mock to `isConnected: true` in a nested `describe` or per-test `vi.mocked()` call, otherwise the visit `useEffect` never fires.
+
+Test matrix:
+1. Comment banner shown when resolved comment exists (notes non-null)
+2. Comment banner hidden when no comment (notes null)
+3. **Visit date in banner:** `formatDate(visit.scheduledDate)` rendered in banner header when comment is visible
+4. **Follow-up indicator block:** separate styled block with `AlertTriangle` icon shown when `visit.requiresFollowUp === true` and `visit.followUpReason` is set
+5. **Follow-up indicator hidden:** block not rendered when `requiresFollowUp === false`
+6. Loading state does not flash stale previous customer comment
+7. Switching selected customer updates displayed comment correctly
+8. **Plan path:** `CustomerDetailPanel` receives non-null candidate (wired from route stop data per §3.5a), same banner visibility rules as inbox — mock `usePanelState` with `selectedCustomerId` + provide `CandidateDetailData`
+
+#### A.4 Component tests: route timeline (compact + planning)
+
+**Update:** `apps/web/src/components/planner/RouteDetailTimeline.test.tsx`  
+**New:** `apps/web/src/components/planner/PlanningTimeline.test.tsx`
+
+Per §3.2a, the **parent** calls the hook and passes the result down as a prop. Card components receive `lastVisitComment?: { notes: string | null; visit: Visit | null }` — no NATS mocking needed in card-level tests.
+
+Test matrix:
+1. Compact: **selected** stop shows comment text
+2. Compact: **selected** stop shows visit date alongside comment
+3. Compact: non-selected stop does **not** show comment
+4. Planning: **expanded** stop shows comment text
+5. Planning: **expanded** stop shows visit date alongside comment
+6. Planning: collapsed stop hides comment
+7. Break card (`stopType === 'break'` / `item.type === 'break'`) never shows comment — even if prop is passed
+8. Stop with `customerId = null` -> parent passes no comment prop (no fetch triggered)
+9. API failure -> comment prop is `{ notes: null, visit: null }` -> hidden block, no crash
+10. **Long text:** clamp/tooltip behavior per §3.6 — assert text is truncated (CSS class applied) and full text accessible via `title` attribute or tooltip
+11. **Follow-up indicator in timeline:** if `visit.requiresFollowUp`, show compact follow-up badge/icon (at least one assertion)
+
+#### A.5 i18n tests (if new keys are introduced)
+
+**Concrete file:** add keys to `planner.json` and either extend an existing planner i18n completeness test or add **`apps/web/src/components/planner/__tests__/lastVisitCommentPlannerI18n.test.ts`** (same pattern as `ScoringPresetI18n.test.ts`: import `en`/`cs`/`sk` `planner.json`, assert keys exist and values ≠ raw keys).
+
+Test matrix:
+1. New keys exist in `en`, `cs`, `sk`
+2. Values are not raw key fallbacks
+
+### Phase B — GREEN (minimal code to pass RED)
+
+1. Add pure `lastVisitComment` extractor/normalizer + **A.1** green.
+2. Add `useLastVisitComment` (+ **A.2** green).
+3. **Refactor** `CandidateDetail` to use hook/helper; **CandidateDetail** tests green.
+4. Wire **`CustomerDetailPanel` + `Plan.tsx`** (or panel-only) so plan mode passes real `candidate` when `selectedCustomerId` is set; **A.3** green.
+5. Wire **RouteDetailTimeline** + **PlanningTimeline** for selected/expanded + **A.4** green.
+6. i18n keys + **A.5** green.
+
+### Phase C — REFACTOR (keep tests green)
+
+1. Ensure **one** note pipeline (no duplicate `listVisits` blocks).
+2. Consistent naming for hook vs `CandidateDetail` props.
+3. Memoization where needed for timeline rows.
+4. Shared test fixtures for visit payloads.
+
+## 5) Files expected to change
+
+### Frontend logic/UI
+- `apps/web/src/components/planner/CandidateDetail.tsx` (refactor to shared hook/helper)
+- `apps/web/src/pages/PlanningInbox.tsx` (only if prop wiring / imports change — ideally none)
+- `apps/web/src/pages/Plan.tsx` and/or `apps/web/src/panels/CustomerDetailPanel.tsx` (wire candidate for plan detail)
+- `apps/web/src/components/planner/RouteDetailTimeline.tsx`
+- `apps/web/src/components/planner/PlanningTimeline.tsx`
+- `apps/web/src/panels/RouteTimelinePanel.tsx` (verify only if behavior must match)
+- `apps/web/src/hooks/useLastVisitComment.ts` (new, planned)
+- `apps/web/src/lib/lastVisitComment.ts` (new, planned)
+
+### Frontend tests
+- `apps/web/src/components/planner/CandidateDetail.test.tsx`
+- `apps/web/src/panels/__tests__/CustomerDetailPanel.test.tsx`
+- `apps/web/src/components/planner/RouteDetailTimeline.test.tsx`
+- `apps/web/src/components/planner/PlanningTimeline.test.tsx` (new, planned)
+- `apps/web/src/hooks/__tests__/useLastVisitComment.test.ts` (new, planned)
+- `apps/web/src/lib/__tests__/lastVisitComment.test.ts` (new, planned)
+- `apps/web/src/components/planner/__tests__/lastVisitCommentPlannerI18n.test.ts` (new, planned — if new i18n keys)
+
+### i18n
+- `apps/web/public/locales/en/planner.json`
+- `apps/web/public/locales/cs/planner.json`
+- `apps/web/public/locales/sk/planner.json`
+
+### Backend (read-only verification for §3.3)
+- `worker/src/db/queries/visit.rs` (or handler for `sazinka.visit.list`) — confirm `ORDER BY` for list; adjust only if tests prove wrong contract (still compatible with “no migration” if change is query-only).
+
+## 6) Coverage targets
+
+1. **Pure logic (`lastVisitComment.ts`):** 100% statements/branches — 14 cases in A.1 cover every conditional path.
+2. **Hook (`useLastVisitComment.ts`):** 100% statements/branches — 9 cases in A.2 cover fetch, cache, stale guard, fallback, disconnect, no-duplicate.
+3. **Changed UI components:** >=95% statements/branches on modified lines.
+4. **Corner-case suite:** sections A.1–A.4 including **multi-source join**, **empty workItems**, **ordering contract**, **NATS off**, **Plan panel** path, **follow-up indicator**, **visit date display**, **long text clamp**.
+5. **No untested fallback paths** (API failure, empty data, race switch, break stop, disconnected, null customerId, whitespace-only notes).
+
+## 7) Definition of done
+
+- [ ] Last visit comment visible in **inbox** detail (`CandidateDetail`) after refactor — behavior preserved or improved, not duplicated.
+- [ ] **Visit date** shown in banner header when comment is visible.
+- [ ] **Follow-up indicator** (separate styled block) shown when `requiresFollowUp` is true; hidden otherwise.
+- [ ] Last visit comment visible in **Plan** customer detail panel when a customer is selected and data is available (§3.5a wiring).
+- [ ] Last visit comment visible in route timeline for **selected** (compact) / **expanded** (planning) visit cards.
+- [ ] No comment leakage between customers on fast selection changes.
+- [ ] Break stops and null-`customerId` stops never fetch/show comments.
+- [ ] **Disconnected NATS:** no spurious fetch / no crash.
+- [ ] **`listVisits` latest-first contract** verified or compensated; test documents outcome.
+- [ ] **No duplicate `listVisits` calls** after device-loading split (§3.1a).
+- [ ] Timeline long text does not break layout (clamp + full text accessible per §3.6).
+- [ ] Timeline follow-up badge/icon shown when applicable.
+- [ ] i18n complete for `en`, `cs`, `sk` if new keys added.
+- [ ] New/updated tests pass with near-100% coverage on touched code (A.1: 14 cases, A.2: 9 cases, A.3: 8 cases, A.4: 11 cases, A.5: 2 cases = **44 test cases minimum**).
+- [ ] `PRJ_CONTEXT.MD` updated after implementation (not in planning step).

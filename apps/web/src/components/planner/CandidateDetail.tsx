@@ -5,11 +5,10 @@ import { AlertTriangle, Calendar, Clock, Pencil, Phone, Mail, ClipboardCopy, Che
 import type { ScoreBreakdownItem } from '@shared/scoring';
 import { formatDate } from '@/i18n/formatters';
 import { listDevices } from '@/services/deviceService';
-import { listVisits, getVisit } from '@/services/visitService';
 import { DEVICE_TYPE_KEYS, type Device } from '@shared/device';
-import type { Visit } from '@shared/visit';
 import { useNatsStore } from '@/stores/natsStore';
 import { resolveRevisionDuration } from '@/utils/resolveRevisionDuration';
+import { useLastVisitComment } from '@/hooks/useLastVisitComment';
 import { CustomerTimeline } from '../timeline';
 import { SlotSuggestions, type SlotSuggestion } from './SlotSuggestions';
 import { TimeInput } from '@/components/common/TimeInput';
@@ -130,12 +129,17 @@ export function CandidateDetail({
   // Unschedule loading guard
   const [isUnscheduling, setIsUnscheduling] = useState(false);
 
-  // Devices and visits
+  // Devices (independent of visit data)
   const [devices, setDevices] = useState<Device[]>([]);
-  const [lastVisit, setLastVisit] = useState<Visit | null>(null);
-  const [lastVisitNotes, setLastVisitNotes] = useState<string | null>(null);
   const [isLoadingExtra, setIsLoadingExtra] = useState(false);
   const isConnected = useNatsStore((s) => s.isConnected);
+
+  // Last visit comment via shared hook (handles cache, stale guard, NATS gating)
+  const {
+    notes: lastVisitNotes,
+    visit: lastVisit,
+    isLoading: isLoadingVisit,
+  } = useLastVisitComment(candidate?.customerId);
 
   // Reset service duration when candidate changes to reflect device type default
   useEffect(() => {
@@ -144,49 +148,23 @@ export function CandidateDetail({
     );
   }, [candidate?.id, candidate?.deviceTypeDefaultDurationMinutes, defaultServiceDurationMinutes]);
 
+  // Device loading (separate from visit loading per §3.1a)
   useEffect(() => {
     if (!candidate?.customerId || !isConnected) {
       setDevices([]);
-      setLastVisit(null);
-      setLastVisitNotes(null);
       return;
     }
     let cancelled = false;
     setIsLoadingExtra(true);
-    Promise.all([
-      listDevices(candidate.customerId).catch(() => ({ items: [] as Device[] })),
-      listVisits({ customerId: candidate.customerId, status: 'completed', limit: 1 }).catch(() => ({ visits: [] as Visit[], total: 0 })),
-    ]).then(async ([devResp, visitResp]) => {
-      if (cancelled) return;
-      setDevices(devResp.items ?? []);
-      const visits = visitResp.visits ?? [];
-      if (visits.length > 0) {
-        const visit = visits[0];
-        setLastVisit(visit);
-        // Fetch full visit details to get work item notes
-        try {
-          const full = await getVisit(visit.id);
-          if (cancelled) return;
-          // Collect all notes: visit resultNotes + work item resultNotes + findings
-          const allNotes: string[] = [];
-          if (full.visit.resultNotes) allNotes.push(full.visit.resultNotes);
-          for (const wi of full.workItems ?? []) {
-            if (wi.resultNotes) allNotes.push(wi.resultNotes);
-            if (wi.findings) allNotes.push(wi.findings);
-            if (wi.requiresFollowUp && wi.followUpReason) allNotes.push(`⚠ ${wi.followUpReason}`);
-          }
-          setLastVisitNotes(allNotes.length > 0 ? allNotes.join('\n') : null);
-        } catch {
-          // If getVisit fails, just use the visit-level notes
-          setLastVisitNotes(visit.resultNotes ?? null);
-        }
-      } else {
-        setLastVisit(null);
-        setLastVisitNotes(null);
-      }
-    }).finally(() => {
-      if (!cancelled) setIsLoadingExtra(false);
-    });
+    listDevices(candidate.customerId)
+      .catch(() => ({ items: [] as Device[] }))
+      .then((devResp) => {
+        if (cancelled) return;
+        setDevices(devResp.items ?? []);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingExtra(false);
+      });
     return () => { cancelled = true; };
   }, [candidate?.customerId, isConnected]);
 
@@ -880,7 +858,7 @@ export function CandidateDetail({
 
       {/* Last visit note — prominent banner */}
       {lastVisitNotes && (
-        <div className={styles.lastVisitBanner}>
+        <div className={styles.lastVisitBanner} data-testid="last-visit-banner">
           <div className={styles.lastVisitBannerHeader}>
             <FileText size={16} className={styles.lastVisitBannerIcon} />
             <span className={styles.lastVisitBannerTitle}>{t('candidate_visit_note', { defaultValue: 'Note from last visit' })}</span>

@@ -7,6 +7,8 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MapPin, AlertTriangle } from 'lucide-react';
+import { formatDate } from '@/i18n/formatters';
+import type { Visit } from '@shared/visit';
 import {
   DndContext,
   DragOverlay,
@@ -90,6 +92,8 @@ interface PlanningTimelineProps {
    * updated stops array with provisional times already set.
    */
   onQuickPlaceInGap?: (newStops: SavedRouteStop[]) => void;
+  /** Last visit comment for the currently selected/expanded stop (fetched by parent) */
+  lastVisitComment?: { notes: string | null; visit: Visit | null };
 }
 
 // ---------------------------------------------------------------------------
@@ -146,6 +150,7 @@ function SortableStopCard({
   onUpdateBreak,
   onUpdateServiceDuration,
   onResetServiceDuration,
+  lastVisitComment,
 }: {
   item: TimelineItem;
   stopIndex: number;
@@ -157,6 +162,7 @@ function SortableStopCard({
   onUpdateBreak?: (stopId: string, patch: { breakTimeStart?: string; breakDurationMinutes?: number }) => void;
   onUpdateServiceDuration?: (stopId: string, minutes: number) => void;
   onResetServiceDuration?: (stopId: string) => void;
+  lastVisitComment?: { notes: string | null; visit: Visit | null };
 }) {
   const { t } = useTranslation('planner');
   const {
@@ -324,6 +330,30 @@ function SortableStopCard({
             {t('needs_reschedule')}
           </div>
         )}
+
+        {/* Last visit comment — shown only when expanded and not a break */}
+        {isExpanded && !isBreak && lastVisitComment?.notes && (
+          <div className={styles.stopComment} data-testid="stop-comment">
+            <div className={styles.stopCommentHeader}>
+              <span className={styles.stopCommentLabel}>{t('timeline_stop_comment_label')}</span>
+              {lastVisitComment.visit && (
+                <span className={styles.stopCommentDate}>{formatDate(lastVisitComment.visit.scheduledDate)}</span>
+              )}
+            </div>
+            <p
+              className={styles.stopCommentText}
+              title={lastVisitComment.notes}
+            >
+              {lastVisitComment.notes}
+            </p>
+            {lastVisitComment.visit?.requiresFollowUp && lastVisitComment.visit.followUpReason && (
+              <div className={styles.stopCommentFollowUp}>
+                <AlertTriangle size={12} />
+                <span>{lastVisitComment.visit.followUpReason}</span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {onRemoveStop && (
@@ -452,6 +482,7 @@ export function PlanningTimeline({
   candidateForInsertion,
   onInsertCandidate,
   onQuickPlaceInGap,
+  lastVisitComment,
 }: PlanningTimelineProps) {
   const { t } = useTranslation('planner');
   const depotName = depot?.name ?? 'Depo';
@@ -861,6 +892,11 @@ export function PlanningTimeline({
                       onUpdateBreak={onUpdateBreak}
                       onUpdateServiceDuration={onUpdateServiceDuration}
                       onResetServiceDuration={onResetServiceDuration}
+                      lastVisitComment={
+                        expandedStopId === item.id && item.stop?.customerId
+                          ? lastVisitComment
+                          : undefined
+                      }
                     />
                   );
                 }

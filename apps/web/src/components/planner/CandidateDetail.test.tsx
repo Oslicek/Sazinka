@@ -28,6 +28,7 @@ vi.mock('@/services/visitService', () => ({
 
 import { useNatsStore } from '@/stores/natsStore';
 import { listVisits, getVisit } from '@/services/visitService';
+import { _clearLastVisitCommentCache } from '@/hooks/useLastVisitComment';
 
 const mockUseNatsStore = vi.mocked(useNatsStore);
 const mockListVisits = vi.mocked(listVisits);
@@ -425,6 +426,7 @@ describe('CandidateDetail', () => {
     };
 
     beforeEach(() => {
+      _clearLastVisitCommentCache();
       // Override global mock: enable NATS for banner tests
       mockUseNatsStore.mockImplementation(
         (selector: (s: { isConnected: boolean }) => unknown) =>
@@ -489,12 +491,10 @@ describe('CandidateDetail', () => {
       renderDetail();
 
       await waitFor(() => {
-        // formatDate('2026-03-20') should produce a locale-formatted date string
-        expect(screen.getByText('Poznámka')).toBeInTheDocument();
-        // The banner meta date span should contain some representation of 2026-03-20
-        const banner = screen.getByText('Poznámka').closest('[class*="lastVisitBanner"]');
+        const banner = screen.getByTestId('last-visit-banner');
         expect(banner).toBeInTheDocument();
-        expect(banner!.textContent).toMatch(/2026|20\. 3\.|20\.03\./);
+        // Banner textContent includes the formatted date (2026-03-20 in any locale format)
+        expect(banner.textContent).toMatch(/2026|20\. 3\.|20\.03\.|3\/20/);
       });
     });
 

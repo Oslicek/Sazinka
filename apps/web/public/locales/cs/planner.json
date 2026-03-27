@@ -358,6 +358,8 @@
   "candidate_needs_reschedule": "Pozdní příjezd — nutné domluvit nový termín s klientem",
   "candidate_row_needs_reschedule": "Nutné domluvit nový termín",
   "candidate_visit_note": "Poznámka z poslední návštěvy",
+  "timeline_stop_comment_label": "Poznámka z poslední návštěvy",
+  "timeline_stop_comment_follow_up": "Nutná opravná návštěva",
   "candidate_devices": "Zařízení",
   "candidate_no_devices": "Žádná zařízení",
 
