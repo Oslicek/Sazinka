@@ -211,7 +211,7 @@ Runtime evidence (console logs):
 ## BUG-9: Customers — checklist filter value labels are invisible (only checkboxes render)
 
 **Reported:** 2026-03-27
-**Status:** FIX CANDIDATE DEPLOYED (2026-03-27) — awaiting reporter verification
+**Status:** FIXED (2026-03-27) — reporter confirmed
 **Page:** Customers (`/customers`)
 
 **Steps to reproduce:**
@@ -231,3 +231,32 @@ Runtime evidence (console logs):
 
 **Regression tests:**
 - `ChecklistFilterDropdown.cssBug.test.ts` — "defines explicit checkbox override so global input width does not hide labels"
+
+---
+
+## BUG-10: Customers — checklist checkboxes toggle logic but selected state is not visibly indicated
+
+**Reported:** 2026-03-27
+**Status:** FIX CANDIDATE DEPLOYED (2026-03-27) — awaiting reporter verification
+**Page:** Customers (`/customers`)
+
+**Steps to reproduce:**
+1. Open a checklist-type column filter dropdown on Customers page.
+2. Click one or more checkbox rows.
+3. Observe whether selected rows / checkmarks are visibly distinguishable.
+
+**Expected:** Checked boxes and selected rows are clearly visible, and multiple selected values are visibly indicated at the same time.
+**Actual:** Filter logic changes correctly, but selected checkboxes are not visibly "on", making multi-select verification impossible.
+
+**Root cause:** The checklist dropdown relied on native checkbox visuals only, while global form reset styles still affected checkbox presentation. In some environments this made checked state visually indistinct. The row itself also had no selected-state marker, so users had no secondary visual confirmation for multi-select.
+
+**Fix:** Added explicit visual selection cues in checklist filters:
+- `ChecklistFilterDropdown.tsx`: each option row now sets `data-selected="true|false"` based on current checkbox state.
+- `ChecklistFilterDropdown.module.css`:
+  - strengthened checkbox reset and visibility (`16px` size, reset border/background leakage, `accent-color`),
+  - added `.valueRow[data-selected="true"]` highlight background as a robust secondary indicator.
+
+**Regression tests:**
+- `ChecklistFilterDropdown.test.tsx` — "BUG-10: selected row exposes visible selected-state marker"
+- `ChecklistFilterDropdown.test.tsx` — "BUG-10: multiple checked values are all visibly marked selected"
+- `ChecklistFilterDropdown.cssBug.test.ts` — "defines explicit checkbox reset + accent color + selected-row style"

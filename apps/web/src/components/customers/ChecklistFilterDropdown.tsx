@@ -217,7 +217,11 @@ export function ChecklistFilterDropdown({
           </div>
         )}
         {!loading && !error && filteredValues.map((v) => (
-          <label key={v} className={styles.valueRow}>
+          <label
+            key={v}
+            className={styles.valueRow}
+            data-selected={selected.has(v) ? 'true' : 'false'}
+          >
             <input
               type="checkbox"
               checked={selected.has(v)}

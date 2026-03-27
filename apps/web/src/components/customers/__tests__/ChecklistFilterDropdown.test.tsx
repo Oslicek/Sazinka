@@ -82,6 +82,33 @@ describe('ChecklistFilterDropdown', () => {
     expect(checkbox).not.toBeChecked();
   });
 
+  it('BUG-10: selected row exposes visible selected-state marker', async () => {
+    const deps = makeDeps(['Praha', 'Brno']);
+    render(<ChecklistFilterDropdown {...defaultProps} deps={deps} />);
+    await waitFor(() => expect(screen.queryByTestId('checklist-loading')).not.toBeInTheDocument());
+
+    const checkbox = screen.getAllByRole('checkbox')[0];
+    const row = screen.getByText('Praha').closest('label');
+    expect(row).toHaveAttribute('data-selected', 'false');
+
+    fireEvent.click(checkbox);
+    expect(row).toHaveAttribute('data-selected', 'true');
+  });
+
+  it('BUG-10: multiple checked values are all visibly marked selected', async () => {
+    const deps = makeDeps(['Praha', 'Brno', 'Ostrava']);
+    render(<ChecklistFilterDropdown {...defaultProps} deps={deps} />);
+    await waitFor(() => expect(screen.queryByTestId('checklist-loading')).not.toBeInTheDocument());
+
+    const checkboxes = screen.getAllByRole('checkbox');
+    fireEvent.click(checkboxes[0]); // Praha
+    fireEvent.click(checkboxes[1]); // Brno
+
+    expect(screen.getByText('Praha').closest('label')).toHaveAttribute('data-selected', 'true');
+    expect(screen.getByText('Brno').closest('label')).toHaveAttribute('data-selected', 'true');
+    expect(screen.getByText('Ostrava').closest('label')).toHaveAttribute('data-selected', 'false');
+  });
+
   it('search input filters visible checkboxes', async () => {
     const deps = makeDeps(['Praha', 'Brno', 'Ostrava']);
     render(<ChecklistFilterDropdown {...defaultProps} deps={deps} />);
