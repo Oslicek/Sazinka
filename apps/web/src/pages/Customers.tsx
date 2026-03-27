@@ -262,7 +262,30 @@ function CustomersInner() {
   // eslint-disable-next-line react-hooks/exhaustive-deps — t from useTranslation is stable at runtime
   }, [isConnected, requestOptions]);
 
+  // #region agent log
+  const _renderCount = useRef(0);
+  _renderCount.current += 1;
+  const _rc = _renderCount.current;
+  const _reqKey = JSON.stringify(requestOptions);
+  const _prevReqKey = useRef('');
+  const _reqChanged = _prevReqKey.current !== _reqKey;
+  _prevReqKey.current = _reqKey;
+  console.log(`[DBG] Customers render #${_rc}: isLoading=${isLoading} reqChanged=${_reqChanged} filterCount=${columnFilters.length} sortLen=${sortModel.length}`);
+  if (_rc <= 20) {
+    fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ee0c72'},body:JSON.stringify({sessionId:'ee0c72',location:'Customers.tsx:render',message:`render #${_rc}`,data:{isLoading,reqChanged:_reqChanged,filterCount:columnFilters.length,sortLen:sortModel.length,reqKey:_reqKey.slice(0,200)},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
+  }
+  // #endregion
+
+  // #region agent log
+  const _effectCount = useRef(0);
+  // #endregion
   useEffect(() => {
+    // #region agent log
+    _effectCount.current += 1;
+    const _ec = _effectCount.current;
+    console.log(`[DBG] Customers fetchEffect #${_ec}: isConnected=${isConnected}`);
+    fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ee0c72'},body:JSON.stringify({sessionId:'ee0c72',location:'Customers.tsx:fetchEffect',message:`fetchEffect #${_ec}`,data:{isConnected},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     if (isConnected) {
       loadCustomers();
     }

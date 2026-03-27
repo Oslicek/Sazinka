@@ -763,22 +763,6 @@ pub async fn list_customers_extended(
         param_idx + 2
     );
 
-    // #region agent log
-    {
-        use std::io::Write;
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("/home/dev/Code/Sazinka/.cursor/debug-ee0c72.log") {
-            let _ = writeln!(f, r#"{{"sessionId":"ee0c72","location":"customer.rs:list_customers_extended","message":"query_built","data":{{"where_clause":"{}","having_clause":"{}","col_filter_where_conds":{},"col_filter_bind_count":{},"param_idx_final":{}}},"timestamp":{},"hypothesisId":"BUG12"}}"#,
-                where_clause.replace('"', r#"\""#),
-                having_clause.replace('"', r#"\""#),
-                col_filter_clauses.where_conds.len(),
-                col_filter_clauses.bind_values.len(),
-                param_idx,
-                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0)
-            );
-        }
-    }
-    // #endregion
-
     // Build the query with dynamic bindings
     let mut query_builder = sqlx::query_as::<_, CustomerListItem>(&query)
         .bind(user_id);
