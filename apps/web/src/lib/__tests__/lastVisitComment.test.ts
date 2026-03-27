@@ -1,33 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { extractLastVisitComment } from '../lastVisitComment';
-import type { Visit } from '@shared/visit';
-import type { VisitWorkItem } from '@shared/workItem';
-
-function makeVisit(overrides: Partial<Visit> = {}): Visit {
-  return {
-    id: 'v-1',
-    userId: 'u-1',
-    customerId: 'c-1',
-    scheduledDate: '2026-03-20',
-    status: 'completed',
-    visitType: 'revision',
-    requiresFollowUp: false,
-    createdAt: '2026-03-20T08:00:00Z',
-    updatedAt: '2026-03-20T10:00:00Z',
-    ...overrides,
-  };
-}
-
-function makeWorkItem(overrides: Partial<VisitWorkItem> = {}): VisitWorkItem {
-  return {
-    id: 'wi-1',
-    visitId: 'v-1',
-    workType: 'revision',
-    requiresFollowUp: false,
-    createdAt: '2026-03-20T08:00:00Z',
-    ...overrides,
-  };
-}
+import { makeVisitFixture as makeVisit, makeWorkItemFixture as makeWorkItem } from '@/test-utils/visitFixtures';
 
 describe('extractLastVisitComment', () => {
   // 1. No visits (null visit) -> null

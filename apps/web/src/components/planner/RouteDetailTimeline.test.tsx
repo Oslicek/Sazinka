@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { RouteDetailTimeline } from './RouteDetailTimeline';
 import type { SavedRouteStop } from '../../services/routeService';
+import { makeVisitFixture } from '@/test-utils/visitFixtures';
 import type { Visit } from '@shared/visit';
 
 function makeStop(overrides: Partial<SavedRouteStop> = {}): SavedRouteStop {
@@ -54,18 +55,7 @@ const mockStops: SavedRouteStop[] = [
 ];
 
 function makeVisit(overrides: Partial<Visit> = {}): Visit {
-  return {
-    id: 'v-1',
-    userId: 'u-1',
-    customerId: 'cust1',
-    scheduledDate: '2026-03-15',
-    status: 'completed',
-    visitType: 'revision',
-    requiresFollowUp: false,
-    createdAt: '2026-03-15T08:00:00Z',
-    updatedAt: '2026-03-15T10:00:00Z',
-    ...overrides,
-  };
+  return makeVisitFixture({ customerId: 'cust1', scheduledDate: '2026-03-15', ...overrides });
 }
 
 const mockDepot = { name: 'Brno-střed', lat: 49.19, lng: 16.59 };

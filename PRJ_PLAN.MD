@@ -1760,7 +1760,7 @@ See implementation in repo: `packages/shared-types`, `apps/web/src/lib/customerC
 
 # Inbox — Last Visit Comment in Detail + Timeline (Plan Only)
 
-**Status:** Planning only (no implementation in this step)  
+**Status:** ✅ Implemented (Phase A RED → Phase B GREEN → Phase C REFACTOR complete)  
 **Method:** Strict TDD (RED -> GREEN -> REFACTOR)  
 **Quality bar:** Near-100% coverage for touched logic + explicit corner-case coverage
 

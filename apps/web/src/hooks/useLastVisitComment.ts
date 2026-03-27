@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import type { Visit } from '@shared/visit';
+import type { VisitWorkItem } from '@shared/workItem';
 import { listVisits, getVisit } from '@/services/visitService';
 import { useNatsStore } from '@/stores/natsStore';
 import { extractLastVisitComment } from '@/lib/lastVisitComment';
@@ -68,7 +69,7 @@ export function useLastVisitComment(customerId: string | null | undefined): Last
           const full = await getVisit(visitRow.id);
           if (cancelled || latestCustomerIdRef.current !== customerId) return;
 
-          const notes = extractLastVisitComment(full.visit as Visit, full.workItems as import('@shared/workItem').VisitWorkItem[]);
+          const notes = extractLastVisitComment(full.visit as Visit, full.workItems as VisitWorkItem[]);
           const r: LastVisitCommentResult = { notes, visit: full.visit as Visit, isLoading: false };
           cache.set(customerId, r);
           if (!cancelled && latestCustomerIdRef.current === customerId) setResult(r);

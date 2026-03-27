@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { useLastVisitComment, _clearLastVisitCommentCache } from '../useLastVisitComment';
+import { makeVisitFixture, makeGetVisitResponse } from '@/test-utils/visitFixtures';
 
 vi.mock('@/services/visitService', () => ({
   listVisits: vi.fn(),
@@ -21,32 +22,11 @@ const mockGetVisit = vi.mocked(getVisit);
 const mockUseNatsStore = vi.mocked(useNatsStore);
 
 function makeVisitRow(id = 'v-1', resultNotes?: string) {
-  return {
-    id,
-    userId: 'u-1',
-    customerId: 'c-1',
-    scheduledDate: '2026-03-20',
-    status: 'completed' as const,
-    visitType: 'revision' as const,
-    requiresFollowUp: false,
-    resultNotes: resultNotes ?? null,
-    createdAt: '2026-03-20T08:00:00Z',
-    updatedAt: '2026-03-20T10:00:00Z',
-  };
+  return makeVisitFixture({ id, customerId: 'c-1', resultNotes: resultNotes ?? undefined });
 }
 
 function makeFullVisitResponse(visitId = 'v-1', resultNotes?: string) {
-  return {
-    visit: makeVisitRow(visitId, resultNotes),
-    customerName: 'Test Customer',
-    customerStreet: 'Testovací 1',
-    customerCity: 'Brno',
-    customerPostalCode: '60200',
-    customerPhone: null,
-    customerLat: null,
-    customerLng: null,
-    workItems: [],
-  };
+  return makeGetVisitResponse(makeVisitFixture({ id: visitId, resultNotes: resultNotes ?? undefined }));
 }
 
 beforeEach(() => {
