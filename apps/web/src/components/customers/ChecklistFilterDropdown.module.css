@@ -65,17 +65,12 @@
 }
 
 .valueRow input[type="checkbox"] {
+  all: revert;
   width: 16px;
   height: 16px;
   min-width: 16px;
   flex: 0 0 16px;
   margin: 0;
-  padding: 0;
-  border: initial;
-  border-radius: initial;
-  background-color: initial;
-  box-shadow: none;
-  appearance: auto;
   accent-color: var(--color-primary, #2563eb);
   cursor: pointer;
 }
