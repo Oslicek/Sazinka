@@ -12,7 +12,7 @@
  * - Infinite scroll (endReached callback)
  */
 
-import { useMemo, useCallback, useState, type ReactNode } from 'react';
+import { useMemo, useCallback, useState, useRef, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, AlertTriangle, ClipboardCopy, ArrowUp, ArrowDown, Filter } from 'lucide-react';
 import {
@@ -216,6 +216,8 @@ export function CustomerTable({
 
   // Which column's filter dropdown is currently open (catalog ID, or null)
   const [openFilterColumn, setOpenFilterColumn] = useState<string | null>(null);
+  /** Anchor for portaled filter panels (avoids overflow clipping in the scrollable table). */
+  const filterAnchorRef = useRef<HTMLButtonElement>(null);
 
   // Quick lookup: column ID → active filter
   const activeFiltersByColumn = useMemo(() => {
@@ -551,6 +553,7 @@ export function CustomerTable({
                     {/* Filter icon — always visible, click opens filter dropdown */}
                     <button
                       type="button"
+                      ref={isFilterOpen ? filterAnchorRef : undefined}
                       className={styles.filterButton}
                       data-filter-active={hasActiveFilter ? 'true' : 'false'}
                       aria-label={t('filter_column_label', { column: catalogId })}
@@ -568,6 +571,7 @@ export function CustomerTable({
                         columnId={catalogId}
                         currentFilter={activeFiltersByColumn.get(catalogId) ?? null}
                         contextRequest={distinctContext}
+                        anchorRef={filterAnchorRef}
                         onApply={handleFilterApply}
                         onClear={() => handleFilterClear(catalogId)}
                         onClose={() => setOpenFilterColumn(null)}

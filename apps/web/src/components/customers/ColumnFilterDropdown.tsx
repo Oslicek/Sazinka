@@ -1,3 +1,4 @@
+import type { RefObject } from 'react';
 import type { ColumnFilter, ColumnDistinctRequest, ChecklistFilter, DateRangeFilter } from '@shared/customer';
 import type { CustomerServiceDeps } from '@/services/customerService';
 import { getFilterType } from '@/lib/customerColumns';
@@ -10,6 +11,8 @@ export interface ColumnFilterDropdownProps {
   currentFilter?: ColumnFilter | null;
   /** Context filters for narrowing distinct values (for the checklist dropdown). */
   contextRequest?: Omit<ColumnDistinctRequest, 'column'>;
+  /** Filter button ref — portaled dropdowns anchor to this to avoid table overflow clipping. */
+  anchorRef?: RefObject<HTMLElement | null>;
   onApply: (filter: ColumnFilter) => void;
   onClear: () => void;
   onClose: () => void;
@@ -26,6 +29,7 @@ export function ColumnFilterDropdown({
   columnId,
   currentFilter,
   contextRequest,
+  anchorRef,
   onApply,
   onClear,
   onClose,
@@ -39,6 +43,7 @@ export function ColumnFilterDropdown({
         columnId={columnId}
         currentFilter={currentFilter?.type === 'checklist' ? (currentFilter as ChecklistFilter) : null}
         contextRequest={contextRequest}
+        anchorRef={anchorRef}
         onApply={onApply}
         onClear={onClear}
         onClose={onClose}
@@ -52,6 +57,7 @@ export function ColumnFilterDropdown({
       <DateRangeFilterDropdown
         columnId={columnId}
         currentFilter={currentFilter?.type === 'dateRange' ? (currentFilter as DateRangeFilter) : null}
+        anchorRef={anchorRef}
         onApply={onApply}
         onClear={onClear}
         onClose={onClose}

@@ -1,6 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type CSSProperties, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import type { DateRangeFilter } from '@shared/customer';
+import { useAnchoredFilterDropdown } from './useAnchoredFilterDropdown';
 import styles from './DateRangeFilterDropdown.module.css';
 
 export interface DateRangeFilterDropdownProps {
@@ -10,6 +12,8 @@ export interface DateRangeFilterDropdownProps {
   onApply: (filter: DateRangeFilter) => void;
   onClear: () => void;
   onClose: () => void;
+  /** Filter button ref — when set, the panel is portaled to document.body. */
+  anchorRef?: RefObject<HTMLElement | null>;
 }
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -26,9 +30,11 @@ export function DateRangeFilterDropdown({
   onApply,
   onClear,
   onClose,
+  anchorRef,
 }: DateRangeFilterDropdownProps) {
   const { t } = useTranslation('customers');
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const { top, left, usePortal } = useAnchoredFilterDropdown(anchorRef);
 
   const [from, setFrom] = useState(currentFilter?.from ?? '');
   const [to, setTo] = useState(currentFilter?.to ?? '');
@@ -38,16 +44,17 @@ export function DateRangeFilterDropdown({
     dropdownRef.current?.focus();
   }, []);
 
-  // Close on outside click
+  // Close on outside click (include anchor so the filter button does not count as outside)
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        onClose();
-      }
+      const target = e.target as Node;
+      if (dropdownRef.current?.contains(target)) return;
+      if (anchorRef?.current?.contains(target)) return;
+      onClose();
     }
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
-  }, [onClose]);
+  }, [onClose, anchorRef]);
 
   // Close on Escape
   useEffect(() => {
@@ -149,4 +156,8 @@ export function DateRangeFilterDropdown({
       </div>
     </div>
   );
+
+  return usePortal && typeof document !== 'undefined'
+    ? createPortal(panel, document.body)
+    : panel;
 }

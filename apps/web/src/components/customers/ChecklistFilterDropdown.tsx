@@ -1,8 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type CSSProperties, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import type { ChecklistFilter, ColumnDistinctRequest } from '@shared/customer';
 import { getColumnDistinctValues } from '@/services/customerService';
 import type { CustomerServiceDeps } from '@/services/customerService';
+import { useAnchoredFilterDropdown } from './useAnchoredFilterDropdown';
 import styles from './ChecklistFilterDropdown.module.css';
 
 export interface ChecklistFilterDropdownProps {
@@ -14,6 +16,8 @@ export interface ChecklistFilterDropdownProps {
   onApply: (filter: ChecklistFilter) => void;
   onClear: () => void;
   onClose: () => void;
+  /** Filter button ref — when set, the panel is portaled to document.body so it is not clipped by the table scroll container. */
+  anchorRef?: RefObject<HTMLElement | null>;
   /** Injectable service deps for testing. */
   deps?: CustomerServiceDeps;
 }
@@ -40,10 +44,12 @@ export function ChecklistFilterDropdown({
   onApply,
   onClear,
   onClose,
+  anchorRef,
   deps,
 }: ChecklistFilterDropdownProps) {
   const { t } = useTranslation('customers');
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const { top, left, usePortal } = useAnchoredFilterDropdown(anchorRef);
 
   const [values, setValues] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,16 +98,17 @@ export function ChecklistFilterDropdown({
     dropdownRef.current?.focus();
   }, []);
 
-  // Close on outside click
+  // Close on outside click (include anchor so clicking the filter button does not count as outside)
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        onClose();
-      }
+      const target = e.target as Node;
+      if (dropdownRef.current?.contains(target)) return;
+      if (anchorRef?.current?.contains(target)) return;
+      onClose();
     }
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
-  }, [onClose]);
+  }, [onClose, anchorRef]);
 
   // Close on Escape
   useEffect(() => {
@@ -144,10 +151,16 @@ export function ChecklistFilterDropdown({
     onClose();
   }, [onClear, onClose]);
 
-  return (
+  const panelStyle: CSSProperties | undefined = usePortal
+    ? { position: 'fixed', top, left, zIndex: 10000 }
+    : undefined;
+
+  const panel = (
     <div
       ref={dropdownRef}
       className={styles.dropdown}
+      style={panelStyle}
+      data-filter-dropdown=""
       role="dialog"
       aria-modal="true"
       tabIndex={-1}
@@ -240,4 +253,8 @@ export function ChecklistFilterDropdown({
       </div>
     </div>
   );
+
+  return usePortal && typeof document !== 'undefined'
+    ? createPortal(panel, document.body)
+    : panel;
 }
