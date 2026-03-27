@@ -102,15 +102,8 @@ export function ChecklistFilterDropdown({
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       const target = e.target as Node;
-      const inDropdown = dropdownRef.current?.contains(target);
-      const inAnchor = anchorRef?.current?.contains(target);
-      // #region agent log
-      const msg = `[DBG] outsideClick: inDropdown=${inDropdown} inAnchor=${inAnchor} targetTag=${(target as Element).tagName} targetClass=${(target as Element).className?.toString?.()?.slice(0,60)}`;
-      console.log(msg);
-      fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ee0c72'},body:JSON.stringify({sessionId:'ee0c72',location:'ChecklistFilterDropdown.tsx:outsideClick',message:msg,data:{inDropdown,inAnchor,targetTag:(target as Element).tagName},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
-      if (inDropdown) return;
-      if (inAnchor) return;
+      if (dropdownRef.current?.contains(target)) return;
+      if (anchorRef?.current?.contains(target)) return;
       onClose();
     }
     document.addEventListener('mousedown', handleClick);
@@ -130,18 +123,10 @@ export function ChecklistFilterDropdown({
     ? values.filter((v) => v.toLowerCase().includes(search.toLowerCase()))
     : values;
 
-  const toggleCount = useRef(0);
   const toggleValue = useCallback((v: string) => {
-    toggleCount.current += 1;
     setSelected((prev) => {
       const next = new Set(prev);
-      const had = next.has(v);
-      if (had) next.delete(v); else next.add(v);
-      // #region agent log
-      const msg = `[DBG] toggleValue #${toggleCount.current}: v="${v}" had=${had} newSize=${next.size} contents=[${[...next].join(',')}]`;
-      console.log(msg);
-      fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ee0c72'},body:JSON.stringify({sessionId:'ee0c72',location:'ChecklistFilterDropdown.tsx:toggleValue',message:msg,data:{v,had,newSize:next.size,callNum:toggleCount.current},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
+      if (next.has(v)) next.delete(v); else next.add(v);
       return next;
     });
   }, []);
@@ -165,16 +150,6 @@ export function ChecklistFilterDropdown({
     onClear();
     onClose();
   }, [onClear, onClose]);
-
-  // #region agent log
-  const renderNum = useRef(0);
-  renderNum.current += 1;
-  const _rn = renderNum.current;
-  const _selArr = [...selected];
-  const _cssNames = { valueRow: styles.valueRow, checkboxFace: styles.checkboxFace, checkboxInput: styles.checkboxInput };
-  console.log(`[DBG] render #${_rn}: selected=[${_selArr.join(',')}] top=${top} left=${left} usePortal=${usePortal} cssNames=`, _cssNames);
-  fetch('http://127.0.0.1:7353/ingest/1d957424-b904-4bc5-af34-a37ca7963434',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ee0c72'},body:JSON.stringify({sessionId:'ee0c72',location:'ChecklistFilterDropdown.tsx:render',message:`render #${_rn}`,data:{selected:_selArr,top,left,usePortal,cssNames:_cssNames},timestamp:Date.now(),hypothesisId:'D,E'})}).catch(()=>{});
-  // #endregion
 
   const panelStyle: CSSProperties | undefined = usePortal
     ? { position: 'fixed', top, left, zIndex: 10000 }

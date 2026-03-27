@@ -237,7 +237,7 @@ Runtime evidence (console logs):
 ## BUG-10: Customers — checklist checkboxes are still visually inert after fix candidates
 
 **Reported:** 2026-03-27
-**Status:** FIX DEPLOYED (2026-03-27) — hardened CSS with !important, awaiting reporter verification
+**Status:** VERIFIED FIXED (2026-03-27) — confirmed by runtime logs: toggleValue fires once per click, selected state accumulates correctly, no position drift
 **Page:** Customers (`/customers`)
 
 **Steps to reproduce:**
@@ -302,7 +302,7 @@ Diagnostic steps (choose one):
 ## BUG-11: Customers — filter dropdown opens at nonsensical horizontal position
 
 **Reported:** 2026-03-27
-**Status:** FIX DEPLOYED (2026-03-27) — re-anchored to filter button, awaiting reporter verification
+**Status:** VERIFIED FIXED (2026-03-27) — runtime logs confirm measure fires once, position stable at left=272.07/top=227.4 across 11 renders
 **Page:** Customers (`/customers`)
 
 **Execution order:** Fix this BEFORE BUG-10. It is a clear, isolated regression and resolving it first makes BUG-10 easier to manually verify.
@@ -333,3 +333,39 @@ Diagnostic steps (choose one):
 - Run `CustomerTable.test.tsx` and `ColumnFilterDropdown.test.tsx`.
 - Manual browser check on both narrow and wide columns for alignment and stability.
 - Confirm outside-click close behavior is not regressed: clicking the `<th>` (but not the button) should count as "outside" and close the dropdown. Clicking the filter button should toggle the dropdown open/closed.
+
+---
+
+## BUG-12: Customers — SQL error "op ANY/ALL (array) requires array on right side" when applying checklist filter
+
+**Reported:** 2026-03-27
+**Status:** OPEN
+**Page:** Customers (`/customers`)
+
+**Steps to reproduce:**
+1. Open Customers page in table view.
+2. Click the filter icon on any checklist column (e.g. `Ulice`).
+3. Select one or more values and click "Použít" (Apply).
+
+**Expected:** The table filters to show only customers matching the selected values.
+**Actual:** Red error banner: `error returned from database: op ANY/ALL (array) requires array on right side`.
+
+**Root cause:** `param_idx` convention mismatch between `list_customers_extended` and `build_column_filter_clauses`.
+
+`build_column_filter_clauses` uses "increment-then-use" (`*param_idx += 1;` then `format!("= ANY(${})", param_idx)`), treating `param_idx` as "last used index". This matches the distinct-values query which also uses this convention.
+
+However, `list_customers_extended` initializes `param_idx = 2` (meaning "next available"), and its own search/geocode/type filters use "use-then-increment" (`format!("LIKE ${}", param_idx);` then `param_idx += 1`). When `build_column_filter_clauses` is called, it receives a "next available" value but interprets it as "last used", so it increments *past* the intended slot. Every column filter SQL placeholder is +1 too high.
+
+Example (no search/geocode/type, one street checklist):
+- `param_idx` enters `build_column_filter_clauses` as 2 ("next available" in caller's view)
+- Function increments to 3, emits `c.street = ANY($3)`
+- Bind order: `user_id` → $1, `arr` → $2, `limit` → $3, `offset` → $4
+- Result: `= ANY($3)` reads the `limit` (i64) instead of the array → PostgreSQL error
+
+**Fix:** Change `list_customers_extended` to use Convention B ("last used") throughout:
+1. `param_idx` starts at 1 (not 2)
+2. search/geocode/type use "increment-then-use" (matching `build_column_filter_clauses`)
+3. LIMIT/OFFSET use `param_idx + 1` / `param_idx + 2`
+
+**Regression tests:**
+- `customer.rs` unit test: `bug12_param_alignment_with_search_and_checklist` — verifies SQL placeholders match bind positions across the full filter chain

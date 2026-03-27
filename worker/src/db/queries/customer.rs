@@ -610,33 +610,35 @@ pub async fn list_customers_extended(
     let offset = req.offset.unwrap_or(0) as i64;
 
     // Build WHERE conditions
+    // Convention B: param_idx = "last used index". $1 is user_id, so start at 1.
+    // All filters use INC-then-USE: `param_idx += 1;` followed by `format!("${}", param_idx)`.
     let mut conditions = vec![
         "c.user_id = $1".to_string(),
         "c.is_anonymized = FALSE".to_string(),
     ];
-    let mut param_idx = 2;
+    let mut param_idx: usize = 1;
 
     // Search filter
     let search_pattern = req.search.as_ref().map(|s| format!("%{}%", s.to_lowercase()));
     if search_pattern.is_some() {
+        param_idx += 1;
         conditions.push(format!(
             "(LOWER(c.name) LIKE ${0} OR LOWER(c.city) LIKE ${0} OR LOWER(c.street) LIKE ${0} OR LOWER(c.email) LIKE ${0} OR c.phone LIKE ${0})",
             param_idx
         ));
-        param_idx += 1;
     }
 
     // Geocode status filter
     if let Some(ref status) = req.geocode_status {
-        conditions.push(format!("c.geocode_status::text = ${}", param_idx));
         param_idx += 1;
-        let _ = status; // Used in binding
+        conditions.push(format!("c.geocode_status::text = ${}", param_idx));
+        let _ = status;
     }
 
     // Customer type filter
     if let Some(ref ctype) = req.customer_type {
-        conditions.push(format!("c.customer_type = ${}", param_idx));
         param_idx += 1;
+        conditions.push(format!("c.customer_type = ${}", param_idx));
         let _ = ctype;
     }
 
@@ -757,9 +759,25 @@ pub async fn list_customers_extended(
         where_clause,
         having_clause,
         order_clause,
-        param_idx,
-        param_idx + 1
+        param_idx + 1,
+        param_idx + 2
     );
+
+    // #region agent log
+    {
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("/home/dev/Code/Sazinka/.cursor/debug-ee0c72.log") {
+            let _ = writeln!(f, r#"{{"sessionId":"ee0c72","location":"customer.rs:list_customers_extended","message":"query_built","data":{{"where_clause":"{}","having_clause":"{}","col_filter_where_conds":{},"col_filter_bind_count":{},"param_idx_final":{}}},"timestamp":{},"hypothesisId":"BUG12"}}"#,
+                where_clause.replace('"', r#"\""#),
+                having_clause.replace('"', r#"\""#),
+                col_filter_clauses.where_conds.len(),
+                col_filter_clauses.bind_values.len(),
+                param_idx,
+                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0)
+            );
+        }
+    }
+    // #endregion
 
     // Build the query with dynamic bindings
     let mut query_builder = sqlx::query_as::<_, CustomerListItem>(&query)
@@ -1963,6 +1981,68 @@ mod tests {
             from: from.map(|s| s.to_string()),
             to: to.map(|s| s.to_string()),
         }
+    }
+
+    #[test]
+    fn bug12_param_alignment_with_search_and_checklist() {
+        // Replicate list_customers_extended's full param_idx chain.
+        // Convention B: param_idx = "last used index" (starts at 1 for user_id=$1).
+        //
+        // Scenario: search + one checklist on "street" + next_revision_within_days
+        // Expected bind order: $1=user, $2=search, $3=street_arr, $4=days, $5=limit, $6=offset
+        let mut param_idx = 1usize; // $1 is user_id
+
+        // Search filter (Convention B: INC then USE)
+        param_idx += 1;
+        let search_placeholder = format!("${}", param_idx); // $2
+
+        // Column filter
+        let clauses = build_column_filter_clauses(
+            &[cf_checklist("street", vec!["Brandlova 108", "Brandlova 116", "Brandlova 2"])],
+            &mut param_idx,
+        );
+
+        // next_revision_within_days (Convention B: INC then USE)
+        param_idx += 1;
+        let next_rev_placeholder = format!("${}", param_idx);
+
+        // LIMIT / OFFSET
+        let limit_placeholder = format!("${}", param_idx + 1);
+        let offset_placeholder = format!("${}", param_idx + 2);
+
+        // Bind positions: user($1), search($2), street_arr($3), days($4), limit($5), offset($6)
+        assert_eq!(search_placeholder, "$2", "search bind mismatch");
+        assert!(
+            clauses.where_conds[0].contains("= ANY($3)"),
+            "BUG-12: street filter should be $3 (3rd bind), got: {}",
+            clauses.where_conds[0]
+        );
+        assert_eq!(next_rev_placeholder, "$4", "next_rev bind mismatch");
+        assert_eq!(limit_placeholder, "$5", "LIMIT bind mismatch");
+        assert_eq!(offset_placeholder, "$6", "OFFSET bind mismatch");
+    }
+
+    #[test]
+    fn bug12_param_alignment_no_search_one_checklist() {
+        // Minimal case: no search/geocode/type, one checklist filter.
+        // Bind order: $1=user, $2=street_arr, $3=limit, $4=offset
+        let mut param_idx = 1usize;
+
+        let clauses = build_column_filter_clauses(
+            &[cf_checklist("street", vec!["x"])],
+            &mut param_idx,
+        );
+
+        let limit_placeholder = format!("${}", param_idx + 1);
+        let offset_placeholder = format!("${}", param_idx + 2);
+
+        assert!(
+            clauses.where_conds[0].contains("= ANY($2)"),
+            "BUG-12: street filter should be $2 (2nd bind), got: {}",
+            clauses.where_conds[0]
+        );
+        assert_eq!(limit_placeholder, "$3");
+        assert_eq!(offset_placeholder, "$4");
     }
 
     #[test]
