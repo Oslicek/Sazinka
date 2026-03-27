@@ -234,29 +234,102 @@ Runtime evidence (console logs):
 
 ---
 
-## BUG-10: Customers — checklist checkboxes toggle logic but selected state is not visibly indicated
+## BUG-10: Customers — checklist checkboxes are still visually inert after fix candidates
 
 **Reported:** 2026-03-27
-**Status:** FIX CANDIDATE DEPLOYED (2026-03-27) — awaiting reporter verification
+**Status:** FIX DEPLOYED (2026-03-27) — hardened CSS with !important, awaiting reporter verification
 **Page:** Customers (`/customers`)
 
 **Steps to reproduce:**
-1. Open a checklist-type column filter dropdown on Customers page.
+1. Open any checklist-type column filter dropdown on Customers page.
 2. Click one or more checkbox rows.
-3. Observe whether selected rows / checkmarks are visibly distinguishable.
+3. Observe whether checked state is visually distinguishable.
 
-**Expected:** Checked boxes and selected rows are clearly visible, and multiple selected values are visibly indicated at the same time.
-**Actual:** Filter logic changes correctly, but selected checkboxes are not visibly "on", making multi-select verification impossible.
+**Expected:** Checked boxes and selected rows are clearly visible, and multiple selected values remain visibly selected.
+**Actual:** Reporter still sees inert checkbox visuals (no reliable visible checked-state feedback).
 
-**Root cause:** The checklist dropdown relied on native checkbox visuals only, while global form reset styles still affected checkbox presentation. In some environments this made checked state visually indistinct. The row itself also had no selected-state marker, so users had no secondary visual confirmation for multi-select.
+**Latest observation:** A separate dropdown-position regression appeared during follow-up attempts (tracked as BUG-11 below).
 
-**Fix:** Added explicit visual selection cues in checklist filters:
-- `ChecklistFilterDropdown.tsx`: each option row now sets `data-selected="true|false"` based on current checkbox state.
-- `ChecklistFilterDropdown.module.css`:
-  - strengthened checkbox reset and visibility (`16px` size, reset border/background leakage, `accent-color`),
-  - added `.valueRow[data-selected="true"]` highlight background as a robust secondary indicator.
+**Current code state (already deployed but not rendering):**
+The code already implements the target approach:
+- Native `<input>` is sr-only (`.checkboxInput` with `opacity:0`, `clip`, 1px size).
+- Custom `<span class="checkboxFace">` renders a 16px square with blue fill + white tick when selected.
+- Selection state driven by `data-selected` on the `<label>`, set by React state.
+- CSS rules `.valueRow[data-selected='true'] .checkboxFace` apply the selected visual.
+- All existing tests pass (CSS guard + interaction tests).
 
-**Regression tests:**
-- `ChecklistFilterDropdown.test.tsx` — "BUG-10: selected row exposes visible selected-state marker"
-- `ChecklistFilterDropdown.test.tsx` — "BUG-10: multiple checked values are all visibly marked selected"
-- `ChecklistFilterDropdown.cssBug.test.ts` — "defines explicit checkbox reset + accent color + selected-row style"
+**Execution order:** Fix BUG-11 first (clear, isolated), then BUG-10. Resolving the position bug makes BUG-10 easier to manually verify.
+
+**TDD remediation plan (NOT IMPLEMENTED YET):**
+
+**Phase 0 — Diagnose (before writing any code):**
+The current custom-face approach is structurally correct. Before another code change, we must determine *why* it isn't rendering. Two hypotheses:
+1. **Stale CSS delivery:** The JS bundle updated (confirmed by BUG-11 position change), but Vite may have served a cached CSS module chunk. The `.checkboxFace` span would exist in the DOM with zero styling (invisible 0x0 element).
+2. **Unknown CSS specificity conflict:** Another stylesheet or `<style>` tag may override `.checkboxFace` properties.
+
+Diagnostic steps (choose one):
+- **(a) DevTools inspection:** Ask the user to inspect a checkbox row in the filter dropdown and report whether `.checkboxFace` has computed `width: 16px` / `height: 16px` / `border`, or whether these are absent/overridden.
+- **(b) CSS smoke test:** Temporarily add `outline: 3px solid red !important` to `.checkboxFace` and deploy. If the red outline is visible, CSS delivery is working and the issue is a specificity conflict. If invisible, CSS delivery itself is broken.
+- **(c) Force cache bust:** Ask the user to hard-refresh (Ctrl+Shift+R), clear browser cache, or open in a private/incognito window. If that fixes it, the issue is purely cache-related and no further code change is needed.
+
+**Phase 1 — RED (tests):**
+- Add/adjust interaction tests in `ChecklistFilterDropdown.test.tsx` to verify one-toggle-per-click behavior (clicking a row toggles selection exactly once, not twice).
+- Add a guard test that fails if row-level click handling introduces double-toggles.
+- Keep CSS guard coverage in `ChecklistFilterDropdown.cssBug.test.ts` for required selected-state selectors (`.checkboxFace`, `[data-selected='true'] .checkboxFace`, `::after` tick).
+
+**Phase 2 — GREEN (code fix, driven by diagnosis outcome):**
+- *If diagnosis = stale CSS:* No code change needed; add a cache-busting mechanism or document the manual refresh step.
+- *If diagnosis = specificity conflict:* Increase specificity of `.checkboxFace` rules (e.g. via extra attribute selector or `!important` on the critical properties) and remove the conflicting source.
+- *If diagnosis = something else:* Address the specific finding.
+- In all cases: keep checkbox toggle logic on input `onChange` only (no extra row `onClick` toggle path).
+
+**Phase 3 — REFACTOR:**
+- Remove redundant style overrides accumulated from previous fix attempts.
+- Keep a single, deterministic visual path for selected-state rendering.
+
+**Phase 4 — VERIFY:**
+- Run customer filter test suites and full customers-related test subset.
+- Manual verification in browser (with confirmed-fresh build): single select, multi-select, deselect, and "Apply" behavior.
+- Confirm deployment delivers the correct CSS (version check or DevTools computed-style inspection).
+
+**Implementation guardrails:**
+- Do **not** add row-level `onClick` that also toggles selection; this risks double-toggle because `<label>` wrapping `<input>` already propagates the click.
+- Prefer deterministic React-driven selected-state visuals over reliance on native checkbox paint differences.
+- Do **not** treat "restart dev server / hard refresh" as a code fix; it is a diagnostic step only.
+
+---
+
+## BUG-11: Customers — filter dropdown opens at nonsensical horizontal position
+
+**Reported:** 2026-03-27
+**Status:** FIX DEPLOYED (2026-03-27) — re-anchored to filter button, awaiting reporter verification
+**Page:** Customers (`/customers`)
+
+**Execution order:** Fix this BEFORE BUG-10. It is a clear, isolated regression and resolving it first makes BUG-10 easier to manually verify.
+
+**Steps to reproduce:**
+1. Open Customers table.
+2. Click the filter icon in a wide column (e.g. `Ulice`, `E-MAIL`).
+3. Observe dropdown horizontal alignment vs. clicked icon.
+
+**Expected:** Dropdown opens aligned to the clicked filter icon (or immediately near it), with stable position while interacting.
+**Actual:** Dropdown appears offset in a surprising position (aligned to column cell left edge rather than icon).
+
+**Confirmed root cause:** Current code anchors the portal to the open `<th>` (`filterHeaderCellRef`) instead of the filter `<button>`, so `left` is computed from the header cell's left boundary. The anti-drift fix (removing scroll listener) is already in place independently of the anchor target, so there is no reason to keep the `<th>` anchor.
+
+**TDD remediation plan (NOT IMPLEMENTED YET):**
+
+**Phase 1 — RED (tests):**
+- Add a behavioral test in `CustomerTable.test.tsx`: verify that `ColumnFilterDropdown` receives an `anchorRef` whose `current` is the filter `<button>` element (not a `<th>`). This guards against future anchor regressions.
+- Add an interaction regression test: repeated checkbox clicks inside the dropdown do not shift the dropdown position (no drift).
+
+**Phase 2 — GREEN (minimal code fix):**
+- In `CustomerTable.tsx`: change the ref type back to `useRef<HTMLButtonElement>(null)` (`filterButtonRef`).
+- Assign `ref={isFilterOpen ? filterButtonRef : undefined}` on the filter `<button>`, not on the `<th>`.
+- Pass `filterButtonRef` as `anchorRef` to `ColumnFilterDropdown`.
+- Remove the `ref` assignment from the `<th>` element.
+
+**Phase 3 — VERIFY:**
+- Run `CustomerTable.test.tsx` and `ColumnFilterDropdown.test.tsx`.
+- Manual browser check on both narrow and wide columns for alignment and stability.
+- Confirm outside-click close behavior is not regressed: clicking the `<th>` (but not the button) should count as "outside" and close the dropdown. Clicking the filter button should toggle the dropdown open/closed.

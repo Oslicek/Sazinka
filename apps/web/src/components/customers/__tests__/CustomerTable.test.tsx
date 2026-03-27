@@ -708,12 +708,17 @@ describe('Newly-sortable columns: header click and indicator', () => {
 
 // ── Phase 5: filter icon + dropdown integration ───────────────────────────────
 
+let capturedAnchorRef: React.RefObject<HTMLElement | null> | undefined;
+
 vi.mock('../ColumnFilterDropdown', () => ({
-  ColumnFilterDropdown: ({ columnId, onClose }: { columnId: string; onClose: () => void }) => (
-    <div data-testid="col-filter-dropdown" data-column={columnId}>
-      <button onClick={onClose}>close-dropdown</button>
-    </div>
-  ),
+  ColumnFilterDropdown: ({ columnId, onClose, anchorRef }: { columnId: string; onClose: () => void; anchorRef?: React.RefObject<HTMLElement | null> }) => {
+    capturedAnchorRef = anchorRef;
+    return (
+      <div data-testid="col-filter-dropdown" data-column={columnId}>
+        <button onClick={onClose}>close-dropdown</button>
+      </div>
+    );
+  },
 }));
 
 describe('Phase 5: CustomerTable — filter icon in headers', () => {
@@ -796,5 +801,37 @@ describe('Phase 5: CustomerTable — filter icon in headers', () => {
     fireEvent.click(cityHeader);
     // Filter dropdown should NOT appear
     expect(screen.queryByTestId('col-filter-dropdown')).not.toBeInTheDocument();
+  });
+});
+
+// ── BUG-11: filter dropdown anchor must be the filter button, not the <th> ────
+
+describe('BUG-11: filter dropdown anchored to filter button', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    capturedAnchorRef = undefined;
+  });
+
+  it('anchorRef.current is the filter <button>, not a <th>', () => {
+    const onColumnFiltersChange = vi.fn();
+    renderTable({ onColumnFiltersChange });
+
+    const filterBtns = screen.getAllByRole('button', { name: /filter_column_label/ });
+    fireEvent.click(filterBtns[0]);
+    expect(screen.getByTestId('col-filter-dropdown')).toBeInTheDocument();
+
+    expect(capturedAnchorRef).toBeDefined();
+    expect(capturedAnchorRef!.current).toBeTruthy();
+    expect(capturedAnchorRef!.current!.tagName).toBe('BUTTON');
+  });
+
+  it('anchorRef.current is NOT a <th> element', () => {
+    const onColumnFiltersChange = vi.fn();
+    renderTable({ onColumnFiltersChange });
+
+    const filterBtns = screen.getAllByRole('button', { name: /filter_column_label/ });
+    fireEvent.click(filterBtns[0]);
+
+    expect(capturedAnchorRef?.current?.tagName).not.toBe('TH');
   });
 });

@@ -85,21 +85,21 @@
 
 .checkboxFace {
   flex: 0 0 16px;
-  width: 16px;
-  height: 16px;
-  box-sizing: border-box;
-  border: 2px solid var(--color-border, #e2e8f0);
-  border-radius: 4px;
-  background: var(--color-surface, #fff);
-  display: inline-flex;
+  width: 16px !important;
+  height: 16px !important;
+  box-sizing: border-box !important;
+  border: 2px solid var(--color-border, #e2e8f0) !important;
+  border-radius: 4px !important;
+  background: var(--color-surface, #fff) !important;
+  display: inline-flex !important;
   align-items: center;
   justify-content: center;
   pointer-events: none;
 }
 
 .valueRow[data-selected='true'] .checkboxFace {
-  background: var(--color-primary, #2563eb);
-  border-color: var(--color-primary, #2563eb);
+  background: var(--color-primary, #2563eb) !important;
+  border-color: var(--color-primary, #2563eb) !important;
 }
 
 .valueRow[data-selected='true'] .checkboxFace::after {
