@@ -205,3 +205,29 @@ Runtime evidence (console logs):
 **Regression tests:**
 - `InboxListPanel.test.tsx` — "BUG-8a: activePresetId survives unmount and remount"
 - `InboxListPanel.test.tsx` — "BUG-8b: filter expression set via preset survives two unmount/remount cycles"
+
+---
+
+## BUG-9: Customers — checklist filter value labels are invisible (only checkboxes render)
+
+**Reported:** 2026-03-27
+**Status:** FIX CANDIDATE DEPLOYED (2026-03-27) — awaiting reporter verification
+**Page:** Customers (`/customers`)
+
+**Steps to reproduce:**
+1. Open the Customers page in table view.
+2. Click the filter icon in any checklist column (e.g. `PSČ`, `Ulice`, `Email`).
+3. Wait for distinct values to load in the dropdown.
+
+**Expected:** Each row shows a checkbox and the corresponding distinct value label.
+**Actual:** Rows show only checkboxes; labels are not visible in all columns.
+
+**Screenshots:** User-provided screenshots show translated UI text (`Hledat`, `Vybrat vše`, `Zrušit výběr`, `Použít`) but blank value labels next to every checkbox.
+
+**Root cause:** Global form reset in `apps/web/src/index.css` applies `input { width: 100%; ... }` to all input types, including `input[type="checkbox"]`. In checklist rows (`display: flex`), each checkbox input consumed row width and pushed label text out of visible area.
+
+**Fix:** Added explicit checkbox override in `apps/web/src/components/customers/ChecklistFilterDropdown.module.css`:
+- `.valueRow input[type="checkbox"] { width: auto; flex: 0 0 auto; margin: 0; padding: 0; appearance: auto; }`
+
+**Regression tests:**
+- `ChecklistFilterDropdown.cssBug.test.ts` — "defines explicit checkbox override so global input width does not hide labels"
