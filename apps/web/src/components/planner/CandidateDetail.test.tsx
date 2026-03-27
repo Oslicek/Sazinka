@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { CandidateDetail, type CandidateDetailData } from './CandidateDetail';
 
 vi.mock('@tanstack/react-router', () => ({
@@ -25,6 +25,13 @@ vi.mock('@/services/visitService', () => ({
   getVisitStatusLabel: vi.fn(() => ''),
   getVisitResultLabel: vi.fn(() => ''),
 }));
+
+import { useNatsStore } from '@/stores/natsStore';
+import { listVisits, getVisit } from '@/services/visitService';
+
+const mockUseNatsStore = vi.mocked(useNatsStore);
+const mockListVisits = vi.mocked(listVisits);
+const mockGetVisit = vi.mocked(getVisit);
 
 describe('CandidateDetail', () => {
   const mockCandidate: CandidateDetailData = {
@@ -394,6 +401,204 @@ describe('CandidateDetail', () => {
       resolveUnschedule!();
       await waitFor(() => {
         expect(button).not.toBeDisabled();
+      });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Last visit banner (A.3 test matrix)
+  // These tests override isConnected to true so the useEffect actually fires.
+  // -------------------------------------------------------------------------
+  describe('Last visit banner', () => {
+    const visitRow = {
+      id: 'v-1',
+      userId: 'u-1',
+      customerId: 'cust-1',
+      scheduledDate: '2026-03-20',
+      status: 'completed',
+      visitType: 'revision',
+      requiresFollowUp: false,
+      resultNotes: null,
+      followUpReason: null,
+      createdAt: '2026-03-20T08:00:00Z',
+      updatedAt: '2026-03-20T10:00:00Z',
+    };
+
+    beforeEach(() => {
+      // Override global mock: enable NATS for banner tests
+      mockUseNatsStore.mockImplementation(
+        (selector: (s: { isConnected: boolean }) => unknown) =>
+          selector({ isConnected: true }),
+      );
+      mockListVisits.mockResolvedValue({ visits: [], total: 0 });
+      mockGetVisit.mockResolvedValue({
+        visit: visitRow as any,
+        customerName: null,
+        customerStreet: null,
+        customerCity: null,
+        customerPostalCode: null,
+        customerPhone: null,
+        customerLat: null,
+        customerLng: null,
+        workItems: [],
+      });
+    });
+
+    function renderDetail(candidate = mockCandidate) {
+      return render(<CandidateDetail candidate={candidate} {...mockHandlers} />);
+    }
+
+    // A.3.1 Comment banner shown when resolved comment exists
+    it('shows comment banner when last visit has notes', async () => {
+      mockListVisits.mockResolvedValue({ visits: [{ ...visitRow, resultNotes: 'Kotel vyměněn' }], total: 1 });
+      mockGetVisit.mockResolvedValue({
+        visit: { ...visitRow, resultNotes: 'Kotel vyměněn' } as any,
+        customerName: null, customerStreet: null, customerCity: null,
+        customerPostalCode: null, customerPhone: null, customerLat: null, customerLng: null,
+        workItems: [],
+      });
+
+      renderDetail();
+
+      await waitFor(() => {
+        expect(screen.getByText('Kotel vyměněn')).toBeInTheDocument();
+      });
+    });
+
+    // A.3.2 Comment banner hidden when no comment
+    it('hides comment banner when no last visit notes', async () => {
+      mockListVisits.mockResolvedValue({ visits: [], total: 0 });
+
+      renderDetail();
+
+      await act(async () => {});
+
+      expect(screen.queryByText('candidate_visit_note')).not.toBeInTheDocument();
+    });
+
+    // A.3.3 Visit date shown in banner header when comment is visible
+    it('shows visit date in banner header when comment is visible', async () => {
+      mockListVisits.mockResolvedValue({ visits: [{ ...visitRow, resultNotes: 'Poznámka' }], total: 1 });
+      mockGetVisit.mockResolvedValue({
+        visit: { ...visitRow, resultNotes: 'Poznámka' } as any,
+        customerName: null, customerStreet: null, customerCity: null,
+        customerPostalCode: null, customerPhone: null, customerLat: null, customerLng: null,
+        workItems: [],
+      });
+
+      renderDetail();
+
+      await waitFor(() => {
+        // formatDate('2026-03-20') should produce a locale-formatted date string
+        expect(screen.getByText('Poznámka')).toBeInTheDocument();
+        // The banner meta date span should contain some representation of 2026-03-20
+        const banner = screen.getByText('Poznámka').closest('[class*="lastVisitBanner"]');
+        expect(banner).toBeInTheDocument();
+        expect(banner!.textContent).toMatch(/2026|20\. 3\.|20\.03\./);
+      });
+    });
+
+    // A.3.4 Follow-up indicator block shown when requiresFollowUp === true
+    it('shows follow-up indicator block when requiresFollowUp is true', async () => {
+      const followUpVisit = {
+        ...visitRow,
+        resultNotes: 'Hlavní poznámka',
+        requiresFollowUp: true,
+        followUpReason: 'Nutná opravná návštěva',
+      };
+      mockListVisits.mockResolvedValue({ visits: [followUpVisit], total: 1 });
+      mockGetVisit.mockResolvedValue({
+        visit: followUpVisit as any,
+        customerName: null, customerStreet: null, customerCity: null,
+        customerPostalCode: null, customerPhone: null, customerLat: null, customerLng: null,
+        workItems: [],
+      });
+
+      renderDetail();
+
+      await waitFor(() => {
+        expect(screen.getByText('Nutná opravná návštěva')).toBeInTheDocument();
+      });
+    });
+
+    // A.3.5 Follow-up indicator hidden when requiresFollowUp === false
+    it('hides follow-up indicator when requiresFollowUp is false', async () => {
+      const normalVisit = {
+        ...visitRow,
+        resultNotes: 'Vše v pořádku',
+        requiresFollowUp: false,
+        followUpReason: 'Should not appear',
+      };
+      mockListVisits.mockResolvedValue({ visits: [normalVisit], total: 1 });
+      mockGetVisit.mockResolvedValue({
+        visit: normalVisit as any,
+        customerName: null, customerStreet: null, customerCity: null,
+        customerPostalCode: null, customerPhone: null, customerLat: null, customerLng: null,
+        workItems: [],
+      });
+
+      renderDetail();
+
+      await waitFor(() => {
+        expect(screen.getByText('Vše v pořádku')).toBeInTheDocument();
+      });
+      expect(screen.queryByText('Should not appear')).not.toBeInTheDocument();
+    });
+
+    // A.3.6 Loading state does not flash stale comment when switching candidates
+    it('clears comment when switching to a new candidate with no notes', async () => {
+      mockListVisits.mockResolvedValue({ visits: [{ ...visitRow, resultNotes: 'Old note' }], total: 1 });
+      mockGetVisit.mockResolvedValue({
+        visit: { ...visitRow, resultNotes: 'Old note' } as any,
+        customerName: null, customerStreet: null, customerCity: null,
+        customerPostalCode: null, customerPhone: null, customerLat: null, customerLng: null,
+        workItems: [],
+      });
+
+      const { rerender } = render(<CandidateDetail candidate={mockCandidate} {...mockHandlers} />);
+
+      await waitFor(() => expect(screen.getByText('Old note')).toBeInTheDocument());
+
+      // Switch to a candidate that has no notes
+      mockListVisits.mockResolvedValue({ visits: [], total: 0 });
+      const candidate2 = { ...mockCandidate, customerId: 'cust-2' };
+      rerender(<CandidateDetail candidate={candidate2} {...mockHandlers} />);
+
+      await waitFor(() => {
+        expect(screen.queryByText('Old note')).not.toBeInTheDocument();
+      });
+    });
+
+    // A.3.7 Switching customer updates displayed comment correctly
+    it('updates comment when switching to a new candidate with different notes', async () => {
+      mockListVisits.mockResolvedValue({ visits: [{ ...visitRow, resultNotes: 'Note A' }], total: 1 });
+      mockGetVisit.mockResolvedValue({
+        visit: { ...visitRow, resultNotes: 'Note A' } as any,
+        customerName: null, customerStreet: null, customerCity: null,
+        customerPostalCode: null, customerPhone: null, customerLat: null, customerLng: null,
+        workItems: [],
+      });
+
+      const { rerender } = render(<CandidateDetail candidate={mockCandidate} {...mockHandlers} />);
+      await waitFor(() => expect(screen.getByText('Note A')).toBeInTheDocument());
+
+      mockListVisits.mockResolvedValue({
+        visits: [{ ...visitRow, id: 'v-2', customerId: 'cust-2', resultNotes: 'Note B' }],
+        total: 1,
+      });
+      mockGetVisit.mockResolvedValue({
+        visit: { ...visitRow, id: 'v-2', customerId: 'cust-2', resultNotes: 'Note B' } as any,
+        customerName: null, customerStreet: null, customerCity: null,
+        customerPostalCode: null, customerPhone: null, customerLat: null, customerLng: null,
+        workItems: [],
+      });
+
+      const candidate2 = { ...mockCandidate, customerId: 'cust-2' };
+      rerender(<CandidateDetail candidate={candidate2} {...mockHandlers} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Note B')).toBeInTheDocument();
+        expect(screen.queryByText('Note A')).not.toBeInTheDocument();
       });
     });
   });
