@@ -190,6 +190,8 @@ export function ChecklistFilterDropdown({
       aria-modal="true"
       tabIndex={-1}
       aria-label={t('filter_dropdown_label', { column: columnId })}
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
     >
       {/* Search input */}
       <div className={styles.searchRow}>

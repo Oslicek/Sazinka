@@ -104,6 +104,8 @@ export function DateRangeFilterDropdown({
       aria-modal="true"
       tabIndex={-1}
       aria-label={t('filter_date_range_label', { column: columnId })}
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
     >
       <div className={styles.fields}>
         <label className={styles.fieldLabel}>
