@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Unified note types — journal-style notes for customer, device, and visit entities.
 
 use chrono::{DateTime, Utc};
@@ -6,7 +5,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use uuid::Uuid;
 
-const MAX_CONTENT_LEN: usize = 10_000;
+/// Maximum note content length in Unicode characters (not bytes).
+pub const MAX_CONTENT_CHARS: usize = 10_000;
 
 /// The three entity types that can have notes attached.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -82,6 +82,7 @@ pub struct NoteHistoryEntry {
 /// NATS: sazinka.note.create
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct CreateNoteRequest {
     pub entity_type: String,
     pub entity_id: Uuid,
@@ -140,9 +141,9 @@ pub struct DeleteNoteRequest {
 // Validation helpers
 // ============================================================
 
-/// Returns an error string if content exceeds the 10,000 char limit.
+/// Returns an error string if content exceeds the 10,000 Unicode character limit.
 pub fn validate_content(content: &str) -> Result<(), &'static str> {
-    if content.len() > MAX_CONTENT_LEN {
+    if content.chars().count() > MAX_CONTENT_CHARS {
         Err("NOTE_CONTENT_TOO_LONG")
     } else {
         Ok(())

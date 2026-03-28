@@ -1,13 +1,11 @@
-#![allow(dead_code)]
 //! Database queries for the unified notes system.
 
 use anyhow::{bail, Result};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use crate::types::note::MAX_CONTENT_CHARS;
 use crate::types::{Note, NoteHistoryEntry};
-
-const MAX_CONTENT: usize = 10_000;
 
 // ============================================================
 // Ownership / polymorphic entity validation
@@ -67,7 +65,7 @@ pub async fn create_note(
     visit_id: Option<Uuid>,
     content: &str,
 ) -> Result<Note> {
-    if content.len() > MAX_CONTENT {
+    if content.chars().count() > MAX_CONTENT_CHARS {
         bail!("NOTE_CONTENT_TOO_LONG");
     }
     let note = sqlx::query_as::<_, Note>(
@@ -100,25 +98,13 @@ pub async fn update_note(
     session_id: Uuid,
     content: &str,
 ) -> Result<Option<Note>> {
-    if content.len() > MAX_CONTENT {
+    if content.chars().count() > MAX_CONTENT_CHARS {
         bail!("NOTE_CONTENT_TOO_LONG");
     }
 
     let mut tx = pool.begin().await?;
 
-    let row_exists: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM notes WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL)",
-    )
-    .bind(note_id)
-    .bind(user_id)
-    .fetch_one(&mut *tx)
-    .await?;
-
-    if !row_exists {
-        tx.rollback().await?;
-        return Ok(None);
-    }
-
+    // Atomic UPDATE + RETURNING — skips the note if concurrently deleted.
     let note = sqlx::query_as::<_, Note>(
         r#"
         UPDATE notes SET content = $3, updated_at = NOW()
@@ -132,26 +118,28 @@ pub async fn update_note(
     .fetch_optional(&mut *tx)
     .await?;
 
-    // Upsert audit row
-    sqlx::query(
-        r#"
-        INSERT INTO notes_history
-            (id, note_id, session_id, edited_by_user_id, content, first_edited_at, last_edited_at, change_count)
-        VALUES
-            (uuid_generate_v4(), $1, $2, $3, $4, NOW(), NOW(), 1)
-        ON CONFLICT (note_id, session_id) DO UPDATE SET
-            content           = EXCLUDED.content,
-            last_edited_at    = NOW(),
-            edited_by_user_id = EXCLUDED.edited_by_user_id,
-            change_count      = notes_history.change_count + 1
-        "#,
-    )
-    .bind(note_id)
-    .bind(session_id)
-    .bind(user_id)
-    .bind(content)
-    .execute(&mut *tx)
-    .await?;
+    // Only upsert audit when the update actually affected a row.
+    if note.is_some() {
+        sqlx::query(
+            r#"
+            INSERT INTO notes_history
+                (id, note_id, session_id, edited_by_user_id, content, first_edited_at, last_edited_at, change_count)
+            VALUES
+                (uuid_generate_v4(), $1, $2, $3, $4, NOW(), NOW(), 1)
+            ON CONFLICT (note_id, session_id) DO UPDATE SET
+                content           = EXCLUDED.content,
+                last_edited_at    = NOW(),
+                edited_by_user_id = EXCLUDED.edited_by_user_id,
+                change_count      = notes_history.change_count + 1
+            "#,
+        )
+        .bind(note_id)
+        .bind(session_id)
+        .bind(user_id)
+        .bind(content)
+        .execute(&mut *tx)
+        .await?;
+    }
 
     tx.commit().await?;
     Ok(note)
@@ -254,6 +242,7 @@ pub async fn delete_note(
 // GDPR redaction
 // ============================================================
 
+#[allow(dead_code)]
 /// Redact all note content for a user (GDPR delete workflow).
 /// Sets notes.content and notes_history.content to '[GDPR-REDACTED]'.
 /// Structural metadata (timestamps, ids, change_count) is preserved.
@@ -316,6 +305,7 @@ pub async fn list_all_notes_for_user(
 // Compact projection (latest note content for a given entity)
 // ============================================================
 
+#[allow(dead_code)]
 /// Returns the latest note content (created_at DESC) for an entity, or None if no notes exist.
 pub async fn latest_note_content(
     pool: &PgPool,

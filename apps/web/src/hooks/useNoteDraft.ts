@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import type { NoteEntityType } from '@shared/note';
 
 interface UseNoteDraftOptions {
@@ -61,6 +61,19 @@ export function useNoteDraft({
   const draftRef = useRef(draft);
   draftRef.current = draft;
 
+  // #5: Reset state when identity (entity/session) changes
+  const prevKeyRef = useRef(key);
+  useEffect(() => {
+    if (prevKeyRef.current !== key) {
+      prevKeyRef.current = key;
+      const stored = readDraft(key);
+      const next = stored ?? serverContent;
+      setDraft(next);
+      draftRef.current = next;
+      setConflictResolved(false);
+    }
+  }, [key, serverContent]);
+
   const hasConflict =
     !conflictResolved &&
     localDraft !== null &&
@@ -88,10 +101,14 @@ export function useNoteDraft({
   }, [key, onSave]);
 
   const resolveKeepLocal = useCallback(async () => {
-    if (onSave) {
-      await onSave(draftRef.current);
+    try {
+      if (onSave) {
+        await onSave(draftRef.current);
+      }
+      setConflictResolved(true);
+    } catch {
+      // Save failed — leave conflict unresolved so the user can retry
     }
-    setConflictResolved(true);
   }, [onSave]);
 
   const resolveUseServer = useCallback(() => {

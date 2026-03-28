@@ -37,7 +37,7 @@ function htmlToMarkdown(html: string): string {
   md = md.replace(/<ol[^>]*>([\s\S]*?)<\/ol>/gi, (_, content) => {
     let i = 1;
     return content
-      .replace(/<li[^>]*>(.*?)<\/li>/gi, () => `${i++}. ` + '$1\n')
+      .replace(/<li[^>]*>(.*?)<\/li>/gi, (_m: string, li: string) => `${i++}. ${li}\n`)
       .replace(/<[^>]+>/g, '');
   });
   md = md.replace(/<pre[^>]*><code[^>]*>([\s\S]*?)<\/code><\/pre>/gi, '```\n$1\n```\n');

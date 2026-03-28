@@ -35,7 +35,9 @@ export function NoteHistory({ entries }: NoteHistoryProps) {
         {entries.map((entry) => (
           <li key={entry.id} className={styles.entry} data-testid="history-entry">
             <div className={styles.entryHeader}>
-              <span className={styles.editorName}>{entry.editedByUserId}</span>
+              <span className={styles.editorName} title={entry.editedByUserId}>
+                {t('notes_history_user', 'User')} {entry.editedByUserId.slice(0, 8)}
+              </span>
               <span className={styles.date}>{formatDate(entry.lastEditedAt)}</span>
               {entry.changeCount > 1 && (
                 <span className={styles.badge} data-testid="change-count">

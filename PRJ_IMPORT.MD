@@ -24,6 +24,12 @@
 14. [Import pracovního deníku (work_log.csv)](#14-import-pracovního-deníku-work_logcsv)
 15. [Pořadí importu a propojování záznamů](#15-pořadí-importu-a-propojování-záznamů)
 16. [Upřesnění a FAQ](#16-upřesnění-a-faq)
+17. [Import Report System](#17-import-report-system)
+18. [Export+ (asynchronní ZIP export)](#18-export-asynchronní-zip-export-přes-worker)
+
+### Unified Notes
+19. [Import poznámek (notes.csv)](#19-import-poznámek-notescsv)
+20. [Export poznámek (notes.csv)](#20-export-poznámek-notescsv)
 
 ---
 
@@ -1151,6 +1157,8 @@ Import musí probíhat v tomto pořadí (kvůli závislostem mezi entitami):
 4. communications.csv → vytvoří komunikace (vyžaduje zákazníky)
        ↓
 5. work_log.csv      → vytvoří návštěvy + pracovní položky (vyžaduje zákazníky, volitelně zařízení)
+       ↓
+6. notes.csv         → vytvoří poznámky (vyžaduje zákazníky, zařízení nebo návštěvy)
 ```
 
 ### 15.2 Mechanismus propojování (customer_ref)
@@ -1229,7 +1237,8 @@ import_2026-01.zip
 ├── devices.csv
 ├── revisions.csv
 ├── communications.csv
-└── work_log.csv
+├── work_log.csv
+└── notes.csv
 ```
 
 Systém automaticky:
@@ -1618,6 +1627,7 @@ Export je zpracováván asynchronně na workeru přes JetStream, nikoliv synchro
 - `communications.csv`
 - `work_log.csv` (jeden řádek na pracovní položku)
 - `routes.csv` (export-only)
+- `notes.csv` (unified notes — user-level, not per-worker scoped)
 - (interně i `route_stops.csv` v ZIP podle scope)
 
 ### 18.2 Scope režimy exportu
@@ -1635,3 +1645,144 @@ Export je zpracováván asynchronně na workeru přes JetStream, nikoliv synchro
   - uživatel může stahovat výsledek přímo tlačítkem `Stáhnout export` v historii úloh,
   - a zároveň může dostat browser notifikaci při doběhnutí úlohy.
 - Název výsledného ZIP: `export-YYYYMMDD-HHMMSS-XX.zip` (čas je generován podle timezone uživatele, který export spustil).
+
+> **Poznámka:** `notes.csv` je user-level soubor — exportuje se vždy jednou bez ohledu na scope režim (ne per-worker). Ostatní CSV soubory se řídí zvoleným scope.
+
+---
+
+## 19. Import poznámek (notes.csv)
+
+### 19.1 Přehled
+
+Import unified notes — journal-style poznámek přiřazených k zákazníkům, zařízením nebo návštěvám. Každý řádek odpovídá jedné poznámce.
+
+> **Změna v3.1.0:** Poznámky jsou nyní uloženy v dedikované tabulce `notes` místo v dřívějších sloupcích `customers.notes`, `devices.notes`, `visits.field_notes`, `visit_work_items.result_notes`/`findings`, a `revisions.findings`. Tyto legacy sloupce zůstávají v DB pro zpětnou kompatibilitu, ale nový obsah se zapisuje výhradně do tabulky `notes`.
+
+**Prerekvizity:**
+- Entity (zákazníci, zařízení, návštěvy) musí být již importovány
+- Import notes.csv probíhá jako **poslední** v pořadí (import_order = 6)
+
+### 19.2 Hlavička
+
+```csv
+entity_type;entity_id;entity_ref;content;created_at
+```
+
+### 19.3 Sloupce
+
+| Sloupec | Typ | Povinný | Popis |
+|---------|-----|---------|-------|
+| `entity_type` | string | **ano** | Typ entity: `customer`, `device`, nebo `visit` |
+| `entity_id` | string | ne | UUID entity (fallback, pokud resolution přes ref selže) |
+| `entity_ref` | string | **ano** | Lidsky čitelná reference (viz resolution níže) |
+| `content` | string | **ano** | Raw markdown obsah poznámky |
+| `created_at` | string | ne | ISO 8601 timestamp (best-effort hint) |
+
+### 19.4 Resolution entity_ref
+
+`entity_ref` se resolvuje podle `entity_type`:
+
+| entity_type | Resolution strategie | Fallback |
+|-------------|---------------------|----------|
+| `customer` | IČO → email → telefon (E.164) | `customer_uuid:<uuid>` |
+| `device` | Sériové číslo → device_name (case-insensitive) | `device_uuid:<uuid>` |
+| `visit` | — | `visit_uuid:<uuid>` |
+
+Pokud resolution selže a `entity_id` obsahuje validní UUID, použije se jako fallback.
+
+**Příklady entity_ref:**
+
+| entity_type | entity_ref | Interpretace |
+|-------------|-----------|--------------|
+| `customer` | `12345678` | IČO zákazníka |
+| `customer` | `info@abc.cz` | Email zákazníka |
+| `customer` | `customer_uuid:a1b2c3...` | Přímé UUID |
+| `device` | `VL123456` | Sériové číslo |
+| `device` | `Komín u kotelny` | Název zařízení |
+| `device` | `device_uuid:d4e5f6...` | Přímé UUID |
+| `visit` | `visit_uuid:f7a8b9...` | UUID návštěvy |
+
+### 19.5 Validace
+
+- **Prázdný `content`** (po trim) → řádek se přeskočí (bez chyby)
+- **`content` > 10 000 Unicode znaků** → chyba `INVALID_VALUE`
+- **Neznámý `entity_type`** → řádek se přeskočí s chybou
+- **Entity nenalezena** → chyba s kódem dle typu:
+  - `customer` → `CUSTOMER_NOT_FOUND`
+  - `device` → `DEVICE_NOT_FOUND`
+  - `visit` → `CUSTOMER_NOT_FOUND` (fallback)
+
+### 19.6 Detekce duplicit (idempotentní import)
+
+Poznámka je **duplicitní**, pokud existuje záznam se shodným:
+
+```
+user_id + entity_type + entity_id + content
+```
+
+Duplicitní řádky se počítají jako úspěšně importované (succeeded++) bez vytvoření nového záznamu.
+
+### 19.7 visit_id
+
+Pro poznámky typu `visit` se `visit_id` automaticky nastaví na `entity_id` (protože entity je návštěva). Pro `customer` a `device` se `visit_id` nenastavuje při importu.
+
+### 19.8 Příklady
+
+```csv
+entity_type;entity_id;entity_ref;content;created_at
+customer;;12345678;Klíče nechávat u sousedů v 1. patře;2025-06-15T10:30:00Z
+customer;;info@abc.cz;Preferuje odpolední hodiny;2025-07-01T14:00:00Z
+device;;VL123456;Kotel vyžaduje speciální filtr - objednat před návštěvou;2025-08-10T08:00:00Z
+device;;Komín u kotelny;**Pozor:** nestabilní schůdky na střechu;2025-08-10T08:15:00Z
+visit;f7a8b9c0-1234-5678-9abc-def012345678;visit_uuid:f7a8b9c0-1234-5678-9abc-def012345678;Zákazník nebyl přítomen, sousedka otevřela;2025-09-01T11:00:00Z
+```
+
+### 19.9 Chybové kódy specifické pro notes import
+
+| Kód | Situace | Úroveň |
+|-----|---------|--------|
+| `INVALID_VALUE` | `content` > 10 000 znaků | error |
+| `CUSTOMER_NOT_FOUND` | Customer entity_ref neresolvován | error |
+| `DEVICE_NOT_FOUND` | Device entity_ref neresolvován | error |
+| `DB_ERROR` | Chyba při duplicate check nebo vytváření | error |
+
+---
+
+## 20. Export poznámek (notes.csv)
+
+### 20.1 Přehled
+
+Export generuje `notes.csv` se všemi aktivními (nesmazanými) poznámkami uživatele. Soubor je **user-level** — generuje se jednou bez ohledu na export scope (není per-worker).
+
+### 20.2 Formát
+
+```csv
+entity_type;entity_id;entity_ref;content;created_at;updated_at
+```
+
+### 20.3 Sloupce exportu
+
+| Sloupec | Popis |
+|---------|-------|
+| `entity_type` | `customer`, `device`, nebo `visit` |
+| `entity_id` | UUID entity |
+| `entity_ref` | Lidsky čitelná reference (IČO/email/telefon pro customer, serial/name pro device, `visit_uuid:<uuid>` pro visit) |
+| `content` | Raw markdown obsah |
+| `created_at` | ISO 8601 timestamp vytvoření |
+| `updated_at` | ISO 8601 timestamp poslední úpravy |
+
+### 20.4 entity_ref resolution (export)
+
+| entity_type | Pořadí resolution | Fallback |
+|-------------|------------------|----------|
+| `customer` | IČO → email → telefon → `customer_uuid:<uuid>` | UUID prefix |
+| `device` | serial_number → device_name → `device_uuid:<uuid>` | UUID prefix |
+| `visit` | `visit_uuid:<uuid>` | — |
+
+### 20.5 Soft-deleted notes
+
+Soft-deleted poznámky (`deleted_at IS NOT NULL`) se **neexportují**. Pouze aktivní poznámky jsou zahrnuty v exportu.
+
+### 20.6 Řazení
+
+Exportované řádky jsou řazeny: `entity_type ASC, entity_id ASC, created_at ASC`.

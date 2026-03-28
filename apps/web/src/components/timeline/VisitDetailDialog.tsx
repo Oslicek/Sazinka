@@ -53,9 +53,13 @@ export function VisitDetailDialog({
   const isCompleted = visit.status === 'completed';
 
   useEffect(() => {
+    let cancelled = false;
     if (isCompleted) {
-      listNotes('visit', visit.id).then(setVisitNotes).catch(() => setVisitNotes([]));
+      listNotes('visit', visit.id)
+        .then((notes) => { if (!cancelled) setVisitNotes(notes); })
+        .catch(() => { if (!cancelled) setVisitNotes([]); });
     }
+    return () => { cancelled = true; };
   }, [visit.id, isCompleted]);
   const canComplete = !isCompleted && ['planned', 'in_progress'].includes(visit.status);
 

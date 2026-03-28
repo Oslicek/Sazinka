@@ -129,7 +129,7 @@ pub async fn handle_create(
             }
             Err(e) => {
                 error!("Failed to check entity ownership: {}", e);
-                let err = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let err = ErrorResponse::new(request.id, "DATABASE_ERROR", "Internal server error");
                 let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
                 continue;
             }
@@ -151,7 +151,7 @@ pub async fn handle_create(
             }
             Err(e) => {
                 error!("Failed to create note: {}", e);
-                let err = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let err = ErrorResponse::new(request.id, "DATABASE_ERROR", "Internal server error");
                 let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
             }
         }
@@ -217,7 +217,7 @@ pub async fn handle_update(
             }
             Err(e) => {
                 error!("Failed to update note: {}", e);
-                let err = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let err = ErrorResponse::new(request.id, "DATABASE_ERROR", "Internal server error");
                 let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
             }
         }
@@ -273,7 +273,7 @@ pub async fn handle_list(
             }
             Err(e) => {
                 error!("Failed to list notes: {}", e);
-                let err = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let err = ErrorResponse::new(request.id, "DATABASE_ERROR", "Internal server error");
                 let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
             }
         }
@@ -313,22 +313,6 @@ pub async fn handle_audit(
 
         let note_id = request.payload.note_id;
 
-        // Check ownership first — return 404 if not found or wrong user
-        let exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM notes WHERE id = $1 AND user_id = $2)",
-        )
-        .bind(note_id)
-        .bind(user_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap_or(false);
-
-        if !exists {
-            let err = ErrorResponse::new(request.id, "NOTE_NOT_FOUND", "Note not found");
-            let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
-            continue;
-        }
-
         match queries::note::list_note_audit(&pool, note_id, user_id).await {
             Ok(entries) => {
                 let response = SuccessResponse::new(request.id, AuditNoteResponse { entries });
@@ -336,7 +320,7 @@ pub async fn handle_audit(
             }
             Err(e) => {
                 error!("Failed to fetch note audit: {}", e);
-                let err = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let err = ErrorResponse::new(request.id, "DATABASE_ERROR", "Internal server error");
                 let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
             }
         }
@@ -387,7 +371,7 @@ pub async fn handle_delete(
             }
             Err(e) => {
                 error!("Failed to delete note: {}", e);
-                let err = ErrorResponse::new(request.id, "DATABASE_ERROR", e.to_string());
+                let err = ErrorResponse::new(request.id, "DATABASE_ERROR", "Internal server error");
                 let _ = client.publish(reply, serde_json::to_vec(&err)?.into()).await;
             }
         }
@@ -408,7 +392,7 @@ mod tests {
     // NH14 — error response shape contract
     #[test]
     fn error_response_shape() {
-        use crate::types::{ErrorResponse, Request};
+        use crate::types::ErrorResponse;
         use uuid::Uuid;
 
         let err = ErrorResponse::new(Uuid::nil(), "NOTE_NOT_FOUND", "Note not found");

@@ -420,6 +420,11 @@ impl ExportProcessor {
             }
         }
 
+        // Notes are user-level (not per-worker) — add once regardless of scope
+        if request.selected_files.contains(&ExportFile::Notes) {
+            files.push(("notes.csv".to_string(), build_notes_csv(&dataset)));
+        }
+
         // ── Cancellation check: after CSV generation ──
         if CANCELLATION.is_cancelled(&job_id) {
             return Err(ExportError::Cancelled);
@@ -645,10 +650,8 @@ impl ExportProcessor {
                         build_route_stops_csv(dataset, worker, include_worker_uuid_col),
                     ));
                 }
-                ExportFile::Notes => out.push((
-                    format!("{}notes.csv", filename_prefix),
-                    build_notes_csv(dataset),
-                )),
+                // Notes are user-level, not worker-scoped — handled outside collect_files_for_context
+                ExportFile::Notes => {},
             }
         }
     }

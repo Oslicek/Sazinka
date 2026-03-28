@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, Link, useNavigate } from '@tanstack/react-router';
+import { useParams, Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import maplibregl from 'maplibre-gl';
 import { isWebGLSupported } from '../utils/webgl';
@@ -54,7 +54,7 @@ function InlineNoteEditor({ note, sessionId, onSaved }: InlineNoteEditorProps) {
 
   const [hasChanges, setHasChanges] = useState(false);
 
-  useAutoSave({
+  const { saveError, retry } = useAutoSave({
     saveFn: async () => {
       const updated = await updateNote({ noteId: note.id, sessionId, content: draft });
       onSaved(updated);
@@ -73,9 +73,16 @@ function InlineNoteEditor({ note, sessionId, onSaved }: InlineNoteEditorProps) {
     <div data-testid={`note-row-${note.id}`} style={{ marginBottom: '8px' }}>
       {hasConflict && (
         <div data-testid="conflict-prompt" style={{ display: 'flex', gap: '8px', marginBottom: '6px', fontSize: '13px', color: 'var(--warning, #f57c00)' }}>
-          <span>⚠ Unsaved local draft differs from server</span>
+          <span>Unsaved local draft differs from server</span>
           <button onClick={() => resolveKeepLocal()}>Keep local</button>
           <button onClick={resolveUseServer}>Use server</button>
+        </div>
+      )}
+      {saveError && (
+        <div data-testid="save-error" style={{ display: 'flex', gap: '8px', marginBottom: '6px', fontSize: '13px', color: 'var(--error, #d32f2f)' }}>
+          <AlertTriangle size={14} />
+          <span>Save failed</span>
+          <button onClick={retry} style={{ textDecoration: 'underline', cursor: 'pointer', border: 'none', background: 'none', color: 'inherit', padding: 0, font: 'inherit' }}>Retry</button>
         </div>
       )}
       <NoteEditor
@@ -129,7 +136,6 @@ interface VisitData {
 export function VisitDetail() {
   const { t } = useTranslation('pages');
   const { visitId } = useParams({ strict: false }) as { visitId: string };
-  const navigate = useNavigate();
   const isConnected = useNatsStore((s) => s.isConnected);
 
   const [data, setData] = useState<VisitData | null>(null);
@@ -607,13 +613,17 @@ export function VisitDetail() {
                 className={styles.addNoteBtn}
                 data-testid="add-visit-note-btn"
                 onClick={async () => {
-                  const note = await createNote({
-                    entityType: 'visit',
-                    entityId: visitId,
-                    sessionId: sessionIdRef.current,
-                    content: '',
-                  });
-                  setVisitNotes((prev) => [...prev, note]);
+                  try {
+                    const note = await createNote({
+                      entityType: 'visit',
+                      entityId: visitId,
+                      sessionId: sessionIdRef.current,
+                      content: '',
+                    });
+                    setVisitNotes((prev) => [...prev, note]);
+                  } catch (err) {
+                    console.error('Failed to create visit note:', err);
+                  }
                 }}
               >
                 <Plus size={14} /> {t('add_note', 'Add note')}
@@ -647,14 +657,18 @@ export function VisitDetail() {
                 className={styles.addNoteBtn}
                 data-testid="add-customer-note-btn"
                 onClick={async () => {
-                  const note = await createNote({
-                    entityType: 'customer',
-                    entityId: data.visit.customerId,
-                    visitId,
-                    sessionId: sessionIdRef.current,
-                    content: '',
-                  });
-                  setCustomerNotes((prev) => [...prev, note]);
+                  try {
+                    const note = await createNote({
+                      entityType: 'customer',
+                      entityId: data.visit.customerId,
+                      visitId,
+                      sessionId: sessionIdRef.current,
+                      content: '',
+                    });
+                    setCustomerNotes((prev) => [...prev, note]);
+                  } catch (err) {
+                    console.error('Failed to create customer note:', err);
+                  }
                 }}
               >
                 <Plus size={14} /> {t('add_note', 'Add note')}
@@ -711,17 +725,21 @@ export function VisitDetail() {
                       className={styles.addNoteBtn}
                       data-testid={`add-device-note-btn-${deviceId}`}
                       onClick={async () => {
-                        const note = await createNote({
-                          entityType: 'device',
-                          entityId: deviceId,
-                          visitId,
-                          sessionId: sessionIdRef.current,
-                          content: '',
-                        });
-                        setDeviceNotesMap((prev) => ({
-                          ...prev,
-                          [deviceId]: [...(prev[deviceId] ?? []), note],
-                        }));
+                        try {
+                          const note = await createNote({
+                            entityType: 'device',
+                            entityId: deviceId,
+                            visitId,
+                            sessionId: sessionIdRef.current,
+                            content: '',
+                          });
+                          setDeviceNotesMap((prev) => ({
+                            ...prev,
+                            [deviceId]: [...(prev[deviceId] ?? []), note],
+                          }));
+                        } catch (err) {
+                          console.error('Failed to create device note:', err);
+                        }
                       }}
                     >
                       <Plus size={14} /> {t('add_note', 'Add note')}

@@ -31,7 +31,7 @@ interface InlineCustomerNoteProps {
 }
 
 function InlineCustomerNote({ note, sessionId, onSaved }: InlineCustomerNoteProps) {
-  const { draft, updateDraft } = useNoteDraft({
+  const { draft, updateDraft, hasConflict, resolveKeepLocal, resolveUseServer } = useNoteDraft({
     entityType: 'customer',
     entityId: note.entityId,
     sessionId,
@@ -43,7 +43,7 @@ function InlineCustomerNote({ note, sessionId, onSaved }: InlineCustomerNoteProp
   });
   const [hasChanges, setHasChanges] = useState(false);
 
-  useAutoSave({
+  const { saveError, retry } = useAutoSave({
     saveFn: async () => {
       const updated = await updateNote({ noteId: note.id, sessionId, content: draft });
       onSaved(updated);
@@ -54,15 +54,30 @@ function InlineCustomerNote({ note, sessionId, onSaved }: InlineCustomerNoteProp
   });
 
   return (
-    <NoteEditor
-      entityType="customer"
-      entityId={note.entityId}
-      initialContent={draft}
-      onChange={(content) => {
-        updateDraft(content);
-        setHasChanges(content !== note.content);
-      }}
-    />
+    <div style={{ marginBottom: '8px' }}>
+      {hasConflict && (
+        <div data-testid="conflict-prompt" style={{ display: 'flex', gap: '8px', marginBottom: '6px', fontSize: '13px', color: 'var(--warning, #f57c00)' }}>
+          <span>Unsaved local draft differs from server</span>
+          <button onClick={() => resolveKeepLocal()}>Keep local</button>
+          <button onClick={resolveUseServer}>Use server</button>
+        </div>
+      )}
+      {saveError && (
+        <div data-testid="save-error" style={{ display: 'flex', gap: '8px', marginBottom: '6px', fontSize: '13px', color: 'var(--error, #d32f2f)' }}>
+          <span>Save failed</span>
+          <button onClick={retry} style={{ textDecoration: 'underline', cursor: 'pointer', border: 'none', background: 'none', color: 'inherit', padding: 0, font: 'inherit' }}>Retry</button>
+        </div>
+      )}
+      <NoteEditor
+        entityType="customer"
+        entityId={note.entityId}
+        initialContent={draft}
+        onChange={(content) => {
+          updateDraft(content);
+          setHasChanges(content !== note.content);
+        }}
+      />
+    </div>
   );
 }
 
@@ -95,7 +110,11 @@ export function CustomerWorkspace({
   const sessionIdRef = useRef<string>(crypto.randomUUID());
 
   useEffect(() => {
-    listNotes('customer', customer.id).then(setCustomerNotes).catch(() => setCustomerNotes([]));
+    let cancelled = false;
+    listNotes('customer', customer.id)
+      .then((notes) => { if (!cancelled) setCustomerNotes(notes); })
+      .catch(() => { if (!cancelled) setCustomerNotes([]); });
+    return () => { cancelled = true; };
   }, [customer.id]);
 
   const handleTabChange = (tab: TabId) => {
@@ -222,13 +241,17 @@ export function CustomerWorkspace({
               className={styles.addNoteBtn}
               data-testid="add-customer-note-sidebar-btn"
               onClick={async () => {
-                const note = await createNote({
-                  entityType: 'customer',
-                  entityId: customer.id,
-                  sessionId: sessionIdRef.current,
-                  content: '',
-                });
-                setCustomerNotes((prev) => [...prev, note]);
+                try {
+                  const note = await createNote({
+                    entityType: 'customer',
+                    entityId: customer.id,
+                    sessionId: sessionIdRef.current,
+                    content: '',
+                  });
+                  setCustomerNotes((prev) => [...prev, note]);
+                } catch (err) {
+                  console.error('Failed to create customer note:', err);
+                }
               }}
             >
               <Plus size={12} />

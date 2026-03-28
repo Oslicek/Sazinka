@@ -2654,8 +2654,8 @@ impl ZipImportProcessor {
                         continue;
                     }
 
-                    // Reject content over 10 000 characters
-                    if content.len() > 10_000 {
+                    // Reject content over 10 000 Unicode characters
+                    if content.chars().count() > 10_000 {
                         issues.push(ImportIssue {
                             row_number: row_num,
                             level: ImportIssueLevel::Error,
@@ -2667,6 +2667,12 @@ impl ZipImportProcessor {
                         failed += 1;
                         continue;
                     }
+
+                    // Pick correct issue code per entity type (#19)
+                    let not_found_code = match row.entity_type.as_str() {
+                        "device" => ImportIssueCode::DeviceNotFound,
+                        _ => ImportIssueCode::CustomerNotFound,
+                    };
 
                     // Resolve entity_id
                     let entity_id = match resolve_note_entity_id(
@@ -2681,7 +2687,7 @@ impl ZipImportProcessor {
                             issues.push(ImportIssue {
                                 row_number: row_num,
                                 level: ImportIssueLevel::Error,
-                                code: ImportIssueCode::CustomerNotFound,
+                                code: not_found_code,
                                 field: "entity_ref".to_string(),
                                 message: json!({
                                     "key": "import:note_entity_not_found",
@@ -2692,14 +2698,24 @@ impl ZipImportProcessor {
                             failed += 1;
                             continue;
                         }
+                        // #18: report resolution errors as ImportIssue, not just warn
                         Err(e) => {
                             warn!("Note entity resolution error row {}: {}", row_num, e);
+                            issues.push(ImportIssue {
+                                row_number: row_num,
+                                level: ImportIssueLevel::Error,
+                                code: ImportIssueCode::DbError,
+                                field: "entity_ref".to_string(),
+                                message: json!({"key": "import:note_entity_resolution_error"}).to_string(),
+                                original_value: Some(row.entity_ref.clone()),
+                            });
                             failed += 1;
                             continue;
                         }
                     };
 
                     // Idempotent: skip if exact duplicate already exists
+                    // #13: on DB error, fail the row instead of falling through to insert
                     match queries::import::find_duplicate_note(
                         &self.pool,
                         user_id,
@@ -2708,23 +2724,38 @@ impl ZipImportProcessor {
                         &content,
                     ).await {
                         Ok(Some(_)) => {
-                            // Duplicate — count as succeeded (idempotent)
                             succeeded += 1;
                             continue;
                         }
                         Ok(None) => {}
                         Err(e) => {
                             warn!("Duplicate note check error row {}: {}", row_num, e);
+                            issues.push(ImportIssue {
+                                row_number: row_num,
+                                level: ImportIssueLevel::Error,
+                                code: ImportIssueCode::DbError,
+                                field: "content".to_string(),
+                                message: json!({"key": "import:note_duplicate_check_error"}).to_string(),
+                                original_value: None,
+                            });
+                            failed += 1;
+                            continue;
                         }
                     }
 
-                    // Create the note
+                    // #20: pass visit_id from CSV row when available
+                    let visit_id = if row.entity_type == "visit" {
+                        Some(entity_id)
+                    } else {
+                        None
+                    };
+
                     match queries::note::create_note(
                         &self.pool,
                         user_id,
                         &row.entity_type,
                         entity_id,
-                        None,
+                        visit_id,
                         &content,
                     ).await {
                         Ok(_) => {

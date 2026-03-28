@@ -1480,13 +1480,15 @@ pub async fn resolve_note_entity_id(
             Ok(parse_uuid_fallback("customer_uuid:"))
         }
         "device" => {
-            // entity_ref for devices is serial/name; we need customer_id which we don't have
-            // here — so fall back to device_uuid:<uuid> or raw entity_id
             if entity_ref.starts_with("device_uuid:") {
                 return Ok(parse_uuid_fallback("device_uuid:"));
             }
-            // Try by serial number across all devices for this user
+            // Try serial number
             if let Some(id) = queries::import::find_device_by_serial_for_user(pool, user_id, entity_ref).await? {
+                return Ok(Some(id));
+            }
+            // Try device name
+            if let Some(id) = queries::import::find_device_by_name_for_user(pool, user_id, entity_ref).await? {
                 return Ok(Some(id));
             }
             Ok(entity_id_str.and_then(|s| uuid::Uuid::parse_str(s).ok()))

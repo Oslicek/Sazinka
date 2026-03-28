@@ -513,6 +513,18 @@ pub async fn find_device_by_serial_for_user(pool: &PgPool, user_id: Uuid, serial
     Ok(result)
 }
 
+/// Find device by name (case-insensitive) across all devices for a user.
+pub async fn find_device_by_name_for_user(pool: &PgPool, user_id: Uuid, device_name: &str) -> Result<Option<Uuid>> {
+    let result = sqlx::query_scalar(
+        r#"SELECT id FROM devices WHERE user_id = $1 AND device_name ILIKE $2 LIMIT 1"#,
+    )
+    .bind(user_id)
+    .bind(device_name)
+    .fetch_optional(pool)
+    .await?;
+    Ok(result)
+}
+
 /// Check whether a note with the same entity_type, entity_id and content already exists
 /// (idempotent import: duplicate detection).
 /// Returns the existing note id if found.

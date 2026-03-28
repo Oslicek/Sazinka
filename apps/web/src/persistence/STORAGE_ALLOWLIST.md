@@ -13,6 +13,7 @@ ESLint `no-direct-storage` rule.
 | `src/pages/PlanningInbox.tsx` | `planningInbox.context`, `planningInbox.selectedId` | Route timeline critical — intentionally outside UPP (direct storage for safety) |
 | `src/pages/PlanningInbox.tsx` | `planningInbox.filters`, `planningInbox.enforceDrivingBreakRule` | Legacy dual-write window — UPP is primary, direct write kept for backward compatibility |
 | `src/pages/Settings.tsx` | `planningInbox.enforceDrivingBreakRule` | Cross-page write — reads by Inbox via UPP legacy seeding; direct key kept for Settings compatibility |
+| `src/hooks/useNoteDraft.ts` | `noteDraft:{entityType}:{entityId}:{sessionId}` | Per-entity, per-session draft persistence for note editor — intentionally outside UPP (ephemeral, tab-scoped, cleared on successful save) |
 
 ## Deferred layout keys
 

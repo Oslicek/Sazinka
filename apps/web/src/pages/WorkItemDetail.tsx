@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, Link, useNavigate } from '@tanstack/react-router';
+import { useParams, Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import type { VisitWorkItem } from '@shared/workItem';
 import type { Note } from '@shared/note';
@@ -30,7 +30,7 @@ interface InlineDeviceNoteProps {
 }
 
 function InlineDeviceNote({ note, sessionId, onSaved }: InlineDeviceNoteProps) {
-  const { draft, updateDraft } = useNoteDraft({
+  const { draft, updateDraft, hasConflict, resolveKeepLocal, resolveUseServer } = useNoteDraft({
     entityType: 'device',
     entityId: note.entityId,
     sessionId,
@@ -42,7 +42,7 @@ function InlineDeviceNote({ note, sessionId, onSaved }: InlineDeviceNoteProps) {
   });
   const [hasChanges, setHasChanges] = useState(false);
 
-  useAutoSave({
+  const { saveError, retry } = useAutoSave({
     saveFn: async () => {
       const updated = await updateNote({ noteId: note.id, sessionId, content: draft });
       onSaved(updated);
@@ -53,15 +53,30 @@ function InlineDeviceNote({ note, sessionId, onSaved }: InlineDeviceNoteProps) {
   });
 
   return (
-    <NoteEditor
-      entityType="device"
-      entityId={note.entityId}
-      initialContent={draft}
-      onChange={(content) => {
-        updateDraft(content);
-        setHasChanges(content !== note.content);
-      }}
-    />
+    <div style={{ marginBottom: '8px' }}>
+      {hasConflict && (
+        <div data-testid="conflict-prompt" style={{ display: 'flex', gap: '8px', marginBottom: '6px', fontSize: '13px', color: 'var(--warning, #f57c00)' }}>
+          <span>Unsaved local draft differs from server</span>
+          <button onClick={() => resolveKeepLocal()}>Keep local</button>
+          <button onClick={resolveUseServer}>Use server</button>
+        </div>
+      )}
+      {saveError && (
+        <div data-testid="save-error" style={{ display: 'flex', gap: '8px', marginBottom: '6px', fontSize: '13px', color: 'var(--error, #d32f2f)' }}>
+          <span>Save failed</span>
+          <button onClick={retry} style={{ textDecoration: 'underline', cursor: 'pointer', border: 'none', background: 'none', color: 'inherit', padding: 0, font: 'inherit' }}>Retry</button>
+        </div>
+      )}
+      <NoteEditor
+        entityType="device"
+        entityId={note.entityId}
+        initialContent={draft}
+        onChange={(content) => {
+          updateDraft(content);
+          setHasChanges(content !== note.content);
+        }}
+      />
+    </div>
   );
 }
 
@@ -79,7 +94,6 @@ import styles from './WorkItemDetail.module.css';
 
 export function WorkItemDetail() {
   const { workItemId } = useParams({ strict: false }) as { workItemId: string };
-  const navigate = useNavigate();
   const { t } = useTranslation('pages');
   const isConnected = useNatsStore((s) => s.isConnected);
 
@@ -132,11 +146,18 @@ export function WorkItemDetail() {
   }, [loadWorkItem]);
 
   useEffect(() => {
+    let cancelled = false;
     if (workItem?.deviceId) {
       listNotes('device', workItem.deviceId)
-        .then(setDeviceNotes)
-        .catch((err) => console.error('Failed to load device notes:', err));
+        .then((notes) => { if (!cancelled) setDeviceNotes(notes); })
+        .catch((err) => {
+          console.error('Failed to load device notes:', err);
+          if (!cancelled) setDeviceNotes([]);
+        });
+    } else {
+      setDeviceNotes([]);
     }
+    return () => { cancelled = true; };
   }, [workItem?.deviceId]);
 
   // Complete handler
@@ -329,13 +350,18 @@ export function WorkItemDetail() {
                   className={styles.addNoteBtn}
                   data-testid="add-device-note-btn"
                   onClick={async () => {
-                    const note = await createNote({
-                      entityType: 'device',
-                      entityId: workItem.deviceId!,
-                      sessionId: sessionIdRef.current,
-                      content: '',
-                    });
-                    setDeviceNotes((prev) => [...prev, note]);
+                    try {
+                      const note = await createNote({
+                        entityType: 'device',
+                        entityId: workItem.deviceId!,
+                        visitId: workItem.visitId,
+                        sessionId: sessionIdRef.current,
+                        content: '',
+                      });
+                      setDeviceNotes((prev) => [...prev, note]);
+                    } catch (err) {
+                      console.error('Failed to create device note:', err);
+                    }
                   }}
                 >
                   <Plus size={14} /> {t('workitem_add_note')}

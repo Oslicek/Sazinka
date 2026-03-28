@@ -1,6 +1,6 @@
 # Project Context
 
-> **Last Updated:** 2026-03-26 (v0.24.0 - Excel-style column filters on Customers grid)
+> **Last Updated:** 2026-03-28 (v0.25.0 - Unified Notes System: journal-style notes for customer/device/visit with Tiptap editor, autosave, audit trail, import/export)
 
 ## Overview
 
@@ -197,6 +197,13 @@ sazinka.scoring.rule_set.set_default    # Set rule set as company default (Phase
 sazinka.inbox_state.get                 # Get persisted dispatcher inbox state
 sazinka.inbox_state.save                # Save dispatcher inbox state
 
+# Unified Notes (journal-style, polymorphic entity)
+sazinka.note.create             # Create note for customer/device/visit
+sazinka.note.update             # Update note content (with audit trail)
+sazinka.note.list               # List active notes for an entity
+sazinka.note.audit              # Fetch session-level audit trail for a note
+sazinka.note.delete             # Soft-delete a note
+
 # Customer Lifecycle
 sazinka.customer.abandon                # Mark customer as abandoned
 sazinka.customer.unabandon              # Restore abandoned customer
@@ -237,11 +244,14 @@ sazinka/
 │       │   │   ├── map/            # MapLibre components
 │       │   │   ├── calendar/       # Calendar components
 │       │   │   ├── customers/      # Customer list/detail
+│       │   │   ├── notes/          # NoteEditor (Tiptap), NoteHistory
 │       │   │   ├── timeline/       # Customer timeline (comms + visits)
 │       │   │   └── ui/             # Generic UI components
 │       │   ├── hooks/
 │       │   │   ├── useNats.ts      # NATS connection hook
 │       │   │   ├── useJobStatus.ts # Job status subscription hook
+│       │   │   ├── useNoteDraft.ts # LocalStorage draft + conflict detection
+│       │   │   ├── useAutoSave.ts  # Debounced autosave with retry
 │       │   │   └── ...
 │       │   ├── stores/
 │       │   │   ├── authStore.ts
@@ -249,6 +259,7 @@ sazinka/
 │       │   │   └── uiStore.ts
 │       │   ├── services/
 │       │   │   ├── nats.ts         # NATS WebSocket client
+│       │   │   ├── noteService.ts  # Unified notes CRUD (NATS client)
 │       │   │   ├── inboxAdapter.ts # InboxItem → CallQueueItem bridge
 │       │   │   └── nominatim.ts    # Geocoding service
 │       │   ├── routes/             # TanStack Router pages
@@ -276,6 +287,7 @@ sazinka/
 │   │   │   ├── auth.rs
 │   │   │   ├── customer.rs
 │   │   │   ├── device.rs
+│   │   │   ├── note.rs             # Unified notes NATS handlers
 │   │   │   ├── revision.rs
 │   │   │   └── route.rs
 │   │   ├── services/
@@ -307,6 +319,7 @@ sazinka/
 │       ├── src/
 │       │   ├── customer.ts
 │       │   ├── device.ts
+│       │   ├── note.ts             # Unified note types (NoteEntityType, Note, etc.)
 │       │   ├── revision.ts
 │       │   ├── route.ts
 │       │   ├── messages.ts         # NATS message types
@@ -372,7 +385,7 @@ pub struct Customer {
     pub phone: Option<String>,
     pub address: Address,
     pub coordinates: Option<Coordinates>,
-    pub notes: Option<String>,
+    pub notes: Option<String>,               // LEGACY — migrated to `notes` table
     pub preferred_time_windows: Vec<TimeWindowPreference>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -403,7 +416,7 @@ pub struct Device {
     pub serial_number: Option<String>,
     pub installation_date: Option<NaiveDate>,
     pub revision_interval_months: i32,
-    pub notes: Option<String>,
+    pub notes: Option<String>,               // LEGACY — migrated to `notes` table
     pub created_at: DateTime<Utc>,
 }
 
@@ -432,7 +445,7 @@ pub struct Revision {
     pub completed_at: Option<DateTime<Utc>>,
     pub duration_minutes: Option<i32>,
     pub result: Option<RevisionResult>,
-    pub findings: Option<String>,
+    pub findings: Option<String>,            // LEGACY — migrated to `notes` table
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -485,6 +498,41 @@ pub struct RouteStop {
 }
 ```
 
+### Note (Unified Notes System)
+
+```rust
+pub struct Note {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub entity_type: String,        // "customer" | "device" | "visit"
+    pub entity_id: Uuid,            // Polymorphic FK (no DB FK — enforced in handlers)
+    pub visit_id: Option<Uuid>,     // Optional link to visit context
+    pub content: String,            // Raw markdown, max 10,000 Unicode chars
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub deleted_at: Option<DateTime<Utc>>,  // Soft delete
+}
+
+pub struct NoteHistoryEntry {
+    pub id: Uuid,
+    pub note_id: Uuid,
+    pub session_id: Uuid,           // Browser tab session
+    pub edited_by_user_id: Uuid,
+    pub content: String,
+    pub first_edited_at: DateTime<Utc>,
+    pub last_edited_at: DateTime<Utc>,
+    pub change_count: i32,          // Edits within this session
+}
+
+pub enum NoteEntityType {
+    Customer,
+    Device,
+    Visit,
+}
+```
+
+**Architecture:** Journal-style (multiple entries per entity). All reads from `notes` table directly (no denormalized cache). Compact projection for UI: latest note content projected on demand. GDPR: content redacted to `[GDPR-REDACTED]`.
+
 ## Key Components
 
 | Component | Location | Purpose |
@@ -511,9 +559,15 @@ pub struct RouteStop {
 | `MockGeocoder` | worker/src/services/geocoding.rs | Deterministic fake geocoder for tests |
 | `RateLimiter` | worker/src/services/geocoding.rs | Rate limiting for API calls |
 | `CircuitBreaker` | worker/src/services/geocoding.rs | Failure protection |
+| `NoteHandler` | worker/src/handlers/note.rs | Unified notes CRUD (create/update/list/audit/delete) |
 | `AdminHandler` | worker/src/handlers/admin.rs | DB status, reset, Valhalla health |
 | `RouteDetailTimeline` | apps/web/src/components/planner/RouteDetailTimeline.tsx | Shared vertical timeline (Inbox + Planner) |
 | `RouteMapPanel` | apps/web/src/components/planner/RouteMapPanel.tsx | Shared map with route visualization (Inbox + Planner) |
+| `NoteEditor` | apps/web/src/components/notes/NoteEditor.tsx | Tiptap-based rich text editor for notes (any entity type) |
+| `NoteHistory` | apps/web/src/components/notes/NoteHistory.tsx | Audit trail display for note edit history |
+| `noteService` | apps/web/src/services/noteService.ts | Frontend NATS client for note CRUD |
+| `useNoteDraft` | apps/web/src/hooks/useNoteDraft.ts | LocalStorage draft management with conflict detection |
+| `useAutoSave` | apps/web/src/hooks/useAutoSave.ts | Debounced autosave with retry + exponential backoff |
 
 ## Route Optimization Algorithm
 

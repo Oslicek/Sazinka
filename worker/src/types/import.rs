@@ -613,12 +613,11 @@ impl ZipImportFileType {
         }
     }
     
-    /// Try to detect file type from filename
+    /// Try to detect file type from filename.
+    /// Entity types are checked first so `customer_notes.csv` maps to Customers, not Notes.
     pub fn from_filename(filename: &str) -> Option<Self> {
         let lower = filename.to_lowercase();
-        if lower.contains("notes") || lower.contains("poznamk") {
-            Some(ZipImportFileType::Notes)
-        } else if lower.contains("customer") || lower.contains("zakazn") {
+        if lower.contains("customer") || lower.contains("zakazn") {
             Some(ZipImportFileType::Customers)
         } else if lower.contains("device") || lower.contains("zariz") {
             Some(ZipImportFileType::Devices)
@@ -628,6 +627,8 @@ impl ZipImportFileType {
             Some(ZipImportFileType::Communications)
         } else if lower.contains("work_log") || lower.contains("worklog") || lower.contains("pracovni") {
             Some(ZipImportFileType::WorkLog)
+        } else if lower.contains("notes") || lower.contains("poznamk") {
+            Some(ZipImportFileType::Notes)
         } else {
             None
         }
