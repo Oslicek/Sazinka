@@ -374,12 +374,12 @@ Example (no search/geocode/type, one street checklist):
 
 ## BUG-13: Inbox — deep-linked (focused) customer cannot be selected via checkbox
 
-**Status:** Open  
+**Status:** Fixed  
 **Severity:** Medium  
 **Page:** Planning Inbox (`/inbox`)
 
 **Steps to reproduce:**
-1. Open any customer detail page (`/customers/<id>`).
+1. Open a customer detail page for a customer with failed geocode (`/customers/<id>`).
 2. Click the "Show in Inbox" (Zobrazit ve frontě) CTA.
 3. The Inbox opens with the focused customer pinned at position 0.
 4. Click the checkbox on the focused customer's row.
@@ -387,9 +387,13 @@ Example (no search/geocode/type, one street checklist):
 **Expected:** The checkbox toggles and the customer is added to the selection (blue highlight, selection bar appears).
 **Actual:** Nothing happens — the checkbox does not respond to clicks. Other (non-focused) candidates can be selected normally.
 
-**Likely cause:** The focused customer is pinned to index 0 by client-side re-pin logic in `InboxListPanel.filteredSorted` `useMemo`. The `VirtualizedInboxList` selection handler may be matching candidates by index or by an ID derived from the original (pre-pin) data array, causing a mismatch for the re-pinned row. Alternatively, the `CandidateRowData.id` for the pinned row (which uses `customerId`) may not match the ID expected by the `selectedIds` / `onSelectionChange` callback.
+**Root cause:** `mapCallQueueItemToCandidate` sets `disableCheckbox = !hasValidAddress(item)`. When a customer has failed geocode (`customerGeocodeStatus !== 'success'` or null `lat`/`lng`), `disableCheckbox` is `true`. The client-side pin in `InboxListPanel.filteredSorted` moved the focused customer to index 0 but preserved the `disableCheckbox: true` flag, causing the HTML `<input disabled>` to ignore clicks.
 
-**Investigation hints:**
-- Check whether `onSelectionChange` receives the correct `customerId` when the pinned row's checkbox is clicked
-- Verify that the `id` field in `CandidateRowData` (mapped from `CallQueueItem.customerId`) matches what `VirtualizedInboxList` passes to the selection callback
-- Check if the issue also occurs for non-deep-linked candidates (i.e., is it specific to the pinned row or a general checkbox regression)
+**Fix:** After the pin logic in `filteredSorted` useMemo, override `disableCheckbox = false` on the pinned row. The user explicitly navigated to this customer via "Show in Inbox", so the checkbox should be interactive regardless of geocode status. The route optimizer already handles missing coordinates at submission time.
+
+**Changed file:** `apps/web/src/panels/InboxListPanel.tsx` — 3-line addition in `filteredSorted` useMemo after the pin block.
+
+**Regression tests:** `apps/web/src/panels/__tests__/InboxListPanel.bug13.test.tsx`
+- `B13-1`: pinned customer with failed geocode → `disableCheckbox=false`, checkbox enabled
+- `B13-2`: pinned customer with valid geocode → `disableCheckbox=false`, checkbox enabled
+- `B13-3`: non-pinned customer with failed geocode → `disableCheckbox=true` (existing behavior preserved)
