@@ -9,6 +9,13 @@ import type { Note } from '@shared/note';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => vi.fn(),
+  Link: ({ to, params, children, onClick, ...rest }: { to: string; params?: Record<string, string>; children: React.ReactNode; onClick?: () => void; [key: string]: unknown }) => (
+    <a href={to} data-visit-id={params?.visitId} onClick={onClick} {...rest}>{children}</a>
+  ),
+}));
+
 vi.mock('../../../services/visitService', () => ({
   updateVisit: vi.fn(),
   completeVisit: vi.fn(),

@@ -1,3 +1,19 @@
+.viewEditLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--color-primary, #3b82f6);
+  text-decoration: none;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm, 4px);
+  transition: background-color 0.15s;
+}
+
+.viewEditLink:hover {
+  background-color: rgba(59, 130, 246, 0.08);
+}
+
 .noteExcerpt {
   font-size: 13px;
   color: var(--text-secondary, #555);

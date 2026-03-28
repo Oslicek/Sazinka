@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from '@tanstack/react-router';
 import type { Visit, UpdateVisitRequest, CompleteVisitRequest } from '@shared/visit';
 import type { Note } from '@shared/note';
 import { 
@@ -360,6 +361,15 @@ export function VisitDetailDialog({
         </div>
 
         <div className={styles.footer}>
+          <Link
+            to="/visits/$visitId"
+            params={{ visitId: visit.id }}
+            data-testid="visit-dialog-view-edit-link"
+            className={styles.viewEditLink}
+            onClick={onClose}
+          >
+            {t('visit_dialog_view_edit', 'View / Edit')}
+          </Link>
           <button
             type="button"
             className={styles.cancelButton}
