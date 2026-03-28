@@ -2563,3 +2563,1133 @@ Work-item `resultNotes`/`findings` are already plain-text, no stripping needed.
 | `CompleteVisitDialog` update | CD1–CD5 | 5 | ≥ 95% |
 | Rename verification | R1–R6 | 6 | N/A (integration) |
 | **Total** | | **88** | **≥ 95% overall** |
+
+---
+
+## Visit Field Notes — UI Wiring Plan (TDD)
+
+### Context
+
+Phases 1–7 built all the building blocks — `VisitFieldNotes` (Tiptap editor),
+`useFieldNotesDraft` (offline draft + conflict resolution), `NotesHistory`
+(audit trail UI), `saveFieldNotes` / `fetchNotesHistory` (service layer) — but
+none of them are imported or rendered in any actual page or dialog. This plan
+wires them into the four UI surfaces where visit notes are read, written, or
+edited.
+
+### Surfaces to wire
+
+| # | Surface | File | Current state | Target state |
+|---|---------|------|---------------|--------------|
+| S1 | **VisitDetail page** | `pages/VisitDetail.tsx` | Plain text `{visit.fieldNotes}` (read-only) + `<textarea>` in complete dialog | Rich `<VisitFieldNotes>` for viewing + editing, `<NotesHistory>`, draft hook, auto-save |
+| S2 | **VisitDetailDialog** | `components/timeline/VisitDetailDialog.tsx` | `<textarea>` in complete form, plain text for completed | `<VisitFieldNotes>` in complete form, editable for all statuses (per status matrix), flush-before-complete |
+| S3 | **CustomerTimeline** | `components/timeline/CustomerTimeline.tsx` | `{visit.fieldNotes}` plain-text excerpt | `stripMarkdown(visit.fieldNotes)` — compact plain-text excerpt (no editor) |
+| S4 | **CustomerDetail page** | `pages/CustomerDetail.tsx` | `full.visit.fieldNotes` aggregated into notes string | `stripMarkdown(full.visit.fieldNotes)` — strip markdown before aggregation |
+
+### Visit status matrix (explicit buckets)
+
+Implementation rule is locked from prior decisions: **notes are editable in all statuses** for users who can access the visit. Do not leave any status implicit.
+
+| Status | Notes UI on VisitDetail | Notes UI on VisitDetailDialog | Complete form | Rationale |
+|--------|-------------------------|-------------------------------|---------------|-----------|
+| `planned` | Editable | Editable (via complete form) | Available | Default field-work flow |
+| `in_progress` | Editable | Editable (via complete form) | Available | Same |
+| `completed` | Editable | Editable | Hidden | Post-completion corrections allowed; audit trail preserves history |
+| `cancelled` | Editable | Editable | Hidden | Notes may still carry context, cancellation reasons, and follow-up handover |
+| `rescheduled` | Editable | Editable | Hidden | Keep context while workflow continues in a new slot |
+
+Add tests that lock this matrix (W31–W32, VD13–VD14).
+
+### Suggested improvements incorporated
+
+- Convert status behavior from ambiguous to explicit, test-locked policy (editable in all statuses).
+- Lock autosave behavior to concrete timing and retry semantics (below), so tests are deterministic.
+- Replace either/or stale-refresh behavior with a single conflict-prompt rule (no silent overwrite).
+- Keep both test-count targets and measurable coverage thresholds (line/branch) to avoid false confidence.
+
+### Dual editors & `sessionId` (VisitDetail)
+
+`VisitDetail` will host **two** rich-note surfaces: the main “Field notes” card **and** the complete-visit dialog. Without rules, drafts and `sessionId` can diverge.
+
+**Decisions (document in code + tests):**
+
+1. **Single `sessionId` per page load** for both surfaces (same browser tab session as backend audit expects).
+2. **Single source of truth for markdown:** lift `fieldNotes` string state (or draft hook output) so the complete dialog does **not** maintain a separate `useState` that can disagree with the main editor. Alternatively, unmount one editor when the other mounts — if so, document and test.
+3. **Opening “Complete”** must pre-fill from the same state as the main editor (including unsynced draft), unless product explicitly wants “completion notes separate” (not recommended).
+
+Tests: W33–W37 (W33–W36 dual editor + shared state; W37 stale server / refetch).
+
+### Autosave policy (locked)
+
+- **Debounce interval:** `1500 ms` before server autosave.
+- **Draft persistence:** local draft writes happen on every change via `useFieldNotesDraft`.
+- **Failure strategy C:** non-blocking warning + exponential backoff retries + manual `Retry now`.
+  - Recommended backoff sequence for tests: `1500ms`, `3000ms`, `6000ms`, `12000ms`, cap at `30000ms`.
+  - Success clears warning and resets retry schedule.
+- **Completing visit:** keep existing locked rule: flush draft to server before completion.
+
+### Stale server content & refresh
+
+If `loadVisit()` runs again while the user has a local draft (e.g. background refetch, reconnect), `serverContent` in `useFieldNotesDraft` can change.
+
+- **Locked behavior:** if server content differs from unsynced local draft, show conflict prompt (`Keep local`, `Use server`, `Compare`), never overwrite local silently.
+- After **successful `saveFieldNotes`**, update in-memory `visit.fieldNotes` from the returned `Visit` payload so UI matches server normalization (trimming, etc.) — test **INT13**.
+
+### Storage & environment fallbacks
+
+| Concern | Expected behavior | Test |
+|---------|-------------------|------|
+| `localStorage` quota exceeded | Draft write fails silently (per hook); UI still usable; optional toast — at minimum no crash | **INT15** |
+| `crypto.randomUUID` unavailable | Fallback UUID generator; same format as INT1 | **INT16** |
+| Storage disabled / private mode | Same as quota — no throw from page | **INT17** |
+
+### Coverage measurement (not only test count)
+
+“High test count” ≠ 100% line coverage. After GREEN, run **Vitest coverage** on touched wiring files (e.g. `VisitDetail.tsx`, `VisitDetailDialog.tsx`, `CustomerTimeline.tsx`, `CustomerDetail.tsx`) and target **≥ 90% lines** on those files (branches **≥ 85%** where practical). CI or `package.json` script optional; document the command in REFACTOR.
+
+### Out of scope (optional follow-up)
+
+- **i18n:** new conflict / flush / history strings — smoke only unless keys are added (no separate test file required for wiring).
+- **a11y:** focus trap, toolbar roving tabindex — not part of this wiring plan.
+
+### Open questions — resolved
+
+All originally-open questions turned out to be answered by existing locked decisions and test coverage. Kept here for traceability.
+
+| ID | Topic | Resolution | Covered by |
+|----|-------|------------|------------|
+| OQ1 | Complete click while autosave is already in-flight | INT14 mandates a concurrency gate (mutex/promise queue) that serialises saves. W19–W22 mandate flush-before-complete. Combined: if autosave is in-flight when user clicks Complete, the gate holds flushDraft until the in-flight save resolves, then flush proceeds, then complete fires. No additional test needed. | INT14, W19–W22 |
+| OQ2 | Backoff tuning/jitter | Autosave policy (locked) already specifies the exact deterministic sequence: `1500ms, 3000ms, 6000ms, 12000ms, cap at 30000ms`, no jitter. INT20 tests this. | Autosave policy section, INT20 |
+| OQ3 | Retry persistence across reload | Decision 13 defines session as "new on open/reload." Retry state lives in React `useState` (in-memory), which naturally resets on page load. INT23 covers unmount cleanup (reload is a full unmount + fresh mount with new sessionId). | Decision 13, INT23 |
+
+---
+
+### Phase W1: VisitDetail page — editable rich editor + history + draft
+
+The main Visit Detail page is the primary surface for reading, writing, and
+editing field notes.
+
+#### W1a — RED
+
+**Test file:** `apps/web/src/pages/__tests__/VisitDetail.fieldNotes.test.tsx`
+
+| # | Test name | What it verifies |
+|---|-----------|-----------------|
+| W1 | `renders_rich_editor_for_planned_visit` | Planned visit → `<VisitFieldNotes>` rendered with `readOnly=false`, toolbar visible |
+| W2 | `renders_rich_editor_for_in_progress_visit` | In-progress visit → editor is editable |
+| W3 | `renders_editable_editor_for_completed_visit` | Completed visit → `<VisitFieldNotes>` editable, toolbar visible |
+| W4 | `renders_editable_editor_for_cancelled_visit` | Cancelled visit → `<VisitFieldNotes>` editable, toolbar visible |
+| W5 | `editor_populated_with_existing_notes` | Visit with `fieldNotes: '**bold** text'` → editor contains 'bold text' |
+| W6 | `editor_empty_when_no_notes` | Visit with `fieldNotes: null` → editor rendered but empty |
+| W7 | `save_button_calls_saveFieldNotes` | Click toolbar Save → `saveFieldNotes()` called with correct `visitId`, `sessionId`, `fieldNotes` |
+| W8 | `save_error_shows_error_banner` | `saveFieldNotes` rejects → error message displayed |
+| W9 | `save_success_clears_error` | After error, next save succeeds → error banner removed |
+| W10 | `draft_hook_wired_onChange_persists_to_localStorage` | Type in editor → `localStorage` key `fieldNotes:{visitId}:{sessionId}` written |
+| W11 | `draft_restored_on_remount` | `localStorage` has draft → editor pre-filled with draft, not server value |
+| W12 | `conflict_banner_shown_when_draft_differs_from_server` | Draft in `localStorage` differs from `visit.fieldNotes` → conflict UI shown with "Keep local" / "Use server" buttons |
+| W13 | `conflict_keep_local_calls_save_and_hides_banner` | Click "Keep local" → `saveFieldNotes` called, conflict banner hidden |
+| W14 | `conflict_use_server_discards_draft` | Click "Use server" → `localStorage` cleared, editor content matches server |
+| W15 | `history_section_renders_after_fetch` | `fetchNotesHistory` returns 3 entries → `<NotesHistory>` renders 3 items |
+| W16 | `history_section_empty_state` | `fetchNotesHistory` returns 0 entries → "No edit history" shown |
+| W17 | `history_fetch_error_shows_graceful_fallback` | `fetchNotesHistory` rejects → history section hidden, no crash |
+| W18 | `complete_dialog_textarea_replaced_by_rich_editor` | Open complete dialog → `<VisitFieldNotes>` rendered instead of `<textarea>` |
+| W19 | `complete_dialog_flushes_draft_before_completing` | Unsaved draft exists → completing calls `flushDraft` before `completeVisit` |
+| W20 | `complete_dialog_flush_failure_shows_warning` | `flushDraft` returns false → warning shown, complete not called yet |
+| W21 | `complete_dialog_flush_failure_retry_succeeds` | Warning shown → click retry → flush succeeds → complete proceeds |
+| W22 | `complete_dialog_flush_failure_discard_and_complete` | Warning shown → click "Discard & Complete" → `completeVisit` called without draft |
+| W23 | `session_id_stable_across_rerenders` | Multiple renders → same `sessionId` used (not regenerated) |
+| W24 | `session_id_changes_on_fresh_page_load` | Component unmounts/remounts from scratch → new `sessionId` generated |
+| W25 | `editor_not_rendered_during_loading_state` | While `getVisit` is pending → no editor, spinner shown |
+| W26 | `editor_not_rendered_on_error_state` | `getVisit` rejects → no editor, error state shown |
+| W27 | `char_count_visible_for_planned_visit` | Planned visit → character count footer visible |
+| W28 | `char_count_visible_for_completed_visit` | Completed visit → character count footer visible |
+| W29 | `disconnected_state_disables_save` | NATS disconnected → save button disabled or absent |
+| W30 | `history_refetched_after_save` | After successful save → `fetchNotesHistory` called again to refresh |
+| W31 | `rescheduled_visit_matches_status_matrix` | `status: 'rescheduled'` → notes editor is editable; complete form hidden |
+| W32 | `cancelled_visit_matches_status_matrix` | `status: 'cancelled'` → notes editor is editable; complete form hidden |
+| W33 | `main_and_complete_dialog_share_sessionId` | Main card and complete dialog both use the same `sessionId` prop/value for `useFieldNotesDraft` / `saveFieldNotes` |
+| W34 | `complete_dialog_prefills_from_shared_fieldNotes_state` | User edits main editor → opens complete dialog → complete editor shows same markdown (no stale fork) |
+| W35 | `no_duplicate_conflicting_fieldNotes_state` | Completing visit sends `fieldNotes` consistent with shared state (not a second hidden `useState` that diverged) |
+| W36 | `conflict_ux_when_server_empty_local_nonempty` | Follows locked conflict behavior: prompt with `Keep local` / `Use server` / `Compare`, no silent overwrite |
+| W37 | `stale_server_after_refetch_does_not_silently_wipe_draft` | Simulated second `loadVisit` with new `fieldNotes` while draft exists → user sees conflict or merge per chosen strategy (no silent data loss) |
+| W38 | `autosave_uses_1500ms_debounce` | User types notes → `saveFieldNotes` fires after exactly `1500ms` idle (fake timers) |
+| W39 | `autosave_failure_shows_warning_and_starts_backoff` | Save reject → non-blocking warning shown + retry schedule starts |
+| W40 | `manual_retry_triggers_immediate_save` | Click `Retry now` bypasses waiting timer and calls `saveFieldNotes` immediately |
+| W41 | `autosave_success_clears_warning_and_resets_backoff` | Successful retry/save clears warning state and resets retry interval to first step |
+
+#### W1b — GREEN
+
+- Import `VisitFieldNotes`, `NotesHistory`, `useFieldNotesDraft`, `saveFieldNotes`, `fetchNotesHistory` into `VisitDetail.tsx`.
+- Generate a stable `sessionId` (UUID v4) on mount via `useRef` + `useMemo`.
+- Add a "Field Notes" card section between the basic-info card and the timeline card.
+  - For all statuses (`planned`, `in_progress`, `completed`, `cancelled`, `rescheduled`): render editable `<VisitFieldNotes>` wired to `useFieldNotesDraft` for `onChange`, `onSave`.
+- Show conflict banner above editor when `hasConflict` is true, with "Keep local" / "Use server" buttons wired to `resolveKeepLocal` / `resolveUseServer`.
+- Add a collapsible "Edit history" section below the editor with `<NotesHistory>` populated from `fetchNotesHistory`.
+- Replace the `<textarea>` in the complete dialog with `<VisitFieldNotes>`.
+- Wire flush-before-complete logic: on "Complete" click → `flushDraft()` → if true, proceed with `completeVisit`; if false, show warning dialog with Retry / Discard & Complete / Cancel.
+- On save success, re-fetch notes history.
+- Implement autosave with `1500ms` debounce.
+- Implement Strategy C on autosave failures: non-blocking warning + exponential backoff retries + manual `Retry now`.
+
+#### W1c — REFACTOR
+
+- All 41 W-tests green.
+- Extract `useSessionId` helper if used in more than one place.
+- Remove the `completeNotes` state variable (replaced by editor content).
+- Clean up unused `<textarea>` styles.
+
+---
+
+### Phase W2: VisitDetailDialog — rich editor in timeline dialog
+
+The dialog opened from `CustomerTimeline` when clicking a visit.
+
+#### W2a — RED
+
+**Test file:** `apps/web/src/components/timeline/__tests__/VisitDetailDialog.fieldNotes.test.tsx`
+
+| # | Test name | What it verifies |
+|---|-----------|-----------------|
+| VD1 | `completed_visit_shows_editable_rich_notes` | Completed visit with `fieldNotes: '**bold**'` → editable rich editor rendered |
+| VD2 | `completed_visit_no_notes_shows_empty_editor` | Completed visit with `fieldNotes: null` → empty editable editor shown |
+| VD3 | `complete_form_shows_rich_editor` | Click "Mark complete" → `<VisitFieldNotes>` shown instead of `<textarea>` |
+| VD4 | `complete_form_editor_starts_empty` | Editor starts with empty content when visit has no prior notes |
+| VD5 | `complete_form_editor_prefilled` | Visit has existing `fieldNotes` → editor pre-filled |
+| VD6 | `complete_sends_fieldNotes_from_editor` | Type in editor + confirm → `completeVisit` called with markdown from editor |
+| VD7 | `complete_sends_undefined_fieldNotes_when_empty` | Editor left empty → `completeVisit` called with `fieldNotes: undefined` |
+| VD8 | `editor_disabled_while_submitting` | During submission → editor is `readOnly` |
+| VD9 | `cancel_complete_hides_editor` | Click cancel in complete form → editor hidden, "Mark complete" button visible again |
+| VD10 | `editor_shown_for_cancelled_visit_no_complete_form` | Cancelled visit → editable notes editor present, complete form hidden |
+| VD11 | `planned_visit_shows_no_notes_section_until_complete` | Planned visit before clicking "Mark complete" → no editor in the non-complete body |
+| VD12 | `dialog_close_does_not_crash_with_active_editor` | Editor is open → click overlay close → dialog closes cleanly, no console errors |
+| VD13 | `rescheduled_visit_matches_status_matrix` | `status: 'rescheduled'` → editable notes editor present, complete form hidden |
+| VD14 | `cancelled_visit_matches_status_matrix` | `status: 'cancelled'` → editable notes editor present, complete form hidden |
+
+#### W2b — GREEN
+
+- Replace the `<textarea>` at line ~257 of `VisitDetailDialog.tsx` with `<VisitFieldNotes>`.
+- Replace plain `{visit.fieldNotes}` paragraph with `<VisitFieldNotes initialContent={visit.fieldNotes ?? ''} visitId={visit.id}>` (editable for all statuses with access).
+- Wire the editor's `onChange` callback to update `completeData.fieldNotes`.
+- Set `readOnly` on the editor while `isSubmitting` is true.
+- Remove the `<textarea>` element entirely.
+
+#### W2c — REFACTOR
+
+- All 14 VD-tests green.
+- Remove unused `textarea` CSS rules from `VisitDetailDialog.module.css`.
+- Verify no `<textarea>` remains in the component.
+
+---
+
+### Phase W3: CustomerTimeline — markdown-stripped excerpt
+
+A compact surface — no editor, just plain-text excerpt with markdown stripped.
+
+#### W3a — RED
+
+**Test file:** `apps/web/src/components/timeline/__tests__/CustomerTimeline.fieldNotes.test.tsx`
+
+| # | Test name | What it verifies |
+|---|-----------|-----------------|
+| CT1 | `visit_with_markdown_notes_shows_plain_text` | Visit with `fieldNotes: '**bold** and *italic*'` → timeline card text reads "bold and italic" |
+| CT2 | `visit_with_null_notes_shows_no_text` | Visit with `fieldNotes: null` → no notes paragraph rendered |
+| CT3 | `visit_with_empty_string_notes_shows_no_text` | Visit with `fieldNotes: ''` → no notes paragraph |
+| CT4 | `long_notes_truncated_in_timeline` | Visit with 500-char fieldNotes → text clamped (CSS or JS truncation) |
+| CT5 | `html_entities_in_notes_not_rendered_as_html` | `fieldNotes: '<script>alert(1)</script>'` → rendered as escaped text, no XSS |
+| CT6 | `multiline_markdown_collapsed_to_single_line` | `fieldNotes: '# Heading\n\nParagraph'` → single-line "Heading Paragraph" |
+| CT7 | `whitespace_only_notes_hidden` | `fieldNotes: '   \n\t'` → after strip + trim, no notes paragraph (or single space — document expected) |
+
+#### W3b — GREEN
+
+- Import `stripMarkdown` into `CustomerTimeline.tsx`.
+- Replace `{visit.fieldNotes}` (line ~306) with `{stripMarkdown(visit.fieldNotes ?? '')}`.
+- Guard rendering with `visit.fieldNotes?.trim()` to avoid empty paragraphs.
+
+#### W3c — REFACTOR
+
+- All 7 CT-tests green.
+- Verify no raw `visit.fieldNotes` rendering remains in the component.
+
+---
+
+### Phase W4: CustomerDetail page — markdown-stripped aggregation
+
+Another compact surface — aggregates visit + work-item notes.
+
+#### W4a — RED
+
+**Test file:** `apps/web/src/pages/__tests__/CustomerDetail.fieldNotes.test.tsx`
+
+| # | Test name | What it verifies |
+|---|-----------|-----------------|
+| CDN1 | `aggregated_notes_strips_markdown_from_fieldNotes` | Visit with `fieldNotes: '**Important**'` → aggregated notes contain "Important" not "**Important**" |
+| CDN2 | `null_fieldNotes_excluded_from_aggregation` | Visit with `fieldNotes: null` → only work-item notes appear |
+| CDN3 | `empty_fieldNotes_excluded_from_aggregation` | Visit with `fieldNotes: ''` → not pushed to `allNotes` |
+| CDN4 | `work_item_resultNotes_not_stripped` | Work item `resultNotes: 'plain text'` → appears verbatim (no markdown stripping needed for plain text) |
+| CDN5 | `mixed_visit_and_work_item_notes` | Visit has fieldNotes + 2 work items with notes → all three appear in order |
+| CDN6 | `fallback_path_strips_markdown_too` | `getVisit` fails, fallback to `visit.fieldNotes` → stripped markdown |
+
+#### W4b — GREEN
+
+- Import `stripMarkdown` into `CustomerDetail.tsx`.
+- Wrap `full.visit.fieldNotes` with `stripMarkdown()` before pushing to `allNotes` (line ~99).
+- In the catch fallback (line ~107), wrap `visit.fieldNotes` with `stripMarkdown()`.
+- Guard both with `?.trim()` to skip empty strings.
+
+#### W4c — REFACTOR
+
+- All 6 CDN-tests green.
+- Verify no raw markdown `fieldNotes` is pushed to `allNotes`.
+
+---
+
+### Phase W5: Integration smoke tests + edge cases
+
+Cross-cutting concerns that span multiple surfaces.
+
+#### W5a — RED
+
+**Test file:** `apps/web/src/__tests__/fieldNotesIntegration.test.ts`
+
+| # | Test name | What it verifies |
+|---|-----------|-----------------|
+| INT1 | `sessionId_uuid_format` | Generated `sessionId` matches UUID v4 regex |
+| INT2 | `localStorage_key_format_matches_hook` | Key format `fieldNotes:{visitId}:{sessionId}` consistent between page and hook |
+| INT3 | `saveFieldNotes_payload_shape` | Payload sent to NATS matches `UpdateFieldNotesRequest` interface exactly |
+| INT4 | `fetchNotesHistory_payload_shape` | Payload sent to NATS matches `ListNotesHistoryRequest` interface exactly |
+| INT5 | `concurrent_saves_serialized` | Two rapid saves → second waits for first to complete (no race condition) |
+| INT6 | `very_long_content_truncated_at_10000` | Typing past 10,000 chars → character count extension blocks further input |
+| INT7 | `empty_content_save_sends_empty_string` | Saving with empty editor → `fieldNotes: ''` sent (not `null` or `undefined`) |
+| INT8 | `special_characters_roundtrip` | Content with `<>&"'` → survives html→markdown→html roundtrip |
+| INT9 | `unicode_content_preserved` | Czech text "Příliš žluťoučký kůň" → preserved through all layers |
+| INT10 | `stripMarkdown_called_only_on_compact_surfaces` | `VisitDetail` editor receives raw markdown, `CustomerTimeline` receives stripped |
+| INT11 | `no_editor_import_in_compact_surfaces` | `CustomerTimeline.tsx` and `CustomerDetail.tsx` do NOT import `VisitFieldNotes` (keeps bundle small) |
+| INT12 | `history_entries_sorted_by_lastEditedAt_desc` | `fetchNotesHistory` returns entries in chronological order → `NotesHistory` renders them as-is |
+| INT13 | `save_success_updates_in_memory_visit_fieldNotes` | After `saveFieldNotes` resolves, page state `visit.fieldNotes` matches `response.payload.fieldNotes` (server normalization) |
+| INT14 | `concurrent_saves_use_documented_strategy` | INT5 satisfied via **one** of: in-flight mutex, promise queue, or disabled Save until prior completes — document which in code comment + test observes no overlapping `saveFieldNotes` calls |
+| INT15 | `localStorage_quota_exceeded_no_uncaught_throw` | Mock `setItem` to throw `QuotaExceededError` → page still renders, editor usable |
+| INT16 | `sessionId_generation_fallback_without_randomUUID` | Stub `crypto.randomUUID` missing → fallback still produces string matching UUID v4 regex (INT1) |
+| INT17 | `storage_disabled_no_uncaught_throw` | Mock `localStorage` to throw on all ops → no uncaught exception from draft wiring |
+| INT18 | `whitespace_only_fieldNotes_persistence` | Editor content only spaces/newlines → save behavior explicit (`''` vs strip — match backend) |
+| INT19 | `autosave_debounce_exact_1500ms` | Fake timers confirm no save before `1499ms`, save occurs at/after `1500ms` idle |
+| INT20 | `autosave_strategy_c_backoff_schedule` | Save failures trigger retries at configured exponential intervals up to cap |
+| INT21 | `manual_retry_now_bypasses_backoff_timer` | `Retry now` immediately triggers save attempt regardless of pending timer |
+| INT22 | `autosave_warning_clears_after_successful_retry` | Warning UI disappears after a successful retry/save |
+| INT23 | `retry_loop_stops_after_unmount_or_sync` | No leaked timers/retries once component unmounts or draft becomes synced |
+
+**Note:** INT5 is the user-visible guarantee; **INT14** is the concrete strategy (mutex, queue, or disabled Save) that satisfies INT5 — implement once, assert both if redundancy is acceptable.
+
+#### W5b — GREEN
+
+- Fix any issues found by the integration tests.
+- Ensure `sessionId` generation uses `crypto.randomUUID()` with fallback.
+- Ensure the character count extension on the editor actually blocks at 10,000.
+- Implement **INT14** strategy (mutex or queue); add a one-line comment at the save call site.
+- Implement Strategy C retry flow (INT20–INT23) with deterministic timer behavior for tests.
+- Run **Vitest coverage** on wiring files; meet thresholds from “Coverage measurement” subsection (≥90% lines / ≥85% branches where practical).
+
+#### W5c — REFACTOR
+
+- All 23 INT-tests green.
+- Full test suite green.
+- No unused imports across all modified files.
+- `cargo clippy` clean (no new warnings).
+
+---
+
+### Execution order and commits
+
+| Commit | Phase | Tests | Files modified |
+|--------|-------|-------|----------------|
+| 1 | W1a+W1b+W1c | W1–W41 (41) | `VisitDetail.tsx`, `VisitDetail.module.css` |
+| 2 | W2a+W2b+W2c | VD1–VD14 (14) | `VisitDetailDialog.tsx`, `VisitDetailDialog.module.css` |
+| 3 | W3a+W3b+W3c | CT1–CT7 (7) | `CustomerTimeline.tsx` |
+| 4 | W4a+W4b+W4c | CDN1–CDN6 (6) | `CustomerDetail.tsx` |
+| 5 | W5a+W5b+W5c | INT1–INT23 (23) | Cross-cutting fixes only |
+
+### Coverage summary (wiring only)
+
+| Module | IDs | Count | Target |
+|--------|-----|-------|--------|
+| VisitDetail page wiring | W1–W41 | 41 | 100% |
+| VisitDetailDialog wiring | VD1–VD14 | 14 | 100% |
+| CustomerTimeline wiring | CT1–CT7 | 7 | 100% |
+| CustomerDetail wiring | CDN1–CDN6 | 6 | 100% |
+| Integration + edge cases | INT1–INT23 | 23 | 100% |
+| **Total (wiring)** | | **91** | **≥ 98%** (see also Vitest line/branch thresholds above) |
+
+### Combined coverage (Phases 1–7 + wiring)
+
+| Scope | Count |
+|-------|-------|
+| Phases 1–7 (building blocks) | 88 |
+| Wiring (W1–W5) | 91 |
+| **Grand total** | **179** |
+
+---
+
+## Unified Notes System — Architecture & Migration Plan
+
+### Motivation
+
+The codebase has 7 separate free-form text fields acting as "notes," each with its own storage column, editing surface, and (often incomplete) UI. Three of them (`work_item.result_notes`, `work_item.findings`, `revision.findings`) are semantically redundant — all describe "observations about a device during work." Several are only editable through completion forms, invisible during the actual visit.
+
+This plan unifies all observational notes under a single journal-style system with:
+- One rich Tiptap editor (reusing the building blocks from Phases 1–7)
+- One versioning/audit trail
+- One export file (`notes.csv`)
+- Full accessibility — every note type visible and editable from every relevant context, not just completion forms
+
+### Decisions (locked)
+
+| # | Topic | Decision |
+|---|-------|----------|
+| N1 | Notes model | **Journal-style (Model B):** multiple note entries per entity, each with its own content and timestamp |
+| N2 | Entity types | **Three:** `customer`, `device`, `visit` |
+| N3 | Merge scope | `visit_work_items.result_notes` + `visit_work_items.findings` + `revisions.findings` → device note entries. `customers.notes` → customer note entries. `devices.notes` → device note entries. `visits.field_notes` → visit note entries. |
+| N4 | Communications | **Stay separate.** Future CRM pipeline (email integration, threading, automation) requires a different data model. |
+| N5 | Editor & versioning | Same Tiptap + markdown storage + session-level audit trail for all three note types |
+| N6 | Accessibility | All customer/device/visit notes visible and editable from the visit context (during and after visit). Technician sees full history. |
+| N7 | Export format | Raw markdown in CSV (lossless round-trip) |
+| N8 | Export file | Single `notes.csv` in the ZIP (replaces embedding notes in parent entity CSVs) |
+| N9 | Import file | Single `notes.csv` import processor; **idempotent** re-import — skip rows whose `(entity_type, entity_id, content, created_at)` already exists (not “first-non-empty-wins”; that phrase applied to an older `work_log.csv` row-merge idea, superseded by `notes.csv`) |
+| N10 | Existing decisions | All decisions from the visit field notes plan (1–14) apply to the unified system: 10,000 char limit, no images, localStorage draft, session = browser tab, audit rows kept forever (never auto-purged; GDPR redaction per N13 anonymizes content but does **not** delete rows), etc. |
+| N11 | Empty content policy | **Allowed:** `content: ''` is valid (supports clear-note behavior). Soft delete remains a separate action via `note.delete`. |
+| N12 | Audit subject naming | **Only** `sazinka.note.audit` is exposed. Do not add `sazinka.note.history` alias. |
+| N13 | GDPR audit policy | **Anonymize payloads:** on GDPR delete, redact `notes.content` and matching `notes_history.content` to `[GDPR-REDACTED]`; keep structural metadata (`timestamps`, `change_count`, linkage). |
+| N14 | Compact projection fallback | If no note exists, projected entity fields (`Visit.fieldNotes`, `Customer.notes`, `Device.notes`) return **`null`** (not empty string). |
+| N15 | Visit Detail multi-device layout | **Accordion** for device notes (mobile-friendly). One section per device, collapsible. |
+| N16 | Migration 045 drop gate | **Time-gated only:** drop legacy columns/table after one full release cycle. Telemetry/legacy-read checks are recommended but not required blockers. |
+| N17 | Note entry titles | **No titles.** Notes are content-only journal entries. Simpler model, zero friction for field technicians. Revisit if CRM evolution demands it. |
+
+### Relationship to existing work
+
+Phases 1–7 built **visit-specific** building blocks (Tiptap editor, draft hook, `visit_notes_history` table, NATS handlers). The wiring plan (W1–W5) connects those to the UI.
+
+This unified plan **generalizes** that work:
+
+| Existing piece | Becomes |
+|----------------|---------|
+| `visits.field_notes` column | Fully normalized — dropped in migration 045. All reads use `notes` table (latest entry per entity). |
+| `visit_notes_history` table | Dropped in migration 045; replaced by universal `notes_history` table |
+| `VisitFieldNotes` component | Renamed to generic `NoteEditor`; same Tiptap internals |
+| `useFieldNotesDraft` hook | Generalized to accept any `entityType + entityId` |
+| `saveFieldNotes` / `fetchNotesHistory` | Generalized to `saveNote` / `fetchNoteHistory` |
+| Wiring plan W1–W5 | **Superseded** — replaced by the unified wiring phases below |
+
+### Data model
+
+#### New tables (migration 044)
+
+```sql
+-- Universal notes table (journal-style: many entries per entity)
+CREATE TABLE notes (
+    id                UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id           UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    entity_type       VARCHAR(20) NOT NULL,  -- 'customer', 'device', 'visit'
+    entity_id         UUID        NOT NULL,  -- FK to the parent entity
+    visit_id          UUID        REFERENCES visits(id) ON DELETE SET NULL,
+                                             -- which visit this note was created during (NULL for standalone notes)
+    content           TEXT        NOT NULL DEFAULT '',
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at        TIMESTAMPTZ NULL,
+
+    CONSTRAINT notes_content_max_length CHECK (length(content) <= 10000),
+    CONSTRAINT notes_entity_type_valid CHECK (entity_type IN ('customer', 'device', 'visit'))
+);
+
+CREATE INDEX idx_notes_entity       ON notes(entity_type, entity_id) WHERE deleted_at IS NULL;
+CREATE INDEX idx_notes_entity_all   ON notes(entity_type, entity_id);
+CREATE INDEX idx_notes_user         ON notes(user_id);
+CREATE INDEX idx_notes_visit        ON notes(visit_id) WHERE visit_id IS NOT NULL;
+CREATE INDEX idx_notes_created      ON notes(created_at);
+
+-- Universal audit trail (replaces visit_notes_history)
+CREATE TABLE notes_history (
+    id                UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+    note_id           UUID        NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+    session_id        UUID        NOT NULL,
+    edited_by_user_id UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    content           TEXT        NOT NULL,
+    first_edited_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_edited_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    change_count      INTEGER     NOT NULL DEFAULT 1,
+    UNIQUE (note_id, session_id)
+);
+
+CREATE INDEX idx_notes_history_note      ON notes_history(note_id);
+CREATE INDEX idx_notes_history_last_edit ON notes_history(last_edited_at);
+```
+
+#### Data migration (same migration 044)
+
+```sql
+-- 1. Migrate customers.notes → notes entries
+INSERT INTO notes (user_id, entity_type, entity_id, content, created_at, updated_at)
+SELECT user_id, 'customer', id, notes, created_at, updated_at
+FROM customers
+WHERE notes IS NOT NULL AND trim(notes) <> '';
+
+-- 2. Migrate devices.notes → notes entries
+INSERT INTO notes (user_id, entity_type, entity_id, content, created_at, updated_at)
+SELECT d.user_id, 'device', d.id, d.notes, d.created_at, d.updated_at
+FROM devices d
+WHERE d.notes IS NOT NULL AND trim(d.notes) <> '';
+
+-- 3. Migrate visits.field_notes → notes entries
+INSERT INTO notes (user_id, entity_type, entity_id, visit_id, content, created_at, updated_at)
+SELECT user_id, 'visit', id, id, field_notes, created_at, updated_at
+FROM visits
+WHERE field_notes IS NOT NULL AND trim(field_notes) <> '';
+
+-- 4. Migrate visit_work_items.result_notes + findings → device note entries
+--    Each work item becomes a note entry on its device; if the same device has multiple work items
+--    in the same visit, there will be multiple note entries. Concatenate result_notes and findings
+--    from each work item.
+INSERT INTO notes (user_id, entity_type, entity_id, visit_id, content, created_at, updated_at)
+SELECT
+    v.user_id,
+    'device',
+    wi.device_id,
+    wi.visit_id,
+    substring(
+        CASE
+            WHEN wi.result_notes IS NOT NULL AND wi.findings IS NOT NULL
+                THEN wi.result_notes || E'\n\n---\n\n' || wi.findings
+            WHEN wi.result_notes IS NOT NULL THEN wi.result_notes
+            ELSE wi.findings
+        END
+    FROM 1 FOR 10000),
+    wi.created_at,
+    wi.created_at
+FROM visit_work_items wi
+JOIN visits v ON v.id = wi.visit_id
+WHERE wi.device_id IS NOT NULL
+  AND (wi.result_notes IS NOT NULL OR wi.findings IS NOT NULL);
+
+-- 5. Migrate revisions.findings → device note entries (only if not already covered by a work item)
+INSERT INTO notes (user_id, entity_type, entity_id, content, created_at, updated_at)
+SELECT
+    r.user_id,
+    'device',
+    r.device_id,
+    r.findings,
+    r.created_at,
+    r.updated_at
+FROM revisions r
+WHERE r.findings IS NOT NULL AND trim(r.findings) <> ''
+  AND NOT EXISTS (
+      SELECT 1 FROM visit_work_items wi
+      WHERE wi.revision_id = r.id
+        AND (wi.result_notes IS NOT NULL OR wi.findings IS NOT NULL)
+  );
+
+-- 6. Migrate visit_notes_history → notes_history
+INSERT INTO notes_history (note_id, session_id, edited_by_user_id, content, first_edited_at, last_edited_at, change_count)
+SELECT
+    n.id,
+    vnh.session_id,
+    vnh.edited_by_user_id,
+    vnh.field_notes,
+    vnh.first_edited_at,
+    vnh.last_edited_at,
+    vnh.change_count
+FROM visit_notes_history vnh
+JOIN notes n ON n.entity_type = 'visit' AND n.entity_id = vnh.visit_id;
+```
+
+#### Migration edge cases (document + test)
+
+| Case | Expected behavior |
+|------|-------------------|
+| `visit_notes_history` row exists but `visits.field_notes` was empty / trimmed | No matching row in step 3 → step 6 inserts **nothing** for that audit row (orphan history). Acceptable rare edge case; optional one-time cleanup script or log in migration report. |
+| Step 3 creates visit note; step 6 maps multiple `visit_notes_history` sessions | Multiple `notes_history` rows for the **same** `note_id` (different `session_id`) — valid. |
+| Work item with `device_id` NULL but has `result_notes` | Step 4 skips (`WHERE device_id IS NOT NULL`); data stays only on work item until UI migration — document. |
+| Content over 10k after concatenation in step 4 | **Locked:** truncate to 10,000 chars during migration (`substring(..., 1, 10000)`) and record truncation count in migration report; test **UM6**. |
+
+#### Deprecation of old columns (migration 045, separate commit)
+
+Old columns (`customers.notes`, `devices.notes`, `visits.field_notes`, `visit_work_items.result_notes`, `visit_work_items.findings`, `revisions.findings`) and the `visit_notes_history` table are **dropped in migration 045** after one full release cycle (time gate).
+
+**Normalization strategy:** Canonical data lives only in `notes`. No denormalized columns after migration 045.
+
+**Two read patterns (both from `notes` only):**
+1. **Journal / full history:** `note.list` (or SQL equivalent) — all rows for `(entity_type, entity_id)` ordered by `created_at` — used by Visit Detail, Device Detail, Customer workspace.
+2. **Compact single string on embedded types:** For API responses that still expose one string (e.g. `Visit.fieldNotes`, `Customer.notes`, `Device.notes` for cards and backward compatibility), derive **the latest entry** by `created_at DESC LIMIT 1` **or** `NULL` if none. This is a **projection**, not a second source of truth — timeline/cards show “latest note body,” not a merge of all entries.
+
+**Backend API changes:** Types and handlers updated so list/detail endpoints that need the journal call `note.list`; compact fields use the latest-entry projection only where the old contract required a single string.
+
+### Implementation notes (incorporated from review)
+
+| Topic | Decision |
+|-------|----------|
+| **Polymorphic `entity_id`** | No single FK in DB — enforce in handlers: `(entity_type, entity_id)` must resolve to a row the user owns. Tests: wrong-type UUID, cross-user access, non-existent id → contract errors. |
+| **`updated_at` management** | No DB trigger — handlers set `updated_at = NOW()` explicitly in `UPDATE` statements (`note.update` and `note.delete` handlers). Consistent with existing codebase pattern. |
+| **NATS naming** | `note.list` = journal for an entity; **`sazinka.note.audit`** is the only session-level audit subject for one `note_id` (no `note.history` alias). |
+| **CSV transition** | Until migration 045 removes legacy columns, exports may include **both** `notes.csv` (canonical) **and** legacy `result_notes` / `findings` on `work_log.csv` / `revisions.csv`. Support docs: “Use `notes.csv` as source of truth; legacy columns are transitional.” Import path for new data: **`notes.csv` only**. |
+| **`notes_history` after soft delete** | **Locked:** normal soft delete keeps audit rows unchanged. GDPR delete redacts note payloads in both `notes` and `notes_history` (`[GDPR-REDACTED]`), preserving structural metadata. |
+
+### NATS subjects
+
+| Subject | Purpose | Replaces |
+|---------|---------|----------|
+| `sazinka.note.create` | Create a new note entry | — |
+| `sazinka.note.update` | Update note content (with audit) | `sazinka.visit.update_field_notes` |
+| `sazinka.note.list` | List notes for an entity (`entity_type` + `entity_id`) | `sazinka.visit.notes.history` (partially) |
+| `sazinka.note.audit` | Fetch session-level audit trail for a **specific** `note_id` | `sazinka.visit.notes.history` |
+| `sazinka.note.delete` | Soft-delete a note entry (`deleted_at`) | — |
+
+`sazinka.note.history` is intentionally not implemented.
+
+**Delete semantics:** `deleted_at` on `notes` — **soft delete**; list queries exclude rows where `deleted_at IS NOT NULL`. `notes_history` rows remain for audit. On GDPR delete workflow, redact payloads (`notes.content`, `notes_history.content`) to `[GDPR-REDACTED]`.
+
+Old visit-specific subjects (`sazinka.visit.update_field_notes`, `sazinka.visit.notes.history`) remain registered during transition but delegate to the new handlers internally.
+
+### Shared types (TypeScript)
+
+```typescript
+type NoteEntityType = 'customer' | 'device' | 'visit';
+
+interface Note {
+  id: string;
+  userId: string;
+  entityType: NoteEntityType;
+  entityId: string;
+  visitId?: string | null;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+}
+
+interface CreateNoteRequest {
+  entityType: NoteEntityType;
+  entityId: string;
+  visitId?: string;
+  sessionId: string;
+  content: string;
+}
+
+interface UpdateNoteRequest {
+  noteId: string;
+  sessionId: string;
+  content: string;
+}
+
+interface DeleteNoteRequest {
+  noteId: string;
+}
+
+interface AuditNoteRequest {
+  noteId: string;
+}
+
+interface ListNotesRequest {
+  entityType: NoteEntityType;
+  entityId: string;
+}
+
+interface ListNotesResponse {
+  notes: Note[];
+}
+
+interface NoteHistoryEntry {
+  id: string;
+  noteId: string;
+  sessionId: string;
+  editedByUserId: string;
+  content: string;
+  firstEditedAt: string;
+  lastEditedAt: string;
+  changeCount: number;
+}
+```
+
+### Export changes
+
+#### `notes.csv` (new file in ZIP)
+
+| Column | Description |
+|--------|-------------|
+| `entity_type` | `customer`, `device`, or `visit` |
+| `entity_ref` | Human-readable ref: customer name/ICO, device serial/name, or visit `customer_ref + date` |
+| `entity_id` | UUID (for machine re-import) |
+| `visit_ref` | `customer_ref + date` of linked visit, if any; empty for standalone notes |
+| `content` | Raw markdown |
+| `created_at` | ISO 8601 |
+| `updated_at` | ISO 8601 |
+
+**Soft-deleted notes (`deleted_at IS NOT NULL`) are excluded from export.** Only active notes appear in `notes.csv`.
+
+#### Removals from other CSVs
+
+- `customers.csv`: drop `notes` column (moved to `notes.csv`)
+- `devices.csv`: drop `notes` column (moved to `notes.csv`)
+- `work_log.csv`: `result_notes` and `findings` columns **remain for work-item-level data during transition**; new device notes are only in `notes.csv`
+- `revisions.csv`: `findings` column remains during transition
+
+### Import changes
+
+#### `notes.csv` import processor
+
+New NATS subject: `sazinka.import.notes.submit`
+
+CSV row struct:
+```rust
+struct CsvNoteRow {
+    entity_type: String,            // 'customer', 'device', 'visit'
+    entity_ref: String,             // resolved to UUID via existing ref resolvers
+    entity_id: Option<String>,      // UUID for machine re-import; if present, used directly; otherwise falls back to entity_ref resolution
+    content: String,                // markdown, max 10,000 chars
+    visit_ref: Option<String>,      // optional visit linkage
+    created_at: Option<String>,     // optional; defaults to NOW()
+}
+```
+
+**Resolution and deduplication:**
+- `entity_ref` is resolved to UUID using existing `resolve_customer_ref` / device serial lookup / visit date+customer lookup.
+- **Duplicate detection:** Skip if an entry with the same `(entity_type, entity_id, content, created_at)` already exists in the `notes` table. This prevents re-importing the same note twice (safety for idempotent re-runs).
+- **Import report:** Log skipped duplicates for user transparency.
+
+#### "Download my data" (GDPR)
+
+Automatically includes `notes.csv` since it uses the Export+ pipeline with all file types selected.
+
+### UI changes
+
+#### Visit Detail page (primary work surface)
+
+The Visit Detail page becomes the technician's unified workspace during a visit. It shows:
+
+1. **Visit notes** section — journal entries for this visit (`entity_type='visit'`)
+2. **Customer notes** section — all note entries for this customer (`entity_type='customer'`), full history
+3. **Device notes** per device — for each device in this visit's work items (`entity_type='device'`), all note entries, newest first
+4. **"Add note" buttons** — create new note entry for visit, customer, or any device, all from this page
+
+Device notes use an **accordion layout** (one section per device) for mobile compatibility.
+
+Each section uses the same `NoteEditor` component (Tiptap), same `useNoteDraft` hook, same autosave behavior.
+
+#### Device Detail page
+
+Shows all device note entries (full journal), with visit date context. Editable. "Add note" button for standalone notes (not linked to a visit).
+
+#### Customer Detail / CustomerWorkspace
+
+Shows all customer note entries (full journal). Editable. "Add note" for standalone customer notes.
+
+#### VisitDetailDialog (timeline)
+
+For `completed`/`cancelled`/`rescheduled`: shows latest visit note entry + latest device note entries as **read-only excerpts** (the dialog is a compact view — not enough space for a full editor); includes a "View / Edit" link that navigates to the full Visit Detail page where notes are editable in all statuses. For `planned`/`in_progress`: editable via unified `NoteEditor` within the complete form. **Note:** the "editable in all statuses" policy applies on the Visit Detail page; the dialog is intentionally read-only for completed visits to keep it compact.
+
+#### CustomerTimeline
+
+Shows `stripMarkdown()` excerpt of latest visit note entry. No editor. No change to current compact behavior except data source changes from `visit.fieldNotes` to latest note entry.
+
+#### WorkItemDetail
+
+Remove separate `result_notes` and `findings` textareas from completion form. Instead, show **device note entries** for this device with `visit_id = current visit` (there may be more than one if multiple work items exist) or an "Add device note" action. The work item completion form focuses on `result` and `follow_up` — free-form observations live on the device note journal, not on the work item row.
+
+### Bug fix (included)
+
+`WorkLog.tsx` line ~254 sends `resultNotes` on completion, but `CompleteVisitRequest` expects `fieldNotes`. Fix: either wire correctly to `fieldNotes` or (with unified system) create a visit note entry on completion instead.
+
+### Phases (TDD)
+
+| Phase | Scope | Test IDs (prefix) | Count |
+|-------|-------|-------------------|-------|
+| U1 | DB migration 044 + data migration + Rust types | `UM1`–`UM21` | 21 | ✅ DONE |
+| U2 | NATS handlers (`note.create/update/list/audit/delete`) | `NH1`–`NH26` | 26 |
+| U3 | Shared TypeScript types + `noteService.ts` | `NT1`–`NT10` | 10 |
+| U4 | `NoteEditor`, `useNoteDraft`, `NoteHistory` (generalized) | `NB1`–`NB18` | 18 |
+| U5 | Visit Detail — unified workspace | `NV1`–`NV42` | 42 |
+| U6 | Device Detail, Customer Detail/Workspace, VisitDetailDialog, CustomerTimeline | `NS1`–`NS28` | 28 |
+| U7 | WorkItemDetail — device notes, no legacy textareas | `NW1`–`NW12` | 12 |
+| U8 | Export `notes.csv`, legacy CSV changes | `NE1`–`NE15` | 15 |
+| U9 | Import `notes.csv` + ref resolution | `NI1`–`NI14` | 14 |
+| U10 | Cross-cutting integration (draft, autosave, conflict, GDPR, concurrent saves) | `NX1`–`NX24` | 24 |
+| | **Total (unified notes)** | | **210** |
+
+#### U1 — RED (`UM1`–`UM21`): migration & types
+
+| ID | Test | What it verifies |
+|----|------|------------------|
+| UM1 | `migration_up_creates_notes_and_notes_history` | Tables + indexes exist |
+| UM2 | `notes_content_over_10k_rejected` | CHECK constraint |
+| UM3 | `notes_entity_type_enum_rejects_invalid` | CHECK on `entity_type` |
+| UM4 | `migrate_customer_notes_non_empty` | Row in `notes` per customer with legacy text |
+| UM5 | `migrate_device_notes_non_empty` | Row in `notes` per device with legacy text |
+| UM6 | `migrate_work_item_concat_truncates_to_10000_and_reports` | Over-limit concat is truncated to 10,000 and logged in migration report |
+| UM7 | `migrate_visit_field_notes_to_visit_entity` | `entity_type='visit'`, `visit_id` set |
+| UM8 | `migrate_revision_findings_skips_when_work_item_has_notes` | NOT EXISTS branch |
+| UM9 | `notes_history_unique_note_session` | UNIQUE `(note_id, session_id)` |
+| UM10 | `foreign_key_notes_user_cascade` | User delete behavior documented |
+| UM11 | `visit_notes_history_maps_only_when_visit_note_exists` | Orphan audit rows documented |
+| UM12 | `multiple_work_items_same_device_multiple_notes` | One row per work item from step 4 |
+| UM13 | `soft_delete_column_null_by_default` | `deleted_at` nullable |
+| UM14 | `rust_types_serialize_note_entity_type` | serde round-trip |
+| UM15 | `migration_idempotent_report` | Re-run safety or documented one-shot |
+| UM16 | `empty_string_notes_skipped` | No row for trim-empty legacy |
+| UM17 | `unicode_content_preserved_migration` | UTF-8 in content |
+| UM18 | `sqlx_offline_metadata` | `cargo sqlx prepare` updated |
+| UM19 | `visit_delete_sets_visit_id_null` | Deleting a visit sets `notes.visit_id = NULL` (ON DELETE SET NULL) |
+| UM20 | `notes_history_edited_by_cascade` | Deleting a user cascades to `notes_history.edited_by_user_id` rows |
+| UM21 | `partial_index_excludes_soft_deleted` | `idx_notes_entity` partial index only covers `deleted_at IS NULL` rows |
+
+#### U2 — RED (`NH1`–`NH26`): handlers
+
+| ID | Test | What it verifies |
+|----|------|------------------|
+| NH1 | `create_note_customer` | Valid payload → row |
+| NH2 | `create_note_device_with_visit_id` | `visit_id` optional FK |
+| NH3 | `create_note_visit` | `entity_type=visit` |
+| NH4 | `create_rejects_wrong_user_entity` | Ownership |
+| NH5 | `create_rejects_over_10k` | Length |
+| NH6 | `update_note_content_audit` | `notes_history` upsert session |
+| NH7 | `list_notes_excludes_deleted` | `deleted_at` filter |
+| NH8 | `list_notes_orders_created_at` | Order |
+| NH9 | `audit_returns_sessions_for_note` | `note.audit` |
+| NH10 | `delete_soft_sets_deleted_at` | Not hard delete by default |
+| NH11 | `polymorphic_invalid_entity_rejected` | Non-existent `entity_id` |
+| NH12 | `polymorphic_entity_type_mismatch` | e.g. visit UUID with `entity_type=device` |
+| NH13 | `jwt_missing_user_rejected` | |
+| NH14 | `nats_reply_error_shape` | ErrorResponse contract |
+| NH15 | `update_last_writer_wins_no_version` | Without a `version`/`etag` field, update uses last-writer-wins; test documents this behavior and stubs future optimistic locking |
+| NH16 | `legacy_visit_update_field_notes_delegates` | Old subject calls new handler |
+| NH17 | `legacy_visit_notes_history_delegates_to_audit` | |
+| NH18 | `list_empty_entity_returns_empty_array` | |
+| NH19 | `create_empty_string_content_allowed` | Backend accepts `content: ''`; used for clear-note behavior (not delete) |
+| NH20 | `audit_note_not_found_404` | |
+| NH21 | `delete_idempotent_second_call` | |
+| NH22 | `note_belongs_to_other_user_forbidden` | |
+| NH23 | `sql_injection_safe_entity_id` | Parameterized only |
+| NH24 | `rate_limit_not_in_scope` | Document skip or stub |
+| NH25 | `gdpr_delete_redacts_note_and_audit_payloads` | `notes.content` and `notes_history.content` become `[GDPR-REDACTED]`, metadata preserved |
+| NH26 | `handler_no_unwrap_production` | `?` / `expect` with message |
+
+#### U3 — RED (`NT1`–`NT10`): shared types + service
+
+| ID | Test | What it verifies |
+|----|------|------------------|
+| NT1 | `CreateNoteRequest_matches_rust` | TS ↔ JSON |
+| NT2 | `Note_deletedAt_optional` | Optional field |
+| NT3 | `noteService_create_payload` | NATS subject + shape |
+| NT4 | `noteService_list_entity` | |
+| NT5 | `noteService_audit` | |
+| NT6 | `noteService_delete` | |
+| NT7 | `compact_projection_null_when_no_notes` | Service/types handle `null` for projected compact fields |
+| NT8–NT10 | Retry / disconnect stubs | Align with existing `visitService` patterns |
+
+#### U4 — RED (`NB1`–`NB18`): building blocks
+
+| ID | Test | What it verifies |
+|----|------|------------------|
+| NB1 | `NoteEditor_renders_for_entity_type_customer` | |
+| NB2 | `NoteEditor_device` | |
+| NB3 | `NoteEditor_visit` | |
+| NB4 | `useNoteDraft_key_includes_entity` | localStorage key |
+| NB5 | `useNoteDraft_conflict_same_as_visit` | |
+| NB6 | `NoteHistory_lists_audit_entries` | |
+| NB7 | `max_length_10000_all_entities` | |
+| NB8–NB18 | Autosave debounce, Strategy C, toolbar, read-only permission | Mirror prior VN/D tests generalized |
+
+#### U5 — RED (`NV1`–`NV42`): Visit Detail workspace
+
+Journal sections for visit + customer + device; Add note actions; latest projection for compact child if any; same coverage intent as superseded **W1–W41** plus multi-entity: **NV1–NV20** core render + save; **NV21–NV30** customer + device sections + multi-device; **NV31–NV42** conflict, refetch, offline, char count, status matrix (all statuses editable).
+
+#### U6 — RED (`NS1`–`NS28`): other surfaces
+
+Device Detail journal (**NS1**–**NS8**); Customer Detail / Workspace (**NS9**–**NS16**); VisitDetailDialog (**NS17**–**NS22**); CustomerTimeline excerpt from latest visit note (**NS23**–**NS28**).
+
+#### U7 — RED (`NW1`–`NW12`): WorkItemDetail
+
+No `result_notes`/`findings` textareas; device notes filtered by `visit_id`; multiple entries; complete still sends `result` / follow-up; **NW1**–**NW12** cover accessibility + regression.
+
+#### U8 — RED (`NE1`–`NE15`): export
+
+**NE1** `notes_csv_in_zip`; **NE2** raw markdown cells; **NE3** `entity_id` column; **NE4** `visit_ref`; **NE5** customers.csv without notes column; **NE6** devices.csv without notes; **NE7** GDPR bundle includes notes.csv; **NE8**–**NE14** escaping, semicolons in content, empty journal, large batch; **NE15** `soft_deleted_notes_excluded_from_export`.
+
+#### U9 — RED (`NI1`–`NI14`): import
+
+**NI1** idempotent duplicate skip; **NI2**–**NI4** ref resolution per entity type; **NI5** invalid ref error row; **NI6**–**NI14** report lines, charset, 10k reject, optional `created_at`.
+
+#### U10 — RED (`NX1`–`NX24`): integration
+
+**NX1**–**NX8** round-trip export→import; **NX9**–**NX14** concurrent saves / mutex; **NX15**–**NX20** localStorage draft keys per entity; **NX21**–**NX24** GDPR download + stripMarkdown on timeline only.
+
+### Coverage measurement (unified notes)
+
+- **Rust:** `cargo test` for migration + handlers; **`cargo clippy`** clean; aim for **high line coverage** on `handlers/note*.rs`, `db/queries/*note*`, `export_processor` / `import` note paths (target **≥90% lines** on new/changed modules where practical).
+- **TypeScript:** Vitest on services, components, hooks — **≥90% lines**, **≥85% branches** on touched files (`noteService.ts`, `NoteEditor.tsx`, VisitDetail/Device/Customer wiring).
+- **Coverage ≠ exhaustive E2E:** Manual browser flows (mobile, slow network) are out of scope for this plan; listed tests target **automated** near-complete **branch** coverage.
+
+### Is test coverage “almost complete”?
+
+**Yes, for the planned automated scope:** the **210** enumerated IDs cover migration edge cases (including FK cascade behaviors), polymorphic validation, soft delete, all three entity types, journal vs projection, export/import round-trip (including soft-delete exclusion), GDPR inclusion, and the superseded wiring scenarios (re-homed under U5–U7). **Residual gaps** (normal for any plan): full end-to-end browser automation, flaky-network chaos, and a11y/i18n deep passes — call these out in **REFACTOR** or a follow-up checklist, not as mandatory unit counts.
+
+### Superseded plans
+
+The **wiring plan (W1–W5, 91 tests)** is superseded by phases U5–U7 above, which cover the same surfaces but with the unified notes model. The **building block phases (1–7, 88 tests)** remain valid — the components they built are generalized, not discarded.
+
+### Combined coverage (Phases 1–7 + wiring + unified notes)
+
+| Scope | Count |
+|-------|-------|
+| Phases 1–7 (visit field notes building blocks) | 88 |
+| Wiring W1–W5 (superseded by U5–U7; counts kept for archive) | 91 |
+| **Unified notes U1–U10** | **210** |
+| **Grand total (if all delivered)** | **389** (includes overlapping superseded wiring — see note below) |
+
+**Note:** The **389** grand total **double-counts** the replaced wiring surface (91 tests) that U5–U7 replace. A cleaner **forward-looking** total is **88 + 210 + adjustment**: treat **Phases 1–7 (88) + Unified U1–U10 (210) = 298** as the **canonical** test count for “field notes + unified notes” once W1–W5 is abandoned; add **+91** only if you keep historical comparison to the old wiring plan.
+
+All open questions have been resolved and locked as decisions N1–N17.
+
+---
+
+# "Show in Inbox" — Navigate from Customer to Inbox with Pre-Selection
+
+## Goal
+
+From the Customer detail page (and the preview panel on the Customers list), the user
+can click a button that navigates to `/inbox?customerId=<id>`. The Inbox page reads
+the query param, selects the customer, opens the candidate detail panel (when layout
+shows it), and cleans up the URL.
+
+---
+
+## Architecture Decisions
+
+1. **URL query param** (`/inbox?customerId=...`): standard, shareable, typed via
+   TanStack Router `validateSearch` (same pattern as other app routes using
+   `createRoute` + search validation — follow `@tanstack/react-router` docs for
+   this repo’s version).
+2. **URL cleanup**: after consuming the param, navigate with `replace: true` to
+   `/inbox` so the param doesn't linger on refresh or back-button. Use the router
+   API that matches the layout route (e.g. `navigate({ to: '/inbox', search: {}, replace: true })`
+   from `PlanningInbox` or equivalent).
+3. **Placement**: "Show in Inbox" button appears in two places:
+   - `CustomerHeader` (full detail page `/customers/$customerId`)
+   - `CustomerPreviewPanel` (side panel on `/customers`)
+4. **No backend changes in MVP**: the worker scores all matching customers, then
+   applies **pagination** (`limit` / `offset`). The web client calls `getInbox` with
+   **`limit: 100`** (`InboxListPanel`). The list UI only contains that page of rows.
+   **`filteredSorted` pins** a selected customer **only if they appear in
+   `rawCandidates`**. Deep-linking still sets `selectedCandidateId` and sessionStorage;
+   if that ID is **not** in the fetched slice, the row may be missing (see
+   **Limitations** below).
+5. **Icon**: `Inbox` from `lucide-react`, consistent with sidebar navigation.
+6. **Security**: Inbox queries are scoped by authenticated `user_id` on the server;
+   passing another user's `customerId` in the URL must not leak data — rely on
+   existing API authorization (document; no new backend work if already enforced).
+
+---
+
+## Limitations & follow-ups
+
+| Topic | MVP behavior | Follow-up (optional) |
+|-------|----------------|----------------------|
+| **Top-N inbox slice** | Customer may be **outside** the loaded `limit` (e.g. rank beyond the first 100 after scoring). Selection + URL cleanup still run; list may not show that row. | Toast: "Customer not in current results"; and/or **merge** that customer into the inbox response when `customerId` is requested (backend or extra query). |
+| **Detail panel visibility** | Mobile vs desktop layout differs; tests should **mock `useBreakpoint`** or assert selection state via **mocks / panel state**, not only visible DOM for "detail open". | — |
+
+---
+
+## Phase 1 — Route schema: add `customerId` search param to `/inbox`
+
+### Scope
+
+- **`apps/web/src/routes/inboxSearch.ts`** (new): export a pure function
+  `validateInboxSearch(raw: Record<string, unknown>)` (or `inboxSearchSchema`)
+  implementing the normalization rules below. Keeps tests **importing a small module**
+  without pulling the whole route tree.
+- **`apps/web/src/routes/index.tsx`**: wire `inboxRoute` with `validateSearch`
+  delegating to `validateInboxSearch` (or inline the same logic re-exported from
+  `inboxSearch.ts`).
+
+**Normalization rules:** optional `customerId`; if present and non-empty string,
+keep it; otherwise omit. Strip non-strings and empty strings.
+
+### Tests (RED → GREEN)
+
+**File:** `apps/web/src/routes/__tests__/inboxSearch.test.ts` (unit tests the **exported**
+`validateInboxSearch` from `inboxSearch.ts`)
+
+| ID | Test | Asserts |
+|----|------|---------|
+| R1-1 | Accepts empty object | Returns `{}` — no crash, no `customerId` |
+| R1-2 | Accepts `{ customerId: 'uuid-123' }` | Returns `{ customerId: 'uuid-123' }` |
+| R1-3 | Strips non-string `customerId` | `{ customerId: 42 }` → `{}` (or `customerId` omitted) |
+| R1-4 | Strips empty-string `customerId` | `{ customerId: '' }` → `{}` (or `customerId` omitted) |
+
+**Count: 4 tests**
+
+---
+
+## Phase 2 — PlanningInbox: consume `customerId` search param
+
+### Scope
+
+- `apps/web/src/pages/PlanningInbox.tsx` — read `customerId` from
+  `useSearch({ from: '/inbox' })` (or the route id your tree uses), set
+  `selectedCandidateId` when the param is present, then clean the URL
+  via `navigate({ to: '/inbox', search: {}, replace: true })` (exact shape per
+  TanStack Router version).
+
+### Behavior
+
+1. On mount, if `customerId` is present in **validated** search params:
+   - Set `selectedCandidateId` to that value (overrides sessionStorage).
+   - Write it to `sessionStorage['planningInbox.selectedId']` for consistency.
+   - Call `navigate` with **`replace: true`** to strip search params.
+2. If `customerId` is absent or empty, existing sessionStorage initializer applies
+   (no behavior change).
+
+### Tests (RED → GREEN)
+
+**File:** `apps/web/src/pages/__tests__/PlanningInbox.deepLink.test.tsx`
+
+**Test harness notes:**
+
+- **React StrictMode** may run effects twice in dev/tests. Do **not** assert
+  `navigate` was called **exactly once** unless implementation dedupes (e.g. ref).
+  Prefer `expect(mockNavigate).toHaveBeenCalledWith(expect.objectContaining({ replace: true }))`
+  and/or `toHaveBeenCalled()`.
+- **P2-6** is **defensive**: after R1-4, real navigation never passes `''` through
+  validation; this test simulates a direct `useSearch` mock returning `''` to ensure
+  `PlanningInbox` does not crash and falls back like "absent".
+- For **"detail visible"**, mock **`useBreakpoint`** to a fixed layout or assert
+  **`selectedCandidateId` / `sessionStorage`** / mocked child props instead of
+  relying on mobile sheet DOM.
+
+| ID | Test | Asserts |
+|----|------|---------|
+| P2-1 | Mount with `customerId=cust-1` in search → selection is `cust-1` | Detail or mocked child receives `cust-1`, or `sessionStorage` / state matches |
+| P2-2 | Mount with `customerId=cust-1` → URL is cleaned | `mockNavigate` called with `replace: true` and cleared search (use `objectContaining` if needed) |
+| P2-3 | Mount with `customerId=cust-1` → sessionStorage updated | `sessionStorage.getItem('planningInbox.selectedId')` === `'cust-1'` |
+| P2-4 | Mount without `customerId` → sessionStorage value used | Pre-set `cust-2` → selected is `cust-2` |
+| P2-5 | `customerId=cust-1` overrides sessionStorage `cust-2` | After mount, selection / storage is `cust-1` |
+| P2-6 | Defensive: `useSearch` returns `{ customerId: '' }` | Behaves as absent; no throw |
+| P2-7 | Deep-link ID **not** in mocked inbox items | Still sets `selectedCandidateId` + sessionStorage, URL cleaned, **no throw** (row may be absent — see Limitations) |
+
+**Count: 7 tests**
+
+---
+
+## Phase 3 — CustomerHeader: "Show in Inbox" button
+
+### Scope
+
+- `apps/web/src/components/customers/CustomerHeader.tsx` — add a `Link`
+  to `/inbox` with `search={{ customerId: customer.id }}` and an `Inbox` icon.
+- **i18n:** single key `action_show_in_inbox` (see Phase 5).
+
+### Behavior
+
+- Renders between the "Add to plan" and "Edit" buttons.
+- Uses `<Link to="/inbox" search={{ customerId: customer.id }}>`.
+- Shown for every loaded customer (subject to normal permission to see the
+  Customers page); **does not** imply the customer is visible in the current
+  inbox **page** of results (see Limitations).
+
+### Tests (RED → GREEN)
+
+**File:** `apps/web/src/components/customers/__tests__/CustomerHeader.test.tsx`
+
+| ID | Test | Asserts |
+|----|------|---------|
+| H3-1 | Renders "Show in Inbox" link | `getByRole('link', { name: /action_show_in_inbox/ })` (or translated string from i18n mock) |
+| H3-2 | Link `href` includes `customerId` query param | `href` contains `/inbox` and `customerId=` |
+| H3-3 | Rendered for customer **without** coordinates | Link still present |
+| H3-4 | Rendered for company-type customer | Link still present |
+
+**Count: 4 tests**
+
+---
+
+## Phase 4 — CustomerPreviewPanel: "Show in Inbox" button
+
+### Scope
+
+- `apps/web/src/components/customers/CustomerPreviewPanel.tsx` — add a
+  `Link` to `/inbox` with `search={{ customerId: customer.id }}` in the actions section.
+- **Same i18n key as Phase 3:** `action_show_in_inbox`.
+
+### Behavior
+
+- Renders in the actions bar at the bottom of the preview panel,
+  next to "Edit" and "Add to plan" buttons.
+- Only renders when `customer` is not null (panel has a selected customer).
+
+### Tests (RED → GREEN)
+
+**File:** `apps/web/src/components/customers/__tests__/CustomerPreviewPanel.test.tsx`
+
+| ID | Test | Asserts |
+|----|------|---------|
+| PP4-1 | Renders link when customer is selected | `getByRole('link', { name: /action_show_in_inbox/ })` |
+| PP4-2 | Link `href` includes `customerId` | Same pattern as H3-2 |
+| PP4-3 | Empty state (`customer === null`) | Link not present |
+| PP4-4 | Coexists with Edit and Add to Plan | All relevant actions present |
+
+**Count: 4 tests**
+
+---
+
+## Phase 5 — i18n keys
+
+### Scope
+
+**Single key** for header and preview (avoids duplicate copy and test regex drift):
+
+| Key | en | cs | sk |
+|-----|----|----|-----|
+| `action_show_in_inbox` | Show in Inbox | Zobrazit ve frontě | Zobraziť vo fronte |
+
+Files: `apps/web/public/locales/{en,cs,sk}/customers.json`.
+
+No separate test phase — Phases 3–4 assert the link using this key (or mock `t`).
+
+---
+
+## Phase 6 — Optional: Router click-through (defer if redundant)
+
+Phases 3–4 already assert **`href` / `search`** on `Link`. **Phase 6 is optional:**
+add **one** test with `RouterProvider` + memory history **only if** you need
+regression coverage for TanStack Router wiring beyond static `href`.
+
+**If implemented:**
+
+**File:** `apps/web/src/pages/__tests__/CustomerToInbox.router.test.tsx` (optional)
+
+| ID | Test | Asserts |
+|----|------|---------|
+| OPT-1 | User clicks "Show in Inbox" in a minimal router tree | Location updates to `/inbox` with `customerId` in search (per router test utils) |
+
+**Count: 0–1 tests** (not included in mandatory total below)
+
+---
+
+## Test Summary
+
+| Phase | Scope | Tests |
+|-------|-------|-------|
+| 1 — `inboxSearch.ts` | `validateInboxSearch` unit tests | 4 |
+| 2 — PlanningInbox consumption | Read param, select, clean URL, edge cases | 7 |
+| 3 — CustomerHeader button | Link + `action_show_in_inbox` | 4 |
+| 4 — CustomerPreviewPanel button | Link + `action_show_in_inbox` | 4 |
+| 5 — i18n keys | Locale files | 0 |
+| 6 — Optional router | Click-through | 0–1 |
+| **Total (mandatory)** | | **19** |
+
+---
+
+## Execution Order
+
+```
+Phase 1 (inboxSearch + route wire)  →  Phase 2 (consume param)  →  Phase 5 (i18n)
+                                                                →  Phase 3 (header)
+                                                                →  Phase 4 (preview)
+                                                                →  Phase 6 (optional)
+```
+
+Phases 3–4 depend on Phase 5. Phase 2 depends on Phase 1. Optional Phase 6 last.
