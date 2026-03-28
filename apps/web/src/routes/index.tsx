@@ -10,6 +10,7 @@ import { Layout } from '@/components/Layout';
 import { PageLoader } from '@/components/PageLoader';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { lazyWithRetry } from '@/lib/lazyWithRetry';
+import { validateInboxSearch } from './inboxSearch';
 
 // --- Eager imports (needed immediately) ---
 import { Login } from '@/pages/Login';
@@ -149,10 +150,11 @@ const planRoute = createRoute({
   ),
 });
 
-// Planning Inbox (route-aware)
+// Planning Inbox (route-aware, search-param validated)
 const inboxRoute = createRoute({
   getParentRoute: () => layoutRoute,
   path: '/inbox',
+  validateSearch: validateInboxSearch,
   component: () => (
     <ProtectedRoute requiredPermission="page:inbox">
       <PlanningInbox />
