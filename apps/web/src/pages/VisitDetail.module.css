@@ -655,6 +655,67 @@
   }
 }
 
+/* ── Unified notes workspace ──────────────────────────────────────────── */
+
+.cardTitleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.addNoteBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-secondary, #666);
+  transition: background 0.15s;
+}
+
+.addNoteBtn:hover {
+  background: var(--surface-hover, #e9ecef);
+  color: var(--text-primary, #333);
+}
+
+.notesList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.accordionToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-size: inherit;
+  text-align: left;
+  color: var(--text-primary, #333);
+}
+
+.accordionContent {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.notesCount {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted, #999);
+}
+
 @media (max-width: 639px) {
   .container {
     padding: 1rem;

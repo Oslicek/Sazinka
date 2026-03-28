@@ -11,6 +11,7 @@ import maplibregl from 'maplibre-gl';
 import { isWebGLSupported } from '../utils/webgl';
 import type { Visit } from '@shared/visit';
 import type { VisitWorkItem } from '@shared/workItem';
+import type { Note } from '@shared/note';
 import {
   getVisit,
   updateVisit,
@@ -19,11 +20,73 @@ import {
   getVisitTypeLabel,
   getVisitResultLabel,
 } from '../services/visitService';
+import { listNotes, createNote, updateNote } from '../services/noteService';
 import { getWorkTypeLabel, type WorkType } from '../services/workItemService';
 import { useNatsStore } from '../stores/natsStore';
 import { formatDate } from '../i18n/formatters';
-import { AlertTriangle, Search, Calendar, Clock, Phone, Wrench, Settings, MessageSquare, RefreshCcw, ClipboardList } from 'lucide-react';
+import { AlertTriangle, Search, Calendar, Clock, Phone, Wrench, Settings, MessageSquare, RefreshCcw, ClipboardList, Plus, ChevronDown, ChevronRight } from 'lucide-react';
 import { TimeInput } from '../components/common/TimeInput';
+import { NoteEditor } from '../components/notes/NoteEditor';
+import { useNoteDraft } from '../hooks/useNoteDraft';
+import { useAutoSave } from '../hooks/useAutoSave';
+
+// ── InlineNoteEditor ──────────────────────────────────────────────────────
+// A single note row in the journal: NoteEditor + debounced autosave.
+
+interface InlineNoteEditorProps {
+  note: Note;
+  sessionId: string;
+  onSaved: (updated: Note) => void;
+}
+
+function InlineNoteEditor({ note, sessionId, onSaved }: InlineNoteEditorProps) {
+  const entityType = note.entityType as 'customer' | 'device' | 'visit';
+  const { draft, updateDraft, hasConflict, resolveKeepLocal, resolveUseServer } = useNoteDraft({
+    entityType,
+    entityId: note.entityId,
+    sessionId,
+    serverContent: note.content,
+    onSave: async (content) => {
+      const updated = await updateNote({ noteId: note.id, sessionId, content });
+      onSaved(updated);
+    },
+  });
+
+  const [hasChanges, setHasChanges] = useState(false);
+
+  useAutoSave({
+    saveFn: async () => {
+      const updated = await updateNote({ noteId: note.id, sessionId, content: draft });
+      onSaved(updated);
+      setHasChanges(false);
+    },
+    hasChanges,
+    debounceMs: 1500,
+  });
+
+  const handleChange = (content: string) => {
+    updateDraft(content);
+    setHasChanges(content !== note.content);
+  };
+
+  return (
+    <div data-testid={`note-row-${note.id}`} style={{ marginBottom: '8px' }}>
+      {hasConflict && (
+        <div data-testid="conflict-prompt" style={{ display: 'flex', gap: '8px', marginBottom: '6px', fontSize: '13px', color: 'var(--warning, #f57c00)' }}>
+          <span>⚠ Unsaved local draft differs from server</span>
+          <button onClick={() => resolveKeepLocal()}>Keep local</button>
+          <button onClick={resolveUseServer}>Use server</button>
+        </div>
+      )}
+      <NoteEditor
+        entityType={entityType}
+        entityId={note.entityId}
+        initialContent={draft}
+        onChange={handleChange}
+      />
+    </div>
+  );
+}
 
 function WorkTypeIcon({ type }: { type: WorkType }) {
   switch (type) {
@@ -88,6 +151,15 @@ export function VisitDetail() {
   const [requiresFollowUp, setRequiresFollowUp] = useState(false);
   const [followUpReason, setFollowUpReason] = useState('');
 
+  // Unified notes state
+  const [visitNotes, setVisitNotes] = useState<Note[]>([]);
+  const [customerNotes, setCustomerNotes] = useState<Note[]>([]);
+  const [deviceNotesMap, setDeviceNotesMap] = useState<Record<string, Note[]>>({});
+  const [expandedDevices, setExpandedDevices] = useState<Record<string, boolean>>({});
+
+  // Session ID for this browser tab (stable across re-renders)
+  const sessionIdRef = useRef<string>(crypto.randomUUID());
+
   // Map
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
@@ -118,6 +190,26 @@ export function VisitDetail() {
       if (response.visit.scheduledTimeEnd) {
         setEditTimeEnd(response.visit.scheduledTimeEnd);
       }
+
+      // Load unified notes in parallel
+      const [vNotes, cNotes] = await Promise.all([
+        listNotes('visit', visitId).catch(() => []),
+        listNotes('customer', response.visit.customerId).catch(() => []),
+      ]);
+      setVisitNotes(vNotes);
+      setCustomerNotes(cNotes);
+
+      // Load device notes for unique devices in work items
+      const deviceIds = [
+        ...new Set(response.workItems.map((wi) => wi.deviceId).filter(Boolean) as string[]),
+      ];
+      const deviceNotesEntries = await Promise.all(
+        deviceIds.map(async (did) => {
+          const notes = await listNotes('device', did).catch(() => []);
+          return [did, notes] as [string, Note[]];
+        })
+      );
+      setDeviceNotesMap(Object.fromEntries(deviceNotesEntries));
     } catch (err) {
       console.error('Failed to load visit:', err);
       setError(err instanceof Error ? err.message : t('visit_error_load'));
@@ -504,6 +596,164 @@ export function VisitDetail() {
               </div>
             )}
           </div>
+
+          {/* ── Unified Notes Workspace ─────────────────────────────── */}
+
+          {/* Visit notes section */}
+          <div className={styles.card} data-testid="visit-notes-section">
+            <div className={styles.cardTitleRow}>
+              <h3 className={styles.cardTitle}>{t('visit_notes_title', 'Visit notes')}</h3>
+              <button
+                className={styles.addNoteBtn}
+                data-testid="add-visit-note-btn"
+                onClick={async () => {
+                  const note = await createNote({
+                    entityType: 'visit',
+                    entityId: visitId,
+                    sessionId: sessionIdRef.current,
+                    content: '',
+                  });
+                  setVisitNotes((prev) => [...prev, note]);
+                }}
+              >
+                <Plus size={14} /> {t('add_note', 'Add note')}
+              </button>
+            </div>
+            {visitNotes.length === 0 ? (
+              <p className={styles.placeholder} data-testid="visit-notes-empty">
+                {t('visit_notes_empty', 'No visit notes yet')}
+              </p>
+            ) : (
+              <div className={styles.notesList} data-testid="visit-notes-list">
+                {visitNotes.map((note) => (
+                  <InlineNoteEditor
+                    key={note.id}
+                    note={note}
+                    sessionId={sessionIdRef.current}
+                    onSaved={(updated) =>
+                      setVisitNotes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)))
+                    }
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Customer notes section */}
+          <div className={styles.card} data-testid="customer-notes-section">
+            <div className={styles.cardTitleRow}>
+              <h3 className={styles.cardTitle}>{t('customer_notes_title', 'Customer notes')}</h3>
+              <button
+                className={styles.addNoteBtn}
+                data-testid="add-customer-note-btn"
+                onClick={async () => {
+                  const note = await createNote({
+                    entityType: 'customer',
+                    entityId: data.visit.customerId,
+                    visitId,
+                    sessionId: sessionIdRef.current,
+                    content: '',
+                  });
+                  setCustomerNotes((prev) => [...prev, note]);
+                }}
+              >
+                <Plus size={14} /> {t('add_note', 'Add note')}
+              </button>
+            </div>
+            {customerNotes.length === 0 ? (
+              <p className={styles.placeholder} data-testid="customer-notes-empty">
+                {t('customer_notes_empty', 'No customer notes yet')}
+              </p>
+            ) : (
+              <div className={styles.notesList} data-testid="customer-notes-list">
+                {customerNotes.map((note) => (
+                  <InlineNoteEditor
+                    key={note.id}
+                    note={note}
+                    sessionId={sessionIdRef.current}
+                    onSaved={(updated) =>
+                      setCustomerNotes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)))
+                    }
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Device notes — accordion per device */}
+          {Object.keys(deviceNotesMap).map((deviceId) => {
+            const deviceNotes = deviceNotesMap[deviceId] ?? [];
+            const isExpanded = expandedDevices[deviceId] ?? false;
+            const workItem = data.workItems.find((wi) => wi.deviceId === deviceId);
+            const label = workItem
+              ? `${t('device_notes_title', 'Device notes')} — ${getWorkTypeLabel(workItem.workType)}`
+              : `${t('device_notes_title', 'Device notes')} (${deviceId.slice(0, 8)}…)`;
+
+            return (
+              <div key={deviceId} className={styles.card} data-testid={`device-notes-${deviceId}`}>
+                <button
+                  className={styles.accordionToggle}
+                  onClick={() =>
+                    setExpandedDevices((prev) => ({ ...prev, [deviceId]: !isExpanded }))
+                  }
+                  aria-expanded={isExpanded}
+                >
+                  {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  <span className={styles.cardTitle}>{label}</span>
+                  <span className={styles.notesCount}>
+                    {deviceNotes.length} {deviceNotes.length === 1 ? t('note', 'note') : t('notes', 'notes')}
+                  </span>
+                </button>
+
+                {isExpanded && (
+                  <div className={styles.accordionContent}>
+                    <button
+                      className={styles.addNoteBtn}
+                      data-testid={`add-device-note-btn-${deviceId}`}
+                      onClick={async () => {
+                        const note = await createNote({
+                          entityType: 'device',
+                          entityId: deviceId,
+                          visitId,
+                          sessionId: sessionIdRef.current,
+                          content: '',
+                        });
+                        setDeviceNotesMap((prev) => ({
+                          ...prev,
+                          [deviceId]: [...(prev[deviceId] ?? []), note],
+                        }));
+                      }}
+                    >
+                      <Plus size={14} /> {t('add_note', 'Add note')}
+                    </button>
+                    {deviceNotes.length === 0 ? (
+                      <p className={styles.placeholder} data-testid={`device-notes-empty-${deviceId}`}>
+                        {t('device_notes_empty', 'No device notes yet')}
+                      </p>
+                    ) : (
+                      <div className={styles.notesList}>
+                        {deviceNotes.map((note) => (
+                          <InlineNoteEditor
+                            key={note.id}
+                            note={note}
+                            sessionId={sessionIdRef.current}
+                            onSaved={(updated) =>
+                              setDeviceNotesMap((prev) => ({
+                                ...prev,
+                                [deviceId]: (prev[deviceId] ?? []).map((n) =>
+                                  n.id === updated.id ? updated : n
+                                ),
+                              }))
+                            }
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
 
           {/* Photos placeholder */}
           <div className={styles.card}>
