@@ -268,17 +268,22 @@
   height: 22px;
   border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
-  opacity: 0;
   transition: opacity 0.15s, color 0.15s, background-color 0.15s;
-}
-
-.row:hover .customerDetailLink {
-  opacity: 1;
 }
 
 .customerDetailLink:hover {
   color: var(--color-primary);
   background-color: rgba(59, 130, 246, 0.1);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .customerDetailLink {
+    opacity: 0;
+  }
+
+  .row:hover .customerDetailLink {
+    opacity: 1;
+  }
 }
 
 .tdAddress {
@@ -491,16 +496,47 @@
   color: var(--color-text);
 }
 
+.mobileCardBottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
 .mobileCardCustomer {
   font-size: 0.9375rem;
   font-weight: 500;
   color: var(--color-text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mobileCardCrew {
+  font-weight: 400;
   font-size: 0.8125rem;
   color: var(--color-text-secondary);
-  margin-top: 0.125rem;
+}
+
+.mobileCustomerBtn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.mobileCustomerBtn:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
 }
 
 /* Responsive */

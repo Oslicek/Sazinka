@@ -373,12 +373,26 @@ export function WorkLog() {
                       {getVisitStatusIcon(visit.status)}{visitService.getVisitStatusLabel(visit.status)}
                     </span>
                   </div>
-                  <div className={styles.mobileCardCustomer}>
-                    {visit.customerName || '–'}
+                  <div className={styles.mobileCardBottom}>
+                    <span className={styles.mobileCardCustomer}>
+                      {visit.customerName || '–'}
+                      {visit.crewId && (
+                        <span className={styles.mobileCardCrew}> · {getCrewName(visit.crewId)}</span>
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      className={styles.mobileCustomerBtn}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        void navigate({ to: '/customers/$customerId', params: { customerId: visit.customerId } });
+                      }}
+                      title={t('worklog_go_to_customer', 'Otevřít zákazníka')}
+                    >
+                      <ExternalLink size={14} />
+                    </button>
                   </div>
-                  {visit.crewId && (
-                    <div className={styles.mobileCardCrew}>{getCrewName(visit.crewId)}</div>
-                  )}
                 </Link>
               ))}
             </div>
