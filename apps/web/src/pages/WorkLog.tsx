@@ -388,9 +388,9 @@ export function WorkLog() {
                         e.stopPropagation();
                         void navigate({ to: '/customers/$customerId', params: { customerId: visit.customerId } });
                       }}
-                      title={t('worklog_go_to_customer', 'Otevřít zákazníka')}
                     >
-                      <ExternalLink size={14} />
+                      <ExternalLink size={12} />
+                      {t('worklog_customer_link', 'Zákazník')}
                     </button>
                   </div>
                 </Link>
