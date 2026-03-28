@@ -68,3 +68,4 @@ worker/check_output.txt
 # Local runtime artifacts
 worker/logs/
 worker/exports/
+.pnpm-home/
