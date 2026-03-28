@@ -3301,7 +3301,7 @@ Remove separate `result_notes` and `findings` textareas from completion form. In
 |-------|-------|-------------------|-------|
 | U1 | DB migration 044 + data migration + Rust types | `UM1`–`UM21` | 21 | ✅ DONE |
 | U2 | NATS handlers (`note.create/update/list/audit/delete`) | `NH1`–`NH26` | 26 | ✅ DONE |
-| U3 | Shared TypeScript types + `noteService.ts` | `NT1`–`NT10` | 10 |
+| U3 | Shared TypeScript types + `noteService.ts` | `NT1`–`NT10` | 10 | ✅ DONE |
 | U4 | `NoteEditor`, `useNoteDraft`, `NoteHistory` (generalized) | `NB1`–`NB18` | 18 |
 | U5 | Visit Detail — unified workspace | `NV1`–`NV42` | 42 |
 | U6 | Device Detail, Customer Detail/Workspace, VisitDetailDialog, CustomerTimeline | `NS1`–`NS28` | 28 |
@@ -3579,7 +3579,7 @@ with:
 | H2-2 | Link contains `customerId` query | `href` has `/inbox` + `customerId=` |
 | H2-3 | Visible without coordinates | action still present |
 | H2-4 | Visible for company customer | action still present |
-| H2-5 | Action order in CTA group | appears between Add-to-plan and Edit (if both present) |
+| H2-5 | Action order in CTA group | `getAllByRole('link')` / `getAllByRole('button')` indexes: "Show in Inbox" appears after Add-to-plan and before Edit |
 
 **Preview file:** `apps/web/src/components/customers/__tests__/CustomerPreviewPanel.test.tsx`
 
@@ -3588,7 +3588,7 @@ with:
 | P2-1 | Renders action when customer selected | link exists |
 | P2-2 | Link contains `customerId` query | `href` includes `customerId` |
 | P2-3 | Hidden in empty state | no link when `customer === null` |
-| P2-4 | Coexists with edit/add actions | all expected actions rendered |
+| P2-4 | Coexists with edit/add actions | `getAllByRole` includes all expected actions; "Show in Inbox" index is consistent with header ordering |
 
 **Locale key tests:** `apps/web/src/components/customers/__tests__/customersLocaleKeys.test.ts`
 
@@ -3774,11 +3774,11 @@ of `[data-testid="focus-customer-warning"]`.
 
 | ID | Test | Asserts |
 |----|------|---------|
-| IL6-1 | First load sends `focusCustomerId` | `getInbox` called with focus field |
+| IL6-1 | First load sends `focusCustomerId` | `getInbox` called with focus field; `focusedCustomerIncluded` captured **before** adapter call |
 | IL6-2 | Subsequent reload without new deep-link | focus field omitted after consume |
 | IL6-3 | Focus included true -> row index 0 | target row rendered first |
 | IL6-4 | Non-focused rows preserve relative sort | remainder order unchanged |
-| IL6-5 | Focus included false | warning shown, no crash |
+| IL6-5 | Focus included false | `[data-testid="focus-customer-warning"]` rendered, no crash, list shows remaining rows normally |
 | IL6-6 | No deep-link path | list order remains baseline behavior |
 | IL6-7 | Filters active after deep-link | target still visible and first |
 | IL6-8 | Manual user selection later | does not permanently force pin for unrelated ids |

@@ -18,3 +18,4 @@ export * from './plannedAction';
 export * from './inbox';
 export * from './scoring';
 export * from './task';
+export * from './note';
