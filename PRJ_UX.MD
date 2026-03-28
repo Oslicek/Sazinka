@@ -1,8 +1,8 @@
 # Sazinka - Workflow & UI Koncept
 
-> **Status:** Production — MVP complete + GA Redesign (Phase 8/9) + Smart Slots (multi-crew, Valhalla) + Auto-recalculation + Chronological insertion + Flexible time windows + Responsive mobile (all phases done) + Onboarding wizard (complete) + Detachable panels (design + implementation)  
-> **Verze:** 0.9.2  
-> **Datum:** 2026-03-11
+> **Status:** Production — MVP complete + GA Redesign (Phase 8/9) + Smart Slots (multi-crew, Valhalla) + Auto-recalculation + Chronological insertion + Flexible time windows + Responsive mobile (all phases done) + Onboarding wizard (complete) + Detachable panels (design + implementation) + Inbox search + Customer→Inbox deep-link  
+> **Verze:** 0.9.3  
+> **Datum:** 2026-03-28
 
 ### ⚠️ Internationalization note
 
@@ -393,11 +393,12 @@ Cíl: Uživatel nesmí "přeskakovat" mezi izolovanými stránkami. Každá obra
 
 ### Stránky a jejich propojení
 1. **Dashboard** — CTA: "Fronta k obvolání" (primární), "Plánování dne" (sekundární). Widgety "Po termínu" a "Tento týden" klikatelné → filtr.
-2. **Fronta k obvolání** (`/queue`) — Akce "Naplánovat" přesměruje do Plánovače. Proklik na Detail zákazníka / revize.
+2. **Fronta k obvolání** (`/inbox`) — Akce "Naplánovat" přesměruje do Plánovače. Proklik na Detail zákazníka / revize. Fulltext search v kandidátech. Deep-link z Zákazníků s `?customerId=` pro fokus na konkrétního zákazníka.
 3. **Kalendář** (`/calendar`) — Klik na revizi → Detail revize. Přepínač Termíny/Naplánované.
 4. **Plánovač** (`/plan`) — "Přidat z fronty" s kontextovým filtrem. Klik na položku → detail.
 5. **Detail revize** — Centrální hub: status, termín, poznámky, akce podle stavu.
-6. ~~Můj den (`/today`)~~ → **SLOUČENO DO PLÁN DNE (`/plan`)**
+6. **Zákazníci** (`/customers`) — Detail zákazníka + preview panel nabízejí CTA „Zobrazit ve frontě" → deep-link do Inboxu.
+7. ~~Můj den (`/today`)~~ → **SLOUČENO DO PLÁN DNE (`/plan`)**
 
 #### Detail revize - struktura stránky (workflow hub)
 
@@ -883,6 +884,67 @@ Toolbar contains a rule-set selector dropdown next to the filter tabs:
 5. `routeAware=forcedOff` - Chybí geo, banner s vysvětlením
 6. `capacity=warn|danger` - Varování v headeru
 
+**Fulltext search (implementováno):**
+
+Inbox header obsahuje ikonku hledání (lucide `Search`). Po kliknutí se rozbalí
+textové pole pro fulltextové hledání v seznamu kandidátů (jméno, město, PSČ).
+Komponenta `SearchBox` je sdílená se stránkou Zákazníci.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ Plánovací inbox  …  [🔍]                                           │
+│  └─ (klik) → [🔍 Hledat kandidáty…_______________] [✕]            │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Deep-link: „Zobrazit ve frontě" (implementováno):**
+
+Ze stránky Zákazníci lze jedním kliknutím přejít do Inboxu s konkrétním
+zákazníkem vybraným a připnutým na první pozici.
+
+*Vstupní body:*
+- `CustomerHeader` — CTA „Zobrazit ve frontě" (ikona Inbox), mezi „Do plánu"
+  a „Upravit"
+- `CustomerPreviewPanel` — stejné CTA ve spodní liště akcí, stejné pořadí
+
+*Chování:*
+1. Klik vygeneruje odkaz `/inbox?customerId=<uuid>`
+2. `PlanningInbox` přečte query parametr, nastaví výběr kandidáta a uloží
+   `focusCustomerId` do `sessionStorage` pro `InboxListPanel`
+3. URL se okamžitě vyčistí (`replace: true`) — zpětné tlačítko vede na
+   Zákazníky, ne na parametrizovaný inbox
+4. `InboxListPanel` při prvním načtení pošle `focusCustomerId` do worker API
+5. Worker (`apply_focus_pin`) připne zákazníka na index 0, i pokud je mimo
+   stránkovaný top-N slice; vrátí `focusedCustomerIncluded` flag
+6. Klient provede client-side re-pin pro případ, že lokální řazení/filtrování
+   změní pořadí
+7. Pokud zákazník není nalezen (neplatný, anonymizovaný, smazaný), zobrazí se
+   varovný banner „Zákazník nebyl nalezen ve frontě." s možností zavření
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ← Zpět  Alena Hájek [OSOBA]  [📞] [🧭] [➕ Do plánu] [📥 Fronta] [✎]   │
+│                                                          ↑                 │
+│                                            "Zobrazit ve frontě"            │
+└────────────────────────────────────────────────────────────────────────────┘
+                                  │
+                                  ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Plánovací inbox  …                                                      │
+│ ⚠ Zákazník nebyl nalezen ve frontě.                           [✕]      │
+│   (varovný banner — zobrazí se pouze pokud fokusovaný zákazník          │
+│    není v datech; jinak zákazník je na pozici 0)                        │
+├───────────────┬─────────────────────────────────────┬───────────────────┤
+│ ★ Alena Hájek │                                     │ Detail:           │
+│   (pinned)    │          MAPA                       │ Alena Hájek       │
+│ Jana Novotná  │                                     │                   │
+│ Michaela…     │                                     │                   │
+└───────────────┴─────────────────────────────────────┴───────────────────┘
+```
+
+*Lokalizace:* `planner:focus_customer_not_found` (en/cs/sk),
+`planner:focus_customer_dismiss`, `customers:action_show_in_inbox`.
+
 ---
 
 #### 8.2 Přehled cest / Plan (`/plan`)
@@ -1056,17 +1118,22 @@ _Profil B (`customers.grid`): local_
 **Desktop (2 sloupce + taby):**
 
 ```
-┌────────────────────────────────────────────────────────────────┐
-│ ← Zpět  Alena Hájek [OSOBA]  [📞] [🧭] [➕ do plánu] [✎ Upravit] │
-├───────────────────────┬────────────────────────────────────────┤
-│ Kontakt               │ [Zařízení] [Zakázky&Návštěvy] [Komunik.]│
-│ +420… (kopírovat)     │ ─ Zařízení (kompaktní řádky)            │
-│ email…                │ Kotel…  Interval 12  Další: …  [Domluvit]│
-│ Adresa ✅ Ověřeno      │ Komín…  Interval 24  Další: …  [Domluvit]│
-│ Mini mapa [Otevřít]   │                                          │
-│ Poznámky…             │                                          │
-└───────────────────────┴────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│ ← Zpět  Alena Hájek [OSOBA]  [📞] [🧭] [➕ Do plánu] [📥 Fronta] [✎] │
+├───────────────────────┬──────────────────────────────────────────────┤
+│ Kontakt               │ [Zařízení] [Zakázky&Návštěvy] [Komunik.]     │
+│ +420… (kopírovat)     │ ─ Zařízení (kompaktní řádky)                  │
+│ email…                │ Kotel…  Interval 12  Další: …  [Domluvit]     │
+│ Adresa ✅ Ověřeno      │ Komín…  Interval 24  Další: …  [Domluvit]     │
+│ Mini mapa [Otevřít]   │                                                │
+│ Poznámky…             │                                                │
+└───────────────────────┴──────────────────────────────────────────────┘
 ```
+
+**CTA „Zobrazit ve frontě" (📥 Fronta):** Naviguje do
+`/inbox?customerId=<id>` — viz §8.1 deep-link. Dostupné v `CustomerHeader`
+(detail page) i v `CustomerPreviewPanel` (inline panel na stránce Zákazníci).
+Pořadí CTA: Do plánu → Fronta → Upravit.
 
 **Mazání zákazníka:** Anonymizace PII (GDPR-style). Potvrzovací dialog. Historická data zachována v anonymizované podobě.
 
