@@ -54,6 +54,7 @@ pub enum ExportFile {
     Communications,
     WorkLog,
     Routes,
+    Notes,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -148,6 +149,7 @@ struct ExportDataSet {
     work_items: Vec<crate::types::work_item::VisitWorkItem>,
     routes: Vec<queries::route::RouteWithCrewInfo>,
     route_stops: Vec<queries::route::RouteStopWithInfo>,
+    notes: Vec<crate::types::Note>,
 }
 
 pub struct ExportProcessor {
@@ -548,6 +550,10 @@ impl ExportProcessor {
             .await
             .unwrap_or_default();
 
+        let notes = queries::note::list_all_notes_for_user(&self.pool, user_id)
+            .await
+            .unwrap_or_default();
+
         Ok(ExportDataSet {
             customers,
             devices,
@@ -557,6 +563,7 @@ impl ExportProcessor {
             work_items,
             routes,
             route_stops,
+            notes,
         })
     }
 
@@ -638,6 +645,10 @@ impl ExportProcessor {
                         build_route_stops_csv(dataset, worker, include_worker_uuid_col),
                     ));
                 }
+                ExportFile::Notes => out.push((
+                    format!("{}notes.csv", filename_prefix),
+                    build_notes_csv(dataset),
+                )),
             }
         }
     }
@@ -782,7 +793,6 @@ fn write_csv(headers: &[&str], rows: &[Vec<String>]) -> String {
 fn build_customers_csv(dataset: &ExportDataSet, worker: Option<&WorkerCtx>, include_worker: bool) -> String {
     let mut headers = vec![
         "type", "name", "contact_person", "ico", "dic", "street", "city", "postal_code", "country", "phone", "email",
-        "notes",
     ];
     if include_worker {
         headers.insert(0, "worker_uuid");
@@ -807,7 +817,6 @@ fn build_customers_csv(dataset: &ExportDataSet, worker: Option<&WorkerCtx>, incl
                 c.country.clone().unwrap_or_default(),
                 c.phone.clone().unwrap_or_default(),
                 c.email.clone().unwrap_or_default(),
-                c.notes.clone().unwrap_or_default(),
             ];
             if include_worker {
                 row.insert(0, worker.map(|w| w.worker_uuid.clone()).unwrap_or_default());
@@ -829,7 +838,6 @@ fn build_devices_csv(dataset: &ExportDataSet, worker: Option<&WorkerCtx>, includ
         "serial_number",
         "installation_date",
         "revision_interval_months",
-        "notes",
     ];
     if include_worker {
         headers.insert(0, "worker_uuid");
@@ -850,7 +858,6 @@ fn build_devices_csv(dataset: &ExportDataSet, worker: Option<&WorkerCtx>, includ
                 d.serial_number.clone().unwrap_or_default(),
                 d.installation_date.map(|x| x.to_string()).unwrap_or_default(),
                 d.revision_interval_months.to_string(),
-                d.notes.clone().unwrap_or_default(),
             ];
             if include_worker {
                 row.insert(0, worker.map(|w| w.worker_uuid.clone()).unwrap_or_default());
@@ -1053,6 +1060,55 @@ fn build_routes_csv(dataset: &ExportDataSet, worker: Option<&WorkerCtx>, include
                 row.insert(0, worker.map(|w| w.worker_uuid.clone()).unwrap_or_default());
             }
             row
+        })
+        .collect::<Vec<_>>();
+
+    write_csv(&headers, &rows)
+}
+
+/// Build notes.csv — one row per non-deleted note entry.
+/// entity_ref encodes a round-trip-safe reference:
+///   customer → ICO / email / phone / customer_uuid:<uuid>
+///   device   → serial_number / device_name / device_uuid:<uuid>
+///   visit    → visit_uuid:<uuid>
+fn build_notes_csv(dataset: &ExportDataSet) -> String {
+    let headers = vec![
+        "entity_type",
+        "entity_id",
+        "entity_ref",
+        "content",
+        "created_at",
+        "updated_at",
+    ];
+
+    let customer_lookup: HashMap<Uuid, &crate::types::Customer> =
+        dataset.customers.iter().map(|c| (c.id, c)).collect();
+    let device_lookup: HashMap<Uuid, &crate::types::Device> =
+        dataset.devices.iter().map(|d| (d.id, d)).collect();
+
+    let rows = dataset
+        .notes
+        .iter()
+        .map(|n| {
+            let entity_ref = match n.entity_type.as_str() {
+                "customer" => customer_lookup
+                    .get(&n.entity_id)
+                    .map(|c| customer_ref(c))
+                    .unwrap_or_else(|| format!("customer_uuid:{}", n.entity_id)),
+                "device" => device_lookup
+                    .get(&n.entity_id)
+                    .map(|d| device_ref(d))
+                    .unwrap_or_else(|| format!("device_uuid:{}", n.entity_id)),
+                _ => format!("visit_uuid:{}", n.entity_id),
+            };
+            vec![
+                n.entity_type.clone(),
+                n.entity_id.to_string(),
+                entity_ref,
+                n.content.clone(),
+                n.created_at.to_rfc3339(),
+                n.updated_at.to_rfc3339(),
+            ]
         })
         .collect::<Vec<_>>();
 

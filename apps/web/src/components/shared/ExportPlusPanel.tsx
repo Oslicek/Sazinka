@@ -26,6 +26,7 @@ const FILE_OPTIONS_KEYS: Array<{ id: ExportPlusFile; label: string; helpKey: str
   { id: 'communications', label: 'communications.csv', helpKey: 'export_help_communications' },
   { id: 'work_log', label: 'work_log.csv', helpKey: 'export_help_work_log' },
   { id: 'routes', label: 'routes.csv + route_stops.csv', helpKey: 'export_help_routes' },
+  { id: 'notes', label: 'notes.csv', helpKey: 'export_help_notes' },
 ];
 
 const REVISION_STATUS = ['upcoming', 'scheduled', 'confirmed', 'completed', 'cancelled'];
@@ -43,7 +44,7 @@ function toggleFile(list: ExportPlusFile[], item: ExportPlusFile): ExportPlusFil
 export function ExportPlusPanel({ adminMode = false, crewOptions = [], depotOptions = [] }: ExportPlusPanelProps) {
   const { t } = useTranslation('pages');
   const addJob = useActiveJobsStore((s) => s.addJob);
-  const [selectedFiles, setSelectedFiles] = useState<ExportPlusFile[]>(['customers', 'devices', 'revisions', 'communications', 'work_log', 'routes']);
+  const [selectedFiles, setSelectedFiles] = useState<ExportPlusFile[]>(['customers', 'devices', 'revisions', 'communications', 'work_log', 'routes', 'notes']);
   const [scope, setScope] = useState<ExportScope>('customer_only');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');

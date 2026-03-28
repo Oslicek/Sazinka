@@ -2,7 +2,7 @@ import { createRequest, type ErrorResponse, type SuccessResponse } from '@shared
 import { useNatsStore } from '@/stores/natsStore';
 import { getToken } from '@/utils/auth';
 
-export type ExportPlusFile = 'customers' | 'devices' | 'revisions' | 'communications' | 'work_log' | 'routes';
+export type ExportPlusFile = 'customers' | 'devices' | 'revisions' | 'communications' | 'work_log' | 'routes' | 'notes';
 export type ExportScope = 'customer_only' | 'all_workers_combined' | 'all_workers_split' | 'single_worker';
 
 export interface ExportPlusFilters {

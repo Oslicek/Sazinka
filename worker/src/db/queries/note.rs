@@ -289,6 +289,30 @@ pub async fn redact_notes_for_user(
 }
 
 // ============================================================
+// Export — all non-deleted notes for a user
+// ============================================================
+
+/// Return all non-deleted notes owned by `user_id`, ordered by entity_type, entity_id, created_at.
+/// Used by the export processor to build notes.csv.
+pub async fn list_all_notes_for_user(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<Vec<Note>> {
+    let notes = sqlx::query_as::<_, Note>(
+        r#"
+        SELECT id, user_id, entity_type, entity_id, visit_id, content, created_at, updated_at, deleted_at
+        FROM notes
+        WHERE user_id = $1 AND deleted_at IS NULL
+        ORDER BY entity_type, entity_id, created_at ASC
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(notes)
+}
+
+// ============================================================
 // Compact projection (latest note content for a given entity)
 // ============================================================
 

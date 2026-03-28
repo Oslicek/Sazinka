@@ -3306,7 +3306,7 @@ Remove separate `result_notes` and `findings` textareas from completion form. In
 | U5 | Visit Detail — unified workspace | `NV1`–`NV42` | 42 | ✅ DONE |
 | U6 | Device Detail, Customer Detail/Workspace, VisitDetailDialog, CustomerTimeline | `NS1`–`NS28` | 28 | ✅ DONE |
 | U7 | WorkItemDetail — device notes, no legacy textareas | `NW1`–`NW12` | 12 | ✅ DONE |
-| U8 | Export `notes.csv`, legacy CSV changes | `NE1`–`NE15` | 15 |
+| U8 | Export `notes.csv`, legacy CSV changes | `NE1`–`NE15` | 15 | ✅ DONE |
 | U9 | Import `notes.csv` + ref resolution | `NI1`–`NI14` | 14 |
 | U10 | Cross-cutting integration (draft, autosave, conflict, GDPR, concurrent saves) | `NX1`–`NX24` | 24 |
 | | **Total (unified notes)** | | **210** |
