@@ -1,6 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Visit, UpdateVisitRequest, CompleteVisitRequest } from '@shared/visit';
+import type { Note } from '@shared/note';
 import { 
   updateVisit, 
   completeVisit,
@@ -8,6 +9,7 @@ import {
   getVisitTypeLabel,
   getVisitResultLabel,
 } from '../../services/visitService';
+import { listNotes } from '../../services/noteService';
 import { useNatsStore } from '../../stores/natsStore';
 import { TimeInput } from '../common/TimeInput';
 import styles from './VisitDetailDialog.module.css';
@@ -45,7 +47,16 @@ export function VisitDetailDialog({
   const [error, setError] = useState<string | null>(null);
   const [showCompleteForm, setShowCompleteForm] = useState(false);
 
+  // Unified visit notes (for read-only excerpt in completed visits)
+  const [visitNotes, setVisitNotes] = useState<Note[]>([]);
+
   const isCompleted = visit.status === 'completed';
+
+  useEffect(() => {
+    if (isCompleted) {
+      listNotes('visit', visit.id).then(setVisitNotes).catch(() => setVisitNotes([]));
+    }
+  }, [visit.id, isCompleted]);
   const canComplete = !isCompleted && ['planned', 'in_progress'].includes(visit.status);
 
   const handleChange = useCallback((field: string, value: string) => {
@@ -313,12 +324,26 @@ export function VisitDetailDialog({
 
           {/* Completed info */}
           {isCompleted && (
-            <div className={styles.completedInfo}>
+            <div className={styles.completedInfo} data-testid="visit-dialog-completed-info">
               {visit.result && (
                 <p><strong>{t('visit_result')}:</strong> {getVisitResultLabel(visit.result)}</p>
               )}
-              {visit.fieldNotes && (
-                <p><strong>{t('visit_note_label')}</strong> {visit.fieldNotes}</p>
+              {/* Unified notes — read-only excerpts (full editing on Visit Detail page) */}
+              {visitNotes.length > 0 && (
+                <div data-testid="visit-dialog-notes-excerpts">
+                  <strong>{t('visit_note_label', 'Notes:')}</strong>
+                  {visitNotes.map((note) => (
+                    <p key={note.id} className={styles.noteExcerpt} data-testid={`dialog-note-excerpt-${note.id}`}>
+                      {note.content.length > 300 ? note.content.slice(0, 300) + '…' : note.content}
+                    </p>
+                  ))}
+                </div>
+              )}
+              {/* Legacy fieldNotes fallback (until migration 045 drops the column) */}
+              {visitNotes.length === 0 && visit.fieldNotes && (
+                <p data-testid="visit-dialog-legacy-notes">
+                  <strong>{t('visit_note_label', 'Notes:')}</strong> {visit.fieldNotes}
+                </p>
               )}
               {visit.requiresFollowUp && (
                 <p className={styles.followUp}>

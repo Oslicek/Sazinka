@@ -6,16 +6,65 @@
  * - Right content: tabs (Devices | Revisions | Communication)
  */
 
-import { useState, type ReactNode } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { User, Phone, ClipboardCopy, Mail, AlertTriangle, Map, Wrench, MessageSquare } from 'lucide-react';
+import { User, Phone, ClipboardCopy, Mail, AlertTriangle, Map, Wrench, MessageSquare, Plus } from 'lucide-react';
 import type { Customer } from '@shared/customer';
+import type { Note } from '@shared/note';
 import { AddressMap } from './AddressMap';
 import { AddressStatusChip } from './AddressStatusChip';
 import { formatDate } from '../../i18n/formatters';
+import { listNotes, createNote, updateNote } from '../../services/noteService';
+import { NoteEditor } from '../notes/NoteEditor';
+import { useNoteDraft } from '../../hooks/useNoteDraft';
+import { useAutoSave } from '../../hooks/useAutoSave';
 import styles from './CustomerWorkspace.module.css';
 
 export type TabId = 'devices' | 'revisions' | 'communication';
+
+// ── InlineCustomerNote ────────────────────────────────────────────────────
+
+interface InlineCustomerNoteProps {
+  note: Note;
+  sessionId: string;
+  onSaved: (updated: Note) => void;
+}
+
+function InlineCustomerNote({ note, sessionId, onSaved }: InlineCustomerNoteProps) {
+  const { draft, updateDraft } = useNoteDraft({
+    entityType: 'customer',
+    entityId: note.entityId,
+    sessionId,
+    serverContent: note.content,
+    onSave: async (content) => {
+      const updated = await updateNote({ noteId: note.id, sessionId, content });
+      onSaved(updated);
+    },
+  });
+  const [hasChanges, setHasChanges] = useState(false);
+
+  useAutoSave({
+    saveFn: async () => {
+      const updated = await updateNote({ noteId: note.id, sessionId, content: draft });
+      onSaved(updated);
+      setHasChanges(false);
+    },
+    hasChanges,
+    debounceMs: 1500,
+  });
+
+  return (
+    <NoteEditor
+      entityType="customer"
+      entityId={note.entityId}
+      initialContent={draft}
+      onChange={(content) => {
+        updateDraft(content);
+        setHasChanges(content !== note.content);
+      }}
+    />
+  );
+}
 
 interface CustomerWorkspaceProps {
   customer: Customer;
@@ -40,6 +89,14 @@ export function CustomerWorkspace({
   const [internalActiveTab, setInternalActiveTab] = useState<TabId>('devices');
   const { t } = useTranslation('customers');
   const activeTab = controlledActiveTab ?? internalActiveTab;
+
+  // Unified customer notes
+  const [customerNotes, setCustomerNotes] = useState<Note[]>([]);
+  const sessionIdRef = useRef<string>(crypto.randomUUID());
+
+  useEffect(() => {
+    listNotes('customer', customer.id).then(setCustomerNotes).catch(() => setCustomerNotes([]));
+  }, [customer.id]);
 
   const handleTabChange = (tab: TabId) => {
     if (onTabChange) {
@@ -156,13 +213,46 @@ export function CustomerWorkspace({
           </section>
         )}
 
-        {/* Notes section */}
-        {customer.notes && (
-          <section className={styles.section}>
-            <h3 className={styles.sectionTitle}>{t('preview_notes')}</h3>
-            <p className={styles.notes}>{customer.notes}</p>
-          </section>
-        )}
+        {/* Notes section — unified journal */}
+        <section className={styles.section} data-testid="customer-notes-sidebar">
+          <div className={styles.sectionTitleRow}>
+            <h3 className={styles.sectionTitle}>{t('preview_notes', 'Notes')}</h3>
+            <button
+              type="button"
+              className={styles.addNoteBtn}
+              data-testid="add-customer-note-sidebar-btn"
+              onClick={async () => {
+                const note = await createNote({
+                  entityType: 'customer',
+                  entityId: customer.id,
+                  sessionId: sessionIdRef.current,
+                  content: '',
+                });
+                setCustomerNotes((prev) => [...prev, note]);
+              }}
+            >
+              <Plus size={12} />
+            </button>
+          </div>
+          {customerNotes.length === 0 ? (
+            <p className={styles.emptyText} data-testid="customer-notes-sidebar-empty">
+              {t('preview_notes_empty', 'No notes yet')}
+            </p>
+          ) : (
+            <div className={styles.notesList} data-testid="customer-notes-sidebar-list">
+              {customerNotes.map((note) => (
+                <InlineCustomerNote
+                  key={note.id}
+                  note={note}
+                  sessionId={sessionIdRef.current}
+                  onSaved={(updated) =>
+                    setCustomerNotes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)))
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </section>
 
         {/* Metadata */}
         <section className={styles.section}>
