@@ -3302,7 +3302,7 @@ Remove separate `result_notes` and `findings` textareas from completion form. In
 | U1 | DB migration 044 + data migration + Rust types | `UM1`–`UM21` | 21 | ✅ DONE |
 | U2 | NATS handlers (`note.create/update/list/audit/delete`) | `NH1`–`NH26` | 26 | ✅ DONE |
 | U3 | Shared TypeScript types + `noteService.ts` | `NT1`–`NT10` | 10 | ✅ DONE |
-| U4 | `NoteEditor`, `useNoteDraft`, `NoteHistory` (generalized) | `NB1`–`NB18` | 18 |
+| U4 | `NoteEditor`, `useNoteDraft`, `NoteHistory` (generalized) | `NB1`–`NB18` | 18 | ✅ DONE |
 | U5 | Visit Detail — unified workspace | `NV1`–`NV42` | 42 |
 | U6 | Device Detail, Customer Detail/Workspace, VisitDetailDialog, CustomerTimeline | `NS1`–`NS28` | 28 |
 | U7 | WorkItemDetail — device notes, no legacy textareas | `NW1`–`NW12` | 12 |
