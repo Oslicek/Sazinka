@@ -4,10 +4,11 @@
  * Shows work item information, duration, result, findings, and link to revision if applicable
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link, useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import type { VisitWorkItem } from '@shared/workItem';
+import type { Note } from '@shared/note';
 import {
   getWorkItem,
   completeWorkItem,
@@ -15,8 +16,54 @@ import {
   getWorkResultLabel,
   type WorkType,
 } from '../services/workItemService';
+import { listNotes, createNote, updateNote } from '../services/noteService';
 import { useNatsStore } from '../stores/natsStore';
-import { AlertTriangle, Search, Clock, Bell, Check, ClipboardList, Wrench, Settings, MessageSquare, RefreshCcw } from 'lucide-react';
+import { AlertTriangle, Search, Clock, Bell, Check, ClipboardList, Wrench, Settings, MessageSquare, RefreshCcw, Plus } from 'lucide-react';
+import { NoteEditor } from '../components/notes/NoteEditor';
+import { useNoteDraft } from '../hooks/useNoteDraft';
+import { useAutoSave } from '../hooks/useAutoSave';
+
+interface InlineDeviceNoteProps {
+  note: Note;
+  sessionId: string;
+  onSaved: (updated: Note) => void;
+}
+
+function InlineDeviceNote({ note, sessionId, onSaved }: InlineDeviceNoteProps) {
+  const { draft, updateDraft } = useNoteDraft({
+    entityType: 'device',
+    entityId: note.entityId,
+    sessionId,
+    serverContent: note.content,
+    onSave: async (content) => {
+      const updated = await updateNote({ noteId: note.id, sessionId, content });
+      onSaved(updated);
+    },
+  });
+  const [hasChanges, setHasChanges] = useState(false);
+
+  useAutoSave({
+    saveFn: async () => {
+      const updated = await updateNote({ noteId: note.id, sessionId, content: draft });
+      onSaved(updated);
+      setHasChanges(false);
+    },
+    hasChanges,
+    debounceMs: 1500,
+  });
+
+  return (
+    <NoteEditor
+      entityType="device"
+      entityId={note.entityId}
+      initialContent={draft}
+      onChange={(content) => {
+        updateDraft(content);
+        setHasChanges(content !== note.content);
+      }}
+    />
+  );
+}
 
 function WorkTypeIcon({ type }: { type: WorkType }) {
   switch (type) {
@@ -40,6 +87,10 @@ export function WorkItemDetail() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Unified device notes
+  const [deviceNotes, setDeviceNotes] = useState<Note[]>([]);
+  const sessionIdRef = useRef<string>(crypto.randomUUID());
 
   // Complete dialog
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
@@ -79,6 +130,14 @@ export function WorkItemDetail() {
   useEffect(() => {
     loadWorkItem();
   }, [loadWorkItem]);
+
+  useEffect(() => {
+    if (workItem?.deviceId) {
+      listNotes('device', workItem.deviceId)
+        .then(setDeviceNotes)
+        .catch((err) => console.error('Failed to load device notes:', err));
+    }
+  }, [workItem?.deviceId]);
 
   // Complete handler
   const handleComplete = useCallback(async () => {
@@ -227,20 +286,6 @@ export function WorkItemDetail() {
               )}
             </div>
 
-            {workItem.resultNotes && (
-              <div className={styles.notesSection}>
-                <span className={styles.detailLabel}>{t('workitem_notes')}</span>
-                <p className={styles.notes}>{workItem.resultNotes}</p>
-              </div>
-            )}
-
-            {workItem.findings && (
-              <div className={styles.findingsSection}>
-                <span className={styles.detailLabel}>{t('workitem_findings')}</span>
-                <p className={styles.findings}>{workItem.findings}</p>
-              </div>
-            )}
-
             {workItem.requiresFollowUp && (
               <div className={styles.followUpSection}>
                 <span className={styles.followUpBadge}><Bell size={14} /> {t('workitem_requires_follow_up')}</span>
@@ -274,6 +319,50 @@ export function WorkItemDetail() {
               {t('workitem_protocol_placeholder')}
             </p>
           </div>
+
+          {/* Unified device notes */}
+          {workItem.deviceId && (
+            <div className={styles.card} data-testid="device-notes-section">
+              <div className={styles.cardTitleRow}>
+                <h3 className={styles.cardTitle}>{t('workitem_device_notes')}</h3>
+                <button
+                  className={styles.addNoteBtn}
+                  data-testid="add-device-note-btn"
+                  onClick={async () => {
+                    const note = await createNote({
+                      entityType: 'device',
+                      entityId: workItem.deviceId!,
+                      sessionId: sessionIdRef.current,
+                      content: '',
+                    });
+                    setDeviceNotes((prev) => [...prev, note]);
+                  }}
+                >
+                  <Plus size={14} /> {t('workitem_add_note')}
+                </button>
+              </div>
+              {deviceNotes.length === 0 ? (
+                <p className={styles.placeholder} data-testid="device-notes-empty">
+                  {t('workitem_device_notes_empty')}
+                </p>
+              ) : (
+                <div className={styles.notesList} data-testid="device-notes-list">
+                  {deviceNotes.map((note) => (
+                    <InlineDeviceNote
+                      key={note.id}
+                      note={note}
+                      sessionId={sessionIdRef.current}
+                      onSaved={(updated) =>
+                        setDeviceNotes((prev) =>
+                          prev.map((n) => (n.id === updated.id ? updated : n))
+                        )
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Right column - Actions panel */}
@@ -330,22 +419,7 @@ export function WorkItemDetail() {
               />
             </div>
             <div className={styles.dialogField}>
-              <label>{t('workitem_complete_notes')}</label>
-              <textarea 
-                value={completeNotes} 
-                onChange={e => setCompleteNotes(e.target.value)}
-                placeholder={t('workitem_complete_notes_placeholder')}
-                rows={3}
-              />
-            </div>
-            <div className={styles.dialogField}>
-              <label>{t('workitem_complete_findings')}</label>
-              <textarea 
-                value={completeFindings} 
-                onChange={e => setCompleteFindings(e.target.value)}
-                placeholder={t('workitem_complete_findings_placeholder')}
-                rows={3}
-              />
+              <p className={styles.dialogNotesHint}>{t('workitem_complete_notes_hint')}</p>
             </div>
             <div className={styles.dialogActions}>
               <button 
