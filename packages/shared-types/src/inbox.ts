@@ -67,6 +67,11 @@ export interface InboxRequest {
   lifecycleFilter?: LifecycleState[];
   geocodedOnly?: boolean;
   areaFilter?: string;
+  /**
+   * Deep-link focus: ask the worker to include this customer in the result set
+   * even if they fall outside the normal top-N slice, and pin them to index 0.
+   */
+  focusCustomerId?: string;
 }
 
 export interface InboxResponse {
@@ -74,4 +79,11 @@ export interface InboxResponse {
   total: number;
   overdueCount: number;
   dueSoonCount: number;
+  /**
+   * Set by the worker when a focusCustomerId was requested.
+   * true  = the focused customer is present in items (at index 0).
+   * false = the focused customer could not be included (invalid/inaccessible).
+   * absent/undefined = no focus was requested (backward-compatible).
+   */
+  focusedCustomerIncluded?: boolean;
 }
