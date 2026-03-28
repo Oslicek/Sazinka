@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AlertTriangle } from 'lucide-react';
 import { VirtualizedInboxList } from '@/components/planner';
 import { InboxFilterBar } from '@/components/planner/InboxFilterBar';
+import './InboxListPanel.css';
 import { usePanelState } from '@/hooks/usePanelState';
 import { useNatsStore } from '@/stores/natsStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -132,6 +134,7 @@ export function InboxListPanel(props: InboxListPanelProps) {
 function InboxListPanelInner({ candidates: candidatesProp, isLoading: isLoadingProp, selectable = false, selectedIds, onSelectionChange }: InboxListPanelProps) {
   const { state, actions } = usePanelState();
   const { isConnected } = useNatsStore();
+  const { t } = useTranslation('planner');
 
   const [rawCandidates, setRawCandidatesState] = useState<CallQueueItem[]>(_cache.rawCandidates);
   const [candidates, setCandidates] = useState<CandidateRowData[]>([]);
@@ -364,24 +367,15 @@ function InboxListPanelInner({ candidates: candidatesProp, isLoading: isLoadingP
       {showFocusWarning && (
         <div
           data-testid="focus-customer-warning"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            padding: '0.4rem 0.75rem',
-            background: 'var(--color-warning-bg, #fff3cd)',
-            color: 'var(--color-warning, #856404)',
-            fontSize: '0.8rem',
-            borderBottom: '1px solid var(--color-warning-border, #ffc107)',
-          }}
+          className="focusWarningBanner"
         >
           <AlertTriangle size={14} />
-          <span style={{ flex: 1 }}>Customer not found in inbox queue.</span>
+          <span className="focusWarningText">{t('focus_customer_not_found')}</span>
           <button
             type="button"
             onClick={() => setShowFocusWarning(false)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', lineHeight: 1 }}
-            aria-label="Dismiss warning"
+            className="focusWarningDismiss"
+            aria-label={t('focus_customer_dismiss')}
           >
             ×
           </button>

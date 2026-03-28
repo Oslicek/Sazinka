@@ -420,5 +420,8 @@
   "scoring_preset_name_new_customers_first": "New Customers First",
   "scoring_preset_name_due_date_radar": "Due-Date Radar",
   "scoring_preset_name_overdue_firefighter": "Overdue Firefighter",
-  "scoring_preset_name_data_quality_first": "Data Quality First"
+  "scoring_preset_name_data_quality_first": "Data Quality First",
+
+  "focus_customer_not_found": "Customer not found in inbox queue.",
+  "focus_customer_dismiss": "Dismiss warning"
 }

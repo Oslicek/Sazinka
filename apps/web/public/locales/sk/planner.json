@@ -379,5 +379,8 @@
   "scoring_preset_name_new_customers_first": "Noví zákazníci",
   "scoring_preset_name_due_date_radar": "Radar termínov",
   "scoring_preset_name_overdue_firefighter": "Po termíne",
-  "scoring_preset_name_data_quality_first": "Oprava chybných dát"
+  "scoring_preset_name_data_quality_first": "Oprava chybných dát",
+
+  "focus_customer_not_found": "Zákazník nebol nájdený vo fronte.",
+  "focus_customer_dismiss": "Zavrieť upozornenie"
 }

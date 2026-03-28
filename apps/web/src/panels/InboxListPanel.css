@@ -1,0 +1,22 @@
+.focusWarningBanner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  background: var(--color-warning-bg, #fff3cd);
+  color: var(--color-warning, #856404);
+  font-size: 0.8rem;
+  border-bottom: 1px solid var(--color-warning-border, #ffc107);
+}
+
+.focusWarningText {
+  flex: 1;
+}
+
+.focusWarningDismiss {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  line-height: 1;
+}

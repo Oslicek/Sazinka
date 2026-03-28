@@ -18,6 +18,10 @@ import { InboxListPanel, resetInboxListCache } from '../InboxListPanel';
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: (k: string) => k, i18n: { language: 'en' } }),
+}));
+
 vi.mock('@/stores/natsStore', () => ({
   useNatsStore: () => ({ isConnected: false }),
 }));

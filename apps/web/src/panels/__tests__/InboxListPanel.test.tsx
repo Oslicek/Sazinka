@@ -13,6 +13,10 @@ import type { InboxFilterExpression, FilterPresetId } from '@/pages/planningInbo
 // Mocks
 // ---------------------------------------------------------------------------
 
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: (k: string) => k, i18n: { language: 'en' } }),
+}));
+
 vi.mock('@/components/planner', () => ({
   VirtualizedInboxList: ({
     candidates,

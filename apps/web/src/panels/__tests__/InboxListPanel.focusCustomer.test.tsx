@@ -20,6 +20,11 @@ import { InboxListPanel, resetInboxListCache } from '../InboxListPanel';
 import type { CandidateRowData } from '@/components/planner';
 import type { CallQueueItem } from '@/services/revisionService';
 
+// ── i18n mock ──────────────────────────────────────────────────────────────────
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: (k: string) => k, i18n: { language: 'en' } }),
+}));
+
 // ── VirtualizedInboxList mock ─────────────────────────────────────────────────
 vi.mock('@/components/planner', () => ({
   VirtualizedInboxList: ({
