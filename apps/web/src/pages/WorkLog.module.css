@@ -245,6 +245,42 @@
   color: var(--color-text);
 }
 
+.customerCell {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.customerCell .cellLink {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.customerDetailLink {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background-color 0.15s;
+}
+
+.row:hover .customerDetailLink {
+  opacity: 1;
+}
+
+.customerDetailLink:hover {
+  color: var(--color-primary);
+  background-color: rgba(59, 130, 246, 0.1);
+}
+
 .tdAddress {
   color: var(--color-text-secondary);
   max-width: 200px;

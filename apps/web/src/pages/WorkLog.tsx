@@ -18,7 +18,7 @@ import type { Visit, VisitResult } from '@shared/visit';
 import { PlannerFilters } from '../components/shared/PlannerFilters';
 import { QuickVisitDialog } from '../components/worklog';
 import { formatDate } from '../i18n/formatters';
-import { ClipboardList, Calendar, RefreshCw, CheckCircle2, XCircle, RotateCcw } from 'lucide-react';
+import { ClipboardList, Calendar, RefreshCw, CheckCircle2, XCircle, RotateCcw, ExternalLink } from 'lucide-react';
 import styles from './WorkLog.module.css';
 
 interface WorkLogSearchParams {
@@ -425,18 +425,29 @@ export function WorkLog() {
                         </Link>
                       </td>
                       <td className={styles.tdCustomer}>
-                        <Link
-                          to="/customers/$customerId"
-                          params={{ customerId: visit.customerId }}
-                          className={styles.cellLink}
-                        >
-                          {visit.customerName || '–'}
-                        </Link>
+                        <div className={styles.customerCell}>
+                          <Link
+                            to="/visits/$visitId"
+                            params={{ visitId: visit.id }}
+                            className={styles.cellLink}
+                          >
+                            {visit.customerName || '–'}
+                          </Link>
+                          <Link
+                            to="/customers/$customerId"
+                            params={{ customerId: visit.customerId }}
+                            className={styles.customerDetailLink}
+                            onClick={(e) => e.stopPropagation()}
+                            title={t('worklog_go_to_customer', 'Otevřít zákazníka')}
+                          >
+                            <ExternalLink size={12} />
+                          </Link>
+                        </div>
                       </td>
                       <td className={styles.tdAddress}>
                         <Link
-                          to="/customers/$customerId"
-                          params={{ customerId: visit.customerId }}
+                          to="/visits/$visitId"
+                          params={{ visitId: visit.id }}
                           className={styles.cellLink}
                         >
                           {[visit.customerStreet, visit.customerCity].filter(Boolean).join(', ') || '–'}
