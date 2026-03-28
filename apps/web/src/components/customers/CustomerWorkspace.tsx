@@ -14,72 +14,11 @@ import type { Note } from '@shared/note';
 import { AddressMap } from './AddressMap';
 import { AddressStatusChip } from './AddressStatusChip';
 import { formatDate } from '../../i18n/formatters';
-import { listNotes, createNote, updateNote } from '../../services/noteService';
-import { NoteEditor } from '../notes/NoteEditor';
-import { useNoteDraft } from '../../hooks/useNoteDraft';
-import { useAutoSave } from '../../hooks/useAutoSave';
+import { listNotes, createNote } from '../../services/noteService';
+import { InlineNoteEditor } from '../notes/InlineNoteEditor';
 import styles from './CustomerWorkspace.module.css';
 
 export type TabId = 'devices' | 'revisions' | 'communication';
-
-// ── InlineCustomerNote ────────────────────────────────────────────────────
-
-interface InlineCustomerNoteProps {
-  note: Note;
-  sessionId: string;
-  onSaved: (updated: Note) => void;
-}
-
-function InlineCustomerNote({ note, sessionId, onSaved }: InlineCustomerNoteProps) {
-  const { draft, updateDraft, hasConflict, resolveKeepLocal, resolveUseServer } = useNoteDraft({
-    entityType: 'customer',
-    entityId: note.entityId,
-    sessionId,
-    serverContent: note.content,
-    onSave: async (content) => {
-      const updated = await updateNote({ noteId: note.id, sessionId, content });
-      onSaved(updated);
-    },
-  });
-  const [hasChanges, setHasChanges] = useState(false);
-
-  const { saveError, retry } = useAutoSave({
-    saveFn: async () => {
-      const updated = await updateNote({ noteId: note.id, sessionId, content: draft });
-      onSaved(updated);
-      setHasChanges(false);
-    },
-    hasChanges,
-    debounceMs: 1500,
-  });
-
-  return (
-    <div style={{ marginBottom: '8px' }}>
-      {hasConflict && (
-        <div data-testid="conflict-prompt" style={{ display: 'flex', gap: '8px', marginBottom: '6px', fontSize: '13px', color: 'var(--warning, #f57c00)' }}>
-          <span>Unsaved local draft differs from server</span>
-          <button onClick={() => resolveKeepLocal()}>Keep local</button>
-          <button onClick={resolveUseServer}>Use server</button>
-        </div>
-      )}
-      {saveError && (
-        <div data-testid="save-error" style={{ display: 'flex', gap: '8px', marginBottom: '6px', fontSize: '13px', color: 'var(--error, #d32f2f)' }}>
-          <span>Save failed</span>
-          <button onClick={retry} style={{ textDecoration: 'underline', cursor: 'pointer', border: 'none', background: 'none', color: 'inherit', padding: 0, font: 'inherit' }}>Retry</button>
-        </div>
-      )}
-      <NoteEditor
-        entityType="customer"
-        entityId={note.entityId}
-        initialContent={draft}
-        onChange={(content) => {
-          updateDraft(content);
-          setHasChanges(content !== note.content);
-        }}
-      />
-    </div>
-  );
-}
 
 interface CustomerWorkspaceProps {
   customer: Customer;
@@ -264,7 +203,7 @@ export function CustomerWorkspace({
           ) : (
             <div className={styles.notesList} data-testid="customer-notes-sidebar-list">
               {customerNotes.map((note) => (
-                <InlineCustomerNote
+                <InlineNoteEditor
                   key={note.id}
                   note={note}
                   sessionId={sessionIdRef.current}

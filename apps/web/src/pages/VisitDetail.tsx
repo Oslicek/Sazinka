@@ -20,80 +20,13 @@ import {
   getVisitTypeLabel,
   getVisitResultLabel,
 } from '../services/visitService';
-import { listNotes, createNote, updateNote } from '../services/noteService';
+import { listNotes, createNote } from '../services/noteService';
 import { getWorkTypeLabel, type WorkType } from '../services/workItemService';
 import { useNatsStore } from '../stores/natsStore';
 import { formatDate } from '../i18n/formatters';
-import { AlertTriangle, Search, Calendar, Clock, Phone, Wrench, Settings, MessageSquare, RefreshCcw, ClipboardList, Plus, ChevronDown, ChevronRight } from 'lucide-react';
+import { Search, Calendar, Clock, Phone, Wrench, Settings, MessageSquare, RefreshCcw, ClipboardList, Plus, ChevronDown, ChevronRight } from 'lucide-react';
 import { TimeInput } from '../components/common/TimeInput';
-import { NoteEditor } from '../components/notes/NoteEditor';
-import { useNoteDraft } from '../hooks/useNoteDraft';
-import { useAutoSave } from '../hooks/useAutoSave';
-
-// ── InlineNoteEditor ──────────────────────────────────────────────────────
-// A single note row in the journal: NoteEditor + debounced autosave.
-
-interface InlineNoteEditorProps {
-  note: Note;
-  sessionId: string;
-  onSaved: (updated: Note) => void;
-}
-
-function InlineNoteEditor({ note, sessionId, onSaved }: InlineNoteEditorProps) {
-  const entityType = note.entityType as 'customer' | 'device' | 'visit';
-  const { draft, updateDraft, hasConflict, resolveKeepLocal, resolveUseServer } = useNoteDraft({
-    entityType,
-    entityId: note.entityId,
-    sessionId,
-    serverContent: note.content,
-    onSave: async (content) => {
-      const updated = await updateNote({ noteId: note.id, sessionId, content });
-      onSaved(updated);
-    },
-  });
-
-  const [hasChanges, setHasChanges] = useState(false);
-
-  const { saveError, retry } = useAutoSave({
-    saveFn: async () => {
-      const updated = await updateNote({ noteId: note.id, sessionId, content: draft });
-      onSaved(updated);
-      setHasChanges(false);
-    },
-    hasChanges,
-    debounceMs: 1500,
-  });
-
-  const handleChange = (content: string) => {
-    updateDraft(content);
-    setHasChanges(content !== note.content);
-  };
-
-  return (
-    <div data-testid={`note-row-${note.id}`} style={{ marginBottom: '8px' }}>
-      {hasConflict && (
-        <div data-testid="conflict-prompt" style={{ display: 'flex', gap: '8px', marginBottom: '6px', fontSize: '13px', color: 'var(--warning, #f57c00)' }}>
-          <span>Unsaved local draft differs from server</span>
-          <button onClick={() => resolveKeepLocal()}>Keep local</button>
-          <button onClick={resolveUseServer}>Use server</button>
-        </div>
-      )}
-      {saveError && (
-        <div data-testid="save-error" style={{ display: 'flex', gap: '8px', marginBottom: '6px', fontSize: '13px', color: 'var(--error, #d32f2f)' }}>
-          <AlertTriangle size={14} />
-          <span>Save failed</span>
-          <button onClick={retry} style={{ textDecoration: 'underline', cursor: 'pointer', border: 'none', background: 'none', color: 'inherit', padding: 0, font: 'inherit' }}>Retry</button>
-        </div>
-      )}
-      <NoteEditor
-        entityType={entityType}
-        entityId={note.entityId}
-        initialContent={draft}
-        onChange={handleChange}
-      />
-    </div>
-  );
-}
+import { InlineNoteEditor } from '../components/notes/InlineNoteEditor';
 
 function WorkTypeIcon({ type }: { type: WorkType }) {
   switch (type) {
