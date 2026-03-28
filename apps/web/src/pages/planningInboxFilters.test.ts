@@ -10,6 +10,7 @@ import {
   evaluateCandidate,
   hasAdvancedCriteria,
   mapExpressionToCallQueueRequestV1,
+  matchesSearchQuery,
   normalizeExpression,
   toFilterAst,
   type InboxFilterExpression,
@@ -365,6 +366,55 @@ describe('planningInboxFilters', () => {
 
     expect(hasAdvancedCriteria(DEFAULT_FILTER_EXPRESSION)).toBe(false);
     expect(hasAdvancedCriteria(withRootOr)).toBe(true);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Text search — matchesSearchQuery
+  // ---------------------------------------------------------------------------
+
+  it('matchesSearchQuery returns true for empty query', () => {
+    const candidate = buildCandidate({ id: '1', customerId: 'c1' });
+    expect(matchesSearchQuery(candidate, '')).toBe(true);
+  });
+
+  it('matchesSearchQuery matches customerName case-insensitively', () => {
+    const candidate = buildCandidate({ id: '1', customerId: 'c1', customerName: 'Jan Novák' });
+    expect(matchesSearchQuery(candidate, 'novák')).toBe(true);
+    expect(matchesSearchQuery(candidate, 'NOVÁK')).toBe(true);
+    expect(matchesSearchQuery(candidate, 'jan')).toBe(true);
+  });
+
+  it('matchesSearchQuery matches customerCity', () => {
+    const candidate = buildCandidate({ id: '1', customerId: 'c1', customerCity: 'Brno' });
+    expect(matchesSearchQuery(candidate, 'brn')).toBe(true);
+    expect(matchesSearchQuery(candidate, 'BRN')).toBe(true);
+  });
+
+  it('matchesSearchQuery matches customerPhone', () => {
+    const candidate = buildCandidate({ id: '1', customerId: 'c1', customerPhone: '+420 123 456' });
+    expect(matchesSearchQuery(candidate, '123')).toBe(true);
+    expect(matchesSearchQuery(candidate, '+420')).toBe(true);
+  });
+
+  it('matchesSearchQuery matches customerStreet', () => {
+    const candidate = buildCandidate({ id: '1', customerId: 'c1', customerStreet: 'Hlavní 42' });
+    expect(matchesSearchQuery(candidate, 'hlavní')).toBe(true);
+  });
+
+  it('matchesSearchQuery returns false when no field matches', () => {
+    const candidate = buildCandidate({ id: '1', customerId: 'c1', customerName: 'Jan', customerCity: 'Prague', customerPhone: '123' });
+    expect(matchesSearchQuery(candidate, 'xyz-no-match')).toBe(false);
+  });
+
+  it('matchesSearchQuery handles null phone gracefully', () => {
+    const candidate = buildCandidate({ id: '1', customerId: 'c1', customerPhone: null });
+    expect(matchesSearchQuery(candidate, '123')).toBe(false);
+  });
+
+  it('matchesSearchQuery trims whitespace from query', () => {
+    const candidate = buildCandidate({ id: '1', customerId: 'c1', customerName: 'Test' });
+    expect(matchesSearchQuery(candidate, '  test  ')).toBe(true);
+    expect(matchesSearchQuery(candidate, '   ')).toBe(true);
   });
 
   it('normalizes invalid operators to safe defaults', () => {

@@ -372,6 +372,9 @@
   "panel_map": "Mapa",
   "panel_timeline": "Časová os",
 
+  "inbox_search_placeholder": "Hľadať kandidátov…",
+  "inbox_search_toggle": "Hľadať",
+
   "scoring_preset_name_standard": "Vyvážený",
   "scoring_preset_name_new_customers_first": "Noví zákazníci",
   "scoring_preset_name_due_date_radar": "Radar termínov",

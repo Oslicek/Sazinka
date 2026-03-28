@@ -413,6 +413,9 @@
   "panel_map": "Map",
   "panel_timeline": "Timeline",
 
+  "inbox_search_placeholder": "Search candidates…",
+  "inbox_search_toggle": "Search",
+
   "scoring_preset_name_standard": "Balanced",
   "scoring_preset_name_new_customers_first": "New Customers First",
   "scoring_preset_name_due_date_radar": "Due-Date Radar",

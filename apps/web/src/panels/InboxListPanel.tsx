@@ -17,6 +17,7 @@ import {
   isScheduledCandidate,
   applyInboxFilters,
   applyFilterPreset,
+  matchesSearchQuery,
   normalizeExpression,
   DEFAULT_FILTER_EXPRESSION,
   type InboxFilterExpression,
@@ -139,6 +140,7 @@ function InboxListPanelInner({ candidates: candidatesProp, isLoading: isLoadingP
   const [selectedRuleSetId, setSelectedRuleSetIdState] = useState<string | null>(_cache.selectedRuleSetId);
   const [filters, setFilters] = useState<InboxFilterExpression>(loadPersistedFilters);
   const [activePresetId, setActivePresetId] = useState<FilterPresetId | null>(loadPersistedPresetId);
+  const [searchQuery, setSearchQuery] = useState('');
   const inboxStateLoadedRef = useRef(_cache.inboxStateLoaded);
 
   // UPP: isAdvancedFiltersOpen — session channel
@@ -278,7 +280,11 @@ function InboxListPanelInner({ candidates: candidatesProp, isLoading: isLoadingP
 
   // Apply client-side filters + sorting, then enrich with route stop info
   const filteredSorted = useMemo(() => {
-    const filtered = applyInboxFilters(rawCandidates, filters, inRouteIds) as CallQueueItem[];
+    let filtered = applyInboxFilters(rawCandidates, filters, inRouteIds) as CallQueueItem[];
+
+    if (searchQuery.trim()) {
+      filtered = filtered.filter((item) => matchesSearchQuery(item, searchQuery));
+    }
 
     // Keep selected candidate visible even if filtered out
     const selectedId = state.selectedCustomerId;
@@ -294,7 +300,7 @@ function InboxListPanelInner({ candidates: candidatesProp, isLoading: isLoadingP
       return candidate;
     });
     return sortCandidates(mapped);
-  }, [rawCandidates, filters, inRouteIds, scheduledIds, state.selectedCustomerId]);
+  }, [rawCandidates, filters, inRouteIds, scheduledIds, state.selectedCustomerId, searchQuery]);
 
   const handlePresetChange = useCallback((presetId: FilterPresetId) => {
     setFilters((prev) => applyFilterPreset(presetId, prev));
@@ -323,6 +329,8 @@ function InboxListPanelInner({ candidates: candidatesProp, isLoading: isLoadingP
         candidateCount={filteredSorted.length}
         isAdvancedOpen={isAdvancedOpen}
         onToggleAdvanced={handleToggleAdvanced}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
       />
       <VirtualizedInboxList
         candidates={resolvedCandidates}

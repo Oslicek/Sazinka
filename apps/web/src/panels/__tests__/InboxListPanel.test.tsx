@@ -94,6 +94,8 @@ let lastFilterBarProps: {
   candidateCount: number;
   isAdvancedOpen?: boolean;
   onToggleAdvanced?: () => void;
+  searchQuery?: string;
+  onSearchChange?: (query: string) => void;
 } | null = null;
 
 vi.mock('@/components/planner/InboxFilterBar', () => ({
@@ -659,5 +661,113 @@ describe('InboxListPanel – route stop enrichment', () => {
     await waitFor(() =>
       expect(screen.getByTestId('candidate-c1')).toHaveAttribute('data-is-scheduled', 'true')
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Search integration tests
+// ---------------------------------------------------------------------------
+
+describe('InboxListPanel – search filtering', () => {
+  beforeEach(() => {
+    lastFilterBarProps = null;
+    sessionStorage.clear();
+  });
+
+  it('passes searchQuery and onSearchChange to InboxFilterBar', async () => {
+    mockGetInbox.mockResolvedValue(makeInboxResponse([mockRawCandidate]));
+    mockInboxResponseToCallQueueResponse.mockReturnValue({ items: [mockRawCandidate] });
+
+    render(<InboxListPanel />, { wrapper });
+
+    await waitFor(() => expect(lastFilterBarProps).not.toBeNull());
+    expect(lastFilterBarProps!.searchQuery).toBe('');
+    expect(lastFilterBarProps!.onSearchChange).toBeInstanceOf(Function);
+  });
+
+  it('filters candidates by search query (customerName match)', async () => {
+    const jana = { ...rawCallQueueItem, customerId: 'c1', customerName: 'Jana Novotná', daysUntilDue: 3, priority: 'due_this_week' as const };
+    const petr = { ...rawCallQueueItem, customerId: 'c2', customerName: 'Petr Dvořák', daysUntilDue: 5, priority: 'due_this_week' as const };
+    mockGetInbox.mockResolvedValue(makeInboxResponse([jana, petr]));
+    mockInboxResponseToCallQueueResponse.mockReturnValue({ items: [jana, petr] });
+
+    render(<InboxListPanel />, { wrapper });
+
+    await waitFor(() => expect(lastFilterBarProps).not.toBeNull());
+
+    // Apply ALL preset first to see both
+    act(() => { lastFilterBarProps!.onPresetChange('ALL'); });
+    await waitFor(() => {
+      expect(screen.getByTestId('candidate-c1')).toBeInTheDocument();
+      expect(screen.getByTestId('candidate-c2')).toBeInTheDocument();
+    });
+
+    // Type a search that only matches Jana
+    act(() => { lastFilterBarProps!.onSearchChange!('jana'); });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('candidate-c1')).toBeInTheDocument();
+      expect(screen.queryByTestId('candidate-c2')).not.toBeInTheDocument();
+    });
+  });
+
+  it('filters candidates by search query (customerCity match)', async () => {
+    const brno = { ...rawCallQueueItem, customerId: 'c1', customerCity: 'Brno', daysUntilDue: 3, priority: 'due_this_week' as const };
+    const praha = { ...rawCallQueueItem, customerId: 'c2', customerCity: 'Praha', daysUntilDue: 5, priority: 'due_this_week' as const };
+    mockGetInbox.mockResolvedValue(makeInboxResponse([brno, praha]));
+    mockInboxResponseToCallQueueResponse.mockReturnValue({ items: [brno, praha] });
+
+    render(<InboxListPanel />, { wrapper });
+
+    await waitFor(() => expect(lastFilterBarProps).not.toBeNull());
+    act(() => { lastFilterBarProps!.onPresetChange('ALL'); });
+    await waitFor(() => expect(screen.getByTestId('candidate-c1')).toBeInTheDocument());
+
+    act(() => { lastFilterBarProps!.onSearchChange!('brn'); });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('candidate-c1')).toBeInTheDocument();
+      expect(screen.queryByTestId('candidate-c2')).not.toBeInTheDocument();
+    });
+  });
+
+  it('shows all candidates when search query is cleared', async () => {
+    const jana = { ...rawCallQueueItem, customerId: 'c1', customerName: 'Jana', daysUntilDue: 3, priority: 'due_this_week' as const };
+    const petr = { ...rawCallQueueItem, customerId: 'c2', customerName: 'Petr', daysUntilDue: 5, priority: 'due_this_week' as const };
+    mockGetInbox.mockResolvedValue(makeInboxResponse([jana, petr]));
+    mockInboxResponseToCallQueueResponse.mockReturnValue({ items: [jana, petr] });
+
+    render(<InboxListPanel />, { wrapper });
+
+    await waitFor(() => expect(lastFilterBarProps).not.toBeNull());
+    act(() => { lastFilterBarProps!.onPresetChange('ALL'); });
+    await waitFor(() => expect(screen.getByTestId('candidate-c1')).toBeInTheDocument());
+
+    // Search filters down
+    act(() => { lastFilterBarProps!.onSearchChange!('jana'); });
+    await waitFor(() => expect(screen.queryByTestId('candidate-c2')).not.toBeInTheDocument());
+
+    // Clear restores both
+    act(() => { lastFilterBarProps!.onSearchChange!(''); });
+    await waitFor(() => {
+      expect(screen.getByTestId('candidate-c1')).toBeInTheDocument();
+      expect(screen.getByTestId('candidate-c2')).toBeInTheDocument();
+    });
+  });
+
+  it('updates candidateCount to reflect search results', async () => {
+    const c1 = { ...rawCallQueueItem, customerId: 'c1', customerName: 'Jana', daysUntilDue: 3, priority: 'due_this_week' as const };
+    const c2 = { ...rawCallQueueItem, customerId: 'c2', customerName: 'Petr', daysUntilDue: 5, priority: 'due_this_week' as const };
+    mockGetInbox.mockResolvedValue(makeInboxResponse([c1, c2]));
+    mockInboxResponseToCallQueueResponse.mockReturnValue({ items: [c1, c2] });
+
+    render(<InboxListPanel />, { wrapper });
+
+    await waitFor(() => expect(lastFilterBarProps).not.toBeNull());
+    act(() => { lastFilterBarProps!.onPresetChange('ALL'); });
+    await waitFor(() => expect(lastFilterBarProps!.candidateCount).toBe(2));
+
+    act(() => { lastFilterBarProps!.onSearchChange!('jana'); });
+    await waitFor(() => expect(lastFilterBarProps!.candidateCount).toBe(1));
   });
 });

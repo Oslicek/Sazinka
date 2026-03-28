@@ -297,6 +297,17 @@ export function evaluateCandidate(
   return ast.rootOp === 'AND' ? results.every(Boolean) : results.some(Boolean);
 }
 
+export function matchesSearchQuery(item: CallQueueItem, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return (
+    item.customerName.toLowerCase().includes(q) ||
+    item.customerCity.toLowerCase().includes(q) ||
+    item.customerStreet.toLowerCase().includes(q) ||
+    (item.customerPhone ?? '').toLowerCase().includes(q)
+  );
+}
+
 export function applyInboxFilters(
   candidates: CallQueueItem[],
   expression: InboxFilterExpression,

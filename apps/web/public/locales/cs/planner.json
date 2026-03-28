@@ -414,6 +414,9 @@
   "panel_map": "Mapa",
   "panel_timeline": "Časová osa",
 
+  "inbox_search_placeholder": "Hledat kandidáty…",
+  "inbox_search_toggle": "Hledat",
+
   "scoring_preset_name_standard": "Vyvážený",
   "scoring_preset_name_new_customers_first": "Noví zákazníci",
   "scoring_preset_name_due_date_radar": "Radar termínů",

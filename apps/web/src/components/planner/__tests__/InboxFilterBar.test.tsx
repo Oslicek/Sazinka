@@ -121,6 +121,57 @@ describe('InboxFilterBar', () => {
     expect(newFilters.groups.hasTerm).toBe('YES');
   });
 
+  // ---------------------------------------------------------------------------
+  // Search toggle / input
+  // ---------------------------------------------------------------------------
+
+  it('does not render search input by default', () => {
+    render(<InboxFilterBar {...defaultProps} />);
+    expect(screen.queryByTestId('inbox-search-input')).not.toBeInTheDocument();
+    expect(screen.getByTestId('inbox-search-toggle')).toBeInTheDocument();
+  });
+
+  it('shows search input when toggle clicked', () => {
+    render(<InboxFilterBar {...defaultProps} searchQuery="" onSearchChange={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('inbox-search-toggle'));
+    expect(screen.getByTestId('inbox-search-input')).toBeInTheDocument();
+  });
+
+  it('focuses search input when opened', async () => {
+    render(<InboxFilterBar {...defaultProps} searchQuery="" onSearchChange={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('inbox-search-toggle'));
+    const input = screen.getByTestId('inbox-search-input');
+    expect(document.activeElement).toBe(input);
+  });
+
+  it('calls onSearchChange when typing in search input', () => {
+    const onSearchChange = vi.fn();
+    render(<InboxFilterBar {...defaultProps} searchQuery="" onSearchChange={onSearchChange} />);
+    fireEvent.click(screen.getByTestId('inbox-search-toggle'));
+    fireEvent.change(screen.getByTestId('inbox-search-input'), { target: { value: 'Brno' } });
+    expect(onSearchChange).toHaveBeenCalledWith('Brno');
+  });
+
+  it('clears search when toggle clicked again (close)', () => {
+    const onSearchChange = vi.fn();
+    render(<InboxFilterBar {...defaultProps} searchQuery="test" onSearchChange={onSearchChange} />);
+    // Open first
+    fireEvent.click(screen.getByTestId('inbox-search-toggle'));
+    expect(screen.getByTestId('inbox-search-input')).toBeInTheDocument();
+    // Close — should clear
+    fireEvent.click(screen.getByTestId('inbox-search-toggle'));
+    expect(onSearchChange).toHaveBeenCalledWith('');
+    expect(screen.queryByTestId('inbox-search-input')).not.toBeInTheDocument();
+  });
+
+  it('search toggle has active class when search is open', () => {
+    render(<InboxFilterBar {...defaultProps} searchQuery="" onSearchChange={vi.fn()} />);
+    const toggle = screen.getByTestId('inbox-search-toggle');
+    expect(toggle.className).not.toMatch(/active/);
+    fireEvent.click(toggle);
+    expect(toggle.className).toMatch(/active/);
+  });
+
   it('renders system scoring presets in fixed product order', () => {
     render(
       <InboxFilterBar

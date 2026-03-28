@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CollapseButton } from '../common';
 import {
@@ -33,6 +33,8 @@ interface InboxFilterBarProps {
   isAdvancedOpen?: boolean;
   /** Called when the expand/collapse button is clicked (controlled mode) */
   onToggleAdvanced?: () => void;
+  searchQuery?: string;
+  onSearchChange?: (query: string) => void;
 }
 
 export function InboxFilterBar({
@@ -47,15 +49,30 @@ export function InboxFilterBar({
   candidateCount,
   isAdvancedOpen: isAdvancedOpenProp,
   onToggleAdvanced,
+  searchQuery = '',
+  onSearchChange,
 }: InboxFilterBarProps) {
   const { t } = useTranslation('planner');
   const [isAdvancedOpenState, setIsAdvancedOpenState] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   // Controlled if parent passes the prop; otherwise use internal state
   const isAdvancedOpen = isAdvancedOpenProp !== undefined ? isAdvancedOpenProp : isAdvancedOpenState;
   const handleToggleAdvanced = () => {
     if (onToggleAdvanced) onToggleAdvanced();
     else setIsAdvancedOpenState((prev) => !prev);
   };
+
+  const handleSearchToggle = useCallback(() => {
+    setIsSearchOpen((prev) => {
+      if (prev && onSearchChange) onSearchChange('');
+      return !prev;
+    });
+  }, [onSearchChange]);
+
+  useEffect(() => {
+    if (isSearchOpen) searchInputRef.current?.focus();
+  }, [isSearchOpen]);
 
   const activeFilterCount = getActiveFilterCount(filters);
   const hasAdvancedActive = hasAdvancedCriteria(filters);
@@ -161,6 +178,29 @@ export function InboxFilterBar({
             })}
           </select>
         </div>
+        <button
+          type="button"
+          className={`${styles.searchToggle} ${isSearchOpen ? styles.active : ''}`}
+          onClick={handleSearchToggle}
+          title={t('inbox_search_toggle')}
+          aria-label={t('inbox_search_toggle')}
+          aria-expanded={isSearchOpen}
+          data-testid="inbox-search-toggle"
+        >
+          🔍
+        </button>
+        {isSearchOpen && (
+          <input
+            ref={searchInputRef}
+            type="text"
+            className={styles.searchInput}
+            placeholder={t('inbox_search_placeholder')}
+            aria-label={t('inbox_search_placeholder')}
+            value={searchQuery}
+            onChange={(e) => onSearchChange?.(e.target.value)}
+            data-testid="inbox-search-input"
+          />
+        )}
         <span className={styles.filterResults}>
           {candidateCount}
           {activeFilterCount > 0 && !isAdvancedOpen && hasAdvancedActive && (
