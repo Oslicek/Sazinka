@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 
 import { useNatsStore } from '../stores/natsStore';
@@ -230,6 +230,22 @@ function PlanningInboxInner() {
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(() => {
     return sessionStorage.getItem('planningInbox.selectedId');
   });
+
+  // ── Deep-link consume: /inbox?customerId=<id> ────────────────────────────
+  const { customerId: deepLinkCustomerId } = useSearch({ strict: false }) as { customerId?: string };
+  const deepLinkConsumedRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkConsumedRef.current) return;
+    const id = typeof deepLinkCustomerId === 'string' ? deepLinkCustomerId.trim() : '';
+    if (!id) return;
+
+    deepLinkConsumedRef.current = true;
+    setSelectedCandidateId(id);
+    sessionStorage.setItem('planningInbox.selectedId', id);
+    sessionStorage.setItem('planningInbox.focusCustomerId', id);
+    navigate({ to: '/inbox', search: {}, replace: true });
+  }, [deepLinkCustomerId, navigate]);
+  // ──────────────────────────────────────────────────────────────────────────
 
   // Map/timeline highlighting state
   const [highlightedSegment, setHighlightedSegment] = useState<number | null>(null);
