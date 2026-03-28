@@ -1,6 +1,7 @@
 //! Database queries
 
 pub mod communication;
+pub mod note;
 pub mod inbox_state;
 pub mod planned_action;
 pub mod scoring;

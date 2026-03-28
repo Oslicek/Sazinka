@@ -3300,7 +3300,7 @@ Remove separate `result_notes` and `findings` textareas from completion form. In
 | Phase | Scope | Test IDs (prefix) | Count |
 |-------|-------|-------------------|-------|
 | U1 | DB migration 044 + data migration + Rust types | `UM1`–`UM21` | 21 | ✅ DONE |
-| U2 | NATS handlers (`note.create/update/list/audit/delete`) | `NH1`–`NH26` | 26 |
+| U2 | NATS handlers (`note.create/update/list/audit/delete`) | `NH1`–`NH26` | 26 | ✅ DONE |
 | U3 | Shared TypeScript types + `noteService.ts` | `NT1`–`NT10` | 10 |
 | U4 | `NoteEditor`, `useNoteDraft`, `NoteHistory` (generalized) | `NB1`–`NB18` | 18 |
 | U5 | Visit Detail — unified workspace | `NV1`–`NV42` | 42 |
@@ -3447,249 +3447,399 @@ All open questions have been resolved and locked as decisions N1–N17.
 
 ---
 
-# "Show in Inbox" — Navigate from Customer to Inbox with Pre-Selection
+# "Show in Inbox" - Customer deep-link with top pin
 
 ## Goal
 
-From the Customer detail page (and the preview panel on the Customers list), the user
-can click a button that navigates to `/inbox?customerId=<id>`. The Inbox page reads
-the query param, selects the customer, opens the candidate detail panel (when layout
-shows it), and cleans up the URL.
+From Customer Detail (full page and side preview), user can jump to Inbox and land
+with:
+
+1. the target customer selected,
+2. the target customer rendered at the top of the queue,
+3. customer detail visible in the Inbox layout,
+4. URL cleaned after consumption.
 
 ---
 
-## Architecture Decisions
+## Acceptance criteria (must pass)
 
-1. **URL query param** (`/inbox?customerId=...`): standard, shareable, typed via
-   TanStack Router `validateSearch` (same pattern as other app routes using
-   `createRoute` + search validation — follow `@tanstack/react-router` docs for
-   this repo’s version).
-2. **URL cleanup**: after consuming the param, navigate with `replace: true` to
-   `/inbox` so the param doesn't linger on refresh or back-button. Use the router
-   API that matches the layout route (e.g. `navigate({ to: '/inbox', search: {}, replace: true })`
-   from `PlanningInbox` or equivalent).
-3. **Placement**: "Show in Inbox" button appears in two places:
-   - `CustomerHeader` (full detail page `/customers/$customerId`)
-   - `CustomerPreviewPanel` (side panel on `/customers`)
-4. **No backend changes in MVP**: the worker scores all matching customers, then
-   applies **pagination** (`limit` / `offset`). The web client calls `getInbox` with
-   **`limit: 100`** (`InboxListPanel`). The list UI only contains that page of rows.
-   **`filteredSorted` pins** a selected customer **only if they appear in
-   `rawCandidates`**. Deep-linking still sets `selectedCandidateId` and sessionStorage;
-   if that ID is **not** in the fetched slice, the row may be missing (see
-   **Limitations** below).
-5. **Icon**: `Inbox` from `lucide-react`, consistent with sidebar navigation.
-6. **Security**: Inbox queries are scoped by authenticated `user_id` on the server;
-   passing another user's `customerId` in the URL must not leak data — rely on
-   existing API authorization (document; no new backend work if already enforced).
+1. Clicking "Show in Inbox" navigates to `/inbox?customerId=<id>`.
+2. Inbox consumes `customerId`, updates selection state, persists it to session, and
+   clears URL with `replace: true`.
+3. Target customer is placed at row index 0 in queue order for this deep-link flow.
+4. If target is not present in default top-100 slice, API still includes it.
+5. If target is invalid/inaccessible, app does not crash; shows non-blocking warning.
+6. Existing inbox behavior remains unchanged when `customerId` is not provided.
 
 ---
 
-## Limitations & follow-ups
+## Coverage target
 
-| Topic | MVP behavior | Follow-up (optional) |
-|-------|----------------|----------------------|
-| **Top-N inbox slice** | Customer may be **outside** the loaded `limit` (e.g. rank beyond the first 100 after scoring). Selection + URL cleanup still run; list may not show that row. | Toast: "Customer not in current results"; and/or **merge** that customer into the inbox response when `customerId` is requested (backend or extra query). |
-| **Detail panel visibility** | Mobile vs desktop layout differs; tests should **mock `useBreakpoint`** or assert selection state via **mocks / panel state**, not only visible DOM for "detail open". | — |
+- Changed-file line coverage: >= 95%
+- New helper/mapper functions (`validateInboxSearch`, pinning helpers): 100%
+- Branch coverage for all deep-link branches:
+  - valid id
+  - missing id
+  - empty/invalid id
+  - target included
+  - target not found/inaccessible
+  - regular (non deep-link) inbox path
 
 ---
 
-## Phase 1 — Route schema: add `customerId` search param to `/inbox`
+## Architecture decisions
+
+1. **Route query param**: `/inbox?customerId=...`, validated by exported helper
+   `validateInboxSearch`.
+2. **Backend include hook (mandatory)**:
+   - Add `focusCustomerId?: string` to `InboxRequest`.
+   - Add `focusedCustomerIncluded?: boolean` to `InboxResponse`.
+   - Worker guarantees focused customer inclusion (if valid and accessible) even when
+     normally outside current pagination slice.
+3. **Top pin (mandatory)**:
+   - Worker returns focused customer in response set.
+   - Frontend applies deterministic "focused first" ordering for deep-link flow in
+     `InboxListPanel` so target row is index 0.
+4. **One-time consume**:
+   - Deep-link focus is consumed once, then URL is cleaned.
+   - Use `replace: true` to avoid polluting browser history.
+5. **Security**:
+   - Worker enforces user ownership (`user_id` scoping) for `focusCustomerId`.
+   - Unknown or foreign IDs set `focusedCustomerIncluded = false` with no data leak.
+
+---
+
+## Data contract changes
+
+### Shared TS
+
+- `packages/shared-types/src/inbox.ts`
+  - `InboxRequest.focusCustomerId?: string`
+  - `InboxResponse.focusedCustomerIncluded?: boolean`
+
+### Worker Rust
+
+- `worker/src/types/inbox.rs`
+  - `InboxRequest.focus_customer_id: Option<Uuid>`
+  - `InboxResponse.focused_customer_included: Option<bool>` (or non-optional bool if
+    safe to migrate broadly)
+
+---
+
+## Phase 1 - Route search validation helper
 
 ### Scope
 
-- **`apps/web/src/routes/inboxSearch.ts`** (new): export a pure function
-  `validateInboxSearch(raw: Record<string, unknown>)` (or `inboxSearchSchema`)
-  implementing the normalization rules below. Keeps tests **importing a small module**
-  without pulling the whole route tree.
-- **`apps/web/src/routes/index.tsx`**: wire `inboxRoute` with `validateSearch`
-  delegating to `validateInboxSearch` (or inline the same logic re-exported from
-  `inboxSearch.ts`).
+- New file: `apps/web/src/routes/inboxSearch.ts`
+  - Export `validateInboxSearch(raw: Record<string, unknown>)`.
+- Wire helper in `apps/web/src/routes/index.tsx` via `validateSearch` for `/inbox`.
 
-**Normalization rules:** optional `customerId`; if present and non-empty string,
-keep it; otherwise omit. Strip non-strings and empty strings.
+### Normalization rules
 
-### Tests (RED → GREEN)
+- Keep `customerId` only if non-empty string after trim.
+- Drop non-string or empty values.
+- Return only supported search keys.
 
-**File:** `apps/web/src/routes/__tests__/inboxSearch.test.ts` (unit tests the **exported**
-`validateInboxSearch` from `inboxSearch.ts`)
+### Tests (RED -> GREEN)
+
+**File:** `apps/web/src/routes/__tests__/inboxSearch.test.ts`
 
 | ID | Test | Asserts |
 |----|------|---------|
-| R1-1 | Accepts empty object | Returns `{}` — no crash, no `customerId` |
-| R1-2 | Accepts `{ customerId: 'uuid-123' }` | Returns `{ customerId: 'uuid-123' }` |
-| R1-3 | Strips non-string `customerId` | `{ customerId: 42 }` → `{}` (or `customerId` omitted) |
-| R1-4 | Strips empty-string `customerId` | `{ customerId: '' }` → `{}` (or `customerId` omitted) |
+| R1-1 | Empty object | Returns `{}` |
+| R1-2 | Valid string id | Returns `{ customerId }` |
+| R1-3 | Non-string id | Returns `{}` |
+| R1-4 | Empty string id | Returns `{}` |
+| R1-5 | Whitespace id | Returns `{}` |
+| R1-6 | Trims valid id with spaces | Returns trimmed `customerId` |
 
-**Count: 4 tests**
+**Count: 6 tests**
 
 ---
 
-## Phase 2 — PlanningInbox: consume `customerId` search param
+## Phase 2 - Customer entry points (header + preview) and i18n
 
 ### Scope
 
-- `apps/web/src/pages/PlanningInbox.tsx` — read `customerId` from
-  `useSearch({ from: '/inbox' })` (or the route id your tree uses), set
-  `selectedCandidateId` when the param is present, then clean the URL
-  via `navigate({ to: '/inbox', search: {}, replace: true })` (exact shape per
-  TanStack Router version).
+- `apps/web/src/components/customers/CustomerHeader.tsx`
+  - Add `Link` to `/inbox` with `search={{ customerId: customer.id }}`.
+- `apps/web/src/components/customers/CustomerPreviewPanel.tsx`
+  - Add same action in bottom action bar.
+- Locale key (single shared key):
+  - `apps/web/public/locales/{en,cs,sk}/customers.json`
+  - `action_show_in_inbox`
 
-### Behavior
+### Tests (RED -> GREEN)
 
-1. On mount, if `customerId` is present in **validated** search params:
-   - Set `selectedCandidateId` to that value (overrides sessionStorage).
-   - Write it to `sessionStorage['planningInbox.selectedId']` for consistency.
-   - Call `navigate` with **`replace: true`** to strip search params.
-2. If `customerId` is absent or empty, existing sessionStorage initializer applies
-   (no behavior change).
+**Header file:** `apps/web/src/components/customers/__tests__/CustomerHeader.test.tsx`
 
-### Tests (RED → GREEN)
+| ID | Test | Asserts |
+|----|------|---------|
+| H2-1 | Renders action | "Show in Inbox" link exists |
+| H2-2 | Link contains `customerId` query | `href` has `/inbox` + `customerId=` |
+| H2-3 | Visible without coordinates | action still present |
+| H2-4 | Visible for company customer | action still present |
+| H2-5 | Action order in CTA group | appears between Add-to-plan and Edit (if both present) |
+
+**Preview file:** `apps/web/src/components/customers/__tests__/CustomerPreviewPanel.test.tsx`
+
+| ID | Test | Asserts |
+|----|------|---------|
+| P2-1 | Renders action when customer selected | link exists |
+| P2-2 | Link contains `customerId` query | `href` includes `customerId` |
+| P2-3 | Hidden in empty state | no link when `customer === null` |
+| P2-4 | Coexists with edit/add actions | all expected actions rendered |
+
+**Locale key tests:** `apps/web/src/components/customers/__tests__/customersLocaleKeys.test.ts`
+
+| ID | Test | Asserts |
+|----|------|---------|
+| L2-1 | EN key exists | `action_show_in_inbox` in `en/customers.json` |
+| L2-2 | CS key exists | `action_show_in_inbox` in `cs/customers.json` |
+| L2-3 | SK key exists | `action_show_in_inbox` in `sk/customers.json` |
+
+**Count: 12 tests**
+
+---
+
+## Phase 3 - Inbox service transport contract
+
+### Scope
+
+- `apps/web/src/services/inboxService.ts`
+  - Ensure `focusCustomerId` is forwarded in request payload.
+- Shared type updates from "Data contract changes" are consumed by service tests.
+
+### Tests (RED -> GREEN)
+
+**File:** `apps/web/src/services/inboxService.focusCustomer.test.ts`
+
+| ID | Test | Asserts |
+|----|------|---------|
+| S3-1 | Sends `focusCustomerId` when provided | outgoing payload contains `focusCustomerId` |
+| S3-2 | Omits `focusCustomerId` when undefined | outgoing payload has no focus field |
+| S3-3 | Handles response with `focusedCustomerIncluded=true` | parsed response preserves flag |
+| S3-4 | Handles response with `focusedCustomerIncluded=false` | parsed response preserves false |
+| S3-5 | Backward compatibility (flag absent) | does not throw, works with old payload |
+| S3-6 | Error response path unchanged | still throws expected error |
+
+**Count: 6 tests**
+
+---
+
+## Phase 4 - Worker inbox query: include and pin focused customer
+
+### Scope
+
+- `worker/src/types/inbox.rs`
+- `worker/src/db/queries/planned_action.rs`
+- `worker/src/handlers/inbox.rs` (only if serialization glue needed)
+
+### Implementation rules
+
+1. If `focus_customer_id` is provided:
+   - verify customer belongs to authenticated user and is not anonymized/abandoned.
+   - ensure focused customer row is present in result set (inject if needed).
+2. Return `focused_customer_included = true` only when focus row is actually included.
+3. Apply ordering:
+   - focused row first,
+   - remaining rows keep normal scoring order.
+4. Preserve limit behavior for remaining rows:
+   - final payload size should remain deterministic (focused row + top N-1 others when
+     focused row is outside first N).
+
+### Testability strategy
+
+The existing tests in `planned_action.rs` are pure unit tests against
+`build_inbox_sql_parts` (SQL string assertions). The new focus-pin logic involves
+**post-query reordering and injection** which runs _after_ `sqlx::query_as` — this
+cannot be tested against the SQL builder alone.
+
+**Required approach:** Extract the focus-pin logic into a **pure function**:
+
+```rust
+pub fn apply_focus_pin(
+    items: Vec<InboxItem>,
+    focus_id: Option<Uuid>,
+    limit: usize,
+) -> (Vec<InboxItem>, bool)
+```
+
+Returns `(reordered_items, focused_customer_included)`. This function:
+- finds and moves the focused row to index 0,
+- trims the result to `limit` (keeping focus + top N-1 others),
+- returns `false` if the focus ID was not found in the full set.
+
+Tests W4-1 through W4-11 target this pure function with in-memory `InboxItem`
+fixtures. W4-12 targets the handler response shape (can use a mock or the existing
+handler test pattern).
+
+### Tests (RED -> GREEN)
+
+**File:** `worker/src/db/queries/planned_action.rs` (extend `#[cfg(test)] mod tests`)
+— tests call `apply_focus_pin` with synthetic `Vec<InboxItem>` fixtures
+
+| ID | Test | Asserts |
+|----|------|---------|
+| W4-1 | No focus id | baseline behavior unchanged |
+| W4-2 | Focus id already in top slice | `focused_customer_included=true`, row index 0 |
+| W4-3 | Focus id outside top slice | row injected, index 0, size remains at limit |
+| W4-4 | Remaining rows keep score order | ordering after index 0 equals baseline order |
+| W4-5 | Invalid UUID / missing customer | `focused_customer_included=false`, no panic |
+| W4-6 | Foreign user customer id | `focused_customer_included=false`, no data leak |
+| W4-7 | Abandoned/anonymized focused customer | not included, flag false |
+| W4-8 | Limit edge: limit=1 with focused id | only focused row returned |
+| W4-9 | Limit edge: limit=1 without focused match | baseline top row returned |
+| W4-10 | Offset baseline path unchanged without focus | existing offset behavior preserved |
+| W4-11 | Focus + offset path deterministic | defined behavior documented and asserted |
+| W4-12 | Response serialization includes focus flag | handler returns expected payload shape |
+
+**Count: 12 tests**
+
+---
+
+## Phase 5 - PlanningInbox deep-link consume and URL cleanup
+
+### Scope
+
+- `apps/web/src/pages/PlanningInbox.tsx`
+  - Read validated `customerId` from route search.
+  - Set selected customer.
+  - Persist to `sessionStorage`.
+  - Trigger one-time focus handoff for inbox fetch (via dedicated session key or prop).
+  - Cleanup URL with `replace: true`.
+
+### Test harness guidance
+
+- Fix breakpoint in tests (mock `useBreakpoint`) to avoid layout ambiguity.
+- In StrictMode, avoid brittle "exactly once" assertions unless deduping with ref.
+- Assert deterministic outputs directly: selection state, session keys, navigation args.
+
+### Tests (RED -> GREEN)
 
 **File:** `apps/web/src/pages/__tests__/PlanningInbox.deepLink.test.tsx`
 
-**Test harness notes:**
-
-- **React StrictMode** may run effects twice in dev/tests. Do **not** assert
-  `navigate` was called **exactly once** unless implementation dedupes (e.g. ref).
-  Prefer `expect(mockNavigate).toHaveBeenCalledWith(expect.objectContaining({ replace: true }))`
-  and/or `toHaveBeenCalled()`.
-- **P2-6** is **defensive**: after R1-4, real navigation never passes `''` through
-  validation; this test simulates a direct `useSearch` mock returning `''` to ensure
-  `PlanningInbox` does not crash and falls back like "absent".
-- For **"detail visible"**, mock **`useBreakpoint`** to a fixed layout or assert
-  **`selectedCandidateId` / `sessionStorage`** / mocked child props instead of
-  relying on mobile sheet DOM.
-
 | ID | Test | Asserts |
 |----|------|---------|
-| P2-1 | Mount with `customerId=cust-1` in search → selection is `cust-1` | Detail or mocked child receives `cust-1`, or `sessionStorage` / state matches |
-| P2-2 | Mount with `customerId=cust-1` → URL is cleaned | `mockNavigate` called with `replace: true` and cleared search (use `objectContaining` if needed) |
-| P2-3 | Mount with `customerId=cust-1` → sessionStorage updated | `sessionStorage.getItem('planningInbox.selectedId')` === `'cust-1'` |
-| P2-4 | Mount without `customerId` → sessionStorage value used | Pre-set `cust-2` → selected is `cust-2` |
-| P2-5 | `customerId=cust-1` overrides sessionStorage `cust-2` | After mount, selection / storage is `cust-1` |
-| P2-6 | Defensive: `useSearch` returns `{ customerId: '' }` | Behaves as absent; no throw |
-| P2-7 | Deep-link ID **not** in mocked inbox items | Still sets `selectedCandidateId` + sessionStorage, URL cleaned, **no throw** (row may be absent — see Limitations) |
+| PI5-1 | Search has `customerId` | selected id set to target |
+| PI5-2 | URL cleanup executes | navigate called with `replace: true` and cleared search |
+| PI5-3 | Session selected key updated | `planningInbox.selectedId` equals target |
+| PI5-4 | Focus handoff key set | focus key stored for inbox fetch |
+| PI5-5 | Missing `customerId` | falls back to existing session selected id |
+| PI5-6 | Query id overrides prior session selected id | selected/focus use query id |
+| PI5-7 | Empty/invalid defensive path | no crash, fallback behavior |
+| PI5-8 | One-time consume behavior | no repeated cleanup/focus handoff loops |
 
-**Count: 7 tests**
+**Count: 8 tests**
 
 ---
 
-## Phase 3 — CustomerHeader: "Show in Inbox" button
+## Phase 6 - InboxListPanel focused fetch and top pin
 
 ### Scope
 
-- `apps/web/src/components/customers/CustomerHeader.tsx` — add a `Link`
-  to `/inbox` with `search={{ customerId: customer.id }}` and an `Inbox` icon.
-- **i18n:** single key `action_show_in_inbox` (see Phase 5).
+- `apps/web/src/panels/InboxListPanel.tsx`
+  - Include `focusCustomerId` in first `getInbox` call when deep-link focus exists.
+  - Apply deterministic "focused first" ordering in final rendered candidate list.
+  - Clear one-time focus handoff after first successful load.
+  - If API returns `focusedCustomerIncluded=false`, show non-blocking inline warning.
 
-### Behavior
+### Adapter layer note
 
-- Renders between the "Add to plan" and "Edit" buttons.
-- Uses `<Link to="/inbox" search={{ customerId: customer.id }}>`.
-- Shown for every loaded customer (subject to normal permission to see the
-  Customers page); **does not** imply the customer is visible in the current
-  inbox **page** of results (see Limitations).
+`InboxListPanel.loadCandidates` currently passes `InboxResponse` through
+`inboxResponseToCallQueueResponse` before storing as `rawCandidates`. The
+`focusedCustomerIncluded` flag lives on `InboxResponse`, **not** on the adapted
+`CallQueueResponse`. Implementation must capture the flag from the raw
+`inboxResponse` **before** the adapter call:
 
-### Tests (RED → GREEN)
+```typescript
+const inboxResponse = await getInbox({ ..., focusCustomerId });
+const focusIncluded = inboxResponse.focusedCustomerIncluded ?? true;
+const response = inboxResponseToCallQueueResponse(inboxResponse);
+```
 
-**File:** `apps/web/src/components/customers/__tests__/CustomerHeader.test.tsx`
+### Warning UI
+
+No toast/notification system exists in the app. Use an **inline dismissible banner**
+rendered between `InboxFilterBar` and `VirtualizedInboxList` inside
+`InboxListPanelInner`, visible only when `focusedCustomerIncluded === false` after a
+deep-link attempt. Style with existing `var(--color-warning)` / `AlertTriangle` icon
+pattern (used in `PlanningInbox` for break warnings). The banner is dismissed
+automatically on the next user action or filter change. Test IL6-5 asserts presence
+of `[data-testid="focus-customer-warning"]`.
+
+### Tests (RED -> GREEN)
+
+**File:** `apps/web/src/panels/__tests__/InboxListPanel.focusCustomer.test.tsx`
 
 | ID | Test | Asserts |
 |----|------|---------|
-| H3-1 | Renders "Show in Inbox" link | `getByRole('link', { name: /action_show_in_inbox/ })` (or translated string from i18n mock) |
-| H3-2 | Link `href` includes `customerId` query param | `href` contains `/inbox` and `customerId=` |
-| H3-3 | Rendered for customer **without** coordinates | Link still present |
-| H3-4 | Rendered for company-type customer | Link still present |
+| IL6-1 | First load sends `focusCustomerId` | `getInbox` called with focus field |
+| IL6-2 | Subsequent reload without new deep-link | focus field omitted after consume |
+| IL6-3 | Focus included true -> row index 0 | target row rendered first |
+| IL6-4 | Non-focused rows preserve relative sort | remainder order unchanged |
+| IL6-5 | Focus included false | warning shown, no crash |
+| IL6-6 | No deep-link path | list order remains baseline behavior |
+| IL6-7 | Filters active after deep-link | target still visible and first |
+| IL6-8 | Manual user selection later | does not permanently force pin for unrelated ids |
+| IL6-9 | Selected detail visible when focused row present | detail pane/sheet bound to target |
+| IL6-10 | Candidate count consistent with pin logic | counts stay deterministic |
+
+**Count: 10 tests**
+
+---
+
+## Phase 7 - Mandatory router integration
+
+### Scope
+
+- Validate complete user flow through router wiring, not only static `href`.
+
+### Tests (RED -> GREEN)
+
+**File:** `apps/web/src/pages/__tests__/CustomerToInbox.router.test.tsx`
+
+| ID | Test | Asserts |
+|----|------|---------|
+| RI7-1 | Click from `CustomerHeader` action | router location becomes `/inbox?customerId=<id>` |
+| RI7-2 | Click from `CustomerPreviewPanel` action | router location contains same query |
+| RI7-3 | Landing on `/inbox?customerId=<id>` | PlanningInbox consumes and cleans URL |
+| RI7-4 | Full mocked flow | target row rendered at index 0 and selected detail visible |
 
 **Count: 4 tests**
 
 ---
 
-## Phase 4 — CustomerPreviewPanel: "Show in Inbox" button
-
-### Scope
-
-- `apps/web/src/components/customers/CustomerPreviewPanel.tsx` — add a
-  `Link` to `/inbox` with `search={{ customerId: customer.id }}` in the actions section.
-- **Same i18n key as Phase 3:** `action_show_in_inbox`.
-
-### Behavior
-
-- Renders in the actions bar at the bottom of the preview panel,
-  next to "Edit" and "Add to plan" buttons.
-- Only renders when `customer` is not null (panel has a selected customer).
-
-### Tests (RED → GREEN)
-
-**File:** `apps/web/src/components/customers/__tests__/CustomerPreviewPanel.test.tsx`
-
-| ID | Test | Asserts |
-|----|------|---------|
-| PP4-1 | Renders link when customer is selected | `getByRole('link', { name: /action_show_in_inbox/ })` |
-| PP4-2 | Link `href` includes `customerId` | Same pattern as H3-2 |
-| PP4-3 | Empty state (`customer === null`) | Link not present |
-| PP4-4 | Coexists with Edit and Add to Plan | All relevant actions present |
-
-**Count: 4 tests**
-
----
-
-## Phase 5 — i18n keys
-
-### Scope
-
-**Single key** for header and preview (avoids duplicate copy and test regex drift):
-
-| Key | en | cs | sk |
-|-----|----|----|-----|
-| `action_show_in_inbox` | Show in Inbox | Zobrazit ve frontě | Zobraziť vo fronte |
-
-Files: `apps/web/public/locales/{en,cs,sk}/customers.json`.
-
-No separate test phase — Phases 3–4 assert the link using this key (or mock `t`).
-
----
-
-## Phase 6 — Optional: Router click-through (defer if redundant)
-
-Phases 3–4 already assert **`href` / `search`** on `Link`. **Phase 6 is optional:**
-add **one** test with `RouterProvider` + memory history **only if** you need
-regression coverage for TanStack Router wiring beyond static `href`.
-
-**If implemented:**
-
-**File:** `apps/web/src/pages/__tests__/CustomerToInbox.router.test.tsx` (optional)
-
-| ID | Test | Asserts |
-|----|------|---------|
-| OPT-1 | User clicks "Show in Inbox" in a minimal router tree | Location updates to `/inbox` with `customerId` in search (per router test utils) |
-
-**Count: 0–1 tests** (not included in mandatory total below)
-
----
-
-## Test Summary
+## Test summary
 
 | Phase | Scope | Tests |
 |-------|-------|-------|
-| 1 — `inboxSearch.ts` | `validateInboxSearch` unit tests | 4 |
-| 2 — PlanningInbox consumption | Read param, select, clean URL, edge cases | 7 |
-| 3 — CustomerHeader button | Link + `action_show_in_inbox` | 4 |
-| 4 — CustomerPreviewPanel button | Link + `action_show_in_inbox` | 4 |
-| 5 — i18n keys | Locale files | 0 |
-| 6 — Optional router | Click-through | 0–1 |
-| **Total (mandatory)** | | **19** |
+| 1 | Route search validation | 6 |
+| 2 | Customer entry points + i18n | 12 |
+| 3 | Service transport contract | 6 |
+| 4 | Worker include + pin logic | 12 |
+| 5 | PlanningInbox consume + cleanup | 8 |
+| 6 | InboxListPanel focused fetch + top pin | 10 |
+| 7 | Router integration (mandatory) | 4 |
+| **Total mandatory** | | **58** |
 
 ---
 
-## Execution Order
+## Execution order
 
 ```
-Phase 1 (inboxSearch + route wire)  →  Phase 2 (consume param)  →  Phase 5 (i18n)
-                                                                →  Phase 3 (header)
-                                                                →  Phase 4 (preview)
-                                                                →  Phase 6 (optional)
+Phase 1 (route helper)
+  -> Phase 3 (shared/service contract)
+  -> Phase 4 (worker include+pin)
+  -> Phase 5 (PlanningInbox consume)
+  -> Phase 2 (Customer entry actions + i18n)
+  -> Phase 6 (InboxListPanel focus/pin UI behavior)
+  -> Phase 7 (router integration)
 ```
 
-Phases 3–4 depend on Phase 5. Phase 2 depends on Phase 1. Optional Phase 6 last.
+Dependencies:
+
+- Phase 4 depends on Phase 3 contract.
+- Phase 5 depends on Phase 1.
+- Phase 6 depends on Phases 3, 4, and 5.
+- Phase 7 runs last and validates full path end-to-end.

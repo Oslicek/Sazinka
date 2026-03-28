@@ -15,6 +15,7 @@ pub mod import_processors;
 pub mod import_tests;
 pub mod inbox;
 pub mod jobs;
+pub mod note;
 pub mod onboarding;
 pub mod ping;
 pub mod planned_action;
@@ -408,6 +409,13 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let visit_update_field_notes_sub = client.subscribe("sazinka.visit.update_field_notes").await?;
     let visit_notes_history_sub = client.subscribe("sazinka.visit.notes.history").await?;
 
+    // Unified note subjects
+    let note_create_sub  = client.subscribe("sazinka.note.create").await?;
+    let note_update_sub  = client.subscribe("sazinka.note.update").await?;
+    let note_list_sub    = client.subscribe("sazinka.note.list").await?;
+    let note_audit_sub   = client.subscribe("sazinka.note.audit").await?;
+    let note_delete_sub  = client.subscribe("sazinka.note.delete").await?;
+
     // Crew subjects
     let crew_create_sub = client.subscribe("sazinka.crew.create").await?;
     let crew_list_sub = client.subscribe("sazinka.crew.list").await?;
@@ -607,6 +615,13 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let client_visit_update_field_notes = client.clone();
     let client_visit_notes_history = client.clone();
 
+    // Note handler clones
+    let client_note_create = client.clone();
+    let client_note_update = client.clone();
+    let client_note_list   = client.clone();
+    let client_note_audit  = client.clone();
+    let client_note_delete = client.clone();
+
     // Communication pool clones
     let pool_comm_create = pool.clone();
     let pool_comm_list = pool.clone();
@@ -622,6 +637,13 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let pool_visit_get = pool.clone();
     let pool_visit_update_field_notes = pool.clone();
     let pool_visit_notes_history = pool.clone();
+
+    // Note pool clones
+    let pool_note_create = pool.clone();
+    let pool_note_update = pool.clone();
+    let pool_note_list   = pool.clone();
+    let pool_note_audit  = pool.clone();
+    let pool_note_delete = pool.clone();
 
     // Crew handler clones
     let client_crew_create = client.clone();
@@ -783,6 +805,13 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
     let jwt_secret_visit_get = Arc::clone(&jwt_secret);
     let jwt_secret_visit_update_field_notes = Arc::clone(&jwt_secret);
     let jwt_secret_visit_notes_history = Arc::clone(&jwt_secret);
+
+    // JWT secret clones for note handlers
+    let jwt_secret_note_create = Arc::clone(&jwt_secret);
+    let jwt_secret_note_update = Arc::clone(&jwt_secret);
+    let jwt_secret_note_list   = Arc::clone(&jwt_secret);
+    let jwt_secret_note_audit  = Arc::clone(&jwt_secret);
+    let jwt_secret_note_delete = Arc::clone(&jwt_secret);
 
     // JWT secret clones for crew handlers
     let jwt_secret_crew_create = Arc::clone(&jwt_secret);
@@ -1942,6 +1971,23 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         .await
     });
 
+    // Unified note handlers
+    let note_create_handle = tokio::spawn(async move {
+        note::handle_create(client_note_create, note_create_sub, pool_note_create, jwt_secret_note_create).await
+    });
+    let note_update_handle = tokio::spawn(async move {
+        note::handle_update(client_note_update, note_update_sub, pool_note_update, jwt_secret_note_update).await
+    });
+    let note_list_handle = tokio::spawn(async move {
+        note::handle_list(client_note_list, note_list_sub, pool_note_list, jwt_secret_note_list).await
+    });
+    let note_audit_handle = tokio::spawn(async move {
+        note::handle_audit(client_note_audit, note_audit_sub, pool_note_audit, jwt_secret_note_audit).await
+    });
+    let note_delete_handle = tokio::spawn(async move {
+        note::handle_delete(client_note_delete, note_delete_sub, pool_note_delete, jwt_secret_note_delete).await
+    });
+
     // Crew handlers
     let crew_create_handle = tokio::spawn(async move {
         crew::handle_create(
@@ -2924,6 +2970,11 @@ pub async fn start_handlers(client: Client, pool: PgPool, config: &Config) -> Re
         visit_get_handle.boxed(),
         visit_update_field_notes_handle.boxed(),
         visit_notes_history_handle.boxed(),
+        note_create_handle.boxed(),
+        note_update_handle.boxed(),
+        note_list_handle.boxed(),
+        note_audit_handle.boxed(),
+        note_delete_handle.boxed(),
         crew_create_handle.boxed(),
         crew_list_handle.boxed(),
         crew_update_handle.boxed(),
