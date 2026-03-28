@@ -283,8 +283,8 @@ describe('GDPR and content handling', () => {
     expect(note.content).toContain('**bold**');
   });
 
-  // NX23: VisitDetailDialog shows truncated note excerpt (max 300 chars)
-  it('NX23: note excerpts in completed visit dialog are truncated to 300 chars', () => {
+  // NX23: note excerpts are truncated to 300 chars (applies wherever excerpts are shown)
+  it('NX23: note excerpts are truncated to 300 chars', () => {
     const longContent = 'a'.repeat(500);
     const truncated = longContent.length > 300 ? longContent.substring(0, 300) + '…' : longContent;
     expect(truncated).toHaveLength(301); // 300 chars + ellipsis

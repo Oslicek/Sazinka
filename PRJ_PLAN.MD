@@ -3279,13 +3279,13 @@ Shows all device note entries (full journal), with visit date context. Editable.
 
 Shows all customer note entries (full journal). Editable. "Add note" for standalone customer notes.
 
-#### VisitDetailDialog (timeline)
+#### ~~VisitDetailDialog~~ (REMOVED)
 
-For `completed`/`cancelled`/`rescheduled`: shows latest visit note entry + latest device note entries as **read-only excerpts** (the dialog is a compact view — not enough space for a full editor); includes a "View / Edit" link that navigates to the full Visit Detail page where notes are editable in all statuses. For `planned`/`in_progress`: editable via unified `NoteEditor` within the complete form. **Note:** the "editable in all statuses" policy applies on the Visit Detail page; the dialog is intentionally read-only for completed visits to keep it compact.
+**Removed.** The compact visit dialog has been eliminated. Timeline visit cards now link directly to the full Visit Detail page (`/visits/$visitId`). All scheduling, completion, and note editing happens on the dedicated page — no duplicated logic.
 
 #### CustomerTimeline
 
-Shows `stripMarkdown()` excerpt of latest visit note entry. No editor. No change to current compact behavior except data source changes from `visit.fieldNotes` to latest note entry.
+Visit cards in the timeline are `<Link to="/visits/$visitId">` navigating to the full Visit Detail page. Shows `stripMarkdown()` excerpt of latest visit note entry as read-only preview text.
 
 #### WorkItemDetail
 
@@ -3304,7 +3304,7 @@ Remove separate `result_notes` and `findings` textareas from completion form. In
 | U3 | Shared TypeScript types + `noteService.ts` | `NT1`–`NT10` | 10 | ✅ DONE |
 | U4 | `NoteEditor`, `useNoteDraft`, `NoteHistory` (generalized) | `NB1`–`NB18` | 18 | ✅ DONE |
 | U5 | Visit Detail — unified workspace | `NV1`–`NV42` | 42 | ✅ DONE |
-| U6 | Device Detail, Customer Detail/Workspace, VisitDetailDialog, CustomerTimeline | `NS1`–`NS28` | 28 | ✅ DONE |
+| U6 | Device Detail, Customer Detail/Workspace, ~~VisitDetailDialog~~, CustomerTimeline | `NS1`–`NS28` | 28 | ✅ DONE (dialog removed post-U14) |
 | U7 | WorkItemDetail — device notes, no legacy textareas | `NW1`–`NW12` | 12 | ✅ DONE |
 | U8 | Export `notes.csv`, legacy CSV changes | `NE1`–`NE15` | 15 | ✅ DONE |
 | U9 | Import `notes.csv` + ref resolution | `NI1`–`NI14` | 14 | ✅ DONE |
@@ -3400,7 +3400,7 @@ Journal sections for visit + customer + device; Add note actions; latest project
 
 #### U6 — RED (`NS1`–`NS28`): other surfaces
 
-Device Detail journal (**NS1**–**NS8**); Customer Detail / Workspace (**NS9**–**NS16**); VisitDetailDialog (**NS17**–**NS22**); CustomerTimeline excerpt from latest visit note (**NS23**–**NS28**).
+Device Detail journal (**NS1**–**NS8**); Customer Detail / Workspace (**NS9**–**NS16**); ~~VisitDetailDialog~~ (**NS17**–**NS22** — dialog removed, tests deleted); CustomerTimeline excerpt from latest visit note (**NS23**–**NS28**).
 
 #### U7 — RED (`NW1`–`NW12`): WorkItemDetail
 

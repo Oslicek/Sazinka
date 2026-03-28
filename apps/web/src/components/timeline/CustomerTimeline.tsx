@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from '@tanstack/react-router';
 import { useNatsStore } from '../../stores/natsStore';
 import * as communicationService from '../../services/communicationService';
 import * as visitService from '../../services/visitService';
@@ -8,7 +9,6 @@ import type { Visit } from '@shared/visit';
 import { formatDate } from '../../i18n/formatters';
 import { Mail, Phone, FileText, MessageSquare, Upload, Download, Calendar, RefreshCw, CheckCircle2, XCircle, RotateCcw } from 'lucide-react';
 import { TimeInput } from '../common/TimeInput';
-import { VisitDetailDialog } from './VisitDetailDialog';
 import styles from './CustomerTimeline.module.css';
 
 interface TimelineItem {
@@ -39,7 +39,6 @@ export function CustomerTimeline({ customerId }: CustomerTimelineProps) {
   const [error, setError] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState<'communication' | 'visit' | null>(null);
   const [serviceAvailable, setServiceAvailable] = useState(true);
-  const [selectedVisit, setSelectedVisit] = useState<Visit | null>(null);
 
   // Load timeline data
   const loadTimeline = useCallback(async () => {
@@ -195,22 +194,9 @@ export function CustomerTimeline({ customerId }: CustomerTimelineProps) {
             <TimelineItemCard 
               key={`${item.type}-${item.id}`} 
               item={item}
-              onVisitClick={(visit) => setSelectedVisit(visit)}
             />
           ))}
         </div>
-      )}
-
-      {/* Visit detail dialog */}
-      {selectedVisit && (
-        <VisitDetailDialog
-          visit={selectedVisit}
-          onClose={() => setSelectedVisit(null)}
-          onSaved={() => {
-            setSelectedVisit(null);
-            loadTimeline();
-          }}
-        />
       )}
     </div>
   );
@@ -238,14 +224,7 @@ function getVisitIcon(status: string) {
   }
 }
 
-// Timeline Item Card
-function TimelineItemCard({ 
-  item, 
-  onVisitClick 
-}: { 
-  item: TimelineItem; 
-  onVisitClick: (visit: Visit) => void;
-}) {
+function TimelineItemCard({ item }: { item: TimelineItem }) {
   const { t } = useTranslation('customers');
   
   if (item.type === 'communication') {
@@ -276,11 +255,10 @@ function TimelineItemCard({
 
   const visit = item.data as Visit;
   return (
-    <div 
+    <Link
+      to="/visits/$visitId"
+      params={{ visitId: visit.id }}
       className={`${styles.item} ${styles.visit} ${styles.clickable}`}
-      onClick={() => onVisitClick(visit)}
-      role="button"
-      tabIndex={0}
     >
       <div className={styles.itemIcon}>
         {getVisitIcon(visit.status)}
@@ -305,7 +283,7 @@ function TimelineItemCard({
         )}
         {visit.fieldNotes && <p className={styles.itemText}>{visit.fieldNotes}</p>}
       </div>
-    </div>
+    </Link>
   );
 }
 
