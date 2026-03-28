@@ -369,3 +369,27 @@ Example (no search/geocode/type, one street checklist):
 
 **Regression tests:**
 - `customer.rs` unit test: `bug12_param_alignment_with_search_and_checklist` — verifies SQL placeholders match bind positions across the full filter chain
+
+---
+
+## BUG-13: Inbox — deep-linked (focused) customer cannot be selected via checkbox
+
+**Status:** Open  
+**Severity:** Medium  
+**Page:** Planning Inbox (`/inbox`)
+
+**Steps to reproduce:**
+1. Open any customer detail page (`/customers/<id>`).
+2. Click the "Show in Inbox" (Zobrazit ve frontě) CTA.
+3. The Inbox opens with the focused customer pinned at position 0.
+4. Click the checkbox on the focused customer's row.
+
+**Expected:** The checkbox toggles and the customer is added to the selection (blue highlight, selection bar appears).
+**Actual:** Nothing happens — the checkbox does not respond to clicks. Other (non-focused) candidates can be selected normally.
+
+**Likely cause:** The focused customer is pinned to index 0 by client-side re-pin logic in `InboxListPanel.filteredSorted` `useMemo`. The `VirtualizedInboxList` selection handler may be matching candidates by index or by an ID derived from the original (pre-pin) data array, causing a mismatch for the re-pinned row. Alternatively, the `CandidateRowData.id` for the pinned row (which uses `customerId`) may not match the ID expected by the `selectedIds` / `onSelectionChange` callback.
+
+**Investigation hints:**
+- Check whether `onSelectionChange` receives the correct `customerId` when the pinned row's checkbox is clicked
+- Verify that the `id` field in `CandidateRowData` (mapped from `CallQueueItem.customerId`) matches what `VirtualizedInboxList` passes to the selection callback
+- Check if the issue also occurs for non-deep-linked candidates (i.e., is it specific to the pinned row or a general checkbox regression)
