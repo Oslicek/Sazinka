@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { VirtualizedInboxList } from '@/components/planner';
 import { InboxFilterBar } from '@/components/planner/InboxFilterBar';
 import { usePanelState } from '@/hooks/usePanelState';
@@ -143,6 +144,11 @@ function InboxListPanelInner({ candidates: candidatesProp, isLoading: isLoadingP
   const [searchQuery, setSearchQuery] = useState('');
   const inboxStateLoadedRef = useRef(_cache.inboxStateLoaded);
 
+  // Deep-link focus pin state
+  const [pinnedCustomerId, setPinnedCustomerId] = useState<string | null>(null);
+  const [showFocusWarning, setShowFocusWarning] = useState(false);
+  const focusFetchDoneRef = useRef(false);
+
   // UPP: isAdvancedFiltersOpen — session channel
   const { value: uppIsAdvancedOpen, setValue: setUppIsAdvancedOpen } =
     usePersistentControl<boolean>(INBOX_UI_PROFILE_ID, 'isAdvancedFiltersOpen');
@@ -202,12 +208,38 @@ function InboxListPanelInner({ candidates: candidatesProp, isLoading: isLoadingP
   const loadCandidates = useCallback(async () => {
     if (!isConnected) return;
     setIsLoadingCandidates(true);
+
+    // Read one-time focus handoff key set by PlanningInbox deep-link consume
+    const focusId = !focusFetchDoneRef.current
+      ? sessionStorage.getItem('planningInbox.focusCustomerId')
+      : null;
+
     try {
       const inboxResponse = await getInbox({
         limit: 100,
         selectedRuleSetId: selectedRuleSetId ?? undefined,
+        ...(focusId ? { focusCustomerId: focusId } : {}),
       });
+
+      // Capture flag BEFORE adapter call (flag lives on raw InboxResponse)
+      const focusIncluded = focusId
+        ? (inboxResponse.focusedCustomerIncluded ?? true)
+        : undefined;
+
       const response = inboxResponseToCallQueueResponse(inboxResponse);
+
+      if (focusId) {
+        focusFetchDoneRef.current = true;
+        sessionStorage.removeItem('planningInbox.focusCustomerId');
+        if (focusIncluded === false) {
+          setPinnedCustomerId(null);
+          setShowFocusWarning(true);
+        } else {
+          setPinnedCustomerId(focusId);
+          setShowFocusWarning(false);
+        }
+      }
+
       setRawCandidates(response.items);
       setCandidates(response.items.map(mapCallQueueItemToCandidate));
     } catch {
@@ -299,8 +331,20 @@ function InboxListPanelInner({ candidates: candidatesProp, isLoading: isLoadingP
       candidate.isScheduled = candidate.isScheduled || scheduledIds.has(candidate.id);
       return candidate;
     });
-    return sortCandidates(mapped);
-  }, [rawCandidates, filters, inRouteIds, scheduledIds, state.selectedCustomerId, searchQuery]);
+
+    const sorted = sortCandidates(mapped);
+
+    // Apply deep-link top pin: ensure focused customer stays at index 0
+    if (pinnedCustomerId) {
+      const pinIdx = sorted.findIndex((c) => c.id === pinnedCustomerId);
+      if (pinIdx > 0) {
+        const [pinned] = sorted.splice(pinIdx, 1);
+        sorted.unshift(pinned);
+      }
+    }
+
+    return sorted;
+  }, [rawCandidates, filters, inRouteIds, scheduledIds, state.selectedCustomerId, searchQuery, pinnedCustomerId]);
 
   const handlePresetChange = useCallback((presetId: FilterPresetId) => {
     setFilters((prev) => applyFilterPreset(presetId, prev));
@@ -317,6 +361,32 @@ function InboxListPanelInner({ candidates: candidatesProp, isLoading: isLoadingP
 
   return (
     <>
+      {showFocusWarning && (
+        <div
+          data-testid="focus-customer-warning"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            padding: '0.4rem 0.75rem',
+            background: 'var(--color-warning-bg, #fff3cd)',
+            color: 'var(--color-warning, #856404)',
+            fontSize: '0.8rem',
+            borderBottom: '1px solid var(--color-warning-border, #ffc107)',
+          }}
+        >
+          <AlertTriangle size={14} />
+          <span style={{ flex: 1 }}>Customer not found in inbox queue.</span>
+          <button
+            type="button"
+            onClick={() => setShowFocusWarning(false)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', lineHeight: 1 }}
+            aria-label="Dismiss warning"
+          >
+            ×
+          </button>
+        </div>
+      )}
       <InboxFilterBar
         filters={filters}
         onFiltersChange={handleFiltersChange}
