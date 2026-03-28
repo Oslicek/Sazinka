@@ -344,9 +344,6 @@ function InboxListPanelInner({ candidates: candidatesProp, isLoading: isLoadingP
         const [pinned] = sorted.splice(pinIdx, 1);
         sorted.unshift(pinned);
       }
-      if (sorted.length > 0 && sorted[0].id === pinnedCustomerId && sorted[0].disableCheckbox) {
-        sorted[0] = { ...sorted[0], disableCheckbox: false };
-      }
     }
 
     return sorted;

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, AlertTriangle, X as XIcon, Calendar, Car, MapPin, PhoneOff } from 'lucide-react';
 import styles from './CandidateRow.module.css';
@@ -83,6 +83,7 @@ export function CandidateRow({
   isScheduled = false,
 }: CandidateRowProps) {
   const { t } = useTranslation('planner');
+  const [showDisabledTooltip, setShowDisabledTooltip] = useState(false);
   const daysOverdue = candidate.daysUntilDue < 0 ? Math.abs(candidate.daysUntilDue) : 0;
   const hasProblems = !candidate.hasPhone || !candidate.hasValidAddress;
 
@@ -96,6 +97,12 @@ export function CandidateRow({
     onKeyDown?.(e);
   };
 
+  const handleDisabledCheckboxClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowDisabledTooltip(true);
+    setTimeout(() => setShowDisabledTooltip(false), 3000);
+  };
+
   return (
     <div
       role="button"
@@ -106,18 +113,37 @@ export function CandidateRow({
       data-candidate-id={candidate.id}
     >
       {selectable && (
-        <input
-          type="checkbox"
-          className={styles.checkbox}
-          checked={checked}
-          disabled={candidate.disableCheckbox}
-          title={candidate.disableCheckbox ? t('candidate_row_checkbox_disabled') : undefined}
-          onChange={(e) => {
-            e.stopPropagation();
-            onCheckChange?.(e.target.checked);
-          }}
-          onClick={(e) => e.stopPropagation()}
-        />
+        candidate.disableCheckbox ? (
+          <span
+            className={styles.checkboxWrapper}
+            onClick={handleDisabledCheckboxClick}
+            role="presentation"
+          >
+            <input
+              type="checkbox"
+              className={styles.checkbox}
+              checked={false}
+              disabled
+              tabIndex={-1}
+            />
+            {showDisabledTooltip && (
+              <span className={styles.disabledTooltip} role="tooltip">
+                {t('candidate_row_checkbox_disabled')}
+              </span>
+            )}
+          </span>
+        ) : (
+          <input
+            type="checkbox"
+            className={styles.checkbox}
+            checked={checked}
+            onChange={(e) => {
+              e.stopPropagation();
+              onCheckChange?.(e.target.checked);
+            }}
+            onClick={(e) => e.stopPropagation()}
+          />
+        )
       )}
       <div className={styles.stateIcons}>
         {candidate.needsReschedule && (

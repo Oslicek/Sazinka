@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { CandidateRow, type CandidateRowData } from './CandidateRow';
+
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: (k: string) => k, i18n: { language: 'en' } }),
+}));
 
 function candidate(overrides: Partial<CandidateRowData> = {}): CandidateRowData {
   return {
@@ -57,6 +61,59 @@ describe('CandidateRow', () => {
 
       expect(onCheckChange).toHaveBeenCalledWith(true);
       expect(onClick).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('BUG-13: disabled checkbox tooltip', () => {
+    it('disabled checkbox shows tooltip on click', () => {
+      const onClick = vi.fn();
+      render(
+        <CandidateRow
+          candidate={candidate({ disableCheckbox: true })}
+          selectable
+          checked={false}
+          onClick={onClick}
+        />
+      );
+
+      const wrapper = screen.getByRole('presentation');
+      fireEvent.click(wrapper);
+
+      expect(screen.getByRole('tooltip')).toBeInTheDocument();
+      expect(screen.getByRole('tooltip')).toHaveTextContent('candidate_row_checkbox_disabled');
+      expect(onClick).not.toHaveBeenCalled();
+    });
+
+    it('tooltip disappears after timeout', () => {
+      vi.useFakeTimers();
+      render(
+        <CandidateRow
+          candidate={candidate({ disableCheckbox: true })}
+          selectable
+          checked={false}
+        />
+      );
+
+      const wrapper = screen.getByRole('presentation');
+      fireEvent.click(wrapper);
+      expect(screen.getByRole('tooltip')).toBeInTheDocument();
+
+      act(() => { vi.advanceTimersByTime(3000); });
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+      vi.useRealTimers();
+    });
+
+    it('enabled checkbox has no wrapper and no tooltip', () => {
+      render(
+        <CandidateRow
+          candidate={candidate({ disableCheckbox: false })}
+          selectable
+          checked={false}
+        />
+      );
+
+      expect(screen.queryByRole('presentation')).not.toBeInTheDocument();
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
     });
   });
 });

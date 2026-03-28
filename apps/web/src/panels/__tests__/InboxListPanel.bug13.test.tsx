@@ -1,16 +1,16 @@
 /**
- * BUG-13 — Deep-linked (focused) customer checkbox unresponsive.
+ * BUG-13 — Deep-linked (focused) customer checkbox interaction.
  *
  * When a customer with failed geocode is pinned to index 0 via deep-link,
- * their disableCheckbox flag prevents selection. The pinned customer should
- * always be selectable regardless of geocode status.
+ * the checkbox must remain disabled (no geocode → can't route). But clicking
+ * the disabled checkbox area should show a visible warning tooltip.
  *
- * B13-1: pinned customer with failed geocode has disableCheckbox=false
- * B13-2: pinned customer with valid geocode still has disableCheckbox=false
+ * B13-1: pinned customer with failed geocode keeps disableCheckbox=true
+ * B13-2: pinned customer with valid geocode has disableCheckbox=false (normal)
  * B13-3: non-pinned customer with failed geocode still has disableCheckbox=true
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import { PanelStateProvider } from '../../contexts/PanelStateContext';
 import { InboxListPanel, resetInboxListCache } from '../InboxListPanel';
@@ -22,13 +22,10 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string) => k, i18n: { language: 'en' } }),
 }));
 
-// ── VirtualizedInboxList mock — exposes disableCheckbox + checkbox click ──────
-const mockSelectionChange = vi.fn();
+// ── VirtualizedInboxList mock — exposes disableCheckbox ──────────────────────
 vi.mock('@/components/planner', () => ({
   VirtualizedInboxList: ({
     candidates,
-    selectable,
-    onSelectionChange,
   }: {
     candidates: CandidateRowData[];
     isLoading?: boolean;
@@ -46,14 +43,6 @@ vi.mock('@/components/planner', () => ({
             data-disable-checkbox={c.disableCheckbox ? 'true' : 'false'}
           >
             {c.customerName}
-            {selectable && (
-              <input
-                type="checkbox"
-                data-testid={`checkbox-${c.id}`}
-                disabled={c.disableCheckbox}
-                onChange={() => onSelectionChange?.(c.id, true)}
-              />
-            )}
           </div>
         ))}
       </div>
@@ -177,7 +166,6 @@ beforeEach(() => {
   vi.clearAllMocks();
   resetInboxListCache();
   sessionStorage.clear();
-  mockSelectionChange.mockClear();
 });
 
 afterEach(() => {
@@ -185,7 +173,7 @@ afterEach(() => {
 });
 
 describe('BUG-13: focused customer checkbox', () => {
-  it('B13-1: pinned customer with failed geocode has checkbox enabled', async () => {
+  it('B13-1: pinned customer with failed geocode keeps disableCheckbox=true', async () => {
     const noGeo = makeCandidate('no-geo', 'Alena Beneš', {
       customerGeocodeStatus: 'failed',
       customerLat: null,
@@ -199,25 +187,15 @@ describe('BUG-13: focused customer checkbox', () => {
       (r: ReturnType<typeof makeInboxResponse>) => ({ items: r.items }),
     );
 
-    render(
-      <InboxListPanel
-        selectable
-        selectedIds={new Set()}
-        onSelectionChange={mockSelectionChange}
-      />,
-      { wrapper },
-    );
+    render(<InboxListPanel />, { wrapper });
 
     await waitFor(() => screen.getByTestId('inbox-list'));
 
     const pinnedRow = screen.getByTestId('candidate-no-geo');
-    expect(pinnedRow.getAttribute('data-disable-checkbox')).toBe('false');
-
-    const checkbox = screen.getByTestId('checkbox-no-geo') as HTMLInputElement;
-    expect(checkbox.disabled).toBe(false);
+    expect(pinnedRow.getAttribute('data-disable-checkbox')).toBe('true');
   });
 
-  it('B13-2: pinned customer with valid geocode has checkbox enabled', async () => {
+  it('B13-2: pinned customer with valid geocode has disableCheckbox=false', async () => {
     const validGeo = makeCandidate('valid-geo', 'Valid Customer');
     const other = makeCandidate('other', 'Other');
 
@@ -227,22 +205,15 @@ describe('BUG-13: focused customer checkbox', () => {
       (r: ReturnType<typeof makeInboxResponse>) => ({ items: r.items }),
     );
 
-    render(
-      <InboxListPanel
-        selectable
-        selectedIds={new Set()}
-        onSelectionChange={mockSelectionChange}
-      />,
-      { wrapper },
-    );
+    render(<InboxListPanel />, { wrapper });
 
     await waitFor(() => screen.getByTestId('inbox-list'));
 
-    const checkbox = screen.getByTestId('checkbox-valid-geo') as HTMLInputElement;
-    expect(checkbox.disabled).toBe(false);
+    const row = screen.getByTestId('candidate-valid-geo');
+    expect(row.getAttribute('data-disable-checkbox')).toBe('false');
   });
 
-  it('B13-3: non-pinned customer with failed geocode still has checkbox disabled', async () => {
+  it('B13-3: non-pinned customer with failed geocode has disableCheckbox=true', async () => {
     const normal = makeCandidate('normal', 'Normal');
     const noGeo = makeCandidate('no-geo-other', 'No Geo Other', {
       customerGeocodeStatus: 'failed',
@@ -250,24 +221,16 @@ describe('BUG-13: focused customer checkbox', () => {
       customerLng: null,
     });
 
-    // No deep-link — no focusCustomerId
     mockGetInbox.mockResolvedValue(makeInboxResponse([normal, noGeo]));
     mockInboxResponseToCallQueueResponse.mockImplementation(
       (r: ReturnType<typeof makeInboxResponse>) => ({ items: r.items }),
     );
 
-    render(
-      <InboxListPanel
-        selectable
-        selectedIds={new Set()}
-        onSelectionChange={mockSelectionChange}
-      />,
-      { wrapper },
-    );
+    render(<InboxListPanel />, { wrapper });
 
     await waitFor(() => screen.getByTestId('inbox-list'));
 
-    const checkbox = screen.getByTestId('checkbox-no-geo-other') as HTMLInputElement;
-    expect(checkbox.disabled).toBe(true);
+    const row = screen.getByTestId('candidate-no-geo-other');
+    expect(row.getAttribute('data-disable-checkbox')).toBe('true');
   });
 });

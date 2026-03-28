@@ -822,9 +822,11 @@ function PlanningInboxInner() {
     if (!isConnected) return;
     
     try {
+      const focusId = sessionStorage.getItem('planningInbox.focusCustomerId') ?? undefined;
       const inboxResponse = await getInbox({
         limit: 100,
         selectedRuleSetId: selectedRuleSetId ?? undefined,
+        ...(focusId ? { focusCustomerId: focusId } : {}),
       });
       const response = inboxResponseToCallQueueResponse(inboxResponse);
       

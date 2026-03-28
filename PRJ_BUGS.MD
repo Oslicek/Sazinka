@@ -387,13 +387,54 @@ Example (no search/geocode/type, one street checklist):
 **Expected:** The checkbox toggles and the customer is added to the selection (blue highlight, selection bar appears).
 **Actual:** Nothing happens — the checkbox does not respond to clicks. Other (non-focused) candidates can be selected normally.
 
-**Root cause:** `mapCallQueueItemToCandidate` sets `disableCheckbox = !hasValidAddress(item)`. When a customer has failed geocode (`customerGeocodeStatus !== 'success'` or null `lat`/`lng`), `disableCheckbox` is `true`. The client-side pin in `InboxListPanel.filteredSorted` moved the focused customer to index 0 but preserved the `disableCheckbox: true` flag, causing the HTML `<input disabled>` to ignore clicks.
+**Root cause:** `mapCallQueueItemToCandidate` sets `disableCheckbox = !hasValidAddress(item)`. When a customer has failed geocode (`customerGeocodeStatus !== 'success'` or null `lat`/`lng`), `disableCheckbox` is `true`. The HTML `<input disabled>` ignores clicks entirely.
 
-**Fix:** After the pin logic in `filteredSorted` useMemo, override `disableCheckbox = false` on the pinned row. The user explicitly navigated to this customer via "Show in Inbox", so the checkbox should be interactive regardless of geocode status. The route optimizer already handles missing coordinates at submission time.
+**Fix (corrected):** The checkbox for non-geocoded customers must stay disabled (can't route without coordinates). Instead:
+1. **Reverted** the earlier `disableCheckbox = false` override on pinned rows in `InboxListPanel.tsx`.
+2. In `CandidateRow.tsx`, replaced the disabled `<input>` with a clickable `<span>` wrapper. Clicking the wrapper shows a visible red tooltip ("Address cannot be found on map") for 3 seconds, then auto-hides. This gives clear feedback to the dispatcher.
 
-**Changed file:** `apps/web/src/panels/InboxListPanel.tsx` — 3-line addition in `filteredSorted` useMemo after the pin block.
+**Changed files:**
+- `apps/web/src/panels/InboxListPanel.tsx` — reverted the `disableCheckbox` override
+- `apps/web/src/components/planner/CandidateRow.tsx` — added `<span>` wrapper with click-to-show tooltip for disabled checkboxes
+- `apps/web/src/components/planner/CandidateRow.module.css` — added `.checkboxWrapper`, `.disabledTooltip` styles
 
-**Regression tests:** `apps/web/src/panels/__tests__/InboxListPanel.bug13.test.tsx`
-- `B13-1`: pinned customer with failed geocode → `disableCheckbox=false`, checkbox enabled
-- `B13-2`: pinned customer with valid geocode → `disableCheckbox=false`, checkbox enabled
-- `B13-3`: non-pinned customer with failed geocode → `disableCheckbox=true` (existing behavior preserved)
+**Regression tests:**
+- `apps/web/src/panels/__tests__/InboxListPanel.bug13.test.tsx`
+  - `B13-1`: pinned customer with failed geocode → `disableCheckbox=true` (stays disabled)
+  - `B13-2`: pinned customer with valid geocode → `disableCheckbox=false` (normal)
+  - `B13-3`: non-pinned customer with failed geocode → `disableCheckbox=true` (preserved)
+- `apps/web/src/components/planner/CandidateRow.test.tsx`
+  - disabled checkbox shows tooltip on click
+  - tooltip disappears after 3s timeout
+  - enabled checkbox has no wrapper and no tooltip
+
+---
+
+## BUG-14: Inbox — deep-linked (focused) customer not shown as orange circle on map when selected
+
+**Status:** Fixed  
+**Severity:** Medium  
+**Page:** Planning Inbox (`/inbox`)
+
+**Steps to reproduce:**
+1. Open a customer detail page for a customer with valid geocode.
+2. Click "Show in Inbox" (Zobrazit ve frontě) CTA.
+3. Inbox opens with the focused customer pinned at position 0.
+4. Select the focused customer via checkbox.
+
+**Expected:** An orange circle appears on the map at the customer's location.
+**Actual:** No orange circle. Other candidates selected from the regular list show correctly.
+
+**Root cause:** Two separate data pipelines exist:
+- `InboxListPanel.loadCandidates` passes `focusCustomerId` to `getInbox()` → the focused customer is in InboxListPanel's data
+- `PlanningInbox.loadCandidates` calls `getInbox()` **without** `focusCustomerId` → the focused customer may not be in the parent's `candidates` array (e.g. ranked outside top 100)
+
+`buildSelectedCandidatesForMap(selectedIds, candidates, inRouteIds)` uses PlanningInbox's `candidates` to map selected IDs to coordinates. When the focused customer is absent from the parent's `candidates`, it can't find them → no orange circle.
+
+**Fix:** `PlanningInbox.loadCandidates` now reads `planningInbox.focusCustomerId` from sessionStorage and passes it to `getInbox()`. Both pipelines now include the focused customer.
+
+**Changed file:** `apps/web/src/pages/PlanningInbox.tsx` — 2-line addition in `loadCandidates` to read and pass `focusCustomerId`.
+
+**Regression tests:** `apps/web/src/pages/__tests__/PlanningInbox.bug14.test.tsx`
+- `B14-1`: getInbox called with focusCustomerId when present in sessionStorage
+- `B14-2`: getInbox called without focusCustomerId when not in sessionStorage
