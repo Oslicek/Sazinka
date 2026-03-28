@@ -5,21 +5,26 @@
  * Keeps the three pages in sync: add delete/audit features here, they appear everywhere.
  */
 import { useState } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Trash2 } from 'lucide-react';
 import type { Note } from '@shared/note';
 import { NoteEditor } from './NoteEditor';
 import { useNoteDraft } from '../../hooks/useNoteDraft';
 import { useAutoSave } from '../../hooks/useAutoSave';
-import { updateNote } from '../../services/noteService';
+import { updateNote, deleteNote } from '../../services/noteService';
 
 export interface InlineNoteEditorProps {
   note: Note;
   sessionId: string;
   onSaved: (updated: Note) => void;
+  /** If provided, a delete button is shown; called with the noteId on successful deletion. */
+  onDeleted?: (noteId: string) => void;
 }
 
-export function InlineNoteEditor({ note, sessionId, onSaved }: InlineNoteEditorProps) {
+export function InlineNoteEditor({ note, sessionId, onSaved, onDeleted }: InlineNoteEditorProps) {
   const entityType = note.entityType as 'customer' | 'device' | 'visit';
+
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const { draft, updateDraft, hasConflict, resolveKeepLocal, resolveUseServer } = useNoteDraft({
     entityType,
@@ -49,8 +54,37 @@ export function InlineNoteEditor({ note, sessionId, onSaved }: InlineNoteEditorP
     setHasChanges(content !== note.content);
   };
 
+  const handleDeleteConfirm = async () => {
+    setDeleteError(null);
+    try {
+      await deleteNote({ noteId: note.id });
+      onDeleted?.(note.id);
+    } catch {
+      setDeleteError('Delete failed');
+      setConfirmingDelete(false);
+    }
+  };
+
   return (
     <div data-testid={`note-row-${note.id}`} style={{ marginBottom: '8px' }}>
+      {onDeleted && confirmingDelete && (
+        <div
+          data-testid="delete-confirm-prompt"
+          style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '6px', fontSize: '13px', color: 'var(--error, #d32f2f)' }}
+        >
+          <span>Delete this note?</span>
+          <button type="button" data-testid="delete-confirm-yes" onClick={handleDeleteConfirm}>Yes, delete</button>
+          <button type="button" data-testid="delete-confirm-no" onClick={() => setConfirmingDelete(false)}>Cancel</button>
+        </div>
+      )}
+      {deleteError && (
+        <div
+          data-testid="delete-error"
+          style={{ marginBottom: '6px', fontSize: '13px', color: 'var(--error, #d32f2f)' }}
+        >
+          {deleteError}
+        </div>
+      )}
       {hasConflict && (
         <div
           data-testid="conflict-prompt"
@@ -83,6 +117,17 @@ export function InlineNoteEditor({ note, sessionId, onSaved }: InlineNoteEditorP
         initialContent={draft}
         onChange={handleChange}
       />
+      {onDeleted && !confirmingDelete && (
+        <button
+          type="button"
+          data-testid="delete-note-btn"
+          onClick={() => setConfirmingDelete(true)}
+          style={{ marginTop: '4px', display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: 'var(--color-text-secondary)', border: 'none', background: 'none', cursor: 'pointer', padding: '2px 4px', borderRadius: '4px' }}
+          title="Delete note"
+        >
+          <Trash2 size={12} />
+        </button>
+      )}
     </div>
   );
 }
