@@ -212,6 +212,7 @@ vi.mock('@/services/revisionService', () => ({
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => vi.fn(),
+  useSearch: () => ({}),
 }));
 
 vi.mock('react-i18next', () => ({

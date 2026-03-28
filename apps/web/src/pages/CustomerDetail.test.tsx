@@ -130,14 +130,16 @@ describe('CustomerDetail', () => {
       });
     });
 
-    it('should display customer notes', async () => {
+    it('should not render customer.notes directly (notes come from visit system)', async () => {
       mockGetCustomer.mockResolvedValueOnce(mockCustomer);
 
       render(<CustomerDetail />);
 
       await waitFor(() => {
-        expect(screen.getByText('Testovací poznámka')).toBeInTheDocument();
+        expect(screen.getByText('Jan Novák')).toBeInTheDocument();
       });
+
+      expect(screen.queryByText('Testovací poznámka')).not.toBeInTheDocument();
     });
 
     it('should not show email section if email is not provided', async () => {
