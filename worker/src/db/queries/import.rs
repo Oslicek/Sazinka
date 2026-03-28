@@ -495,3 +495,42 @@ pub async fn create_work_item_from_import(
     
     Ok(id)
 }
+
+// =============================================================================
+// NOTE IMPORT
+// =============================================================================
+
+/// Find device by serial number across all devices for a user (no customer_id required).
+/// Returns the first match if found; useful when customer context is unavailable.
+pub async fn find_device_by_serial_for_user(pool: &PgPool, user_id: Uuid, serial_number: &str) -> Result<Option<Uuid>> {
+    let result = sqlx::query_scalar(
+        r#"SELECT id FROM devices WHERE user_id = $1 AND serial_number = $2 LIMIT 1"#,
+    )
+    .bind(user_id)
+    .bind(serial_number)
+    .fetch_optional(pool)
+    .await?;
+    Ok(result)
+}
+
+/// Check whether a note with the same entity_type, entity_id and content already exists
+/// (idempotent import: duplicate detection).
+/// Returns the existing note id if found.
+pub async fn find_duplicate_note(
+    pool: &PgPool,
+    user_id: Uuid,
+    entity_type: &str,
+    entity_id: Uuid,
+    content: &str,
+) -> Result<Option<Uuid>> {
+    let result = sqlx::query_scalar(
+        r#"SELECT id FROM notes WHERE user_id = $1 AND entity_type = $2 AND entity_id = $3 AND content = $4 AND deleted_at IS NULL LIMIT 1"#,
+    )
+    .bind(user_id)
+    .bind(entity_type)
+    .bind(entity_id)
+    .bind(content)
+    .fetch_optional(pool)
+    .await?;
+    Ok(result)
+}

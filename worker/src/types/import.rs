@@ -584,6 +584,7 @@ pub enum ZipImportFileType {
     Revisions,
     Communications,
     WorkLog,
+    Notes,
 }
 
 impl ZipImportFileType {
@@ -595,6 +596,8 @@ impl ZipImportFileType {
             ZipImportFileType::Revisions => 3,
             ZipImportFileType::Communications => 4,
             ZipImportFileType::WorkLog => 5,
+            // Notes after all entities so refs can be resolved
+            ZipImportFileType::Notes => 6,
         }
     }
     
@@ -606,13 +609,16 @@ impl ZipImportFileType {
             ZipImportFileType::Revisions => "revisions",
             ZipImportFileType::Communications => "communications",
             ZipImportFileType::WorkLog => "work_log",
+            ZipImportFileType::Notes => "notes",
         }
     }
     
     /// Try to detect file type from filename
     pub fn from_filename(filename: &str) -> Option<Self> {
         let lower = filename.to_lowercase();
-        if lower.contains("customer") || lower.contains("zakazn") {
+        if lower.contains("notes") || lower.contains("poznamk") {
+            Some(ZipImportFileType::Notes)
+        } else if lower.contains("customer") || lower.contains("zakazn") {
             Some(ZipImportFileType::Customers)
         } else if lower.contains("device") || lower.contains("zariz") {
             Some(ZipImportFileType::Devices)

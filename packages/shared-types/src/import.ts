@@ -186,7 +186,7 @@ export interface WorkLogImportJobSubmitResponse {
 // ZIP IMPORT JOB TYPES
 // =============================================================================
 
-export type ZipImportFileType = 'customers' | 'devices' | 'revisions' | 'communications' | 'work_log';
+export type ZipImportFileType = 'customers' | 'devices' | 'revisions' | 'communications' | 'work_log' | 'notes';
 
 export interface ZipImportFileInfo {
   filename: string;

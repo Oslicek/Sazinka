@@ -2066,6 +2066,9 @@ impl ZipImportProcessor {
             ZipImportFileType::WorkLog => {
                 self.import_visits(user_id, csv_content).await
             }
+            ZipImportFileType::Notes => {
+                self.import_notes(user_id, csv_content).await
+            }
         }
     }
     
@@ -2622,6 +2625,140 @@ impl ZipImportProcessor {
         self.client.publish(status_subject, status_payload.into()).await?;
         
         Ok(())
+    }
+
+    // -------------------------------------------------------------------------
+    // Notes import (Phase U9)
+    // -------------------------------------------------------------------------
+
+    async fn import_notes(&self, user_id: Uuid, csv_content: &str) -> Result<(u32, u32, Vec<ImportIssue>)> {
+        use super::import::{CsvNoteRow, resolve_note_entity_id};
+
+        let mut reader = csv::ReaderBuilder::new()
+            .delimiter(b';')
+            .has_headers(true)
+            .flexible(true)
+            .from_reader(csv_content.as_bytes());
+
+        let mut succeeded = 0u32;
+        let mut failed = 0u32;
+        let mut issues = Vec::new();
+
+        for (idx, result) in reader.deserialize::<CsvNoteRow>().enumerate() {
+            let row_num = (idx + 2) as i32;
+            match result {
+                Ok(row) => {
+                    // Skip blank content
+                    let content = row.content.trim().to_string();
+                    if content.is_empty() {
+                        continue;
+                    }
+
+                    // Reject content over 10 000 characters
+                    if content.len() > 10_000 {
+                        issues.push(ImportIssue {
+                            row_number: row_num,
+                            level: ImportIssueLevel::Error,
+                            code: ImportIssueCode::InvalidValue,
+                            field: "content".to_string(),
+                            message: json!({"key": "import:note_content_too_long"}).to_string(),
+                            original_value: None,
+                        });
+                        failed += 1;
+                        continue;
+                    }
+
+                    // Resolve entity_id
+                    let entity_id = match resolve_note_entity_id(
+                        &self.pool,
+                        user_id,
+                        &row.entity_type,
+                        &row.entity_ref,
+                        row.entity_id.as_deref(),
+                    ).await {
+                        Ok(Some(id)) => id,
+                        Ok(None) => {
+                            issues.push(ImportIssue {
+                                row_number: row_num,
+                                level: ImportIssueLevel::Error,
+                                code: ImportIssueCode::CustomerNotFound,
+                                field: "entity_ref".to_string(),
+                                message: json!({
+                                    "key": "import:note_entity_not_found",
+                                    "params": { "ref": &row.entity_ref, "type": &row.entity_type }
+                                }).to_string(),
+                                original_value: Some(row.entity_ref.clone()),
+                            });
+                            failed += 1;
+                            continue;
+                        }
+                        Err(e) => {
+                            warn!("Note entity resolution error row {}: {}", row_num, e);
+                            failed += 1;
+                            continue;
+                        }
+                    };
+
+                    // Idempotent: skip if exact duplicate already exists
+                    match queries::import::find_duplicate_note(
+                        &self.pool,
+                        user_id,
+                        &row.entity_type,
+                        entity_id,
+                        &content,
+                    ).await {
+                        Ok(Some(_)) => {
+                            // Duplicate — count as succeeded (idempotent)
+                            succeeded += 1;
+                            continue;
+                        }
+                        Ok(None) => {}
+                        Err(e) => {
+                            warn!("Duplicate note check error row {}: {}", row_num, e);
+                        }
+                    }
+
+                    // Create the note
+                    match queries::note::create_note(
+                        &self.pool,
+                        user_id,
+                        &row.entity_type,
+                        entity_id,
+                        None,
+                        &content,
+                    ).await {
+                        Ok(_) => {
+                            succeeded += 1;
+                        }
+                        Err(e) => {
+                            warn!("Failed to create note row {}: {}", row_num, e);
+                            issues.push(ImportIssue {
+                                row_number: row_num,
+                                level: ImportIssueLevel::Error,
+                                code: ImportIssueCode::DbError,
+                                field: "content".to_string(),
+                                message: e.to_string(),
+                                original_value: None,
+                            });
+                            failed += 1;
+                        }
+                    }
+                }
+                Err(e) => {
+                    issues.push(ImportIssue {
+                        row_number: row_num,
+                        level: ImportIssueLevel::Error,
+                        code: ImportIssueCode::InvalidValue,
+                        field: "".to_string(),
+                        message: e.to_string(),
+                        original_value: None,
+                    });
+                    failed += 1;
+                }
+            }
+        }
+
+        Ok((succeeded, failed, issues))
     }
 }
 

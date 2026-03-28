@@ -1428,6 +1428,74 @@ pub struct CsvCustomerRow {
     pub notes: Option<String>,
 }
 
+/// CSV row for notes.csv import.
+/// Matches the columns produced by `build_notes_csv` in export_processor.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct CsvNoteRow {
+    /// "customer" | "device" | "visit"
+    #[serde(alias = "entity_type")]
+    pub entity_type: String,
+    /// UUID of the entity (canonical, used when ref resolution fails)
+    #[serde(alias = "entity_id")]
+    pub entity_id: Option<String>,
+    /// Human-readable ref: ICO/email/phone for customers, serial/name for devices,
+    /// visit_uuid:<uuid> for visits
+    #[serde(alias = "entity_ref")]
+    pub entity_ref: String,
+    /// Raw markdown content
+    #[serde(alias = "content")]
+    pub content: String,
+    /// Optional ISO 8601 — used as created_at hint (best-effort)
+    #[serde(alias = "created_at")]
+    pub created_at: Option<String>,
+}
+
+/// Resolve a note's entity_id from entity_ref + entity_id fallback.
+/// Resolution strategy per entity type:
+///   customer: customer_ref → resolve_customer_ref, fallback customer_uuid:<uuid>
+///   device:   device_ref   → find_device_by_serial / name / type, fallback device_uuid:<uuid>
+///   visit:    visit_uuid:<uuid> (UUID only)
+pub async fn resolve_note_entity_id(
+    pool: &sqlx::PgPool,
+    user_id: uuid::Uuid,
+    entity_type: &str,
+    entity_ref: &str,
+    entity_id_str: Option<&str>,
+) -> anyhow::Result<Option<uuid::Uuid>> {
+    // Direct UUID fallback helper
+    let parse_uuid_fallback = |prefix: &str| -> Option<uuid::Uuid> {
+        entity_ref
+            .strip_prefix(prefix)
+            .and_then(|s| uuid::Uuid::parse_str(s).ok())
+            .or_else(|| entity_id_str.and_then(|s| uuid::Uuid::parse_str(s).ok()))
+    };
+
+    match entity_type {
+        "customer" => {
+            // Try the ref as a customer ref (ico/email/phone)
+            if let Some(id) = resolve_customer_ref(pool, user_id, entity_ref).await? {
+                return Ok(Some(id));
+            }
+            // Fallback: customer_uuid:<uuid> or raw entity_id
+            Ok(parse_uuid_fallback("customer_uuid:"))
+        }
+        "device" => {
+            // entity_ref for devices is serial/name; we need customer_id which we don't have
+            // here — so fall back to device_uuid:<uuid> or raw entity_id
+            if entity_ref.starts_with("device_uuid:") {
+                return Ok(parse_uuid_fallback("device_uuid:"));
+            }
+            // Try by serial number across all devices for this user
+            if let Some(id) = queries::import::find_device_by_serial_for_user(pool, user_id, entity_ref).await? {
+                return Ok(Some(id));
+            }
+            Ok(entity_id_str.and_then(|s| uuid::Uuid::parse_str(s).ok()))
+        }
+        "visit" => Ok(parse_uuid_fallback("visit_uuid:")),
+        _ => Ok(None),
+    }
+}
+
 /// Handle customer import job submission
 pub async fn handle_customer_import_submit(
     client: Client,
