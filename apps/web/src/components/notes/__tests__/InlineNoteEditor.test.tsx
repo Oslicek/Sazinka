@@ -1,14 +1,15 @@
 /**
- * InlineNoteEditor shared building block tests — NY1–NY9 (U11) + NY10–NY15 (U12)
+ * InlineNoteEditor shared building block tests
  *
- * NY1–NY9:  draft rendering, autosave, conflict UI, save-error retry, entity types
- * NY10–NY15: delete action, confirmation, success, cancel, failure
+ * NY1–NY9  (U11): draft rendering, autosave, conflict UI, save-error retry, entity types
+ * NY10–NY15 (U12): delete action, confirmation, success, cancel, failure
+ * NY16–NY22 (U13): history toggle, fetch on open, render NoteHistory, loading, error, re-open policy
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import type { Note } from '@shared/note';
 
-// ── Module mocks (hoisted) ──────────────────────────────────────────────────
+// ── Module mocks (must be at top — hoisted by vitest) ──────────────────────
 
 vi.mock('@/utils/auth', () => ({ getToken: vi.fn().mockReturnValue('test-token') }));
 vi.mock('@/stores/natsStore', () => ({
@@ -21,15 +22,20 @@ vi.mock('../../../services/noteService', () => ({
     entityId: 'e-001', userId: 'u-001', createdAt: '', updatedAt: '',
   }),
   deleteNote: vi.fn().mockResolvedValue({ deleted: true }),
+  fetchNoteAudit: vi.fn().mockResolvedValue({
+    entries: [
+      {
+        id: 'h-001', noteId: 'note-001', sessionId: 's-001',
+        editedByUserId: 'u-001', content: 'old content',
+        firstEditedAt: '2026-01-01T00:00:00Z', lastEditedAt: '2026-01-01T00:05:00Z',
+        changeCount: 2,
+      },
+    ],
+  }),
 }));
 
-vi.mock('../../../hooks/useNoteDraft', () => ({
-  useNoteDraft: vi.fn(),
-}));
-
-vi.mock('../../../hooks/useAutoSave', () => ({
-  useAutoSave: vi.fn(),
-}));
+vi.mock('../../../hooks/useNoteDraft', () => ({ useNoteDraft: vi.fn() }));
+vi.mock('../../../hooks/useAutoSave', () => ({ useAutoSave: vi.fn() }));
 
 vi.mock('../../notes/NoteEditor', () => ({
   NoteEditor: ({ initialContent, onChange }: { initialContent: string; onChange?: (v: string) => void }) => (
@@ -40,11 +46,22 @@ vi.mock('../../notes/NoteEditor', () => ({
   ),
 }));
 
-// ── Import after mocks ──────────────────────────────────────────────────────
+vi.mock('../NoteHistory', () => ({
+  NoteHistory: ({ entries }: { entries: unknown[] }) => (
+    <div data-testid="note-history-panel">
+      {entries.map((e: unknown) => (
+        <div key={(e as { id: string }).id} data-testid="history-entry" />
+      ))}
+    </div>
+  ),
+}));
+
+// ── Imports after mocks ─────────────────────────────────────────────────────
+
 import { InlineNoteEditor } from '../InlineNoteEditor';
 import { useNoteDraft } from '../../../hooks/useNoteDraft';
 import { useAutoSave } from '../../../hooks/useAutoSave';
-import { deleteNote } from '../../../services/noteService';
+import { deleteNote, fetchNoteAudit } from '../../../services/noteService';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -199,5 +216,82 @@ describe('InlineNoteEditor — delete (NY10–NY15)', () => {
     await act(async () => { fireEvent.click(screen.getByTestId('delete-confirm-yes')); });
     expect(screen.getByTestId('delete-error')).toBeDefined();
     expect(screen.getByTestId('note-editor')).toBeDefined();
+  });
+});
+
+// ── U13: NY16–NY22 ───────────────────────────────────────────────────────────
+
+describe('InlineNoteEditor — audit history (NY16–NY22)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupMocks();
+    vi.mocked(fetchNoteAudit).mockResolvedValue({
+      entries: [
+        {
+          id: 'h-001', noteId: 'note-001', sessionId: 's-001',
+          editedByUserId: 'u-001', content: 'old content',
+          firstEditedAt: '2026-01-01T00:00:00Z', lastEditedAt: '2026-01-01T00:05:00Z',
+          changeCount: 2,
+        },
+      ],
+    });
+  });
+
+  // NY16 — history toggle button is rendered
+  it('NY16: history toggle button is visible', () => {
+    render(<InlineNoteEditor note={makeNote()} sessionId="s-001" onSaved={vi.fn()} />);
+    expect(screen.getByTestId('history-toggle-btn')).toBeDefined();
+  });
+
+  // NY17 — clicking toggle calls fetchNoteAudit with correct noteId
+  it('NY17: clicking history toggle calls fetchNoteAudit with noteId', async () => {
+    render(<InlineNoteEditor note={makeNote({ id: 'note-abc' })} sessionId="s-001" onSaved={vi.fn()} />);
+    await act(async () => { fireEvent.click(screen.getByTestId('history-toggle-btn')); });
+    expect(fetchNoteAudit).toHaveBeenCalledWith('note-abc');
+  });
+
+  // NY18 — after fetch, NoteHistory panel is shown with entries
+  it('NY18: after fetch, NoteHistory panel is shown with entries', async () => {
+    render(<InlineNoteEditor note={makeNote()} sessionId="s-001" onSaved={vi.fn()} />);
+    await act(async () => { fireEvent.click(screen.getByTestId('history-toggle-btn')); });
+    expect(screen.getByTestId('note-history-panel')).toBeDefined();
+    expect(screen.getAllByTestId('history-entry')).toHaveLength(1);
+  });
+
+  // NY19 — clicking toggle again collapses the panel
+  it('NY19: clicking toggle again hides the history panel', async () => {
+    render(<InlineNoteEditor note={makeNote()} sessionId="s-001" onSaved={vi.fn()} />);
+    await act(async () => { fireEvent.click(screen.getByTestId('history-toggle-btn')); });
+    expect(screen.getByTestId('note-history-panel')).toBeDefined();
+    fireEvent.click(screen.getByTestId('history-toggle-btn'));
+    expect(screen.queryByTestId('note-history-panel')).toBeNull();
+  });
+
+  // NY20 — loading state shown while fetching
+  it('NY20: loading state shown while fetch is in flight', async () => {
+    let resolve!: (v: unknown) => void;
+    vi.mocked(fetchNoteAudit).mockReturnValueOnce(new Promise((r) => { resolve = r; }) as ReturnType<typeof fetchNoteAudit>);
+    render(<InlineNoteEditor note={makeNote()} sessionId="s-001" onSaved={vi.fn()} />);
+    act(() => { fireEvent.click(screen.getByTestId('history-toggle-btn')); });
+    expect(screen.getByTestId('history-loading')).toBeDefined();
+    await act(async () => { resolve({ entries: [] }); });
+  });
+
+  // NY21 — fetch error shows error message instead of panel
+  it('NY21: fetch error shows error message', async () => {
+    vi.mocked(fetchNoteAudit).mockRejectedValueOnce(new Error('Network error'));
+    render(<InlineNoteEditor note={makeNote()} sessionId="s-001" onSaved={vi.fn()} />);
+    await act(async () => { fireEvent.click(screen.getByTestId('history-toggle-btn')); });
+    expect(screen.getByTestId('history-error')).toBeDefined();
+    expect(screen.queryByTestId('note-history-panel')).toBeNull();
+  });
+
+  // NY22 — re-opening refetches (no stale cache shown first)
+  it('NY22: re-opening history refetches audit data', async () => {
+    render(<InlineNoteEditor note={makeNote()} sessionId="s-001" onSaved={vi.fn()} />);
+    await act(async () => { fireEvent.click(screen.getByTestId('history-toggle-btn')); });
+    fireEvent.click(screen.getByTestId('history-toggle-btn'));
+    await act(async () => { fireEvent.click(screen.getByTestId('history-toggle-btn')); });
+    expect(fetchNoteAudit).toHaveBeenCalledTimes(2);
   });
 });

@@ -5,12 +5,13 @@
  * Keeps the three pages in sync: add delete/audit features here, they appear everywhere.
  */
 import { useState } from 'react';
-import { AlertTriangle, Trash2 } from 'lucide-react';
-import type { Note } from '@shared/note';
+import { AlertTriangle, Trash2, History } from 'lucide-react';
+import type { Note, NoteHistoryEntry } from '@shared/note';
 import { NoteEditor } from './NoteEditor';
+import { NoteHistory } from './NoteHistory';
 import { useNoteDraft } from '../../hooks/useNoteDraft';
 import { useAutoSave } from '../../hooks/useAutoSave';
-import { updateNote, deleteNote } from '../../services/noteService';
+import { updateNote, deleteNote, fetchNoteAudit } from '../../services/noteService';
 
 export interface InlineNoteEditorProps {
   note: Note;
@@ -25,6 +26,11 @@ export function InlineNoteEditor({ note, sessionId, onSaved, onDeleted }: Inline
 
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyEntries, setHistoryEntries] = useState<NoteHistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   const { draft, updateDraft, hasConflict, resolveKeepLocal, resolveUseServer } = useNoteDraft({
     entityType,
@@ -52,6 +58,27 @@ export function InlineNoteEditor({ note, sessionId, onSaved, onDeleted }: Inline
   const handleChange = (content: string) => {
     updateDraft(content);
     setHasChanges(content !== note.content);
+  };
+
+  const handleHistoryToggle = async () => {
+    if (historyOpen) {
+      setHistoryOpen(false);
+      setHistoryEntries([]);
+      setHistoryError(null);
+      return;
+    }
+    setHistoryOpen(true);
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const result = await fetchNoteAudit(note.id);
+      setHistoryEntries(result.entries);
+    } catch {
+      setHistoryError('Failed to load history');
+      setHistoryOpen(false);
+    } finally {
+      setHistoryLoading(false);
+    }
   };
 
   const handleDeleteConfirm = async () => {
@@ -117,16 +144,40 @@ export function InlineNoteEditor({ note, sessionId, onSaved, onDeleted }: Inline
         initialContent={draft}
         onChange={handleChange}
       />
-      {onDeleted && !confirmingDelete && (
+      <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
         <button
           type="button"
-          data-testid="delete-note-btn"
-          onClick={() => setConfirmingDelete(true)}
-          style={{ marginTop: '4px', display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: 'var(--color-text-secondary)', border: 'none', background: 'none', cursor: 'pointer', padding: '2px 4px', borderRadius: '4px' }}
-          title="Delete note"
+          data-testid="history-toggle-btn"
+          onClick={handleHistoryToggle}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: 'var(--color-text-secondary)', border: 'none', background: 'none', cursor: 'pointer', padding: '2px 4px', borderRadius: '4px' }}
+          title={historyOpen ? 'Hide history' : 'Show history'}
         >
-          <Trash2 size={12} />
+          <History size={12} />
         </button>
+        {onDeleted && !confirmingDelete && (
+          <button
+            type="button"
+            data-testid="delete-note-btn"
+            onClick={() => setConfirmingDelete(true)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: 'var(--color-text-secondary)', border: 'none', background: 'none', cursor: 'pointer', padding: '2px 4px', borderRadius: '4px' }}
+            title="Delete note"
+          >
+            <Trash2 size={12} />
+          </button>
+        )}
+      </div>
+      {historyLoading && (
+        <div data-testid="history-loading" style={{ fontSize: '12px', color: 'var(--color-text-secondary)', padding: '4px 0' }}>
+          Loading history…
+        </div>
+      )}
+      {historyError && (
+        <div data-testid="history-error" style={{ fontSize: '12px', color: 'var(--error, #d32f2f)', padding: '4px 0' }}>
+          {historyError}
+        </div>
+      )}
+      {historyOpen && !historyLoading && !historyError && (
+        <NoteHistory entries={historyEntries} />
       )}
     </div>
   );
