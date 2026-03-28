@@ -461,25 +461,6 @@ mod tests {
         assert!(crate::types::validate_entity_type(&req.entity_type).is_ok());
     }
 
-    // NH24 — rate limit not in scope (documented stub)
-    #[test]
-    fn rate_limit_not_in_scope_documented() {
-        // Rate limiting for note handlers is not in scope for this phase.
-        // Handlers rely on JWT auth for access control. Rate limiting can be
-        // added at the reverse-proxy / NATS layer in a follow-up.
-        assert!(true);
-    }
-
-    // NH26 — no unwrap in production handlers (checked by SQLX_OFFLINE=true cargo clippy)
-    #[test]
-    fn handler_no_unwrap_production() {
-        // All Result-returning paths in handlers/note.rs and db/queries/note.rs use `?`
-        // or `.unwrap_or_default()` only in test helpers / fallback paths.
-        // This is verified by `SQLX_OFFLINE=true cargo clippy -- -D clippy::unwrap_used`
-        // as part of CI; this test serves as a reminder in the test output.
-        assert!(true);
-    }
-
     // Audit request deserializes
     #[test]
     fn audit_note_request_deserializes() {
