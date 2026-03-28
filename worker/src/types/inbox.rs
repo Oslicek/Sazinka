@@ -21,6 +21,11 @@ pub struct InboxRequest {
     pub selected_rule_set_id: Option<Uuid>,
     pub geocoded_only: Option<bool>,
     pub area_filter: Option<String>,
+    /// Deep-link focus: pin this customer to index 0 even if outside the top-N
+    /// pagination slice. The worker guarantees inclusion if the ID is valid,
+    /// accessible, and not anonymized/abandoned.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub focus_customer_id: Option<Uuid>,
 }
 
 /// A single customer row in the planning inbox (Phase 2 shape).
@@ -90,4 +95,9 @@ pub struct InboxResponse {
     pub total: i64,
     pub overdue_count: i64,
     pub due_soon_count: i64,
+    /// Set only when `focus_customer_id` was provided in the request.
+    /// `true`  = focused customer is present at index 0.
+    /// `false` = focused customer could not be included (invalid/inaccessible).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub focused_customer_included: Option<bool>,
 }

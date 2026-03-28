@@ -292,6 +292,36 @@ struct InboxSqlParts {
     area_pattern: Option<String>,
 }
 
+/// Apply deep-link focus pin: move the focused customer to index 0 and trim to
+/// `limit`.  Returns `(reordered_items, focused_customer_included)`.
+///
+/// Security note: `items` originates from a `user_id`-scoped query that already
+/// excludes anonymized/abandoned customers, so any ID absent from `items` is
+/// either invalid, inaccessible, or excluded — all treated as "not included".
+pub fn apply_focus_pin(
+    mut items: Vec<InboxItem>,
+    focus_id: Option<Uuid>,
+    limit: usize,
+) -> (Vec<InboxItem>, Option<bool>) {
+    let Some(fid) = focus_id else {
+        items.truncate(limit);
+        return (items, None);
+    };
+
+    // Find the focused customer
+    if let Some(pos) = items.iter().position(|it| it.id == fid) {
+        // Move it to front
+        let focused = items.remove(pos);
+        items.insert(0, focused);
+        items.truncate(limit);
+        (items, Some(true))
+    } else {
+        // Not found — include as many normal rows as the limit allows
+        items.truncate(limit);
+        (items, Some(false))
+    }
+}
+
 fn build_inbox_sql_parts(req: &InboxRequest) -> InboxSqlParts {
     let mut conditions = vec![
         "c.user_id = $1".to_string(),
@@ -480,14 +510,26 @@ pub async fn get_customer_inbox(
             .then(a.customer_created_at.cmp(&b.customer_created_at))
     });
 
-    // Apply pagination after sorting
+    // Apply pagination and optional deep-link focus pin.
+    //
+    // The SQL query fetches ALL matching customers (no LIMIT); scoring and sorting
+    // already ran on the full set.  `apply_focus_pin` is therefore safe to call
+    // on the full sorted vector when offset == 0.
+    //
+    // Focus pin with offset > 0 is not supported (defined behavior: ignore focus).
     let offset_usize = offset as usize;
     let limit_usize = limit as usize;
-    let items: Vec<InboxItem> = items
-        .into_iter()
-        .skip(offset_usize)
-        .take(limit_usize)
-        .collect();
+
+    let (items, focused_customer_included) = if offset_usize == 0 {
+        apply_focus_pin(items, req.focus_customer_id, limit_usize)
+    } else {
+        let paged: Vec<InboxItem> = items
+            .into_iter()
+            .skip(offset_usize)
+            .take(limit_usize)
+            .collect();
+        (paged, None)
+    };
 
     // Overdue count
     let (overdue_count,): (i64,) = sqlx::query_as(
@@ -530,6 +572,7 @@ pub async fn get_customer_inbox(
         total,
         overdue_count,
         due_soon_count,
+        focused_customer_included,
     })
 }
 
@@ -714,6 +757,185 @@ pub async fn create_followup_action_for_communication(
 mod tests {
     use super::*;
     use crate::types::inbox::InboxRequest;
+    use chrono::Utc;
+
+    // ── Fixtures ──────────────────────────────────────────────────────────────
+
+    fn make_item(id: Uuid, score: f64) -> InboxItem {
+        InboxItem {
+            id,
+            name: Some(format!("Customer {id}")),
+            phone: None,
+            email: None,
+            street: None,
+            city: None,
+            postal_code: None,
+            lat: None,
+            lng: None,
+            geocode_status: "success".to_string(),
+            customer_created_at: Utc::now(),
+            lifecycle_state: "active".to_string(),
+            lifecycle_rank: 2,
+            next_action_kind: None,
+            next_action_label_key: None,
+            next_action_label_fallback: None,
+            next_action_due: None,
+            next_action_note: None,
+            total_communications: 0,
+            last_contact_at: None,
+            revision_status: None,
+            latest_scheduled_revision_id: None,
+            scheduled_revision_count: 0,
+            urgency_score: score,
+            device_id: None,
+            device_name: None,
+            device_type: None,
+            score_breakdown: vec![],
+        }
+    }
+
+    fn ids() -> (Uuid, Uuid, Uuid) {
+        (
+            Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap(),
+            Uuid::parse_str("00000000-0000-0000-0000-000000000002").unwrap(),
+            Uuid::parse_str("00000000-0000-0000-0000-000000000003").unwrap(),
+        )
+    }
+
+    // ── apply_focus_pin tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn w4_1_no_focus_id_baseline_unchanged() {
+        let (a, b, c) = ids();
+        let items = vec![make_item(a, 3.0), make_item(b, 2.0), make_item(c, 1.0)];
+        let (result, flag) = apply_focus_pin(items, None, 10);
+        assert_eq!(result[0].id, a);
+        assert_eq!(result[1].id, b);
+        assert_eq!(result[2].id, c);
+        assert!(flag.is_none());
+    }
+
+    #[test]
+    fn w4_2_focus_id_already_in_top_slice() {
+        let (a, b, c) = ids();
+        let items = vec![make_item(a, 3.0), make_item(b, 2.0), make_item(c, 1.0)];
+        let (result, flag) = apply_focus_pin(items, Some(b), 10);
+        assert_eq!(result[0].id, b, "focused customer must be at index 0");
+        assert_eq!(flag, Some(true));
+    }
+
+    #[test]
+    fn w4_3_focus_id_outside_top_slice_injected_at_index_0() {
+        let (a, b, c) = ids();
+        // limit=2 means only a and b fit; c is the focused id outside the slice
+        let items = vec![make_item(a, 3.0), make_item(b, 2.0), make_item(c, 1.0)];
+        let (result, flag) = apply_focus_pin(items, Some(c), 2);
+        assert_eq!(result[0].id, c, "focused customer injected at index 0");
+        assert_eq!(result.len(), 2, "size stays at limit");
+        assert_eq!(flag, Some(true));
+    }
+
+    #[test]
+    fn w4_4_remaining_rows_keep_score_order_after_pin() {
+        let (a, b, c) = ids();
+        let items = vec![make_item(a, 3.0), make_item(b, 2.0), make_item(c, 1.0)];
+        let (result, _) = apply_focus_pin(items, Some(c), 3);
+        // c is at 0; remainder should be a then b (original score order)
+        assert_eq!(result[1].id, a);
+        assert_eq!(result[2].id, b);
+    }
+
+    #[test]
+    fn w4_5_invalid_or_missing_focus_id_returns_false() {
+        let (a, b, _) = ids();
+        let missing = Uuid::parse_str("00000000-0000-0000-0000-000000009999").unwrap();
+        let items = vec![make_item(a, 3.0), make_item(b, 2.0)];
+        let (result, flag) = apply_focus_pin(items, Some(missing), 10);
+        assert_eq!(flag, Some(false));
+        // Normal rows still returned
+        assert_eq!(result[0].id, a);
+    }
+
+    #[test]
+    fn w4_6_foreign_user_customer_not_in_items_returns_false() {
+        // Foreign user's customer would not appear in the DB query result (user_id scoped).
+        // apply_focus_pin simply won't find it → same as missing.
+        let (a, _, _) = ids();
+        let foreign = Uuid::parse_str("00000000-0000-0000-0000-ffffffffffff").unwrap();
+        let items = vec![make_item(a, 1.0)];
+        let (_, flag) = apply_focus_pin(items, Some(foreign), 10);
+        assert_eq!(flag, Some(false));
+    }
+
+    #[test]
+    fn w4_7_abandoned_anonymized_not_in_items_returns_false() {
+        // SQL filters out abandoned/anonymized — they never reach apply_focus_pin.
+        let (a, _, _) = ids();
+        let abandoned = Uuid::parse_str("00000000-0000-0000-0000-aaaaaaaaaaaa").unwrap();
+        let items = vec![make_item(a, 1.0)];
+        let (_, flag) = apply_focus_pin(items, Some(abandoned), 10);
+        assert_eq!(flag, Some(false));
+    }
+
+    #[test]
+    fn w4_8_limit_1_with_focused_id_returns_only_focused() {
+        let (a, b, _) = ids();
+        let items = vec![make_item(a, 3.0), make_item(b, 2.0)];
+        let (result, flag) = apply_focus_pin(items, Some(b), 1);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].id, b);
+        assert_eq!(flag, Some(true));
+    }
+
+    #[test]
+    fn w4_9_limit_1_without_focus_returns_top_row() {
+        let (a, b, _) = ids();
+        let items = vec![make_item(a, 3.0), make_item(b, 2.0)];
+        let (result, flag) = apply_focus_pin(items, None, 1);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].id, a);
+        assert!(flag.is_none());
+    }
+
+    #[test]
+    fn w4_10_no_focus_id_offset_path_unchanged() {
+        // apply_focus_pin is called with None; standard truncation applies.
+        let (a, b, c) = ids();
+        let items = vec![make_item(a, 3.0), make_item(b, 2.0), make_item(c, 1.0)];
+        let (result, flag) = apply_focus_pin(items, None, 2);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].id, a);
+        assert_eq!(result[1].id, b);
+        assert!(flag.is_none());
+    }
+
+    #[test]
+    fn w4_11_focus_with_offset_documented_behavior_no_focus_pin() {
+        // When offset > 0 the caller does NOT invoke apply_focus_pin (see get_customer_inbox).
+        // This test documents that apply_focus_pin itself works correctly even if called
+        // with the post-offset slice (focus pin operates on whatever items are provided).
+        let (a, b, c) = ids();
+        let post_offset_slice = vec![make_item(b, 2.0), make_item(c, 1.0)];
+        // If 'a' is the focus but absent from slice → not included
+        let (result, flag) = apply_focus_pin(post_offset_slice, Some(a), 10);
+        assert_eq!(flag, Some(false));
+        assert_eq!(result[0].id, b);
+    }
+
+    #[test]
+    fn w4_12_response_shape_includes_focused_customer_flag() {
+        // Verify InboxResponse can carry focused_customer_included = Some(true)
+        let resp = InboxResponse {
+            items: vec![],
+            total: 0,
+            overdue_count: 0,
+            due_soon_count: 0,
+            focused_customer_included: Some(true),
+        };
+        assert_eq!(resp.focused_customer_included, Some(true));
+    }
+
+    // ── build_inbox_sql_parts tests (existing) ───────────────────────────────
 
     #[test]
     fn inbox_sql_default_excludes_abandoned_and_anonymized() {
