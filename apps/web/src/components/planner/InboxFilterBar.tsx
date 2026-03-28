@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Search } from 'lucide-react';
 import { CollapseButton } from '../common';
 import {
   FILTER_PRESETS,
@@ -187,7 +188,7 @@ export function InboxFilterBar({
           aria-expanded={isSearchOpen}
           data-testid="inbox-search-toggle"
         >
-          🔍
+          <Search size={14} />
         </button>
         {isSearchOpen && (
           <input

@@ -54,20 +54,21 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   background: var(--color-bg);
+  color: var(--color-text-secondary);
   cursor: pointer;
-  font-size: 0.8rem;
-  line-height: 1;
   flex-shrink: 0;
   transition: all 0.15s;
 }
 
 .searchToggle:hover {
   border-color: var(--color-primary);
+  color: var(--color-primary);
 }
 
 .searchToggle.active {
   background: var(--color-primary);
   border-color: var(--color-primary);
+  color: #fff;
 }
 
 .searchInput {
