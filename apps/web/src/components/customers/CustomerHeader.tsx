@@ -10,7 +10,7 @@
 
 import { Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
-import { Phone, Map, Plus, Pencil, Trash2 } from 'lucide-react';
+import { Phone, Map, Plus, Inbox, Pencil, Trash2 } from 'lucide-react';
 import type { Customer } from '@shared/customer';
 import styles from './CustomerHeader.module.css';
 
@@ -54,7 +54,7 @@ export function CustomerHeader({
           </span>
         </div>
         
-        <div className={styles.actions}>
+        <div className={styles.actions} data-testid="customer-header-actions">
           {/* Call button */}
           {customer.phone && (
             <a href={`tel:${customer.phone}`} className={`${styles.actionButton} ${styles.primary}`}>
@@ -82,7 +82,16 @@ export function CustomerHeader({
               <Plus size={14} /> {t('header_add_to_plan')}
             </button>
           )}
-          
+
+          {/* Show in Inbox */}
+          <Link
+            to="/inbox"
+            search={{ customerId: customer.id }}
+            className={styles.actionButton}
+          >
+            <Inbox size={14} /> {t('action_show_in_inbox')}
+          </Link>
+
           {/* Edit button */}
           <button
             type="button"

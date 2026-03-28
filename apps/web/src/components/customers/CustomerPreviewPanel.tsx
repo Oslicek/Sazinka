@@ -14,7 +14,7 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
-import { User, Phone, ClipboardCopy, Mail, Check, AlertTriangle, Wrench, Pencil, Plus } from 'lucide-react';
+import { User, Phone, ClipboardCopy, Mail, Check, AlertTriangle, Wrench, Inbox, Pencil, Plus } from 'lucide-react';
 import type { Customer, CustomerListItem } from '@shared/customer';
 import { AddressMap } from './AddressMap';
 import { AddressStatusChip } from './AddressStatusChip';
@@ -320,14 +320,7 @@ export function CustomerPreviewPanel({
       </div>
 
       {/* Actions */}
-      <div className={styles.actions}>
-        <button
-          type="button"
-          className={styles.actionButton}
-          onClick={() => onEdit(customer)}
-        >
-          <Pencil size={14} /> {t('preview_edit')}
-        </button>
+      <div className={styles.actions} data-testid="customer-preview-actions">
         {onAddToPlan && hasCoordinates && (
           <button
             type="button"
@@ -337,6 +330,20 @@ export function CustomerPreviewPanel({
             <Plus size={14} /> {t('preview_add_to_plan')}
           </button>
         )}
+        <Link
+          to="/inbox"
+          search={{ customerId: customer.id }}
+          className={styles.actionButton}
+        >
+          <Inbox size={14} /> {t('action_show_in_inbox')}
+        </Link>
+        <button
+          type="button"
+          className={styles.actionButton}
+          onClick={() => onEdit(customer)}
+        >
+          <Pencil size={14} /> {t('preview_edit')}
+        </button>
       </div>
 
       {/* Keyboard hint */}
