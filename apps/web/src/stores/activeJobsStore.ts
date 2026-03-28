@@ -23,6 +23,7 @@ export type JobType =
   | 'import.revision'
   | 'import.communication'
   | 'import.work_log'
+  | 'import.notes'
   | 'import.zip'
   | 'geocode' 
   | 'route'

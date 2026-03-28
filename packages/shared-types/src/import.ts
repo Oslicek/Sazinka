@@ -183,6 +183,34 @@ export interface WorkLogImportJobSubmitResponse {
 }
 
 // =============================================================================
+// NOTES IMPORT JOB TYPES
+// =============================================================================
+
+export interface NotesImportJobRequest {
+  csvContent: string;
+  filename: string;
+}
+
+export type NotesImportJobStatus =
+  | { type: 'queued'; position: number }
+  | { type: 'parsing'; progress: number }
+  | { type: 'importing'; processed: number; total: number; succeeded: number; failed: number }
+  | { type: 'completed'; total: number; succeeded: number; failed: number; report: ImportReport }
+  | { type: 'failed'; error: string }
+  | { type: 'cancelled'; processed: number; total: number };
+
+export interface NotesImportJobStatusUpdate {
+  jobId: string;
+  timestamp: string;
+  status: NotesImportJobStatus;
+}
+
+export interface NotesImportJobSubmitResponse {
+  jobId: string;
+  message: string;
+}
+
+// =============================================================================
 // ZIP IMPORT JOB TYPES
 // =============================================================================
 

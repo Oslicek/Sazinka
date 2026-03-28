@@ -12,6 +12,8 @@ import type {
   CommunicationImportJobSubmitResponse,
   WorkLogImportJobRequest,
   WorkLogImportJobSubmitResponse,
+  NotesImportJobRequest,
+  NotesImportJobSubmitResponse,
   ZipImportJobRequest,
   ZipImportJobSubmitResponse,
 } from '@shared/import';
@@ -41,6 +43,10 @@ const SUBJECTS = {
   worklog: {
     submit: 'sazinka.import.worklog.submit',
     status: 'sazinka.job.import.worklog.status',
+  },
+  notes: {
+    submit: 'sazinka.import.notes.submit',
+    status: 'sazinka.job.import.notes.status',
   },
   zip: {
     submit: 'sazinka.import.zip.submit',
@@ -222,6 +228,37 @@ export async function submitWorkLogImportJob(
   
   const response = await deps.request<typeof request, NatsResponse<WorkLogImportJobSubmitResponse>>(
     SUBJECTS.worklog.submit,
+    request
+  );
+
+  if (isErrorResponse(response)) {
+    throw new Error(response.error.message);
+  }
+
+  return response.payload;
+}
+
+// =============================================================================
+// NOTES IMPORT
+// =============================================================================
+
+/**
+ * Submit a notes import job
+ */
+export async function submitNotesImportJob(
+  csvContent: string,
+  filename: string,
+  deps: ImportJobServiceDeps = getDefaultDeps()
+): Promise<NotesImportJobSubmitResponse> {
+  const payload: NotesImportJobRequest = {
+    csvContent,
+    filename,
+  };
+  
+  const request = createRequest(getToken(), payload);
+  
+  const response = await deps.request<typeof request, NatsResponse<NotesImportJobSubmitResponse>>(
+    SUBJECTS.notes.submit,
     request
   );
 

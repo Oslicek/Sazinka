@@ -512,8 +512,25 @@ export function Settings() {
                   </button>
                 </div>
 
+                {/* Notes Import */}
+                <div className={styles.exportCard} data-testid="import-card-notes">
+                  <h3>{t('import_notes_title', 'Import notes')}</h3>
+                  <p className={styles.exportDescription}>
+                    {t('import_notes_desc', 'Import visit and device notes from a CSV file.')}
+                  </p>
+                  <button
+                    type="button"
+                    className={styles.exportButton}
+                    onClick={() => handleOpenImport('notes')}
+                    disabled={!isConnected}
+                    data-testid="import-card-notes-btn"
+                  >
+                    {t('import_notes_btn', 'Import notes')}
+                  </button>
+                </div>
+
                 {/* ZIP Import */}
-                <div className={styles.exportCard}>
+                <div className={styles.exportCard} data-testid="import-card-zip">
                   <h3>{t('import_zip_title')}</h3>
                   <p className={styles.exportDescription}>
                     {t('import_zip_desc')}

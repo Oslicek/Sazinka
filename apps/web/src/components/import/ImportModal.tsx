@@ -14,6 +14,7 @@ import {
   submitRevisionImportJob,
   submitCommunicationImportJob,
   submitWorkLogImportJob,
+  submitNotesImportJob,
   submitZipImportJob,
 } from '../../services/importJobService';
 import { useActiveJobsStore } from '../../stores/activeJobsStore';
@@ -21,13 +22,14 @@ import type { JobType } from '../../stores/activeJobsStore';
 import { getToken } from '@/utils/auth';
 import styles from './ImportModal.module.css';
 
-export type ImportEntityType = 'device' | 'revision' | 'communication' | 'work_log' | 'zip';
+export type ImportEntityType = 'device' | 'revision' | 'communication' | 'work_log' | 'notes' | 'zip';
 
 const ENTITY_LABEL_KEYS: Record<ImportEntityType, string> = {
   device: 'modal_entity_device',
   revision: 'modal_entity_revision',
   communication: 'modal_entity_communication',
   work_log: 'modal_entity_work_log',
+  notes: 'modal_entity_notes',
   zip: 'modal_entity_zip',
 };
 
@@ -36,6 +38,7 @@ const ENTITY_TITLE_KEYS: Record<ImportEntityType, string> = {
   revision: 'modal_title_revision',
   communication: 'modal_title_communication',
   work_log: 'modal_title_work_log',
+  notes: 'modal_title_notes',
   zip: 'modal_title_zip',
 };
 
@@ -44,6 +47,7 @@ const JOB_TYPES: Record<ImportEntityType, JobType> = {
   revision: 'import.revision',
   communication: 'import.communication',
   work_log: 'import.work_log',
+  notes: 'import.notes',
   zip: 'import.zip',
 };
 
@@ -52,6 +56,7 @@ const ACCEPTED_FILES: Record<ImportEntityType, string> = {
   revision: '.csv,text/csv',
   communication: '.csv,text/csv',
   work_log: '.csv,text/csv',
+  notes: '.csv,text/csv',
   zip: '.zip,application/zip,application/x-zip-compressed',
 };
 
@@ -267,6 +272,9 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
         case 'work_log':
           result = await submitWorkLogImportJob(preview.content, preview.filename);
           break;
+        case 'notes':
+          result = await submitNotesImportJob(preview.content, preview.filename);
+          break;
         case 'zip':
           result = await submitZipImportJob(preview.content, preview.filename);
           break;
@@ -334,11 +342,11 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
   };
 
   return (
-    <div className={styles.overlay} onClick={handleClose}>
+    <div className={styles.overlay} onClick={handleClose} data-testid={`import-modal-${entityType}`}>
       <div className={styles.modal} onClick={e => e.stopPropagation()}>
         <div className={styles.header}>
           <h2>{t(ENTITY_TITLE_KEYS[entityType])}</h2>
-          <button className={styles.closeButton} onClick={handleClose}>×</button>
+          <button className={styles.closeButton} onClick={handleClose} data-testid="import-modal-close">×</button>
         </div>
 
         <div className={styles.content}>
@@ -364,6 +372,7 @@ export function ImportModal({ isOpen, onClose, entityType, onComplete }: ImportM
                 accept={ACCEPTED_FILES[entityType]}
                 onChange={handleFileChange}
                 className={styles.fileInput}
+                data-testid="import-file-input"
               />
             </div>
           )}
